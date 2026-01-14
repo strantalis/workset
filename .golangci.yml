@@ -2,10 +2,6 @@ version: "2"
 
 run:
   timeout: 5m
-  skip-dirs:
-    - .git
-    - vendor
-    - testdata
 
 linters:
   default: none
