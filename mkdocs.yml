@@ -1,0 +1,12 @@
+site_name: Workset
+site_description: Multi-repo workspaces with linked worktrees
+site_url: https://workset.dev
+
+theme:
+  name: material
+
+nav:
+  - Home: index.md
+  - CLI: cli.md
+  - Templates: templates.md
+  - Config: config.md

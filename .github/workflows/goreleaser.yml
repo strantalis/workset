@@ -1,0 +1,55 @@
+name: goreleaser
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  alpha:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: GoReleaser (snapshot)
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          args: release --snapshot --clean
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: workset-alpha-${{ github.sha }}
+          path: dist/*
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: GoReleaser (release)
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          args: release --clean

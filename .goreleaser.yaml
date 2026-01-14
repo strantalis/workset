@@ -1,0 +1,35 @@
+version: 2
+
+env:
+  - CGO_ENABLED=0
+
+snapshot:
+  version_template: "{{ .Version }}-alpha.{{ .ShortCommit }}"
+
+builds:
+  - id: workset
+    main: ./cmd/workset
+    binary: workset
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+
+archives:
+  - id: default
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc

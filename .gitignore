@@ -1,0 +1,13 @@
+.gocache/
+.golangci-cache/
+.modcache/
+dist/
+bin/
+coverage/
+*.out
+*.test
+*.prof
+.env
+.DS_Store
+.idea/
+.vscode/

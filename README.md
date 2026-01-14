@@ -1,0 +1,60 @@
+# Workset
+
+<p align="center">
+  <img src="docs/assets/workset.png" alt="Workset" width="768">
+</p>
+
+Workset is a Go CLI for managing **multi-repo workspaces** with **linked Git worktrees** by default. It captures intent ("these repos move together") and makes multi-repo operations safe, explicit, and predictable.
+
+## Why Workset
+
+- **Workspaces first**: treat related repos as a single unit of work.
+- **Linked worktrees by default**: branch work happens in isolated directories without duplicating repos.
+- **Explicit remotes**: base vs write remotes are always deliberate.
+- **Templates**: reusable repo sets that expand into workspace config.
+- **Safe defaults**: scope is editable repos; no destructive actions without flags.
+
+## Status
+
+Workset is in active development. Current commands focus on workspace creation, repo add, status, and templates. Branch/worktree workflows are next.
+
+## Quickstart
+
+Build locally:
+
+```bash
+go build ./cmd/workset
+```
+
+Create a workspace and add repos:
+
+```bash
+./workset new demo
+./workset repo add git@github.com:your/org-repo.git -w demo
+./workset status -w demo
+```
+
+Templates:
+
+```bash
+./workset template create platform
+./workset template add platform repo-alias
+./workset template apply platform -w demo
+```
+
+## Concepts
+
+- **Workspace**: a directory with `workset.yaml` and `.workset/` state.
+- **Repo roles**: editable vs context.
+- **Remotes**: `base` (truth) and `write` (fork/origin).
+- **Templates**: global repo sets applied into a workspace.
+
+## Docs
+
+Docs are built with **MkDocs + Material**. The site config is `mkdocs.yml`, markdown content lives in `docs/`, and the published site is `workset.dev`.
+
+## Roadmap
+
+- Branch create/checkout + worktree management
+- Fetch/pull/exec across repos
+- Scoped status and JSON output
