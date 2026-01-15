@@ -4,7 +4,7 @@
   <img src="docs/assets/workset.png" alt="Workset" width="768">
 </p>
 
-Workset is a Go CLI for managing **multi-repo workspaces** with **linked Git worktrees** by default. It captures intent ("these repos move together") and makes multi-repo operations safe, explicit, and predictable.
+Workset is a Go CLI for managing **multi-repo workspaces** with **linked Git worktrees** by default. It captures intent ("these repos move together") and keeps multi-repo work safe, explicit, and predictable.
 
 ## Why Workset
 
@@ -12,7 +12,7 @@ Workset is a Go CLI for managing **multi-repo workspaces** with **linked Git wor
 - **Linked worktrees by default**: branch work happens in isolated directories without duplicating repos.
 - **Explicit remotes**: base vs write remotes are always deliberate.
 - **Templates**: reusable repo sets that expand into workspace config.
-- **Safe defaults**: scope is editable repos; no destructive actions without flags.
+- **Safe defaults**: no destructive actions without explicit flags.
 
 ## Status
 
@@ -45,7 +45,8 @@ Templates:
 ## Concepts
 
 - **Workspace**: a directory with `workset.yaml` and `.workset/` state.
-- **Repo roles**: editable vs context.
+- **Repo sources**: local paths stay put; URL clones land in `~/.workset/repos` (configurable).
+- **Worktrees**: feature worktrees live under `worktrees/<feature>/<repo>` (slashes become `__`).
 - **Remotes**: `base` (truth) and `write` (fork/origin).
 - **Templates**: global repo sets applied into a workspace.
 
