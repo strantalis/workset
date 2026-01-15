@@ -4,7 +4,7 @@ env:
   - CGO_ENABLED=0
 
 snapshot:
-  version_template: "{{ .Version }}-alpha.{{ .ShortCommit }}"
+  version_template: "{{ if eq .Version \"0.0.0\" }}0.1.0{{ else }}{{ incpatch .Version }}{{ end }}-alpha.{{ .ShortCommit }}"
 
 builds:
   - id: workset

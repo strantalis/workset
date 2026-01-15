@@ -1,6 +1,7 @@
 .gocache/
 .golangci-cache/
 .modcache/
+.cache/
 dist/
 bin/
 coverage/
