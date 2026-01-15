@@ -27,9 +27,6 @@ func TestInitCreatesWorkspace(t *testing.T) {
 	if _, err := os.Stat(StatePath(root)); err != nil {
 		t.Fatalf("state.json missing: %v", err)
 	}
-	if _, err := os.Stat(BranchPath(root, defaults.BaseBranch)); err != nil {
-		t.Fatalf("base branch directory missing: %v", err)
-	}
 }
 
 func TestLoadRecreatesState(t *testing.T) {

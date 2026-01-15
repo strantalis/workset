@@ -21,7 +21,6 @@ type StatusInput struct {
 	WorkspaceRoot string
 	Defaults      config.Defaults
 	Git           git.Client
-	IncludeAll    bool
 }
 
 func Status(ctx context.Context, input StatusInput) ([]RepoStatus, error) {
@@ -39,10 +38,18 @@ func Status(ctx context.Context, input StatusInput) ([]RepoStatus, error) {
 
 	var results []RepoStatus
 	for _, repo := range ws.Config.Repos {
-		if !input.IncludeAll && !repo.Editable {
+		config.ApplyRepoDefaults(&repo, input.Defaults)
+		path := repo.LocalPath
+		if ws.State.CurrentBranch != "" && ws.State.CurrentBranch != repo.Remotes.Base.DefaultBranch {
+			path = workspace.RepoWorktreePath(ws.Root, ws.State.CurrentBranch, repo.RepoDir)
+		}
+		if path == "" {
+			results = append(results, RepoStatus{
+				Name: repo.Name,
+				Err:  errors.New("local_path missing"),
+			})
 			continue
 		}
-		path := workspace.RepoWorktreePath(ws.Root, ws.State.CurrentBranch, repo.RepoDir)
 		status, err := input.Git.Status(path)
 		if err != nil && !status.Missing {
 			results = append(results, RepoStatus{

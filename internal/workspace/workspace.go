@@ -16,6 +16,7 @@ import (
 const (
 	worksetFileName = "workset.yaml"
 	stateFileName   = "state.json"
+	branchMetaFile  = ".workset-branch"
 )
 
 type Workspace struct {
@@ -36,28 +37,24 @@ func StatePath(root string) string {
 	return filepath.Join(root, ".workset", stateFileName)
 }
 
-func GitDirsPath(root string) string {
-	return filepath.Join(root, ".workset", "gitdirs")
-}
-
-func RepoGitDirPath(root, repoName string) string {
-	return filepath.Join(GitDirsPath(root), repoName+".git")
-}
-
 func LogsPath(root string) string {
 	return filepath.Join(root, ".workset", "logs")
 }
 
-func BranchesPath(root string) string {
-	return filepath.Join(root, "branches")
+func WorktreesPath(root string) string {
+	return filepath.Join(root, "worktrees")
 }
 
-func BranchPath(root, branch string) string {
-	return filepath.Join(BranchesPath(root), branch)
+func WorktreeBranchPath(root, branch string) string {
+	return filepath.Join(WorktreesPath(root), WorktreeDirName(branch))
+}
+
+func BranchMetaPath(root, branch string) string {
+	return filepath.Join(WorktreeBranchPath(root, branch), branchMetaFile)
 }
 
 func RepoWorktreePath(root, branch, repoDir string) string {
-	return filepath.Join(BranchPath(root, branch), repoDir)
+	return filepath.Join(WorktreeBranchPath(root, branch), repoDir)
 }
 
 func WorktreeName(branch string) string {
@@ -97,13 +94,7 @@ func Init(root, name string, defaults config.Defaults) (Workspace, error) {
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return Workspace{}, err
 	}
-	if err := os.MkdirAll(GitDirsPath(root), 0o755); err != nil {
-		return Workspace{}, err
-	}
 	if err := os.MkdirAll(LogsPath(root), 0o755); err != nil {
-		return Workspace{}, err
-	}
-	if err := os.MkdirAll(BranchPath(root, defaults.BaseBranch), 0o755); err != nil {
 		return Workspace{}, err
 	}
 
@@ -176,6 +167,44 @@ func loadState(root string) (State, error) {
 		return State{}, errors.New("current_branch missing in state.json")
 	}
 	return state, nil
+}
+
+func WorktreeDirName(branch string) string {
+	if branch == "" {
+		return "branch"
+	}
+	return strings.ReplaceAll(branch, "/", "__")
+}
+
+func BranchNameFromDir(name string) string {
+	if name == "" {
+		return ""
+	}
+	return strings.ReplaceAll(name, "__", "/")
+}
+
+func WriteBranchMeta(root, branch string) error {
+	if root == "" || branch == "" {
+		return nil
+	}
+	path := BranchMetaPath(root, branch)
+	return os.WriteFile(path, []byte(branch), 0o644)
+}
+
+func ReadBranchMeta(dir string) (string, bool, error) {
+	path := filepath.Join(dir, branchMetaFile)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	name := strings.TrimSpace(string(data))
+	if name == "" {
+		return "", false, nil
+	}
+	return name, true, nil
 }
 
 func sanitizeWorktreeName(branch string) string {

@@ -14,7 +14,7 @@ import (
 	"github.com/strantalis/workset/internal/workspace"
 )
 
-func TestAddRepoClones(t *testing.T) {
+func TestAddRepoLinksLocal(t *testing.T) {
 	source := setupRepo(t)
 	root := filepath.Join(t.TempDir(), "ws")
 	defaults := config.DefaultConfig().Defaults
@@ -27,7 +27,6 @@ func TestAddRepoClones(t *testing.T) {
 		WorkspaceRoot: root,
 		Name:          "demo-repo",
 		URL:           source,
-		Editable:      true,
 		Defaults:      defaults,
 		Remotes: config.Remotes{
 			Base:  config.RemoteConfig{Name: defaults.Remotes.Base, DefaultBranch: defaults.BaseBranch},
@@ -39,9 +38,19 @@ func TestAddRepoClones(t *testing.T) {
 		t.Fatalf("AddRepo: %v", err)
 	}
 
-	worktreePath := workspace.RepoWorktreePath(root, defaults.BaseBranch, "demo-repo")
-	if _, err := ggit.PlainOpenWithOptions(worktreePath, &ggit.PlainOpenOptions{EnableDotGitCommonDir: true}); err != nil {
-		t.Fatalf("expected cloned repo: %v", err)
+	ws, err := config.LoadWorkspace(workspace.WorksetFile(root))
+	if err != nil {
+		t.Fatalf("LoadWorkspace: %v", err)
+	}
+	if len(ws.Repos) != 1 {
+		t.Fatalf("expected repo in workspace")
+	}
+	expectedPath, err := filepath.EvalSymlinks(source)
+	if err != nil {
+		t.Fatalf("EvalSymlinks: %v", err)
+	}
+	if ws.Repos[0].LocalPath != expectedPath {
+		t.Fatalf("expected local_path %s, got %s", expectedPath, ws.Repos[0].LocalPath)
 	}
 }
 
@@ -58,7 +67,6 @@ func TestStatusDirty(t *testing.T) {
 		WorkspaceRoot: root,
 		Name:          "demo-repo",
 		URL:           source,
-		Editable:      true,
 		Defaults:      defaults,
 		Remotes: config.Remotes{
 			Base:  config.RemoteConfig{Name: defaults.Remotes.Base, DefaultBranch: defaults.BaseBranch},
@@ -70,8 +78,7 @@ func TestStatusDirty(t *testing.T) {
 		t.Fatalf("AddRepo: %v", err)
 	}
 
-	worktreePath := workspace.RepoWorktreePath(root, defaults.BaseBranch, "demo-repo")
-	if err := os.WriteFile(filepath.Join(worktreePath, "extra.txt"), []byte("dirty"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(source, "extra.txt"), []byte("dirty"), 0o644); err != nil {
 		t.Fatalf("write dirty file: %v", err)
 	}
 
@@ -79,7 +86,6 @@ func TestStatusDirty(t *testing.T) {
 		WorkspaceRoot: root,
 		Defaults:      defaults,
 		Git:           git.NewGoGitClient(),
-		IncludeAll:    true,
 	})
 	if err != nil {
 		t.Fatalf("Status: %v", err)

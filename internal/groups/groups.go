@@ -116,9 +116,8 @@ func FromWorkspace(cfg *config.GlobalConfig, groupName string, ws config.Workspa
 	members := make([]config.GroupMember, 0, len(ws.Repos))
 	for _, repo := range ws.Repos {
 		members = append(members, config.GroupMember{
-			Repo:     repo.Name,
-			Editable: repo.Editable,
-			Remotes:  repo.Remotes,
+			Repo:    repo.Name,
+			Remotes: repo.Remotes,
 		})
 	}
 	if cfg.Groups == nil {

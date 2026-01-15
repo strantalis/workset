@@ -75,6 +75,22 @@ func (c GoGitClient) AddRemote(path, name, url string) error {
 	return err
 }
 
+func (c GoGitClient) Fetch(ctx context.Context, repoPath, remoteName string) error {
+	if remoteName == "" {
+		return errors.New("remote name required")
+	}
+	repo, err := ggit.PlainOpenWithOptions(repoPath, &ggit.PlainOpenOptions{
+		EnableDotGitCommonDir: true,
+	})
+	if err != nil {
+		return err
+	}
+	if err := repo.FetchContext(ctx, &ggit.FetchOptions{RemoteName: remoteName}); err != nil && !errors.Is(err, ggit.NoErrAlreadyUpToDate) {
+		return err
+	}
+	return nil
+}
+
 func (c GoGitClient) Status(path string) (StatusSummary, error) {
 	repo, err := ggit.PlainOpenWithOptions(path, &ggit.PlainOpenOptions{
 		EnableDotGitCommonDir: true,
@@ -107,6 +123,37 @@ func (c GoGitClient) IsRepo(path string) (bool, error) {
 		return false, nil
 	}
 	return false, err
+}
+
+func (c GoGitClient) IsAncestor(repoPath, ancestorRef, descendantRef string) (bool, error) {
+	if ancestorRef == "" || descendantRef == "" {
+		return false, errors.New("ancestor and descendant refs required")
+	}
+	repo, err := ggit.PlainOpenWithOptions(repoPath, &ggit.PlainOpenOptions{
+		EnableDotGitCommonDir: true,
+	})
+	if err != nil {
+		return false, err
+	}
+	ancestorRefName := plumbing.ReferenceName(ancestorRef)
+	descRefName := plumbing.ReferenceName(descendantRef)
+	ancestor, err := repo.Reference(ancestorRefName, true)
+	if err != nil {
+		return false, err
+	}
+	descendant, err := repo.Reference(descRefName, true)
+	if err != nil {
+		return false, err
+	}
+	ancestorCommit, err := repo.CommitObject(ancestor.Hash())
+	if err != nil {
+		return false, err
+	}
+	descendantCommit, err := repo.CommitObject(descendant.Hash())
+	if err != nil {
+		return false, err
+	}
+	return ancestorCommit.IsAncestor(descendantCommit)
 }
 
 func (c GoGitClient) WorktreeAdd(ctx context.Context, opts WorktreeAddOptions) error {

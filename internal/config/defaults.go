@@ -1,9 +1,17 @@
 package config
 
+import (
+	"os"
+	"path/filepath"
+)
+
 func DefaultConfig() GlobalConfig {
 	return GlobalConfig{
 		Defaults: Defaults{
-			BaseBranch: "main",
+			BaseBranch:    "main",
+			Workspace:     "",
+			WorkspaceRoot: defaultWorkspaceRoot(),
+			RepoStoreRoot: defaultRepoStoreRoot(),
 			Remotes: RemoteNames{
 				Base:  "upstream",
 				Write: "origin",
@@ -44,4 +52,20 @@ func ApplyRepoDefaults(repo *RepoConfig, defaults Defaults) {
 	if repo.Remotes.Write.DefaultBranch == "" {
 		repo.Remotes.Write.DefaultBranch = defaults.BaseBranch
 	}
+}
+
+func defaultWorkspaceRoot() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".workset", "workspaces")
+}
+
+func defaultRepoStoreRoot() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".workset", "repos")
 }

@@ -28,7 +28,7 @@ func TestAddRemoveMember(t *testing.T) {
 	if err := Upsert(&cfg, "alpha", ""); err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
-	member := config.GroupMember{Repo: "repo1", Editable: true}
+	member := config.GroupMember{Repo: "repo1"}
 	if err := AddMember(&cfg, "alpha", member); err != nil {
 		t.Fatalf("AddMember: %v", err)
 	}
@@ -51,8 +51,7 @@ func TestFromWorkspace(t *testing.T) {
 		Name: "demo",
 		Repos: []config.RepoConfig{
 			{
-				Name:     "repo1",
-				Editable: true,
+				Name: "repo1",
 				Remotes: config.Remotes{
 					Base:  config.RemoteConfig{Name: "upstream", DefaultBranch: "main"},
 					Write: config.RemoteConfig{Name: "origin", DefaultBranch: "main"},
