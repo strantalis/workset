@@ -1,8 +1,11 @@
 {
-  "release-type": "go",
-  "include-v-in-tag": true,
-  "versioning": "always-bump-minor",
   "packages": {
-    ".": {}
+    ".": {
+      "release-type": "go",
+      "include-v-in-tag": true,
+      "versioning": "always-bump-minor",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": false
+    }
   }
 }
