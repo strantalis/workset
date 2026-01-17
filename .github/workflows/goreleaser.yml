@@ -54,7 +54,10 @@ jobs:
       - name: GoReleaser (snapshot)
         uses: goreleaser/goreleaser-action@v6
         with:
+          distribution: goreleaser-pro
           args: release --snapshot --clean
+        env:
+          GORELEASER_KEY: ${{ secrets.GORELEASER_PRO }}
       - uses: actions/attest-build-provenance@v3
         with:
           subject-checksums: dist/checksums.txt
@@ -87,6 +90,7 @@ jobs:
       artifact-metadata: write
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GORELEASER_GH_TOKEN: ${{ secrets.GORELEASER_GH_TOKEN }}
       MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
       MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
       MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
@@ -119,7 +123,10 @@ jobs:
       - name: GoReleaser (release)
         uses: goreleaser/goreleaser-action@v6
         with:
+          distribution: goreleaser-pro
           args: release --clean
+        env:
+          GORELEASER_KEY: ${{ secrets.GORELEASER_PRO }}
       - uses: actions/attest-build-provenance@v3
         with:
           subject-checksums: dist/checksums.txt

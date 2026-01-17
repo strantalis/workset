@@ -41,6 +41,19 @@ sboms:
     artifacts: source
     disable: false
 
+homebrew_casks:
+  - name: workset
+    repository:
+      owner: strantalis
+      name: homebrew-tap
+      token: "{{ .Env.GORELEASER_GH_TOKEN }}"
+    directory: Casks
+    homepage: "https://workset.dev"
+    description: "Go CLI for multi-repo workspaces with linked worktrees"
+    binaries:
+      - workset
+    skip_upload: auto
+
 notarize:
   macos:
     - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'

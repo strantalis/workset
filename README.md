@@ -1,5 +1,11 @@
 # Workset
 
+[![test](https://github.com/strantalis/workset/actions/workflows/test.yml/badge.svg)](https://github.com/strantalis/workset/actions/workflows/test.yml)
+[![lint](https://github.com/strantalis/workset/actions/workflows/lint.yml/badge.svg)](https://github.com/strantalis/workset/actions/workflows/lint.yml)
+[![goreleaser](https://github.com/strantalis/workset/actions/workflows/goreleaser.yml/badge.svg)](https://github.com/strantalis/workset/actions/workflows/goreleaser.yml)
+[![release-please](https://github.com/strantalis/workset/actions/workflows/release-please.yml/badge.svg)](https://github.com/strantalis/workset/actions/workflows/release-please.yml)
+[![docs](https://github.com/strantalis/workset/actions/workflows/docs.yml/badge.svg)](https://github.com/strantalis/workset/actions/workflows/docs.yml)
+
 <p align="center">
   <img src="docs/assets/workset.png" alt="Workset" width="768">
 </p>
@@ -16,7 +22,7 @@ Workset is a Go CLI for managing **multi-repo workspaces** with **linked Git wor
 
 ## Status
 
-Workset is in active development. Current commands focus on workspace creation, repo add, status, and templates. Branch/worktree workflows are next.
+Workset is in active development. Current commands focus on workspace creation, repo add, status, and groups/templates. Branch/worktree workflows are next.
 
 ## Quickstart
 
@@ -37,22 +43,28 @@ Create a workspace and add repos:
 Templates:
 
 ```bash
-./workset template create platform
-./workset template add platform repo-alias
-./workset template apply platform -w demo
+./workset group create platform
+./workset group add platform repo-alias
+./workset group apply platform -w demo
 ```
 
 ## Concepts
 
 - **Workspace**: a directory with `workset.yaml` and `.workset/` state.
 - **Repo sources**: local paths stay put; URL clones land in `~/.workset/repos` (configurable).
-- **Worktrees**: feature worktrees live under `worktrees/<feature>/<repo>` (slashes become `__`).
+- **Worktrees**: worktrees live under `<workspace>/<repo>` by default.
 - **Remotes**: `base` (truth) and `write` (fork/origin).
 - **Templates**: global repo sets applied into a workspace.
 
 ## Docs
 
 Docs are built with **MkDocs + Material**. The site config is `mkdocs.yml`, markdown content lives in `docs/`, and the published site is `workset.dev`.
+
+Local dev (requires `uv`):
+
+```bash
+make docs-serve
+```
 
 ## Roadmap
 
