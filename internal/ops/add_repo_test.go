@@ -78,7 +78,8 @@ func TestStatusDirty(t *testing.T) {
 		t.Fatalf("AddRepo: %v", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(source, "extra.txt"), []byte("dirty"), 0o644); err != nil {
+	worktreePath := workspace.RepoWorktreePath(root, "demo", "demo-repo")
+	if err := os.WriteFile(filepath.Join(worktreePath, "extra.txt"), []byte("dirty"), 0o644); err != nil {
 		t.Fatalf("write dirty file: %v", err)
 	}
 

@@ -54,7 +54,10 @@ func BranchMetaPath(root, branch string) string {
 }
 
 func RepoWorktreePath(root, branch, repoDir string) string {
-	return filepath.Join(WorktreeBranchPath(root, branch), repoDir)
+	if UseBranchDirs(root) {
+		return filepath.Join(WorktreeBranchPath(root, branch), repoDir)
+	}
+	return filepath.Join(root, repoDir)
 }
 
 func WorktreeName(branch string) string {
@@ -106,7 +109,11 @@ func Init(root, name string, defaults config.Defaults) (Workspace, error) {
 		return Workspace{}, err
 	}
 
-	state := State{CurrentBranch: defaults.BaseBranch}
+	branch := name
+	if branch == "" {
+		branch = defaults.BaseBranch
+	}
+	state := State{CurrentBranch: branch}
 	if err := saveState(root, state); err != nil {
 		return Workspace{}, err
 	}
@@ -127,11 +134,22 @@ func Load(root string, defaults config.Defaults) (Workspace, error) {
 	state, err := loadState(root)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			state = State{CurrentBranch: defaults.BaseBranch}
+			branch := cfg.Name
+			if branch == "" {
+				branch = defaults.BaseBranch
+			}
+			state = State{CurrentBranch: branch}
 			if err := saveState(root, state); err != nil {
 				return Workspace{}, err
 			}
 		} else {
+			return Workspace{}, err
+		}
+	}
+
+	if cfg.Name != "" && state.CurrentBranch != cfg.Name && !UseBranchDirs(root) {
+		state = State{CurrentBranch: cfg.Name}
+		if err := saveState(root, state); err != nil {
 			return Workspace{}, err
 		}
 	}
@@ -141,6 +159,14 @@ func Load(root string, defaults config.Defaults) (Workspace, error) {
 		Config: cfg,
 		State:  state,
 	}, nil
+}
+
+func UseBranchDirs(root string) bool {
+	info, err := os.Stat(WorktreesPath(root))
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
 }
 
 func saveState(root string, state State) error {

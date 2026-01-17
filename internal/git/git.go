@@ -25,6 +25,8 @@ type Client interface {
 	Status(path string) (StatusSummary, error)
 	IsRepo(path string) (bool, error)
 	IsAncestor(repoPath, ancestorRef, descendantRef string) (bool, error)
+	CurrentBranch(repoPath string) (string, bool, error)
+	RemoteExists(repoPath, remoteName string) (bool, error)
 	WorktreeAdd(ctx context.Context, opts WorktreeAddOptions) error
 	WorktreeRemove(repoPath, worktreeName string) error
 	WorktreeList(repoPath string) ([]string, error)

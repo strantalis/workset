@@ -64,9 +64,9 @@ func TestRepoAddFromRelativePath(t *testing.T) {
 		t.Fatalf("repo add: %v", err)
 	}
 
-	worktreesDir := filepath.Join(runner.workspaceRoot(), "demo", "worktrees")
-	if _, err := os.Stat(worktreesDir); !os.IsNotExist(err) {
-		t.Fatalf("expected no worktrees directory for base branch, got err=%v", err)
+	worktreePath := filepath.Join(runner.workspaceRoot(), "demo", "test-repo-1")
+	if _, err := os.Stat(worktreePath); err != nil {
+		t.Fatalf("expected worktree at repo path, got err=%v", err)
 	}
 
 	out, err := runner.run("repo", "ls", "-w", "demo")
@@ -187,6 +187,9 @@ func TestRepoAliasLocalAndURLFlow(t *testing.T) {
 	if !strings.Contains(out, "\"name\": \"local-alias\"") || !strings.Contains(out, "\"name\": \"url-alias\"") {
 		t.Fatalf("alias ls missing entries: %s", out)
 	}
+	if !strings.Contains(out, "\"default_branch\": \"main\"") {
+		t.Fatalf("alias ls missing default_branch: %s", out)
+	}
 
 	if _, err := runner.run("new", "demo"); err != nil {
 		t.Fatalf("workset new: %v", err)
@@ -209,8 +212,8 @@ func TestRepoAliasLocalAndURLFlow(t *testing.T) {
 		t.Fatalf("repo ls missing repo store path: %s", out)
 	}
 
-	if _, err := runner.run("repo", "alias", "set", "--default-branch", "main", "url-alias"); err != nil {
-		t.Fatalf("alias set: %v", err)
+	if _, err := runner.run("repo", "alias", "add", "--default-branch", "main", "url-alias", fileURL(urlRepo)); err != nil {
+		t.Fatalf("alias add default branch: %v", err)
 	}
 	if _, err := runner.run("repo", "alias", "rm", "local-alias"); err != nil {
 		t.Fatalf("alias rm local: %v", err)
@@ -227,14 +230,66 @@ func TestRepoAddWithRepoDirCreatesWorktree(t *testing.T) {
 	if _, err := runner.run("new", "demo"); err != nil {
 		t.Fatalf("workset new: %v", err)
 	}
-	setWorkspaceBranch(t, runner, "demo", "feat/test")
 	if _, err := runner.run("repo", "add", "-w", "demo", source, "--repo-dir", "custom-dir"); err != nil {
 		t.Fatalf("repo add --repo-dir: %v", err)
 	}
 
-	worktreePath := filepath.Join(runner.workspaceRoot(), "demo", "worktrees", "feat__test", "custom-dir")
+	worktreePath := filepath.Join(runner.workspaceRoot(), "demo", "custom-dir")
 	if _, err := os.Stat(worktreePath); err != nil {
 		t.Fatalf("expected worktree at custom dir: %v", err)
+	}
+}
+
+func TestRepoRemotesSet(t *testing.T) {
+	runner := newRunner(t)
+	source := setupRepo(t, filepath.Join(runner.root, "src", "remotes-repo"))
+
+	if _, err := runner.run("new", "demo"); err != nil {
+		t.Fatalf("workset new: %v", err)
+	}
+	if _, err := runner.run("repo", "add", "-w", "demo", source); err != nil {
+		t.Fatalf("repo add: %v", err)
+	}
+	if _, err := runner.run(
+		"repo", "remotes", "set",
+		"-w", "demo",
+		"remotes-repo",
+		"--base-remote", "upstream",
+		"--write-remote", "origin",
+		"--base-branch", "trunk",
+	); err != nil {
+		t.Fatalf("repo remotes set: %v", err)
+	}
+
+	out, err := runner.run("repo", "ls", "-w", "demo", "--json")
+	if err != nil {
+		t.Fatalf("repo ls: %v", err)
+	}
+	if !strings.Contains(out, "\"base\": \"upstream/trunk\"") {
+		t.Fatalf("repo ls missing base remote update: %s", out)
+	}
+	if !strings.Contains(out, "\"write\": \"origin/trunk\"") {
+		t.Fatalf("repo ls missing write remote update: %s", out)
+	}
+}
+
+func TestVersionCommand(t *testing.T) {
+	runner := newRunner(t)
+
+	out, err := runner.run("version")
+	if err != nil {
+		t.Fatalf("version: %v", err)
+	}
+	if strings.TrimSpace(out) != "dev" {
+		t.Fatalf("unexpected version output: %q", out)
+	}
+
+	out, err = runner.run("--version")
+	if err != nil {
+		t.Fatalf("--version: %v", err)
+	}
+	if !strings.Contains(out, "dev") {
+		t.Fatalf("unexpected --version output: %q", out)
 	}
 }
 
@@ -245,13 +300,12 @@ func TestRepoRemoveWorktreesSafety(t *testing.T) {
 	if _, err := runner.run("new", "demo"); err != nil {
 		t.Fatalf("workset new: %v", err)
 	}
-	setWorkspaceBranch(t, runner, "demo", "feat/test")
 
 	if _, err := runner.run("repo", "add", "-w", "demo", source); err != nil {
 		t.Fatalf("repo add: %v", err)
 	}
 
-	worktreePath := filepath.Join(runner.workspaceRoot(), "demo", "worktrees", "feat__test", "dirty-repo")
+	worktreePath := filepath.Join(runner.workspaceRoot(), "demo", "dirty-repo")
 	if err := os.WriteFile(filepath.Join(worktreePath, "dirty.txt"), []byte("dirty"), 0o644); err != nil {
 		t.Fatalf("write dirty: %v", err)
 	}
@@ -275,8 +329,8 @@ func TestWorkspaceInitAndConfig(t *testing.T) {
 	if err := os.MkdirAll(target, 0o755); err != nil {
 		t.Fatalf("mkdir init-ws: %v", err)
 	}
-	if _, err := runner.runDir(target, "init", "--name", "init-ws"); err != nil {
-		t.Fatalf("workset init: %v", err)
+	if _, err := runner.run("new", "init-ws", "--path", target); err != nil {
+		t.Fatalf("workset new --path: %v", err)
 	}
 	if _, err := runner.run("config", "set", "defaults.parallelism", "4"); err != nil {
 		t.Fatalf("config set: %v", err)
@@ -329,8 +383,8 @@ func TestTemplateFlowWithMultipleWorkspaces(t *testing.T) {
 	if _, err := runner.run("repo", "alias", "add", "repo-b", repoB); err != nil {
 		t.Fatalf("alias add repo-b: %v", err)
 	}
-	if _, err := runner.run("repo", "alias", "set", "--default-branch", "main", "repo-a"); err != nil {
-		t.Fatalf("alias set: %v", err)
+	if _, err := runner.run("repo", "alias", "add", "--default-branch", "main", "repo-a", repoA); err != nil {
+		t.Fatalf("alias add default branch: %v", err)
 	}
 	out, err := runner.run("repo", "alias", "ls", "--json")
 	if err != nil {
@@ -391,17 +445,6 @@ func TestTemplateFlowWithMultipleWorkspaces(t *testing.T) {
 		t.Fatalf("repo ls beta missing repos: %s", out)
 	}
 
-	if _, err := runner.run("template", "from-workspace", "-w", "alpha", "snapshot"); err != nil {
-		t.Fatalf("template from-workspace: %v", err)
-	}
-	out, err = runner.run("template", "show", "snapshot", "--plain")
-	if err != nil {
-		t.Fatalf("template show snapshot: %v", err)
-	}
-	if !strings.Contains(out, "repo-a") {
-		t.Fatalf("template snapshot missing repo-a: %s", out)
-	}
-
 	if _, err := runner.run("template", "remove", "stack", "repo-b"); err != nil {
 		t.Fatalf("template remove: %v", err)
 	}
@@ -440,11 +483,72 @@ func TestGroupAliasCommands(t *testing.T) {
 	if !strings.Contains(out, "group-repo-a") {
 		t.Fatalf("group show missing repo: %s", out)
 	}
+	out, err = runner.run("group", "show", "group-stack", "--json")
+	if err != nil {
+		t.Fatalf("group show --json: %v", err)
+	}
+	if !strings.Contains(out, "\"name\": \"origin\"") {
+		t.Fatalf("group show missing default base remote: %s", out)
+	}
+	if !strings.Contains(out, "\"default_branch\": \"main\"") {
+		t.Fatalf("group show missing default branch: %s", out)
+	}
 	if _, err := runner.run("group", "rm", "group-stack"); err != nil {
 		t.Fatalf("group rm: %v", err)
 	}
 	if _, err := runner.run("repo", "alias", "rm", "group-repo-a"); err != nil {
 		t.Fatalf("alias rm: %v", err)
+	}
+}
+
+func TestWorkspaceNewWithGroupAndRepo(t *testing.T) {
+	runner := newRunner(t)
+	repoA := setupRepo(t, filepath.Join(runner.root, "src", "new-group-repo-a"))
+	repoB := setupRepo(t, filepath.Join(runner.root, "src", "new-group-repo-b"))
+
+	if _, err := runner.run("repo", "alias", "add", "new-repo-a", repoA); err != nil {
+		t.Fatalf("alias add repo-a: %v", err)
+	}
+	if _, err := runner.run("repo", "alias", "add", "new-repo-b", repoB); err != nil {
+		t.Fatalf("alias add repo-b: %v", err)
+	}
+	if _, err := runner.run("group", "create", "new-group"); err != nil {
+		t.Fatalf("group create: %v", err)
+	}
+	if _, err := runner.run("group", "add", "new-group", "new-repo-a"); err != nil {
+		t.Fatalf("group add: %v", err)
+	}
+
+	if _, err := runner.run("new", "demo", "--group", "new-group", "--repo", "new-repo-b"); err != nil {
+		t.Fatalf("workset new with group+repo: %v", err)
+	}
+	out, err := runner.run("repo", "ls", "-w", "demo", "--plain")
+	if err != nil {
+		t.Fatalf("repo ls: %v", err)
+	}
+	if !strings.Contains(out, "new-repo-a") || !strings.Contains(out, "new-repo-b") {
+		t.Fatalf("repo ls missing group/repos: %s", out)
+	}
+}
+
+func TestWorkspaceNewConflictAcrossGroupAndRepo(t *testing.T) {
+	runner := newRunner(t)
+	repoA := setupRepo(t, filepath.Join(runner.root, "src", "conflict-repo-a"))
+
+	if _, err := runner.run("repo", "alias", "add", "conflict-repo-a", repoA); err != nil {
+		t.Fatalf("alias add repo-a: %v", err)
+	}
+	if _, err := runner.run("group", "create", "conflict-group"); err != nil {
+		t.Fatalf("group create: %v", err)
+	}
+	if _, err := runner.run("group", "add", "conflict-group", "conflict-repo-a", "--base-remote", "upstream"); err != nil {
+		t.Fatalf("group add: %v", err)
+	}
+
+	if _, err := runner.run("new", "demo", "--group", "conflict-group", "--repo", "conflict-repo-a"); err == nil {
+		t.Fatalf("expected conflict error")
+	} else if !strings.Contains(err.Error(), "conflicting repo") {
+		t.Fatalf("expected conflict error, got: %v", err)
 	}
 }
 
@@ -477,12 +581,11 @@ func TestWorkspaceRemoveDirtyWorktree(t *testing.T) {
 	if _, err := runner.run("new", "demo"); err != nil {
 		t.Fatalf("workset new: %v", err)
 	}
-	setWorkspaceBranch(t, runner, "demo", "feat/test")
 	if _, err := runner.run("repo", "add", "-w", "demo", source); err != nil {
 		t.Fatalf("repo add: %v", err)
 	}
 
-	worktreePath := filepath.Join(runner.workspaceRoot(), "demo", "worktrees", "feat__test", "ws-dirty-repo")
+	worktreePath := filepath.Join(runner.workspaceRoot(), "demo", "ws-dirty-repo")
 	if err := os.WriteFile(filepath.Join(worktreePath, "dirty.txt"), []byte("dirty"), 0o644); err != nil {
 		t.Fatalf("write dirty: %v", err)
 	}
@@ -639,7 +742,7 @@ func setupRepo(t *testing.T, path string) string {
 		t.Fatalf("PlainInit: %v", err)
 	}
 	if _, err := repo.CreateRemote(&ggitcfg.RemoteConfig{
-		Name: "upstream",
+		Name: "origin",
 		URLs: []string{path},
 	}); err != nil {
 		t.Fatalf("CreateRemote: %v", err)
@@ -689,13 +792,4 @@ func findRepoRoot() (string, error) {
 
 func fileURL(path string) string {
 	return "file://" + filepath.ToSlash(path)
-}
-
-func setWorkspaceBranch(t *testing.T, runner *runner, workspaceName, branch string) {
-	t.Helper()
-	statePath := filepath.Join(runner.workspaceRoot(), workspaceName, ".workset", "state.json")
-	data := []byte("{\"current_branch\": \"" + branch + "\"}")
-	if err := os.WriteFile(statePath, data, 0o644); err != nil {
-		t.Fatalf("write state.json: %v", err)
-	}
 }

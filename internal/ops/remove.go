@@ -50,7 +50,7 @@ func CheckRepoSafety(ctx context.Context, input RepoSafetyInput) (RepoSafetyRepo
 	repo := input.Repo
 	config.ApplyRepoDefaults(&repo, input.Defaults)
 
-	branches, err := listBranches(input.WorkspaceRoot)
+	branches, err := listBranches(input.WorkspaceRoot, input.Defaults)
 	if err != nil {
 		return RepoSafetyReport{}, err
 	}
@@ -180,7 +180,7 @@ func RemoveRepo(ctx context.Context, input RemoveRepoInput) (config.WorkspaceCon
 	config.ApplyRepoDefaults(&repo, input.Defaults)
 
 	if input.DeleteWorktrees {
-		branches, err := listBranches(input.WorkspaceRoot)
+		branches, err := listBranches(input.WorkspaceRoot, input.Defaults)
 		if err != nil {
 			return config.WorkspaceConfig{}, err
 		}
@@ -274,13 +274,20 @@ func CheckWorkspaceSafety(ctx context.Context, input WorkspaceSafetyInput) (Work
 	return report, nil
 }
 
-func listBranches(root string) ([]string, error) {
+func listBranches(root string, defaults config.Defaults) ([]string, error) {
 	entries, err := os.ReadDir(workspace.WorktreesPath(root))
 	if err != nil {
-		if os.IsNotExist(err) {
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
+		ws, loadErr := workspace.Load(root, defaults)
+		if loadErr != nil {
+			return nil, loadErr
+		}
+		if ws.State.CurrentBranch == "" {
 			return nil, nil
 		}
-		return nil, err
+		return []string{ws.State.CurrentBranch}, nil
 	}
 	branches := make([]string, 0, len(entries))
 	for _, entry := range entries {

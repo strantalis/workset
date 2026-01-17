@@ -13,7 +13,7 @@ func DefaultConfig() GlobalConfig {
 			WorkspaceRoot: defaultWorkspaceRoot(),
 			RepoStoreRoot: defaultRepoStoreRoot(),
 			Remotes: RemoteNames{
-				Base:  "upstream",
+				Base:  "origin",
 				Write: "origin",
 			},
 			Parallelism: 8,

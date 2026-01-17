@@ -156,6 +156,46 @@ func (c GoGitClient) IsAncestor(repoPath, ancestorRef, descendantRef string) (bo
 	return ancestorCommit.IsAncestor(descendantCommit)
 }
 
+func (c GoGitClient) CurrentBranch(repoPath string) (string, bool, error) {
+	if repoPath == "" {
+		return "", false, errors.New("repo path required")
+	}
+	repo, err := ggit.PlainOpenWithOptions(repoPath, &ggit.PlainOpenOptions{
+		EnableDotGitCommonDir: true,
+	})
+	if err != nil {
+		return "", false, err
+	}
+	head, err := repo.Head()
+	if err != nil {
+		return "", false, err
+	}
+	name := head.Name()
+	if !name.IsBranch() {
+		return "", false, nil
+	}
+	return name.Short(), true, nil
+}
+
+func (c GoGitClient) RemoteExists(repoPath, remoteName string) (bool, error) {
+	if repoPath == "" || remoteName == "" {
+		return false, errors.New("repo path and remote name required")
+	}
+	repo, err := ggit.PlainOpenWithOptions(repoPath, &ggit.PlainOpenOptions{
+		EnableDotGitCommonDir: true,
+	})
+	if err != nil {
+		return false, err
+	}
+	if _, err := repo.Remote(remoteName); err != nil {
+		if errors.Is(err, ggit.ErrRemoteNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 func (c GoGitClient) WorktreeAdd(ctx context.Context, opts WorktreeAddOptions) error {
 	if opts.RepoPath == "" {
 		return errors.New("repo path required")

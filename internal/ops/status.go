@@ -39,10 +39,11 @@ func Status(ctx context.Context, input StatusInput) ([]RepoStatus, error) {
 	var results []RepoStatus
 	for _, repo := range ws.Config.Repos {
 		config.ApplyRepoDefaults(&repo, input.Defaults)
-		path := repo.LocalPath
-		if ws.State.CurrentBranch != "" && ws.State.CurrentBranch != repo.Remotes.Base.DefaultBranch {
-			path = workspace.RepoWorktreePath(ws.Root, ws.State.CurrentBranch, repo.RepoDir)
+		branch := ws.State.CurrentBranch
+		if branch == "" {
+			branch = repo.Remotes.Base.DefaultBranch
 		}
+		path := workspace.RepoWorktreePath(ws.Root, branch, repo.RepoDir)
 		if path == "" {
 			results = append(results, RepoStatus{
 				Name: repo.Name,
