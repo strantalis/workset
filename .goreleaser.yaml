@@ -4,7 +4,7 @@ env:
   - CGO_ENABLED=0
 
 snapshot:
-  version_template: "{{ if eq .Version \"0.0.0\" }}0.1.0{{ else }}{{ incpatch .Version }}{{ end }}-alpha.{{ .ShortCommit }}"
+  version_template: "{{ if .Env.ALPHA_VERSION }}{{ .Env.ALPHA_VERSION }}{{ else }}{{ if eq .Version \"0.0.0\" }}v0.1.0-alpha.1{{ else }}v{{ incminor .Version }}-alpha.1{{ end }}{{ end }}"
 
 builds:
   - id: workset
@@ -19,6 +19,8 @@ builds:
       - arm64
     flags:
       - -trimpath
+    ldflags:
+      - -X main.version={{ .Version }}
 
 archives:
   - id: default
@@ -30,6 +32,27 @@ archives:
 
 checksum:
   name_template: "checksums.txt"
+
+sboms:
+  - id: archive
+    artifacts: archive
+    disable: false
+  - id: source
+    artifacts: source
+    disable: false
+
+notarize:
+  macos:
+    - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
+      ids:
+        - workset
+      sign:
+        certificate: "{{ .Env.MACOS_SIGN_P12 }}"
+        password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
+      notarize:
+        issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
+        key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
+        key: "{{ .Env.MACOS_NOTARY_KEY }}"
 
 changelog:
   sort: asc

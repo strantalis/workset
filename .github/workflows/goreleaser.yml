@@ -13,12 +13,40 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+      - name: Compute alpha version
+        id: alpha
+        shell: bash
+        run: |
+          set -euo pipefail
+          last_tag=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+          if [ -z "$last_tag" ]; then
+            base_version="v0.1.0"
+          else
+            IFS='.' read -r major minor patch <<<"${last_tag#v}"
+            next_minor=$((minor + 1))
+            base_version="v${major}.${next_minor}.0"
+          fi
+          last_alpha=$(git tag -l "${base_version}-alpha.*" --sort=-v:refname | head -n1)
+          if [ -z "$last_alpha" ]; then
+            alpha_num=1
+          else
+            alpha_num="${last_alpha##*.}"
+            alpha_num=$((alpha_num + 1))
+          fi
+          alpha_version="${base_version}-alpha.${alpha_num}"
+          echo "version=${alpha_version}" >> "$GITHUB_OUTPUT"
+          echo "ALPHA_VERSION=${alpha_version}" >> "$GITHUB_ENV"
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
@@ -27,6 +55,22 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           args: release --snapshot --clean
+      - uses: actions/attest-build-provenance@v3
+        with:
+          subject-checksums: dist/checksums.txt
+      - name: Create alpha GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.alpha.outputs.version }}
+          name: ${{ steps.alpha.outputs.version }}
+          prerelease: true
+          target_commitish: ${{ github.sha }}
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sbom*
+            dist/checksums.txt
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -34,12 +78,20 @@ jobs:
           path: dist/*
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-alpha.')
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+      MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+      MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+      MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+      MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -49,7 +101,25 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+      - name: Notarization status
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for var in MACOS_SIGN_P12 MACOS_SIGN_PASSWORD MACOS_NOTARY_KEY MACOS_NOTARY_KEY_ID MACOS_NOTARY_ISSUER_ID; do
+            if [ -z "${!var:-}" ]; then
+              missing+=("$var")
+            fi
+          done
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "::notice::macOS notarization enabled (all required env vars present)."
+          else
+            echo "::notice::macOS notarization skipped; missing: ${missing[*]}"
+          fi
       - name: GoReleaser (release)
         uses: goreleaser/goreleaser-action@v6
         with:
           args: release --clean
+      - uses: actions/attest-build-provenance@v3
+        with:
+          subject-checksums: dist/checksums.txt
