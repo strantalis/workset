@@ -1,13 +1,22 @@
+---
+description: Templates (groups) let you reuse sets of repo aliases across workspaces.
+---
+
 # Templates
 
-Templates (aka groups) are reusable repo sets stored in global config.
+Groups (aka templates) are reusable repo sets stored in global config.
 
 ## Create and apply
 
 ```
-workset template create platform
-workset template add platform repo-alias
-workset template apply -w demo platform
+workset group create platform
+workset group add platform repo-alias
+workset group apply -w demo platform
 ```
 
-Template members reference repo aliases from the global config.
+Group members reference repo aliases from the global config. The `template` command remains as an alias.
+
+## Next steps
+
+- [Config](config.md)
+- [Getting Started](getting-started.md)

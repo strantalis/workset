@@ -1,0 +1,21 @@
+:root > * {
+  --md-primary-fg-color: #0e1424;
+  --md-primary-fg-color--light: #243651;
+  --md-primary-fg-color--dark: #0a0f1c;
+  --md-accent-fg-color: #f39e12;
+  --md-accent-fg-color--light: #f6b850;
+  --md-accent-fg-color--dark: #ec701b;
+}
+
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+  height: 36px !important;
+  width: auto !important;
+}
+
+@media (max-width: 768px) {
+  .md-header__button.md-logo img,
+  .md-header__button.md-logo svg {
+    height: 32px !important;
+  }
+}

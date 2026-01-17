@@ -1,12 +1,50 @@
 site_name: Workset
 site_description: Multi-repo workspaces with linked worktrees
 site_url: https://workset.dev
+repo_url: https://github.com/strantalis/workset
+repo_name: strantalis/workset
+edit_uri: edit/main/docs/
+copyright: © 2026 Sean Strantalis
 
 theme:
   name: material
+  logo: assets/logo.png
+  favicon: assets/favicon.png
+  palette:
+    primary: custom
+    accent: custom
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - content.code.copy
+    - content.tabs.link
+    - content.action.edit
+    - content.action.view
+
+extra_css:
+  - stylesheets/extra.css
+
+markdown_extensions:
+  - toc
+  - tables
+  - fenced_code
+  - meta
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+plugins:
+  - search
+  - social
 
 nav:
   - Home: index.md
-  - CLI: cli.md
-  - Templates: templates.md
+  - Getting Started: getting-started.md
+  - Concepts: concepts.md
+  - CLI:
+      - Overview: cli.md
+      - Command Index: commands.md
   - Config: config.md
+  - Templates: templates.md
