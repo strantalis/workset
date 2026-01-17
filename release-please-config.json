@@ -1,6 +1,7 @@
 {
   "release-type": "go",
   "include-v-in-tag": true,
+  "versioning": "always-bump-minor",
   "packages": {
     ".": {}
   }
