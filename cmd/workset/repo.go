@@ -121,6 +121,11 @@ func repoCommand() *cli.Command {
 						Usage: "Directory name for the repo within the workspace",
 					},
 				}),
+				ShellComplete: func(ctx context.Context, cmd *cli.Command) {
+					if cmd.NArg() == 0 {
+						completeRepoAliases(cmd)
+					}
+				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					cfg, cfgPath, err := loadGlobal(cmd.String("config"))
 					if err != nil {
@@ -304,6 +309,11 @@ func repoCommand() *cli.Command {
 								Usage: "Base branch name (also updates write branch)",
 							},
 						}),
+						ShellComplete: func(ctx context.Context, cmd *cli.Command) {
+							if cmd.NArg() == 0 {
+								completeWorkspaceRepoNames(cmd)
+							}
+						},
 						Action: func(ctx context.Context, cmd *cli.Command) error {
 							name := strings.TrimSpace(cmd.Args().First())
 							if name == "" {
@@ -437,6 +447,11 @@ func repoCommand() *cli.Command {
 						Usage: "Skip confirmation",
 					},
 				}),
+				ShellComplete: func(ctx context.Context, cmd *cli.Command) {
+					if cmd.NArg() == 0 {
+						completeWorkspaceRepoNames(cmd)
+					}
+				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					name := strings.TrimSpace(cmd.Args().First())
 					if name == "" {
@@ -699,6 +714,11 @@ func repoAliasCommand() *cli.Command {
 				Usage:     "Remove a repo alias",
 				ArgsUsage: "<name>",
 				Flags:     outputFlags(),
+				ShellComplete: func(ctx context.Context, cmd *cli.Command) {
+					if cmd.NArg() == 0 {
+						completeRepoAliases(cmd)
+					}
+				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					name := strings.TrimSpace(cmd.Args().Get(0))
 					if name == "" {

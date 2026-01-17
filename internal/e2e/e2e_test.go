@@ -552,6 +552,17 @@ func TestWorkspaceNewConflictAcrossGroupAndRepo(t *testing.T) {
 	}
 }
 
+func TestShellCompletionCommand(t *testing.T) {
+	runner := newRunner(t)
+	out, err := runner.run("completion", "bash")
+	if err != nil {
+		t.Fatalf("completion bash: %v", err)
+	}
+	if !strings.Contains(out, "workset") {
+		t.Fatalf("completion output missing workset: %s", out)
+	}
+}
+
 func TestWorkspaceRemoveDelete(t *testing.T) {
 	runner := newRunner(t)
 	if _, err := runner.run("new", "demo"); err != nil {

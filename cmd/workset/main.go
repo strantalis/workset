@@ -12,10 +12,16 @@ var version = "dev"
 
 func main() {
 	root := &cli.Command{
-		Name:        "workset",
-		Usage:       "Manage multi-repo workspaces with predictable defaults",
-		Description: "Workspace commands require -w/--workspace (or defaults.workspace) to target a workspace.",
-		Version:     version,
+		Name:                  "workset",
+		Usage:                 "Manage multi-repo workspaces with predictable defaults",
+		Description:           "Workspace commands require -w/--workspace (or defaults.workspace) to target a workspace.",
+		Version:               version,
+		EnableShellCompletion: true,
+		ConfigureShellCompletionCommand: func(cmd *cli.Command) {
+			cmd.Hidden = false
+			cmd.Usage = "Generate shell completion script"
+			cmd.Description = "Generate shell completion for bash, zsh, fish, or powershell."
+		},
 		Flags: []cli.Flag{
 			workspaceFlag(false),
 			&cli.StringFlag{
@@ -34,6 +40,7 @@ func main() {
 			statusCommand(),
 		},
 	}
+	enableSuggestions(root)
 
 	args := normalizeArgs(root, os.Args)
 	if err := root.Run(context.Background(), args); err != nil {

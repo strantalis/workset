@@ -81,6 +81,11 @@ func groupCommand() *cli.Command {
 				Usage:     "Show a group",
 				ArgsUsage: "<name>",
 				Flags:     outputFlags(),
+				ShellComplete: func(ctx context.Context, cmd *cli.Command) {
+					if cmd.NArg() == 0 {
+						completeGroupNames(cmd)
+					}
+				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					name := strings.TrimSpace(cmd.Args().First())
 					if name == "" {
@@ -187,6 +192,11 @@ func groupCommand() *cli.Command {
 				Usage:     "Remove a group",
 				ArgsUsage: "<name>",
 				Flags:     outputFlags(),
+				ShellComplete: func(ctx context.Context, cmd *cli.Command) {
+					if cmd.NArg() == 0 {
+						completeGroupNames(cmd)
+					}
+				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					name := strings.TrimSpace(cmd.Args().First())
 					if name == "" {
@@ -238,6 +248,14 @@ func groupCommand() *cli.Command {
 						Usage: "Base branch name",
 					},
 				}),
+				ShellComplete: func(ctx context.Context, cmd *cli.Command) {
+					switch cmd.NArg() {
+					case 0:
+						completeGroupNames(cmd)
+					case 1:
+						completeRepoAliases(cmd)
+					}
+				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					groupName := strings.TrimSpace(cmd.Args().Get(0))
 					repoName := strings.TrimSpace(cmd.Args().Get(1))
@@ -307,6 +325,14 @@ func groupCommand() *cli.Command {
 				Usage:     "Remove a repo from a group",
 				ArgsUsage: "<group> <repo>",
 				Flags:     outputFlags(),
+				ShellComplete: func(ctx context.Context, cmd *cli.Command) {
+					switch cmd.NArg() {
+					case 0:
+						completeGroupNames(cmd)
+					case 1:
+						completeRepoAliases(cmd)
+					}
+				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					groupName := strings.TrimSpace(cmd.Args().Get(0))
 					repoName := strings.TrimSpace(cmd.Args().Get(1))
@@ -347,6 +373,11 @@ func groupCommand() *cli.Command {
 				Usage:     "Apply a group to a workspace (requires -w)",
 				ArgsUsage: "-w <workspace> <name>",
 				Flags:     appendOutputFlags([]cli.Flag{workspaceFlag(true)}),
+				ShellComplete: func(ctx context.Context, cmd *cli.Command) {
+					if cmd.NArg() == 0 {
+						completeGroupNames(cmd)
+					}
+				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					groupName := strings.TrimSpace(cmd.Args().First())
 					if groupName == "" {

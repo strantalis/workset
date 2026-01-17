@@ -181,6 +181,16 @@ func commandErrWriter(cmd *cli.Command) io.Writer {
 	return os.Stderr
 }
 
+func enableSuggestions(cmd *cli.Command) {
+	if cmd == nil {
+		return
+	}
+	cmd.Suggest = true
+	for _, sub := range cmd.Commands {
+		enableSuggestions(sub)
+	}
+}
+
 func workspaceFlag(required bool) cli.Flag {
 	usage := "Workspace name or path"
 	if required {

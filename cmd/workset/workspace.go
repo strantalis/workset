@@ -215,6 +215,11 @@ func removeWorkspaceCommand() *cli.Command {
 				Usage: "Skip confirmation",
 			},
 		}),
+		ShellComplete: func(ctx context.Context, cmd *cli.Command) {
+			if cmd.NArg() == 0 {
+				completeWorkspaceNames(cmd)
+			}
+		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			arg := strings.TrimSpace(cmd.Args().First())
 			if arg == "" {
