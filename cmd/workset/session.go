@@ -111,6 +111,9 @@ func sessionStartCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
+			if err := ensureSessionNameAvailable(ctx, runner, ws.State, sessionName, resolvedBackend); err != nil {
+				return err
+			}
 
 			env := append(os.Environ(),
 				fmt.Sprintf("WORKSET_ROOT=%s", root),
@@ -505,8 +508,10 @@ func sessionListCommand() *cli.Command {
 					}
 				}
 				if resolvedBackend != "" && resolvedBackend != sessionBackendExec {
-					if exists, err := sessionExists(ctx, runner, resolvedBackend, name); err == nil {
+					if exists, err := sessionRunning(ctx, runner, resolvedBackend, name); err == nil {
 						running = exists
+					} else if err != nil {
+						_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: failed to check session %s: %v\n", name, err)
 					}
 				}
 				records = append(records, sessionRecord{
@@ -641,8 +646,10 @@ func sessionShowCommand() *cli.Command {
 				}
 			}
 			if resolvedBackend != "" && resolvedBackend != sessionBackendExec {
-				if exists, err := sessionExists(ctx, runner, resolvedBackend, sessionName); err == nil {
+				if exists, err := sessionRunning(ctx, runner, resolvedBackend, sessionName); err == nil {
 					running = exists
+				} else if err != nil {
+					_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: failed to check session %s: %v\n", sessionName, err)
 				}
 			}
 
@@ -746,6 +753,37 @@ func statusLabel(running bool) string {
 		return "running"
 	}
 	return "stopped"
+}
+
+func ensureSessionNameAvailable(ctx context.Context, runner sessionRunner, state workspace.State, name string, backend sessionBackend) error {
+	workspace.EnsureSessionState(&state)
+	if existing, ok := state.Sessions[name]; ok {
+		existingBackend := strings.TrimSpace(existing.Backend)
+		if existingBackend != "" {
+			if parsed, err := parseSessionBackend(existingBackend); err == nil {
+				existingBackend = string(parsed)
+			}
+		}
+		if existingBackend != "" && backend != "" && existingBackend != string(backend) {
+			return fmt.Errorf("session name %s already recorded for backend %s; use --name to avoid collisions", name, existingBackend)
+		}
+		if backend != "" && backend != sessionBackendExec {
+			running, err := sessionRunning(ctx, runner, backend, name)
+			if err == nil && running {
+				return fmt.Errorf("session %s already running; use attach or pass --name to start another", name)
+			}
+		}
+	}
+	return nil
+}
+
+func sessionRunning(ctx context.Context, runner sessionRunner, backend sessionBackend, name string) (bool, error) {
+	if backend == "" || backend == sessionBackendExec {
+		return false, nil
+	}
+	statusCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	return sessionExists(statusCtx, runner, backend, name)
 }
 
 func printSessionNotice(cmd *cli.Command, title, workspaceName, sessionName string, backend sessionBackend, includeAttach bool, themeLabel string, themeHint string) {

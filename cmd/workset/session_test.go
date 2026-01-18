@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/strantalis/workset/internal/workspace"
@@ -53,5 +55,49 @@ func TestFormatSessionName(t *testing.T) {
 	}
 	if got := formatSessionName("fixed", "demo"); got != "fixed" {
 		t.Fatalf("expected fixed name, got %q", got)
+	}
+}
+
+func TestEnsureSessionNameAvailableCollision(t *testing.T) {
+	state := workspace.State{
+		Sessions: map[string]workspace.SessionState{
+			"workset:demo": {Backend: "screen"},
+		},
+	}
+	runner := &fakeRunner{}
+	err := ensureSessionNameAvailable(context.Background(), runner, state, "workset:demo", sessionBackendTmux)
+	if err == nil {
+		t.Fatalf("expected collision error")
+	}
+}
+
+func TestEnsureSessionNameAvailableRunning(t *testing.T) {
+	state := workspace.State{
+		Sessions: map[string]workspace.SessionState{
+			"workset:demo": {Backend: "tmux"},
+		},
+	}
+	runner := &fakeRunner{
+		results: []commandResult{{ExitCode: 0}},
+	}
+	err := ensureSessionNameAvailable(context.Background(), runner, state, "workset:demo", sessionBackendTmux)
+	if err == nil {
+		t.Fatalf("expected running session error")
+	}
+}
+
+func TestEnsureSessionNameAvailableStopped(t *testing.T) {
+	state := workspace.State{
+		Sessions: map[string]workspace.SessionState{
+			"workset:demo": {Backend: "tmux"},
+		},
+	}
+	runner := &fakeRunner{
+		results: []commandResult{{ExitCode: 1}},
+		errs:    []error{errors.New("exit status 1")},
+	}
+	err := ensureSessionNameAvailable(context.Background(), runner, state, "workset:demo", sessionBackendTmux)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
