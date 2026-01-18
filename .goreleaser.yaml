@@ -29,9 +29,6 @@ archives:
       - goos: windows
         format: zip
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-  - id: npm
-    format: tar.gz
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}_npm"
 
 checksum:
   name_template: "checksums.txt"
@@ -60,7 +57,7 @@ homebrew_casks:
 npms:
   - id: workset
     ids:
-      - npm
+      - default
     name: "@strantalis/workset"
     description: "Go CLI for multi-repo workspaces with linked worktrees"
     homepage: "https://workset.dev"
