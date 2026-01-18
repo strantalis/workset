@@ -441,8 +441,14 @@ func sessionListCommand() *cli.Command {
 					}
 				}
 				running := false
-				if backend != "" {
-					if exists, err := sessionExists(ctx, runner, backend, name); err == nil {
+				resolvedBackend := backend
+				if backend == sessionBackendAuto {
+					if resolved, err := resolveSessionBackend(backend, runner); err == nil {
+						resolvedBackend = resolved
+					}
+				}
+				if resolvedBackend != "" && resolvedBackend != sessionBackendExec {
+					if exists, err := sessionExists(ctx, runner, resolvedBackend, name); err == nil {
 						running = exists
 					}
 				}
@@ -563,17 +569,22 @@ func sessionShowCommand() *cli.Command {
 					backend = parsed
 				}
 			}
-			override := firstNonEmpty(cmd.String("backend"), cfg.Defaults.SessionBackend)
-			if override != "" {
-				if parsed, err := parseSessionBackend(override); err == nil {
+			if strings.TrimSpace(cmd.String("backend")) != "" {
+				if parsed, err := parseSessionBackend(cmd.String("backend")); err == nil {
 					backend = parsed
 				}
 			}
 
 			runner := execRunner{}
 			running := false
-			if backend != "" && backend != sessionBackendExec {
-				if exists, err := sessionExists(ctx, runner, backend, sessionName); err == nil {
+			resolvedBackend := backend
+			if backend == sessionBackendAuto {
+				if resolved, err := resolveSessionBackend(backend, runner); err == nil {
+					resolvedBackend = resolved
+				}
+			}
+			if resolvedBackend != "" && resolvedBackend != sessionBackendExec {
+				if exists, err := sessionExists(ctx, runner, resolvedBackend, sessionName); err == nil {
 					running = exists
 				}
 			}

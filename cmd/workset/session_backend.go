@@ -129,14 +129,14 @@ func startSession(ctx context.Context, runner sessionRunner, backend sessionBack
 		if len(command) > 0 {
 			args = append(args, command...)
 		}
-		_, err := runner.Run(ctx, commandSpec{Name: "tmux", Args: args})
+		_, err := runner.Run(ctx, commandSpec{Name: "tmux", Args: args, Env: env})
 		return err
 	case sessionBackendScreen:
 		args := []string{"-dmS", name}
 		if len(command) > 0 {
 			args = append(args, command...)
 		}
-		_, err := runner.Run(ctx, commandSpec{Name: "screen", Args: args, Dir: root})
+		_, err := runner.Run(ctx, commandSpec{Name: "screen", Args: args, Dir: root, Env: env})
 		return err
 	case sessionBackendExec:
 		if interactive {

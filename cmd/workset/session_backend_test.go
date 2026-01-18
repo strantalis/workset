@@ -88,7 +88,8 @@ func TestParseSessionBackend(t *testing.T) {
 
 func TestStartSessionTmuxBuildsCommand(t *testing.T) {
 	runner := &fakeRunner{}
-	if err := startSession(context.Background(), runner, sessionBackendTmux, "/tmp/ws", "demo", []string{"zsh"}, nil, false); err != nil {
+	env := []string{"WORKSET_ROOT=/tmp/ws"}
+	if err := startSession(context.Background(), runner, sessionBackendTmux, "/tmp/ws", "demo", []string{"zsh"}, env, false); err != nil {
 		t.Fatalf("startSession: %v", err)
 	}
 	if len(runner.commands) != 1 {
@@ -100,11 +101,13 @@ func TestStartSessionTmuxBuildsCommand(t *testing.T) {
 	}
 	expected := []string{"new-session", "-d", "-s", "demo", "-c", "/tmp/ws", "zsh"}
 	assertArgs(t, cmd.Args, expected)
+	assertArgs(t, cmd.Env, env)
 }
 
 func TestStartSessionScreenBuildsCommand(t *testing.T) {
 	runner := &fakeRunner{}
-	if err := startSession(context.Background(), runner, sessionBackendScreen, "/tmp/ws", "demo", []string{"bash"}, nil, false); err != nil {
+	env := []string{"WORKSET_ROOT=/tmp/ws"}
+	if err := startSession(context.Background(), runner, sessionBackendScreen, "/tmp/ws", "demo", []string{"bash"}, env, false); err != nil {
 		t.Fatalf("startSession: %v", err)
 	}
 	if len(runner.commands) != 1 {
@@ -116,6 +119,7 @@ func TestStartSessionScreenBuildsCommand(t *testing.T) {
 	}
 	expected := []string{"-dmS", "demo", "bash"}
 	assertArgs(t, cmd.Args, expected)
+	assertArgs(t, cmd.Env, env)
 	if cmd.Dir != "/tmp/ws" {
 		t.Fatalf("expected dir /tmp/ws, got %s", cmd.Dir)
 	}
