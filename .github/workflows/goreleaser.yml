@@ -100,7 +100,6 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GORELEASER_GH_TOKEN: ${{ secrets.GORELEASER_GH_TOKEN }}
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
       MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
       MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
       MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
@@ -118,22 +117,15 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: "22"
-      - name: Check npm token
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+      - name: Ensure npm supports trusted publishing
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${NPM_TOKEN:-}" ]; then
-            echo "::error::NPM_TOKEN is not set. Add it as a GitHub secret to publish to npm."
-            exit 1
-          fi
+          npm install -g npm@11.5.1
       - name: Install Syft
         uses: anchore/sbom-action/download-syft@0b82b0b1a22399a1c542d4d656f70cd903571b5c # v0
-      - name: Configure npm auth
-        shell: bash
-        run: |
-          set -euo pipefail
-          printf "%s\n" "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
       - name: Notarization status
         shell: bash
         run: |
