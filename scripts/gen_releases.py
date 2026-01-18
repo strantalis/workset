@@ -41,6 +41,30 @@ def _fetch_releases() -> tuple[list[dict], str | None]:
     return releases[:MAX_RELEASES], None
 
 
+def _strip_redundant_heading(body: str, tag: str, name: str) -> str:
+    lines = body.splitlines()
+    i = 0
+    while i < len(lines) and not lines[i].strip():
+        i += 1
+    if i >= len(lines):
+        return body
+
+    first = lines[i].strip()
+    if not first.startswith("#"):
+        return body
+
+    heading_text = first.lstrip("#").strip().lower()
+    tag_l = tag.lower()
+    name_l = name.lower()
+    if tag_l in heading_text or name_l in heading_text:
+        i += 1
+        while i < len(lines) and not lines[i].strip():
+            i += 1
+        return "\n".join(lines[i:])
+
+    return body
+
+
 with mkdocs_gen_files.open("releases/index.md", "w") as fd:
     fd.write("---\n")
     fd.write("description: Workset release notes pulled from GitHub.\n")
@@ -76,5 +100,12 @@ with mkdocs_gen_files.open("releases/index.md", "w") as fd:
                 fd.write(" ".join(meta) + "\n\n")
 
             body = (release.get("body") or "").strip()
-            fd.write(body if body else "_No release notes provided._")
+            body = _strip_redundant_heading(body, tag=tag, name=name).strip()
+            if body:
+                fd.write("<details>\n")
+                fd.write("<summary>Release notes</summary>\n\n")
+                fd.write(body)
+                fd.write("\n\n</details>")
+            else:
+                fd.write("_No release notes provided._")
             fd.write("\n\n")
