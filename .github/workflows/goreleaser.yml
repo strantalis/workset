@@ -29,7 +29,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          last_tag=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+          last_tag=$(
+            {
+              git tag -l 'v[0-9]*.[0-9]*.[0-9]*' \
+                | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+                | sort -V \
+                | tail -n1
+            } || true
+          )
           if [ -z "$last_tag" ]; then
             base_version="v0.1.0"
           else
