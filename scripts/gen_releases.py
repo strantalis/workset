@@ -37,7 +37,7 @@ def _fetch_releases() -> tuple[list[dict], str | None]:
     except Exception as exc:  # pragma: no cover - best-effort docs generation
         return [], str(exc)
 
-    releases = [r for r in data if not r.get("draft")]
+    releases = [r for r in data if not r.get("draft") and not r.get("prerelease")]
     return releases[:MAX_RELEASES], None
 
 
