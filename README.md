@@ -23,6 +23,7 @@ Workset is a Go CLI for managing **multi-repo workspaces** with **linked Git wor
 ## Status
 
 Workset is in active development. Current commands focus on workspace creation, repo add, status, and groups/templates. Branch/worktree workflows are next.
+WARNING: This project is under active development; interfaces and behavior may change without notice.
 
 ## Quickstart
 
