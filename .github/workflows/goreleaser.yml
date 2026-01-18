@@ -6,6 +6,8 @@ on:
       - main
     tags:
       - "v*"
+    tags-ignore:
+      - "v*-alpha*"
   workflow_dispatch:
 
 jobs:
