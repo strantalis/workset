@@ -7,7 +7,7 @@
 [![docs](https://github.com/strantalis/workset/actions/workflows/docs.yml/badge.svg)](https://github.com/strantalis/workset/actions/workflows/docs.yml)
 
 <p align="center">
-  <img src="docs/assets/workset.png" alt="Workset" width="768">
+  <img src="docs/assets/workset.png" alt="Workset" width="560">
 </p>
 
 Workset is a Go CLI for managing **multi-repo workspaces** with **linked Git worktrees** by default. It captures intent ("these repos move together") and keeps multi-repo work safe, explicit, and predictable.
@@ -36,10 +36,23 @@ brew tap strantalis/homebrew-tap
 brew install workset
 ```
 
+Upgrade (Homebrew):
+
+```bash
+brew update
+brew upgrade --cask workset
+```
+
+Install (npm):
+
+```bash
+npm install -g @strantalis/workset@latest
+```
+
 Alternative (Go install):
 
 ```bash
-go install github.com/strantalis/workset/cmd/workset@v0.1.0
+go install github.com/strantalis/workset/cmd/workset@latest
 ```
 
 Create a workspace and add repos:
@@ -53,18 +66,18 @@ workset status -w demo
 Templates:
 
 ```bash
-./workset group create platform
-./workset group add platform repo-alias
-./workset group apply platform -w demo
+workset group create platform
+workset group add platform repo-alias
+workset group apply platform -w demo
 ```
 
 Sessions (tmux/screen/exec):
 
 ```bash
-./workset session start demo -- zsh
-./workset session attach demo
-./workset session show demo
-./workset session stop demo
+workset session start demo -- zsh
+workset session attach demo
+workset session show demo
+workset session stop demo
 ```
 
 ## Concepts

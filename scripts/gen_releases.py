@@ -65,6 +65,8 @@ def _strip_redundant_heading(body: str, tag: str, name: str) -> str:
     return body
 
 
+releases, error = _fetch_releases()
+
 with mkdocs_gen_files.open("releases/index.md", "w") as fd:
     fd.write("---\n")
     fd.write("description: Workset release notes pulled from GitHub.\n")
@@ -72,7 +74,6 @@ with mkdocs_gen_files.open("releases/index.md", "w") as fd:
     fd.write("# Releases\n\n")
     fd.write("Latest release notes from GitHub.\n\n")
 
-    releases, error = _fetch_releases()
     if error:
         fd.write("!!! warning\n")
         fd.write("    Failed to fetch releases from GitHub.\n\n")
@@ -102,10 +103,10 @@ with mkdocs_gen_files.open("releases/index.md", "w") as fd:
             body = (release.get("body") or "").strip()
             body = _strip_redundant_heading(body, tag=tag, name=name).strip()
             if body:
-                fd.write("<details>\n")
-                fd.write("<summary>Release notes</summary>\n\n")
-                fd.write(body)
-                fd.write("\n\n</details>")
+                fd.write('???+ note "Release notes"\n')
+                for line in body.splitlines():
+                    fd.write(f"    {line}\n")
             else:
-                fd.write("_No release notes provided._")
+                fd.write('??? note "Release notes"\n')
+                fd.write("    _No release notes provided._\n")
             fd.write("\n\n")

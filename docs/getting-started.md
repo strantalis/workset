@@ -12,15 +12,27 @@ description: Install Workset, create a workspace, add repos, and set defaults.
     brew install workset
     ```
 
+    Upgrade:
+
+    ```bash
+    brew update
+    brew upgrade --cask workset
+    ```
+
 === "Go"
     ```bash
-    go install github.com/strantalis/workset/cmd/workset@v0.1.0
+    go install github.com/strantalis/workset/cmd/workset@latest
+    ```
+
+=== "npm"
+    ```bash
+    npm install -g @strantalis/workset@latest
     ```
 
 === "GitHub Releases"
     ```text
-    Download the v0.1.0 release from:
-    https://github.com/strantalis/workset/releases/tag/v0.1.0
+    Download the latest release from:
+    https://github.com/strantalis/workset/releases/latest
     ```
 
 !!! tip
@@ -54,24 +66,24 @@ workset config set defaults.workspace demo
 ## Start a session
 
 ```bash
-./workset session start demo -- zsh
-./workset session start demo --yes -- zsh
-./workset session attach demo
-./workset session attach demo --yes
-./workset session stop demo
-./workset session stop demo --yes
+workset session start demo -- zsh
+workset session start demo --yes -- zsh
+workset session attach demo
+workset session attach demo --yes
+workset session stop demo
+workset session stop demo --yes
 ```
 
 To force a backend:
 
 ```bash
-./workset session start demo --backend exec --interactive
+workset session start demo --backend exec --interactive
 ```
 
 ## Run a one-off command
 
 ```bash
-./workset exec demo -- ls
+workset exec demo -- ls
 ```
 
 ## Enable shell completion (optional)
