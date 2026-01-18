@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/strantalis/workset/internal/workspace"
 )
@@ -140,5 +141,27 @@ func TestAllowAttachAfterStart(t *testing.T) {
 	allowed, note = allowAttachAfterStart(sessionBackendTmux, false)
 	if allowed || note != "" {
 		t.Fatalf("expected attach disabled, got allowed=%v note=%q", allowed, note)
+	}
+}
+
+func TestMarkSessionAttached(t *testing.T) {
+	when := time.Date(2026, 1, 18, 12, 0, 0, 0, time.UTC)
+	state := workspace.State{
+		Sessions: map[string]workspace.SessionState{
+			"workset-demo": {Backend: "tmux"},
+		},
+	}
+	if !markSessionAttached(&state, "workset-demo", when) {
+		t.Fatalf("expected session to be updated")
+	}
+	if state.Sessions["workset-demo"].LastAttached != when.Format(time.RFC3339) {
+		t.Fatalf("expected last_attached to be updated, got %q", state.Sessions["workset-demo"].LastAttached)
+	}
+}
+
+func TestMarkSessionAttachedMissing(t *testing.T) {
+	state := workspace.State{}
+	if markSessionAttached(&state, "missing", time.Now()) {
+		t.Fatalf("expected no update for missing session")
 	}
 }

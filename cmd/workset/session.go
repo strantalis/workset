@@ -189,11 +189,7 @@ func sessionStartCommand() *cli.Command {
 					return err
 				}
 				if resolvedBackend != sessionBackendExec {
-					workspace.EnsureSessionState(&ws.State)
-					state, ok := ws.State.Sessions[sessionName]
-					if ok {
-						state.LastAttached = time.Now().Format(time.RFC3339)
-						ws.State.Sessions[sessionName] = state
+					if markSessionAttached(&ws.State, sessionName, time.Now()) {
 						if err := workspace.SaveState(root, ws.State); err != nil {
 							return err
 						}
@@ -337,10 +333,7 @@ func sessionAttachCommand() *cli.Command {
 				return err
 			}
 
-			if sessionState != nil {
-				sessionState.LastAttached = time.Now().Format(time.RFC3339)
-				workspace.EnsureSessionState(&ws.State)
-				ws.State.Sessions[sessionName] = *sessionState
+			if markSessionAttached(&ws.State, sessionName, time.Now()) {
 				if err := workspace.SaveState(root, ws.State); err != nil {
 					return err
 				}
@@ -816,6 +809,20 @@ func statusLabel(running bool) string {
 		return "running"
 	}
 	return "stopped"
+}
+
+func markSessionAttached(state *workspace.State, name string, when time.Time) bool {
+	if state == nil {
+		return false
+	}
+	workspace.EnsureSessionState(state)
+	entry, ok := state.Sessions[name]
+	if !ok {
+		return false
+	}
+	entry.LastAttached = when.Format(time.RFC3339)
+	state.Sessions[name] = entry
+	return true
 }
 
 func allowAttachAfterStart(backend sessionBackend, attach bool) (bool, string) {
