@@ -32,6 +32,8 @@ func main() {
 		Commands: []*cli.Command{
 			newCommand(),
 			listCommand(),
+			execCommand(),
+			sessionCommand(),
 			versionCommand(),
 			removeWorkspaceCommand(),
 			configCommand(),

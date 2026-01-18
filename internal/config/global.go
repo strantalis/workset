@@ -33,13 +33,15 @@ func LoadGlobal(path string) (GlobalConfig, error) {
 
 	k := koanf.New(".")
 	if err := k.Load(confmap.Provider(map[string]interface{}{
-		"defaults.base_branch":     defaults.Defaults.BaseBranch,
-		"defaults.workspace":       defaults.Defaults.Workspace,
-		"defaults.workspace_root":  defaults.Defaults.WorkspaceRoot,
-		"defaults.repo_store_root": defaults.Defaults.RepoStoreRoot,
-		"defaults.remotes.base":    defaults.Defaults.Remotes.Base,
-		"defaults.remotes.write":   defaults.Defaults.Remotes.Write,
-		"defaults.parallelism":     defaults.Defaults.Parallelism,
+		"defaults.base_branch":         defaults.Defaults.BaseBranch,
+		"defaults.workspace":           defaults.Defaults.Workspace,
+		"defaults.workspace_root":      defaults.Defaults.WorkspaceRoot,
+		"defaults.repo_store_root":     defaults.Defaults.RepoStoreRoot,
+		"defaults.session_backend":     defaults.Defaults.SessionBackend,
+		"defaults.session_name_format": defaults.Defaults.SessionNameFormat,
+		"defaults.remotes.base":        defaults.Defaults.Remotes.Base,
+		"defaults.remotes.write":       defaults.Defaults.Remotes.Write,
+		"defaults.parallelism":         defaults.Defaults.Parallelism,
 	}, "."), nil); err != nil {
 		return GlobalConfig{}, err
 	}
@@ -68,6 +70,12 @@ func LoadGlobal(path string) (GlobalConfig, error) {
 	}
 	if cfg.Defaults.RepoStoreRoot == "" {
 		cfg.Defaults.RepoStoreRoot = defaults.Defaults.RepoStoreRoot
+	}
+	if cfg.Defaults.SessionBackend == "" {
+		cfg.Defaults.SessionBackend = defaults.Defaults.SessionBackend
+	}
+	if cfg.Defaults.SessionNameFormat == "" {
+		cfg.Defaults.SessionNameFormat = defaults.Defaults.SessionNameFormat
 	}
 	if cfg.Defaults.Remotes.Base == "" {
 		cfg.Defaults.Remotes.Base = defaults.Defaults.Remotes.Base

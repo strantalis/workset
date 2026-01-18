@@ -22,6 +22,12 @@ func TestLoadGlobalDefaults(t *testing.T) {
 	if cfg.Defaults.Parallelism == 0 {
 		t.Fatalf("expected default parallelism set")
 	}
+	if cfg.Defaults.SessionBackend == "" {
+		t.Fatalf("expected default session_backend set")
+	}
+	if cfg.Defaults.SessionNameFormat == "" {
+		t.Fatalf("expected default session_name_format set")
+	}
 }
 
 func TestSaveLoadGlobal(t *testing.T) {

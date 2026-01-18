@@ -1,12 +1,14 @@
 package config
 
 type Defaults struct {
-	BaseBranch    string      `yaml:"base_branch" json:"base_branch" mapstructure:"base_branch"`
-	Workspace     string      `yaml:"workspace" json:"workspace" mapstructure:"workspace"`
-	WorkspaceRoot string      `yaml:"workspace_root" json:"workspace_root" mapstructure:"workspace_root"`
-	RepoStoreRoot string      `yaml:"repo_store_root" json:"repo_store_root" mapstructure:"repo_store_root"`
-	Remotes       RemoteNames `yaml:"remotes" json:"remotes" mapstructure:"remotes"`
-	Parallelism   int         `yaml:"parallelism" json:"parallelism" mapstructure:"parallelism"`
+	BaseBranch        string      `yaml:"base_branch" json:"base_branch" mapstructure:"base_branch"`
+	Workspace         string      `yaml:"workspace" json:"workspace" mapstructure:"workspace"`
+	WorkspaceRoot     string      `yaml:"workspace_root" json:"workspace_root" mapstructure:"workspace_root"`
+	RepoStoreRoot     string      `yaml:"repo_store_root" json:"repo_store_root" mapstructure:"repo_store_root"`
+	SessionBackend    string      `yaml:"session_backend" json:"session_backend" mapstructure:"session_backend"`
+	SessionNameFormat string      `yaml:"session_name_format" json:"session_name_format" mapstructure:"session_name_format"`
+	Remotes           RemoteNames `yaml:"remotes" json:"remotes" mapstructure:"remotes"`
+	Parallelism       int         `yaml:"parallelism" json:"parallelism" mapstructure:"parallelism"`
 }
 
 type RemoteNames struct {

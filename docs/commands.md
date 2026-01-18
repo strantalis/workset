@@ -10,6 +10,12 @@ Quick lookup for CLI commands and intent.
 | --- | --- |
 | `workset new` | Create a workspace. |
 | `workset ls` | List workspaces. |
+| `workset exec` | Run a command in a workspace. |
+| `workset session start` | Start a persistent session. |
+| `workset session attach` | Attach to a session. |
+| `workset session stop` | Stop a session. |
+| `workset session show` | Show session details. |
+| `workset session ls` | List sessions for a workspace. |
 | `workset version` | Print version. |
 | `workset config show` | Show config values. |
 | `workset config set` | Set config values. |

@@ -29,6 +29,8 @@ Workspace config lives at `<workspace>/workset.yaml` and is the source of truth 
 | `workspace` | Default workspace name or absolute path. |
 | `workspace_root` | Base directory for new workspaces. |
 | `repo_store_root` | Where URL-based repos are cloned. |
+| `session_backend` | Default session backend (`auto`, `tmux`, `screen`, `exec`). |
+| `session_name_format` | Format string for session names (supports `{workspace}`). |
 | `remotes.base` | Default base remote name. |
 | `remotes.write` | Default write remote name. |
 | `parallelism` | Max parallel operations. |
@@ -55,6 +57,8 @@ defaults:
   workspace: core
   workspace_root: ~/.workset/workspaces
   repo_store_root: ~/.workset/repos
+  session_backend: auto
+  session_name_format: workset:{workspace}
   remotes:
     base: origin
     write: origin
