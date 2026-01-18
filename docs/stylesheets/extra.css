@@ -13,6 +13,18 @@
   width: auto !important;
 }
 
+.md-content a:not(.md-button) {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.18em;
+}
+
+.md-content a:not(.md-button):hover,
+.md-content a:not(.md-button):focus-visible {
+  color: var(--md-accent-fg-color);
+  text-decoration-color: var(--md-accent-fg-color);
+}
+
 @media (max-width: 768px) {
   .md-header__button.md-logo img,
   .md-header__button.md-logo svg {

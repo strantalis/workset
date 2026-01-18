@@ -26,18 +26,25 @@ Workset is in active development. Current commands focus on workspace creation, 
 
 ## Quickstart
 
-Build locally:
+Install (recommended):
 
 ```bash
-go build ./cmd/workset
+brew tap strantalis/homebrew-tap
+brew install workset
+```
+
+Alternative (Go install):
+
+```bash
+go install github.com/strantalis/workset/cmd/workset@v0.1.0
 ```
 
 Create a workspace and add repos:
 
 ```bash
-./workset new demo
-./workset repo add git@github.com:your/org-repo.git -w demo
-./workset status -w demo
+workset new demo
+workset repo add git@github.com:your/org-repo.git -w demo
+workset status -w demo
 ```
 
 Templates:

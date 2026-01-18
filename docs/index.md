@@ -13,10 +13,11 @@ Workset is a Go CLI for managing multi-repo workspaces with linked worktrees by 
 ## Quickstart
 
 ```bash
-go build ./cmd/workset
-./workset new demo
-./workset repo add git@github.com:your/org-repo.git -w demo
-./workset status -w demo
+brew tap strantalis/homebrew-tap
+brew install workset
+workset new demo
+workset repo add git@github.com:your/org-repo.git -w demo
+workset status -w demo
 ```
 
 !!! tip
@@ -39,5 +40,3 @@ Branch create/checkout and worktree lifecycle commands are next in the roadmap.
 - [Getting Started](getting-started.md)
 - [Concepts](concepts.md)
 - [Config](config.md)
-
-
