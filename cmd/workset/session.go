@@ -279,6 +279,9 @@ func sessionAttachCommand() *cli.Command {
 				}
 			}
 			time.Sleep(750 * time.Millisecond)
+			if err := applySessionTheme(ctx, runner, resolvedBackend, sessionName, resolveSessionTheme(cfg.Defaults)); err != nil {
+				_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: failed to apply session theme: %v\n", err)
+			}
 			if err := attachSession(ctx, runner, resolvedBackend, sessionName); err != nil {
 				return err
 			}
