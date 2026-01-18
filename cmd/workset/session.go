@@ -732,7 +732,7 @@ func resolveSessionName(explicit, format, workspaceName string) string {
 
 func formatSessionName(format, workspaceName string) string {
 	if strings.TrimSpace(format) == "" {
-		format = "workset:{workspace}"
+		format = "workset-{workspace}"
 	}
 	placeholder := "{workspace}"
 	if !strings.Contains(format, placeholder) {

@@ -69,7 +69,7 @@ defaults:
   workspace_root: ~/.workset/workspaces
   repo_store_root: ~/.workset/repos
   session_backend: auto
-  session_name_format: workset:{workspace}
+  session_name_format: workset-{workspace}
   # optional: enable built-in session theme for tmux/screen
   session_theme: workset
   # optional: override tmux or screen status lines

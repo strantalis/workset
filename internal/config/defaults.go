@@ -13,7 +13,7 @@ func DefaultConfig() GlobalConfig {
 			WorkspaceRoot:     defaultWorkspaceRoot(),
 			RepoStoreRoot:     defaultRepoStoreRoot(),
 			SessionBackend:    "auto",
-			SessionNameFormat: "workset:{workspace}",
+			SessionNameFormat: "workset-{workspace}",
 			SessionTheme:      "",
 			SessionTmuxStyle:  "",
 			SessionTmuxLeft:   "",
