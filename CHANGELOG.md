@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/strantalis/workset/compare/v0.2.0...v0.2.1) (2026-01-18)
+
+
+### Miscellaneous Chores
+
+* release 0.2.1 ([f8d7892](https://github.com/strantalis/workset/commit/f8d78925edbddfca83604dfcccf5a0fc76246702))
+
 ## [0.2.0](https://github.com/strantalis/workset/compare/v0.1.0...v0.2.0) (2026-01-18)
 
 
