@@ -32,6 +32,10 @@ workset completion <bash|zsh|fish|powershell>
 
 Commands that operate on a workspace require an explicit target: pass `-w <workspace>` (name or path) or set `defaults.workspace`. Most flags should appear before positional args; `-w/--workspace`, `--path`, `--group`, `--repo`, `--json`, `--plain`, and `--config` are also recognized after args.
 
+## Safety checks
+
+`workset rm --delete` and `workset repo rm --delete-*` run safety checks before removing files. Branches are treated as merged when the base branch already contains the same file contents (covers squash merges).
+
 ## Sessions
 
 `workset session start` starts a persistent session. By default it uses `tmux` if available, falls back to `screen`, and finally runs the command directly (`exec` backend). You can force a backend with `--backend`. Use `--interactive`/`--pty` only with `--backend exec`. Use `--attach` to immediately attach for tmux/screen (ignored for exec). To enable the built-in tmux/screen status line, set `defaults.session_theme` to `workset` in the global config (see [Config](config.md)).

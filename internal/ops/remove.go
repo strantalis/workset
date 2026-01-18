@@ -14,22 +14,26 @@ import (
 )
 
 type RepoBranchSafety struct {
-	Branch        string
-	Path          string
-	Dirty         bool
-	Missing       bool
-	Unmerged      bool
-	UnmergedErr   string
-	Unpushed      bool
-	UnpushedErr   string
-	StatusErr     string
-	FetchBaseErr  string
-	FetchWriteErr string
+	Branch         string
+	Path           string
+	Dirty          bool
+	Missing        bool
+	Unmerged       bool
+	UnmergedErr    string
+	UnmergedReason string
+	Unpushed       bool
+	UnpushedErr    string
+	StatusErr      string
+	FetchBaseErr   string
+	FetchWriteErr  string
 }
 
 type RepoSafetyReport struct {
-	RepoName string
-	Branches []RepoBranchSafety
+	RepoName    string
+	BaseRemote  string
+	BaseBranch  string
+	WriteRemote string
+	Branches    []RepoBranchSafety
 }
 
 type RepoSafetyInput struct {
@@ -55,7 +59,16 @@ func CheckRepoSafety(ctx context.Context, input RepoSafetyInput) (RepoSafetyRepo
 		return RepoSafetyReport{}, err
 	}
 
-	report := RepoSafetyReport{RepoName: repo.Name}
+	baseRemote := repo.Remotes.Base.Name
+	baseBranch := repo.Remotes.Base.DefaultBranch
+	writeRemote := repo.Remotes.Write.Name
+
+	report := RepoSafetyReport{
+		RepoName:    repo.Name,
+		BaseRemote:  baseRemote,
+		BaseBranch:  baseBranch,
+		WriteRemote: writeRemote,
+	}
 	repoPathForRefs := repo.LocalPath
 
 	for _, branch := range branches {
@@ -86,10 +99,6 @@ func CheckRepoSafety(ctx context.Context, input RepoSafetyInput) (RepoSafetyRepo
 	if repoPathForRefs == "" {
 		return report, nil
 	}
-
-	baseRemote := repo.Remotes.Base.Name
-	baseBranch := repo.Remotes.Base.DefaultBranch
-	writeRemote := repo.Remotes.Write.Name
 
 	if input.FetchRemotes {
 		if baseRemote != "" {
@@ -122,7 +131,28 @@ func CheckRepoSafety(ctx context.Context, input RepoSafetyInput) (RepoSafetyRepo
 			if err != nil {
 				entry.UnmergedErr = err.Error()
 			} else if !merged {
-				entry.Unmerged = true
+				contentMerged, err := input.Git.IsContentMerged(repoPathForRefs, branchRef, baseRef)
+				if err != nil {
+					entry.UnmergedErr = err.Error()
+					entry.Unmerged = true
+					entry.UnmergedReason = fmt.Sprintf("unmerged check failed for %s/%s", baseRemote, baseBranch)
+				} else if !contentMerged {
+					localMerged := false
+					if entry.FetchBaseErr != "" {
+						localBaseRef := fmt.Sprintf("refs/heads/%s", baseBranch)
+						if mergedLocal, err := input.Git.IsContentMerged(repoPathForRefs, branchRef, localBaseRef); err == nil {
+							localMerged = mergedLocal
+						}
+					}
+					if !localMerged {
+						entry.Unmerged = true
+						if entry.FetchBaseErr != "" {
+							entry.UnmergedReason = fmt.Sprintf("branch content not found in %s/%s history (base fetch failed; local %s differs)", baseRemote, baseBranch, baseBranch)
+						} else {
+							entry.UnmergedReason = fmt.Sprintf("branch content not found in %s/%s history", baseRemote, baseBranch)
+						}
+					}
+				}
 			}
 		}
 

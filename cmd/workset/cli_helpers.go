@@ -575,3 +575,37 @@ func summarizeWorkspaceSafety(report ops.WorkspaceSafetyReport) (dirty []string,
 	}
 	return dirty, unmerged, unpushed, warnings
 }
+
+func unmergedRepoDetails(report ops.RepoSafetyReport) []string {
+	baseRef := ""
+	if report.BaseRemote != "" && report.BaseBranch != "" {
+		baseRef = fmt.Sprintf("%s/%s", report.BaseRemote, report.BaseBranch)
+	}
+	details := make([]string, 0)
+	for _, branch := range report.Branches {
+		if !branch.Unmerged {
+			continue
+		}
+		reason := branch.UnmergedReason
+		if reason == "" && baseRef != "" {
+			reason = fmt.Sprintf("branch content not found in %s history", baseRef)
+		} else if reason == "" {
+			reason = "branch content not found in base history"
+		}
+		if baseRef != "" && !strings.Contains(reason, baseRef) {
+			reason = fmt.Sprintf("%s (base %s)", reason, baseRef)
+		}
+		details = append(details, fmt.Sprintf("%s: %s", branch.Branch, reason))
+	}
+	return details
+}
+
+func unmergedWorkspaceDetails(report ops.WorkspaceSafetyReport) []string {
+	details := make([]string, 0)
+	for _, repo := range report.Repos {
+		for _, detail := range unmergedRepoDetails(repo) {
+			details = append(details, fmt.Sprintf("%s: %s", repo.RepoName, detail))
+		}
+	}
+	return details
+}

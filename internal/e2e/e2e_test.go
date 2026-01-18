@@ -614,6 +614,29 @@ func TestWorkspaceRemoveDirtyWorktree(t *testing.T) {
 	}
 }
 
+func TestWorkspaceRemoveSquashMergedBranch(t *testing.T) {
+	runner := newRunner(t)
+	source := setupRepo(t, filepath.Join(runner.root, "src", "squash-merged-repo"))
+
+	if _, err := runner.run("new", "ws-switch"); err != nil {
+		t.Fatalf("workset new: %v", err)
+	}
+	if _, err := runner.run("repo", "add", "-w", "ws-switch", source); err != nil {
+		t.Fatalf("repo add: %v", err)
+	}
+
+	repoName := filepath.Base(source)
+	worktreePath := filepath.Join(runner.workspaceRoot(), "ws-switch", repoName)
+
+	commitFile(t, worktreePath, "", "feature.txt", "feature", "feat: add feature")
+	commitFile(t, source, "main", "feature.txt", "feature", "chore: squash merge feature")
+	commitFile(t, source, "main", "feature.txt", "feature v2", "chore: tweak after merge")
+
+	if _, err := runner.run("rm", "-w", "ws-switch", "--delete", "--yes"); err != nil {
+		t.Fatalf("expected workspace rm after squash merge: %v", err)
+	}
+}
+
 func TestStatusJSONOutput(t *testing.T) {
 	runner := newRunner(t)
 	source := setupRepo(t, filepath.Join(runner.root, "src", "status-repo"))
@@ -782,6 +805,50 @@ func setupRepo(t *testing.T, path string) string {
 		t.Fatalf("Commit: %v", err)
 	}
 	return path
+}
+
+func commitFile(t *testing.T, repoPath, branch, filename, contents, message string) {
+	t.Helper()
+
+	repo, err := ggit.PlainOpenWithOptions(repoPath, &ggit.PlainOpenOptions{
+		EnableDotGitCommonDir: true,
+	})
+	if err != nil {
+		t.Fatalf("open repo: %v", err)
+	}
+
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+
+	if branch != "" {
+		branchRef := plumbing.NewBranchReferenceName(branch)
+		if err := worktree.Checkout(&ggit.CheckoutOptions{Branch: branchRef}); err != nil {
+			if err := worktree.Checkout(&ggit.CheckoutOptions{Branch: branchRef, Create: true}); err != nil {
+				t.Fatalf("checkout %s: %v", branch, err)
+			}
+		}
+	}
+
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(repoPath, filename)), 0o755); err != nil {
+		t.Fatalf("mkdir file dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoPath, filename), []byte(contents), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if _, err := worktree.Add(filename); err != nil {
+		t.Fatalf("add file: %v", err)
+	}
+	if _, err := worktree.Commit(message, &ggit.CommitOptions{
+		Author: &object.Signature{
+			Name:  "Tester",
+			Email: "tester@example.com",
+			When:  time.Now(),
+		},
+	}); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
 }
 
 func findRepoRoot() (string, error) {

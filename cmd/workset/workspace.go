@@ -278,6 +278,9 @@ func removeWorkspaceCommand() *cli.Command {
 						return fmt.Errorf("refusing to delete: dirty worktrees: %s (use --force)", strings.Join(dirty, ", "))
 					}
 					if len(unmerged) > 0 {
+						for _, detail := range unmergedWorkspaceDetails(report) {
+							_, _ = fmt.Fprintln(os.Stderr, "detail:", detail)
+						}
 						return fmt.Errorf("refusing to delete: unmerged branches: %s (use --force)", strings.Join(unmerged, ", "))
 					}
 				}
