@@ -111,6 +111,14 @@ func sessionStartCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
+			normalizedName, renamed, err := normalizeSessionNameForBackend(resolvedBackend, sessionName)
+			if err != nil {
+				return err
+			}
+			sessionName = normalizedName
+			if renamed {
+				_, _ = fmt.Fprintf(commandWriter(cmd), "note: tmux session names use '_' for unsupported characters; using %s\n", sessionName)
+			}
 			if err := ensureSessionNameAvailable(ctx, runner, ws.State, sessionName, resolvedBackend); err != nil {
 				return err
 			}
@@ -267,6 +275,21 @@ func sessionAttachCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
+			normalizedName, _, err := normalizeSessionNameForBackend(resolvedBackend, sessionName)
+			if err != nil {
+				return err
+			}
+			if normalizedName != sessionName {
+				if sessionState != nil {
+					workspace.EnsureSessionState(&ws.State)
+					state := *sessionState
+					state.Name = normalizedName
+					delete(ws.State.Sessions, sessionName)
+					ws.State.Sessions[normalizedName] = state
+					sessionState = &state
+				}
+				sessionName = normalizedName
+			}
 			if resolvedBackend == sessionBackendExec {
 				return fmt.Errorf("attach not supported for backend %q", resolvedBackend)
 			}
@@ -396,6 +419,21 @@ func sessionStopCommand() *cli.Command {
 			resolvedBackend, err := resolveSessionBackend(backend, runner)
 			if err != nil {
 				return err
+			}
+			normalizedName, _, err := normalizeSessionNameForBackend(resolvedBackend, sessionName)
+			if err != nil {
+				return err
+			}
+			if normalizedName != sessionName {
+				if sessionState != nil {
+					workspace.EnsureSessionState(&ws.State)
+					state := *sessionState
+					state.Name = normalizedName
+					delete(ws.State.Sessions, sessionName)
+					ws.State.Sessions[normalizedName] = state
+					sessionState = &state
+				}
+				sessionName = normalizedName
 			}
 			if resolvedBackend == sessionBackendExec {
 				return fmt.Errorf("stop not supported for backend %q", resolvedBackend)
@@ -781,9 +819,51 @@ func sessionRunning(ctx context.Context, runner sessionRunner, backend sessionBa
 	if backend == "" || backend == sessionBackendExec {
 		return false, nil
 	}
+	normalized, _, err := normalizeSessionNameForBackend(backend, name)
+	if err != nil {
+		return false, err
+	}
 	statusCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	return sessionExists(statusCtx, runner, backend, name)
+	return sessionExists(statusCtx, runner, backend, normalized)
+}
+
+func normalizeSessionNameForBackend(backend sessionBackend, name string) (string, bool, error) {
+	if backend != sessionBackendTmux {
+		return name, false, nil
+	}
+	normalized := sanitizeTmuxSessionName(name)
+	if normalized == "" {
+		return "", false, fmt.Errorf("tmux session name derived from %q is empty; use --name to set one", name)
+	}
+	return normalized, normalized != name, nil
+}
+
+func sanitizeTmuxSessionName(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		if isTmuxNameRune(r) {
+			b.WriteRune(r)
+			continue
+		}
+		b.WriteByte('_')
+	}
+	return b.String()
+}
+
+func isTmuxNameRune(r rune) bool {
+	switch {
+	case r >= 'a' && r <= 'z':
+		return true
+	case r >= 'A' && r <= 'Z':
+		return true
+	case r >= '0' && r <= '9':
+		return true
+	case r == '-' || r == '_' || r == '.':
+		return true
+	default:
+		return false
+	}
 }
 
 func printSessionNotice(cmd *cli.Command, title, workspaceName, sessionName string, backend sessionBackend, includeAttach bool, themeLabel string, themeHint string) {

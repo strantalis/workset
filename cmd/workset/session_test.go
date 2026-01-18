@@ -101,3 +101,27 @@ func TestEnsureSessionNameAvailableStopped(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestNormalizeSessionNameForBackend(t *testing.T) {
+	name, renamed, err := normalizeSessionNameForBackend(sessionBackendTmux, "workset:demo")
+	if err != nil {
+		t.Fatalf("normalizeSessionNameForBackend: %v", err)
+	}
+	if !renamed {
+		t.Fatalf("expected rename to be true")
+	}
+	if name != "workset_demo" {
+		t.Fatalf("expected tmux name workset_demo, got %q", name)
+	}
+
+	name, renamed, err = normalizeSessionNameForBackend(sessionBackendScreen, "workset:demo")
+	if err != nil {
+		t.Fatalf("normalizeSessionNameForBackend: %v", err)
+	}
+	if renamed {
+		t.Fatalf("expected rename to be false")
+	}
+	if name != "workset:demo" {
+		t.Fatalf("expected unchanged name, got %q", name)
+	}
+}
