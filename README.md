@@ -55,6 +55,15 @@ Templates:
 ./workset group apply platform -w demo
 ```
 
+Sessions (tmux/screen/exec):
+
+```bash
+./workset session start demo -- zsh
+./workset session attach demo
+./workset session show demo
+./workset session stop demo
+```
+
 ## Concepts
 
 - **Workspace**: a directory with `workset.yaml` and `.workset/` state.

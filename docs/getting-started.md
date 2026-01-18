@@ -51,6 +51,29 @@ workset config set defaults.workspace demo
 !!! tip
     Once `defaults.workspace` is set, you can omit `-w` for most commands.
 
+## Start a session
+
+```bash
+./workset session start demo -- zsh
+./workset session start demo --yes -- zsh
+./workset session attach demo
+./workset session attach demo --yes
+./workset session stop demo
+./workset session stop demo --yes
+```
+
+To force a backend:
+
+```bash
+./workset session start demo --backend exec --interactive
+```
+
+## Run a one-off command
+
+```bash
+./workset exec demo -- ls
+```
+
 ## Enable shell completion (optional)
 
 ```bash

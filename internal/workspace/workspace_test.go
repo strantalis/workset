@@ -75,3 +75,31 @@ func TestLoadNormalizesBranchToWorkspaceName(t *testing.T) {
 		t.Fatalf("expected branch %q, got %q", "demo", ws.State.CurrentBranch)
 	}
 }
+
+func TestSaveStatePersistsSessions(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "ws")
+	defaults := config.DefaultConfig().Defaults
+
+	ws, err := Init(root, "demo", defaults)
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	ws.State.Sessions = map[string]SessionState{
+		"workset:demo": {
+			Backend:   "tmux",
+			StartedAt: "2026-01-01T00:00:00Z",
+		},
+	}
+	if err := SaveState(root, ws.State); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	loaded, err := Load(root, defaults)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if _, ok := loaded.State.Sessions["workset:demo"]; !ok {
+		t.Fatalf("expected session to be persisted")
+	}
+}

@@ -9,6 +9,12 @@ description: CLI overview, command syntax, and output modes for Workset.
 ```
 workset new <name> [--path <path>] [--group <name> ...] [--repo <alias> ...]
 workset ls
+workset exec [<workspace>] [-- <command> [args...]]
+workset session start [<workspace>] [-- <command> [args...]] [--yes] [--attach]
+workset session attach [<workspace>] [<name>] [--yes]
+workset session stop [<workspace>] [<name>] [--yes]
+workset session show [<workspace>] [<name>]
+workset session ls [<workspace>]
 workset version
 workset --version
 workset config show|set
@@ -25,6 +31,21 @@ workset completion <bash|zsh|fish|powershell>
 ```
 
 Commands that operate on a workspace require an explicit target: pass `-w <workspace>` (name or path) or set `defaults.workspace`. Most flags should appear before positional args; `-w/--workspace`, `--path`, `--group`, `--repo`, `--json`, `--plain`, and `--config` are also recognized after args.
+
+## Sessions
+
+`workset session start` starts a persistent session. By default it uses `tmux` if available, falls back to `screen`, and finally runs the command directly (`exec` backend). You can force a backend with `--backend`. Use `--interactive`/`--pty` only with `--backend exec`. Use `--attach` to immediately attach for tmux/screen (ignored for exec). To enable the built-in tmux/screen status line, set `defaults.session_theme` to `workset` in the global config (see [Config](config.md)).
+
+```
+workset session start demo -- zsh
+workset session start demo --backend exec --interactive
+workset session attach demo
+workset session attach demo --yes
+workset session show demo
+workset session stop demo
+```
+
+Session metadata is stored locally in `<workspace>/.workset/state.json`.
 
 ## Shell completion
 
@@ -47,7 +68,7 @@ workset completion powershell > workset.ps1
 . ./workset.ps1
 ```
 
-Completion includes hints for workspace names, group names, repo aliases, and repo names within a workspace when commands expect those positional args.
+Completion includes hints for workspace names, group names, repo aliases, repo names within a workspace, and recorded session names when commands expect those positional args.
 
 ## Output modes
 

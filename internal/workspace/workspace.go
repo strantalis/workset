@@ -26,7 +26,16 @@ type Workspace struct {
 }
 
 type State struct {
-	CurrentBranch string `json:"current_branch"`
+	CurrentBranch string                  `json:"current_branch"`
+	Sessions      map[string]SessionState `json:"sessions,omitempty"`
+}
+
+type SessionState struct {
+	Backend      string   `json:"backend,omitempty"`
+	Name         string   `json:"name,omitempty"`
+	Command      []string `json:"command,omitempty"`
+	StartedAt    string   `json:"started_at,omitempty"`
+	LastAttached string   `json:"last_attached,omitempty"`
 }
 
 func WorksetFile(root string) string {
@@ -180,6 +189,16 @@ func saveState(root string, state State) error {
 	return os.WriteFile(StatePath(root), data, 0o644)
 }
 
+func SaveState(root string, state State) error {
+	return saveState(root, state)
+}
+
+func EnsureSessionState(state *State) {
+	if state.Sessions == nil {
+		state.Sessions = map[string]SessionState{}
+	}
+}
+
 func loadState(root string) (State, error) {
 	data, err := os.ReadFile(StatePath(root))
 	if err != nil {
@@ -193,6 +212,10 @@ func loadState(root string) (State, error) {
 		return State{}, errors.New("current_branch missing in state.json")
 	}
 	return state, nil
+}
+
+func LoadState(root string) (State, error) {
+	return loadState(root)
 }
 
 func WorktreeDirName(branch string) string {

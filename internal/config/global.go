@@ -33,13 +33,20 @@ func LoadGlobal(path string) (GlobalConfig, error) {
 
 	k := koanf.New(".")
 	if err := k.Load(confmap.Provider(map[string]interface{}{
-		"defaults.base_branch":     defaults.Defaults.BaseBranch,
-		"defaults.workspace":       defaults.Defaults.Workspace,
-		"defaults.workspace_root":  defaults.Defaults.WorkspaceRoot,
-		"defaults.repo_store_root": defaults.Defaults.RepoStoreRoot,
-		"defaults.remotes.base":    defaults.Defaults.Remotes.Base,
-		"defaults.remotes.write":   defaults.Defaults.Remotes.Write,
-		"defaults.parallelism":     defaults.Defaults.Parallelism,
+		"defaults.base_branch":               defaults.Defaults.BaseBranch,
+		"defaults.workspace":                 defaults.Defaults.Workspace,
+		"defaults.workspace_root":            defaults.Defaults.WorkspaceRoot,
+		"defaults.repo_store_root":           defaults.Defaults.RepoStoreRoot,
+		"defaults.session_backend":           defaults.Defaults.SessionBackend,
+		"defaults.session_name_format":       defaults.Defaults.SessionNameFormat,
+		"defaults.session_theme":             defaults.Defaults.SessionTheme,
+		"defaults.session_tmux_status_style": defaults.Defaults.SessionTmuxStyle,
+		"defaults.session_tmux_status_left":  defaults.Defaults.SessionTmuxLeft,
+		"defaults.session_tmux_status_right": defaults.Defaults.SessionTmuxRight,
+		"defaults.session_screen_hardstatus": defaults.Defaults.SessionScreenHard,
+		"defaults.remotes.base":              defaults.Defaults.Remotes.Base,
+		"defaults.remotes.write":             defaults.Defaults.Remotes.Write,
+		"defaults.parallelism":               defaults.Defaults.Parallelism,
 	}, "."), nil); err != nil {
 		return GlobalConfig{}, err
 	}
@@ -68,6 +75,27 @@ func LoadGlobal(path string) (GlobalConfig, error) {
 	}
 	if cfg.Defaults.RepoStoreRoot == "" {
 		cfg.Defaults.RepoStoreRoot = defaults.Defaults.RepoStoreRoot
+	}
+	if cfg.Defaults.SessionBackend == "" {
+		cfg.Defaults.SessionBackend = defaults.Defaults.SessionBackend
+	}
+	if cfg.Defaults.SessionNameFormat == "" {
+		cfg.Defaults.SessionNameFormat = defaults.Defaults.SessionNameFormat
+	}
+	if cfg.Defaults.SessionTheme == "" {
+		cfg.Defaults.SessionTheme = defaults.Defaults.SessionTheme
+	}
+	if cfg.Defaults.SessionTmuxStyle == "" {
+		cfg.Defaults.SessionTmuxStyle = defaults.Defaults.SessionTmuxStyle
+	}
+	if cfg.Defaults.SessionTmuxLeft == "" {
+		cfg.Defaults.SessionTmuxLeft = defaults.Defaults.SessionTmuxLeft
+	}
+	if cfg.Defaults.SessionTmuxRight == "" {
+		cfg.Defaults.SessionTmuxRight = defaults.Defaults.SessionTmuxRight
+	}
+	if cfg.Defaults.SessionScreenHard == "" {
+		cfg.Defaults.SessionScreenHard = defaults.Defaults.SessionScreenHard
 	}
 	if cfg.Defaults.Remotes.Base == "" {
 		cfg.Defaults.Remotes.Base = defaults.Defaults.Remotes.Base

@@ -97,6 +97,24 @@ func setGlobalDefault(cfg *config.GlobalConfig, key, value string) error {
 		cfg.Defaults.WorkspaceRoot = value
 	case "defaults.repo_store_root":
 		cfg.Defaults.RepoStoreRoot = value
+	case "defaults.session_backend":
+		backend, err := parseSessionBackend(value)
+		if err != nil {
+			return err
+		}
+		cfg.Defaults.SessionBackend = string(backend)
+	case "defaults.session_name_format":
+		cfg.Defaults.SessionNameFormat = value
+	case "defaults.session_theme":
+		cfg.Defaults.SessionTheme = value
+	case "defaults.session_tmux_status_style":
+		cfg.Defaults.SessionTmuxStyle = value
+	case "defaults.session_tmux_status_left":
+		cfg.Defaults.SessionTmuxLeft = value
+	case "defaults.session_tmux_status_right":
+		cfg.Defaults.SessionTmuxRight = value
+	case "defaults.session_screen_hardstatus":
+		cfg.Defaults.SessionScreenHard = value
 	case "defaults.remotes.base":
 		cfg.Defaults.Remotes.Base = value
 	case "defaults.remotes.write":

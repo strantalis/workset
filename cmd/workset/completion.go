@@ -74,6 +74,68 @@ func completeWorkspaceRepoNames(cmd *cli.Command) {
 	writeCompletion(cmd, names)
 }
 
+func completeSessionNames(cmd *cli.Command) {
+	cfg, _, err := loadGlobal(cmd.String("config"))
+	if err != nil {
+		return
+	}
+	workspaceArg := strings.TrimSpace(cmd.String("workspace"))
+	if workspaceArg == "" {
+		if cmd.NArg() > 0 {
+			workspaceArg = strings.TrimSpace(cmd.Args().Get(0))
+		}
+	}
+	if workspaceArg == "" {
+		workspaceArg = strings.TrimSpace(cfg.Defaults.Workspace)
+	}
+	if workspaceArg == "" {
+		return
+	}
+	_, root, err := resolveWorkspaceTarget(workspaceArg, &cfg)
+	if err != nil {
+		return
+	}
+	state, err := workspace.LoadState(root)
+	if err != nil {
+		return
+	}
+	workspace.EnsureSessionState(&state)
+	if len(state.Sessions) == 0 {
+		return
+	}
+	names := make([]string, 0, len(state.Sessions))
+	for name := range state.Sessions {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	writeCompletion(cmd, names)
+}
+
+func completeSessionBackends(cmd *cli.Command, includeExec bool) {
+	if !completionFlagRequested(cmd, "backend") {
+		return
+	}
+	backends := []string{"auto", "tmux", "screen"}
+	if includeExec {
+		backends = append(backends, "exec")
+	}
+	writeCompletion(cmd, backends)
+}
+
+func completionFlagRequested(cmd *cli.Command, name string) bool {
+	args := cmd.Args().Slice()
+	long := "--" + name
+	for _, arg := range args {
+		if arg == long {
+			return true
+		}
+		if strings.HasPrefix(arg, long+"=") {
+			return true
+		}
+	}
+	return false
+}
+
 func writeCompletion(cmd *cli.Command, options []string) {
 	if len(options) == 0 {
 		return

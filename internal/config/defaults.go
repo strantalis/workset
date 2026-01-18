@@ -8,10 +8,17 @@ import (
 func DefaultConfig() GlobalConfig {
 	return GlobalConfig{
 		Defaults: Defaults{
-			BaseBranch:    "main",
-			Workspace:     "",
-			WorkspaceRoot: defaultWorkspaceRoot(),
-			RepoStoreRoot: defaultRepoStoreRoot(),
+			BaseBranch:        "main",
+			Workspace:         "",
+			WorkspaceRoot:     defaultWorkspaceRoot(),
+			RepoStoreRoot:     defaultRepoStoreRoot(),
+			SessionBackend:    "auto",
+			SessionNameFormat: "workset-{workspace}",
+			SessionTheme:      "",
+			SessionTmuxStyle:  "",
+			SessionTmuxLeft:   "",
+			SessionTmuxRight:  "",
+			SessionScreenHard: "",
 			Remotes: RemoteNames{
 				Base:  "origin",
 				Write: "origin",
