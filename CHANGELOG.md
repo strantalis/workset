@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.0](https://github.com/strantalis/workset/compare/v0.1.0...v0.2.0) (2026-01-18)
+
+
+### Features
+
+* add delete refusal details ([f4998f0](https://github.com/strantalis/workset/commit/f4998f08d3207088809b4d9d6f0bb5cdbcc18185))
+* add session management and exec tooling ([#9](https://github.com/strantalis/workset/issues/9)) ([4ada25c](https://github.com/strantalis/workset/commit/4ada25ce463705d111ca03f5e090be348343f84e))
+* **release:** add npm trusted publishing ([409891c](https://github.com/strantalis/workset/commit/409891c85a6bab50aa0e6fe3c8f72d6da3956439))
+
 ## 0.1.0 (2026-01-18)
 
 
