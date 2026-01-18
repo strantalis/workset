@@ -3,6 +3,9 @@ version: 2
 env:
   - CGO_ENABLED=0
 
+git:
+  tag_sort: smartsemver
+
 snapshot:
   version_template: "{{ if .Env.ALPHA_VERSION }}{{ .Env.ALPHA_VERSION }}{{ else }}{{ if eq .Version \"0.0.0\" }}v0.1.0-alpha.1{{ else }}v{{ incminor .Version }}-alpha.1{{ end }}{{ end }}"
 
