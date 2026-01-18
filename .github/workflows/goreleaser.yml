@@ -114,6 +114,16 @@ jobs:
         uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6
         with:
           go-version-file: go.mod
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - name: Ensure npm OIDC-ready
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install -g npm@11.5.1
+          npm --version
       - name: Install Syft
         uses: anchore/sbom-action/download-syft@0b82b0b1a22399a1c542d4d656f70cd903571b5c # v0
       - name: Notarization status

@@ -29,6 +29,9 @@ archives:
       - goos: windows
         format: zip
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: npm
+    format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}_npm"
 
 checksum:
   name_template: "checksums.txt"
@@ -53,6 +56,20 @@ homebrew_casks:
     binaries:
       - workset
     skip_upload: auto
+
+npms:
+  - id: workset
+    ids:
+      - npm
+    name: "@strantalis/workset"
+    description: "Go CLI for multi-repo workspaces with linked worktrees"
+    homepage: "https://workset.dev"
+    license: MIT
+    repository: "https://github.com/strantalis/workset"
+    bugs: "https://github.com/strantalis/workset/issues"
+    access: public
+    format: tar.gz
+    disable: "{{ or .IsSnapshot .Prerelease }}"
 
 notarize:
   macos:
