@@ -52,6 +52,10 @@ func sessionStartCommand() *cli.Command {
 				Usage: "Session backend (auto, tmux, screen, exec)",
 			},
 			&cli.BoolFlag{
+				Name:  "yes",
+				Usage: "Skip confirmation prompt",
+			},
+			&cli.BoolFlag{
 				Name:    "interactive",
 				Aliases: []string{"pty"},
 				Usage:   "Use a PTY when running with the exec backend",
@@ -121,6 +125,21 @@ func sessionStartCommand() *cli.Command {
 				return fmt.Errorf("--interactive is only supported with the exec backend (use --backend exec)")
 			}
 
+			includeAttach := resolvedBackend != sessionBackendExec
+			printSessionNotice(cmd, "starting session", wsName, sessionName, resolvedBackend, includeAttach)
+			if !cmd.Bool("yes") {
+				ok, err := confirmPrompt(os.Stdin, commandWriter(cmd), fmt.Sprintf("start session %s? [y/N] ", sessionName))
+				if err != nil {
+					return err
+				}
+				if !ok {
+					return nil
+				}
+			}
+			if resolvedBackend == sessionBackendExec {
+				time.Sleep(750 * time.Millisecond)
+			}
+
 			if err := startSession(ctx, runner, resolvedBackend, root, sessionName, commandArgs, env, interactive); err != nil {
 				if resolvedBackend == sessionBackendExec {
 					return exitWithStatus(err)
@@ -142,10 +161,7 @@ func sessionStartCommand() *cli.Command {
 			}
 
 			registerWorkspace(&cfg, wsName, root, time.Now())
-			if err := config.SaveGlobal(cfgPath, cfg); err != nil {
-				return err
-			}
-			return nil
+			return config.SaveGlobal(cfgPath, cfg)
 		},
 	}
 }
@@ -160,6 +176,10 @@ func sessionAttachCommand() *cli.Command {
 			&cli.StringFlag{
 				Name:  "backend",
 				Usage: "Session backend (auto, tmux, screen)",
+			},
+			&cli.BoolFlag{
+				Name:  "yes",
+				Usage: "Skip confirmation prompt",
 			},
 			&cli.StringFlag{
 				Name:  "name",
@@ -243,6 +263,17 @@ func sessionAttachCommand() *cli.Command {
 				return fmt.Errorf("attach not supported for backend %q", resolvedBackend)
 			}
 
+			printSessionNotice(cmd, "attaching session", wsName, sessionName, resolvedBackend, false)
+			if !cmd.Bool("yes") {
+				ok, err := confirmPrompt(os.Stdin, commandWriter(cmd), fmt.Sprintf("attach session %s? [y/N] ", sessionName))
+				if err != nil {
+					return err
+				}
+				if !ok {
+					return nil
+				}
+			}
+			time.Sleep(750 * time.Millisecond)
 			if err := attachSession(ctx, runner, resolvedBackend, sessionName); err != nil {
 				return err
 			}
@@ -272,6 +303,10 @@ func sessionStopCommand() *cli.Command {
 			&cli.StringFlag{
 				Name:  "backend",
 				Usage: "Session backend (auto, tmux, screen)",
+			},
+			&cli.BoolFlag{
+				Name:  "yes",
+				Usage: "Skip confirmation prompt",
 			},
 			&cli.StringFlag{
 				Name:  "name",
@@ -355,6 +390,16 @@ func sessionStopCommand() *cli.Command {
 				return fmt.Errorf("stop not supported for backend %q", resolvedBackend)
 			}
 
+			printSessionNotice(cmd, "stopping session", wsName, sessionName, resolvedBackend, false)
+			if !cmd.Bool("yes") {
+				ok, err := confirmPrompt(os.Stdin, commandWriter(cmd), fmt.Sprintf("stop session %s? [y/N] ", sessionName))
+				if err != nil {
+					return err
+				}
+				if !ok {
+					return nil
+				}
+			}
 			if err := stopSession(ctx, runner, resolvedBackend, sessionName); err != nil {
 				return err
 			}
@@ -368,7 +413,11 @@ func sessionStopCommand() *cli.Command {
 			}
 
 			registerWorkspace(&cfg, wsName, root, time.Now())
-			return config.SaveGlobal(cfgPath, cfg)
+			if err := config.SaveGlobal(cfgPath, cfg); err != nil {
+				return err
+			}
+			printSessionNotice(cmd, "session stopped", wsName, sessionName, resolvedBackend, false)
+			return nil
 		},
 	}
 }
@@ -689,4 +738,36 @@ func statusLabel(running bool) string {
 		return "running"
 	}
 	return "stopped"
+}
+
+func printSessionNotice(cmd *cli.Command, title, workspaceName, sessionName string, backend sessionBackend, includeAttach bool) {
+	w := commandWriter(cmd)
+	styles := output.NewStyles(w, false)
+	header := title
+	if styles.Enabled {
+		header = styles.Render(styles.Title, header)
+	}
+	_, _ = fmt.Fprintln(w, header)
+	if workspaceName != "" {
+		_, _ = fmt.Fprintf(w, "  workspace: %s\n", workspaceName)
+	}
+	_, _ = fmt.Fprintf(w, "  session:   %s\n", sessionName)
+	_, _ = fmt.Fprintf(w, "  backend:   %s\n", backend)
+	if includeAttach {
+		_, _ = fmt.Fprintf(w, "  attach:    workset session attach %s %s\n", workspaceName, sessionName)
+	}
+	if hint := detachHint(backend); hint != "" {
+		_, _ = fmt.Fprintf(w, "  detach:    %s\n", hint)
+	}
+}
+
+func detachHint(backend sessionBackend) string {
+	switch backend {
+	case sessionBackendTmux:
+		return "Ctrl-b d"
+	case sessionBackendScreen:
+		return "Ctrl-a d"
+	default:
+		return ""
+	}
 }

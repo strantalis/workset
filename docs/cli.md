@@ -10,9 +10,9 @@ description: CLI overview, command syntax, and output modes for Workset.
 workset new <name> [--path <path>] [--group <name> ...] [--repo <alias> ...]
 workset ls
 workset exec [<workspace>] [-- <command> [args...]]
-workset session start [<workspace>] [-- <command> [args...]]
-workset session attach [<workspace>] [<name>]
-workset session stop [<workspace>] [<name>]
+workset session start [<workspace>] [-- <command> [args...]] [--yes]
+workset session attach [<workspace>] [<name>] [--yes]
+workset session stop [<workspace>] [<name>] [--yes]
 workset session show [<workspace>] [<name>]
 workset session ls [<workspace>]
 workset version
@@ -40,6 +40,7 @@ Commands that operate on a workspace require an explicit target: pass `-w <works
 workset session start demo -- zsh
 workset session start demo --backend exec --interactive
 workset session attach demo
+workset session attach demo --yes
 workset session show demo
 workset session stop demo
 ```

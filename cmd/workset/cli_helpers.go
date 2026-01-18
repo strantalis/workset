@@ -364,6 +364,8 @@ func interspersedFlag(token string) (flagSpec, bool) {
 		return flagSpec{TakesValue: true}, true
 	case "--interactive", "--pty":
 		return flagSpec{TakesValue: false}, true
+	case "--yes":
+		return flagSpec{TakesValue: false}, true
 	}
 	switch {
 	case strings.HasPrefix(token, "--workspace="):
@@ -387,6 +389,8 @@ func interspersedFlag(token string) (flagSpec, bool) {
 	case strings.HasPrefix(token, "--interactive="):
 		return flagSpec{TakesValue: false}, true
 	case strings.HasPrefix(token, "--pty="):
+		return flagSpec{TakesValue: false}, true
+	case strings.HasPrefix(token, "--yes="):
 		return flagSpec{TakesValue: false}, true
 	}
 	return flagSpec{}, false

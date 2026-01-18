@@ -42,8 +42,11 @@ go build ./cmd/workset
 
 ```bash
 ./workset session start demo -- zsh
+./workset session start demo --yes -- zsh
 ./workset session attach demo
+./workset session attach demo --yes
 ./workset session stop demo
+./workset session stop demo --yes
 ```
 
 To force a backend:

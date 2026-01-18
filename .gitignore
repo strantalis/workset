@@ -4,6 +4,7 @@
 .cache/
 dist/
 bin/
+/workset
 coverage/
 *.out
 *.test
