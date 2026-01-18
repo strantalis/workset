@@ -45,6 +45,8 @@ sboms:
 
 homebrew_casks:
   - name: workset
+    alternative_names:
+      - "workset@{{ .Major }}.{{ .Minor }}"
     repository:
       owner: strantalis
       name: homebrew-tap
