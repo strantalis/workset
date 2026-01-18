@@ -125,3 +125,20 @@ func TestNormalizeSessionNameForBackend(t *testing.T) {
 		t.Fatalf("expected unchanged name, got %q", name)
 	}
 }
+
+func TestAllowAttachAfterStart(t *testing.T) {
+	allowed, note := allowAttachAfterStart(sessionBackendTmux, true)
+	if !allowed || note != "" {
+		t.Fatalf("expected attach allowed for tmux, got allowed=%v note=%q", allowed, note)
+	}
+
+	allowed, note = allowAttachAfterStart(sessionBackendExec, true)
+	if allowed || note == "" {
+		t.Fatalf("expected attach ignored for exec, got allowed=%v note=%q", allowed, note)
+	}
+
+	allowed, note = allowAttachAfterStart(sessionBackendTmux, false)
+	if allowed || note != "" {
+		t.Fatalf("expected attach disabled, got allowed=%v note=%q", allowed, note)
+	}
+}

@@ -10,7 +10,7 @@ description: CLI overview, command syntax, and output modes for Workset.
 workset new <name> [--path <path>] [--group <name> ...] [--repo <alias> ...]
 workset ls
 workset exec [<workspace>] [-- <command> [args...]]
-workset session start [<workspace>] [-- <command> [args...]] [--yes]
+workset session start [<workspace>] [-- <command> [args...]] [--yes] [--attach]
 workset session attach [<workspace>] [<name>] [--yes]
 workset session stop [<workspace>] [<name>] [--yes]
 workset session show [<workspace>] [<name>]
@@ -34,7 +34,7 @@ Commands that operate on a workspace require an explicit target: pass `-w <works
 
 ## Sessions
 
-`workset session start` starts a persistent session. By default it uses `tmux` if available, falls back to `screen`, and finally runs the command directly (`exec` backend). You can force a backend with `--backend`. Use `--interactive`/`--pty` only with `--backend exec`. To enable the built-in tmux/screen status line, set `defaults.session_theme` to `workset` in the global config (see [Config](config.md)).
+`workset session start` starts a persistent session. By default it uses `tmux` if available, falls back to `screen`, and finally runs the command directly (`exec` backend). You can force a backend with `--backend`. Use `--interactive`/`--pty` only with `--backend exec`. Use `--attach` to immediately attach for tmux/screen (ignored for exec). To enable the built-in tmux/screen status line, set `defaults.session_theme` to `workset` in the global config (see [Config](config.md)).
 
 ```
 workset session start demo -- zsh

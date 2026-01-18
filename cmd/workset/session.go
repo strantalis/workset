@@ -52,6 +52,10 @@ func sessionStartCommand() *cli.Command {
 				Usage: "Session backend (auto, tmux, screen, exec)",
 			},
 			&cli.BoolFlag{
+				Name:  "attach",
+				Usage: "Attach after starting (tmux/screen only)",
+			},
+			&cli.BoolFlag{
 				Name:  "yes",
 				Usage: "Skip confirmation prompt",
 			},
@@ -172,6 +176,16 @@ func sessionStartCommand() *cli.Command {
 					StartedAt: time.Now().Format(time.RFC3339),
 				}
 				if err := workspace.SaveState(root, ws.State); err != nil {
+					return err
+				}
+			}
+
+			attachAllowed, attachNote := allowAttachAfterStart(resolvedBackend, cmd.Bool("attach"))
+			if attachNote != "" {
+				_, _ = fmt.Fprintln(commandWriter(cmd), attachNote)
+			}
+			if attachAllowed {
+				if err := attachSession(ctx, runner, resolvedBackend, sessionName); err != nil {
 					return err
 				}
 			}
@@ -791,6 +805,16 @@ func statusLabel(running bool) string {
 		return "running"
 	}
 	return "stopped"
+}
+
+func allowAttachAfterStart(backend sessionBackend, attach bool) (bool, string) {
+	if !attach {
+		return false, ""
+	}
+	if backend == sessionBackendExec {
+		return false, "note: --attach ignored for exec backend"
+	}
+	return true, ""
 }
 
 func ensureSessionNameAvailable(ctx context.Context, runner sessionRunner, state workspace.State, name string, backend sessionBackend) error {
