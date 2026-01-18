@@ -16,6 +16,7 @@ This site documents Workset. Start with the overview and Getting Started, then u
 - [Command Index](https://workset.dev/commands/)
 - [Config](https://workset.dev/config/)
 - [Templates](https://workset.dev/templates/)
+- [Releases](https://workset.dev/releases/)
 
 ## Optional
 

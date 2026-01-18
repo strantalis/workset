@@ -38,6 +38,9 @@ markdown_extensions:
 plugins:
   - search
   - social
+  - gen-files:
+      scripts:
+        - scripts/gen_releases.py
 
 nav:
   - Home: index.md
@@ -48,3 +51,4 @@ nav:
       - Command Index: commands.md
   - Config: config.md
   - Templates: templates.md
+  - Releases: releases/index.md

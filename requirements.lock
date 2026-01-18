@@ -48,7 +48,10 @@ mergedeep==1.3.4
 mkdocs==1.6.1
     # via
     #   -r requirements.txt
+    #   mkdocs-gen-files
     #   mkdocs-material
+mkdocs-gen-files==0.6.0
+    # via -r requirements.txt
 mkdocs-get-deps==0.2.0
     # via mkdocs
 mkdocs-material==9.7.1
