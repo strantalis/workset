@@ -153,6 +153,10 @@ func sessionStartCommand() *cli.Command {
 					return nil
 				}
 			}
+			attachAllowed, attachNote := allowAttachAfterStart(resolvedBackend, cmd.Bool("attach"))
+			if attachNote != "" {
+				_, _ = fmt.Fprintln(commandWriter(cmd), attachNote)
+			}
 			if resolvedBackend == sessionBackendExec {
 				time.Sleep(750 * time.Millisecond)
 			}
@@ -180,13 +184,20 @@ func sessionStartCommand() *cli.Command {
 				}
 			}
 
-			attachAllowed, attachNote := allowAttachAfterStart(resolvedBackend, cmd.Bool("attach"))
-			if attachNote != "" {
-				_, _ = fmt.Fprintln(commandWriter(cmd), attachNote)
-			}
 			if attachAllowed {
 				if err := attachSession(ctx, runner, resolvedBackend, sessionName); err != nil {
 					return err
+				}
+				if resolvedBackend != sessionBackendExec {
+					workspace.EnsureSessionState(&ws.State)
+					state, ok := ws.State.Sessions[sessionName]
+					if ok {
+						state.LastAttached = time.Now().Format(time.RFC3339)
+						ws.State.Sessions[sessionName] = state
+						if err := workspace.SaveState(root, ws.State); err != nil {
+							return err
+						}
+					}
 				}
 			}
 
