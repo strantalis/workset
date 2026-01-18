@@ -126,7 +126,9 @@ func sessionStartCommand() *cli.Command {
 			}
 
 			includeAttach := resolvedBackend != sessionBackendExec
-			printSessionNotice(cmd, "starting session", wsName, sessionName, resolvedBackend, includeAttach)
+			theme := resolveSessionTheme(cfg.Defaults)
+			themeLabel, themeHint := sessionThemeNotice(theme, resolvedBackend)
+			printSessionNotice(cmd, "starting session", wsName, sessionName, resolvedBackend, includeAttach, themeLabel, themeHint)
 			if !cmd.Bool("yes") {
 				ok, err := confirmPrompt(os.Stdin, commandWriter(cmd), fmt.Sprintf("start session %s? [y/N] ", sessionName))
 				if err != nil {
@@ -145,6 +147,9 @@ func sessionStartCommand() *cli.Command {
 					return exitWithStatus(err)
 				}
 				return err
+			}
+			if err := applySessionTheme(ctx, runner, resolvedBackend, sessionName, theme); err != nil {
+				_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: failed to apply session theme: %v\n", err)
 			}
 
 			if resolvedBackend != sessionBackendExec {
@@ -263,7 +268,7 @@ func sessionAttachCommand() *cli.Command {
 				return fmt.Errorf("attach not supported for backend %q", resolvedBackend)
 			}
 
-			printSessionNotice(cmd, "attaching session", wsName, sessionName, resolvedBackend, false)
+			printSessionNotice(cmd, "attaching session", wsName, sessionName, resolvedBackend, false, "", "")
 			if !cmd.Bool("yes") {
 				ok, err := confirmPrompt(os.Stdin, commandWriter(cmd), fmt.Sprintf("attach session %s? [y/N] ", sessionName))
 				if err != nil {
@@ -390,7 +395,7 @@ func sessionStopCommand() *cli.Command {
 				return fmt.Errorf("stop not supported for backend %q", resolvedBackend)
 			}
 
-			printSessionNotice(cmd, "stopping session", wsName, sessionName, resolvedBackend, false)
+			printSessionNotice(cmd, "stopping session", wsName, sessionName, resolvedBackend, false, "", "")
 			if !cmd.Bool("yes") {
 				ok, err := confirmPrompt(os.Stdin, commandWriter(cmd), fmt.Sprintf("stop session %s? [y/N] ", sessionName))
 				if err != nil {
@@ -416,7 +421,7 @@ func sessionStopCommand() *cli.Command {
 			if err := config.SaveGlobal(cfgPath, cfg); err != nil {
 				return err
 			}
-			printSessionNotice(cmd, "session stopped", wsName, sessionName, resolvedBackend, false)
+			printSessionNotice(cmd, "session stopped", wsName, sessionName, resolvedBackend, false, "", "")
 			return nil
 		},
 	}
@@ -740,7 +745,7 @@ func statusLabel(running bool) string {
 	return "stopped"
 }
 
-func printSessionNotice(cmd *cli.Command, title, workspaceName, sessionName string, backend sessionBackend, includeAttach bool) {
+func printSessionNotice(cmd *cli.Command, title, workspaceName, sessionName string, backend sessionBackend, includeAttach bool, themeLabel string, themeHint string) {
 	w := commandWriter(cmd)
 	styles := output.NewStyles(w, false)
 	header := title
@@ -753,6 +758,12 @@ func printSessionNotice(cmd *cli.Command, title, workspaceName, sessionName stri
 	}
 	_, _ = fmt.Fprintf(w, "  session:   %s\n", sessionName)
 	_, _ = fmt.Fprintf(w, "  backend:   %s\n", backend)
+	if themeLabel != "" {
+		_, _ = fmt.Fprintf(w, "  theme:     %s\n", themeLabel)
+	} else if themeHint != "" {
+		_, _ = fmt.Fprintf(w, "  theme:     disabled\n")
+		_, _ = fmt.Fprintf(w, "  tip:       %s\n", themeHint)
+	}
 	if includeAttach {
 		_, _ = fmt.Fprintf(w, "  attach:    workset session attach %s %s\n", workspaceName, sessionName)
 	}

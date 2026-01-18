@@ -31,9 +31,20 @@ Workspace config lives at `<workspace>/workset.yaml` and is the source of truth 
 | `repo_store_root` | Where URL-based repos are cloned. |
 | `session_backend` | Default session backend (`auto`, `tmux`, `screen`, `exec`). |
 | `session_name_format` | Format string for session names (supports `{workspace}`). |
+| `session_theme` | Optional session theme for `tmux`/`screen` (`workset` to enable built-in theme). |
+| `session_tmux_status_style` | Override tmux `status-style` when a session theme is enabled. |
+| `session_tmux_status_left` | Override tmux `status-left` when a session theme is enabled. |
+| `session_tmux_status_right` | Override tmux `status-right` when a session theme is enabled. |
+| `session_screen_hardstatus` | Override screen `hardstatus` when a session theme is enabled. |
 | `remotes.base` | Default base remote name. |
 | `remotes.write` | Default write remote name. |
 | `parallelism` | Max parallel operations. |
+
+### Session themes
+
+Session theming is opt-in. Set `defaults.session_theme` to `workset` to apply the built-in status line to `tmux`/`screen` sessions. Use the override fields to customize the tmux or screen values.
+
+For screen, the `session_screen_hardstatus` value is passed to `screen -X hardstatus` and split on whitespace, so keep it in the same format you would use in a `hardstatus` line.
 
 ### `repos` entries
 
@@ -59,6 +70,13 @@ defaults:
   repo_store_root: ~/.workset/repos
   session_backend: auto
   session_name_format: workset:{workspace}
+  # optional: enable built-in session theme for tmux/screen
+  session_theme: workset
+  # optional: override tmux or screen status lines
+  # session_tmux_status_style: "bg=colour235,fg=colour250"
+  # session_tmux_status_left: " #[fg=colour39]workset #[fg=colour250]#S "
+  # session_tmux_status_right: " #[fg=colour244]%Y-%m-%d %H:%M "
+  # session_screen_hardstatus: "alwayslastline workset %n %t %=%H:%M %d-%b-%y"
   remotes:
     base: origin
     write: origin

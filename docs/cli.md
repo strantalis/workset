@@ -34,7 +34,7 @@ Commands that operate on a workspace require an explicit target: pass `-w <works
 
 ## Sessions
 
-`workset session start` starts a persistent session. By default it uses `tmux` if available, falls back to `screen`, and finally runs the command directly (`exec` backend). You can force a backend with `--backend`. Use `--interactive`/`--pty` only with `--backend exec`.
+`workset session start` starts a persistent session. By default it uses `tmux` if available, falls back to `screen`, and finally runs the command directly (`exec` backend). You can force a backend with `--backend`. Use `--interactive`/`--pty` only with `--backend exec`. To enable the built-in tmux/screen status line, set `defaults.session_theme` to `workset` in the global config (see [Config](config.md)).
 
 ```
 workset session start demo -- zsh

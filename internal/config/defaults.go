@@ -14,6 +14,11 @@ func DefaultConfig() GlobalConfig {
 			RepoStoreRoot:     defaultRepoStoreRoot(),
 			SessionBackend:    "auto",
 			SessionNameFormat: "workset:{workspace}",
+			SessionTheme:      "",
+			SessionTmuxStyle:  "",
+			SessionTmuxLeft:   "",
+			SessionTmuxRight:  "",
+			SessionScreenHard: "",
 			Remotes: RemoteNames{
 				Base:  "origin",
 				Write: "origin",

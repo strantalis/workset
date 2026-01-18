@@ -7,6 +7,11 @@ type Defaults struct {
 	RepoStoreRoot     string      `yaml:"repo_store_root" json:"repo_store_root" mapstructure:"repo_store_root"`
 	SessionBackend    string      `yaml:"session_backend" json:"session_backend" mapstructure:"session_backend"`
 	SessionNameFormat string      `yaml:"session_name_format" json:"session_name_format" mapstructure:"session_name_format"`
+	SessionTheme      string      `yaml:"session_theme" json:"session_theme" mapstructure:"session_theme"`
+	SessionTmuxStyle  string      `yaml:"session_tmux_status_style" json:"session_tmux_status_style" mapstructure:"session_tmux_status_style"`
+	SessionTmuxLeft   string      `yaml:"session_tmux_status_left" json:"session_tmux_status_left" mapstructure:"session_tmux_status_left"`
+	SessionTmuxRight  string      `yaml:"session_tmux_status_right" json:"session_tmux_status_right" mapstructure:"session_tmux_status_right"`
+	SessionScreenHard string      `yaml:"session_screen_hardstatus" json:"session_screen_hardstatus" mapstructure:"session_screen_hardstatus"`
 	Remotes           RemoteNames `yaml:"remotes" json:"remotes" mapstructure:"remotes"`
 	Parallelism       int         `yaml:"parallelism" json:"parallelism" mapstructure:"parallelism"`
 }
