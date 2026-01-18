@@ -4,6 +4,7 @@
       "release-type": "go",
       "include-v-in-tag": true,
       "versioning": "always-bump-minor",
+      "initial-version": "0.1.0",
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": false
     }
