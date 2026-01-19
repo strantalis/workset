@@ -28,6 +28,10 @@ func main() {
 				Name:  "config",
 				Usage: "Override global config path",
 			},
+			&cli.BoolFlag{
+				Name:  "verbose",
+				Usage: "Verbose debug output",
+			},
 		},
 		Commands: []*cli.Command{
 			newCommand(),

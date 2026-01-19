@@ -19,19 +19,19 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-func loadGlobal(path string) (config.GlobalConfig, string, error) {
-	if path == "" {
-		var err error
-		path, err = config.GlobalConfigPath()
-		if err != nil {
-			return config.GlobalConfig{}, "", err
-		}
+func loadGlobal(cmd *cli.Command) (config.GlobalConfig, string, error) {
+	path := ""
+	if cmd != nil {
+		path = cmd.String("config")
 	}
-	cfg, err := config.LoadGlobal(path)
+	cfg, info, err := config.LoadGlobalWithInfo(path)
 	if err != nil {
 		return config.GlobalConfig{}, "", err
 	}
-	return cfg, path, nil
+	if verboseEnabled(cmd) {
+		printConfigLoadInfo(cmd, path, info)
+	}
+	return cfg, info.Path, nil
 }
 
 func resolveWorkspace(cmd *cli.Command, cfg *config.GlobalConfig, cfgPath string) (string, config.WorkspaceConfig, error) {
@@ -234,6 +234,39 @@ func outputModeFromContext(cmd *cli.Command) outputMode {
 	return outputMode{JSON: jsonFlag, Plain: plainFlag}
 }
 
+func verboseEnabled(cmd *cli.Command) bool {
+	if cmd == nil {
+		return false
+	}
+	if cmd.Bool("verbose") {
+		return true
+	}
+	if root := cmd.Root(); root != nil && root != cmd {
+		if root.Bool("verbose") {
+			return true
+		}
+	}
+	value, ok := boolFromArgs(cmd.Args().Slice(), "verbose")
+	return ok && value
+}
+
+func printConfigLoadInfo(cmd *cli.Command, override string, info config.GlobalConfigLoadInfo) {
+	w := commandErrWriter(cmd)
+	if override != "" {
+		_, _ = fmt.Fprintf(w, "config: using override %s\n", info.Path)
+	} else if info.Path != "" {
+		_, _ = fmt.Fprintf(w, "config: using %s\n", info.Path)
+	}
+	if info.Migrated && info.LegacyPath != "" {
+		_, _ = fmt.Fprintf(w, "config: migrated %s -> %s\n", info.LegacyPath, info.Path)
+	} else if info.UsedLegacy && info.LegacyPath != "" {
+		_, _ = fmt.Fprintf(w, "config: using legacy %s\n", info.LegacyPath)
+	}
+	if !info.Exists {
+		_, _ = fmt.Fprintln(w, "config: no config file found; using defaults")
+	}
+}
+
 func usageError(ctx context.Context, cmd *cli.Command, message string) error {
 	mode := outputModeFromContext(cmd)
 	if mode.JSON {
@@ -358,6 +391,8 @@ func interspersedFlag(token string) (flagSpec, bool) {
 		return flagSpec{TakesValue: false}, true
 	case "--config":
 		return flagSpec{TakesValue: true}, true
+	case "--verbose":
+		return flagSpec{TakesValue: false}, true
 	case "--path", "--group", "--repo":
 		return flagSpec{TakesValue: true}, true
 	case "--backend", "--name":
@@ -371,6 +406,8 @@ func interspersedFlag(token string) (flagSpec, bool) {
 	case strings.HasPrefix(token, "--workspace="):
 		return flagSpec{TakesValue: false}, true
 	case strings.HasPrefix(token, "--config="):
+		return flagSpec{TakesValue: false}, true
+	case strings.HasPrefix(token, "--verbose="):
 		return flagSpec{TakesValue: false}, true
 	case strings.HasPrefix(token, "--json="):
 		return flagSpec{TakesValue: false}, true

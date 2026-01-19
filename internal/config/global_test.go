@@ -48,10 +48,11 @@ func TestSaveLoadGlobal(t *testing.T) {
 func TestLoadGlobalMigratesLegacyConfig(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	legacyPath, err := legacyGlobalConfigPath()
-	if err != nil {
-		t.Fatalf("legacyGlobalConfigPath: %v", err)
+	legacyPaths, err := legacyGlobalConfigPaths()
+	if err != nil || len(legacyPaths) == 0 {
+		t.Fatalf("legacyGlobalConfigPaths: %v", err)
 	}
+	legacyPath := legacyPaths[0]
 	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o755); err != nil {
 		t.Fatalf("mkdir legacy: %v", err)
 	}

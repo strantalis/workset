@@ -25,7 +25,7 @@ func groupCommand() *cli.Command {
 				Usage: "List groups",
 				Flags: outputFlags(),
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					cfg, _, err := loadGlobal(cmd.String("config"))
+					cfg, _, err := loadGlobal(cmd)
 					if err != nil {
 						return err
 					}
@@ -91,7 +91,7 @@ func groupCommand() *cli.Command {
 					if name == "" {
 						return usageError(ctx, cmd, "group name required")
 					}
-					cfg, _, err := loadGlobal(cmd.String("config"))
+					cfg, _, err := loadGlobal(cmd)
 					if err != nil {
 						return err
 					}
@@ -159,7 +159,7 @@ func groupCommand() *cli.Command {
 					if name == "" {
 						return usageError(ctx, cmd, "group name required")
 					}
-					cfg, cfgPath, err := loadGlobal(cmd.String("config"))
+					cfg, cfgPath, err := loadGlobal(cmd)
 					if err != nil {
 						return err
 					}
@@ -202,7 +202,7 @@ func groupCommand() *cli.Command {
 					if name == "" {
 						return usageError(ctx, cmd, "group name required")
 					}
-					cfg, cfgPath, err := loadGlobal(cmd.String("config"))
+					cfg, cfgPath, err := loadGlobal(cmd)
 					if err != nil {
 						return err
 					}
@@ -262,7 +262,7 @@ func groupCommand() *cli.Command {
 					if groupName == "" || repoName == "" {
 						return usageError(ctx, cmd, "group and repo name required")
 					}
-					cfg, cfgPath, err := loadGlobal(cmd.String("config"))
+					cfg, cfgPath, err := loadGlobal(cmd)
 					if err != nil {
 						return err
 					}
@@ -333,7 +333,7 @@ func groupCommand() *cli.Command {
 					if groupName == "" || repoName == "" {
 						return usageError(ctx, cmd, "group and repo name required")
 					}
-					cfg, cfgPath, err := loadGlobal(cmd.String("config"))
+					cfg, cfgPath, err := loadGlobal(cmd)
 					if err != nil {
 						return err
 					}
@@ -377,7 +377,7 @@ func groupCommand() *cli.Command {
 					if groupName == "" {
 						return usageError(ctx, cmd, "group name required")
 					}
-					cfg, cfgPath, err := loadGlobal(cmd.String("config"))
+					cfg, cfgPath, err := loadGlobal(cmd)
 					if err != nil {
 						return err
 					}

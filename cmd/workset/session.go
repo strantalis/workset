@@ -83,7 +83,7 @@ func sessionStartCommand() *cli.Command {
 			}
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			cfg, cfgPath, err := loadGlobal(cmd.String("config"))
+			cfg, cfgPath, err := loadGlobal(cmd)
 			if err != nil {
 				return err
 			}
@@ -232,7 +232,7 @@ func sessionAttachCommand() *cli.Command {
 				completeSessionNames(cmd)
 				return
 			}
-			cfg, _, err := loadGlobal(cmd.String("config"))
+			cfg, _, err := loadGlobal(cmd)
 			if err != nil {
 				return
 			}
@@ -249,7 +249,7 @@ func sessionAttachCommand() *cli.Command {
 			}
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			cfg, cfgPath, err := loadGlobal(cmd.String("config"))
+			cfg, cfgPath, err := loadGlobal(cmd)
 			if err != nil {
 				return err
 			}
@@ -374,7 +374,7 @@ func sessionStopCommand() *cli.Command {
 				completeSessionNames(cmd)
 				return
 			}
-			cfg, _, err := loadGlobal(cmd.String("config"))
+			cfg, _, err := loadGlobal(cmd)
 			if err != nil {
 				return
 			}
@@ -391,7 +391,7 @@ func sessionStopCommand() *cli.Command {
 			}
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			cfg, cfgPath, err := loadGlobal(cmd.String("config"))
+			cfg, cfgPath, err := loadGlobal(cmd)
 			if err != nil {
 				return err
 			}
@@ -499,7 +499,7 @@ func sessionListCommand() *cli.Command {
 			completeWorkspaceNames(cmd)
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			cfg, cfgPath, err := loadGlobal(cmd.String("config"))
+			cfg, cfgPath, err := loadGlobal(cmd)
 			if err != nil {
 				return err
 			}
@@ -631,7 +631,7 @@ func sessionShowCommand() *cli.Command {
 				completeSessionNames(cmd)
 				return
 			}
-			cfg, _, err := loadGlobal(cmd.String("config"))
+			cfg, _, err := loadGlobal(cmd)
 			if err != nil {
 				return
 			}
@@ -648,7 +648,7 @@ func sessionShowCommand() *cli.Command {
 			}
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			cfg, cfgPath, err := loadGlobal(cmd.String("config"))
+			cfg, cfgPath, err := loadGlobal(cmd)
 			if err != nil {
 				return err
 			}

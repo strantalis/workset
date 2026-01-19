@@ -21,7 +21,7 @@ func configCommand() *cli.Command {
 				Usage: "Print the global config",
 				Flags: outputFlags(),
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					cfg, _, err := loadGlobal(cmd.String("config"))
+					cfg, _, err := loadGlobal(cmd)
 					if err != nil {
 						return err
 					}
@@ -53,7 +53,7 @@ func configCommand() *cli.Command {
 					if key == "" || value == "" {
 						return cli.Exit("usage: workset config set <key> <value>", 1)
 					}
-					cfg, cfgPath, err := loadGlobal(cmd.String("config"))
+					cfg, cfgPath, err := loadGlobal(cmd)
 					if err != nil {
 						return err
 					}

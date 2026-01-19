@@ -11,7 +11,7 @@ import (
 )
 
 func completeWorkspaceNames(cmd *cli.Command) {
-	cfg, _, err := loadGlobal(cmd.String("config"))
+	cfg, _, err := loadGlobal(cmd)
 	if err != nil {
 		return
 	}
@@ -24,7 +24,7 @@ func completeWorkspaceNames(cmd *cli.Command) {
 }
 
 func completeGroupNames(cmd *cli.Command) {
-	cfg, _, err := loadGlobal(cmd.String("config"))
+	cfg, _, err := loadGlobal(cmd)
 	if err != nil {
 		return
 	}
@@ -37,7 +37,7 @@ func completeGroupNames(cmd *cli.Command) {
 }
 
 func completeRepoAliases(cmd *cli.Command) {
-	cfg, _, err := loadGlobal(cmd.String("config"))
+	cfg, _, err := loadGlobal(cmd)
 	if err != nil {
 		return
 	}
@@ -50,7 +50,7 @@ func completeRepoAliases(cmd *cli.Command) {
 }
 
 func completeWorkspaceRepoNames(cmd *cli.Command) {
-	cfg, _, err := loadGlobal(cmd.String("config"))
+	cfg, _, err := loadGlobal(cmd)
 	if err != nil {
 		return
 	}
@@ -75,7 +75,7 @@ func completeWorkspaceRepoNames(cmd *cli.Command) {
 }
 
 func completeSessionNames(cmd *cli.Command) {
-	cfg, _, err := loadGlobal(cmd.String("config"))
+	cfg, _, err := loadGlobal(cmd)
 	if err != nil {
 		return
 	}

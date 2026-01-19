@@ -30,7 +30,7 @@ func repoCommand() *cli.Command {
 				ArgsUsage: "-w <workspace>",
 				Flags:     appendOutputFlags([]cli.Flag{workspaceFlag(true)}),
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					cfg, cfgPath, err := loadGlobal(cmd.String("config"))
+					cfg, cfgPath, err := loadGlobal(cmd)
 					if err != nil {
 						return err
 					}
@@ -127,7 +127,7 @@ func repoCommand() *cli.Command {
 					}
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					cfg, cfgPath, err := loadGlobal(cmd.String("config"))
+					cfg, cfgPath, err := loadGlobal(cmd)
 					if err != nil {
 						return err
 					}
@@ -317,7 +317,7 @@ func repoCommand() *cli.Command {
 							if name == "" {
 								return usageError(ctx, cmd, "usage: workset repo remotes set -w <workspace> <name>")
 							}
-							cfg, cfgPath, err := loadGlobal(cmd.String("config"))
+							cfg, cfgPath, err := loadGlobal(cmd)
 							if err != nil {
 								return err
 							}
@@ -455,7 +455,7 @@ func repoCommand() *cli.Command {
 					if name == "" {
 						return usageError(ctx, cmd, "usage: workset repo rm -w <workspace> <name>")
 					}
-					cfg, cfgPath, err := loadGlobal(cmd.String("config"))
+					cfg, cfgPath, err := loadGlobal(cmd)
 					if err != nil {
 						return err
 					}
@@ -585,7 +585,7 @@ func repoAliasCommand() *cli.Command {
 				Usage: "List repo aliases",
 				Flags: outputFlags(),
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					cfg, _, err := loadGlobal(cmd.String("config"))
+					cfg, _, err := loadGlobal(cmd)
 					if err != nil {
 						return err
 					}
@@ -667,7 +667,7 @@ func repoAliasCommand() *cli.Command {
 					if source == "" {
 						return usageError(ctx, cmd, fmt.Sprintf("source required to create alias %q (path or URL). Example: workset repo alias add --default-branch staging %s git@github.com:org/repo.git", name, name))
 					}
-					cfg, cfgPath, err := loadGlobal(cmd.String("config"))
+					cfg, cfgPath, err := loadGlobal(cmd)
 					if err != nil {
 						return err
 					}
@@ -742,7 +742,7 @@ func repoAliasCommand() *cli.Command {
 					if name == "" {
 						return usageError(ctx, cmd, "alias name required (example: workset repo alias set ask-gill --default-branch staging)")
 					}
-					cfg, cfgPath, err := loadGlobal(cmd.String("config"))
+					cfg, cfgPath, err := loadGlobal(cmd)
 					if err != nil {
 						return err
 					}
@@ -814,7 +814,7 @@ func repoAliasCommand() *cli.Command {
 					if name == "" {
 						return usageError(ctx, cmd, "usage: workset repo alias rm <name>")
 					}
-					cfg, cfgPath, err := loadGlobal(cmd.String("config"))
+					cfg, cfgPath, err := loadGlobal(cmd)
 					if err != nil {
 						return err
 					}

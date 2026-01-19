@@ -51,7 +51,7 @@ func newCommand() *cli.Command {
 				return usageError(ctx, cmd, "workspace name required")
 			}
 
-			cfg, cfgPath, err := loadGlobal(cmd.String("config"))
+			cfg, cfgPath, err := loadGlobal(cmd)
 			if err != nil {
 				return err
 			}
@@ -140,7 +140,7 @@ func listCommand() *cli.Command {
 		Usage: "List registered workspaces",
 		Flags: flags,
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			cfg, _, err := loadGlobal(cmd.String("config"))
+			cfg, _, err := loadGlobal(cmd)
 			if err != nil {
 				return err
 			}
@@ -225,7 +225,7 @@ func removeWorkspaceCommand() *cli.Command {
 			if arg == "" {
 				arg = strings.TrimSpace(cmd.String("workspace"))
 			}
-			cfg, cfgPath, err := loadGlobal(cmd.String("config"))
+			cfg, cfgPath, err := loadGlobal(cmd)
 			if err != nil {
 				return err
 			}
@@ -444,7 +444,7 @@ func statusCommand() *cli.Command {
 			workspaceFlag(true),
 		}),
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			cfg, cfgPath, err := loadGlobal(cmd.String("config"))
+			cfg, cfgPath, err := loadGlobal(cmd)
 			if err != nil {
 				return err
 			}

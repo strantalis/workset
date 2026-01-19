@@ -30,7 +30,7 @@ workset rm -w <name|path> [--delete]
 workset completion <bash|zsh|fish|powershell>
 ```
 
-Commands that operate on a workspace require an explicit target: pass `-w <workspace>` (name or path) or set `defaults.workspace`. Most flags should appear before positional args; `-w/--workspace`, `--path`, `--group`, `--repo`, `--json`, `--plain`, and `--config` are also recognized after args.
+Commands that operate on a workspace require an explicit target: pass `-w <workspace>` (name or path) or set `defaults.workspace`. Most flags should appear before positional args; `-w/--workspace`, `--path`, `--group`, `--repo`, `--json`, `--plain`, `--config`, and `--verbose` are also recognized after args.
 
 ## Safety checks
 

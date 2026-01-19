@@ -32,7 +32,7 @@ func execCommand() *cli.Command {
 			}
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			cfg, cfgPath, err := loadGlobal(cmd.String("config"))
+			cfg, cfgPath, err := loadGlobal(cmd)
 			if err != nil {
 				return err
 			}

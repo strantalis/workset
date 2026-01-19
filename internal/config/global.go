@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	koanfyaml "github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/confmap"
@@ -20,12 +21,32 @@ func GlobalConfigPath() (string, error) {
 	return filepath.Join(home, ".workset", "config.yaml"), nil
 }
 
-func legacyGlobalConfigPath() (string, error) {
+func legacyGlobalConfigPaths() ([]string, error) {
+	paths := make([]string, 0, 3)
 	configDir, err := os.UserConfigDir()
-	if err != nil {
-		return "", err
+	if err == nil && configDir != "" {
+		paths = append(paths, filepath.Join(configDir, "workset", "config.yaml"))
 	}
-	return filepath.Join(configDir, "workset", "config.yaml"), nil
+	home, err := os.UserHomeDir()
+	if err == nil && home != "" {
+		if runtime.GOOS == "darwin" {
+			paths = append(paths, filepath.Join(home, "Library", "Application Support", "workset", "config.yaml"))
+		}
+		paths = append(paths, filepath.Join(home, ".config", "workset", "config.yaml"))
+	}
+	seen := map[string]struct{}{}
+	unique := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
+		unique = append(unique, path)
+	}
+	return unique, nil
 }
 
 func migrateLegacyGlobalConfig(path, legacyPath string) error {
@@ -56,32 +77,61 @@ func migrateLegacyGlobalConfig(path, legacyPath string) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
+type GlobalConfigLoadInfo struct {
+	Path       string
+	LegacyPath string
+	Migrated   bool
+	UsedLegacy bool
+	Exists     bool
+}
+
+func LoadGlobalWithInfo(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
+	cfg, info, err := loadGlobal(path)
+	return cfg, info, err
+}
+
 func LoadGlobal(path string) (GlobalConfig, error) {
+	cfg, _, err := loadGlobal(path)
+	return cfg, err
+}
+
+func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
+	info := GlobalConfigLoadInfo{}
 	if path == "" {
 		var err error
 		path, err = GlobalConfigPath()
 		if err != nil {
-			return GlobalConfig{}, err
+			return GlobalConfig{}, info, err
 		}
-		legacyPath, legacyErr := legacyGlobalConfigPath()
-		if legacyErr == nil && legacyPath != "" {
+		legacyPaths, legacyErr := legacyGlobalConfigPaths()
+		if legacyErr == nil && len(legacyPaths) > 0 {
 			newExists := true
 			if _, statErr := os.Stat(path); statErr != nil {
 				if errors.Is(statErr, os.ErrNotExist) {
 					newExists = false
 				} else {
-					return GlobalConfig{}, statErr
+					return GlobalConfig{}, info, statErr
 				}
 			}
 			if !newExists {
-				if err := migrateLegacyGlobalConfig(path, legacyPath); err != nil {
-					path = legacyPath
-				} else if _, statErr := os.Stat(path); errors.Is(statErr, os.ErrNotExist) {
-					path = legacyPath
+				for _, legacyPath := range legacyPaths {
+					if err := migrateLegacyGlobalConfig(path, legacyPath); err == nil {
+						if _, statErr := os.Stat(path); statErr == nil {
+							info.Migrated = true
+							info.LegacyPath = legacyPath
+							break
+						}
+					} else {
+						path = legacyPath
+						info.UsedLegacy = true
+						info.LegacyPath = legacyPath
+						break
+					}
 				}
 			}
 		}
 	}
+	info.Path = path
 
 	defaults := DefaultConfig()
 
@@ -99,20 +149,21 @@ func LoadGlobal(path string) (GlobalConfig, error) {
 		"defaults.session_tmux_status_right": defaults.Defaults.SessionTmuxRight,
 		"defaults.session_screen_hardstatus": defaults.Defaults.SessionScreenHard,
 	}, "."), nil); err != nil {
-		return GlobalConfig{}, err
+		return GlobalConfig{}, info, err
 	}
 
 	if _, err := os.Stat(path); err == nil {
+		info.Exists = true
 		if err := k.Load(file.Provider(path), koanfyaml.Parser()); err != nil {
-			return GlobalConfig{}, err
+			return GlobalConfig{}, info, err
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return GlobalConfig{}, err
+		return GlobalConfig{}, info, err
 	}
 
 	var cfg GlobalConfig
 	if err := k.UnmarshalWithConf("", &cfg, koanf.UnmarshalConf{Tag: "yaml"}); err != nil {
-		return GlobalConfig{}, err
+		return GlobalConfig{}, info, err
 	}
 	cfg.EnsureMaps()
 	if cfg.Defaults.BaseBranch == "" {
@@ -148,7 +199,7 @@ func LoadGlobal(path string) (GlobalConfig, error) {
 	if cfg.Defaults.SessionScreenHard == "" {
 		cfg.Defaults.SessionScreenHard = defaults.Defaults.SessionScreenHard
 	}
-	return cfg, nil
+	return cfg, info, nil
 }
 
 func SaveGlobal(path string, cfg GlobalConfig) error {
