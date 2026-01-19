@@ -44,8 +44,11 @@ func TestEngineRunsHookAndLogs(t *testing.T) {
 	}
 
 	report, err := engine.Run(context.Background(), RunInput{
-		Event:          EventWorktreeCreated,
-		Hooks:          []Hook{{ID: "bootstrap", On: []Event{EventWorktreeCreated}, Run: []string{"echo", "{repo.name}"}}},
+		Event: EventWorktreeCreated,
+		Hooks: []Hook{
+			{ID: "bootstrap", On: []Event{EventWorktreeCreated}, Run: []string{"echo", "{repo.name}"}},
+			{ID: "other", On: []Event{"worktree.switched"}, Run: []string{"echo", "skip"}},
+		},
 		DefaultOnError: OnErrorFail,
 		LogRoot:        logRoot,
 		Context:        ctxPayload,
@@ -53,14 +56,17 @@ func TestEngineRunsHookAndLogs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run hooks: %v", err)
 	}
-	if len(report.Results) != 1 {
-		t.Fatalf("expected 1 result")
+	if len(report.Results) != 2 {
+		t.Fatalf("expected 2 results")
 	}
 	if runner.last.Command[1] != "repo-a" {
 		t.Fatalf("expected interpolated arg, got %v", runner.last.Command)
 	}
 	if report.Results[0].LogPath == "" {
 		t.Fatalf("expected log path")
+	}
+	if report.Results[1].Status != RunStatusSkipped {
+		t.Fatalf("expected skipped status")
 	}
 	data, err := os.ReadFile(report.Results[0].LogPath)
 	if err != nil {

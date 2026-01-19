@@ -130,8 +130,9 @@ type HookRunJSON struct {
 type HookRunStatus string
 
 const (
-	HookRunStatusOK     HookRunStatus = "ok"
-	HookRunStatusFailed HookRunStatus = "failed"
+	HookRunStatusOK      HookRunStatus = "ok"
+	HookRunStatusFailed  HookRunStatus = "failed"
+	HookRunStatusSkipped HookRunStatus = "skipped"
 )
 
 // RepoRemotesUpdateResultJSON is the JSON payload for remote updates.

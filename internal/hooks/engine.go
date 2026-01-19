@@ -44,6 +44,12 @@ func (e Engine) Run(ctx context.Context, input RunInput) (RunReport, error) {
 
 	for _, hook := range input.Hooks {
 		if !hookMatchesEvent(hook, input.Event) {
+			if strings.TrimSpace(hook.ID) != "" {
+				report.Results = append(report.Results, RunResult{
+					HookID: hook.ID,
+					Status: RunStatusSkipped,
+				})
+			}
 			continue
 		}
 		if err := validateHook(hook); err != nil {

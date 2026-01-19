@@ -34,8 +34,9 @@ type RunResult struct {
 type RunStatus string
 
 const (
-	RunStatusOK     RunStatus = "ok"
-	RunStatusFailed RunStatus = "failed"
+	RunStatusOK      RunStatus = "ok"
+	RunStatusFailed  RunStatus = "failed"
+	RunStatusSkipped RunStatus = "skipped"
 )
 
 type RunReport struct {
