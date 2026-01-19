@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 
 	"github.com/go-git/go-billy/v6/osfs"
@@ -103,6 +104,25 @@ func (c GoGitClient) RemoteNames(repoPath string) ([]string, error) {
 	}
 	sort.Strings(names)
 	return names, nil
+}
+
+func (c GoGitClient) ReferenceExists(repoPath, ref string) (bool, error) {
+	if repoPath == "" || ref == "" {
+		return false, errors.New("repo path and ref required")
+	}
+	repo, err := ggit.PlainOpenWithOptions(repoPath, &ggit.PlainOpenOptions{
+		EnableDotGitCommonDir: true,
+	})
+	if err != nil {
+		return false, err
+	}
+	if _, err := repo.Reference(plumbing.ReferenceName(ref), true); err != nil {
+		if errors.Is(err, plumbing.ErrReferenceNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func (c GoGitClient) Fetch(ctx context.Context, repoPath, remoteName string) error {
@@ -313,7 +333,15 @@ func (c GoGitClient) WorktreeRemove(repoPath, worktreeName string) error {
 	if err != nil {
 		return err
 	}
-	return manager.Remove(worktreeName)
+	if err := manager.Remove(worktreeName); err != nil {
+		if errors.Is(err, xworktree.ErrWorktreeNotFound) {
+			if removed, removeErr := removeWorktreeMetadata(repoPath, worktreeName); removeErr == nil && removed {
+				return nil
+			}
+		}
+		return err
+	}
+	return nil
 }
 
 func (c GoGitClient) WorktreeList(repoPath string) ([]string, error) {
@@ -326,6 +354,27 @@ func (c GoGitClient) WorktreeList(repoPath string) ([]string, error) {
 		return nil, err
 	}
 	return manager.List()
+}
+
+func removeWorktreeMetadata(repoPath, worktreeName string) (bool, error) {
+	candidates := []string{
+		filepath.Join(repoPath, "worktrees", worktreeName),
+		filepath.Join(repoPath, ".git", "worktrees", worktreeName),
+	}
+	for _, candidate := range candidates {
+		if info, err := os.Stat(candidate); err == nil {
+			if !info.IsDir() {
+				return false, fmt.Errorf("invalid worktree metadata at %s", candidate)
+			}
+			if err := os.RemoveAll(candidate); err != nil {
+				return false, err
+			}
+			return true, nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return false, err
+		}
+	}
+	return false, nil
 }
 
 func resolveStartHash(repo *ggit.Repository, remoteName, branchName string) (plumbing.Hash, error) {

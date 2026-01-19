@@ -531,6 +531,11 @@ func repoCommand() *cli.Command {
 						Git:             git.NewGoGitClient(),
 						DeleteWorktrees: deleteWorktrees,
 						DeleteLocal:     deleteLocal,
+						Logf: func(format string, args ...any) {
+							if verboseEnabled(cmd) {
+								_, _ = fmt.Fprintf(commandErrWriter(cmd), format+"\n", args...)
+							}
+						},
 					}); err != nil {
 						return err
 					}

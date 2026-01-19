@@ -298,6 +298,9 @@ func removeWorkspaceCommand() *cli.Command {
 				if err := stopWorkspaceSessions(ctx, cmd, root, cmd.Bool("force")); err != nil {
 					return err
 				}
+				if err := removeWorkspaceRepoWorktrees(ctx, cmd, root, cfg.Defaults, cmd.Bool("force")); err != nil {
+					return err
+				}
 				if err := os.RemoveAll(root); err != nil {
 					return err
 				}
@@ -351,6 +354,62 @@ func removeWorkspaceCommand() *cli.Command {
 			return nil
 		},
 	}
+}
+
+func removeWorkspaceRepoWorktrees(ctx context.Context, cmd *cli.Command, root string, defaults config.Defaults, force bool) error {
+	logf := func(format string, args ...any) {
+		if verboseEnabled(cmd) {
+			_, _ = fmt.Fprintf(commandErrWriter(cmd), format+"\n", args...)
+		}
+	}
+	ws, err := workspace.Load(root, defaults)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if force {
+			_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: failed to load workspace for worktree cleanup: %v\n", err)
+			return nil
+		}
+		return err
+	}
+	if len(ws.Config.Repos) == 0 {
+		logf("worktree cleanup: no repos in %s; scanning for linked worktrees", root)
+	}
+	gitClient := git.NewGoGitClient()
+	for _, repo := range ws.Config.Repos {
+		if repo.Name == "" {
+			continue
+		}
+		if _, err := ops.RemoveRepo(ctx, ops.RemoveRepoInput{
+			WorkspaceRoot:   root,
+			Name:            repo.Name,
+			Defaults:        defaults,
+			Git:             gitClient,
+			DeleteWorktrees: true,
+			DeleteLocal:     false,
+			Logf:            logf,
+		}); err != nil {
+			if force {
+				_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: failed to remove worktrees for %s: %v\n", repo.Name, err)
+				continue
+			}
+			return err
+		}
+	}
+	if err := ops.CleanupWorkspaceWorktrees(ops.CleanupWorkspaceWorktreesInput{
+		WorkspaceRoot: root,
+		Git:           gitClient,
+		Force:         force,
+		Logf:          logf,
+	}); err != nil {
+		if force {
+			_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: failed to clean up remaining worktrees: %v\n", err)
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 func stopWorkspaceSessions(ctx context.Context, cmd *cli.Command, root string, force bool) error {
