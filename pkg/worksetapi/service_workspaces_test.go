@@ -140,6 +140,9 @@ func TestCreateWorkspacePendingHooks(t *testing.T) {
 	if result.PendingHooks[0].Repo != "repo-a" {
 		t.Fatalf("unexpected pending repo: %s", result.PendingHooks[0].Repo)
 	}
+	if result.PendingHooks[0].Status != HookRunStatusSkipped || result.PendingHooks[0].Reason != "untrusted" {
+		t.Fatalf("expected skipped/untrusted status")
+	}
 }
 
 func TestDeleteWorkspaceRequiresConfirmation(t *testing.T) {

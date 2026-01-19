@@ -154,14 +154,22 @@ func (s *Service) runWorktreeCreatedHooks(ctx context.Context, cfg config.Global
 
 	if !cfg.Hooks.Enabled {
 		warn := fmt.Sprintf("repo hooks found for %s but hooks are disabled (set hooks.enabled to true)", repo.Name)
-		return HookPending{}, []string{warn}, nil
+		return HookPending{
+			Event:  string(event),
+			Repo:   repo.Name,
+			Hooks:  candidateIDs,
+			Status: HookRunStatusSkipped,
+			Reason: "disabled",
+		}, []string{warn}, nil
 	}
 
 	if !isTrustedRepo(&cfg, repo.Name) {
 		pending := HookPending{
-			Event: string(event),
-			Repo:  repo.Name,
-			Hooks: candidateIDs,
+			Event:  string(event),
+			Repo:   repo.Name,
+			Hooks:  candidateIDs,
+			Status: HookRunStatusSkipped,
+			Reason: "untrusted",
 		}
 		warn := fmt.Sprintf("repo %s defines hooks; run `workset hooks run -w %s %s` to execute or trust", repo.Name, wsName, repo.Name)
 		return pending, []string{warn}, nil

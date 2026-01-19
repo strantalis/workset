@@ -66,6 +66,9 @@ func newCommand() *cli.Command {
 			handledHooks := map[string]bool{}
 			if !mode.JSON && len(result.PendingHooks) > 0 && term.IsTerminal(int(os.Stdin.Fd())) {
 				for _, pending := range result.PendingHooks {
+					if pending.Reason != "" && pending.Reason != "untrusted" {
+						continue
+					}
 					hookList := strings.Join(pending.Hooks, ", ")
 					if hookList == "" {
 						continue

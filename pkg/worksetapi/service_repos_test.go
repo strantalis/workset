@@ -250,6 +250,9 @@ func TestAddRepoPendingHooksWhenUntrusted(t *testing.T) {
 	if result.PendingHooks[0].Repo != "repo-a" {
 		t.Fatalf("unexpected pending repo: %s", result.PendingHooks[0].Repo)
 	}
+	if result.PendingHooks[0].Status != HookRunStatusSkipped || result.PendingHooks[0].Reason != "untrusted" {
+		t.Fatalf("expected skipped/untrusted status")
+	}
 }
 
 func TestAddRepoRunsTrustedHooks(t *testing.T) {
@@ -293,6 +296,40 @@ func TestAddRepoRunsTrustedHooks(t *testing.T) {
 	}
 	if runner.calls == 0 {
 		t.Fatalf("expected hook runner to run")
+	}
+}
+
+func TestAddRepoPendingHooksWhenDisabled(t *testing.T) {
+	env := newTestEnv(t)
+	root := env.createWorkspace(context.Background(), "demo")
+	local := env.createLocalRepo("repo-a")
+	env.git.worktreeAddHook = func(path string) error {
+		hooksDir := filepath.Join(path, ".workset")
+		if err := os.MkdirAll(hooksDir, 0o755); err != nil {
+			return err
+		}
+		data := []byte("hooks:\n  - id: bootstrap\n    on: [worktree.created]\n    run: [\"npm\", \"ci\"]\n")
+		return os.WriteFile(filepath.Join(hooksDir, "hooks.yaml"), data, 0o644)
+	}
+
+	cfg := env.loadConfig()
+	cfg.Hooks.Enabled = false
+	env.saveConfig(cfg)
+
+	result, err := env.svc.AddRepo(context.Background(), RepoAddInput{
+		Workspace:  WorkspaceSelector{Value: root},
+		Name:       "repo-a",
+		NameSet:    true,
+		SourcePath: local,
+	})
+	if err != nil {
+		t.Fatalf("add repo: %v", err)
+	}
+	if len(result.PendingHooks) != 1 {
+		t.Fatalf("expected pending hooks")
+	}
+	if result.PendingHooks[0].Reason != "disabled" || result.PendingHooks[0].Status != HookRunStatusSkipped {
+		t.Fatalf("expected skipped/disabled status")
 	}
 }
 

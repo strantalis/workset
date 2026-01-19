@@ -100,16 +100,20 @@ type RepoAddResult struct {
 
 // HookPendingJSON describes hooks waiting for approval/trust.
 type HookPendingJSON struct {
-	Event string   `json:"event"`
-	Repo  string   `json:"repo"`
-	Hooks []string `json:"hooks"`
+	Event  string        `json:"event"`
+	Repo   string        `json:"repo"`
+	Hooks  []string      `json:"hooks"`
+	Status HookRunStatus `json:"status,omitempty"`
+	Reason string        `json:"reason,omitempty"`
 }
 
 // HookPending provides structured hook approval details.
 type HookPending struct {
-	Event string
-	Repo  string
-	Hooks []string
+	Event  string
+	Repo   string
+	Hooks  []string
+	Status HookRunStatus
+	Reason string
 }
 
 // HooksRunResult describes hook execution results.
