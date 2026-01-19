@@ -199,7 +199,7 @@ func listCommand() *cli.Command {
 func removeWorkspaceCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "rm",
-		Usage: "Remove a workspace (use --delete to remove files)",
+		Usage: "Remove a workspace (use --delete to remove files and stop sessions)",
 		Flags: appendOutputFlags([]cli.Flag{
 			workspaceFlag(false),
 			&cli.BoolFlag{
@@ -295,6 +295,9 @@ func removeWorkspaceCommand() *cli.Command {
 					}
 				}
 
+				if err := stopWorkspaceSessions(ctx, cmd, root, cmd.Bool("force")); err != nil {
+					return err
+				}
 				if err := os.RemoveAll(root); err != nil {
 					return err
 				}
@@ -348,6 +351,79 @@ func removeWorkspaceCommand() *cli.Command {
 			return nil
 		},
 	}
+}
+
+func stopWorkspaceSessions(ctx context.Context, cmd *cli.Command, root string, force bool) error {
+	state, err := workspace.LoadState(root)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if force {
+			_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: failed to read workspace session state: %v\n", err)
+			return nil
+		}
+		return err
+	}
+	if len(state.Sessions) == 0 {
+		return nil
+	}
+	runner := execRunner{}
+	for name, entry := range state.Sessions {
+		sessionName := name
+		if strings.TrimSpace(entry.Name) != "" {
+			sessionName = entry.Name
+		}
+		backendValue := strings.TrimSpace(entry.Backend)
+		if backendValue == "" {
+			if force {
+				_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: session %s missing backend; skipping\n", sessionName)
+				continue
+			}
+			return fmt.Errorf("session %s missing backend; use --force to skip", sessionName)
+		}
+		backend, err := parseSessionBackend(backendValue)
+		if err != nil {
+			if force {
+				_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: session %s has invalid backend %q: %v\n", sessionName, backendValue, err)
+				continue
+			}
+			return err
+		}
+		if backend == sessionBackendAuto || backend == sessionBackendExec {
+			if force {
+				_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: session %s uses unsupported backend %q; skipping\n", sessionName, backend)
+				continue
+			}
+			return fmt.Errorf("session %s uses unsupported backend %q; use --force to skip", sessionName, backend)
+		}
+		if err := runner.LookPath(string(backend)); err != nil {
+			if force {
+				_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: %s not available to stop session %s: %v\n", backend, sessionName, err)
+				continue
+			}
+			return fmt.Errorf("%s not available to stop session %s", backend, sessionName)
+		}
+		exists, err := sessionExists(ctx, runner, backend, sessionName)
+		if err != nil {
+			if force {
+				_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: failed to check session %s: %v\n", sessionName, err)
+				continue
+			}
+			return err
+		}
+		if !exists {
+			continue
+		}
+		if err := stopSession(ctx, runner, backend, sessionName); err != nil {
+			if force {
+				_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: failed to stop session %s: %v\n", sessionName, err)
+				continue
+			}
+			return err
+		}
+	}
+	return nil
 }
 
 type statusJSON struct {

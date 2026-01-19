@@ -35,7 +35,7 @@ Quick lookup for CLI commands and intent.
 | `workset group add` | Add a repo alias to a template. |
 | `workset group remove` | Remove a repo alias from a template. |
 | `workset group apply` | Apply a template to a workspace. |
-| `workset rm` | Remove a workspace (optionally delete on disk). |
+| `workset rm` | Remove a workspace (with `--delete`, stop sessions and delete on disk). |
 
 !!! note
     Commands that operate on a workspace require `-w <workspace>` unless `defaults.workspace` is set.
