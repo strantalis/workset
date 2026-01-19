@@ -13,11 +13,47 @@ import (
 )
 
 func GlobalConfigPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".workset", "config.yaml"), nil
+}
+
+func legacyGlobalConfigPath() (string, error) {
 	configDir, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(configDir, "workset", "config.yaml"), nil
+}
+
+func migrateLegacyGlobalConfig(path, legacyPath string) error {
+	if legacyPath == "" || legacyPath == path {
+		return nil
+	}
+	if _, err := os.Stat(legacyPath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	if err := os.Rename(legacyPath, path); err == nil {
+		return nil
+	}
+	data, err := os.ReadFile(legacyPath)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
 }
 
 func LoadGlobal(path string) (GlobalConfig, error) {
@@ -26,6 +62,24 @@ func LoadGlobal(path string) (GlobalConfig, error) {
 		path, err = GlobalConfigPath()
 		if err != nil {
 			return GlobalConfig{}, err
+		}
+		legacyPath, legacyErr := legacyGlobalConfigPath()
+		if legacyErr == nil && legacyPath != "" {
+			newExists := true
+			if _, statErr := os.Stat(path); statErr != nil {
+				if errors.Is(statErr, os.ErrNotExist) {
+					newExists = false
+				} else {
+					return GlobalConfig{}, statErr
+				}
+			}
+			if !newExists {
+				if err := migrateLegacyGlobalConfig(path, legacyPath); err != nil {
+					path = legacyPath
+				} else if _, statErr := os.Stat(path); errors.Is(statErr, os.ErrNotExist) {
+					path = legacyPath
+				}
+			}
 		}
 	}
 

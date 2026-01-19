@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -41,5 +42,33 @@ func TestSaveLoadGlobal(t *testing.T) {
 
 	if loaded.Workspaces["alpha"].Path != "/tmp/alpha" {
 		t.Fatalf("expected workspace path, got %+v", loaded.Workspaces["alpha"])
+	}
+}
+
+func TestLoadGlobalMigratesLegacyConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	legacyPath, err := legacyGlobalConfigPath()
+	if err != nil {
+		t.Fatalf("legacyGlobalConfigPath: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o755); err != nil {
+		t.Fatalf("mkdir legacy: %v", err)
+	}
+	if err := os.WriteFile(legacyPath, []byte("defaults:\n  base_branch: legacy\n"), 0o644); err != nil {
+		t.Fatalf("write legacy: %v", err)
+	}
+
+	cfg, err := LoadGlobal("")
+	if err != nil {
+		t.Fatalf("LoadGlobal: %v", err)
+	}
+	if cfg.Defaults.BaseBranch != "legacy" {
+		t.Fatalf("expected migrated base_branch legacy, got %q", cfg.Defaults.BaseBranch)
+	}
+
+	newPath := filepath.Join(home, ".workset", "config.yaml")
+	if _, err := os.Stat(newPath); err != nil {
+		t.Fatalf("expected migrated config at %s: %v", newPath, err)
 	}
 }

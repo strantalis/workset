@@ -4,15 +4,16 @@ description: Global and workspace configuration reference for Workset.
 
 # Config
 
-Global config lives at `~/.config/workset/config.yaml` and stores defaults, repo aliases, templates, and workspace registry entries.
+Global config lives at `~/.workset/config.yaml` and stores defaults, repo aliases, templates, and workspace registry entries.
 
 Workspace config lives at `<workspace>/workset.yaml` and is the source of truth for a workspace.
+If you have an existing config at `~/.config/workset/config.yaml`, Workset migrates it to `~/.workset/config.yaml` on next load.
 
 `defaults.workspace` can point to a registered workspace name or a path. When set, workspace commands use it if `-w` is omitted.
 `defaults.repo_store_root` is where URL-based repos are cloned when added to a workspace.
 Remote names for local repos are derived from the repo itself; URL-based repos default to `origin`. Use `workset repo remotes set` to override per workspace repo.
 
-## Global config (`~/.config/workset/config.yaml`)
+## Global config (`~/.workset/config.yaml`)
 
 ### Top-level keys
 

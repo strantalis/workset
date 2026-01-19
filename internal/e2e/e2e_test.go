@@ -705,7 +705,7 @@ func newRunner(t *testing.T) *runner {
 	if err := os.MkdirAll(home, 0o755); err != nil {
 		t.Fatalf("mkdir home: %v", err)
 	}
-	config := filepath.Join(home, ".config", "workset", "config.yaml")
+	config := filepath.Join(home, ".workset", "config.yaml")
 	return &runner{
 		t:      t,
 		root:   root,
@@ -717,7 +717,6 @@ func newRunner(t *testing.T) *runner {
 func (r *runner) env() []string {
 	return append(os.Environ(),
 		"HOME="+r.home,
-		"XDG_CONFIG_HOME="+filepath.Join(r.home, ".config"),
 	)
 }
 
