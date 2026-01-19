@@ -10,12 +10,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/strantalis/workset/internal/config"
-	"github.com/strantalis/workset/internal/ops"
 	"github.com/strantalis/workset/internal/output"
-	"github.com/strantalis/workset/internal/workspace"
 	"github.com/urfave/cli/v3"
 )
 
@@ -32,117 +29,6 @@ func loadGlobal(cmd *cli.Command) (config.GlobalConfig, string, error) {
 		printConfigLoadInfo(cmd, path, info)
 	}
 	return cfg, info.Path, nil
-}
-
-func resolveWorkspace(cmd *cli.Command, cfg *config.GlobalConfig, cfgPath string) (string, config.WorkspaceConfig, error) {
-	arg := strings.TrimSpace(cmd.String("workspace"))
-	if arg == "" {
-		arg = strings.TrimSpace(workspaceFromArgs(cmd))
-	}
-	if arg == "" {
-		arg = strings.TrimSpace(cfg.Defaults.Workspace)
-	}
-	if arg == "" {
-		return "", config.WorkspaceConfig{}, fmt.Errorf("workspace required: pass -w <name|path> or set defaults.workspace (example: workset repo ls -w <name>)")
-	}
-
-	var root string
-	if ref, ok := cfg.Workspaces[arg]; ok {
-		root = ref.Path
-	} else if cfg.Defaults.WorkspaceRoot != "" {
-		candidate := filepath.Join(cfg.Defaults.WorkspaceRoot, arg)
-		if _, err := os.Stat(candidate); err == nil {
-			root = candidate
-		}
-	} else {
-		root = ""
-	}
-	if root == "" {
-		if filepath.IsAbs(arg) {
-			root = arg
-		} else {
-			return "", config.WorkspaceConfig{}, fmt.Errorf("workspace not found: %q (use a registered name, an absolute path, or a path under defaults.workspace_root)", arg)
-		}
-	}
-
-	wsConfig, err := config.LoadWorkspace(workspace.WorksetFile(root))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", config.WorkspaceConfig{}, fmt.Errorf("workset.yaml not found at %s\nhint: check -w or register the workspace with workset ls", workspace.WorksetFile(root))
-		}
-		return "", config.WorkspaceConfig{}, err
-	}
-
-	if cfg.Workspaces == nil {
-		cfg.Workspaces = map[string]config.WorkspaceRef{}
-	}
-	ref, exists := cfg.Workspaces[wsConfig.Name]
-	if exists && ref.Path != "" && ref.Path != root {
-		return "", config.WorkspaceConfig{}, cli.Exit("workspace name already registered to a different path", 1)
-	}
-	if !exists {
-		registerWorkspace(cfg, wsConfig.Name, root, time.Now())
-		if err := config.SaveGlobal(cfgPath, *cfg); err != nil {
-			return "", config.WorkspaceConfig{}, err
-		}
-	}
-
-	return root, wsConfig, nil
-}
-
-func registerWorkspace(cfg *config.GlobalConfig, name, path string, now time.Time) {
-	if cfg.Workspaces == nil {
-		cfg.Workspaces = map[string]config.WorkspaceRef{}
-	}
-	ref := cfg.Workspaces[name]
-	if ref.Path == "" {
-		ref.Path = path
-		if ref.CreatedAt == "" {
-			ref.CreatedAt = now.Format(time.RFC3339)
-		}
-	}
-	ref.LastUsed = now.Format(time.RFC3339)
-	cfg.Workspaces[name] = ref
-}
-
-func looksLikeURL(value string) bool {
-	if strings.Contains(value, "://") {
-		return true
-	}
-	if strings.Contains(value, "@") && strings.Contains(value, ":") {
-		return true
-	}
-	return false
-}
-
-func looksLikeLocalPath(value string) bool {
-	if value == "" {
-		return false
-	}
-	if strings.HasPrefix(value, "~") || strings.HasPrefix(value, ".") {
-		return true
-	}
-	return filepath.IsAbs(value)
-}
-
-func warnOutsideWorkspaceRoot(root, workspaceRoot string) {
-	if workspaceRoot == "" {
-		return
-	}
-	absRoot, err := filepath.Abs(root)
-	if err != nil {
-		return
-	}
-	absWorkspace, err := filepath.Abs(workspaceRoot)
-	if err != nil {
-		return
-	}
-	absRoot = filepath.Clean(absRoot)
-	absWorkspace = filepath.Clean(absWorkspace)
-	if absRoot == absWorkspace || strings.HasPrefix(absRoot, absWorkspace+string(os.PathSeparator)) {
-		return
-	}
-	_, _ = fmt.Fprintf(os.Stderr, "warning: workspace created outside defaults.workspace_root (%s)\n", absWorkspace)
 }
 
 func printWorkspaceCreated(w io.Writer, info output.WorkspaceCreated, asJSON bool, plain bool) error {
@@ -472,29 +358,6 @@ func workspaceFromArgs(cmd *cli.Command) string {
 	return ""
 }
 
-func resolveLocalPathInput(path string) (string, error) {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return "", fmt.Errorf("local path required")
-	}
-	if strings.HasPrefix(path, "~") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		path = filepath.Join(home, strings.TrimPrefix(path, "~"))
-	}
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return "", err
-	}
-	abs, err = filepath.EvalSymlinks(abs)
-	if err != nil {
-		return "", err
-	}
-	return abs, nil
-}
-
 func confirmPrompt(r io.Reader, w io.Writer, prompt string) (bool, error) {
 	if _, err := fmt.Fprint(w, prompt); err != nil {
 		return false, err
@@ -510,15 +373,6 @@ func confirmPrompt(r io.Reader, w io.Writer, prompt string) (bool, error) {
 	}
 	line = strings.ToLower(line)
 	return line == "y" || line == "yes", nil
-}
-
-func findRepo(cfg config.WorkspaceConfig, name string) (config.RepoConfig, bool) {
-	for _, repo := range cfg.Repos {
-		if repo.Name == name {
-			return repo, true
-		}
-	}
-	return config.RepoConfig{}, false
 }
 
 func resolveWorkspaceTarget(arg string, cfg *config.GlobalConfig) (string, string, error) {
@@ -553,96 +407,4 @@ func workspaceNameByPath(cfg *config.GlobalConfig, path string) string {
 		}
 	}
 	return ""
-}
-
-func removeWorkspaceByPath(cfg *config.GlobalConfig, path string) {
-	clean := filepath.Clean(path)
-	for name, ref := range cfg.Workspaces {
-		if filepath.Clean(ref.Path) == clean {
-			delete(cfg.Workspaces, name)
-		}
-	}
-}
-
-func summarizeRepoSafety(report ops.RepoSafetyReport) (dirty []string, unmerged []string, unpushed []string, warnings []string) {
-	for _, branch := range report.Branches {
-		if branch.StatusErr != "" {
-			warnings = append(warnings, fmt.Sprintf("%s: status failed (%s)", branch.Branch, branch.StatusErr))
-		}
-		if branch.FetchBaseErr != "" {
-			warnings = append(warnings, fmt.Sprintf("%s: base fetch failed (%s)", branch.Branch, branch.FetchBaseErr))
-		}
-		if branch.FetchWriteErr != "" {
-			warnings = append(warnings, fmt.Sprintf("%s: write fetch failed (%s)", branch.Branch, branch.FetchWriteErr))
-		}
-		if branch.UnmergedErr != "" {
-			warnings = append(warnings, fmt.Sprintf("%s: unmerged check failed (%s)", branch.Branch, branch.UnmergedErr))
-		}
-		if branch.UnpushedErr != "" {
-			warnings = append(warnings, fmt.Sprintf("%s: unpushed check failed (%s)", branch.Branch, branch.UnpushedErr))
-		}
-		if branch.Dirty {
-			dirty = append(dirty, branch.Branch)
-		}
-		if branch.Unmerged {
-			unmerged = append(unmerged, branch.Branch)
-		}
-		if branch.Unpushed {
-			unpushed = append(unpushed, branch.Branch)
-		}
-	}
-	return dirty, unmerged, unpushed, warnings
-}
-
-func summarizeWorkspaceSafety(report ops.WorkspaceSafetyReport) (dirty []string, unmerged []string, unpushed []string, warnings []string) {
-	for _, repo := range report.Repos {
-		repoDirty, repoUnmerged, repoUnpushed, repoWarnings := summarizeRepoSafety(repo)
-		for _, branch := range repoDirty {
-			dirty = append(dirty, fmt.Sprintf("%s:%s", repo.RepoName, branch))
-		}
-		for _, branch := range repoUnmerged {
-			unmerged = append(unmerged, fmt.Sprintf("%s:%s", repo.RepoName, branch))
-		}
-		for _, branch := range repoUnpushed {
-			unpushed = append(unpushed, fmt.Sprintf("%s:%s", repo.RepoName, branch))
-		}
-		for _, warning := range repoWarnings {
-			warnings = append(warnings, fmt.Sprintf("%s: %s", repo.RepoName, warning))
-		}
-	}
-	return dirty, unmerged, unpushed, warnings
-}
-
-func unmergedRepoDetails(report ops.RepoSafetyReport) []string {
-	baseRef := ""
-	if report.BaseRemote != "" && report.BaseBranch != "" {
-		baseRef = fmt.Sprintf("%s/%s", report.BaseRemote, report.BaseBranch)
-	}
-	details := make([]string, 0)
-	for _, branch := range report.Branches {
-		if !branch.Unmerged {
-			continue
-		}
-		reason := branch.UnmergedReason
-		if reason == "" && baseRef != "" {
-			reason = fmt.Sprintf("branch content not found in %s history", baseRef)
-		} else if reason == "" {
-			reason = "branch content not found in base history"
-		}
-		if baseRef != "" && !strings.Contains(reason, baseRef) {
-			reason = fmt.Sprintf("%s (base %s)", reason, baseRef)
-		}
-		details = append(details, fmt.Sprintf("%s: %s", branch.Branch, reason))
-	}
-	return details
-}
-
-func unmergedWorkspaceDetails(report ops.WorkspaceSafetyReport) []string {
-	details := make([]string, 0)
-	for _, repo := range report.Repos {
-		for _, detail := range unmergedRepoDetails(repo) {
-			details = append(details, fmt.Sprintf("%s: %s", repo.RepoName, detail))
-		}
-	}
-	return details
 }

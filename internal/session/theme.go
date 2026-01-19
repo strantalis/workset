@@ -1,4 +1,4 @@
-package main
+package session
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"github.com/strantalis/workset/internal/config"
 )
 
-const sessionThemeWorkset = "workset"
+const ThemeWorkset = "workset"
 
 const (
 	defaultTmuxStatusStyle  = "bg=colour235,fg=colour250"
@@ -16,7 +16,7 @@ const (
 	defaultScreenHardstatus = "alwayslastline workset %n %t %=%H:%M %d-%b-%y"
 )
 
-type sessionTheme struct {
+type Theme struct {
 	Name             string
 	TmuxStyle        string
 	TmuxLeft         string
@@ -25,17 +25,17 @@ type sessionTheme struct {
 	Enabled          bool
 }
 
-func resolveSessionTheme(defaults config.Defaults) sessionTheme {
+func ResolveTheme(defaults config.Defaults) Theme {
 	name := strings.TrimSpace(defaults.SessionTheme)
 	if name == "" {
-		return sessionTheme{}
+		return Theme{}
 	}
-	theme := sessionTheme{
+	theme := Theme{
 		Name:    name,
 		Enabled: true,
 	}
-	if strings.EqualFold(name, sessionThemeWorkset) {
-		theme.Name = sessionThemeWorkset
+	if strings.EqualFold(name, ThemeWorkset) {
+		theme.Name = ThemeWorkset
 		theme.TmuxStyle = defaultTmuxStatusStyle
 		theme.TmuxLeft = defaultTmuxStatusLeft
 		theme.TmuxRight = defaultTmuxStatusRight
@@ -56,8 +56,8 @@ func resolveSessionTheme(defaults config.Defaults) sessionTheme {
 	return theme
 }
 
-func sessionThemeNotice(theme sessionTheme, backend sessionBackend) (label string, hint string) {
-	if backend != sessionBackendTmux && backend != sessionBackendScreen {
+func ThemeNotice(theme Theme, backend Backend) (label string, hint string) {
+	if backend != BackendTmux && backend != BackendScreen {
 		return "", ""
 	}
 	if !theme.Enabled {
@@ -66,16 +66,16 @@ func sessionThemeNotice(theme sessionTheme, backend sessionBackend) (label strin
 	return theme.Name, ""
 }
 
-func applySessionTheme(ctx context.Context, runner sessionRunner, backend sessionBackend, name string, theme sessionTheme) error {
+func ApplyTheme(ctx context.Context, runner Runner, backend Backend, name string, theme Theme) error {
 	if !theme.Enabled {
 		return nil
 	}
 	switch backend {
-	case sessionBackendTmux:
+	case BackendTmux:
 		if err := applyTmuxTheme(ctx, runner, name, theme); err != nil {
 			return err
 		}
-	case sessionBackendScreen:
+	case BackendScreen:
 		if err := applyScreenTheme(ctx, runner, name, theme); err != nil {
 			return err
 		}
@@ -83,9 +83,9 @@ func applySessionTheme(ctx context.Context, runner sessionRunner, backend sessio
 	return nil
 }
 
-func applyTmuxTheme(ctx context.Context, runner sessionRunner, name string, theme sessionTheme) error {
+func applyTmuxTheme(ctx context.Context, runner Runner, name string, theme Theme) error {
 	if theme.TmuxStyle != "" {
-		if _, err := runner.Run(ctx, commandSpec{
+		if _, err := runner.Run(ctx, CommandSpec{
 			Name: "tmux",
 			Args: []string{"set-option", "-t", name, "status-style", theme.TmuxStyle},
 		}); err != nil {
@@ -93,7 +93,7 @@ func applyTmuxTheme(ctx context.Context, runner sessionRunner, name string, them
 		}
 	}
 	if theme.TmuxLeft != "" {
-		if _, err := runner.Run(ctx, commandSpec{
+		if _, err := runner.Run(ctx, CommandSpec{
 			Name: "tmux",
 			Args: []string{"set-option", "-t", name, "status-left", theme.TmuxLeft},
 		}); err != nil {
@@ -101,7 +101,7 @@ func applyTmuxTheme(ctx context.Context, runner sessionRunner, name string, them
 		}
 	}
 	if theme.TmuxRight != "" {
-		if _, err := runner.Run(ctx, commandSpec{
+		if _, err := runner.Run(ctx, CommandSpec{
 			Name: "tmux",
 			Args: []string{"set-option", "-t", name, "status-right", theme.TmuxRight},
 		}); err != nil {
@@ -111,12 +111,12 @@ func applyTmuxTheme(ctx context.Context, runner sessionRunner, name string, them
 	return nil
 }
 
-func applyScreenTheme(ctx context.Context, runner sessionRunner, name string, theme sessionTheme) error {
+func applyScreenTheme(ctx context.Context, runner Runner, name string, theme Theme) error {
 	if theme.ScreenHardstatus == "" {
 		return nil
 	}
 	args := []string{"-S", name, "-X", "hardstatus"}
 	args = append(args, strings.Fields(theme.ScreenHardstatus)...)
-	_, err := runner.Run(ctx, commandSpec{Name: "screen", Args: args})
+	_, err := runner.Run(ctx, CommandSpec{Name: "screen", Args: args})
 	return err
 }

@@ -4,13 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
-	"github.com/strantalis/workset/internal/config"
-	"github.com/strantalis/workset/internal/git"
-	"github.com/strantalis/workset/internal/groups"
-	"github.com/strantalis/workset/internal/ops"
 	"github.com/strantalis/workset/internal/output"
+	"github.com/strantalis/workset/pkg/worksetapi"
 	"github.com/urfave/cli/v3"
 )
 
@@ -25,14 +21,15 @@ func groupCommand() *cli.Command {
 				Usage: "List groups",
 				Flags: outputFlags(),
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					cfg, _, err := loadGlobal(cmd)
+					svc := apiService(cmd)
+					result, err := svc.ListGroups(ctx)
 					if err != nil {
 						return err
 					}
-					names := groups.List(cfg)
+					printConfigInfo(cmd, result)
 					mode := outputModeFromContext(cmd)
 					styles := output.NewStyles(commandWriter(cmd), mode.Plain)
-					if len(names) == 0 {
+					if len(result.Groups) == 0 {
 						if mode.JSON {
 							return output.WriteJSON(commandWriter(cmd), []any{})
 						}
@@ -46,30 +43,15 @@ func groupCommand() *cli.Command {
 						return nil
 					}
 					if mode.JSON {
-						type row struct {
-							Name        string `json:"name"`
-							Description string `json:"description,omitempty"`
-							RepoCount   int    `json:"repo_count"`
-						}
-						rows := make([]row, 0, len(names))
-						for _, name := range names {
-							group, _ := groups.Get(cfg, name)
-							rows = append(rows, row{
-								Name:        name,
-								Description: group.Description,
-								RepoCount:   len(group.Members),
-							})
-						}
-						return output.WriteJSON(commandWriter(cmd), rows)
+						return output.WriteJSON(commandWriter(cmd), result.Groups)
 					}
-					rows := make([][]string, 0, len(names))
-					for _, name := range names {
-						group, _ := groups.Get(cfg, name)
+					rows := make([][]string, 0, len(result.Groups))
+					for _, group := range result.Groups {
 						desc := group.Description
 						if desc == "" {
 							desc = "-"
 						}
-						rows = append(rows, []string{name, desc, fmt.Sprintf("%d", len(group.Members))})
+						rows = append(rows, []string{group.Name, desc, fmt.Sprintf("%d", group.RepoCount)})
 					}
 					rendered := output.RenderTable(styles, []string{"NAME", "DESCRIPTION", "REPOS"}, rows)
 					_, err = fmt.Fprint(commandWriter(cmd), rendered)
@@ -91,27 +73,27 @@ func groupCommand() *cli.Command {
 					if name == "" {
 						return usageError(ctx, cmd, "group name required")
 					}
-					cfg, _, err := loadGlobal(cmd)
+					svc := apiService(cmd)
+					group, info, err := svc.GetGroup(ctx, name)
 					if err != nil {
 						return err
 					}
-					group, ok := groups.Get(cfg, name)
-					if !ok {
-						return cli.Exit("group not found", 1)
+					if verboseEnabled(cmd) {
+						printConfigLoadInfo(cmd, cmd.String("config"), info)
 					}
 					mode := outputModeFromContext(cmd)
 					if mode.JSON {
 						payload := map[string]any{
-							"name":        name,
+							"name":        group.Name,
 							"description": group.Description,
 							"members":     group.Members,
 						}
 						return output.WriteJSON(commandWriter(cmd), payload)
 					}
 					styles := output.NewStyles(commandWriter(cmd), mode.Plain)
-					header := name
+					header := group.Name
 					if styles.Enabled {
-						header = styles.Render(styles.Title, name)
+						header = styles.Render(styles.Title, header)
 					}
 					if _, err := fmt.Fprintln(commandWriter(cmd), header); err != nil {
 						return err
@@ -159,25 +141,26 @@ func groupCommand() *cli.Command {
 					if name == "" {
 						return usageError(ctx, cmd, "group name required")
 					}
-					cfg, cfgPath, err := loadGlobal(cmd)
+					svc := apiService(cmd)
+					result, info, err := svc.CreateGroup(ctx, worksetapi.GroupUpsertInput{
+						Name:        name,
+						Description: cmd.String("description"),
+					})
 					if err != nil {
 						return err
 					}
-					if err := groups.Upsert(&cfg, name, cmd.String("description")); err != nil {
-						return err
-					}
-					if err := config.SaveGlobal(cfgPath, cfg); err != nil {
-						return err
+					if verboseEnabled(cmd) {
+						printConfigLoadInfo(cmd, cmd.String("config"), info)
 					}
 					mode := outputModeFromContext(cmd)
 					if mode.JSON {
 						return output.WriteJSON(commandWriter(cmd), map[string]string{
 							"status": "ok",
-							"name":   name,
+							"name":   result.Name,
 						})
 					}
 					styles := output.NewStyles(commandWriter(cmd), mode.Plain)
-					msg := fmt.Sprintf("group %s saved", name)
+					msg := fmt.Sprintf("group %s saved", result.Name)
 					if styles.Enabled {
 						msg = styles.Render(styles.Success, msg)
 					}
@@ -202,22 +185,17 @@ func groupCommand() *cli.Command {
 					if name == "" {
 						return usageError(ctx, cmd, "group name required")
 					}
-					cfg, cfgPath, err := loadGlobal(cmd)
+					svc := apiService(cmd)
+					result, info, err := svc.DeleteGroup(ctx, name)
 					if err != nil {
 						return err
 					}
-					if err := groups.Delete(&cfg, name); err != nil {
-						return err
-					}
-					if err := config.SaveGlobal(cfgPath, cfg); err != nil {
-						return err
+					if verboseEnabled(cmd) {
+						printConfigLoadInfo(cmd, cmd.String("config"), info)
 					}
 					mode := outputModeFromContext(cmd)
 					if mode.JSON {
-						return output.WriteJSON(commandWriter(cmd), map[string]string{
-							"status": "ok",
-							"name":   name,
-						})
+						return output.WriteJSON(commandWriter(cmd), result)
 					}
 					styles := output.NewStyles(commandWriter(cmd), mode.Plain)
 					msg := fmt.Sprintf("group %s removed", name)
@@ -262,44 +240,25 @@ func groupCommand() *cli.Command {
 					if groupName == "" || repoName == "" {
 						return usageError(ctx, cmd, "group and repo name required")
 					}
-					cfg, cfgPath, err := loadGlobal(cmd)
+					svc := apiService(cmd)
+					result, info, err := svc.AddGroupMember(ctx, worksetapi.GroupMemberInput{
+						GroupName:   groupName,
+						RepoName:    repoName,
+						BaseRemote:  strings.TrimSpace(cmd.String("base-remote")),
+						WriteRemote: strings.TrimSpace(cmd.String("write-remote")),
+						BaseBranch:  strings.TrimSpace(cmd.String("base-branch")),
+					})
 					if err != nil {
 						return err
 					}
-					baseRemote := strings.TrimSpace(cmd.String("base-remote"))
-					writeRemote := strings.TrimSpace(cmd.String("write-remote"))
-					baseBranch := strings.TrimSpace(cmd.String("base-branch"))
-					if baseBranch == "" {
-						if alias, ok := cfg.Repos[repoName]; ok && alias.DefaultBranch != "" {
-							baseBranch = alias.DefaultBranch
-						} else {
-							baseBranch = cfg.Defaults.BaseBranch
-						}
-					}
-					member := config.GroupMember{
-						Repo: repoName,
-						Remotes: config.Remotes{
-							Base: config.RemoteConfig{
-								Name:          baseRemote,
-								DefaultBranch: baseBranch,
-							},
-							Write: config.RemoteConfig{
-								Name:          writeRemote,
-								DefaultBranch: baseBranch,
-							},
-						},
-					}
-					if err := groups.AddMember(&cfg, groupName, member); err != nil {
-						return err
-					}
-					if err := config.SaveGlobal(cfgPath, cfg); err != nil {
-						return err
+					if verboseEnabled(cmd) {
+						printConfigLoadInfo(cmd, cmd.String("config"), info)
 					}
 					mode := outputModeFromContext(cmd)
 					if mode.JSON {
 						return output.WriteJSON(commandWriter(cmd), map[string]string{
 							"status":   "ok",
-							"template": groupName,
+							"template": result.Name,
 							"repo":     repoName,
 						})
 					}
@@ -333,21 +292,22 @@ func groupCommand() *cli.Command {
 					if groupName == "" || repoName == "" {
 						return usageError(ctx, cmd, "group and repo name required")
 					}
-					cfg, cfgPath, err := loadGlobal(cmd)
+					svc := apiService(cmd)
+					result, info, err := svc.RemoveGroupMember(ctx, worksetapi.GroupMemberInput{
+						GroupName: groupName,
+						RepoName:  repoName,
+					})
 					if err != nil {
 						return err
 					}
-					if err := groups.RemoveMember(&cfg, groupName, repoName); err != nil {
-						return err
-					}
-					if err := config.SaveGlobal(cfgPath, cfg); err != nil {
-						return err
+					if verboseEnabled(cmd) {
+						printConfigLoadInfo(cmd, cmd.String("config"), info)
 					}
 					mode := outputModeFromContext(cmd)
 					if mode.JSON {
 						return output.WriteJSON(commandWriter(cmd), map[string]string{
 							"status":   "ok",
-							"template": groupName,
+							"template": result.Name,
 							"repo":     repoName,
 						})
 					}
@@ -377,65 +337,23 @@ func groupCommand() *cli.Command {
 					if groupName == "" {
 						return usageError(ctx, cmd, "group name required")
 					}
-					cfg, cfgPath, err := loadGlobal(cmd)
+					svc := apiService(cmd)
+					payload, info, err := svc.ApplyGroup(ctx, worksetapi.GroupApplyInput{
+						Workspace: worksetapi.WorkspaceSelector{Value: cmd.String("workspace")},
+						Name:      groupName,
+					})
 					if err != nil {
 						return err
 					}
-					wsRoot, wsConfig, err := resolveWorkspace(cmd, &cfg, cfgPath)
-					if err != nil {
-						return err
-					}
-					group, ok := groups.Get(cfg, groupName)
-					if !ok {
-						return cli.Exit("group not found", 1)
-					}
-					for _, member := range group.Members {
-						alias, ok := cfg.Repos[member.Repo]
-						if !ok {
-							return fmt.Errorf("repo alias %q not found in config", member.Repo)
-						}
-						baseBranch := cfg.Defaults.BaseBranch
-						if member.Remotes.Base.DefaultBranch != "" {
-							baseBranch = member.Remotes.Base.DefaultBranch
-						} else if alias.DefaultBranch != "" {
-							baseBranch = alias.DefaultBranch
-						}
-						remotes := config.Remotes{
-							Base: config.RemoteConfig{
-								Name:          member.Remotes.Base.Name,
-								DefaultBranch: baseBranch,
-							},
-							Write: config.RemoteConfig{
-								Name:          member.Remotes.Write.Name,
-								DefaultBranch: baseBranch,
-							},
-						}
-						if _, err := ops.AddRepo(ctx, ops.AddRepoInput{
-							WorkspaceRoot: wsRoot,
-							Name:          member.Repo,
-							URL:           alias.URL,
-							SourcePath:    alias.Path,
-							Defaults:      cfg.Defaults,
-							Remotes:       remotes,
-							Git:           git.NewGoGitClient(),
-						}); err != nil {
-							return err
-						}
-					}
-					registerWorkspace(&cfg, wsConfig.Name, wsRoot, time.Now())
-					if err := config.SaveGlobal(cfgPath, cfg); err != nil {
-						return err
+					if verboseEnabled(cmd) {
+						printConfigLoadInfo(cmd, cmd.String("config"), info)
 					}
 					mode := outputModeFromContext(cmd)
 					if mode.JSON {
-						return output.WriteJSON(commandWriter(cmd), map[string]string{
-							"status":    "ok",
-							"template":  groupName,
-							"workspace": wsConfig.Name,
-						})
+						return output.WriteJSON(commandWriter(cmd), payload)
 					}
 					styles := output.NewStyles(commandWriter(cmd), mode.Plain)
-					msg := fmt.Sprintf("group %s applied to %s", groupName, wsConfig.Name)
+					msg := fmt.Sprintf("group %s applied to %s", payload.Template, payload.Workspace)
 					if styles.Enabled {
 						msg = styles.Render(styles.Success, msg)
 					}

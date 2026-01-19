@@ -2,19 +2,12 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
-	"sort"
 	"strings"
-	"time"
 
-	"github.com/strantalis/workset/internal/config"
-	"github.com/strantalis/workset/internal/git"
-	"github.com/strantalis/workset/internal/ops"
 	"github.com/strantalis/workset/internal/output"
-	"github.com/strantalis/workset/internal/workspace"
+	"github.com/strantalis/workset/pkg/worksetapi"
 	"github.com/urfave/cli/v3"
 )
 
@@ -50,67 +43,30 @@ func newCommand() *cli.Command {
 			if name == "" {
 				return usageError(ctx, cmd, "workspace name required")
 			}
-
-			cfg, cfgPath, err := loadGlobal(cmd)
+			svc := apiService(cmd)
+			result, err := svc.CreateWorkspace(ctx, worksetapi.WorkspaceCreateInput{
+				Name:   name,
+				Path:   cmd.String("path"),
+				Groups: cmd.StringSlice("group"),
+				Repos:  cmd.StringSlice("repo"),
+			})
 			if err != nil {
 				return err
 			}
-
-			root := cmd.String("path")
-			if root == "" {
-				base := cfg.Defaults.WorkspaceRoot
-				if base == "" {
-					cwd, err := os.Getwd()
-					if err != nil {
-						return err
-					}
-					base = cwd
-				}
-				root = filepath.Join(base, name)
-			}
-			root, err = filepath.Abs(root)
-			if err != nil {
-				return err
+			printConfigInfo(cmd, result)
+			for _, warning := range result.Warnings {
+				_, _ = fmt.Fprintln(os.Stderr, "warning:", warning)
 			}
 
-			ws, err := workspace.Init(root, name, cfg.Defaults)
-			if err != nil {
-				return err
-			}
-
-			repoPlans, err := buildNewWorkspaceRepoPlans(cfg, cmd.StringSlice("group"), cmd.StringSlice("repo"))
-			if err != nil {
-				return err
-			}
-			for _, plan := range repoPlans {
-				if _, err := ops.AddRepo(ctx, ops.AddRepoInput{
-					WorkspaceRoot: ws.Root,
-					Name:          plan.Name,
-					URL:           plan.URL,
-					SourcePath:    plan.SourcePath,
-					Defaults:      cfg.Defaults,
-					Remotes:       plan.Remotes,
-					Git:           git.NewGoGitClient(),
-				}); err != nil {
-					return err
-				}
-			}
-
-			warnOutsideWorkspaceRoot(root, cfg.Defaults.WorkspaceRoot)
 			info := output.WorkspaceCreated{
-				Name:    name,
-				Path:    root,
-				Workset: workspace.WorksetFile(root),
-				Branch:  ws.State.CurrentBranch,
-				Next:    fmt.Sprintf("workset repo add -w %s <alias|url>", name),
+				Name:    result.Workspace.Name,
+				Path:    result.Workspace.Path,
+				Workset: result.Workspace.Workset,
+				Branch:  result.Workspace.Branch,
+				Next:    result.Workspace.Next,
 			}
 			mode := outputModeFromContext(cmd)
-			if err := printWorkspaceCreated(commandWriter(cmd), info, mode.JSON, mode.Plain); err != nil {
-				return err
-			}
-
-			registerWorkspace(&cfg, name, root, time.Now())
-			return config.SaveGlobal(cfgPath, cfg)
+			return printWorkspaceCreated(commandWriter(cmd), info, mode.JSON, mode.Plain)
 		},
 	}
 }
@@ -140,13 +96,15 @@ func listCommand() *cli.Command {
 		Usage: "List registered workspaces",
 		Flags: flags,
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			cfg, _, err := loadGlobal(cmd)
+			svc := apiService(cmd)
+			result, err := svc.ListWorkspaces(ctx)
 			if err != nil {
 				return err
 			}
+			printConfigInfo(cmd, result)
 			mode := outputModeFromContext(cmd)
 			styles := output.NewStyles(commandWriter(cmd), mode.Plain)
-			if len(cfg.Workspaces) == 0 {
+			if len(result.Workspaces) == 0 {
 				if mode.JSON {
 					return output.WriteJSON(commandWriter(cmd), []any{})
 				}
@@ -159,35 +117,13 @@ func listCommand() *cli.Command {
 				}
 				return nil
 			}
-			names := make([]string, 0, len(cfg.Workspaces))
-			for name := range cfg.Workspaces {
-				names = append(names, name)
-			}
-			sort.Strings(names)
 			if mode.JSON {
-				type row struct {
-					Name      string `json:"name"`
-					Path      string `json:"path"`
-					CreatedAt string `json:"created_at,omitempty"`
-					LastUsed  string `json:"last_used,omitempty"`
-				}
-				rows := make([]row, 0, len(names))
-				for _, name := range names {
-					ref := cfg.Workspaces[name]
-					rows = append(rows, row{
-						Name:      name,
-						Path:      ref.Path,
-						CreatedAt: ref.CreatedAt,
-						LastUsed:  ref.LastUsed,
-					})
-				}
-				return output.WriteJSON(commandWriter(cmd), rows)
+				return output.WriteJSON(commandWriter(cmd), result.Workspaces)
 			}
 
-			rows := make([][]string, 0, len(names))
-			for _, name := range names {
-				ref := cfg.Workspaces[name]
-				rows = append(rows, []string{name, ref.Path})
+			rows := make([][]string, 0, len(result.Workspaces))
+			for _, ref := range result.Workspaces {
+				rows = append(rows, []string{ref.Name, ref.Path})
 			}
 			rendered := output.RenderTable(styles, []string{"NAME", "PATH"}, rows)
 			_, err = fmt.Fprint(commandWriter(cmd), rendered)
@@ -225,110 +161,53 @@ func removeWorkspaceCommand() *cli.Command {
 			if arg == "" {
 				arg = strings.TrimSpace(cmd.String("workspace"))
 			}
-			cfg, cfgPath, err := loadGlobal(cmd)
-			if err != nil {
-				return err
-			}
-			name, root, err := resolveWorkspaceTarget(arg, &cfg)
-			if err != nil {
-				return err
-			}
-
 			deleteRequested := cmd.Bool("delete")
-			if deleteRequested {
-				workspaceRoot := cfg.Defaults.WorkspaceRoot
-				if workspaceRoot != "" {
-					absRoot, err := filepath.Abs(workspaceRoot)
-					if err == nil {
-						absRoot = filepath.Clean(absRoot)
-						absTarget := filepath.Clean(root)
-						inside := absTarget == absRoot || strings.HasPrefix(absTarget, absRoot+string(os.PathSeparator))
-						if !inside && !cmd.Bool("force") {
-							return fmt.Errorf("refusing to delete outside defaults.workspace_root (%s); use --force to override", absRoot)
-						}
-					}
-				}
-
-				report, err := ops.CheckWorkspaceSafety(ctx, ops.WorkspaceSafetyInput{
-					WorkspaceRoot: root,
-					Defaults:      cfg.Defaults,
-					Git:           git.NewGoGitClient(),
-					FetchRemotes:  true,
-				})
-				if err != nil {
-					if errors.Is(err, os.ErrNotExist) {
-						_, _ = fmt.Fprintln(os.Stderr, "warning: workset.yaml not found; skipping safety checks")
-					} else if !cmd.Bool("force") {
-						return err
-					} else {
-						_, _ = fmt.Fprintln(os.Stderr, "warning:", err.Error())
-					}
-				}
-
-				dirty, unmerged, unpushed, warnings := summarizeWorkspaceSafety(report)
-				for _, warning := range warnings {
-					_, _ = fmt.Fprintln(os.Stderr, "warning:", warning)
-				}
-				for _, branch := range unpushed {
-					_, _ = fmt.Fprintf(os.Stderr, "warning: branch %s has commits not on write remote\n", branch)
-				}
-
-				if !cmd.Bool("force") {
-					if len(dirty) > 0 {
-						return fmt.Errorf("refusing to delete: dirty worktrees: %s (use --force)", strings.Join(dirty, ", "))
-					}
-					if len(unmerged) > 0 {
-						for _, detail := range unmergedWorkspaceDetails(report) {
-							_, _ = fmt.Fprintln(os.Stderr, "detail:", detail)
-						}
-						return fmt.Errorf("refusing to delete: unmerged branches: %s (use --force)", strings.Join(unmerged, ", "))
-					}
-				}
-
-				if !cmd.Bool("yes") {
-					ok, err := confirmPrompt(os.Stdin, commandWriter(cmd), fmt.Sprintf("delete workspace %s? [y/N] ", root))
-					if err != nil {
-						return err
+			svc := apiService(cmd)
+			input := worksetapi.WorkspaceDeleteInput{
+				Selector:     worksetapi.WorkspaceSelector{Value: arg},
+				DeleteFiles:  deleteRequested,
+				Force:        cmd.Bool("force"),
+				Confirmed:    cmd.Bool("yes"),
+				FetchRemotes: true,
+			}
+			result, err := svc.DeleteWorkspace(ctx, input)
+			if err != nil {
+				if confirm, ok := err.(worksetapi.ConfirmationRequired); ok && deleteRequested && !cmd.Bool("yes") {
+					ok, promptErr := confirmPrompt(os.Stdin, commandWriter(cmd), confirm.Message+" [y/N] ")
+					if promptErr != nil {
+						return promptErr
 					}
 					if !ok {
 						return cli.Exit("aborted", 1)
 					}
+					input.Confirmed = true
+					result, err = svc.DeleteWorkspace(ctx, input)
 				}
+				if err != nil {
+					if unsafe, ok := err.(worksetapi.UnsafeOperation); ok {
+						for _, warning := range unsafe.Warnings {
+							_, _ = fmt.Fprintln(os.Stderr, "warning:", warning)
+						}
+					}
+					return err
+				}
+			}
 
-				if err := stopWorkspaceSessions(ctx, cmd, root, cmd.Bool("force")); err != nil {
-					return err
-				}
-				if err := removeWorkspaceRepoWorktrees(ctx, cmd, root, cfg.Defaults, cmd.Bool("force")); err != nil {
-					return err
-				}
-				if err := os.RemoveAll(root); err != nil {
-					return err
-				}
+			printConfigInfo(cmd, result)
+			for _, warning := range result.Warnings {
+				_, _ = fmt.Fprintln(os.Stderr, "warning:", warning)
+			}
+			for _, branch := range result.Unpushed {
+				_, _ = fmt.Fprintf(os.Stderr, "warning: branch %s has commits not on write remote\n", branch)
 			}
 
-			if name != "" {
-				delete(cfg.Workspaces, name)
-			} else {
-				removeWorkspaceByPath(&cfg, root)
-			}
-			if cfg.Defaults.Workspace == name || cfg.Defaults.Workspace == root {
-				cfg.Defaults.Workspace = ""
-			}
-			if err := config.SaveGlobal(cfgPath, cfg); err != nil {
-				return err
-			}
 			mode := outputModeFromContext(cmd)
 			if mode.JSON {
-				return output.WriteJSON(commandWriter(cmd), map[string]any{
-					"status":        "ok",
-					"name":          name,
-					"path":          root,
-					"deleted_files": deleteRequested,
-				})
+				return output.WriteJSON(commandWriter(cmd), result.Payload)
 			}
 			styles := output.NewStyles(commandWriter(cmd), mode.Plain)
 			if deleteRequested {
-				msg := fmt.Sprintf("workspace %s deleted", root)
+				msg := fmt.Sprintf("workspace %s deleted", result.Payload.Path)
 				if styles.Enabled {
 					msg = styles.Render(styles.Success, msg)
 				}
@@ -337,14 +216,14 @@ func removeWorkspaceCommand() *cli.Command {
 				}
 				return nil
 			}
-			msg := fmt.Sprintf("removed workspace registration for %s", root)
+			msg := fmt.Sprintf("removed workspace registration for %s", result.Payload.Path)
 			if styles.Enabled {
 				msg = styles.Render(styles.Success, msg)
 			}
 			if _, err := fmt.Fprintln(commandWriter(cmd), msg); err != nil {
 				return err
 			}
-			note := fmt.Sprintf("note: files remain on disk; to delete, run: workset rm -w %s --delete", root)
+			note := fmt.Sprintf("note: files remain on disk; to delete, run: workset rm -w %s --delete", result.Payload.Path)
 			if styles.Enabled {
 				note = styles.Render(styles.Muted, note)
 			}
@@ -356,144 +235,6 @@ func removeWorkspaceCommand() *cli.Command {
 	}
 }
 
-func removeWorkspaceRepoWorktrees(ctx context.Context, cmd *cli.Command, root string, defaults config.Defaults, force bool) error {
-	logf := func(format string, args ...any) {
-		if verboseEnabled(cmd) {
-			_, _ = fmt.Fprintf(commandErrWriter(cmd), format+"\n", args...)
-		}
-	}
-	ws, err := workspace.Load(root, defaults)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		if force {
-			_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: failed to load workspace for worktree cleanup: %v\n", err)
-			return nil
-		}
-		return err
-	}
-	if len(ws.Config.Repos) == 0 {
-		logf("worktree cleanup: no repos in %s; scanning for linked worktrees", root)
-	}
-	gitClient := git.NewGoGitClient()
-	for _, repo := range ws.Config.Repos {
-		if repo.Name == "" {
-			continue
-		}
-		if _, err := ops.RemoveRepo(ctx, ops.RemoveRepoInput{
-			WorkspaceRoot:   root,
-			Name:            repo.Name,
-			Defaults:        defaults,
-			Git:             gitClient,
-			DeleteWorktrees: true,
-			DeleteLocal:     false,
-			Logf:            logf,
-		}); err != nil {
-			if force {
-				_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: failed to remove worktrees for %s: %v\n", repo.Name, err)
-				continue
-			}
-			return err
-		}
-	}
-	if err := ops.CleanupWorkspaceWorktrees(ops.CleanupWorkspaceWorktreesInput{
-		WorkspaceRoot: root,
-		Git:           gitClient,
-		Force:         force,
-		Logf:          logf,
-	}); err != nil {
-		if force {
-			_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: failed to clean up remaining worktrees: %v\n", err)
-			return nil
-		}
-		return err
-	}
-	return nil
-}
-
-func stopWorkspaceSessions(ctx context.Context, cmd *cli.Command, root string, force bool) error {
-	state, err := workspace.LoadState(root)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		if force {
-			_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: failed to read workspace session state: %v\n", err)
-			return nil
-		}
-		return err
-	}
-	if len(state.Sessions) == 0 {
-		return nil
-	}
-	runner := execRunner{}
-	for name, entry := range state.Sessions {
-		sessionName := name
-		if strings.TrimSpace(entry.Name) != "" {
-			sessionName = entry.Name
-		}
-		backendValue := strings.TrimSpace(entry.Backend)
-		if backendValue == "" {
-			if force {
-				_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: session %s missing backend; skipping\n", sessionName)
-				continue
-			}
-			return fmt.Errorf("session %s missing backend; use --force to skip", sessionName)
-		}
-		backend, err := parseSessionBackend(backendValue)
-		if err != nil {
-			if force {
-				_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: session %s has invalid backend %q: %v\n", sessionName, backendValue, err)
-				continue
-			}
-			return err
-		}
-		if backend == sessionBackendAuto || backend == sessionBackendExec {
-			if force {
-				_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: session %s uses unsupported backend %q; skipping\n", sessionName, backend)
-				continue
-			}
-			return fmt.Errorf("session %s uses unsupported backend %q; use --force to skip", sessionName, backend)
-		}
-		if err := runner.LookPath(string(backend)); err != nil {
-			if force {
-				_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: %s not available to stop session %s: %v\n", backend, sessionName, err)
-				continue
-			}
-			return fmt.Errorf("%s not available to stop session %s", backend, sessionName)
-		}
-		exists, err := sessionExists(ctx, runner, backend, sessionName)
-		if err != nil {
-			if force {
-				_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: failed to check session %s: %v\n", sessionName, err)
-				continue
-			}
-			return err
-		}
-		if !exists {
-			continue
-		}
-		if err := stopSession(ctx, runner, backend, sessionName); err != nil {
-			if force {
-				_, _ = fmt.Fprintf(commandErrWriter(cmd), "warning: failed to stop session %s: %v\n", sessionName, err)
-				continue
-			}
-			return err
-		}
-	}
-	return nil
-}
-
-type statusJSON struct {
-	Name    string `json:"name"`
-	Path    string `json:"path,omitempty"`
-	State   string `json:"state"`
-	Dirty   bool   `json:"dirty,omitempty"`
-	Missing bool   `json:"missing,omitempty"`
-	Error   string `json:"error,omitempty"`
-}
-
 func statusCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "status",
@@ -503,28 +244,16 @@ func statusCommand() *cli.Command {
 			workspaceFlag(true),
 		}),
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			cfg, cfgPath, err := loadGlobal(cmd)
+			svc := apiService(cmd)
+			result, err := svc.StatusWorkspace(ctx, worksetapi.WorkspaceSelector{Value: cmd.String("workspace")})
 			if err != nil {
 				return err
 			}
-			wsRoot, wsConfig, err := resolveWorkspace(cmd, &cfg, cfgPath)
-			if err != nil {
-				return err
-			}
-
-			statuses, err := ops.Status(ctx, ops.StatusInput{
-				WorkspaceRoot: wsRoot,
-				Defaults:      cfg.Defaults,
-				Git:           git.NewGoGitClient(),
-			})
-			if err != nil {
-				return err
-			}
+			printConfigInfo(cmd, result)
 			mode := outputModeFromContext(cmd)
-
-			if len(statuses) == 0 {
+			if len(result.Statuses) == 0 {
 				if mode.JSON {
-					return output.WriteJSON(commandWriter(cmd), []statusJSON{})
+					return output.WriteJSON(commandWriter(cmd), []worksetapi.RepoStatusJSON{})
 				}
 				styles := output.NewStyles(commandWriter(cmd), mode.Plain)
 				msg := "no repos in workspace"
@@ -534,56 +263,21 @@ func statusCommand() *cli.Command {
 				if _, err := fmt.Fprintln(commandWriter(cmd), msg); err != nil {
 					return err
 				}
-				registerWorkspace(&cfg, wsConfig.Name, wsRoot, time.Now())
-				return config.SaveGlobal(cfgPath, cfg)
+				return nil
 			}
 
 			if mode.JSON {
-				payload := make([]statusJSON, 0, len(statuses))
-				for _, repo := range statuses {
-					state := "clean"
-					switch {
-					case repo.Missing:
-						state = "missing"
-					case repo.Dirty:
-						state = "dirty"
-					case repo.Err != nil:
-						state = "error"
-					}
-					entry := statusJSON{
-						Name:    repo.Name,
-						Path:    repo.Path,
-						State:   state,
-						Dirty:   repo.Dirty,
-						Missing: repo.Missing,
-					}
-					if repo.Err != nil {
-						entry.Error = repo.Err.Error()
-					}
-					payload = append(payload, entry)
-				}
-				if err := output.WriteJSON(commandWriter(cmd), payload); err != nil {
-					return err
-				}
+				return output.WriteJSON(commandWriter(cmd), result.Statuses)
 			} else {
-				rows := make([]output.StatusRow, 0, len(statuses))
-				for _, repo := range statuses {
-					state := "clean"
-					switch {
-					case repo.Missing:
-						state = "missing"
-					case repo.Dirty:
-						state = "dirty"
-					case repo.Err != nil:
-						state = "error"
-					}
+				rows := make([]output.StatusRow, 0, len(result.Statuses))
+				for _, repo := range result.Statuses {
 					detail := repo.Path
-					if repo.Err != nil {
-						detail = repo.Err.Error()
+					if repo.Error != "" {
+						detail = repo.Error
 					}
 					rows = append(rows, output.StatusRow{
 						Name:   repo.Name,
-						State:  state,
+						State:  repo.State,
 						Detail: detail,
 					})
 				}
@@ -592,9 +286,7 @@ func statusCommand() *cli.Command {
 					return err
 				}
 			}
-
-			registerWorkspace(&cfg, wsConfig.Name, wsRoot, time.Now())
-			return config.SaveGlobal(cfgPath, cfg)
+			return nil
 		},
 	}
 }

@@ -1,4 +1,4 @@
-package main
+package session
 
 import (
 	"context"
@@ -7,20 +7,20 @@ import (
 	"github.com/strantalis/workset/internal/config"
 )
 
-func TestResolveSessionThemeDisabled(t *testing.T) {
-	theme := resolveSessionTheme(config.Defaults{})
+func TestResolveThemeDisabled(t *testing.T) {
+	theme := ResolveTheme(config.Defaults{})
 	if theme.Enabled {
 		t.Fatalf("expected theme disabled")
 	}
 }
 
-func TestResolveSessionThemeWorksetDefaults(t *testing.T) {
-	theme := resolveSessionTheme(config.Defaults{SessionTheme: "workset"})
+func TestResolveThemeWorksetDefaults(t *testing.T) {
+	theme := ResolveTheme(config.Defaults{SessionTheme: "workset"})
 	if !theme.Enabled {
 		t.Fatalf("expected theme enabled")
 	}
-	if theme.Name != sessionThemeWorkset {
-		t.Fatalf("expected theme name %q, got %q", sessionThemeWorkset, theme.Name)
+	if theme.Name != ThemeWorkset {
+		t.Fatalf("expected theme name %q, got %q", ThemeWorkset, theme.Name)
 	}
 	if theme.TmuxStyle != defaultTmuxStatusStyle {
 		t.Fatalf("expected tmux style %q, got %q", defaultTmuxStatusStyle, theme.TmuxStyle)
@@ -36,8 +36,8 @@ func TestResolveSessionThemeWorksetDefaults(t *testing.T) {
 	}
 }
 
-func TestResolveSessionThemeOverrides(t *testing.T) {
-	theme := resolveSessionTheme(config.Defaults{
+func TestResolveThemeOverrides(t *testing.T) {
+	theme := ResolveTheme(config.Defaults{
 		SessionTheme:      "workset",
 		SessionTmuxStyle:  "bg=red,fg=white",
 		SessionTmuxLeft:   "left",
@@ -58,17 +58,17 @@ func TestResolveSessionThemeOverrides(t *testing.T) {
 	}
 }
 
-func TestApplySessionThemeTmux(t *testing.T) {
+func TestApplyThemeTmux(t *testing.T) {
 	runner := &fakeRunner{}
-	theme := sessionTheme{
+	theme := Theme{
 		Name:      "custom",
 		Enabled:   true,
 		TmuxStyle: "bg=black,fg=white",
 		TmuxLeft:  "left",
 		TmuxRight: "right",
 	}
-	if err := applySessionTheme(context.Background(), runner, sessionBackendTmux, "demo", theme); err != nil {
-		t.Fatalf("applySessionTheme: %v", err)
+	if err := ApplyTheme(context.Background(), runner, BackendTmux, "demo", theme); err != nil {
+		t.Fatalf("ApplyTheme: %v", err)
 	}
 	if len(runner.commands) != 3 {
 		t.Fatalf("expected 3 commands, got %d", len(runner.commands))
@@ -78,15 +78,15 @@ func TestApplySessionThemeTmux(t *testing.T) {
 	assertArgs(t, runner.commands[2].Args, []string{"set-option", "-t", "demo", "status-right", "right"})
 }
 
-func TestApplySessionThemeScreen(t *testing.T) {
+func TestApplyThemeScreen(t *testing.T) {
 	runner := &fakeRunner{}
-	theme := sessionTheme{
+	theme := Theme{
 		Name:             "custom",
 		Enabled:          true,
 		ScreenHardstatus: "alwayslastline workset %n %t",
 	}
-	if err := applySessionTheme(context.Background(), runner, sessionBackendScreen, "demo", theme); err != nil {
-		t.Fatalf("applySessionTheme: %v", err)
+	if err := ApplyTheme(context.Background(), runner, BackendScreen, "demo", theme); err != nil {
+		t.Fatalf("ApplyTheme: %v", err)
 	}
 	if len(runner.commands) != 1 {
 		t.Fatalf("expected 1 command, got %d", len(runner.commands))

@@ -1,4 +1,4 @@
-package main
+package session
 
 import (
 	"context"
@@ -8,9 +8,9 @@ import (
 
 type fakeRunner struct {
 	available map[string]bool
-	results   []commandResult
+	results   []CommandResult
 	errs      []error
-	commands  []commandSpec
+	commands  []CommandSpec
 }
 
 func (f *fakeRunner) LookPath(name string) error {
@@ -20,9 +20,9 @@ func (f *fakeRunner) LookPath(name string) error {
 	return errors.New("missing")
 }
 
-func (f *fakeRunner) Run(_ context.Context, spec commandSpec) (commandResult, error) {
+func (f *fakeRunner) Run(_ context.Context, spec CommandSpec) (CommandResult, error) {
 	f.commands = append(f.commands, spec)
-	var result commandResult
+	var result CommandResult
 	var err error
 	if len(f.results) > 0 {
 		result = f.results[0]
@@ -35,53 +35,53 @@ func (f *fakeRunner) Run(_ context.Context, spec commandSpec) (commandResult, er
 	return result, err
 }
 
-func TestResolveSessionBackendAuto(t *testing.T) {
+func TestResolveBackendAuto(t *testing.T) {
 	runner := &fakeRunner{available: map[string]bool{"tmux": true}}
-	backend, err := resolveSessionBackend(sessionBackendAuto, runner)
+	backend, err := ResolveBackend(BackendAuto, runner)
 	if err != nil {
-		t.Fatalf("resolveSessionBackend: %v", err)
+		t.Fatalf("ResolveBackend: %v", err)
 	}
-	if backend != sessionBackendTmux {
+	if backend != BackendTmux {
 		t.Fatalf("expected tmux, got %s", backend)
 	}
 
 	runner = &fakeRunner{available: map[string]bool{"screen": true}}
-	backend, err = resolveSessionBackend(sessionBackendAuto, runner)
+	backend, err = ResolveBackend(BackendAuto, runner)
 	if err != nil {
-		t.Fatalf("resolveSessionBackend: %v", err)
+		t.Fatalf("ResolveBackend: %v", err)
 	}
-	if backend != sessionBackendScreen {
+	if backend != BackendScreen {
 		t.Fatalf("expected screen, got %s", backend)
 	}
 
 	runner = &fakeRunner{available: map[string]bool{}}
-	backend, err = resolveSessionBackend(sessionBackendAuto, runner)
+	backend, err = ResolveBackend(BackendAuto, runner)
 	if err != nil {
-		t.Fatalf("resolveSessionBackend: %v", err)
+		t.Fatalf("ResolveBackend: %v", err)
 	}
-	if backend != sessionBackendExec {
+	if backend != BackendExec {
 		t.Fatalf("expected exec, got %s", backend)
 	}
 }
 
-func TestParseSessionBackend(t *testing.T) {
-	backend, err := parseSessionBackend("")
+func TestParseBackend(t *testing.T) {
+	backend, err := ParseBackend("")
 	if err != nil {
-		t.Fatalf("parseSessionBackend: %v", err)
+		t.Fatalf("ParseBackend: %v", err)
 	}
-	if backend != sessionBackendAuto {
+	if backend != BackendAuto {
 		t.Fatalf("expected auto, got %s", backend)
 	}
 
-	backend, err = parseSessionBackend("Screen")
+	backend, err = ParseBackend("Screen")
 	if err != nil {
-		t.Fatalf("parseSessionBackend: %v", err)
+		t.Fatalf("ParseBackend: %v", err)
 	}
-	if backend != sessionBackendScreen {
+	if backend != BackendScreen {
 		t.Fatalf("expected screen, got %s", backend)
 	}
 
-	if _, err := parseSessionBackend("bogus"); err == nil {
+	if _, err := ParseBackend("bogus"); err == nil {
 		t.Fatalf("expected error for invalid backend")
 	}
 }
@@ -89,8 +89,8 @@ func TestParseSessionBackend(t *testing.T) {
 func TestStartSessionTmuxBuildsCommand(t *testing.T) {
 	runner := &fakeRunner{}
 	env := []string{"WORKSET_ROOT=/tmp/ws"}
-	if err := startSession(context.Background(), runner, sessionBackendTmux, "/tmp/ws", "demo", []string{"zsh"}, env, false); err != nil {
-		t.Fatalf("startSession: %v", err)
+	if err := Start(context.Background(), runner, BackendTmux, "/tmp/ws", "demo", []string{"zsh"}, env, false); err != nil {
+		t.Fatalf("Start: %v", err)
 	}
 	if len(runner.commands) != 1 {
 		t.Fatalf("expected 1 command, got %d", len(runner.commands))
@@ -107,8 +107,8 @@ func TestStartSessionTmuxBuildsCommand(t *testing.T) {
 func TestStartSessionScreenBuildsCommand(t *testing.T) {
 	runner := &fakeRunner{}
 	env := []string{"WORKSET_ROOT=/tmp/ws"}
-	if err := startSession(context.Background(), runner, sessionBackendScreen, "/tmp/ws", "demo", []string{"bash"}, env, false); err != nil {
-		t.Fatalf("startSession: %v", err)
+	if err := Start(context.Background(), runner, BackendScreen, "/tmp/ws", "demo", []string{"bash"}, env, false); err != nil {
+		t.Fatalf("Start: %v", err)
 	}
 	if len(runner.commands) != 1 {
 		t.Fatalf("expected 1 command, got %d", len(runner.commands))
@@ -128,8 +128,8 @@ func TestStartSessionScreenBuildsCommand(t *testing.T) {
 func TestAttachSessionUsesSwitchWhenInTmux(t *testing.T) {
 	t.Setenv("TMUX", "1")
 	runner := &fakeRunner{}
-	if err := attachSession(context.Background(), runner, sessionBackendTmux, "demo"); err != nil {
-		t.Fatalf("attachSession: %v", err)
+	if err := Attach(context.Background(), runner, BackendTmux, "demo"); err != nil {
+		t.Fatalf("Attach: %v", err)
 	}
 	if len(runner.commands) != 1 {
 		t.Fatalf("expected 1 command, got %d", len(runner.commands))
@@ -140,8 +140,8 @@ func TestAttachSessionUsesSwitchWhenInTmux(t *testing.T) {
 func TestAttachSessionUsesScreenXWhenInScreen(t *testing.T) {
 	t.Setenv("STY", "1")
 	runner := &fakeRunner{}
-	if err := attachSession(context.Background(), runner, sessionBackendScreen, "demo"); err != nil {
-		t.Fatalf("attachSession: %v", err)
+	if err := Attach(context.Background(), runner, BackendScreen, "demo"); err != nil {
+		t.Fatalf("Attach: %v", err)
 	}
 	if len(runner.commands) != 1 {
 		t.Fatalf("expected 1 command, got %d", len(runner.commands))
@@ -151,23 +151,23 @@ func TestAttachSessionUsesScreenXWhenInScreen(t *testing.T) {
 
 func TestSessionExistsTmux(t *testing.T) {
 	runner := &fakeRunner{
-		results: []commandResult{{ExitCode: 0}},
+		results: []CommandResult{{ExitCode: 0}},
 	}
-	exists, err := sessionExists(context.Background(), runner, sessionBackendTmux, "demo")
+	exists, err := Exists(context.Background(), runner, BackendTmux, "demo")
 	if err != nil {
-		t.Fatalf("sessionExists: %v", err)
+		t.Fatalf("Exists: %v", err)
 	}
 	if !exists {
 		t.Fatalf("expected session to exist")
 	}
 
 	runner = &fakeRunner{
-		results: []commandResult{{ExitCode: 1}},
+		results: []CommandResult{{ExitCode: 1}},
 		errs:    []error{errors.New("exit status 1")},
 	}
-	exists, err = sessionExists(context.Background(), runner, sessionBackendTmux, "demo")
+	exists, err = Exists(context.Background(), runner, BackendTmux, "demo")
 	if err != nil {
-		t.Fatalf("sessionExists: %v", err)
+		t.Fatalf("Exists: %v", err)
 	}
 	if exists {
 		t.Fatalf("expected session to be missing")
@@ -176,10 +176,10 @@ func TestSessionExistsTmux(t *testing.T) {
 
 func TestScreenHasSession(t *testing.T) {
 	output := "There is a screen on:\n\t1234.demo\t(Detached)\n1 Socket in /tmp.\n"
-	if !screenHasSession(output, "demo") {
+	if !ScreenHasSession(output, "demo") {
 		t.Fatalf("expected screen session to be found")
 	}
-	if screenHasSession(output, "other") {
+	if ScreenHasSession(output, "other") {
 		t.Fatalf("did not expect session to be found")
 	}
 }

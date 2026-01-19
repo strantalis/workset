@@ -1,6 +1,6 @@
 //go:build !windows
 
-package main
+package session
 
 import (
 	"context"
@@ -15,11 +15,11 @@ import (
 	"golang.org/x/term"
 )
 
-func runExecWithPTY(ctx context.Context, dir string, command []string, env []string) error {
+func RunExecWithPTY(ctx context.Context, dir string, command []string, env []string) error {
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		return fmt.Errorf("interactive exec requires a TTY")
 	}
-	execName, execArgs := resolveExecCommand(command)
+	execName, execArgs := ResolveExecCommand(command)
 	cmd := exec.CommandContext(ctx, execName, execArgs...)
 	cmd.Dir = dir
 	cmd.Env = env

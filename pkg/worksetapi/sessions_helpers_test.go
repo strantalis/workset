@@ -1,4 +1,4 @@
-package main
+package worksetapi
 
 import (
 	"context"
@@ -6,8 +6,34 @@ import (
 	"testing"
 	"time"
 
+	"github.com/strantalis/workset/internal/session"
 	"github.com/strantalis/workset/internal/workspace"
 )
+
+type fakeRunner struct {
+	results  []session.CommandResult
+	errs     []error
+	commands []session.CommandSpec
+}
+
+func (f *fakeRunner) LookPath(_ string) error {
+	return nil
+}
+
+func (f *fakeRunner) Run(_ context.Context, spec session.CommandSpec) (session.CommandResult, error) {
+	f.commands = append(f.commands, spec)
+	var result session.CommandResult
+	var err error
+	if len(f.results) > 0 {
+		result = f.results[0]
+		f.results = f.results[1:]
+	}
+	if len(f.errs) > 0 {
+		err = f.errs[0]
+		f.errs = f.errs[1:]
+	}
+	return result, err
+}
 
 func TestResolveSessionTarget(t *testing.T) {
 	state := workspace.State{
@@ -66,7 +92,7 @@ func TestEnsureSessionNameAvailableCollision(t *testing.T) {
 		},
 	}
 	runner := &fakeRunner{}
-	err := ensureSessionNameAvailable(context.Background(), runner, state, "workset-demo", sessionBackendTmux)
+	err := ensureSessionNameAvailable(context.Background(), runner, state, "workset-demo", session.BackendTmux)
 	if err == nil {
 		t.Fatalf("expected collision error")
 	}
@@ -79,9 +105,9 @@ func TestEnsureSessionNameAvailableRunning(t *testing.T) {
 		},
 	}
 	runner := &fakeRunner{
-		results: []commandResult{{ExitCode: 0}},
+		results: []session.CommandResult{{ExitCode: 0}},
 	}
-	err := ensureSessionNameAvailable(context.Background(), runner, state, "workset-demo", sessionBackendTmux)
+	err := ensureSessionNameAvailable(context.Background(), runner, state, "workset-demo", session.BackendTmux)
 	if err == nil {
 		t.Fatalf("expected running session error")
 	}
@@ -94,51 +120,27 @@ func TestEnsureSessionNameAvailableStopped(t *testing.T) {
 		},
 	}
 	runner := &fakeRunner{
-		results: []commandResult{{ExitCode: 1}},
+		results: []session.CommandResult{{ExitCode: 1}},
 		errs:    []error{errors.New("exit status 1")},
 	}
-	err := ensureSessionNameAvailable(context.Background(), runner, state, "workset-demo", sessionBackendTmux)
+	err := ensureSessionNameAvailable(context.Background(), runner, state, "workset-demo", session.BackendTmux)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestNormalizeSessionNameForBackend(t *testing.T) {
-	name, renamed, err := normalizeSessionNameForBackend(sessionBackendTmux, "workset:demo")
-	if err != nil {
-		t.Fatalf("normalizeSessionNameForBackend: %v", err)
-	}
-	if !renamed {
-		t.Fatalf("expected rename to be true")
-	}
-	if name != "workset_demo" {
-		t.Fatalf("expected tmux name workset_demo, got %q", name)
-	}
-
-	name, renamed, err = normalizeSessionNameForBackend(sessionBackendScreen, "workset:demo")
-	if err != nil {
-		t.Fatalf("normalizeSessionNameForBackend: %v", err)
-	}
-	if renamed {
-		t.Fatalf("expected rename to be false")
-	}
-	if name != "workset:demo" {
-		t.Fatalf("expected unchanged name, got %q", name)
-	}
-}
-
 func TestAllowAttachAfterStart(t *testing.T) {
-	allowed, note := allowAttachAfterStart(sessionBackendTmux, true)
+	allowed, note := allowAttachAfterStart(session.BackendTmux, true)
 	if !allowed || note != "" {
 		t.Fatalf("expected attach allowed for tmux, got allowed=%v note=%q", allowed, note)
 	}
 
-	allowed, note = allowAttachAfterStart(sessionBackendExec, true)
+	allowed, note = allowAttachAfterStart(session.BackendExec, true)
 	if allowed || note == "" {
 		t.Fatalf("expected attach ignored for exec, got allowed=%v note=%q", allowed, note)
 	}
 
-	allowed, note = allowAttachAfterStart(sessionBackendTmux, false)
+	allowed, note = allowAttachAfterStart(session.BackendTmux, false)
 	if allowed || note != "" {
 		t.Fatalf("expected attach disabled, got allowed=%v note=%q", allowed, note)
 	}
