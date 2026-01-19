@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/strantalis/workset/internal/git"
+	"github.com/strantalis/workset/internal/hooks"
 	"github.com/strantalis/workset/internal/session"
 )
 
@@ -18,8 +19,10 @@ type Options struct {
 	SessionRunner  session.Runner
 	// ExecFunc overrides how Exec runs commands (useful for embedding/tests).
 	ExecFunc func(ctx context.Context, root string, command []string, env []string) error
-	Clock    func() time.Time
-	Logf     func(format string, args ...any)
+	// HookRunner overrides how hooks run commands (useful for embedding/tests).
+	HookRunner hooks.Runner
+	Clock      func() time.Time
+	Logf       func(format string, args ...any)
 }
 
 // Service provides the public API for workspace, repo, alias, group, session,
@@ -31,6 +34,7 @@ type Service struct {
 	git        git.Client
 	runner     session.Runner
 	exec       func(ctx context.Context, root string, command []string, env []string) error
+	hookRunner hooks.Runner
 	clock      func() time.Time
 	logf       func(format string, args ...any)
 }
@@ -57,6 +61,10 @@ func NewService(opts Options) *Service {
 	if execFunc == nil {
 		execFunc = runExecCommand
 	}
+	hookRunner := opts.HookRunner
+	if hookRunner == nil {
+		hookRunner = hooks.ExecRunner{}
+	}
 	clock := opts.Clock
 	if clock == nil {
 		clock = time.Now
@@ -68,6 +76,7 @@ func NewService(opts Options) *Service {
 		git:        gitClient,
 		runner:     runner,
 		exec:       execFunc,
+		hookRunner: hookRunner,
 		clock:      clock,
 		logf:       opts.Logf,
 	}

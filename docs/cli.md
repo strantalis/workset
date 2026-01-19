@@ -10,6 +10,7 @@ description: CLI overview, command syntax, and output modes for Workset.
 workset new <name> [--path <path>] [--group <name> ...] [--repo <alias> ...]
 workset ls
 workset exec [<workspace>] [-- <command> [args...]]
+workset hooks run -w <workspace> <repo> [--event <event>] [--reason <reason>] [--trust]
 workset session start [<workspace>] [-- <command> [args...]] [--yes] [--attach]
 workset session attach [<workspace>] [<name>] [--yes]
 workset session stop [<workspace>] [<name>] [--yes]

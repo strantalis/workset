@@ -11,6 +11,7 @@ Quick lookup for CLI commands and intent.
 | `workset new` | Create a workspace. |
 | `workset ls` | List workspaces. |
 | `workset exec` | Run a command in a workspace. |
+| `workset hooks run` | Run repo hooks for an event. |
 | `workset session start` | Start a persistent session. |
 | `workset session attach` | Attach to a session. |
 | `workset session stop` | Stop a session. |

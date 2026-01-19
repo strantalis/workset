@@ -38,6 +38,7 @@ type WorkspaceRef struct {
 
 type GlobalConfig struct {
 	Defaults   Defaults                `yaml:"defaults" json:"defaults" mapstructure:"defaults"`
+	Hooks      HooksConfig             `yaml:"hooks,omitempty" json:"hooks,omitempty" mapstructure:"hooks"`
 	Repos      map[string]RepoAlias    `yaml:"repos" json:"repos" mapstructure:"repos"`
 	Groups     map[string]Group        `yaml:"groups" json:"groups" mapstructure:"groups"`
 	Workspaces map[string]WorkspaceRef `yaml:"workspaces" json:"workspaces" mapstructure:"workspaces"`
@@ -64,4 +65,24 @@ type Remotes struct {
 type RemoteConfig struct {
 	Name          string `yaml:"name" json:"name" mapstructure:"name"`
 	DefaultBranch string `yaml:"default_branch,omitempty" json:"default_branch,omitempty" mapstructure:"default_branch"`
+}
+
+type HooksConfig struct {
+	Enabled   bool            `yaml:"enabled" json:"enabled" mapstructure:"enabled"`
+	OnError   string          `yaml:"on_error,omitempty" json:"on_error,omitempty" mapstructure:"on_error"`
+	RepoHooks RepoHooksConfig `yaml:"repo_hooks,omitempty" json:"repo_hooks,omitempty" mapstructure:"repo_hooks"`
+	Items     []HookSpec      `yaml:"items,omitempty" json:"items,omitempty" mapstructure:"items"`
+}
+
+type RepoHooksConfig struct {
+	TrustedRepos []string `yaml:"trusted_repos,omitempty" json:"trusted_repos,omitempty" mapstructure:"trusted_repos"`
+}
+
+type HookSpec struct {
+	ID      string            `yaml:"id" json:"id" mapstructure:"id"`
+	On      []string          `yaml:"on" json:"on" mapstructure:"on"`
+	Run     []string          `yaml:"run" json:"run" mapstructure:"run"`
+	Cwd     string            `yaml:"cwd,omitempty" json:"cwd,omitempty" mapstructure:"cwd"`
+	Env     map[string]string `yaml:"env,omitempty" json:"env,omitempty" mapstructure:"env"`
+	OnError string            `yaml:"on_error,omitempty" json:"on_error,omitempty" mapstructure:"on_error"`
 }

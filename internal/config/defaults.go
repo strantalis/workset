@@ -20,6 +20,14 @@ func DefaultConfig() GlobalConfig {
 			SessionTmuxRight:  "",
 			SessionScreenHard: "",
 		},
+		Hooks: HooksConfig{
+			Enabled: true,
+			OnError: "fail",
+			RepoHooks: RepoHooksConfig{
+				TrustedRepos: []string{},
+			},
+			Items: []HookSpec{},
+		},
 		Repos:      map[string]RepoAlias{},
 		Groups:     map[string]Group{},
 		Workspaces: map[string]WorkspaceRef{},
@@ -35,6 +43,12 @@ func (cfg *GlobalConfig) EnsureMaps() {
 	}
 	if cfg.Workspaces == nil {
 		cfg.Workspaces = map[string]WorkspaceRef{}
+	}
+	if cfg.Hooks.RepoHooks.TrustedRepos == nil {
+		cfg.Hooks.RepoHooks.TrustedRepos = []string{}
+	}
+	if cfg.Hooks.Items == nil {
+		cfg.Hooks.Items = []HookSpec{}
 	}
 }
 

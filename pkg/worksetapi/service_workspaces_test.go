@@ -109,6 +109,39 @@ func TestCreateWorkspaceWarnsOutsideRoot(t *testing.T) {
 	}
 }
 
+func TestCreateWorkspacePendingHooks(t *testing.T) {
+	env := newTestEnv(t)
+	local := env.createLocalRepo("repo-a")
+	env.git.worktreeAddHook = func(path string) error {
+		hooksDir := filepath.Join(path, ".workset")
+		if err := os.MkdirAll(hooksDir, 0o755); err != nil {
+			return err
+		}
+		data := []byte("hooks:\n  - id: bootstrap\n    on: [worktree.created]\n    run: [\"npm\", \"ci\"]\n")
+		return os.WriteFile(filepath.Join(hooksDir, "hooks.yaml"), data, 0o644)
+	}
+
+	cfg := env.loadConfig()
+	cfg.Repos = map[string]config.RepoAlias{
+		"repo-a": {Path: local},
+	}
+	env.saveConfig(cfg)
+
+	result, err := env.svc.CreateWorkspace(context.Background(), WorkspaceCreateInput{
+		Name:  "demo",
+		Repos: []string{"repo-a"},
+	})
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if len(result.PendingHooks) != 1 {
+		t.Fatalf("expected pending hooks")
+	}
+	if result.PendingHooks[0].Repo != "repo-a" {
+		t.Fatalf("unexpected pending repo: %s", result.PendingHooks[0].Repo)
+	}
+}
+
 func TestDeleteWorkspaceRequiresConfirmation(t *testing.T) {
 	env := newTestEnv(t)
 	root := env.createWorkspace(context.Background(), "demo")

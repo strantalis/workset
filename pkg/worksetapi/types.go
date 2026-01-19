@@ -39,9 +39,10 @@ type WorkspaceCreatedJSON struct {
 
 // WorkspaceCreateResult wraps the create payload with warnings and config metadata.
 type WorkspaceCreateResult struct {
-	Workspace WorkspaceCreatedJSON
-	Warnings  []string
-	Config    config.GlobalConfigLoadInfo
+	Workspace    WorkspaceCreatedJSON
+	Warnings     []string
+	PendingHooks []HookPending
+	Config       config.GlobalConfigLoadInfo
 }
 
 // WorkspaceDeleteResultJSON is the JSON payload for workspace deletion.
@@ -79,11 +80,12 @@ type RepoListResult struct {
 
 // RepoAddResultJSON is the JSON payload for repo add operations.
 type RepoAddResultJSON struct {
-	Status    string `json:"status"`
-	Workspace string `json:"workspace"`
-	Repo      string `json:"repo"`
-	LocalPath string `json:"local_path"`
-	Managed   bool   `json:"managed"`
+	Status       string            `json:"status"`
+	Workspace    string            `json:"workspace"`
+	Repo         string            `json:"repo"`
+	LocalPath    string            `json:"local_path"`
+	Managed      bool              `json:"managed"`
+	PendingHooks []HookPendingJSON `json:"pending_hooks,omitempty"`
 }
 
 // RepoAddResult includes worktree details and config metadata.
@@ -92,8 +94,45 @@ type RepoAddResult struct {
 	WorktreePath string
 	RepoDir      string
 	Warnings     []string
+	PendingHooks []HookPending
 	Config       config.GlobalConfigLoadInfo
 }
+
+// HookPendingJSON describes hooks waiting for approval/trust.
+type HookPendingJSON struct {
+	Event string   `json:"event"`
+	Repo  string   `json:"repo"`
+	Hooks []string `json:"hooks"`
+}
+
+// HookPending provides structured hook approval details.
+type HookPending struct {
+	Event string
+	Repo  string
+	Hooks []string
+}
+
+// HooksRunResult describes hook execution results.
+type HooksRunResult struct {
+	Event   string
+	Repo    string
+	Results []HookRunJSON
+	Config  config.GlobalConfigLoadInfo
+}
+
+// HookRunJSON reports individual hook execution results.
+type HookRunJSON struct {
+	ID      string        `json:"id"`
+	Status  HookRunStatus `json:"status"`
+	LogPath string        `json:"log_path,omitempty"`
+}
+
+type HookRunStatus string
+
+const (
+	HookRunStatusOK     HookRunStatus = "ok"
+	HookRunStatusFailed HookRunStatus = "failed"
+)
 
 // RepoRemotesUpdateResultJSON is the JSON payload for remote updates.
 type RepoRemotesUpdateResultJSON struct {

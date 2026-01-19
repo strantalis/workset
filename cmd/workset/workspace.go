@@ -9,6 +9,7 @@ import (
 	"github.com/strantalis/workset/internal/output"
 	"github.com/strantalis/workset/pkg/worksetapi"
 	"github.com/urfave/cli/v3"
+	"golang.org/x/term"
 )
 
 func newCommand() *cli.Command {
@@ -54,10 +55,6 @@ func newCommand() *cli.Command {
 				return err
 			}
 			printConfigInfo(cmd, result)
-			for _, warning := range result.Warnings {
-				_, _ = fmt.Fprintln(os.Stderr, "warning:", warning)
-			}
-
 			info := output.WorkspaceCreated{
 				Name:    result.Workspace.Name,
 				Path:    result.Workspace.Path,
@@ -66,6 +63,50 @@ func newCommand() *cli.Command {
 				Next:    result.Workspace.Next,
 			}
 			mode := outputModeFromContext(cmd)
+			handledHooks := map[string]bool{}
+			if !mode.JSON && len(result.PendingHooks) > 0 && term.IsTerminal(int(os.Stdin.Fd())) {
+				for _, pending := range result.PendingHooks {
+					hookList := strings.Join(pending.Hooks, ", ")
+					if hookList == "" {
+						continue
+					}
+					prompt := fmt.Sprintf("repo %s defines hooks (%s). Run now? [y/N] ", pending.Repo, hookList)
+					ok, promptErr := confirmPrompt(os.Stdin, commandWriter(cmd), prompt)
+					if promptErr != nil {
+						return promptErr
+					}
+					if ok {
+						if _, err := svc.RunHooks(ctx, worksetapi.HooksRunInput{
+							Workspace: worksetapi.WorkspaceSelector{Value: result.Workspace.Name},
+							Repo:      pending.Repo,
+							Event:     pending.Event,
+							Reason:    "workspace.create",
+						}); err != nil {
+							return err
+						}
+						handledHooks[pending.Repo] = true
+						trustPrompt := fmt.Sprintf("trust hooks for repo %s? [y/N] ", pending.Repo)
+						trust, trustErr := confirmPrompt(os.Stdin, commandWriter(cmd), trustPrompt)
+						if trustErr != nil {
+							return trustErr
+						}
+						if trust {
+							if _, err := svc.TrustRepoHooks(ctx, pending.Repo); err != nil {
+								return err
+							}
+						}
+					}
+				}
+			}
+			for _, warning := range result.Warnings {
+				_, _ = fmt.Fprintln(os.Stderr, "warning:", warning)
+			}
+			for _, pending := range result.PendingHooks {
+				if handledHooks[pending.Repo] {
+					continue
+				}
+				_, _ = fmt.Fprintf(os.Stderr, "warning: repo %s hooks pending approval; run `workset hooks run -w %s %s` to execute\n", pending.Repo, result.Workspace.Name, pending.Repo)
+			}
 			return printWorkspaceCreated(commandWriter(cmd), info, mode.JSON, mode.Plain)
 		},
 	}

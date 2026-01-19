@@ -148,6 +148,8 @@ func (s *Service) AddRepo(ctx context.Context, input RepoAddInput) (RepoAddResul
 		return RepoAddResult{}, err
 	}
 
+	warnings := []string{}
+	pendingHooks := []HookPending{}
 	registerWorkspace(&cfg, wsConfig.Name, wsRoot, s.clock())
 	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
 		return RepoAddResult{}, err
@@ -173,6 +175,27 @@ func (s *Service) AddRepo(ctx context.Context, input RepoAddInput) (RepoAddResul
 	}
 	worktreePath := workspace.RepoWorktreePath(wsRoot, branch, repoDir)
 
+	wsName := wsConfig.Name
+	if wsName == "" {
+		wsName = workspaceNameByPath(&cfg, wsRoot)
+	}
+	if wsName == "" {
+		wsName = filepath.Base(wsRoot)
+	}
+	pending, hookWarnings, err := s.runWorktreeCreatedHooks(ctx, cfg, wsRoot, wsName, config.RepoConfig{
+		Name:    name,
+		RepoDir: repoDir,
+	}, worktreePath, branch, "repo.add")
+	if err != nil {
+		return RepoAddResult{}, err
+	}
+	if len(hookWarnings) > 0 {
+		warnings = append(warnings, hookWarnings...)
+	}
+	if len(pending.Hooks) > 0 {
+		pendingHooks = append(pendingHooks, pending)
+	}
+
 	payload := RepoAddResultJSON{
 		Status:    "ok",
 		Workspace: wsConfig.Name,
@@ -180,7 +203,20 @@ func (s *Service) AddRepo(ctx context.Context, input RepoAddInput) (RepoAddResul
 		LocalPath: localPath,
 		Managed:   managed,
 	}
-	return RepoAddResult{Payload: payload, WorktreePath: worktreePath, RepoDir: repoDir, Config: info}, nil
+	if len(pendingHooks) > 0 {
+		payload.PendingHooks = make([]HookPendingJSON, 0, len(pendingHooks))
+		for _, pending := range pendingHooks {
+			payload.PendingHooks = append(payload.PendingHooks, HookPendingJSON(pending))
+		}
+	}
+	return RepoAddResult{
+		Payload:      payload,
+		WorktreePath: worktreePath,
+		RepoDir:      repoDir,
+		Warnings:     warnings,
+		PendingHooks: pendingHooks,
+		Config:       info,
+	}, nil
 }
 
 // UpdateRepoRemotes updates a workspace repo's remote configuration.

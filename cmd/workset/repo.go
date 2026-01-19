@@ -10,6 +10,7 @@ import (
 	"github.com/strantalis/workset/internal/output"
 	"github.com/strantalis/workset/pkg/worksetapi"
 	"github.com/urfave/cli/v3"
+	"golang.org/x/term"
 )
 
 func repoCommand() *cli.Command {
@@ -92,6 +93,7 @@ func repoCommand() *cli.Command {
 						return usageError(ctx, cmd, "repo alias or source required")
 					}
 					svc := apiService(cmd)
+					workspaceValue := cmd.String("workspace")
 					result, err := svc.AddRepo(ctx, worksetapi.RepoAddInput{
 						Workspace:     worksetapi.WorkspaceSelector{Value: cmd.String("workspace")},
 						Source:        raw,
@@ -107,6 +109,39 @@ func repoCommand() *cli.Command {
 					mode := outputModeFromContext(cmd)
 					if mode.JSON {
 						return output.WriteJSON(commandWriter(cmd), result.Payload)
+					}
+					if len(result.PendingHooks) > 0 && term.IsTerminal(int(os.Stdin.Fd())) {
+						for _, pending := range result.PendingHooks {
+							hookList := strings.Join(pending.Hooks, ", ")
+							if hookList == "" {
+								continue
+							}
+							prompt := fmt.Sprintf("repo %s defines hooks (%s). Run now? [y/N] ", pending.Repo, hookList)
+							ok, promptErr := confirmPrompt(os.Stdin, commandWriter(cmd), prompt)
+							if promptErr != nil {
+								return promptErr
+							}
+							if ok {
+								if _, err := svc.RunHooks(ctx, worksetapi.HooksRunInput{
+									Workspace: worksetapi.WorkspaceSelector{Value: workspaceValue},
+									Repo:      pending.Repo,
+									Event:     pending.Event,
+									Reason:    "repo.add",
+								}); err != nil {
+									return err
+								}
+								trustPrompt := fmt.Sprintf("trust hooks for repo %s? [y/N] ", pending.Repo)
+								trust, trustErr := confirmPrompt(os.Stdin, commandWriter(cmd), trustPrompt)
+								if trustErr != nil {
+									return trustErr
+								}
+								if trust {
+									if _, err := svc.TrustRepoHooks(ctx, pending.Repo); err != nil {
+										return err
+									}
+								}
+							}
+						}
 					}
 					styles := output.NewStyles(commandWriter(cmd), mode.Plain)
 					msg := fmt.Sprintf("added %s to %s", result.Payload.Repo, result.Payload.Workspace)
@@ -136,6 +171,15 @@ func repoCommand() *cli.Command {
 						line := fmt.Sprintf("worktree: %s", result.WorktreePath)
 						if styles.Enabled {
 							line = styles.Render(styles.Muted, line)
+						}
+						if _, err := fmt.Fprintln(commandWriter(cmd), line); err != nil {
+							return err
+						}
+					}
+					for _, warning := range result.Warnings {
+						line := fmt.Sprintf("warning: %s", warning)
+						if styles.Enabled {
+							line = styles.Render(styles.Warn, line)
 						}
 						if _, err := fmt.Fprintln(commandWriter(cmd), line); err != nil {
 							return err

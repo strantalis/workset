@@ -128,3 +128,12 @@ type ExecInput struct {
 	Workspace WorkspaceSelector
 	Command   []string
 }
+
+// HooksRunInput describes inputs for running hooks.
+type HooksRunInput struct {
+	Workspace WorkspaceSelector
+	Repo      string
+	Event     string
+	Reason    string
+	TrustRepo bool
+}

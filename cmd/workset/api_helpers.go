@@ -48,6 +48,8 @@ func printConfigInfo(cmd *cli.Command, info interface{}) {
 		printConfigLoadInfo(cmd, cmd.String("config"), value.Config)
 	case worksetapi.SessionActionResult:
 		printConfigLoadInfo(cmd, cmd.String("config"), value.Config)
+	case worksetapi.HooksRunResult:
+		printConfigLoadInfo(cmd, cmd.String("config"), value.Config)
 	default:
 		// no-op
 	}

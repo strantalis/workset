@@ -106,17 +106,18 @@ func (e *testEnv) createWorkspace(ctx context.Context, name string) string {
 }
 
 type fakeGit struct {
-	status         map[string]git.StatusSummary
-	statusErr      map[string]error
-	refs           map[string]bool
-	remotes        map[string][]string
-	remoteExists   map[string]map[string]bool
-	ancestors      map[string]bool
-	contentMerged  map[string]bool
-	currentBranch  map[string]string
-	currentOK      map[string]bool
-	worktreeAdds   []git.WorktreeAddOptions
-	worktreeRemovs []worktreeRemoveCall
+	status          map[string]git.StatusSummary
+	statusErr       map[string]error
+	refs            map[string]bool
+	remotes         map[string][]string
+	remoteExists    map[string]map[string]bool
+	ancestors       map[string]bool
+	contentMerged   map[string]bool
+	currentBranch   map[string]string
+	currentOK       map[string]bool
+	worktreeAdds    []git.WorktreeAddOptions
+	worktreeRemovs  []worktreeRemoveCall
+	worktreeAddHook func(path string) error
 }
 
 type worktreeRemoveCall struct {
@@ -230,6 +231,11 @@ func (f *fakeGit) WorktreeAdd(_ context.Context, opts git.WorktreeAddOptions) er
 	}
 	if err := os.MkdirAll(filepath.Join(opts.WorktreePath, ".git"), 0o755); err != nil {
 		return err
+	}
+	if f.worktreeAddHook != nil {
+		if err := f.worktreeAddHook(opts.WorktreePath); err != nil {
+			return err
+		}
 	}
 	f.worktreeAdds = append(f.worktreeAdds, opts)
 	return nil

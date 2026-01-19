@@ -37,6 +37,7 @@ func main() {
 			newCommand(),
 			listCommand(),
 			execCommand(),
+			hooksCommand(),
 			sessionCommand(),
 			versionCommand(),
 			removeWorkspaceCommand(),

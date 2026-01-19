@@ -5,9 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/strantalis/workset/internal/config"
 	"github.com/strantalis/workset/internal/git"
+	"github.com/strantalis/workset/internal/hooks"
 	"github.com/strantalis/workset/internal/workspace"
 )
 
@@ -217,6 +219,83 @@ func TestAddRepoUpdatesAliasFromLocalPath(t *testing.T) {
 	}
 }
 
+func TestAddRepoPendingHooksWhenUntrusted(t *testing.T) {
+	env := newTestEnv(t)
+	root := env.createWorkspace(context.Background(), "demo")
+	local := env.createLocalRepo("repo-a")
+	env.git.worktreeAddHook = func(path string) error {
+		hooksDir := filepath.Join(path, ".workset")
+		if err := os.MkdirAll(hooksDir, 0o755); err != nil {
+			return err
+		}
+		data := []byte("hooks:\n  - id: bootstrap\n    on: [worktree.created]\n    run: [\"npm\", \"ci\"]\n")
+		return os.WriteFile(filepath.Join(hooksDir, "hooks.yaml"), data, 0o644)
+	}
+
+	result, err := env.svc.AddRepo(context.Background(), RepoAddInput{
+		Workspace:  WorkspaceSelector{Value: root},
+		Name:       "repo-a",
+		NameSet:    true,
+		SourcePath: local,
+	})
+	if err != nil {
+		t.Fatalf("add repo: %v", err)
+	}
+	if len(result.PendingHooks) != 1 {
+		t.Fatalf("expected pending hooks")
+	}
+	if len(result.Payload.PendingHooks) != 1 {
+		t.Fatalf("expected pending hooks in payload")
+	}
+	if result.PendingHooks[0].Repo != "repo-a" {
+		t.Fatalf("unexpected pending repo: %s", result.PendingHooks[0].Repo)
+	}
+}
+
+func TestAddRepoRunsTrustedHooks(t *testing.T) {
+	env := newTestEnv(t)
+	root := env.createWorkspace(context.Background(), "demo")
+	local := env.createLocalRepo("repo-a")
+	env.git.worktreeAddHook = func(path string) error {
+		hooksDir := filepath.Join(path, ".workset")
+		if err := os.MkdirAll(hooksDir, 0o755); err != nil {
+			return err
+		}
+		data := []byte("hooks:\n  - id: bootstrap\n    on: [worktree.created]\n    run: [\"npm\", \"ci\"]\n")
+		return os.WriteFile(filepath.Join(hooksDir, "hooks.yaml"), data, 0o644)
+	}
+
+	cfg := env.loadConfig()
+	cfg.Hooks.RepoHooks.TrustedRepos = []string{"repo-a"}
+	env.saveConfig(cfg)
+
+	runner := &stubHookRunner{}
+	env.svc = NewService(Options{
+		ConfigPath:    env.configPath,
+		Git:           env.git,
+		SessionRunner: env.runner,
+		HookRunner:    runner,
+		Clock:         func() time.Time { return env.now },
+		Logf:          func(string, ...any) {},
+	})
+
+	result, err := env.svc.AddRepo(context.Background(), RepoAddInput{
+		Workspace:  WorkspaceSelector{Value: root},
+		Name:       "repo-a",
+		NameSet:    true,
+		SourcePath: local,
+	})
+	if err != nil {
+		t.Fatalf("add repo: %v", err)
+	}
+	if len(result.PendingHooks) != 0 {
+		t.Fatalf("expected no pending hooks")
+	}
+	if runner.calls == 0 {
+		t.Fatalf("expected hook runner to run")
+	}
+}
+
 func TestRemoveRepoUnmanagedLocalRequiresForce(t *testing.T) {
 	env := newTestEnv(t)
 	root := env.createWorkspace(context.Background(), "demo")
@@ -237,6 +316,15 @@ func TestRemoveRepoUnmanagedLocalRequiresForce(t *testing.T) {
 		DeleteLocal: true,
 	})
 	_ = requireErrorType[UnsafeOperation](t, err)
+}
+
+type stubHookRunner struct {
+	calls int
+}
+
+func (s *stubHookRunner) Run(_ context.Context, _ hooks.RunRequest) error {
+	s.calls++
+	return nil
 }
 
 func TestRemoveRepoUnmergedUnsafe(t *testing.T) {

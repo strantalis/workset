@@ -79,6 +79,8 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 	if err != nil {
 		return WorkspaceCreateResult{}, err
 	}
+	warnings := []string{}
+	pendingHooks := []HookPending{}
 	for _, plan := range repoPlans {
 		if _, err := ops.AddRepo(ctx, ops.AddRepoInput{
 			WorkspaceRoot: ws.Root,
@@ -91,9 +93,24 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 		}); err != nil {
 			return WorkspaceCreateResult{}, err
 		}
+		repoDir := plan.Name
+		worktreePath := workspace.RepoWorktreePath(ws.Root, ws.State.CurrentBranch, repoDir)
+		pending, hookWarnings, err := s.runWorktreeCreatedHooks(ctx, cfg, ws.Root, name, config.RepoConfig{
+			Name:    plan.Name,
+			RepoDir: repoDir,
+		}, worktreePath, ws.State.CurrentBranch, "workspace.create")
+		if err != nil {
+			return WorkspaceCreateResult{}, err
+		}
+		if len(hookWarnings) > 0 {
+			warnings = append(warnings, hookWarnings...)
+		}
+		if len(pending.Hooks) > 0 {
+			pendingHooks = append(pendingHooks, pending)
+		}
 	}
 
-	warnings := warnOutsideWorkspaceRoot(root, cfg.Defaults.WorkspaceRoot)
+	warnings = append(warnings, warnOutsideWorkspaceRoot(root, cfg.Defaults.WorkspaceRoot)...)
 
 	infoPayload := WorkspaceCreatedJSON{
 		Name:    name,
@@ -107,7 +124,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
 		return WorkspaceCreateResult{}, err
 	}
-	return WorkspaceCreateResult{Workspace: infoPayload, Warnings: warnings, Config: info}, nil
+	return WorkspaceCreateResult{Workspace: infoPayload, Warnings: warnings, PendingHooks: pendingHooks, Config: info}, nil
 }
 
 // DeleteWorkspace removes a workspace registration or deletes files when requested.

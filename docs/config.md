@@ -20,6 +20,7 @@ Remote names for local repos are derived from the repo itself; URL-based repos d
 | Key | Description |
 | --- | --- |
 | `defaults` | Global defaults for commands and workspace behavior. |
+| `hooks` | Hook execution defaults and repo trust list. |
 | `repos` | Named repo aliases for URL or local path. |
 | `workspaces` | Registry of named workspaces and their paths. |
 
@@ -38,6 +39,14 @@ Remote names for local repos are derived from the repo itself; URL-based repos d
 | `session_tmux_status_left` | Override tmux `status-left` when a session theme is enabled. |
 | `session_tmux_status_right` | Override tmux `status-right` when a session theme is enabled. |
 | `session_screen_hardstatus` | Override screen `hardstatus` when a session theme is enabled. |
+
+### `hooks`
+
+| Field | Description |
+| --- | --- |
+| `enabled` | Enable hook execution (default `true`). |
+| `on_error` | Default hook error handling (`fail` or `warn`). |
+| `repo_hooks.trusted_repos` | Repo names whose `.workset/hooks.yaml` can run without prompting. |
 
 ### Session themes
 
@@ -77,6 +86,12 @@ defaults:
   # session_tmux_status_right: " #[fg=colour244]%Y-%m-%d %H:%M "
   # session_screen_hardstatus: "alwayslastline workset %n %t %=%H:%M %d-%b-%y"
 
+hooks:
+  enabled: true
+  on_error: fail
+  repo_hooks:
+    trusted_repos: [platform]
+
 repos:
   platform:
     url: git@github.com:org/platform.git
@@ -90,6 +105,19 @@ repos:
 workspaces:
   core:
     path: ~/.workset/workspaces/core
+
+## Repo hooks (`.workset/hooks.yaml`)
+
+Each repo worktree can define hooks under `.workset/hooks.yaml`. These run when workset creates a new worktree (event: `worktree.created`).
+
+```yaml
+hooks:
+  - id: bootstrap
+    on: [worktree.created]
+    run: ["npm", "ci"]
+    cwd: "{repo.path}"
+    on_error: fail
+```
 ```
 
 ## Workspace config (`<workspace>/workset.yaml`)
