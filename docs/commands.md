@@ -21,6 +21,7 @@ Quick lookup for CLI commands and intent.
 | `workset config set` | Set config values. |
 | `workset repo alias ls` | List repo aliases. |
 | `workset repo alias add` | Add a repo alias. |
+| `workset repo alias set` | Update a repo alias. |
 | `workset repo alias rm` | Remove a repo alias. |
 | `workset repo add` | Add a repo to a workspace. |
 | `workset repo ls` | List repos in a workspace. |

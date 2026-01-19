@@ -212,8 +212,8 @@ func TestRepoAliasLocalAndURLFlow(t *testing.T) {
 		t.Fatalf("repo ls missing repo store path: %s", out)
 	}
 
-	if _, err := runner.run("repo", "alias", "add", "--default-branch", "main", "url-alias", fileURL(urlRepo)); err != nil {
-		t.Fatalf("alias add default branch: %v", err)
+	if _, err := runner.run("repo", "alias", "set", "--default-branch", "main", "url-alias", fileURL(urlRepo)); err != nil {
+		t.Fatalf("alias set default branch: %v", err)
 	}
 	if _, err := runner.run("repo", "alias", "rm", "local-alias"); err != nil {
 		t.Fatalf("alias rm local: %v", err)
@@ -383,8 +383,8 @@ func TestTemplateFlowWithMultipleWorkspaces(t *testing.T) {
 	if _, err := runner.run("repo", "alias", "add", "repo-b", repoB); err != nil {
 		t.Fatalf("alias add repo-b: %v", err)
 	}
-	if _, err := runner.run("repo", "alias", "add", "--default-branch", "main", "repo-a", repoA); err != nil {
-		t.Fatalf("alias add default branch: %v", err)
+	if _, err := runner.run("repo", "alias", "set", "--default-branch", "main", "repo-a", repoA); err != nil {
+		t.Fatalf("alias set default branch: %v", err)
 	}
 	out, err := runner.run("repo", "alias", "ls", "--json")
 	if err != nil {

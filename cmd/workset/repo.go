@@ -649,9 +649,11 @@ func repoAliasCommand() *cli.Command {
 				},
 			},
 			{
-				Name:      "add",
-				Usage:     "Add or update a repo alias",
-				ArgsUsage: "<name> <source>",
+				Name:        "add",
+				Usage:       "Create a repo alias",
+				ArgsUsage:   "<name> <source>",
+				UsageText:   "workset repo alias add <name> <source> [--default-branch <branch>]",
+				Description: "Create a new alias for a repo path or URL. Use `workset repo alias set` to update an existing alias.",
 				Flags: appendOutputFlags([]cli.Flag{
 					&cli.StringFlag{
 						Name:  "default-branch",
@@ -661,12 +663,20 @@ func repoAliasCommand() *cli.Command {
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					name := strings.TrimSpace(cmd.Args().Get(0))
 					source := strings.TrimSpace(cmd.Args().Get(1))
-					if name == "" || source == "" {
-						return usageError(ctx, cmd, "usage: workset repo alias add <name> <source>")
+					if name == "" {
+						return usageError(ctx, cmd, "alias name required (example: workset repo alias add ask-gill git@github.com:org/repo.git)")
+					}
+					if source == "" {
+						return usageError(ctx, cmd, fmt.Sprintf("source required to create alias %q (path or URL). Example: workset repo alias add --default-branch staging %s git@github.com:org/repo.git", name, name))
 					}
 					cfg, cfgPath, err := loadGlobal(cmd.String("config"))
 					if err != nil {
 						return err
+					}
+					if cfg.Repos != nil {
+						if _, ok := cfg.Repos[name]; ok {
+							return cli.Exit(fmt.Sprintf("repo alias %q already exists; use 'workset repo alias set' to update it", name), 1)
+						}
 					}
 					url := ""
 					path := ""
@@ -703,6 +713,85 @@ func repoAliasCommand() *cli.Command {
 					}
 					styles := output.NewStyles(commandWriter(cmd), mode.Plain)
 					msg := fmt.Sprintf("alias %s saved", name)
+					if styles.Enabled {
+						msg = styles.Render(styles.Success, msg)
+					}
+					if _, err := fmt.Fprintln(commandWriter(cmd), msg); err != nil {
+						return err
+					}
+					return nil
+				},
+			},
+			{
+				Name:        "set",
+				Usage:       "Update a repo alias",
+				ArgsUsage:   "<name> [source]",
+				UsageText:   "workset repo alias set <name> [source] [--default-branch <branch>]",
+				Description: "Update an existing alias. Omit source to keep the current path/URL.",
+				Flags: appendOutputFlags([]cli.Flag{
+					&cli.StringFlag{
+						Name:  "default-branch",
+						Usage: "Default branch name",
+					},
+				}),
+				ShellComplete: func(ctx context.Context, cmd *cli.Command) {
+					if cmd.NArg() == 0 {
+						completeRepoAliases(cmd)
+					}
+				},
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					name := strings.TrimSpace(cmd.Args().Get(0))
+					if name == "" {
+						return usageError(ctx, cmd, "alias name required (example: workset repo alias set ask-gill --default-branch staging)")
+					}
+					cfg, cfgPath, err := loadGlobal(cmd.String("config"))
+					if err != nil {
+						return err
+					}
+					alias, ok := cfg.Repos[name]
+					if !ok {
+						return cli.Exit(fmt.Sprintf("repo alias %q not found; use 'workset repo alias add' to create it", name), 1)
+					}
+					updated := false
+					source := strings.TrimSpace(cmd.Args().Get(1))
+					if source != "" {
+						if looksLikeURL(source) {
+							alias.URL = source
+							alias.Path = ""
+						} else {
+							resolved, err := resolveLocalPathInput(source)
+							if err != nil {
+								return err
+							}
+							alias.Path = resolved
+							alias.URL = ""
+						}
+						updated = true
+					}
+					if cmd.IsSet("default-branch") {
+						defaultBranch := strings.TrimSpace(cmd.String("default-branch"))
+						if defaultBranch == "" {
+							return cli.Exit("default branch cannot be empty", 1)
+						}
+						alias.DefaultBranch = defaultBranch
+						updated = true
+					}
+					if !updated {
+						return usageError(ctx, cmd, "no updates specified (provide a new source or --default-branch)")
+					}
+					cfg.Repos[name] = alias
+					if err := config.SaveGlobal(cfgPath, cfg); err != nil {
+						return err
+					}
+					mode := outputModeFromContext(cmd)
+					if mode.JSON {
+						return output.WriteJSON(commandWriter(cmd), map[string]string{
+							"status": "ok",
+							"name":   name,
+						})
+					}
+					styles := output.NewStyles(commandWriter(cmd), mode.Plain)
+					msg := fmt.Sprintf("alias %s updated", name)
 					if styles.Enabled {
 						msg = styles.Render(styles.Success, msg)
 					}
