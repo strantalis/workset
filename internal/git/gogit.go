@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/go-git/go-billy/v6/osfs"
 	ggit "github.com/go-git/go-git/v6"
@@ -73,6 +74,35 @@ func (c GoGitClient) AddRemote(path, name, url string) error {
 		return nil
 	}
 	return err
+}
+
+func (c GoGitClient) RemoteNames(repoPath string) ([]string, error) {
+	if repoPath == "" {
+		return nil, errors.New("repo path required")
+	}
+	repo, err := ggit.PlainOpenWithOptions(repoPath, &ggit.PlainOpenOptions{
+		EnableDotGitCommonDir: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	remotes, err := repo.Remotes()
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(remotes))
+	for _, remote := range remotes {
+		if remote == nil {
+			continue
+		}
+		cfg := remote.Config()
+		if cfg == nil || cfg.Name == "" {
+			continue
+		}
+		names = append(names, cfg.Name)
+	}
+	sort.Strings(names)
+	return names, nil
 }
 
 func (c GoGitClient) Fetch(ctx context.Context, repoPath, remoteName string) error {

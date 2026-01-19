@@ -267,13 +267,7 @@ func groupCommand() *cli.Command {
 						return err
 					}
 					baseRemote := strings.TrimSpace(cmd.String("base-remote"))
-					if baseRemote == "" {
-						baseRemote = cfg.Defaults.Remotes.Base
-					}
 					writeRemote := strings.TrimSpace(cmd.String("write-remote"))
-					if writeRemote == "" {
-						writeRemote = cfg.Defaults.Remotes.Write
-					}
 					baseBranch := strings.TrimSpace(cmd.String("base-branch"))
 					if baseBranch == "" {
 						if alias, ok := cfg.Repos[repoName]; ok && alias.DefaultBranch != "" {
@@ -416,13 +410,6 @@ func groupCommand() *cli.Command {
 								DefaultBranch: baseBranch,
 							},
 						}
-						if remotes.Base.Name == "" {
-							remotes.Base.Name = cfg.Defaults.Remotes.Base
-						}
-						if remotes.Write.Name == "" {
-							remotes.Write.Name = cfg.Defaults.Remotes.Write
-						}
-
 						if _, err := ops.AddRepo(ctx, ops.AddRepoInput{
 							WorkspaceRoot: wsRoot,
 							Name:          member.Repo,

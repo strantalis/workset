@@ -84,13 +84,13 @@ func resolveGroupMemberPlan(cfg config.GlobalConfig, member config.GroupMember) 
 		baseBranch = alias.DefaultBranch
 	}
 
-	baseRemote := member.Remotes.Base.Name
-	if baseRemote == "" {
-		baseRemote = cfg.Defaults.Remotes.Base
+	baseRemote := strings.TrimSpace(member.Remotes.Base.Name)
+	writeRemote := strings.TrimSpace(member.Remotes.Write.Name)
+	if baseRemote == "" && writeRemote != "" {
+		baseRemote = writeRemote
 	}
-	writeRemote := member.Remotes.Write.Name
-	if writeRemote == "" {
-		writeRemote = cfg.Defaults.Remotes.Write
+	if writeRemote == "" && baseRemote != "" {
+		writeRemote = baseRemote
 	}
 
 	plan := repoPlan{
@@ -131,11 +131,9 @@ func resolveAliasPlan(cfg config.GlobalConfig, name string) (repoPlan, error) {
 		SourcePath: alias.Path,
 		Remotes: config.Remotes{
 			Base: config.RemoteConfig{
-				Name:          cfg.Defaults.Remotes.Base,
 				DefaultBranch: baseBranch,
 			},
 			Write: config.RemoteConfig{
-				Name:          cfg.Defaults.Remotes.Write,
 				DefaultBranch: baseBranch,
 			},
 		},

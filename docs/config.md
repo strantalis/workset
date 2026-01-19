@@ -10,6 +10,7 @@ Workspace config lives at `<workspace>/workset.yaml` and is the source of truth 
 
 `defaults.workspace` can point to a registered workspace name or a path. When set, workspace commands use it if `-w` is omitted.
 `defaults.repo_store_root` is where URL-based repos are cloned when added to a workspace.
+Remote names for local repos are derived from the repo itself; URL-based repos default to `origin`. Use `workset repo remotes set` to override per workspace repo.
 
 ## Global config (`~/.config/workset/config.yaml`)
 
@@ -36,8 +37,6 @@ Workspace config lives at `<workspace>/workset.yaml` and is the source of truth 
 | `session_tmux_status_left` | Override tmux `status-left` when a session theme is enabled. |
 | `session_tmux_status_right` | Override tmux `status-right` when a session theme is enabled. |
 | `session_screen_hardstatus` | Override screen `hardstatus` when a session theme is enabled. |
-| `remotes.base` | Default base remote name. |
-| `remotes.write` | Default write remote name. |
 | `parallelism` | Max parallel operations. |
 
 ### Session themes
@@ -77,9 +76,6 @@ defaults:
   # session_tmux_status_left: " #[fg=colour39]workset #[fg=colour250]#S "
   # session_tmux_status_right: " #[fg=colour244]%Y-%m-%d %H:%M "
   # session_screen_hardstatus: "alwayslastline workset %n %t %=%H:%M %d-%b-%y"
-  remotes:
-    base: origin
-    write: origin
   parallelism: 8
 
 repos:

@@ -44,8 +44,6 @@ func LoadGlobal(path string) (GlobalConfig, error) {
 		"defaults.session_tmux_status_left":  defaults.Defaults.SessionTmuxLeft,
 		"defaults.session_tmux_status_right": defaults.Defaults.SessionTmuxRight,
 		"defaults.session_screen_hardstatus": defaults.Defaults.SessionScreenHard,
-		"defaults.remotes.base":              defaults.Defaults.Remotes.Base,
-		"defaults.remotes.write":             defaults.Defaults.Remotes.Write,
 		"defaults.parallelism":               defaults.Defaults.Parallelism,
 	}, "."), nil); err != nil {
 		return GlobalConfig{}, err
@@ -96,12 +94,6 @@ func LoadGlobal(path string) (GlobalConfig, error) {
 	}
 	if cfg.Defaults.SessionScreenHard == "" {
 		cfg.Defaults.SessionScreenHard = defaults.Defaults.SessionScreenHard
-	}
-	if cfg.Defaults.Remotes.Base == "" {
-		cfg.Defaults.Remotes.Base = defaults.Defaults.Remotes.Base
-	}
-	if cfg.Defaults.Remotes.Write == "" {
-		cfg.Defaults.Remotes.Write = defaults.Defaults.Remotes.Write
 	}
 	if cfg.Defaults.Parallelism == 0 {
 		cfg.Defaults.Parallelism = defaults.Defaults.Parallelism

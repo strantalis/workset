@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/strantalis/workset/internal/config"
@@ -69,17 +70,11 @@ func AddRepo(ctx context.Context, input AddRepoInput) (config.WorkspaceConfig, e
 	if repo.RepoDir == "" {
 		repo.RepoDir = repo.Name
 	}
-	if repo.Remotes.Base.Name == "" {
-		repo.Remotes.Base.Name = input.Defaults.Remotes.Base
-	}
 	if repo.Remotes.Base.DefaultBranch == "" {
 		repo.Remotes.Base.DefaultBranch = input.Defaults.BaseBranch
 	}
-	if repo.Remotes.Write.Name == "" {
-		repo.Remotes.Write.Name = input.Defaults.Remotes.Write
-	}
 	if repo.Remotes.Write.DefaultBranch == "" {
-		repo.Remotes.Write.DefaultBranch = input.Defaults.BaseBranch
+		repo.Remotes.Write.DefaultBranch = repo.Remotes.Base.DefaultBranch
 	}
 
 	var gitDirPath string
@@ -116,6 +111,28 @@ func AddRepo(ctx context.Context, input AddRepoInput) (config.WorkspaceConfig, e
 		return config.WorkspaceConfig{}, err
 	}
 	gitDirPath = resolvedGitDir
+
+	if input.SourcePath != "" {
+		derived, ok, err := deriveRemotesFromLocalRepo(gitDirPath, input.Git)
+		if err != nil {
+			return config.WorkspaceConfig{}, err
+		}
+		if ok {
+			if repo.Remotes.Base.Name == "" {
+				repo.Remotes.Base.Name = derived.Base.Name
+			}
+			if repo.Remotes.Write.Name == "" {
+				repo.Remotes.Write.Name = derived.Write.Name
+			}
+		}
+	} else {
+		if repo.Remotes.Base.Name == "" {
+			repo.Remotes.Base.Name = "origin"
+		}
+		if repo.Remotes.Write.Name == "" {
+			repo.Remotes.Write.Name = "origin"
+		}
+	}
 
 	if repo.Remotes.Base.Name != repo.Remotes.Write.Name {
 		if input.URL != "" {
@@ -205,6 +222,56 @@ func DeriveRepoNameFromURL(url string) string {
 		return trimmed[idx+1:]
 	}
 	return trimmed
+}
+
+func deriveRemotesFromLocalRepo(repoPath string, gitClient git.Client) (config.Remotes, bool, error) {
+	remotes, err := gitClient.RemoteNames(repoPath)
+	if err != nil {
+		return config.Remotes{}, false, err
+	}
+	if len(remotes) == 0 {
+		return config.Remotes{}, false, nil
+	}
+	base, write := deriveRemoteNames(remotes)
+	return config.Remotes{
+		Base:  config.RemoteConfig{Name: base},
+		Write: config.RemoteConfig{Name: write},
+	}, true, nil
+}
+
+func deriveRemoteNames(remotes []string) (string, string) {
+	if len(remotes) == 0 {
+		return "", ""
+	}
+	sort.Strings(remotes)
+	hasOrigin := false
+	hasUpstream := false
+	for _, name := range remotes {
+		switch name {
+		case "origin":
+			hasOrigin = true
+		case "upstream":
+			hasUpstream = true
+		}
+	}
+	base := ""
+	write := ""
+	if hasUpstream {
+		base = "upstream"
+	}
+	if hasOrigin {
+		if base == "" {
+			base = "origin"
+		}
+		write = "origin"
+	}
+	if base == "" {
+		base = remotes[0]
+	}
+	if write == "" {
+		write = base
+	}
+	return base, write
 }
 
 func resolveGitDirPath(path string) (string, error) {

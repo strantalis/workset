@@ -21,6 +21,7 @@ type Client interface {
 	Clone(ctx context.Context, url, path, remoteName string) error
 	CloneBare(ctx context.Context, url, path, remoteName string) error
 	AddRemote(path, name, url string) error
+	RemoteNames(repoPath string) ([]string, error)
 	Fetch(ctx context.Context, repoPath, remoteName string) error
 	Status(path string) (StatusSummary, error)
 	IsRepo(path string) (bool, error)

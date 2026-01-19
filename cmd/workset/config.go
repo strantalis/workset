@@ -115,10 +115,8 @@ func setGlobalDefault(cfg *config.GlobalConfig, key, value string) error {
 		cfg.Defaults.SessionTmuxRight = value
 	case "defaults.session_screen_hardstatus":
 		cfg.Defaults.SessionScreenHard = value
-	case "defaults.remotes.base":
-		cfg.Defaults.Remotes.Base = value
-	case "defaults.remotes.write":
-		cfg.Defaults.Remotes.Write = value
+	case "defaults.remotes.base", "defaults.remotes.write":
+		return fmt.Errorf("%s was removed; set repo remotes per workspace repo instead", key)
 	case "defaults.parallelism":
 		parsed, err := strconv.Atoi(value)
 		if err != nil || parsed <= 0 {

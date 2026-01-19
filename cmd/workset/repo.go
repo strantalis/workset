@@ -203,11 +203,9 @@ func repoCommand() *cli.Command {
 						Defaults:      cfg.Defaults,
 						Remotes: config.Remotes{
 							Base: config.RemoteConfig{
-								Name:          cfg.Defaults.Remotes.Base,
 								DefaultBranch: defaultBranch,
 							},
 							Write: config.RemoteConfig{
-								Name:          cfg.Defaults.Remotes.Write,
 								DefaultBranch: defaultBranch,
 							},
 						},

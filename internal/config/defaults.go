@@ -19,11 +19,7 @@ func DefaultConfig() GlobalConfig {
 			SessionTmuxLeft:   "",
 			SessionTmuxRight:  "",
 			SessionScreenHard: "",
-			Remotes: RemoteNames{
-				Base:  "origin",
-				Write: "origin",
-			},
-			Parallelism: 8,
+			Parallelism:       8,
 		},
 		Repos:      map[string]RepoAlias{},
 		Groups:     map[string]Group{},
@@ -47,14 +43,8 @@ func ApplyRepoDefaults(repo *RepoConfig, defaults Defaults) {
 	if repo.RepoDir == "" {
 		repo.RepoDir = repo.Name
 	}
-	if repo.Remotes.Base.Name == "" {
-		repo.Remotes.Base.Name = defaults.Remotes.Base
-	}
 	if repo.Remotes.Base.DefaultBranch == "" {
 		repo.Remotes.Base.DefaultBranch = defaults.BaseBranch
-	}
-	if repo.Remotes.Write.Name == "" {
-		repo.Remotes.Write.Name = defaults.Remotes.Write
 	}
 	if repo.Remotes.Write.DefaultBranch == "" {
 		repo.Remotes.Write.DefaultBranch = defaults.BaseBranch
