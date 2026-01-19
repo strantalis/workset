@@ -19,7 +19,6 @@ func DefaultConfig() GlobalConfig {
 			SessionTmuxLeft:   "",
 			SessionTmuxRight:  "",
 			SessionScreenHard: "",
-			Parallelism:       8,
 		},
 		Repos:      map[string]RepoAlias{},
 		Groups:     map[string]Group{},

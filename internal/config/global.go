@@ -44,7 +44,6 @@ func LoadGlobal(path string) (GlobalConfig, error) {
 		"defaults.session_tmux_status_left":  defaults.Defaults.SessionTmuxLeft,
 		"defaults.session_tmux_status_right": defaults.Defaults.SessionTmuxRight,
 		"defaults.session_screen_hardstatus": defaults.Defaults.SessionScreenHard,
-		"defaults.parallelism":               defaults.Defaults.Parallelism,
 	}, "."), nil); err != nil {
 		return GlobalConfig{}, err
 	}
@@ -94,9 +93,6 @@ func LoadGlobal(path string) (GlobalConfig, error) {
 	}
 	if cfg.Defaults.SessionScreenHard == "" {
 		cfg.Defaults.SessionScreenHard = defaults.Defaults.SessionScreenHard
-	}
-	if cfg.Defaults.Parallelism == 0 {
-		cfg.Defaults.Parallelism = defaults.Defaults.Parallelism
 	}
 	return cfg, nil
 }

@@ -37,7 +37,6 @@ Remote names for local repos are derived from the repo itself; URL-based repos d
 | `session_tmux_status_left` | Override tmux `status-left` when a session theme is enabled. |
 | `session_tmux_status_right` | Override tmux `status-right` when a session theme is enabled. |
 | `session_screen_hardstatus` | Override screen `hardstatus` when a session theme is enabled. |
-| `parallelism` | Max parallel operations. |
 
 ### Session themes
 
@@ -76,7 +75,6 @@ defaults:
   # session_tmux_status_left: " #[fg=colour39]workset #[fg=colour250]#S "
   # session_tmux_status_right: " #[fg=colour244]%Y-%m-%d %H:%M "
   # session_screen_hardstatus: "alwayslastline workset %n %t %=%H:%M %d-%b-%y"
-  parallelism: 8
 
 repos:
   platform:

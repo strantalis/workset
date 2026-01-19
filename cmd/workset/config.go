@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/strantalis/workset/internal/config"
@@ -118,11 +117,7 @@ func setGlobalDefault(cfg *config.GlobalConfig, key, value string) error {
 	case "defaults.remotes.base", "defaults.remotes.write":
 		return fmt.Errorf("%s was removed; set repo remotes per workspace repo instead", key)
 	case "defaults.parallelism":
-		parsed, err := strconv.Atoi(value)
-		if err != nil || parsed <= 0 {
-			return fmt.Errorf("defaults.parallelism must be a positive integer")
-		}
-		cfg.Defaults.Parallelism = parsed
+		return fmt.Errorf("%s was removed; parallelism is no longer configurable", key)
 	default:
 		return fmt.Errorf("unsupported key %q", key)
 	}

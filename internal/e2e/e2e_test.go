@@ -332,7 +332,7 @@ func TestWorkspaceInitAndConfig(t *testing.T) {
 	if _, err := runner.run("new", "init-ws", "--path", target); err != nil {
 		t.Fatalf("workset new --path: %v", err)
 	}
-	if _, err := runner.run("config", "set", "defaults.parallelism", "4"); err != nil {
+	if _, err := runner.run("config", "set", "defaults.base_branch", "trunk"); err != nil {
 		t.Fatalf("config set: %v", err)
 	}
 	repoStore := filepath.Join(runner.root, "repo-store")
@@ -343,8 +343,8 @@ func TestWorkspaceInitAndConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("config show: %v", err)
 	}
-	if !strings.Contains(out, "\"parallelism\": 4") {
-		t.Fatalf("config show missing parallelism: %s", out)
+	if !strings.Contains(out, "\"base_branch\": \"trunk\"") {
+		t.Fatalf("config show missing base_branch: %s", out)
 	}
 	if !strings.Contains(out, repoStore) {
 		t.Fatalf("config show missing repo_store_root: %s", out)
@@ -486,9 +486,6 @@ func TestGroupAliasCommands(t *testing.T) {
 	out, err = runner.run("group", "show", "group-stack", "--json")
 	if err != nil {
 		t.Fatalf("group show --json: %v", err)
-	}
-	if !strings.Contains(out, "\"name\": \"origin\"") {
-		t.Fatalf("group show missing default base remote: %s", out)
 	}
 	if !strings.Contains(out, "\"default_branch\": \"main\"") {
 		t.Fatalf("group show missing default branch: %s", out)
