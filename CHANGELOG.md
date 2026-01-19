@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.3.0](https://github.com/strantalis/workset/compare/v0.2.1...v0.3.0) (2026-01-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* the default config path moved to ~/.workset/config.yaml (legacy ~/.config/workset/config.yaml is migrated on load).
+* defaults.parallelism has been removed; parallelism is no longer configurable.
+* defaults.remotes.* has been removed; remote names are now derived from local repos or default to origin for URL-based repos.
+
+### Features
+
+* add verbose config diagnostics ([61ccd6a](https://github.com/strantalis/workset/commit/61ccd6a77b3e68cc49a324ddd0a0f0007ae31e1e))
+* move global config to ~/.workset ([16b954e](https://github.com/strantalis/workset/commit/16b954ee0763d8f0bf56f3d0e7e84ee7090a131b))
+* remove defaults parallelism ([5530186](https://github.com/strantalis/workset/commit/5530186b3a7332eac9665b55604ee1852a934709))
+* remove defaults remotes ([a675bad](https://github.com/strantalis/workset/commit/a675bad37c75699959385c897fa41625520b5e4f))
+* **repo:** add alias set command ([b7c950b](https://github.com/strantalis/workset/commit/b7c950b1cfd95ffd80f0d245d6bdf1aed919cff5))
+* **workspace:** stop sessions on delete ([b654283](https://github.com/strantalis/workset/commit/b65428362faed0c224909f04b7f955356dba7ca0))
+
+
+### Bug Fixes
+
+* **worktree:** clean up stale worktree metadata ([288553f](https://github.com/strantalis/workset/commit/288553f9b0d1f356d7dc068454d908371c22e09b))
+
 ## [0.2.1](https://github.com/strantalis/workset/compare/v0.2.0...v0.2.1) (2026-01-18)
 
 
