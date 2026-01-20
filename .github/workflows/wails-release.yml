@@ -215,6 +215,21 @@ jobs:
             fi
             mv "$path" "$dir/$new"
           done
+      - name: Package macOS app
+        shell: bash
+        run: |
+          set -euo pipefail
+          dir="wails-ui/workset/build/bin"
+          shopt -s nullglob
+          apps=("$dir"/*.app)
+          if [ ${#apps[@]} -eq 0 ]; then
+            echo "No .app bundles found to package in $dir"
+            exit 1
+          fi
+          for app in "${apps[@]}"; do
+            zip_path="${app}.zip"
+            ditto -c -k --sequesterRsrc --keepParent "$app" "$zip_path"
+          done
       - name: Upload release assets
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
         with:
