@@ -367,9 +367,11 @@ func (s *Service) RemoveRepo(ctx context.Context, input RepoRemoveInput) (RepoRe
 		Status:    "ok",
 		Workspace: wsConfig.Name,
 		Repo:      name,
+		Deleted: RepoRemoveDeletedJSON{
+			Worktrees: input.DeleteWorktrees,
+			Local:     input.DeleteLocal,
+		},
 	}
-	payload.Deleted.Worktrees = input.DeleteWorktrees
-	payload.Deleted.Local = input.DeleteLocal
 
 	return RepoRemoveResult{Payload: payload, Warnings: warnings, Unpushed: unpushed, Safety: report, Config: info}, nil
 }

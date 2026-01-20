@@ -16,6 +16,11 @@ import (
 
 // ListWorkspaces returns registered workspaces from global config.
 func (s *Service) ListWorkspaces(ctx context.Context) (WorkspaceListResult, error) {
+	return s.ListWorkspacesWithOptions(ctx, WorkspaceListOptions{IncludeArchived: true})
+}
+
+// ListWorkspacesWithOptions returns registered workspaces with optional filters.
+func (s *Service) ListWorkspacesWithOptions(ctx context.Context, opts WorkspaceListOptions) (WorkspaceListResult, error) {
 	cfg, info, err := s.loadGlobal(ctx)
 	if err != nil {
 		return WorkspaceListResult{}, err
@@ -31,12 +36,10 @@ func (s *Service) ListWorkspaces(ctx context.Context) (WorkspaceListResult, erro
 	rows := make([]WorkspaceRefJSON, 0, len(names))
 	for _, name := range names {
 		ref := cfg.Workspaces[name]
-		rows = append(rows, WorkspaceRefJSON{
-			Name:      name,
-			Path:      ref.Path,
-			CreatedAt: ref.CreatedAt,
-			LastUsed:  ref.LastUsed,
-		})
+		if !opts.IncludeArchived && ref.ArchivedAt != "" {
+			continue
+		}
+		rows = append(rows, workspaceRefJSON(name, ref))
 	}
 	return WorkspaceListResult{Workspaces: rows, Config: info}, nil
 }

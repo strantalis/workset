@@ -32,6 +32,27 @@ func TestListWorkspacesSorted(t *testing.T) {
 	}
 }
 
+func TestListWorkspacesFiltersArchived(t *testing.T) {
+	env := newTestEnv(t)
+	cfg := env.loadConfig()
+	cfg.Workspaces = map[string]config.WorkspaceRef{
+		"alpha": {Path: "/tmp/alpha"},
+		"beta":  {Path: "/tmp/beta", ArchivedAt: "2024-01-02T03:04:05Z"},
+	}
+	env.saveConfig(cfg)
+
+	result, err := env.svc.ListWorkspacesWithOptions(context.Background(), WorkspaceListOptions{IncludeArchived: false})
+	if err != nil {
+		t.Fatalf("list workspaces: %v", err)
+	}
+	if len(result.Workspaces) != 1 {
+		t.Fatalf("expected 1 workspace, got %d", len(result.Workspaces))
+	}
+	if result.Workspaces[0].Name != "alpha" {
+		t.Fatalf("unexpected workspace: %+v", result.Workspaces[0])
+	}
+}
+
 func TestCreateWorkspaceDefaultPath(t *testing.T) {
 	env := newTestEnv(t)
 	result, err := env.svc.CreateWorkspace(context.Background(), WorkspaceCreateInput{Name: "demo"})

@@ -16,16 +16,24 @@ type WorkspaceSelector struct {
 
 // WorkspaceRefJSON is the JSON-friendly representation of a registered workspace.
 type WorkspaceRefJSON struct {
-	Name      string `json:"name"`
-	Path      string `json:"path"`
-	CreatedAt string `json:"created_at,omitempty"`
-	LastUsed  string `json:"last_used,omitempty"`
+	Name           string `json:"name"`
+	Path           string `json:"path"`
+	CreatedAt      string `json:"created_at,omitempty"`
+	LastUsed       string `json:"last_used,omitempty"`
+	ArchivedAt     string `json:"archived_at,omitempty"`
+	ArchivedReason string `json:"archived_reason,omitempty"`
+	Archived       bool   `json:"archived"`
 }
 
 // WorkspaceListResult returns registered workspaces with config load metadata.
 type WorkspaceListResult struct {
 	Workspaces []WorkspaceRefJSON
 	Config     config.GlobalConfigLoadInfo
+}
+
+// WorkspaceListOptions controls workspace listing behavior.
+type WorkspaceListOptions struct {
+	IncludeArchived bool
 }
 
 // WorkspaceCreatedJSON describes the JSON payload for a created workspace.
@@ -148,15 +156,18 @@ type RepoRemotesUpdateResultJSON struct {
 	Write     string `json:"write"`
 }
 
+// RepoRemoveDeletedJSON captures what was removed for a repo delete.
+type RepoRemoveDeletedJSON struct {
+	Worktrees bool `json:"worktrees"`
+	Local     bool `json:"local"`
+}
+
 // RepoRemoveResultJSON is the JSON payload for repo removal operations.
 type RepoRemoveResultJSON struct {
-	Status    string `json:"status"`
-	Workspace string `json:"workspace"`
-	Repo      string `json:"repo"`
-	Deleted   struct {
-		Worktrees bool `json:"worktrees"`
-		Local     bool `json:"local"`
-	} `json:"deleted"`
+	Status    string                `json:"status"`
+	Workspace string                `json:"workspace"`
+	Repo      string                `json:"repo"`
+	Deleted   RepoRemoveDeletedJSON `json:"deleted"`
 }
 
 // RepoRemoveResult includes safety details and config metadata.

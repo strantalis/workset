@@ -21,6 +21,12 @@ type WorkspaceDeleteInput struct {
 	FetchRemotes bool
 }
 
+// WorkspaceRenameInput describes inputs for RenameWorkspace.
+type WorkspaceRenameInput struct {
+	Selector WorkspaceSelector
+	NewName  string
+}
+
 // RepoAddInput describes inputs for AddRepo.
 type RepoAddInput struct {
 	Workspace     WorkspaceSelector
