@@ -196,6 +196,7 @@ jobs:
         run: |
           set -euo pipefail
           tag="${{ needs.prepare.outputs.release_tag }}"
+          tag="${tag##*/}"
           os="macos"
           dir="wails-ui/workset/build/bin"
           if [ ! -d "$dir" ]; then
@@ -246,6 +247,7 @@ jobs:
         shell: pwsh
         run: |
           $tag = "${{ needs.prepare.outputs.release_tag }}"
+          $tag = Split-Path -Leaf $tag
           $os = "windows"
           $dir = "wails-ui/workset/build/bin"
           if (-not (Test-Path $dir)) {
