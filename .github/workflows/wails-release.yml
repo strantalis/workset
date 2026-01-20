@@ -131,11 +131,11 @@ jobs:
           keychain="$RUNNER_TEMP/wails-signing.keychain-db"
           cert="$RUNNER_TEMP/signing.p12"
           python3 - <<'PY'
-import base64, os
-data = os.environ["MACOS_SIGN_P12"]
-with open(os.environ["CERT_PATH"], "wb") as f:
-    f.write(base64.b64decode(data))
-PY
+          import base64, os
+          data = os.environ["MACOS_SIGN_P12"]
+          with open(os.environ["CERT_PATH"], "wb") as f:
+              f.write(base64.b64decode(data))
+          PY
           security create-keychain -p "" "$keychain"
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p "" "$keychain"
@@ -174,11 +174,11 @@ PY
           dir="wails-ui/workset/build/bin"
           key="$RUNNER_TEMP/notary_api_key.p8"
           python3 - <<'PY'
-import base64, os
-data = os.environ["MACOS_NOTARY_KEY"]
-with open(os.environ["KEY_PATH"], "wb") as f:
-    f.write(base64.b64decode(data))
-PY
+          import base64, os
+          data = os.environ["MACOS_NOTARY_KEY"]
+          with open(os.environ["KEY_PATH"], "wb") as f:
+              f.write(base64.b64decode(data))
+          PY
           apps=("$dir"/*.app)
           for app in "${apps[@]}"; do
             zip_path="${app}.zip"
