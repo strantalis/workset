@@ -27,7 +27,8 @@
     {id: 'sessionTmuxStyle', key: 'defaults.session_tmux_status_style'},
     {id: 'sessionTmuxLeft', key: 'defaults.session_tmux_status_left'},
     {id: 'sessionTmuxRight', key: 'defaults.session_tmux_status_right'},
-    {id: 'sessionScreenHard', key: 'defaults.session_screen_hardstatus'}
+    {id: 'sessionScreenHard', key: 'defaults.session_screen_hardstatus'},
+    {id: 'agent', key: 'defaults.agent'}
   ]
 
   let snapshot: SettingsSnapshot | null = null

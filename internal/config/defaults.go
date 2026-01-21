@@ -19,6 +19,7 @@ func DefaultConfig() GlobalConfig {
 			SessionTmuxLeft:   "",
 			SessionTmuxRight:  "",
 			SessionScreenHard: "",
+			Agent:             "codex",
 		},
 		Hooks: HooksConfig{
 			Enabled: true,

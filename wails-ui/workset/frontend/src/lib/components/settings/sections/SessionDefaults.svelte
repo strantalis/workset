@@ -31,6 +31,19 @@
       ]
     },
     {
+      id: 'agent',
+      label: 'Preferred agent',
+      description: 'Default coding agent for the terminal launcher.',
+      type: 'select',
+      options: [
+        {label: 'Codex', value: 'codex'},
+        {label: 'Claude Code', value: 'claude'},
+        {label: 'OpenCode', value: 'opencode'},
+        {label: 'Pi', value: 'pi'},
+        {label: 'Cursor Agent', value: 'cursor'}
+      ]
+    },
+    {
       id: 'sessionNameFormat',
       label: 'Session name format',
       description: 'Used when creating a new session.',

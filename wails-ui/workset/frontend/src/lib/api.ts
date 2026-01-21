@@ -23,6 +23,7 @@ import {
   GetRepoDiff,
   GetRepoDiffSummary,
   GetRepoFileDiff,
+  GetAgentAvailability,
   GetSettings,
   ListAliases,
   ListGroups,
@@ -226,6 +227,10 @@ export async function applyGroup(workspaceId: string, groupName: string): Promis
 
 export async function fetchSettings(): Promise<SettingsSnapshot> {
   return GetSettings()
+}
+
+export async function fetchAgentAvailability(): Promise<Record<string, boolean>> {
+  return GetAgentAvailability()
 }
 
 export async function setDefaultSetting(key: string, value: string): Promise<void> {

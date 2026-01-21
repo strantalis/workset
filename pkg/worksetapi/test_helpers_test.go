@@ -42,6 +42,7 @@ func newTestEnv(t *testing.T) *testEnv {
 			WorkspaceRoot:     workspaceRoot,
 			RepoStoreRoot:     repoRoot,
 			SessionNameFormat: "workset-{workspace}",
+			Agent:             "codex",
 		},
 	}
 	if err := config.SaveGlobal(cfgPath, cfg); err != nil {

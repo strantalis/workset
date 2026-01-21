@@ -17,6 +17,9 @@ func TestGetConfig(t *testing.T) {
 	if cfg.Defaults.BaseBranch != "main" {
 		t.Fatalf("unexpected defaults: %+v", cfg.Defaults)
 	}
+	if cfg.Defaults.Agent != "codex" {
+		t.Fatalf("unexpected agent default: %q", cfg.Defaults.Agent)
+	}
 }
 
 func TestSetDefaultUpdatesConfig(t *testing.T) {
@@ -67,6 +70,7 @@ func TestSetDefaultVariousKeys(t *testing.T) {
 		"defaults.session_tmux_status_right": "right",
 		"defaults.session_screen_hardstatus": "hard",
 		"defaults.session_backend":           "exec",
+		"defaults.agent":                     "codex",
 	}
 	for key, value := range cases {
 		if _, _, err := env.svc.SetDefault(context.Background(), key, value); err != nil {
@@ -79,5 +83,8 @@ func TestSetDefaultVariousKeys(t *testing.T) {
 	}
 	if cfg.Defaults.SessionBackend != "exec" {
 		t.Fatalf("session backend not set")
+	}
+	if cfg.Defaults.Agent != "codex" {
+		t.Fatalf("agent default not set")
 	}
 }

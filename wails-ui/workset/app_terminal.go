@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -296,32 +297,98 @@ func (a *App) getTerminal(workspaceID string) (*terminalSession, error) {
 
 func (a *App) streamTerminal(session *terminalSession) {
 	buf := make([]byte, 4096)
-	var pending strings.Builder
-	lastFlush := time.Now()
+	const flushThreshold = 8 * 1024
+	const maxPending = 256 * 1024
+	const maxChunk = 64 * 1024
 	flushInterval := 25 * time.Millisecond
-	flushThreshold := 8 * 1024
+	pending := make([]byte, 0, flushThreshold)
+	var pendingMu sync.Mutex
+	flushTimer := time.NewTimer(flushInterval)
+	if !flushTimer.Stop() {
+		select {
+		case <-flushTimer.C:
+		default:
+		}
+	}
+	done := make(chan struct{})
+
+	flushPending := func() {
+		pendingMu.Lock()
+		if len(pending) == 0 {
+			pendingMu.Unlock()
+			return
+		}
+		data := pending
+		pending = make([]byte, 0, flushThreshold)
+		pendingMu.Unlock()
+		for len(data) > 0 {
+			chunk := data
+			if len(chunk) > maxChunk {
+				chunk = data[:maxChunk]
+				data = data[maxChunk:]
+			} else {
+				data = nil
+			}
+			wruntime.EventsEmit(a.ctx, "terminal:data", TerminalPayload{
+				WorkspaceID: session.id,
+				Data:        string(chunk),
+			})
+		}
+	}
+
+	go func() {
+		for {
+			select {
+			case <-flushTimer.C:
+				flushPending()
+			case <-done:
+				return
+			}
+		}
+	}()
+
+	defer func() {
+		close(done)
+		if !flushTimer.Stop() {
+			select {
+			case <-flushTimer.C:
+			default:
+			}
+		}
+		flushPending()
+	}()
 	for {
 		n, err := session.pty.Read(buf)
 		if n > 0 {
 			session.bumpActivity()
-			pending.Write(buf[:n])
-			shouldFlush := pending.Len() >= flushThreshold || time.Since(lastFlush) >= flushInterval
+			pendingMu.Lock()
+			pending = append(pending, buf[:n]...)
+			pendingLen := len(pending)
+			pendingMu.Unlock()
+			shouldFlush := pendingLen >= flushThreshold
+			forcedFlush := pendingLen >= maxPending
 			if shouldFlush {
-				wruntime.EventsEmit(a.ctx, "terminal:data", TerminalPayload{
-					WorkspaceID: session.id,
-					Data:        pending.String(),
-				})
-				pending.Reset()
-				lastFlush = time.Now()
+				if !flushTimer.Stop() {
+					select {
+					case <-flushTimer.C:
+					default:
+					}
+				}
+				flushPending()
+				if forcedFlush {
+					continue
+				}
+			} else {
+				if !flushTimer.Stop() {
+					select {
+					case <-flushTimer.C:
+					default:
+					}
+				}
+				flushTimer.Reset(flushInterval)
 			}
 		}
 		if err != nil {
-			if pending.Len() > 0 {
-				wruntime.EventsEmit(a.ctx, "terminal:data", TerminalPayload{
-					WorkspaceID: session.id,
-					Data:        pending.String(),
-				})
-			}
 			a.terminalMu.Lock()
 			if current := a.terminals[session.id]; current == session {
 				delete(a.terminals, session.id)
@@ -349,6 +416,7 @@ func (a *App) startTerminalSession(ctx context.Context, session *terminalSession
 		"WORKSET_WORKSPACE="+workspaceID,
 		"WORKSET_ROOT="+root,
 	)
+	cmd.Env = setEnv(cmd.Env, "SHELL", execName)
 
 	ptmx, err := startPTY(cmd)
 	if err != nil {
@@ -484,8 +552,56 @@ func resolveShellCommand() (string, []string) {
 		}
 		return "cmd.exe", nil
 	}
-	if shell := os.Getenv("SHELL"); shell != "" {
+
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = lookupUserShell()
+	}
+	if shell == "" {
+		shell = "/bin/sh"
+	}
+
+	switch strings.ToLower(filepath.Base(shell)) {
+	case "zsh", "bash":
+		return shell, []string{"-l", "-i"}
+	case "fish":
+		return shell, []string{"-l"}
+	default:
 		return shell, nil
 	}
-	return "/bin/sh", nil
+}
+
+func lookupUserShell() string {
+	current, err := user.Current()
+	if err != nil || current.Username == "" {
+		return ""
+	}
+	data, err := os.ReadFile("/etc/passwd")
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.Split(line, ":")
+		if len(parts) < 7 {
+			continue
+		}
+		if parts[0] == current.Username {
+			return strings.TrimSpace(parts[6])
+		}
+	}
+	return ""
+}
+
+func setEnv(env []string, key, value string) []string {
+	prefix := key + "="
+	for i, entry := range env {
+		if strings.HasPrefix(entry, prefix) {
+			env[i] = prefix + value
+			return env
+		}
+	}
+	return append(env, prefix+value)
 }

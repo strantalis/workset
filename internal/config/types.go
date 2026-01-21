@@ -12,6 +12,7 @@ type Defaults struct {
 	SessionTmuxLeft   string `yaml:"session_tmux_status_left" json:"session_tmux_status_left" mapstructure:"session_tmux_status_left"`
 	SessionTmuxRight  string `yaml:"session_tmux_status_right" json:"session_tmux_status_right" mapstructure:"session_tmux_status_right"`
 	SessionScreenHard string `yaml:"session_screen_hardstatus" json:"session_screen_hardstatus" mapstructure:"session_screen_hardstatus"`
+	Agent             string `yaml:"agent" json:"agent" mapstructure:"agent"`
 }
 
 type RepoAlias struct {

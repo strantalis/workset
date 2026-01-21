@@ -18,6 +18,7 @@ type SettingsDefaults struct {
 	SessionTmuxLeft   string `json:"sessionTmuxLeft"`
 	SessionTmuxRight  string `json:"sessionTmuxRight"`
 	SessionScreenHard string `json:"sessionScreenHard"`
+	Agent             string `json:"agent"`
 }
 
 type SettingsSnapshot struct {
@@ -53,6 +54,7 @@ func (a *App) GetSettings() (SettingsSnapshot, error) {
 			SessionTmuxLeft:   cfg.Defaults.SessionTmuxLeft,
 			SessionTmuxRight:  cfg.Defaults.SessionTmuxRight,
 			SessionScreenHard: cfg.Defaults.SessionScreenHard,
+			Agent:             cfg.Defaults.Agent,
 		},
 	}, nil
 }

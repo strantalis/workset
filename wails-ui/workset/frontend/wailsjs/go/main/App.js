@@ -38,6 +38,10 @@ export function DeleteGroup(arg1) {
   return window['go']['main']['App']['DeleteGroup'](arg1);
 }
 
+export function GetAgentAvailability() {
+  return window['go']['main']['App']['GetAgentAvailability']();
+}
+
 export function GetGroup(arg1) {
   return window['go']['main']['App']['GetGroup'](arg1);
 }

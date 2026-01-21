@@ -99,6 +99,7 @@ export type SettingsDefaults = {
   sessionTmuxLeft: string
   sessionTmuxRight: string
   sessionScreenHard: string
+  agent: string
 }
 
 export type SettingsSnapshot = {

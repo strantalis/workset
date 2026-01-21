@@ -148,6 +148,7 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 		"defaults.session_tmux_status_left":  defaults.Defaults.SessionTmuxLeft,
 		"defaults.session_tmux_status_right": defaults.Defaults.SessionTmuxRight,
 		"defaults.session_screen_hardstatus": defaults.Defaults.SessionScreenHard,
+		"defaults.agent":                     defaults.Defaults.Agent,
 		"hooks.enabled":                      defaults.Hooks.Enabled,
 		"hooks.on_error":                     defaults.Hooks.OnError,
 		"hooks.repo_hooks.trusted_repos":     defaults.Hooks.RepoHooks.TrustedRepos,
@@ -201,6 +202,9 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 	}
 	if cfg.Defaults.SessionScreenHard == "" {
 		cfg.Defaults.SessionScreenHard = defaults.Defaults.SessionScreenHard
+	}
+	if cfg.Defaults.Agent == "" {
+		cfg.Defaults.Agent = defaults.Defaults.Agent
 	}
 	if cfg.Hooks.OnError == "" {
 		cfg.Hooks.OnError = defaults.Hooks.OnError

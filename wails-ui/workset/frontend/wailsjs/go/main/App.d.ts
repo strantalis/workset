@@ -21,6 +21,8 @@ export function DeleteAlias(arg1:string):Promise<worksetapi.AliasMutationResultJ
 
 export function DeleteGroup(arg1:string):Promise<worksetapi.AliasMutationResultJSON>;
 
+export function GetAgentAvailability():Promise<Record<string, boolean>>;
+
 export function GetGroup(arg1:string):Promise<worksetapi.GroupJSON>;
 
 export function GetRepoDiff(arg1:string,arg2:string):Promise<main.RepoDiffSnapshot>;
