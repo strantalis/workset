@@ -4,9 +4,13 @@
 
   type FieldId = keyof SettingsDefaults
 
-  export let draft: Record<FieldId, string>
-  export let baseline: Record<FieldId, string>
-  export let onUpdate: (id: FieldId, value: string) => void
+  interface Props {
+    draft: Record<FieldId, string>;
+    baseline: Record<FieldId, string>;
+    onUpdate: (id: FieldId, value: string) => void;
+  }
+
+  let { draft, baseline, onUpdate }: Props = $props();
 
   type Field = {
     id: FieldId
@@ -65,7 +69,7 @@
           type="text"
           placeholder={field.placeholder ?? ''}
           value={getValue(field.id)}
-          on:input={(event) => handleInput(field.id, event)}
+          oninput={(event) => handleInput(field.id, event)}
         />
         <p>{field.description}</p>
       </div>

@@ -36,6 +36,41 @@ type WorkspaceListOptions struct {
 	IncludeArchived bool
 }
 
+// WorkspaceSnapshotOptions controls workspace snapshot behavior.
+type WorkspaceSnapshotOptions struct {
+	IncludeArchived bool `json:"include_archived"`
+	IncludeStatus   bool `json:"include_status"`
+}
+
+// WorkspaceSnapshotResult returns workspace snapshots with config metadata.
+type WorkspaceSnapshotResult struct {
+	Workspaces []WorkspaceSnapshotJSON
+	Config     config.GlobalConfigLoadInfo
+}
+
+// WorkspaceSnapshotJSON describes a workspace and its repos.
+type WorkspaceSnapshotJSON struct {
+	Name           string             `json:"name"`
+	Path           string             `json:"path"`
+	ArchivedAt     string             `json:"archived_at,omitempty"`
+	ArchivedReason string             `json:"archived_reason,omitempty"`
+	Archived       bool               `json:"archived"`
+	Repos          []RepoSnapshotJSON `json:"repos"`
+}
+
+// RepoSnapshotJSON summarizes a workspace repo and optional status.
+type RepoSnapshotJSON struct {
+	Name        string `json:"name"`
+	LocalPath   string `json:"local_path"`
+	Managed     bool   `json:"managed"`
+	RepoDir     string `json:"repo_dir"`
+	Base        string `json:"base"`
+	Write       string `json:"write"`
+	Dirty       bool   `json:"dirty"`
+	Missing     bool   `json:"missing"`
+	StatusKnown bool   `json:"status_known"`
+}
+
 // WorkspaceCreatedJSON describes the JSON payload for a created workspace.
 type WorkspaceCreatedJSON struct {
 	Name    string `json:"name"`

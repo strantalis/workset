@@ -325,6 +325,7 @@ export namespace main {
 	    writeBranch?: string;
 	    dirty: boolean;
 	    missing: boolean;
+	    statusKnown: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new RepoSnapshot(source);
@@ -342,6 +343,7 @@ export namespace main {
 	        this.writeBranch = source["writeBranch"];
 	        this.dirty = source["dirty"];
 	        this.missing = source["missing"];
+	        this.statusKnown = source["statusKnown"];
 	    }
 	}
 	export class SettingsDefaults {
@@ -356,6 +358,7 @@ export namespace main {
 	    sessionTmuxLeft: string;
 	    sessionTmuxRight: string;
 	    sessionScreenHard: string;
+	    agent: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SettingsDefaults(source);
@@ -374,6 +377,7 @@ export namespace main {
 	        this.sessionTmuxLeft = source["sessionTmuxLeft"];
 	        this.sessionTmuxRight = source["sessionTmuxRight"];
 	        this.sessionScreenHard = source["sessionScreenHard"];
+	        this.agent = source["agent"];
 	    }
 	}
 	export class SettingsSnapshot {
@@ -497,6 +501,20 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	export class WorkspaceSnapshotRequest {
+	    includeArchived: boolean;
+	    includeStatus: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkspaceSnapshotRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.includeArchived = source["includeArchived"];
+	        this.includeStatus = source["includeStatus"];
+	    }
 	}
 
 }

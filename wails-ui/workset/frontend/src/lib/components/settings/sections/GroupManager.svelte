@@ -5,33 +5,39 @@
     createGroup,
     deleteGroup,
     getGroup,
+    listAliases,
     listGroups,
     removeGroupMember,
     updateGroup
   } from '../../../api'
-  import type {Group, GroupSummary} from '../../../types'
+  import type {Alias, Group, GroupSummary} from '../../../types'
   import SettingsSection from '../SettingsSection.svelte'
   import GroupMemberRow from './GroupMemberRow.svelte'
 
-  export let onGroupCountChange: (count: number) => void
+  interface Props {
+    onGroupCountChange: (count: number) => void;
+  }
 
-  let groups: GroupSummary[] = []
-  let selectedGroup: Group | null = null
-  let isNew = false
-  let loading = false
-  let error: string | null = null
-  let success: string | null = null
+  let { onGroupCountChange }: Props = $props();
 
-  let formName = ''
-  let formDescription = ''
+  let groups: GroupSummary[] = $state([])
+  let aliases: Alias[] = $state([])
+  let selectedGroup: Group | null = $state(null)
+  let isNew = $state(false)
+  let loading = $state(false)
+  let error: string | null = $state(null)
+  let success: string | null = $state(null)
 
-  let addingMember = false
-  let memberRepo = ''
-  let memberBaseRemote = 'origin'
-  let memberBaseBranch = 'main'
-  let memberWriteRemote = 'origin'
+  let formName = $state('')
+  let formDescription = $state('')
 
-  let expandedMember: string | null = null
+  let addingMember = $state(false)
+  let memberRepo = $state('')
+  let memberBaseRemote = $state('origin')
+  let memberBaseBranch = $state('main')
+  let memberWriteRemote = $state('origin')
+
+  let expandedMember: string | null = $state(null)
 
   const formatError = (err: unknown): string => {
     if (err instanceof Error) return err.message
@@ -41,6 +47,7 @@
   const loadGroups = async (): Promise<void> => {
     try {
       groups = await listGroups()
+      aliases = await listAliases()
       onGroupCountChange(groups.length)
     } catch (err) {
       error = formatError(err)
@@ -159,6 +166,18 @@
     addingMember = false
   }
 
+  const handleRepoInput = (event: Event): void => {
+    const target = event.target as HTMLInputElement | null
+    const value = target?.value ?? ''
+    memberRepo = value
+
+    // Auto-fill from alias if matched
+    const alias = aliases.find((a) => a.name === value)
+    if (alias?.default_branch) {
+      memberBaseBranch = alias.default_branch
+    }
+  }
+
   const handleAddMember = async (): Promise<void> => {
     if (!selectedGroup) return
 
@@ -251,7 +270,7 @@
   <div class="manager">
     <div class="list-header">
       <span class="list-count">{groups.length} group{groups.length === 1 ? '' : 's'}</span>
-      <button class="ghost small" type="button" on:click={startNew}>+ New</button>
+      <button class="ghost small" type="button" onclick={startNew}>+ New</button>
     </div>
 
     {#if groups.length > 0 || isNew}
@@ -261,7 +280,7 @@
             class="list-item"
             class:active={selectedGroup?.name === group.name && !isNew}
             type="button"
-            on:click={() => selectGroup(group)}
+            onclick={() => selectGroup(group)}
           >
             <span class="item-name">{group.name}</span>
             <span class="item-count">({group.repo_count} repo{group.repo_count === 1 ? '' : 's'})</span>
@@ -309,17 +328,17 @@
         </div>
         <div class="actions">
           {#if !isNew && selectedGroup}
-            <button class="danger" type="button" on:click={handleDelete} disabled={loading}>
+            <button class="danger" type="button" onclick={handleDelete} disabled={loading}>
               Delete group
             </button>
           {/if}
           <div class="spacer"></div>
           {#if isNew}
-            <button class="ghost" type="button" on:click={cancelEdit} disabled={loading}>
+            <button class="ghost" type="button" onclick={cancelEdit} disabled={loading}>
               Cancel
             </button>
           {/if}
-          <button class="primary" type="button" on:click={handleSave} disabled={loading}>
+          <button class="primary" type="button" onclick={handleSave} disabled={loading}>
             {loading ? 'Saving...' : isNew ? 'Create group' : 'Save group'}
           </button>
         </div>
@@ -330,7 +349,7 @@
               <span class="members-label">
                 Members ({selectedGroup.members.length})
               </span>
-              <button class="ghost small" type="button" on:click={startAddMember}>
+              <button class="ghost small" type="button" onclick={startAddMember}>
                 + Add repo
               </button>
             </div>
@@ -339,8 +358,19 @@
               <div class="add-member-form">
                 <div class="form-row">
                   <label class="field">
-                    <span>Repo name</span>
-                    <input type="text" bind:value={memberRepo} placeholder="auth-api" />
+                    <span>Repo name (or alias)</span>
+                    <input
+                      type="text"
+                      value={memberRepo}
+                      oninput={handleRepoInput}
+                      placeholder="auth-api"
+                      list="alias-options"
+                    />
+                    <datalist id="alias-options">
+                      {#each aliases as alias}
+                        <option value={alias.name}></option>
+                      {/each}
+                    </datalist>
                   </label>
                 </div>
                 <div class="form-row">
@@ -358,10 +388,10 @@
                   </label>
                 </div>
                 <div class="add-member-actions">
-                  <button class="ghost small" type="button" on:click={cancelAddMember} disabled={loading}>
+                  <button class="ghost small" type="button" onclick={cancelAddMember} disabled={loading}>
                     Cancel
                   </button>
-                  <button class="primary small" type="button" on:click={handleAddMember} disabled={loading}>
+                  <button class="primary small" type="button" onclick={handleAddMember} disabled={loading}>
                     {loading ? 'Adding...' : 'Add repo'}
                   </button>
                 </div>
@@ -391,7 +421,7 @@
     {:else}
       <div class="empty">
         <p>No groups defined yet.</p>
-        <button class="ghost" type="button" on:click={startNew}>Create your first group</button>
+        <button class="ghost" type="button" onclick={startNew}>Create your first group</button>
       </div>
     {/if}
   </div>

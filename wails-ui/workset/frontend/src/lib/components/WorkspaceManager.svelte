@@ -20,101 +20,131 @@
   } from '../api'
   import type {Repo, Workspace} from '../types'
 
-  export let onClose: () => void
-  export let initialWorkspaceId: string | null = null
-  export let initialRepoName: string | null = null
-  export let initialSection: 'create' | 'rename' | 'repo' | 'remotes' | null = null
+  interface Props {
+    onClose: () => void;
+    initialWorkspaceId?: string | null;
+    initialRepoName?: string | null;
+    initialSection?: 'create' | 'rename' | 'repo' | 'remotes' | null;
+  }
 
-  let selectedWorkspaceId: string | null = null
-  let showArchived = false
+  let {
+    onClose,
+    initialWorkspaceId = null,
+    initialRepoName = null,
+    initialSection = null
+  }: Props = $props();
 
-  let createName = ''
-  let createPath = ''
-  let createError: string | null = null
-  let createSuccess: string | null = null
-  let creating = false
-  let workspaceError: string | null = null
-  let createInput: HTMLInputElement | null = null
+  let selectedWorkspaceId: string | null = $state(null)
+  let showArchived = $state(false)
 
-  let addSource = ''
-  let addName = ''
-  let addRepoDir = ''
-  let addError: string | null = null
-  let addSuccess: string | null = null
-  let adding = false
-  let addSourceInput: HTMLInputElement | null = null
+  let createName = $state('')
+  let createPath = $state('')
+  let createError: string | null = $state(null)
+  let createSuccess: string | null = $state(null)
+  let creating = $state(false)
+  let workspaceError: string | null = $state(null)
+  let createInput: HTMLInputElement | null = $state(null)
 
-  let selectedRepoName: string | null = null
-  let remotesBaseRemote = ''
-  let remotesBaseBranch = ''
-  let remotesWriteRemote = ''
-  let remotesWriteBranch = ''
-  let remotesError: string | null = null
-  let remotesSuccess: string | null = null
-  let savingRemotes = false
-  let remotesBaseInput: HTMLInputElement | null = null
+  let addSource = $state('')
+  let addName = $state('')
+  let addRepoDir = $state('')
+  let addError: string | null = $state(null)
+  let addSuccess: string | null = $state(null)
+  let adding = $state(false)
+  let addSourceInput: HTMLInputElement | null = $state(null)
 
-  let renameName = ''
-  let renameError: string | null = null
-  let renameSuccess: string | null = null
-  let renaming = false
-  let lastSelectedId: string | null = null
-  let lastSelectedRepoName: string | null = null
-  let renameInput: HTMLInputElement | null = null
+  let selectedRepoName: string | null = $state(null)
+  let remotesBaseRemote = $state('')
+  let remotesBaseBranch = $state('')
+  let remotesWriteRemote = $state('')
+  let remotesWriteBranch = $state('')
+  let remotesError: string | null = $state(null)
+  let remotesSuccess: string | null = $state(null)
+  let savingRemotes = $state(false)
+  let remotesBaseInput: HTMLInputElement | null = $state(null)
 
-  let confirmWorkspaceRemove: string | null = null
-  let confirmRepoRemove: {workspaceId: string; repoName: string} | null = null
+  let renameName = $state('')
+  let renameError: string | null = $state(null)
+  let renameSuccess: string | null = $state(null)
+  let renaming = $state(false)
+  let lastSelectedId: string | null = $state(null)
+  let lastSelectedRepoName: string | null = $state(null)
+  let renameInput: HTMLInputElement | null = $state(null)
+
+  let confirmWorkspaceRemove: string | null = $state(null)
+  let confirmRepoRemove: {workspaceId: string; repoName: string} | null = $state(null)
+  let removeRepoDeleteWorktree = $state(false)
+  let removeRepoDeleteLocal = $state(false)
   let working = false
 
   const selectManagerWorkspace = (id: string): void => {
     selectedWorkspaceId = id
     confirmWorkspaceRemove = null
     confirmRepoRemove = null
+    removeRepoDeleteWorktree = false
+    removeRepoDeleteLocal = false
     addError = null
     addSuccess = null
     workspaceError = null
   }
 
-  $: managerWorkspaces = $workspaces
-  $: activeWorkspaces = managerWorkspaces.filter((workspace) => !workspace.archived)
-  $: archivedWorkspaces = managerWorkspaces.filter((workspace) => workspace.archived)
-  $: selectedWorkspace =
-    managerWorkspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null
-  $: if (!selectedWorkspaceId && managerWorkspaces.length > 0) {
-    selectedWorkspaceId = $activeWorkspaceId ?? managerWorkspaces[0]?.id ?? null
-  }
-  $: if (selectedWorkspace && selectedWorkspace.id !== lastSelectedId) {
-    renameName = selectedWorkspace.name
-    renameError = null
-    renameSuccess = null
-    lastSelectedId = selectedWorkspace.id
-    selectedRepoName = selectedWorkspace.repos[0]?.name ?? null
-    lastSelectedRepoName = null
-    remotesError = null
-    remotesSuccess = null
-  }
-  $: if (selectedWorkspace && selectedRepoName) {
-    const exists = selectedWorkspace.repos.some((repo) => repo.name === selectedRepoName)
-    if (!exists) {
+  let managerWorkspaces = $derived($workspaces)
+  let activeWorkspaces = $derived(managerWorkspaces.filter((workspace) => !workspace.archived))
+  let archivedWorkspaces = $derived(managerWorkspaces.filter((workspace) => workspace.archived))
+  let selectedWorkspace =
+    $derived(managerWorkspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null)
+  $effect(() => {
+    if (!selectedWorkspaceId && managerWorkspaces.length > 0) {
+      selectedWorkspaceId = $activeWorkspaceId ?? managerWorkspaces[0]?.id ?? null
+    }
+  });
+  $effect(() => {
+    if (selectedWorkspace && selectedWorkspace.id !== lastSelectedId) {
+      renameName = selectedWorkspace.name
+      renameError = null
+      renameSuccess = null
+      lastSelectedId = selectedWorkspace.id
       selectedRepoName = selectedWorkspace.repos[0]?.name ?? null
       lastSelectedRepoName = null
+      remotesError = null
+      remotesSuccess = null
     }
-  }
-  $: selectedRepo =
-    selectedWorkspace?.repos.find((repo) => repo.name === selectedRepoName) ?? null
-  $: if (selectedRepo && selectedRepo.name !== lastSelectedRepoName) {
-    remotesBaseRemote = selectedRepo.baseRemote ?? ''
-    remotesBaseBranch = selectedRepo.baseBranch ?? ''
-    remotesWriteRemote = selectedRepo.writeRemote ?? ''
-    remotesWriteBranch = selectedRepo.writeBranch ?? ''
-    lastSelectedRepoName = selectedRepo.name
-    remotesError = null
-    remotesSuccess = null
-  }
+  });
+  $effect(() => {
+    if (selectedWorkspace && selectedRepoName) {
+      const exists = selectedWorkspace.repos.some((repo) => repo.name === selectedRepoName)
+      if (!exists) {
+        selectedRepoName = selectedWorkspace.repos[0]?.name ?? null
+        lastSelectedRepoName = null
+      }
+    }
+  });
+  let selectedRepo =
+    $derived(selectedWorkspace?.repos.find((repo) => repo.name === selectedRepoName) ?? null)
+  $effect(() => {
+    if (selectedRepo && selectedRepo.name !== lastSelectedRepoName) {
+      remotesBaseRemote = selectedRepo.baseRemote ?? ''
+      remotesBaseBranch = selectedRepo.baseBranch ?? ''
+      remotesWriteRemote = selectedRepo.writeRemote ?? ''
+      remotesWriteBranch = selectedRepo.writeBranch ?? ''
+      lastSelectedRepoName = selectedRepo.name
+      remotesError = null
+      remotesSuccess = null
+    }
+  });
 
   const formatError = (err: unknown, fallback: string): string => {
     if (err instanceof Error) {
       return err.message
+    }
+    if (typeof err === 'string') {
+      return err
+    }
+    if (err && typeof err === 'object' && 'message' in err) {
+      const message = (err as {message?: string}).message
+      if (typeof message === 'string') {
+        return message
+      }
     }
     return fallback
   }
@@ -228,7 +258,7 @@
     if (working) return
     working = true
     try {
-      await removeRepo(workspace.id, repo.name, false, false)
+      await removeRepo(workspace.id, repo.name, removeRepoDeleteWorktree, removeRepoDeleteLocal)
       await loadWorkspaces(true)
       if ($activeWorkspaceId === workspace.id) {
         clearRepo()
@@ -237,6 +267,8 @@
       addError = formatError(err, 'Failed to remove repo.')
     } finally {
       confirmRepoRemove = null
+      removeRepoDeleteWorktree = false
+      removeRepoDeleteLocal = false
       working = false
     }
   }
@@ -318,13 +350,13 @@
   })
 </script>
 
-<section class="panel" role="dialog" aria-modal="true" aria-label="Workspace management">
+<div class="panel" role="dialog" aria-modal="true" aria-label="Workspace management">
   <header class="header">
     <div>
       <div class="title">Workspaces</div>
       <div class="subtitle">Create and manage workspace registrations and repos.</div>
     </div>
-    <button class="ghost" type="button" on:click={onClose}>Close</button>
+    <button class="ghost" type="button" onclick={onClose}>Close</button>
   </header>
 
   <section class="create">
@@ -336,7 +368,7 @@
           placeholder="acme"
           bind:this={createInput}
           bind:value={createName}
-          on:keydown={(event) => {
+          onkeydown={(event) => {
             if (event.key === 'Enter') void handleCreate()
           }}
         />
@@ -346,14 +378,14 @@
         <input
           placeholder="~/workspaces/acme"
           bind:value={createPath}
-          on:keydown={(event) => {
+          onkeydown={(event) => {
             if (event.key === 'Enter') void handleCreate()
           }}
         />
       </label>
     </div>
     <div class="inline-actions">
-      <button class="primary" type="button" on:click={handleCreate} disabled={creating}>
+      <button class="primary" type="button" onclick={handleCreate} disabled={creating}>
         {creating ? 'Creating…' : 'Create workspace'}
       </button>
       {#if createError}
@@ -383,29 +415,29 @@
         {/if}
         {#each activeWorkspaces as workspace}
           <div class:active={workspace.id === selectedWorkspaceId} class="workspace-card">
-            <button class="select" type="button" on:click={() => selectManagerWorkspace(workspace.id)}>
+            <button class="select" type="button" onclick={() => selectManagerWorkspace(workspace.id)}>
               <div class="name">{workspace.name}</div>
               <div class="path">{workspace.path}</div>
             </button>
             <div class="card-actions">
-              <button class="ghost" type="button" on:click={() => selectWorkspace(workspace.id)}>
+              <button class="ghost" type="button" onclick={() => selectWorkspace(workspace.id)}>
                 Open
               </button>
-              <button class="ghost" type="button" on:click={() => handleArchive(workspace)}>
+              <button class="ghost" type="button" onclick={() => handleArchive(workspace)}>
                 Archive
               </button>
               {#if confirmWorkspaceRemove === workspace.id}
-                <button class="danger" type="button" on:click={() => handleRemoveWorkspace(workspace)}>
+                <button class="danger" type="button" onclick={() => handleRemoveWorkspace(workspace)}>
                   Confirm remove
                 </button>
-                <button class="ghost" type="button" on:click={() => (confirmWorkspaceRemove = null)}>
+                <button class="ghost" type="button" onclick={() => (confirmWorkspaceRemove = null)}>
                   Cancel
                 </button>
               {:else}
                 <button
                   class="ghost"
                   type="button"
-                  on:click={() => (confirmWorkspaceRemove = workspace.id)}
+                  onclick={() => (confirmWorkspaceRemove = workspace.id)}
                 >
                   Remove
                 </button>
@@ -421,7 +453,7 @@
           {/if}
           {#each archivedWorkspaces as workspace}
             <div class:active={workspace.id === selectedWorkspaceId} class="workspace-card archived">
-              <button class="select" type="button" on:click={() => selectManagerWorkspace(workspace.id)}>
+              <button class="select" type="button" onclick={() => selectManagerWorkspace(workspace.id)}>
                 <div class="name">{workspace.name}</div>
                 <div class="path">{workspace.path}</div>
                 {#if workspace.archivedReason}
@@ -429,21 +461,21 @@
                 {/if}
               </button>
               <div class="card-actions">
-                <button class="ghost" type="button" on:click={() => handleUnarchive(workspace)}>
+                <button class="ghost" type="button" onclick={() => handleUnarchive(workspace)}>
                   Unarchive
                 </button>
                 {#if confirmWorkspaceRemove === workspace.id}
-                  <button class="danger" type="button" on:click={() => handleRemoveWorkspace(workspace)}>
+                  <button class="danger" type="button" onclick={() => handleRemoveWorkspace(workspace)}>
                     Confirm remove
                   </button>
-                  <button class="ghost" type="button" on:click={() => (confirmWorkspaceRemove = null)}>
+                  <button class="ghost" type="button" onclick={() => (confirmWorkspaceRemove = null)}>
                     Cancel
                   </button>
                 {:else}
                   <button
                     class="ghost"
                     type="button"
-                    on:click={() => (confirmWorkspaceRemove = workspace.id)}
+                    onclick={() => (confirmWorkspaceRemove = workspace.id)}
                   >
                     Remove
                   </button>
@@ -474,14 +506,14 @@
                     placeholder="acme"
                     bind:this={renameInput}
                     bind:value={renameName}
-                    on:keydown={(event) => {
+                    onkeydown={(event) => {
                       if (event.key === 'Enter') void handleRename()
                     }}
                   />
                 </label>
               </div>
               <div class="inline-actions">
-                <button class="primary" type="button" on:click={handleRename} disabled={renaming}>
+                <button class="primary" type="button" onclick={handleRename} disabled={renaming}>
                   {renaming ? 'Renaming…' : 'Rename'}
                 </button>
                 {#if renameError}
@@ -502,7 +534,7 @@
                     placeholder="alias, URL, or local path"
                     bind:this={addSourceInput}
                     bind:value={addSource}
-                    on:keydown={(event) => {
+                    onkeydown={(event) => {
                       if (event.key === 'Enter') void handleAddRepo()
                     }}
                   />
@@ -517,7 +549,7 @@
                 </label>
               </div>
               <div class="inline-actions">
-                <button class="primary" type="button" on:click={handleAddRepo} disabled={adding}>
+                <button class="primary" type="button" onclick={handleAddRepo} disabled={adding}>
                   {adding ? 'Adding…' : 'Add repo'}
                 </button>
                 {#if addError}
@@ -536,29 +568,62 @@
               {/if}
               {#each selectedWorkspace.repos as repo}
                 <div class:active={repo.name === selectedRepoName} class="repo-row">
-                  <button class="repo-select" type="button" on:click={() => (selectedRepoName = repo.name)}>
+                  <button class="repo-select" type="button" onclick={() => (selectedRepoName = repo.name)}>
                     <div class="repo-name">{repo.name}</div>
                     <div class="repo-path">{repo.path}</div>
                   </button>
                   <div class="card-actions">
                     {#if confirmRepoRemove?.repoName === repo.name}
+                      <div class="remove-options">
+                        <label class="option">
+                          <input type="checkbox" bind:checked={removeRepoDeleteWorktree} />
+                          <span>Also delete worktrees for this repo</span>
+                        </label>
+                        <label class="option">
+                          <input type="checkbox" bind:checked={removeRepoDeleteLocal} />
+                          <span>Also delete local cache for this repo</span>
+                        </label>
+                        {#if removeRepoDeleteWorktree || removeRepoDeleteLocal}
+                          <div class="hint">Destructive deletes are permanent and cannot be undone.</div>
+                        {/if}
+                        {#if repo.statusKnown === false && (removeRepoDeleteWorktree || removeRepoDeleteLocal)}
+                          <div class="note warning">
+                            Repo status is still loading. Destructive deletes may be blocked if the repo is dirty.
+                          </div>
+                        {/if}
+                        {#if repo.dirty && (removeRepoDeleteWorktree || removeRepoDeleteLocal)}
+                          <div class="note warning">
+                            Uncommitted changes detected. Destructive deletes will be blocked until the repo is clean.
+                          </div>
+                        {/if}
+                      </div>
                       <button
                         class="danger"
                         type="button"
-                        on:click={() => handleRemoveRepo(selectedWorkspace, repo)}
+                        onclick={() => handleRemoveRepo(selectedWorkspace, repo)}
                       >
                         Confirm remove
                       </button>
-                      <button class="ghost" type="button" on:click={() => (confirmRepoRemove = null)}>
+                      <button
+                        class="ghost"
+                        type="button"
+                        onclick={() => {
+                          confirmRepoRemove = null
+                          removeRepoDeleteWorktree = false
+                          removeRepoDeleteLocal = false
+                        }}
+                      >
                         Cancel
                       </button>
                     {:else}
                       <button
                         class="ghost"
                         type="button"
-                        on:click={() =>
-                          (confirmRepoRemove = {workspaceId: selectedWorkspace.id, repoName: repo.name})
-                        }
+                        onclick={() => {
+                          confirmRepoRemove = {workspaceId: selectedWorkspace.id, repoName: repo.name}
+                          removeRepoDeleteWorktree = false
+                          removeRepoDeleteLocal = false
+                        }}
                       >
                         Remove
                       </button>
@@ -590,7 +655,7 @@
                   </label>
                 </div>
                 <div class="inline-actions">
-                  <button class="primary" type="button" on:click={handleSaveRemotes} disabled={savingRemotes}>
+                  <button class="primary" type="button" onclick={handleSaveRemotes} disabled={savingRemotes}>
                     {savingRemotes ? 'Saving…' : 'Save remotes'}
                   </button>
                   {#if remotesError}
@@ -612,7 +677,7 @@
       </div>
     </div>
   </section>
-</section>
+</div>
 
 <style>
   .panel {
@@ -734,6 +799,29 @@
 
   .note.success {
     color: var(--success);
+  }
+
+  .note.warning {
+    color: var(--warning);
+  }
+
+  .option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text);
+  }
+
+  .option input {
+    accent-color: var(--accent);
+  }
+
+  .remove-options {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 6px;
   }
 
   .list-header {

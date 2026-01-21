@@ -1,6 +1,11 @@
 <script lang="ts">
-  export let title: string
-  export let description: string = ''
+  interface Props {
+    title: string;
+    description?: string;
+    children?: import('svelte').Snippet;
+  }
+
+  let { title, description = '', children }: Props = $props();
 </script>
 
 <section class="section">
@@ -11,7 +16,7 @@
     {/if}
   </header>
   <div class="section-content">
-    <slot />
+    {@render children?.()}
   </div>
 </section>
 

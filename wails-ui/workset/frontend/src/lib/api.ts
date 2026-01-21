@@ -61,14 +61,18 @@ type RepoSnapshot = {
   writeBranch?: string
   dirty: boolean
   missing: boolean
+  statusKnown: boolean
 }
 
 type RepoDiffSnapshot = {
   patch: string
 }
 
-export async function fetchWorkspaces(includeArchived = false): Promise<Workspace[]> {
-  const snapshots = await ListWorkspaceSnapshots(includeArchived)
+export async function fetchWorkspaces(
+  includeArchived = false,
+  includeStatus = false
+): Promise<Workspace[]> {
+  const snapshots = await ListWorkspaceSnapshots({includeArchived, includeStatus})
   return snapshots.map((workspace: WorkspaceSnapshot) => ({
     id: workspace.id,
     name: workspace.name,
@@ -89,6 +93,7 @@ export async function fetchWorkspaces(includeArchived = false): Promise<Workspac
       behind: 0,
       dirty: repo.dirty,
       missing: repo.missing,
+      statusKnown: repo.statusKnown,
       diff: {added: 0, removed: 0},
       files: []
     }))

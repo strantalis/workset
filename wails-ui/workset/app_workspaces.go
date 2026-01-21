@@ -27,10 +27,16 @@ type RepoSnapshot struct {
 	WriteBranch string `json:"writeBranch,omitempty"`
 	Dirty       bool   `json:"dirty"`
 	Missing     bool   `json:"missing"`
+	StatusKnown bool   `json:"statusKnown"`
+}
+
+type WorkspaceSnapshotRequest struct {
+	IncludeArchived bool `json:"includeArchived"`
+	IncludeStatus   bool `json:"includeStatus"`
 }
 
 // ListWorkspaceSnapshots returns workspaces and their repos for the UI.
-func (a *App) ListWorkspaceSnapshots(includeArchived bool) ([]WorkspaceSnapshot, error) {
+func (a *App) ListWorkspaceSnapshots(input WorkspaceSnapshotRequest) ([]WorkspaceSnapshot, error) {
 	ctx := a.ctx
 	if ctx == nil {
 		ctx = context.Background()
@@ -39,8 +45,9 @@ func (a *App) ListWorkspaceSnapshots(includeArchived bool) ([]WorkspaceSnapshot,
 		a.service = worksetapi.NewService(worksetapi.Options{})
 	}
 
-	result, err := a.service.ListWorkspacesWithOptions(ctx, worksetapi.WorkspaceListOptions{
-		IncludeArchived: includeArchived,
+	result, err := a.service.ListWorkspaceSnapshots(ctx, worksetapi.WorkspaceSnapshotOptions{
+		IncludeArchived: input.IncludeArchived,
+		IncludeStatus:   input.IncludeStatus,
 	})
 	if err != nil {
 		return nil, err
@@ -48,27 +55,8 @@ func (a *App) ListWorkspaceSnapshots(includeArchived bool) ([]WorkspaceSnapshot,
 
 	snapshots := make([]WorkspaceSnapshot, 0, len(result.Workspaces))
 	for _, workspace := range result.Workspaces {
-		selector := worksetapi.WorkspaceSelector{Value: workspace.Name}
-		if selector.Value == "" {
-			selector.Value = workspace.Path
-		}
-
-		repoResult, err := a.service.ListRepos(ctx, selector)
-		if err != nil {
-			return nil, err
-		}
-		statusResult, err := a.service.StatusWorkspace(ctx, selector)
-		if err != nil {
-			return nil, err
-		}
-		statuses := map[string]worksetapi.RepoStatusJSON{}
-		for _, status := range statusResult.Statuses {
-			statuses[status.Name] = status
-		}
-
-		repos := make([]RepoSnapshot, 0, len(repoResult.Repos))
-		for _, repo := range repoResult.Repos {
-			status := statuses[repo.Name]
+		repos := make([]RepoSnapshot, 0, len(workspace.Repos))
+		for _, repo := range workspace.Repos {
 			repoID := workspace.Name + "::" + repo.Name
 			baseRemote, baseBranch := splitRemoteBranch(repo.Base)
 			writeRemote, writeBranch := splitRemoteBranch(repo.Write)
@@ -81,8 +69,9 @@ func (a *App) ListWorkspaceSnapshots(includeArchived bool) ([]WorkspaceSnapshot,
 				BaseBranch:  baseBranch,
 				WriteRemote: writeRemote,
 				WriteBranch: writeBranch,
-				Dirty:       status.Dirty,
-				Missing:     status.Missing,
+				Dirty:       repo.Dirty,
+				Missing:     repo.Missing,
+				StatusKnown: repo.StatusKnown,
 			})
 		}
 

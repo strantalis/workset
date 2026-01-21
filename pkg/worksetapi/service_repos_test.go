@@ -70,6 +70,49 @@ func TestAddRepoFromLocalPath(t *testing.T) {
 	}
 }
 
+func TestAddRepoReattachesExistingWorktree(t *testing.T) {
+	env := newTestEnv(t)
+	root := env.createWorkspace(context.Background(), "demo")
+	local := env.createLocalRepo("repo-a")
+
+	result, err := env.svc.AddRepo(context.Background(), RepoAddInput{
+		Workspace:  WorkspaceSelector{Value: root},
+		Name:       "repo-a",
+		NameSet:    true,
+		SourcePath: local,
+	})
+	if err != nil {
+		t.Fatalf("add repo: %v", err)
+	}
+
+	if _, err := env.svc.RemoveRepo(context.Background(), RepoRemoveInput{
+		Workspace:       WorkspaceSelector{Value: root},
+		Name:            "repo-a",
+		DeleteWorktrees: false,
+		DeleteLocal:     false,
+		Confirmed:       true,
+	}); err != nil {
+		t.Fatalf("remove repo: %v", err)
+	}
+
+	if _, err := os.Stat(result.WorktreePath); err != nil {
+		t.Fatalf("worktree path missing after removal: %v", err)
+	}
+
+	if _, err := env.svc.AddRepo(context.Background(), RepoAddInput{
+		Workspace:  WorkspaceSelector{Value: root},
+		Name:       "repo-a",
+		NameSet:    true,
+		SourcePath: local,
+	}); err != nil {
+		t.Fatalf("re-add repo: %v", err)
+	}
+
+	if len(env.git.worktreeAdds) != 1 {
+		t.Fatalf("expected no new worktree additions on reattach")
+	}
+}
+
 func TestAddRepoFromAliasURL(t *testing.T) {
 	env := newTestEnv(t)
 	root := env.createWorkspace(context.Background(), "demo")

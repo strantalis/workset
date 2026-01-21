@@ -1,8 +1,17 @@
 <script lang="ts">
-  export let activeSection: string
-  export let onSelectSection: (section: string) => void
-  export let aliasCount: number = 0
-  export let groupCount: number = 0
+  interface Props {
+    activeSection: string;
+    onSelectSection: (section: string) => void;
+    aliasCount?: number;
+    groupCount?: number;
+  }
+
+  let {
+    activeSection,
+    onSelectSection,
+    aliasCount = 0,
+    groupCount = 0
+  }: Props = $props();
 
   type SidebarItem = {
     id: string
@@ -15,7 +24,7 @@
     items: SidebarItem[]
   }
 
-  $: groups = [
+  let groups = $derived([
     {
       title: 'GENERAL',
       items: [
@@ -30,7 +39,7 @@
         {id: 'groups', label: 'Groups', count: groupCount}
       ]
     }
-  ] as SidebarGroup[]
+  ] as SidebarGroup[])
 </script>
 
 <nav class="sidebar">
@@ -42,7 +51,7 @@
           class="item"
           class:active={activeSection === item.id}
           type="button"
-          on:click={() => onSelectSection(item.id)}
+          onclick={() => onSelectSection(item.id)}
         >
           <span class="label">{item.label}</span>
           {#if item.count !== undefined && item.count > 0}

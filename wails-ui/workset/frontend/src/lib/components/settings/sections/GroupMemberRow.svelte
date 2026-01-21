@@ -1,30 +1,43 @@
 <script lang="ts">
   import type {GroupMember} from '../../../types'
 
-  export let member: GroupMember
-  export let expanded: boolean = false
-  export let loading: boolean = false
-  export let onToggle: () => void
-  export let onSave: (baseRemote: string, baseBranch: string, writeRemote: string) => void
-  export let onRemove: () => void
+  interface Props {
+    member: GroupMember;
+    expanded?: boolean;
+    loading?: boolean;
+    onToggle: () => void;
+    onSave: (baseRemote: string, baseBranch: string, writeRemote: string) => void;
+    onRemove: () => void;
+  }
 
-  let baseRemote = member.remotes.base.name
-  let baseBranch = member.remotes.base.default_branch ?? ''
-  let writeRemote = member.remotes.write.name
+  let {
+    member,
+    expanded = false,
+    loading = false,
+    onToggle,
+    onSave,
+    onRemove
+  }: Props = $props();
+
+  let baseRemote = $state('')
+  let baseBranch = $state('')
+  let writeRemote = $state('')
 
   const handleSave = (): void => {
     onSave(baseRemote.trim(), baseBranch.trim(), writeRemote.trim())
   }
 
-  $: if (!expanded) {
-    baseRemote = member.remotes.base.name
-    baseBranch = member.remotes.base.default_branch ?? ''
-    writeRemote = member.remotes.write.name
-  }
+  $effect(() => {
+    if (!expanded) {
+      baseRemote = member.remotes.base.name
+      baseBranch = member.remotes.base.default_branch ?? ''
+      writeRemote = member.remotes.write.name
+    }
+  });
 </script>
 
 <div class="member" class:expanded>
-  <button class="member-header" type="button" on:click={onToggle}>
+  <button class="member-header" type="button" onclick={onToggle}>
     <span class="member-name">{member.repo}</span>
     <span class="member-remotes">
       {member.remotes.base.name}/{member.remotes.base.default_branch ?? 'main'}
@@ -52,14 +65,14 @@
         </label>
       </div>
       <div class="member-actions">
-        <button class="danger small" type="button" on:click={onRemove} disabled={loading}>
+        <button class="danger small" type="button" onclick={onRemove} disabled={loading}>
           Remove
         </button>
         <div class="spacer"></div>
-        <button class="ghost small" type="button" on:click={onToggle} disabled={loading}>
+        <button class="ghost small" type="button" onclick={onToggle} disabled={loading}>
           Cancel
         </button>
-        <button class="primary small" type="button" on:click={handleSave} disabled={loading}>
+        <button class="primary small" type="button" onclick={handleSave} disabled={loading}>
           {loading ? 'Saving...' : 'Save'}
         </button>
       </div>

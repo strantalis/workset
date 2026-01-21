@@ -20,3 +20,10 @@
 - Labels: improvements, ai-generated
 - Body:
   - Set `GOLANGCI_LINT_CACHE` to `.cache/golangci-lint` or `$TMPDIR` to avoid permission errors in sandboxed runs.
+
+- Title: Cache config reads + status errors for workspace snapshots
+- Project: workset
+- Labels: improvements, ai-generated, performance
+- Body:
+  - Add read-through caching for global config + workspace config/state (mtime+size or fsnotify).
+  - Expose status errors in snapshot payloads so UI can show "error" vs "pending".

@@ -8,7 +8,11 @@
   import AliasManager from './settings/sections/AliasManager.svelte'
   import GroupManager from './settings/sections/GroupManager.svelte'
 
-  export let onClose: () => void
+  interface Props {
+    onClose: () => void;
+  }
+
+  let { onClose }: Props = $props();
 
   type FieldId = keyof SettingsDefaults
   type Field = {
@@ -31,17 +35,17 @@
     {id: 'agent', key: 'defaults.agent'}
   ]
 
-  let snapshot: SettingsSnapshot | null = null
-  let loading = true
-  let saving = false
-  let error: string | null = null
-  let success: string | null = null
-  let baseline: Record<FieldId, string> = {} as Record<FieldId, string>
-  let draft: Record<FieldId, string> = {} as Record<FieldId, string>
+  let snapshot: SettingsSnapshot | null = $state(null)
+  let loading = $state(true)
+  let saving = $state(false)
+  let error: string | null = $state(null)
+  let success: string | null = $state(null)
+  let baseline: Record<FieldId, string> = $state({} as Record<FieldId, string>)
+  let draft: Record<FieldId, string> = $state({} as Record<FieldId, string>)
 
-  let activeSection = 'workspace'
-  let aliasCount = 0
-  let groupCount = 0
+  let activeSection = $state('workspace')
+  let aliasCount = $state(0)
+  let groupCount = $state(0)
 
   const formatError = (err: unknown): string => {
     if (err instanceof Error) {
@@ -127,13 +131,13 @@
   })
 </script>
 
-<section class="panel" role="dialog" aria-modal="true" aria-label="Settings">
+<div class="panel" role="dialog" aria-modal="true" aria-label="Settings">
   <header class="header">
     <div>
       <div class="title">Settings</div>
       <div class="subtitle">Configure defaults, aliases, and groups.</div>
     </div>
-    <button class="ghost" type="button" on:click={onClose}>Close</button>
+    <button class="ghost" type="button" onclick={onClose}>Close</button>
   </header>
 
   {#if loading}
@@ -141,7 +145,7 @@
   {:else if error && !snapshot}
     <div class="state error">
       <div class="message">{error}</div>
-      <button class="ghost" type="button" on:click={loadSettings}>Retry</button>
+      <button class="ghost" type="button" onclick={loadSettings}>Retry</button>
     </div>
   {:else if snapshot}
     <div class="body">
@@ -182,7 +186,7 @@
         <button
           class="ghost"
           type="button"
-          on:click={resetChanges}
+          onclick={resetChanges}
           disabled={dirtyCount() === 0 || saving}
         >
           Reset
@@ -190,7 +194,7 @@
         <button
           class="primary"
           type="button"
-          on:click={saveChanges}
+          onclick={saveChanges}
           disabled={saving || dirtyCount() === 0}
         >
           {saving ? 'Saving...' : 'Save'}
@@ -198,7 +202,7 @@
       {/if}
     </footer>
   {/if}
-</section>
+</div>
 
 <style>
   .panel {

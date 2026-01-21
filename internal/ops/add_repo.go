@@ -147,7 +147,20 @@ func AddRepo(ctx context.Context, input AddRepoInput) (config.WorkspaceConfig, e
 		targetBranch = repo.Remotes.Base.DefaultBranch
 	}
 
-	if targetBranch != "" {
+	worktreePath := workspace.RepoWorktreePath(input.WorkspaceRoot, targetBranch, repo.RepoDir)
+	worktreeExists := false
+	if _, err := os.Stat(worktreePath); err == nil {
+		ok, err := input.Git.IsRepo(worktreePath)
+		if err != nil {
+			return config.WorkspaceConfig{}, err
+		}
+		if !ok {
+			return config.WorkspaceConfig{}, fmt.Errorf("worktree path %q exists but is not a git repo", worktreePath)
+		}
+		worktreeExists = true
+	}
+
+	if !worktreeExists && targetBranch != "" {
 		branch, ok, err := input.Git.CurrentBranch(gitDirPath)
 		if err != nil {
 			return config.WorkspaceConfig{}, err
@@ -192,17 +205,18 @@ func AddRepo(ctx context.Context, input AddRepoInput) (config.WorkspaceConfig, e
 		}
 	}
 
-	worktreePath := workspace.RepoWorktreePath(input.WorkspaceRoot, targetBranch, repo.RepoDir)
-	worktreeName := workspace.WorktreeName(targetBranch)
-	if err := input.Git.WorktreeAdd(ctx, git.WorktreeAddOptions{
-		RepoPath:     gitDirPath,
-		WorktreePath: worktreePath,
-		WorktreeName: worktreeName,
-		BranchName:   targetBranch,
-		StartRemote:  startRemote,
-		StartBranch:  repo.Remotes.Base.DefaultBranch,
-	}); err != nil {
-		return config.WorkspaceConfig{}, fmt.Errorf("add worktree: %w", err)
+	if !worktreeExists {
+		worktreeName := workspace.WorktreeName(targetBranch)
+		if err := input.Git.WorktreeAdd(ctx, git.WorktreeAddOptions{
+			RepoPath:     gitDirPath,
+			WorktreePath: worktreePath,
+			WorktreeName: worktreeName,
+			BranchName:   targetBranch,
+			StartRemote:  startRemote,
+			StartBranch:  repo.Remotes.Base.DefaultBranch,
+		}); err != nil {
+			return config.WorkspaceConfig{}, fmt.Errorf("add worktree: %w", err)
+		}
 	}
 
 	ws.Config.Repos = append(ws.Config.Repos, repo)

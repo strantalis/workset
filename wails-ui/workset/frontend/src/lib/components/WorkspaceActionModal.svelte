@@ -17,8 +17,9 @@
   import {activeWorkspaceId, clearRepo, clearWorkspace, loadWorkspaces, selectWorkspace, workspaces} from '../state'
   import type {Alias, GroupSummary, Repo, Workspace} from '../types'
 
-  export let onClose: () => void
-  export let mode:
+  interface Props {
+    onClose: () => void;
+    mode: 
     | 'create'
     | 'rename'
     | 'add-repo'
@@ -26,38 +27,78 @@
     | 'archive'
     | 'remove-workspace'
     | 'remove-repo'
-    | null
-  export let workspaceId: string | null = null
-  export let repoName: string | null = null
+    | null;
+    workspaceId?: string | null;
+    repoName?: string | null;
+  }
 
-  let workspace: Workspace | null = null
-  let repo: Repo | null = null
+  let {
+    onClose,
+    mode,
+    workspaceId = null,
+    repoName = null
+  }: Props = $props();
 
-  let error: string | null = null
-  let success: string | null = null
-  let loading = false
+  let workspace: Workspace | null = $state(null)
+  let repo: Repo | null = $state(null)
 
-  let nameInput: HTMLInputElement | null = null
+  let error: string | null = $state(null)
+  let success: string | null = $state(null)
+  let loading = $state(false)
 
-  let createName = ''
-  let renameName = ''
+  let nameInput: HTMLInputElement | null = $state(null)
 
-  let addSource = ''
-  let addName = ''
-  let addRepoDir = ''
-  let groupName = ''
-  let aliasItems: Alias[] = []
-  let groupItems: GroupSummary[] = []
+  let createName = $state('')
+  let renameName = $state('')
 
-  let baseRemote = ''
-  let baseBranch = ''
-  let writeRemote = ''
-  let writeBranch = ''
+  let addSource = $state('')
+  let aliasItems: Alias[] = $state([])
+  let groupItems: GroupSummary[] = $state([])
 
-  let archiveReason = ''
+  // Tab state for add-repo mode
+  type AddTab = 'repo' | 'alias' | 'group'
+  let addTab: AddTab = $state('repo')
+  let selectedAlias = $state('')
+  let selectedGroup = $state('')
+  let aliasDropdownOpen = $state(false)
+  let groupDropdownOpen = $state(false)
+
+  // Quick setup state for create mode
+  let quickSetupExpanded = $state(false)
+  let quickSetupTab: AddTab = $state('repo')
+  let quickSetupSource = $state('')
+  let quickSetupAlias = $state('')
+  let quickSetupGroupSelection = $state('')
+  let quickSetupAliasDropdownOpen = $state(false)
+  let quickSetupGroupDropdownOpen = $state(false)
+
+  // Helper to get alias display info
+  const getAliasSource = (alias: Alias): string => alias.url || alias.path || ''
+
+  // Helper to get selected alias object
+  const getSelectedAliasObj = (name: string): Alias | undefined =>
+    aliasItems.find(a => a.name === name)
+
+  // Helper to get selected group object
+  const getSelectedGroupObj = (name: string): GroupSummary | undefined =>
+    groupItems.find(g => g.name === name)
+
+  let baseRemote = $state('')
+  let baseBranch = $state('')
+  let writeRemote = $state('')
+  let writeBranch = $state('')
+
+  let archiveReason = $state('')
+  let removeDeleteWorktree = $state(false)
+  let removeDeleteLocal = $state(false)
 
   const formatError = (err: unknown, fallback: string): string => {
     if (err instanceof Error) return err.message
+    if (typeof err === 'string') return err
+    if (err && typeof err === 'object' && 'message' in err) {
+      const message = (err as {message?: string}).message
+      if (typeof message === 'string') return message
+    }
     return fallback
   }
 
@@ -78,7 +119,7 @@
       writeRemote = repo.writeRemote ?? ''
       writeBranch = repo.writeBranch ?? ''
     }
-    if (mode === 'add-repo') {
+    if (mode === 'add-repo' || mode === 'create') {
       aliasItems = await listAliases()
       groupItems = await listGroups()
     }
@@ -94,6 +135,23 @@
     error = null
     try {
       const result = await createWorkspace(name, '')
+
+      // Handle quick setup if expanded and has content
+      if (quickSetupExpanded) {
+        // Reload workspaces to get the new workspace with its ID
+        await loadWorkspaces(true)
+        const newWorkspace = get(workspaces).find((w) => w.name === result.workspace.name)
+        if (newWorkspace) {
+          if (quickSetupTab === 'repo' && quickSetupSource.trim()) {
+            await addRepo(newWorkspace.id, quickSetupSource.trim(), '', '')
+          } else if (quickSetupTab === 'alias' && quickSetupAlias.trim()) {
+            await addRepo(newWorkspace.id, quickSetupAlias.trim(), '', '')
+          } else if (quickSetupTab === 'group' && quickSetupGroupSelection.trim()) {
+            await applyGroup(newWorkspace.id, quickSetupGroupSelection.trim())
+          }
+        }
+      }
+
       await loadWorkspaces(true)
       selectWorkspace(result.workspace.name)
       success = `Created ${result.workspace.name}.`
@@ -139,7 +197,7 @@
     loading = true
     error = null
     try {
-      await addRepo(workspace.id, source, addName.trim(), addRepoDir.trim())
+      await addRepo(workspace.id, source, '', '')
       await loadWorkspaces(true)
       success = 'Repo added.'
       onClose()
@@ -164,17 +222,38 @@
     }
   }
 
+  const handleAddAlias = async (): Promise<void> => {
+    if (!workspace) return
+    if (!selectedAlias.trim()) {
+      error = 'Select an alias to add.'
+      return
+    }
+    loading = true
+    error = null
+    try {
+      await addRepo(workspace.id, selectedAlias.trim(), '', '')
+      await loadWorkspaces(true)
+      success = 'Alias added.'
+      onClose()
+    } catch (err) {
+      error = formatError(err, 'Failed to add alias.')
+    } finally {
+      loading = false
+    }
+  }
+
   const handleApplyGroup = async (): Promise<void> => {
     if (!workspace) return
-    if (!groupName.trim()) {
+    if (!selectedGroup.trim()) {
       error = 'Select a group to apply.'
       return
     }
     loading = true
     error = null
     try {
-      await applyGroup(workspace.id, groupName.trim())
+      await applyGroup(workspace.id, selectedGroup.trim())
       await loadWorkspaces(true)
+      success = 'Group applied.'
       onClose()
     } catch (err) {
       error = formatError(err, 'Failed to apply group.')
@@ -225,16 +304,17 @@
   }
 
   const handleRemoveWorkspace = async (): Promise<void> => {
-    if (!workspace) return
+    if (!workspaceId) return
     loading = true
     error = null
     try {
-      await removeWorkspace(workspace.id)
-      await loadWorkspaces(true)
-      if (get(activeWorkspaceId) === workspace.id) {
+      await removeWorkspace(workspaceId)
+      workspaces.update((current) => current.filter((entry) => entry.id !== workspaceId))
+      if (get(activeWorkspaceId) === workspaceId) {
         clearWorkspace()
       }
       onClose()
+      void loadWorkspaces(true)
     } catch (err) {
       error = formatError(err, 'Failed to remove workspace.')
     } finally {
@@ -247,7 +327,7 @@
     loading = true
     error = null
     try {
-      await removeRepo(workspace.id, repo.name, false, false)
+      await removeRepo(workspace.id, repo.name, removeDeleteWorktree, removeDeleteLocal)
       await loadWorkspaces(true)
       if (get(activeWorkspaceId) === workspace.id) {
         clearRepo()
@@ -276,7 +356,7 @@
         {:else if mode === 'rename'}
           Rename workspace
         {:else if mode === 'add-repo'}
-          Add repo
+          Add to workspace
         {:else if mode === 'remotes'}
           Update remotes
         {:else if mode === 'archive'}
@@ -297,7 +377,7 @@
         {/if}
       </div>
     </div>
-    <button class="ghost" type="button" on:click={onClose}>Close</button>
+    <button class="ghost" type="button" onclick={onClose}>Close</button>
   </header>
 
   {#if error}
@@ -312,7 +392,157 @@
         <span>Name</span>
         <input bind:this={nameInput} bind:value={createName} placeholder="acme" />
       </label>
-      <button class="primary" type="button" on:click={handleCreate} disabled={loading}>
+
+      <button
+        class="collapsible-header"
+        type="button"
+        onclick={() => quickSetupExpanded = !quickSetupExpanded}
+      >
+        <span class="chevron" class:expanded={quickSetupExpanded}>▸</span>
+        Quick setup (optional)
+      </button>
+
+      {#if quickSetupExpanded}
+        <div class="collapsible-content">
+          <div class="tabs compact">
+            <button
+              class="tab"
+              class:active={quickSetupTab === 'repo'}
+              type="button"
+              onclick={() => quickSetupTab = 'repo'}
+            >Repo</button>
+            <button
+              class="tab"
+              class:active={quickSetupTab === 'alias'}
+              type="button"
+              onclick={() => quickSetupTab = 'alias'}
+            >Alias</button>
+            <button
+              class="tab"
+              class:active={quickSetupTab === 'group'}
+              type="button"
+              onclick={() => quickSetupTab = 'group'}
+            >Group</button>
+          </div>
+
+          {#if quickSetupTab === 'repo'}
+            <label class="field">
+              <span>URL or path</span>
+              <div class="inline">
+                <input
+                  bind:value={quickSetupSource}
+                  placeholder="https://github.com/org/repo or /path/to/repo"
+                />
+                <button class="ghost" type="button" onclick={async () => {
+                  try {
+                    const path = await openDirectoryDialog('Select repo directory', quickSetupSource.trim())
+                    if (path) quickSetupSource = path
+                  } catch (err) {
+                    error = formatError(err, 'Failed to open directory picker.')
+                  }
+                }}>Browse</button>
+              </div>
+            </label>
+          {:else if quickSetupTab === 'alias'}
+            <div class="field">
+              <span>Select alias</span>
+              <div class="custom-dropdown">
+                <button
+                  class="dropdown-trigger"
+                  type="button"
+                  onclick={() => quickSetupAliasDropdownOpen = !quickSetupAliasDropdownOpen}
+                >
+                  {#if quickSetupAlias}
+                    {@const alias = getSelectedAliasObj(quickSetupAlias)}
+                    <span class="dropdown-selected">
+                      <span class="dropdown-name">{quickSetupAlias}</span>
+                      {#if alias}
+                        <span class="dropdown-meta">{getAliasSource(alias)}</span>
+                      {/if}
+                    </span>
+                  {:else}
+                    <span class="dropdown-placeholder">Choose an alias…</span>
+                  {/if}
+                  <span class="dropdown-arrow">{quickSetupAliasDropdownOpen ? '▴' : '▾'}</span>
+                </button>
+                {#if quickSetupAliasDropdownOpen}
+                  <div class="dropdown-menu">
+                    {#each aliasItems as alias}
+                      <button
+                        class="dropdown-item"
+                        class:selected={quickSetupAlias === alias.name}
+                        type="button"
+                        onclick={() => {
+                          quickSetupAlias = alias.name
+                          quickSetupAliasDropdownOpen = false
+                        }}
+                      >
+                        <span class="dropdown-item-name">{alias.name}</span>
+                        <span class="dropdown-item-meta">{getAliasSource(alias)}</span>
+                      </button>
+                    {/each}
+                    {#if aliasItems.length === 0}
+                      <div class="dropdown-empty">No aliases configured</div>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            </div>
+          {:else if quickSetupTab === 'group'}
+            <div class="field">
+              <span>Select group</span>
+              <div class="custom-dropdown">
+                <button
+                  class="dropdown-trigger"
+                  type="button"
+                  onclick={() => quickSetupGroupDropdownOpen = !quickSetupGroupDropdownOpen}
+                >
+                  {#if quickSetupGroupSelection}
+                    {@const group = getSelectedGroupObj(quickSetupGroupSelection)}
+                    <span class="dropdown-selected">
+                      <span class="dropdown-name">{quickSetupGroupSelection}</span>
+                      {#if group}
+                        <span class="dropdown-meta">{group.repo_count} repo{group.repo_count !== 1 ? 's' : ''}</span>
+                      {/if}
+                    </span>
+                  {:else}
+                    <span class="dropdown-placeholder">Choose a group…</span>
+                  {/if}
+                  <span class="dropdown-arrow">{quickSetupGroupDropdownOpen ? '▴' : '▾'}</span>
+                </button>
+                {#if quickSetupGroupDropdownOpen}
+                  <div class="dropdown-menu">
+                    {#each groupItems as group}
+                      <button
+                        class="dropdown-item"
+                        class:selected={quickSetupGroupSelection === group.name}
+                        type="button"
+                        onclick={() => {
+                          quickSetupGroupSelection = group.name
+                          quickSetupGroupDropdownOpen = false
+                        }}
+                      >
+                        <span class="dropdown-item-name">{group.name}</span>
+                        <span class="dropdown-item-meta">
+                          {group.repo_count} repo{group.repo_count !== 1 ? 's' : ''}
+                          {#if group.description}
+                            · {group.description}
+                          {/if}
+                        </span>
+                      </button>
+                    {/each}
+                    {#if groupItems.length === 0}
+                      <div class="dropdown-empty">No groups configured</div>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            </div>
+          {/if}
+        </div>
+      {/if}
+
+      <button class="primary" type="button" onclick={handleCreate} disabled={loading}>
         {loading ? 'Creating…' : 'Create'}
       </button>
     </div>
@@ -323,54 +553,161 @@
         <input bind:this={nameInput} bind:value={renameName} placeholder="acme" />
       </label>
       <div class="hint">Renaming updates config and workset.yaml. Files stay in place.</div>
-      <button class="primary" type="button" on:click={handleRename} disabled={loading}>
+      <button class="primary" type="button" onclick={handleRename} disabled={loading}>
         {loading ? 'Renaming…' : 'Rename'}
       </button>
     </div>
   {:else if mode === 'add-repo'}
-    <div class="form">
-      <label class="field">
-        <span>Source (alias, URL, or path)</span>
-        <div class="inline">
-          <input
-            bind:this={nameInput}
-            bind:value={addSource}
-            placeholder="alias, URL, or local path"
-            list="alias-options"
-          />
-          <button class="ghost" type="button" on:click={handleBrowse}>Browse</button>
-        </div>
-        <datalist id="alias-options">
-          {#each aliasItems as alias}
-            <option value={alias.name} />
-          {/each}
-        </datalist>
-      </label>
-      <div class="hint">Aliases are resolved from config; URLs and local paths work too.</div>
-      <label class="field">
-        <span>Repo name (optional)</span>
-        <input bind:value={addName} placeholder="agent-skills" />
-      </label>
-      <label class="field">
-        <span>Repo dir (optional)</span>
-        <input bind:value={addRepoDir} placeholder="agent-skills" />
-      </label>
-      <label class="field">
-        <span>Apply group (optional)</span>
-        <input bind:value={groupName} placeholder="group name" list="group-options" />
-        <datalist id="group-options">
-          {#each groupItems as group}
-            <option value={group.name} />
-          {/each}
-        </datalist>
-      </label>
-      <button class="ghost" type="button" on:click={handleApplyGroup} disabled={loading}>
-        Apply group
-      </button>
-      <button class="primary" type="button" on:click={handleAddRepo} disabled={loading}>
-        {loading ? 'Adding…' : 'Add repo'}
-      </button>
+    <div class="tabs">
+      <button
+        class="tab"
+        class:active={addTab === 'repo'}
+        type="button"
+        onclick={() => addTab = 'repo'}
+      >Repo</button>
+      <button
+        class="tab"
+        class:active={addTab === 'alias'}
+        type="button"
+        onclick={() => addTab = 'alias'}
+      >Alias</button>
+      <button
+        class="tab"
+        class:active={addTab === 'group'}
+        type="button"
+        onclick={() => addTab = 'group'}
+      >Group</button>
     </div>
+
+    {#if addTab === 'repo'}
+      <div class="form">
+        <label class="field">
+          <span>URL or path</span>
+          <div class="inline">
+            <input
+              bind:this={nameInput}
+              bind:value={addSource}
+              placeholder="https://github.com/org/repo or /path/to/repo"
+            />
+            <button class="ghost" type="button" onclick={handleBrowse}>Browse</button>
+          </div>
+        </label>
+        <button class="primary" type="button" onclick={handleAddRepo} disabled={loading}>
+          {loading ? 'Adding…' : 'Add repo'}
+        </button>
+      </div>
+    {:else if addTab === 'alias'}
+      <div class="form">
+        <div class="field">
+          <span>Select alias</span>
+          <div class="custom-dropdown">
+            <button
+              class="dropdown-trigger"
+              type="button"
+              onclick={() => aliasDropdownOpen = !aliasDropdownOpen}
+            >
+              {#if selectedAlias}
+                {@const alias = getSelectedAliasObj(selectedAlias)}
+                <span class="dropdown-selected">
+                  <span class="dropdown-name">{selectedAlias}</span>
+                  {#if alias}
+                    <span class="dropdown-meta">{getAliasSource(alias)}</span>
+                  {/if}
+                </span>
+              {:else}
+                <span class="dropdown-placeholder">Choose an alias…</span>
+              {/if}
+              <span class="dropdown-arrow">{aliasDropdownOpen ? '▴' : '▾'}</span>
+            </button>
+            {#if aliasDropdownOpen}
+              <div class="dropdown-menu">
+                {#each aliasItems as alias}
+                  <button
+                    class="dropdown-item"
+                    class:selected={selectedAlias === alias.name}
+                    type="button"
+                    onclick={() => {
+                      selectedAlias = alias.name
+                      aliasDropdownOpen = false
+                    }}
+                  >
+                    <span class="dropdown-item-name">{alias.name}</span>
+                    <span class="dropdown-item-meta">{getAliasSource(alias)}</span>
+                  </button>
+                {/each}
+                {#if aliasItems.length === 0}
+                  <div class="dropdown-empty">No aliases configured</div>
+                {/if}
+              </div>
+            {/if}
+          </div>
+        </div>
+        {#if aliasItems.length === 0}
+          <div class="hint">Add aliases in Settings → Aliases.</div>
+        {/if}
+        <button class="primary" type="button" onclick={handleAddAlias} disabled={loading || !selectedAlias.trim()}>
+          {loading ? 'Adding…' : 'Add alias'}
+        </button>
+      </div>
+    {:else if addTab === 'group'}
+      <div class="form">
+        <div class="field">
+          <span>Select group</span>
+          <div class="custom-dropdown">
+            <button
+              class="dropdown-trigger"
+              type="button"
+              onclick={() => groupDropdownOpen = !groupDropdownOpen}
+            >
+              {#if selectedGroup}
+                {@const group = getSelectedGroupObj(selectedGroup)}
+                <span class="dropdown-selected">
+                  <span class="dropdown-name">{selectedGroup}</span>
+                  {#if group}
+                    <span class="dropdown-meta">{group.repo_count} repo{group.repo_count !== 1 ? 's' : ''}</span>
+                  {/if}
+                </span>
+              {:else}
+                <span class="dropdown-placeholder">Choose a group…</span>
+              {/if}
+              <span class="dropdown-arrow">{groupDropdownOpen ? '▴' : '▾'}</span>
+            </button>
+            {#if groupDropdownOpen}
+              <div class="dropdown-menu">
+                {#each groupItems as group}
+                  <button
+                    class="dropdown-item"
+                    class:selected={selectedGroup === group.name}
+                    type="button"
+                    onclick={() => {
+                      selectedGroup = group.name
+                      groupDropdownOpen = false
+                    }}
+                  >
+                    <span class="dropdown-item-name">{group.name}</span>
+                    <span class="dropdown-item-meta">
+                      {group.repo_count} repo{group.repo_count !== 1 ? 's' : ''}
+                      {#if group.description}
+                        · {group.description}
+                      {/if}
+                    </span>
+                  </button>
+                {/each}
+                {#if groupItems.length === 0}
+                  <div class="dropdown-empty">No groups configured</div>
+                {/if}
+              </div>
+            {/if}
+          </div>
+        </div>
+        {#if groupItems.length === 0}
+          <div class="hint">Add groups in Settings → Groups.</div>
+        {/if}
+        <button class="primary" type="button" onclick={handleApplyGroup} disabled={loading || !selectedGroup.trim()}>
+          {loading ? 'Applying…' : 'Apply group'}
+        </button>
+      </div>
+    {/if}
   {:else if mode === 'remotes'}
     <div class="form">
       <label class="field">
@@ -389,7 +726,7 @@
         <span>Write branch</span>
         <input bind:value={writeBranch} placeholder="main" />
       </label>
-      <button class="primary" type="button" on:click={handleRemotes} disabled={loading}>
+      <button class="primary" type="button" onclick={handleRemotes} disabled={loading}>
         {loading ? 'Saving…' : 'Save remotes'}
       </button>
     </div>
@@ -400,7 +737,7 @@
         <span>Reason (optional)</span>
         <input bind:this={nameInput} bind:value={archiveReason} placeholder="paused" />
       </label>
-      <button class="danger" type="button" on:click={handleArchive} disabled={loading}>
+      <button class="danger" type="button" onclick={handleArchive} disabled={loading}>
         {loading ? 'Archiving…' : 'Archive'}
       </button>
     </div>
@@ -409,14 +746,35 @@
       <div class="hint">
         This only removes the workspace registration. Files and worktrees stay on disk.
       </div>
-      <button class="danger" type="button" on:click={handleRemoveWorkspace} disabled={loading}>
+      <button class="danger" type="button" onclick={handleRemoveWorkspace} disabled={loading}>
         {loading ? 'Removing…' : 'Remove workspace'}
       </button>
     </div>
   {:else if mode === 'remove-repo'}
     <div class="form">
-      <div class="hint">This only removes the repo from the workspace config.</div>
-      <button class="danger" type="button" on:click={handleRemoveRepo} disabled={loading}>
+      <div class="hint">This removes the repo from the workspace config by default.</div>
+      <label class="option">
+        <input type="checkbox" bind:checked={removeDeleteWorktree} />
+        <span>Also delete worktrees for this repo</span>
+      </label>
+      <label class="option">
+        <input type="checkbox" bind:checked={removeDeleteLocal} />
+        <span>Also delete local cache for this repo</span>
+      </label>
+      {#if removeDeleteWorktree || removeDeleteLocal}
+        <div class="hint">Destructive deletes are permanent and cannot be undone.</div>
+      {/if}
+      {#if repo?.statusKnown === false && (removeDeleteWorktree || removeDeleteLocal)}
+        <div class="note warning">
+          Repo status is still loading. Destructive deletes may be blocked if the repo is dirty.
+        </div>
+      {/if}
+      {#if repo?.dirty && (removeDeleteWorktree || removeDeleteLocal)}
+        <div class="note warning">
+          Uncommitted changes detected. Destructive deletes will be blocked until the repo is clean.
+        </div>
+      {/if}
+      <button class="danger" type="button" onclick={handleRemoveRepo} disabled={loading}>
         {loading ? 'Removing…' : 'Remove repo'}
       </button>
     </div>
@@ -577,5 +935,226 @@
 
   .note.success {
     color: var(--success);
+  }
+
+  .note.warning {
+    color: var(--warning);
+  }
+
+  .option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text);
+  }
+
+  .option input {
+    accent-color: var(--accent);
+  }
+
+  /* Tab bar styles */
+  .tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+
+  .tabs.compact {
+    margin-bottom: 12px;
+  }
+
+  .tab {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color var(--transition-fast), border-color var(--transition-fast);
+  }
+
+  .tab:hover {
+    color: var(--text);
+  }
+
+  .tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  /* Collapsible section styles */
+  .collapsible-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-size: 12px;
+    cursor: pointer;
+    padding: 4px 0;
+    transition: color var(--transition-fast);
+  }
+
+  .collapsible-header:hover {
+    color: var(--text);
+  }
+
+  .chevron {
+    display: inline-block;
+    transition: transform var(--transition-fast);
+  }
+
+  .chevron.expanded {
+    transform: rotate(90deg);
+  }
+
+  .collapsible-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px 0 4px 0;
+    animation: fadeIn var(--transition-fast) ease-out;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Custom dropdown styles */
+  .custom-dropdown {
+    position: relative;
+  }
+
+  .dropdown-trigger {
+    width: 100%;
+    background: var(--panel-soft);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--text);
+    padding: 10px 12px;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    text-align: left;
+    transition: border-color var(--transition-fast);
+  }
+
+  .dropdown-trigger:hover {
+    border-color: var(--accent);
+  }
+
+  .dropdown-selected {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .dropdown-name {
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .dropdown-meta {
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .dropdown-placeholder {
+    color: var(--muted);
+  }
+
+  .dropdown-arrow {
+    color: var(--muted);
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+
+  .dropdown-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: var(--panel-strong);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    z-index: 100;
+    max-height: 240px;
+    overflow-y: auto;
+    animation: dropdownFadeIn 0.15s ease-out;
+  }
+
+  @keyframes dropdownFadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .dropdown-item {
+    width: 100%;
+    background: transparent;
+    border: none;
+    padding: 10px 12px;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    transition: background var(--transition-fast);
+  }
+
+  .dropdown-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .dropdown-item.selected {
+    background: rgba(var(--accent-rgb), 0.1);
+  }
+
+  .dropdown-item-name {
+    font-weight: 500;
+    color: var(--text);
+    font-size: 14px;
+  }
+
+  .dropdown-item-meta {
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .dropdown-empty {
+    padding: 16px 12px;
+    color: var(--muted);
+    font-size: 13px;
+    text-align: center;
   }
 </style>

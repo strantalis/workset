@@ -4,18 +4,22 @@
   import type {Alias} from '../../../types'
   import SettingsSection from '../SettingsSection.svelte'
 
-  export let onAliasCountChange: (count: number) => void
+  interface Props {
+    onAliasCountChange: (count: number) => void;
+  }
 
-  let aliases: Alias[] = []
-  let selectedAlias: Alias | null = null
-  let isNew = false
-  let loading = false
-  let error: string | null = null
-  let success: string | null = null
+  let { onAliasCountChange }: Props = $props();
 
-  let formName = ''
-  let formSource = ''
-  let formBranch = ''
+  let aliases: Alias[] = $state([])
+  let selectedAlias: Alias | null = $state(null)
+  let isNew = $state(false)
+  let loading = $state(false)
+  let error: string | null = $state(null)
+  let success: string | null = $state(null)
+
+  let formName = $state('')
+  let formSource = $state('')
+  let formBranch = $state('')
 
   const formatError = (err: unknown): string => {
     if (err instanceof Error) return err.message
@@ -52,15 +56,11 @@
   }
 
   const cancelEdit = (): void => {
-    if (aliases.length > 0) {
-      selectAlias(aliases[0])
-    } else {
-      selectedAlias = null
-      isNew = false
-      formName = ''
-      formSource = ''
-      formBranch = ''
-    }
+    selectedAlias = null
+    isNew = false
+    formName = ''
+    formSource = ''
+    formBranch = ''
     error = null
     success = null
   }
@@ -115,15 +115,11 @@
       await deleteAlias(name)
       success = `Deleted ${name}.`
       await loadAliases()
-      if (aliases.length > 0) {
-        selectAlias(aliases[0])
-      } else {
-        selectedAlias = null
-        isNew = false
-        formName = ''
-        formSource = ''
-        formBranch = ''
-      }
+      selectedAlias = null
+      isNew = false
+      formName = ''
+      formSource = ''
+      formBranch = ''
     } catch (err) {
       error = formatError(err)
     } finally {
@@ -151,17 +147,17 @@
   <div class="manager">
     <div class="list-header">
       <span class="list-count">{aliases.length} alias{aliases.length === 1 ? '' : 'es'}</span>
-      <button class="ghost small" type="button" on:click={startNew}>+ New</button>
+      <button class="ghost small" type="button" onclick={startNew}>+ New</button>
     </div>
 
-    {#if aliases.length > 0 || isNew}
+    {#if aliases.length > 0}
       <div class="list">
         {#each aliases as alias}
           <button
             class="list-item"
             class:active={selectedAlias?.name === alias.name && !isNew}
             type="button"
-            on:click={() => selectAlias(alias)}
+            onclick={() => selectAlias(alias)}
           >
             <span class="item-name">{alias.name}</span>
             <span class="item-source">{truncateSource(alias)}</span>
@@ -173,19 +169,26 @@
           </button>
         {/if}
       </div>
+    {:else if !isNew}
+      <div class="empty">
+        <p>No aliases defined yet.</p>
+        <button class="ghost" type="button" onclick={startNew}>Create your first alias</button>
+      </div>
+    {/if}
 
-      {#if error}
-        <div class="message error">{error}</div>
-      {:else if success}
-        <div class="message success">{success}</div>
-      {/if}
+    {#if error}
+      <div class="message error">{error}</div>
+    {:else if success}
+      <div class="message success">{success}</div>
+    {/if}
 
+    {#if isNew || selectedAlias}
       <div class="detail">
         <div class="detail-header">
           {#if isNew}
             New alias
           {:else if selectedAlias}
-            {selectedAlias.name}
+            Editing: {selectedAlias.name}
           {/if}
         </div>
         <div class="form">
@@ -217,26 +220,21 @@
         </div>
         <div class="actions">
           {#if !isNew && selectedAlias}
-            <button class="danger" type="button" on:click={handleDelete} disabled={loading}>
+            <button class="danger" type="button" onclick={handleDelete} disabled={loading}>
               Delete
             </button>
           {/if}
           <div class="spacer"></div>
-          {#if isNew}
-            <button class="ghost" type="button" on:click={cancelEdit} disabled={loading}>
-              Cancel
-            </button>
-          {/if}
-          <button class="primary" type="button" on:click={handleSave} disabled={loading}>
+          <button class="ghost" type="button" onclick={cancelEdit} disabled={loading}>
+            Cancel
+          </button>
+          <button class="primary" type="button" onclick={handleSave} disabled={loading}>
             {loading ? 'Saving...' : isNew ? 'Create alias' : 'Save alias'}
           </button>
         </div>
       </div>
-    {:else}
-      <div class="empty">
-        <p>No aliases defined yet.</p>
-        <button class="ghost" type="button" on:click={startNew}>Create your first alias</button>
-      </div>
+    {:else if aliases.length > 0}
+      <div class="hint">Select an alias to edit, or click "+ New" to create one.</div>
     {/if}
   </div>
 </SettingsSection>
@@ -479,5 +477,15 @@
   .danger:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .hint {
+    font-size: 13px;
+    color: var(--muted);
+    padding: 16px;
+    text-align: center;
+    background: var(--panel-soft);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
   }
 </style>

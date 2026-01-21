@@ -20,12 +20,12 @@
   import WorkspaceActionModal from './lib/components/WorkspaceActionModal.svelte'
   import WorkspaceTree from './lib/components/WorkspaceTree.svelte'
 
-  $: hasWorkspace = $activeWorkspace !== null
-  $: hasRepo = $activeRepo !== null
-  $: hasWorkspaces = $workspaces.length > 0
-  let settingsOpen = false
-  let sidebarCollapsed = false
-  let actionOpen = false
+  let hasWorkspace = $derived($activeWorkspace !== null)
+  let hasRepo = $derived($activeRepo !== null)
+  let hasWorkspaces = $derived($workspaces.length > 0)
+  let settingsOpen = $state(false)
+  let sidebarCollapsed = $state(false)
+  let actionOpen = $state(false)
   let actionContext: {
     mode:
       | 'create'
@@ -38,11 +38,11 @@
       | null
     workspaceId: string | null
     repoName: string | null
-  } = {
+  } = $state({
     mode: null,
     workspaceId: null,
     repoName: null
-  }
+  })
 
   const openAction = (
     mode:
@@ -76,9 +76,11 @@
       {/if}
     </div>
     <div class="actions">
-      <button class="ghost" type="button">Search</button>
-      <button class="ghost" type="button" on:click={() => (settingsOpen = true)}>
-        Settings
+      <button class="icon-button" type="button" onclick={() => (settingsOpen = true)} aria-label="Settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
       </button>
     </div>
   </header>
@@ -121,7 +123,7 @@
         <section class="error">
           <div class="title">Failed to load workspaces</div>
           <div class="body">{$workspaceError}</div>
-          <button class="retry" on:click={() => loadWorkspaces()} type="button">Retry</button>
+          <button class="retry" onclick={() => loadWorkspaces()} type="button">Retry</button>
         </section>
       {:else if !hasWorkspace}
         <EmptyState
@@ -135,7 +137,7 @@
       {:else if hasRepo}
         {#key $activeRepoId}
           <RepoDiff
-            repo={$activeRepo}
+            repo={$activeRepo!}
             workspaceId={$activeWorkspaceId ?? ''}
             onClose={clearRepo}
           />
@@ -154,12 +156,17 @@
       class="overlay"
       role="button"
       tabindex="0"
-      on:click={() => (settingsOpen = false)}
-      on:keydown={(event) => {
+      onclick={() => (settingsOpen = false)}
+      onkeydown={(event) => {
         if (event.key === 'Escape') settingsOpen = false
       }}
     >
-      <div class="overlay-panel" role="presentation" on:click|stopPropagation on:keydown|stopPropagation>
+      <div
+        class="overlay-panel"
+        role="presentation"
+        onclick={(event) => event.stopPropagation()}
+        onkeydown={(event) => event.stopPropagation()}
+      >
         <SettingsPanel onClose={() => (settingsOpen = false)} />
       </div>
     </div>
@@ -170,12 +177,17 @@
       class="overlay"
       role="button"
       tabindex="0"
-      on:click={() => (actionOpen = false)}
-      on:keydown={(event) => {
+      onclick={() => (actionOpen = false)}
+      onkeydown={(event) => {
         if (event.key === 'Escape') actionOpen = false
       }}
     >
-      <div class="overlay-panel" role="presentation" on:click|stopPropagation on:keydown|stopPropagation>
+      <div
+        class="overlay-panel"
+        role="presentation"
+        onclick={(event) => event.stopPropagation()}
+        onkeydown={(event) => event.stopPropagation()}
+      >
         <WorkspaceActionModal
           onClose={() => (actionOpen = false)}
           mode={actionContext.mode}
@@ -227,28 +239,30 @@
     gap: 10px;
   }
 
-  .ghost {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 6px 12px;
+  .icon-button {
+    width: 36px;
+    height: 36px;
     border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--text);
     cursor: pointer;
+    display: grid;
+    place-items: center;
     transition: border-color var(--transition-fast), background var(--transition-fast);
   }
 
-  .ghost:hover:not(:disabled) {
+  .icon-button:hover {
     border-color: var(--accent);
     background: rgba(255, 255, 255, 0.04);
   }
 
-  .ghost:active:not(:disabled) {
-    transform: scale(0.98);
-  }
-
-  .ghost:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+  .icon-button svg {
+    width: 18px;
+    height: 18px;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    fill: none;
   }
 
   .layout {

@@ -1,6 +1,10 @@
 <script lang="ts">
-  export let title: string
-  export let body: string
+  interface Props {
+    title: string;
+    body: string;
+  }
+
+  let { title, body }: Props = $props();
 </script>
 
 <section class="empty">
@@ -8,7 +12,6 @@
   <div class="body">{body}</div>
   <div class="actions">
     <button type="button">Create workspace</button>
-    <button class="secondary" type="button">Import existing</button>
   </div>
 </section>
 
@@ -63,15 +66,4 @@
     cursor: not-allowed;
   }
 
-  button.secondary {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text);
-    transition: border-color var(--transition-fast), background var(--transition-fast);
-  }
-
-  button.secondary:hover:not(:disabled) {
-    border-color: var(--accent);
-    background: rgba(255, 255, 255, 0.04);
-  }
 </style>

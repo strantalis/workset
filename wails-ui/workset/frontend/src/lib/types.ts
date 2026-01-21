@@ -18,6 +18,7 @@ export type Repo = {
   behind?: number
   dirty: boolean
   missing: boolean
+  statusKnown?: boolean
   diff: {
     added: number
     removed: number

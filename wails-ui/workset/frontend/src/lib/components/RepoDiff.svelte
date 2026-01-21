@@ -9,31 +9,35 @@
   import type {Repo, RepoDiffFileSummary, RepoDiffSummary, RepoFileDiff} from '../types'
   import {fetchRepoDiffSummary, fetchRepoFileDiff} from '../api'
 
-  export let repo: Repo
-  export let workspaceId: string
-  export let onClose: () => void
+  interface Props {
+    repo: Repo;
+    workspaceId: string;
+    onClose: () => void;
+  }
+
+  let { repo, workspaceId, onClose }: Props = $props();
 
   type DiffsModule = {
     FileDiff: new (options?: FileDiffOptions) => FileDiffType
     parsePatchFiles: (patch: string) => ParsedPatch[]
   }
 
-  let summary: RepoDiffSummary | null = null
-  let summaryLoading = true
-  let summaryError: string | null = null
+  let summary: RepoDiffSummary | null = $state(null)
+  let summaryLoading = $state(true)
+  let summaryError: string | null = $state(null)
 
-  let selected: RepoDiffFileSummary | null = null
-  let selectedDiff: FileDiffMetadata | null = null
-  let fileMeta: RepoFileDiff | null = null
-  let fileLoading = false
-  let fileError: string | null = null
+  let selected: RepoDiffFileSummary | null = $state(null)
+  let selectedDiff: FileDiffMetadata | null = $state(null)
+  let fileMeta: RepoFileDiff | null = $state(null)
+  let fileLoading = $state(false)
+  let fileError: string | null = $state(null)
 
-  let diffMode: 'split' | 'unified' = 'split'
-  let diffContainer: HTMLElement | null = null
+  let diffMode: 'split' | 'unified' = $state('split')
+  let diffContainer: HTMLElement | null = $state(null)
   let diffInstance: FileDiffType | null = null
   let diffModule: DiffsModule | null = null
-  let rendererLoading = false
-  let rendererError: string | null = null
+  let rendererLoading = $state(false)
+  let rendererError: string | null = $state(null)
 
   let summaryRequest = 0
   let fileRequest = 0
@@ -109,7 +113,7 @@
     selectedDiff = null
     fileMeta = null
     fileError = null
-    if (repo.missing) {
+    if (repo.statusKnown !== false && repo.missing) {
       summaryError = 'Repo is missing on disk. Restore it to view the diff.'
       summaryLoading = false
       return
@@ -194,9 +198,11 @@
     diffInstance?.cleanUp()
   })
 
-  $: if (selectedDiff && diffContainer) {
-    renderDiff()
-  }
+  $effect(() => {
+    if (selectedDiff && diffContainer) {
+      renderDiff()
+    }
+  });
 </script>
 
 <section class="diff">
@@ -207,7 +213,9 @@
         {#if repo.branch}
           <span>Branch: {repo.branch}</span>
         {/if}
-        {#if repo.missing}
+        {#if repo.statusKnown === false}
+          <span class="status unknown">unknown</span>
+        {:else if repo.missing}
           <span class="status missing">missing</span>
         {:else if repo.dirty}
           <span class="status dirty">dirty</span>
@@ -224,7 +232,7 @@
       <div class="toggle">
         <button
           class:active={diffMode === 'split'}
-          on:click={() => {
+          onclick={() => {
             diffMode = 'split'
             renderDiff()
           }}
@@ -234,7 +242,7 @@
         </button>
         <button
           class:active={diffMode === 'unified'}
-          on:click={() => {
+          onclick={() => {
             diffMode = 'unified'
             renderDiff()
           }}
@@ -243,8 +251,8 @@
           Unified
         </button>
       </div>
-      <button class="ghost" type="button" on:click={loadSummary}>Refresh</button>
-      <button class="close" on:click={onClose} type="button">Back to terminal</button>
+      <button class="ghost" type="button" onclick={loadSummary}>Refresh</button>
+      <button class="close" onclick={onClose} type="button">Back to terminal</button>
     </div>
   </header>
 
@@ -253,7 +261,7 @@
   {:else if summaryError}
     <div class="state error">
       <div class="message">{summaryError}</div>
-      <button class="ghost" type="button" on:click={loadSummary}>Retry</button>
+      <button class="ghost" type="button" onclick={loadSummary}>Retry</button>
     </div>
   {:else if !summary || summary.files.length === 0}
     <div class="state">No changes detected in this repo.</div>
@@ -265,7 +273,7 @@
           <button
             class:selected={file.path === selected?.path && file.prevPath === selected?.prevPath}
             class="file-row"
-            on:click={() => selectFile(file)}
+            onclick={() => selectFile(file)}
             type="button"
           >
             <div class="file-meta">
@@ -386,6 +394,10 @@
 
   .clean {
     color: var(--success);
+  }
+
+  .unknown {
+    color: var(--muted);
   }
 
   .controls {

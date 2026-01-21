@@ -37,7 +37,7 @@ export function ListAliases():Promise<Array<worksetapi.AliasJSON>>;
 
 export function ListGroups():Promise<Array<worksetapi.GroupSummaryJSON>>;
 
-export function ListWorkspaceSnapshots(arg1:boolean):Promise<Array<main.WorkspaceSnapshot>>;
+export function ListWorkspaceSnapshots(arg1:main.WorkspaceSnapshotRequest):Promise<Array<main.WorkspaceSnapshot>>;
 
 export function OpenDirectoryDialog(arg1:string,arg2:string):Promise<string>;
 
