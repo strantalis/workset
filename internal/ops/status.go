@@ -18,9 +18,10 @@ type RepoStatus struct {
 }
 
 type StatusInput struct {
-	WorkspaceRoot string
-	Defaults      config.Defaults
-	Git           git.Client
+	WorkspaceRoot       string
+	Defaults            config.Defaults
+	RepoDefaultBranches map[string]string
+	Git                 git.Client
 }
 
 func Status(ctx context.Context, input StatusInput) ([]RepoStatus, error) {
@@ -41,7 +42,12 @@ func Status(ctx context.Context, input StatusInput) ([]RepoStatus, error) {
 		config.ApplyRepoDefaults(&repo, input.Defaults)
 		branch := ws.State.CurrentBranch
 		if branch == "" {
-			branch = repo.Remotes.Base.DefaultBranch
+			if input.RepoDefaultBranches != nil {
+				branch = input.RepoDefaultBranches[repo.Name]
+			}
+			if branch == "" {
+				branch = input.Defaults.BaseBranch
+			}
 		}
 		path := workspace.RepoWorktreePath(ws.Root, branch, repo.RepoDir)
 		if path == "" {

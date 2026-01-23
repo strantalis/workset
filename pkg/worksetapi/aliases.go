@@ -29,6 +29,7 @@ func (s *Service) ListAliases(ctx context.Context) (AliasListResult, error) {
 			Name:          name,
 			URL:           alias.URL,
 			Path:          alias.Path,
+			Remote:        alias.Remote,
 			DefaultBranch: alias.DefaultBranch,
 		})
 	}
@@ -53,6 +54,7 @@ func (s *Service) GetAlias(ctx context.Context, name string) (AliasJSON, config.
 		Name:          name,
 		URL:           alias.URL,
 		Path:          alias.Path,
+		Remote:        alias.Remote,
 		DefaultBranch: alias.DefaultBranch,
 	}, info, nil
 }
@@ -94,9 +96,14 @@ func (s *Service) CreateAlias(ctx context.Context, input AliasUpsertInput) (Alia
 	if defaultBranch == "" {
 		defaultBranch = cfg.Defaults.BaseBranch
 	}
+	remote := strings.TrimSpace(input.Remote)
+	if remote == "" {
+		remote = cfg.Defaults.Remote
+	}
 	cfg.Repos[name] = config.RepoAlias{
 		URL:           url,
 		Path:          path,
+		Remote:        remote,
 		DefaultBranch: defaultBranch,
 	}
 	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
@@ -143,6 +150,14 @@ func (s *Service) UpdateAlias(ctx context.Context, input AliasUpsertInput) (Alia
 			return AliasMutationResultJSON{}, info, ValidationError{Message: "default branch cannot be empty"}
 		}
 		alias.DefaultBranch = defaultBranch
+		updated = true
+	}
+	if input.RemoteSet {
+		remote := strings.TrimSpace(input.Remote)
+		if remote == "" {
+			return AliasMutationResultJSON{}, info, ValidationError{Message: "remote cannot be empty"}
+		}
+		alias.Remote = remote
 		updated = true
 	}
 	if !updated {

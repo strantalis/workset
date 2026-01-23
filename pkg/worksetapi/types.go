@@ -60,15 +60,15 @@ type WorkspaceSnapshotJSON struct {
 
 // RepoSnapshotJSON summarizes a workspace repo and optional status.
 type RepoSnapshotJSON struct {
-	Name        string `json:"name"`
-	LocalPath   string `json:"local_path"`
-	Managed     bool   `json:"managed"`
-	RepoDir     string `json:"repo_dir"`
-	Base        string `json:"base"`
-	Write       string `json:"write"`
-	Dirty       bool   `json:"dirty"`
-	Missing     bool   `json:"missing"`
-	StatusKnown bool   `json:"status_known"`
+	Name          string `json:"name"`
+	LocalPath     string `json:"local_path"`
+	Managed       bool   `json:"managed"`
+	RepoDir       string `json:"repo_dir"`
+	Remote        string `json:"remote"`
+	DefaultBranch string `json:"default_branch"`
+	Dirty         bool   `json:"dirty"`
+	Missing       bool   `json:"missing"`
+	StatusKnown   bool   `json:"status_known"`
 }
 
 // WorkspaceCreatedJSON describes the JSON payload for a created workspace.
@@ -107,12 +107,12 @@ type WorkspaceDeleteResult struct {
 
 // RepoJSON is the JSON-friendly view of a workspace repo entry.
 type RepoJSON struct {
-	Name      string `json:"name"`
-	LocalPath string `json:"local_path"`
-	Managed   bool   `json:"managed"`
-	RepoDir   string `json:"repo_dir"`
-	Base      string `json:"base"`
-	Write     string `json:"write"`
+	Name          string `json:"name"`
+	LocalPath     string `json:"local_path"`
+	Managed       bool   `json:"managed"`
+	RepoDir       string `json:"repo_dir"`
+	Remote        string `json:"remote"`
+	DefaultBranch string `json:"default_branch"`
 }
 
 // RepoListResult returns repos for a workspace with config metadata.
@@ -182,15 +182,6 @@ const (
 	HookRunStatusSkipped HookRunStatus = "skipped"
 )
 
-// RepoRemotesUpdateResultJSON is the JSON payload for remote updates.
-type RepoRemotesUpdateResultJSON struct {
-	Status    string `json:"status"`
-	Workspace string `json:"workspace"`
-	Repo      string `json:"repo"`
-	Base      string `json:"base"`
-	Write     string `json:"write"`
-}
-
 // RepoRemoveDeletedJSON captures what was removed for a repo delete.
 type RepoRemoveDeletedJSON struct {
 	Worktrees bool `json:"worktrees"`
@@ -235,6 +226,7 @@ type AliasJSON struct {
 	Name          string `json:"name"`
 	URL           string `json:"url,omitempty"`
 	Path          string `json:"path,omitempty"`
+	Remote        string `json:"remote,omitempty"`
 	DefaultBranch string `json:"default_branch,omitempty"`
 }
 

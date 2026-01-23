@@ -1,23 +1,27 @@
 package config
 
 type Defaults struct {
-	BaseBranch        string `yaml:"base_branch" json:"base_branch" mapstructure:"base_branch"`
-	Workspace         string `yaml:"workspace" json:"workspace" mapstructure:"workspace"`
-	WorkspaceRoot     string `yaml:"workspace_root" json:"workspace_root" mapstructure:"workspace_root"`
-	RepoStoreRoot     string `yaml:"repo_store_root" json:"repo_store_root" mapstructure:"repo_store_root"`
-	SessionBackend    string `yaml:"session_backend" json:"session_backend" mapstructure:"session_backend"`
-	SessionNameFormat string `yaml:"session_name_format" json:"session_name_format" mapstructure:"session_name_format"`
-	SessionTheme      string `yaml:"session_theme" json:"session_theme" mapstructure:"session_theme"`
-	SessionTmuxStyle  string `yaml:"session_tmux_status_style" json:"session_tmux_status_style" mapstructure:"session_tmux_status_style"`
-	SessionTmuxLeft   string `yaml:"session_tmux_status_left" json:"session_tmux_status_left" mapstructure:"session_tmux_status_left"`
-	SessionTmuxRight  string `yaml:"session_tmux_status_right" json:"session_tmux_status_right" mapstructure:"session_tmux_status_right"`
-	SessionScreenHard string `yaml:"session_screen_hardstatus" json:"session_screen_hardstatus" mapstructure:"session_screen_hardstatus"`
-	Agent             string `yaml:"agent" json:"agent" mapstructure:"agent"`
+	Remote              string `yaml:"remote" json:"remote" mapstructure:"remote"`
+	BaseBranch          string `yaml:"base_branch" json:"base_branch" mapstructure:"base_branch"`
+	Workspace           string `yaml:"workspace" json:"workspace" mapstructure:"workspace"`
+	WorkspaceRoot       string `yaml:"workspace_root" json:"workspace_root" mapstructure:"workspace_root"`
+	RepoStoreRoot       string `yaml:"repo_store_root" json:"repo_store_root" mapstructure:"repo_store_root"`
+	SessionBackend      string `yaml:"session_backend" json:"session_backend" mapstructure:"session_backend"`
+	SessionNameFormat   string `yaml:"session_name_format" json:"session_name_format" mapstructure:"session_name_format"`
+	SessionTheme        string `yaml:"session_theme" json:"session_theme" mapstructure:"session_theme"`
+	SessionTmuxStyle    string `yaml:"session_tmux_status_style" json:"session_tmux_status_style" mapstructure:"session_tmux_status_style"`
+	SessionTmuxLeft     string `yaml:"session_tmux_status_left" json:"session_tmux_status_left" mapstructure:"session_tmux_status_left"`
+	SessionTmuxRight    string `yaml:"session_tmux_status_right" json:"session_tmux_status_right" mapstructure:"session_tmux_status_right"`
+	SessionScreenHard   string `yaml:"session_screen_hardstatus" json:"session_screen_hardstatus" mapstructure:"session_screen_hardstatus"`
+	Agent               string `yaml:"agent" json:"agent" mapstructure:"agent"`
+	TerminalRenderer    string `yaml:"terminal_renderer" json:"terminal_renderer" mapstructure:"terminal_renderer"`
+	TerminalIdleTimeout string `yaml:"terminal_idle_timeout" json:"terminal_idle_timeout" mapstructure:"terminal_idle_timeout"`
 }
 
 type RepoAlias struct {
 	URL           string `yaml:"url,omitempty" json:"url,omitempty" mapstructure:"url"`
 	Path          string `yaml:"path,omitempty" json:"path,omitempty" mapstructure:"path"`
+	Remote        string `yaml:"remote,omitempty" json:"remote,omitempty" mapstructure:"remote"`
 	DefaultBranch string `yaml:"default_branch" json:"default_branch" mapstructure:"default_branch"`
 }
 
@@ -27,8 +31,8 @@ type Group struct {
 }
 
 type GroupMember struct {
-	Repo    string  `yaml:"repo" json:"repo" mapstructure:"repo"`
-	Remotes Remotes `yaml:"remotes" json:"remotes" mapstructure:"remotes"`
+	Repo          string   `yaml:"repo" json:"repo" mapstructure:"repo"`
+	LegacyRemotes *Remotes `yaml:"remotes,omitempty" json:"-" mapstructure:"remotes"`
 }
 
 type WorkspaceRef struct {
@@ -53,11 +57,11 @@ type WorkspaceConfig struct {
 }
 
 type RepoConfig struct {
-	Name      string  `yaml:"name" json:"name" mapstructure:"name"`
-	LocalPath string  `yaml:"local_path" json:"local_path" mapstructure:"local_path"`
-	Managed   bool    `yaml:"managed,omitempty" json:"managed,omitempty" mapstructure:"managed"`
-	RepoDir   string  `yaml:"repo_dir" json:"repo_dir" mapstructure:"repo_dir"`
-	Remotes   Remotes `yaml:"remotes" json:"remotes" mapstructure:"remotes"`
+	Name          string   `yaml:"name" json:"name" mapstructure:"name"`
+	LocalPath     string   `yaml:"local_path" json:"local_path" mapstructure:"local_path"`
+	Managed       bool     `yaml:"managed,omitempty" json:"managed,omitempty" mapstructure:"managed"`
+	RepoDir       string   `yaml:"repo_dir" json:"repo_dir" mapstructure:"repo_dir"`
+	LegacyRemotes *Remotes `yaml:"remotes,omitempty" json:"-" mapstructure:"remotes"`
 }
 
 type Remotes struct {

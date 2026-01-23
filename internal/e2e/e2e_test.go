@@ -240,36 +240,29 @@ func TestRepoAddWithRepoDirCreatesWorktree(t *testing.T) {
 	}
 }
 
-func TestRepoRemotesSet(t *testing.T) {
+func TestRepoAliasDefaults(t *testing.T) {
 	runner := newRunner(t)
 	source := setupRepo(t, filepath.Join(runner.root, "src", "remotes-repo"))
 
 	if _, err := runner.run("new", "demo"); err != nil {
 		t.Fatalf("workset new: %v", err)
 	}
-	if _, err := runner.run("repo", "add", "-w", "demo", source); err != nil {
-		t.Fatalf("repo add: %v", err)
+	if _, err := runner.run("repo", "alias", "add", "remotes-repo", source, "--remote", "origin", "--default-branch", "trunk"); err != nil {
+		t.Fatalf("repo alias add: %v", err)
 	}
-	if _, err := runner.run(
-		"repo", "remotes", "set",
-		"-w", "demo",
-		"remotes-repo",
-		"--base-remote", "upstream",
-		"--write-remote", "origin",
-		"--base-branch", "trunk",
-	); err != nil {
-		t.Fatalf("repo remotes set: %v", err)
+	if _, err := runner.run("repo", "add", "-w", "demo", "remotes-repo"); err != nil {
+		t.Fatalf("repo add: %v", err)
 	}
 
 	out, err := runner.run("repo", "ls", "-w", "demo", "--json")
 	if err != nil {
 		t.Fatalf("repo ls: %v", err)
 	}
-	if !strings.Contains(out, "\"base\": \"upstream/trunk\"") {
-		t.Fatalf("repo ls missing base remote update: %s", out)
+	if !strings.Contains(out, "\"remote\": \"origin\"") {
+		t.Fatalf("repo ls missing remote: %s", out)
 	}
-	if !strings.Contains(out, "\"write\": \"origin/trunk\"") {
-		t.Fatalf("repo ls missing write remote update: %s", out)
+	if !strings.Contains(out, "\"default_branch\": \"trunk\"") {
+		t.Fatalf("repo ls missing default branch: %s", out)
 	}
 }
 
@@ -487,8 +480,8 @@ func TestGroupAliasCommands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("group show --json: %v", err)
 	}
-	if !strings.Contains(out, "\"default_branch\": \"main\"") {
-		t.Fatalf("group show missing default branch: %s", out)
+	if !strings.Contains(out, "\"repo\": \"group-repo-a\"") {
+		t.Fatalf("group show missing repo in json: %s", out)
 	}
 	if _, err := runner.run("group", "rm", "group-stack"); err != nil {
 		t.Fatalf("group rm: %v", err)
@@ -528,7 +521,7 @@ func TestWorkspaceNewWithGroupAndRepo(t *testing.T) {
 	}
 }
 
-func TestWorkspaceNewConflictAcrossGroupAndRepo(t *testing.T) {
+func TestWorkspaceNewDuplicateRepoAcrossGroupAndRepo(t *testing.T) {
 	runner := newRunner(t)
 	repoA := setupRepo(t, filepath.Join(runner.root, "src", "conflict-repo-a"))
 
@@ -538,14 +531,20 @@ func TestWorkspaceNewConflictAcrossGroupAndRepo(t *testing.T) {
 	if _, err := runner.run("group", "create", "conflict-group"); err != nil {
 		t.Fatalf("group create: %v", err)
 	}
-	if _, err := runner.run("group", "add", "conflict-group", "conflict-repo-a", "--base-remote", "upstream"); err != nil {
+	if _, err := runner.run("group", "add", "conflict-group", "conflict-repo-a"); err != nil {
 		t.Fatalf("group add: %v", err)
 	}
 
-	if _, err := runner.run("new", "demo", "--group", "conflict-group", "--repo", "conflict-repo-a"); err == nil {
-		t.Fatalf("expected conflict error")
-	} else if !strings.Contains(err.Error(), "conflicting repo") {
-		t.Fatalf("expected conflict error, got: %v", err)
+	if _, err := runner.run("new", "demo", "--group", "conflict-group", "--repo", "conflict-repo-a"); err != nil {
+		t.Fatalf("workset new with duplicate repo: %v", err)
+	}
+
+	out, err := runner.run("repo", "ls", "-w", "demo", "--plain")
+	if err != nil {
+		t.Fatalf("repo ls: %v", err)
+	}
+	if !strings.Contains(out, "conflict-repo-a") {
+		t.Fatalf("repo ls missing repo: %s", out)
 	}
 }
 

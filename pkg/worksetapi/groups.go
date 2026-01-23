@@ -93,7 +93,7 @@ func (s *Service) DeleteGroup(ctx context.Context, name string) (AliasMutationRe
 	return AliasMutationResultJSON{Status: "ok", Name: name}, info, nil
 }
 
-// AddGroupMember adds a repo to a group with remote defaults.
+// AddGroupMember adds a repo to a group.
 func (s *Service) AddGroupMember(ctx context.Context, input GroupMemberInput) (GroupJSON, config.GlobalConfigLoadInfo, error) {
 	cfg, info, err := s.loadGlobal(ctx)
 	if err != nil {
@@ -104,26 +104,8 @@ func (s *Service) AddGroupMember(ctx context.Context, input GroupMemberInput) (G
 	if groupName == "" || repoName == "" {
 		return GroupJSON{}, info, ValidationError{Message: "group and repo name required"}
 	}
-	baseBranch := strings.TrimSpace(input.BaseBranch)
-	if baseBranch == "" {
-		if alias, ok := cfg.Repos[repoName]; ok && alias.DefaultBranch != "" {
-			baseBranch = alias.DefaultBranch
-		} else {
-			baseBranch = cfg.Defaults.BaseBranch
-		}
-	}
 	member := config.GroupMember{
 		Repo: repoName,
-		Remotes: config.Remotes{
-			Base: config.RemoteConfig{
-				Name:          strings.TrimSpace(input.BaseRemote),
-				DefaultBranch: baseBranch,
-			},
-			Write: config.RemoteConfig{
-				Name:          strings.TrimSpace(input.WriteRemote),
-				DefaultBranch: baseBranch,
-			},
-		},
 	}
 	if err := groups.AddMember(&cfg, groupName, member); err != nil {
 		return GroupJSON{}, info, err
@@ -179,16 +161,38 @@ func (s *Service) ApplyGroup(ctx context.Context, input GroupApplyInput) (GroupA
 		if err != nil {
 			return GroupApplyResultJSON{}, info, err
 		}
-		if _, err := ops.AddRepo(ctx, ops.AddRepoInput{
+		_, resolvedRemote, repoWarnings, err := ops.AddRepo(ctx, ops.AddRepoInput{
 			WorkspaceRoot: wsRoot,
 			Name:          plan.Name,
 			URL:           plan.URL,
 			SourcePath:    plan.SourcePath,
 			Defaults:      cfg.Defaults,
-			Remotes:       plan.Remotes,
+			Remote:        plan.Remote,
+			DefaultBranch: plan.DefaultBranch,
+			AllowFallback: false,
 			Git:           s.git,
-		}); err != nil {
+		})
+		if err != nil {
 			return GroupApplyResultJSON{}, info, err
+		}
+		if len(repoWarnings) > 0 && s.logf != nil {
+			for _, warning := range repoWarnings {
+				s.logf("warning: group %s repo %s: %s", name, plan.Name, warning)
+			}
+		}
+		if alias, ok := cfg.Repos[plan.Name]; ok {
+			aliasUpdated := false
+			if alias.Remote == "" && resolvedRemote != "" {
+				alias.Remote = resolvedRemote
+				aliasUpdated = true
+			}
+			if alias.DefaultBranch == "" && plan.DefaultBranch != "" {
+				alias.DefaultBranch = plan.DefaultBranch
+				aliasUpdated = true
+			}
+			if aliasUpdated {
+				cfg.Repos[plan.Name] = alias
+			}
 		}
 	}
 

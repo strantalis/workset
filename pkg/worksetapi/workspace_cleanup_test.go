@@ -274,7 +274,6 @@ func TestRemoveWorkspaceRepoWorktrees(t *testing.T) {
 			Name:      "repo-a",
 			RepoDir:   "repo-a",
 			LocalPath: local,
-			Remotes:   config.Remotes{Base: config.RemoteConfig{Name: "origin"}},
 		},
 	}
 	if err := config.SaveWorkspace(workspace.WorksetFile(root), wsCfg); err != nil {
@@ -337,7 +336,6 @@ func TestRemoveWorkspaceRepoWorktreesForceSkipsErrors(t *testing.T) {
 			Name:      "broken",
 			RepoDir:   "broken",
 			LocalPath: local,
-			Remotes:   config.Remotes{Base: config.RemoteConfig{Name: "origin"}},
 		},
 	}
 	if err := config.SaveWorkspace(workspace.WorksetFile(root), wsCfg); err != nil {
@@ -370,7 +368,6 @@ func TestRemoveWorkspaceRepoWorktreesErrorWithoutForce(t *testing.T) {
 			Name:      "broken2",
 			RepoDir:   "broken2",
 			LocalPath: local,
-			Remotes:   config.Remotes{Base: config.RemoteConfig{Name: "origin"}},
 		},
 	}
 	if err := config.SaveWorkspace(workspace.WorksetFile(root), wsCfg); err != nil {

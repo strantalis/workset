@@ -1,9 +1,5 @@
 package worksetapi
 
-import (
-	"github.com/strantalis/workset/internal/config"
-)
-
 // WorkspaceCreateInput describes inputs for CreateWorkspace.
 type WorkspaceCreateInput struct {
 	Name   string
@@ -29,29 +25,13 @@ type WorkspaceRenameInput struct {
 
 // RepoAddInput describes inputs for AddRepo.
 type RepoAddInput struct {
-	Workspace     WorkspaceSelector
-	Source        string
-	Name          string
-	NameSet       bool
-	RepoDir       string
-	URL           string
-	SourcePath    string
-	Remotes       config.Remotes
-	UpdateAliases bool
-}
-
-// RepoRemotesUpdateInput describes inputs for UpdateRepoRemotes.
-type RepoRemotesUpdateInput struct {
-	Workspace      WorkspaceSelector
-	Name           string
-	BaseRemote     string
-	WriteRemote    string
-	BaseBranch     string
-	WriteBranch    string
-	BaseRemoteSet  bool
-	WriteRemoteSet bool
-	BaseBranchSet  bool
-	WriteBranchSet bool
+	Workspace  WorkspaceSelector
+	Source     string
+	Name       string
+	NameSet    bool
+	RepoDir    string
+	URL        string
+	SourcePath string
 }
 
 // RepoRemoveInput describes inputs for RemoveRepo.
@@ -70,8 +50,10 @@ type AliasUpsertInput struct {
 	Name             string
 	Source           string
 	DefaultBranch    string
+	Remote           string
 	SourceSet        bool
 	DefaultBranchSet bool
+	RemoteSet        bool
 }
 
 // GroupUpsertInput describes inputs for CreateGroup and UpdateGroup.
@@ -82,11 +64,8 @@ type GroupUpsertInput struct {
 
 // GroupMemberInput describes inputs for AddGroupMember and RemoveGroupMember.
 type GroupMemberInput struct {
-	GroupName   string
-	RepoName    string
-	BaseRemote  string
-	WriteRemote string
-	BaseBranch  string
+	GroupName string
+	RepoName  string
 }
 
 // GroupApplyInput describes inputs for ApplyGroup.

@@ -58,9 +58,9 @@ func repoCommand() *cli.Command {
 						if row.Managed {
 							managed = "yes"
 						}
-						tableRows = append(tableRows, []string{row.Name, row.LocalPath, managed, row.RepoDir, row.Base, row.Write})
+						tableRows = append(tableRows, []string{row.Name, row.LocalPath, managed, row.RepoDir, row.Remote, row.DefaultBranch})
 					}
-					rendered := output.RenderTable(styles, []string{"NAME", "LOCAL_PATH", "MANAGED", "REPO_DIR", "BASE", "WRITE"}, tableRows)
+					rendered := output.RenderTable(styles, []string{"NAME", "LOCAL_PATH", "MANAGED", "REPO_DIR", "REMOTE", "DEFAULT_BRANCH"}, tableRows)
 					if _, err := fmt.Fprint(commandWriter(cmd), rendered); err != nil {
 						return err
 					}
@@ -95,12 +95,11 @@ func repoCommand() *cli.Command {
 					svc := apiService(cmd)
 					workspaceValue := cmd.String("workspace")
 					result, err := svc.AddRepo(ctx, worksetapi.RepoAddInput{
-						Workspace:     worksetapi.WorkspaceSelector{Value: cmd.String("workspace")},
-						Source:        raw,
-						Name:          strings.TrimSpace(cmd.String("name")),
-						NameSet:       cmd.IsSet("name"),
-						RepoDir:       cmd.String("repo-dir"),
-						UpdateAliases: true,
+						Workspace: worksetapi.WorkspaceSelector{Value: cmd.String("workspace")},
+						Source:    raw,
+						Name:      strings.TrimSpace(cmd.String("name")),
+						NameSet:   cmd.IsSet("name"),
+						RepoDir:   cmd.String("repo-dir"),
 					})
 					if err != nil {
 						return err
@@ -189,103 +188,6 @@ func repoCommand() *cli.Command {
 						}
 					}
 					return nil
-				},
-			},
-			{
-				Name:  "remotes",
-				Usage: "Update repo remotes in a workspace (requires -w)",
-				Commands: []*cli.Command{
-					{
-						Name:      "set",
-						Usage:     "Update remotes for a repo (requires -w)",
-						ArgsUsage: "-w <workspace> <name>",
-						Flags: appendOutputFlags([]cli.Flag{
-							workspaceFlag(true),
-							&cli.StringFlag{
-								Name:  "base-remote",
-								Usage: "Base remote name",
-							},
-							&cli.StringFlag{
-								Name:  "write-remote",
-								Usage: "Write remote name",
-							},
-							&cli.StringFlag{
-								Name:  "base-branch",
-								Usage: "Base branch name (also updates write branch)",
-							},
-						}),
-						ShellComplete: func(ctx context.Context, cmd *cli.Command) {
-							if cmd.NArg() == 0 {
-								completeWorkspaceRepoNames(cmd)
-							}
-						},
-						Action: func(ctx context.Context, cmd *cli.Command) error {
-							name := strings.TrimSpace(cmd.Args().First())
-							if name == "" {
-								return usageError(ctx, cmd, "usage: workset repo remotes set -w <workspace> <name>")
-							}
-
-							baseRemoteSet := cmd.IsSet("base-remote")
-							writeRemoteSet := cmd.IsSet("write-remote")
-							baseBranchSet := cmd.IsSet("base-branch")
-							if !baseRemoteSet && !writeRemoteSet && !baseBranchSet {
-								return usageError(ctx, cmd, "at least one remote setting required")
-							}
-
-							baseBranch := cmd.String("base-branch")
-							svc := apiService(cmd)
-							payload, info, err := svc.UpdateRepoRemotes(ctx, worksetapi.RepoRemotesUpdateInput{
-								Workspace:      worksetapi.WorkspaceSelector{Value: cmd.String("workspace")},
-								Name:           name,
-								BaseRemote:     cmd.String("base-remote"),
-								WriteRemote:    cmd.String("write-remote"),
-								BaseBranch:     baseBranch,
-								WriteBranch:    baseBranch,
-								BaseRemoteSet:  baseRemoteSet,
-								WriteRemoteSet: writeRemoteSet,
-								BaseBranchSet:  baseBranchSet,
-								WriteBranchSet: baseBranchSet,
-							})
-							if err != nil {
-								return err
-							}
-							if verboseEnabled(cmd) {
-								printConfigLoadInfo(cmd, cmd.String("config"), info)
-							}
-
-							mode := outputModeFromContext(cmd)
-							if mode.JSON {
-								return output.WriteJSON(commandWriter(cmd), payload)
-							}
-							styles := output.NewStyles(commandWriter(cmd), mode.Plain)
-							msg := fmt.Sprintf("updated remotes for %s", name)
-							if styles.Enabled {
-								msg = styles.Render(styles.Success, msg)
-							}
-							if _, err := fmt.Fprintln(commandWriter(cmd), msg); err != nil {
-								return err
-							}
-							if payload.Base != "" {
-								line := fmt.Sprintf("base: %s", payload.Base)
-								if styles.Enabled {
-									line = styles.Render(styles.Muted, line)
-								}
-								if _, err := fmt.Fprintln(commandWriter(cmd), line); err != nil {
-									return err
-								}
-							}
-							if payload.Write != "" {
-								line := fmt.Sprintf("write: %s", payload.Write)
-								if styles.Enabled {
-									line = styles.Render(styles.Muted, line)
-								}
-								if _, err := fmt.Fprintln(commandWriter(cmd), line); err != nil {
-									return err
-								}
-							}
-							return nil
-						},
-					},
 				},
 			},
 			{
@@ -444,9 +346,9 @@ func repoAliasCommand() *cli.Command {
 						if source == "" {
 							source = "-"
 						}
-						rows = append(rows, []string{alias.Name, source, alias.DefaultBranch})
+						rows = append(rows, []string{alias.Name, source, alias.Remote, alias.DefaultBranch})
 					}
-					rendered := output.RenderTable(styles, []string{"NAME", "SOURCE", "DEFAULT_BRANCH"}, rows)
+					rendered := output.RenderTable(styles, []string{"NAME", "SOURCE", "REMOTE", "DEFAULT_BRANCH"}, rows)
 					_, err = fmt.Fprint(commandWriter(cmd), rendered)
 					return err
 				},
@@ -455,9 +357,13 @@ func repoAliasCommand() *cli.Command {
 				Name:        "add",
 				Usage:       "Create a repo alias",
 				ArgsUsage:   "<name> <source>",
-				UsageText:   "workset repo alias add <name> <source> [--default-branch <branch>]",
+				UsageText:   "workset repo alias add <name> <source> [--remote <name>] [--default-branch <branch>]",
 				Description: "Create a new alias for a repo path or URL. Use `workset repo alias set` to update an existing alias.",
 				Flags: appendOutputFlags([]cli.Flag{
+					&cli.StringFlag{
+						Name:  "remote",
+						Usage: "Primary remote name",
+					},
 					&cli.StringFlag{
 						Name:  "default-branch",
 						Usage: "Default branch name",
@@ -476,6 +382,7 @@ func repoAliasCommand() *cli.Command {
 					result, info, err := svc.CreateAlias(ctx, worksetapi.AliasUpsertInput{
 						Name:          name,
 						Source:        source,
+						Remote:        strings.TrimSpace(cmd.String("remote")),
 						DefaultBranch: strings.TrimSpace(cmd.String("default-branch")),
 					})
 					if err != nil {
@@ -503,9 +410,13 @@ func repoAliasCommand() *cli.Command {
 				Name:        "set",
 				Usage:       "Update a repo alias",
 				ArgsUsage:   "<name> [source]",
-				UsageText:   "workset repo alias set <name> [source] [--default-branch <branch>]",
+				UsageText:   "workset repo alias set <name> [source] [--remote <name>] [--default-branch <branch>]",
 				Description: "Update an existing alias. Omit source to keep the current path/URL.",
 				Flags: appendOutputFlags([]cli.Flag{
+					&cli.StringFlag{
+						Name:  "remote",
+						Usage: "Primary remote name",
+					},
 					&cli.StringFlag{
 						Name:  "default-branch",
 						Usage: "Default branch name",
@@ -527,6 +438,8 @@ func repoAliasCommand() *cli.Command {
 						Name:             name,
 						Source:           source,
 						SourceSet:        source != "",
+						Remote:           strings.TrimSpace(cmd.String("remote")),
+						RemoteSet:        cmd.IsSet("remote"),
 						DefaultBranch:    strings.TrimSpace(cmd.String("default-branch")),
 						DefaultBranchSet: cmd.IsSet("default-branch"),
 					})

@@ -85,16 +85,36 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 	warnings := []string{}
 	pendingHooks := []HookPending{}
 	for _, plan := range repoPlans {
-		if _, err := ops.AddRepo(ctx, ops.AddRepoInput{
+		_, resolvedRemote, repoWarnings, err := ops.AddRepo(ctx, ops.AddRepoInput{
 			WorkspaceRoot: ws.Root,
 			Name:          plan.Name,
 			URL:           plan.URL,
 			SourcePath:    plan.SourcePath,
 			Defaults:      cfg.Defaults,
-			Remotes:       plan.Remotes,
+			Remote:        plan.Remote,
+			DefaultBranch: plan.DefaultBranch,
+			AllowFallback: false,
 			Git:           s.git,
-		}); err != nil {
+		})
+		if err != nil {
 			return WorkspaceCreateResult{}, err
+		}
+		if len(repoWarnings) > 0 {
+			warnings = append(warnings, repoWarnings...)
+		}
+		if alias, ok := cfg.Repos[plan.Name]; ok {
+			aliasUpdated := false
+			if alias.Remote == "" && resolvedRemote != "" {
+				alias.Remote = resolvedRemote
+				aliasUpdated = true
+			}
+			if alias.DefaultBranch == "" && plan.DefaultBranch != "" {
+				alias.DefaultBranch = plan.DefaultBranch
+				aliasUpdated = true
+			}
+			if aliasUpdated {
+				cfg.Repos[plan.Name] = alias
+			}
 		}
 		repoDir := plan.Name
 		worktreePath := workspace.RepoWorktreePath(ws.Root, ws.State.CurrentBranch, repoDir)
@@ -140,6 +160,12 @@ func (s *Service) DeleteWorkspace(ctx context.Context, input WorkspaceDeleteInpu
 	if err != nil {
 		return WorkspaceDeleteResult{}, err
 	}
+	wsConfig := config.WorkspaceConfig{}
+	if input.DeleteFiles {
+		if loaded, err := s.workspaces.LoadConfig(ctx, root); err == nil {
+			wsConfig = loaded
+		}
+	}
 
 	if input.DeleteFiles {
 		workspaceRoot := cfg.Defaults.WorkspaceRoot
@@ -163,6 +189,7 @@ func (s *Service) DeleteWorkspace(ctx context.Context, input WorkspaceDeleteInpu
 		report, err = ops.CheckWorkspaceSafety(ctx, ops.WorkspaceSafetyInput{
 			WorkspaceRoot: root,
 			Defaults:      cfg.Defaults,
+			RepoDefaults:  repoDefaultsMap(wsConfig, cfg),
 			Git:           s.git,
 			FetchRemotes:  input.FetchRemotes,
 		})
@@ -245,9 +272,10 @@ func (s *Service) StatusWorkspace(ctx context.Context, selector WorkspaceSelecto
 	}
 
 	statuses, err := ops.Status(ctx, ops.StatusInput{
-		WorkspaceRoot: wsRoot,
-		Defaults:      cfg.Defaults,
-		Git:           s.git,
+		WorkspaceRoot:       wsRoot,
+		Defaults:            cfg.Defaults,
+		RepoDefaultBranches: repoDefaultBranches(wsConfig, cfg),
+		Git:                 s.git,
 	})
 	if err != nil {
 		return WorkspaceStatusResult{}, err
@@ -315,6 +343,9 @@ func (s *Service) resolveWorkspace(ctx context.Context, cfg *config.GlobalConfig
 		if os.IsNotExist(err) {
 			return "", config.WorkspaceConfig{}, NotFoundError{Message: fmt.Sprintf("workset.yaml not found at %s", worksetFilePath(root))}
 		}
+		return "", config.WorkspaceConfig{}, err
+	}
+	if err := s.migrateLegacyWorkspaceRemotes(ctx, cfg, configPath, root, &wsConfig); err != nil {
 		return "", config.WorkspaceConfig{}, err
 	}
 

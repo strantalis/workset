@@ -56,9 +56,8 @@ func TestGroupCRUDAndMembers(t *testing.T) {
 	}
 
 	group, _, err = env.svc.AddGroupMember(context.Background(), GroupMemberInput{
-		GroupName:  "core",
-		RepoName:   "repo-a",
-		BaseRemote: "origin",
+		GroupName: "core",
+		RepoName:  "repo-a",
 	})
 	if err != nil {
 		t.Fatalf("add member: %v", err)
@@ -109,9 +108,6 @@ func TestApplyGroup(t *testing.T) {
 			Members: []config.GroupMember{
 				{
 					Repo: "repo-a",
-					Remotes: config.Remotes{
-						Base: config.RemoteConfig{Name: "origin"},
-					},
 				},
 			},
 		},

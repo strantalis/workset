@@ -20,11 +20,19 @@ func LoadWorkspace(path string) (WorkspaceConfig, error) {
 }
 
 func SaveWorkspace(path string, cfg WorkspaceConfig) error {
+	cfg = stripLegacyWorkspaceRemotes(cfg)
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(path, data, 0o644)
+}
+
+func stripLegacyWorkspaceRemotes(cfg WorkspaceConfig) WorkspaceConfig {
+	for i := range cfg.Repos {
+		cfg.Repos[i].LegacyRemotes = nil
+	}
+	return cfg
 }
 
 func WorkspaceExists(path string) (bool, error) {

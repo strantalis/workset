@@ -212,20 +212,7 @@ func groupCommand() *cli.Command {
 				Name:      "add",
 				Usage:     "Add a repo to a group",
 				ArgsUsage: "<group> <repo>",
-				Flags: appendOutputFlags([]cli.Flag{
-					&cli.StringFlag{
-						Name:  "base-remote",
-						Usage: "Base remote name",
-					},
-					&cli.StringFlag{
-						Name:  "write-remote",
-						Usage: "Write remote name",
-					},
-					&cli.StringFlag{
-						Name:  "base-branch",
-						Usage: "Base branch name",
-					},
-				}),
+				Flags:     outputFlags(),
 				ShellComplete: func(ctx context.Context, cmd *cli.Command) {
 					switch cmd.NArg() {
 					case 0:
@@ -242,11 +229,8 @@ func groupCommand() *cli.Command {
 					}
 					svc := apiService(cmd)
 					result, info, err := svc.AddGroupMember(ctx, worksetapi.GroupMemberInput{
-						GroupName:   groupName,
-						RepoName:    repoName,
-						BaseRemote:  strings.TrimSpace(cmd.String("base-remote")),
-						WriteRemote: strings.TrimSpace(cmd.String("write-remote")),
-						BaseBranch:  strings.TrimSpace(cmd.String("base-branch")),
+						GroupName: groupName,
+						RepoName:  repoName,
 					})
 					if err != nil {
 						return err

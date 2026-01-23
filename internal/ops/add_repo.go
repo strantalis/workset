@@ -21,22 +21,24 @@ type AddRepoInput struct {
 	SourcePath    string
 	RepoDir       string
 	Defaults      config.Defaults
-	Remotes       config.Remotes
+	Remote        string
+	DefaultBranch string
+	AllowFallback bool
 	Git           git.Client
 }
 
-func AddRepo(ctx context.Context, input AddRepoInput) (config.WorkspaceConfig, error) {
+func AddRepo(ctx context.Context, input AddRepoInput) (config.WorkspaceConfig, string, []string, error) {
 	if input.WorkspaceRoot == "" {
-		return config.WorkspaceConfig{}, errors.New("workspace root required")
+		return config.WorkspaceConfig{}, "", nil, errors.New("workspace root required")
 	}
 	if input.Name == "" {
-		return config.WorkspaceConfig{}, errors.New("repo name required")
+		return config.WorkspaceConfig{}, "", nil, errors.New("repo name required")
 	}
 	if input.URL == "" && input.SourcePath == "" {
-		return config.WorkspaceConfig{}, errors.New("repo url or local path required")
+		return config.WorkspaceConfig{}, "", nil, errors.New("repo url or local path required")
 	}
 	if input.Git == nil {
-		return config.WorkspaceConfig{}, errors.New("git client required")
+		return config.WorkspaceConfig{}, "", nil, errors.New("git client required")
 	}
 
 	if input.SourcePath == "" && looksLikeLocalPath(input.URL) {
@@ -46,60 +48,61 @@ func AddRepo(ctx context.Context, input AddRepoInput) (config.WorkspaceConfig, e
 	if input.SourcePath != "" {
 		resolved, err := resolveLocalPath(input.SourcePath)
 		if err != nil {
-			return config.WorkspaceConfig{}, err
+			return config.WorkspaceConfig{}, "", nil, err
 		}
 		input.SourcePath = resolved
 	}
 
 	ws, err := workspace.Load(input.WorkspaceRoot, input.Defaults)
 	if err != nil {
-		return config.WorkspaceConfig{}, err
+		return config.WorkspaceConfig{}, "", nil, err
 	}
 
 	for _, repo := range ws.Config.Repos {
 		if repo.Name == input.Name {
-			return config.WorkspaceConfig{}, fmt.Errorf("repo %q already exists in workspace", input.Name)
+			return config.WorkspaceConfig{}, "", nil, fmt.Errorf("repo %q already exists in workspace", input.Name)
 		}
 	}
 
 	repo := config.RepoConfig{
 		Name:    input.Name,
 		RepoDir: input.RepoDir,
-		Remotes: input.Remotes,
 	}
 	if repo.RepoDir == "" {
 		repo.RepoDir = repo.Name
 	}
-	if repo.Remotes.Base.DefaultBranch == "" {
-		repo.Remotes.Base.DefaultBranch = input.Defaults.BaseBranch
+	defaultBranch := strings.TrimSpace(input.DefaultBranch)
+	if defaultBranch == "" {
+		defaultBranch = input.Defaults.BaseBranch
 	}
-	if repo.Remotes.Write.DefaultBranch == "" {
-		repo.Remotes.Write.DefaultBranch = repo.Remotes.Base.DefaultBranch
+	remote := strings.TrimSpace(input.Remote)
+	if remote == "" {
+		remote = input.Defaults.Remote
 	}
 
 	var gitDirPath string
 	if input.SourcePath != "" {
 		if ok, err := input.Git.IsRepo(input.SourcePath); err != nil {
-			return config.WorkspaceConfig{}, err
+			return config.WorkspaceConfig{}, "", nil, err
 		} else if !ok {
-			return config.WorkspaceConfig{}, fmt.Errorf("local repo not found at %s", input.SourcePath)
+			return config.WorkspaceConfig{}, "", nil, fmt.Errorf("local repo not found at %s", input.SourcePath)
 		}
 		repo.LocalPath = input.SourcePath
 		gitDirPath = input.SourcePath
 	} else {
 		if input.Defaults.RepoStoreRoot == "" {
-			return config.WorkspaceConfig{}, errors.New("defaults.repo_store_root required for URL clones")
+			return config.WorkspaceConfig{}, "", nil, errors.New("defaults.repo_store_root required for URL clones")
 		}
 		target := filepath.Join(input.Defaults.RepoStoreRoot, repo.Name)
 		target, err := filepath.Abs(target)
 		if err != nil {
-			return config.WorkspaceConfig{}, err
+			return config.WorkspaceConfig{}, "", nil, err
 		}
 		if ok, err := input.Git.IsRepo(target); err != nil {
-			return config.WorkspaceConfig{}, err
+			return config.WorkspaceConfig{}, "", nil, err
 		} else if !ok {
-			if err := input.Git.Clone(ctx, input.URL, target, repo.Remotes.Write.Name); err != nil {
-				return config.WorkspaceConfig{}, fmt.Errorf("clone %s: %w", input.URL, err)
+			if err := input.Git.Clone(ctx, input.URL, target, remote); err != nil {
+				return config.WorkspaceConfig{}, "", nil, fmt.Errorf("clone %s: %w", input.URL, err)
 			}
 		}
 		repo.LocalPath = target
@@ -108,43 +111,25 @@ func AddRepo(ctx context.Context, input AddRepoInput) (config.WorkspaceConfig, e
 	}
 	resolvedGitDir, err := resolveGitDirPath(gitDirPath)
 	if err != nil {
-		return config.WorkspaceConfig{}, err
+		return config.WorkspaceConfig{}, "", nil, err
 	}
 	gitDirPath = resolvedGitDir
 
+	warnings := []string{}
 	if input.SourcePath != "" {
-		derived, ok, err := deriveRemotesFromLocalRepo(gitDirPath, input.Git)
+		resolvedRemote, warn, err := resolveRemoteForLocalRepo(gitDirPath, input.Git, remote, input.AllowFallback)
 		if err != nil {
-			return config.WorkspaceConfig{}, err
+			return config.WorkspaceConfig{}, "", nil, err
 		}
-		if ok {
-			if repo.Remotes.Base.Name == "" {
-				repo.Remotes.Base.Name = derived.Base.Name
-			}
-			if repo.Remotes.Write.Name == "" {
-				repo.Remotes.Write.Name = derived.Write.Name
-			}
-		}
-	} else {
-		if repo.Remotes.Base.Name == "" {
-			repo.Remotes.Base.Name = "origin"
-		}
-		if repo.Remotes.Write.Name == "" {
-			repo.Remotes.Write.Name = "origin"
-		}
-	}
-
-	if repo.Remotes.Base.Name != repo.Remotes.Write.Name {
-		if input.URL != "" {
-			if err := input.Git.AddRemote(gitDirPath, repo.Remotes.Base.Name, input.URL); err != nil {
-				return config.WorkspaceConfig{}, fmt.Errorf("add base remote: %w", err)
-			}
+		remote = resolvedRemote
+		if warn != "" {
+			warnings = append(warnings, warn)
 		}
 	}
 
 	targetBranch := ws.State.CurrentBranch
 	if targetBranch == "" {
-		targetBranch = repo.Remotes.Base.DefaultBranch
+		targetBranch = defaultBranch
 	}
 
 	worktreePath := workspace.RepoWorktreePath(input.WorkspaceRoot, targetBranch, repo.RepoDir)
@@ -152,10 +137,10 @@ func AddRepo(ctx context.Context, input AddRepoInput) (config.WorkspaceConfig, e
 	if _, err := os.Stat(worktreePath); err == nil {
 		ok, err := input.Git.IsRepo(worktreePath)
 		if err != nil {
-			return config.WorkspaceConfig{}, err
+			return config.WorkspaceConfig{}, "", nil, err
 		}
 		if !ok {
-			return config.WorkspaceConfig{}, fmt.Errorf("worktree path %q exists but is not a git repo", worktreePath)
+			return config.WorkspaceConfig{}, "", nil, fmt.Errorf("worktree path %q exists but is not a git repo", worktreePath)
 		}
 		worktreeExists = true
 	}
@@ -163,10 +148,10 @@ func AddRepo(ctx context.Context, input AddRepoInput) (config.WorkspaceConfig, e
 	if !worktreeExists && targetBranch != "" {
 		branch, ok, err := input.Git.CurrentBranch(gitDirPath)
 		if err != nil {
-			return config.WorkspaceConfig{}, err
+			return config.WorkspaceConfig{}, "", nil, err
 		}
 		if ok && branch == targetBranch {
-			return config.WorkspaceConfig{}, fmt.Errorf(
+			return config.WorkspaceConfig{}, "", nil, fmt.Errorf(
 				"branch %q already checked out in %s; git only allows a branch in one worktree",
 				targetBranch,
 				repo.LocalPath,
@@ -178,30 +163,21 @@ func AddRepo(ctx context.Context, input AddRepoInput) (config.WorkspaceConfig, e
 	if useBranchDirs {
 		branchPath := workspace.WorktreeBranchPath(input.WorkspaceRoot, targetBranch)
 		if err := os.MkdirAll(branchPath, 0o755); err != nil {
-			return config.WorkspaceConfig{}, err
+			return config.WorkspaceConfig{}, "", nil, err
 		}
 		if err := workspace.WriteBranchMeta(input.WorkspaceRoot, targetBranch); err != nil {
-			return config.WorkspaceConfig{}, err
+			return config.WorkspaceConfig{}, "", nil, err
 		}
 	}
 
-	startRemote := repo.Remotes.Base.Name
-	if startRemote != "" {
-		exists, err := input.Git.RemoteExists(gitDirPath, startRemote)
+	startRemote := ""
+	if remote != "" {
+		exists, err := input.Git.RemoteExists(gitDirPath, remote)
 		if err != nil {
-			return config.WorkspaceConfig{}, err
-		}
-		if !exists {
-			startRemote = ""
-		}
-	}
-	if startRemote == "" && repo.Remotes.Write.Name != "" {
-		exists, err := input.Git.RemoteExists(gitDirPath, repo.Remotes.Write.Name)
-		if err != nil {
-			return config.WorkspaceConfig{}, err
+			return config.WorkspaceConfig{}, "", nil, err
 		}
 		if exists {
-			startRemote = repo.Remotes.Write.Name
+			startRemote = remote
 		}
 	}
 
@@ -213,17 +189,17 @@ func AddRepo(ctx context.Context, input AddRepoInput) (config.WorkspaceConfig, e
 			WorktreeName: worktreeName,
 			BranchName:   targetBranch,
 			StartRemote:  startRemote,
-			StartBranch:  repo.Remotes.Base.DefaultBranch,
+			StartBranch:  defaultBranch,
 		}); err != nil {
-			return config.WorkspaceConfig{}, fmt.Errorf("add worktree: %w", err)
+			return config.WorkspaceConfig{}, "", nil, fmt.Errorf("add worktree: %w", err)
 		}
 	}
 
 	ws.Config.Repos = append(ws.Config.Repos, repo)
 	if err := config.SaveWorkspace(workspace.WorksetFile(input.WorkspaceRoot), ws.Config); err != nil {
-		return config.WorkspaceConfig{}, err
+		return config.WorkspaceConfig{}, "", nil, err
 	}
-	return ws.Config, nil
+	return ws.Config, remote, warnings, nil
 }
 
 func DeriveRepoNameFromURL(url string) string {
@@ -238,54 +214,35 @@ func DeriveRepoNameFromURL(url string) string {
 	return trimmed
 }
 
-func deriveRemotesFromLocalRepo(repoPath string, gitClient git.Client) (config.Remotes, bool, error) {
+func resolveRemoteForLocalRepo(repoPath string, gitClient git.Client, preferred string, allowFallback bool) (string, string, error) {
 	remotes, err := gitClient.RemoteNames(repoPath)
 	if err != nil {
-		return config.Remotes{}, false, err
+		return "", "", err
 	}
-	if len(remotes) == 0 {
-		return config.Remotes{}, false, nil
-	}
-	base, write := deriveRemoteNames(remotes)
-	return config.Remotes{
-		Base:  config.RemoteConfig{Name: base},
-		Write: config.RemoteConfig{Name: write},
-	}, true, nil
-}
-
-func deriveRemoteNames(remotes []string) (string, string) {
-	if len(remotes) == 0 {
-		return "", ""
-	}
-	sort.Strings(remotes)
-	hasOrigin := false
-	hasUpstream := false
-	for _, name := range remotes {
-		switch name {
-		case "origin":
-			hasOrigin = true
-		case "upstream":
-			hasUpstream = true
+	if preferred != "" {
+		for _, name := range remotes {
+			if name == preferred {
+				return preferred, "", nil
+			}
+		}
+		if !allowFallback {
+			return "", "", fmt.Errorf("remote %q not found in repo; set an alias remote", preferred)
 		}
 	}
-	base := ""
-	write := ""
-	if hasUpstream {
-		base = "upstream"
-	}
-	if hasOrigin {
-		if base == "" {
-			base = "origin"
+	if len(remotes) == 1 {
+		sort.Strings(remotes)
+		if preferred == "" {
+			return remotes[0], fmt.Sprintf("no remote configured; using %q", remotes[0]), nil
 		}
-		write = "origin"
+		return remotes[0], fmt.Sprintf("remote %q not found; using %q", preferred, remotes[0]), nil
 	}
-	if base == "" {
-		base = remotes[0]
+	if preferred == "" {
+		return "", "", errors.New("remote required; set defaults.remote or repo alias remote")
 	}
-	if write == "" {
-		write = base
+	if len(remotes) == 0 {
+		return "", "", fmt.Errorf("remote %q not found and repo has no remotes", preferred)
 	}
-	return base, write
+	return "", "", fmt.Errorf("remote %q not found; repo has multiple remotes", preferred)
 }
 
 func resolveGitDirPath(path string) (string, error) {

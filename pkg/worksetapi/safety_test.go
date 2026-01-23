@@ -9,18 +9,17 @@ import (
 
 func TestSummarizeRepoSafety(t *testing.T) {
 	report := ops.RepoSafetyReport{
-		RepoName:    "demo",
-		BaseRemote:  "origin",
-		BaseBranch:  "main",
-		WriteRemote: "origin",
+		RepoName:      "demo",
+		Remote:        "origin",
+		DefaultBranch: "main",
 		Branches: []ops.RepoBranchSafety{
 			{
-				Branch:       "main",
-				Dirty:        true,
-				Unmerged:     true,
-				Unpushed:     true,
-				StatusErr:    "status failed",
-				FetchBaseErr: "fetch failed",
+				Branch:         "main",
+				Dirty:          true,
+				Unmerged:       true,
+				Unpushed:       true,
+				StatusErr:      "status failed",
+				FetchRemoteErr: "fetch failed",
 			},
 		},
 	}
@@ -41,10 +40,9 @@ func TestSummarizeRepoSafety(t *testing.T) {
 
 func TestUnmergedDetails(t *testing.T) {
 	report := ops.RepoSafetyReport{
-		RepoName:    "demo",
-		BaseRemote:  "origin",
-		BaseBranch:  "main",
-		WriteRemote: "origin",
+		RepoName:      "demo",
+		Remote:        "origin",
+		DefaultBranch: "main",
 		Branches: []ops.RepoBranchSafety{
 			{
 				Branch:         "feature",

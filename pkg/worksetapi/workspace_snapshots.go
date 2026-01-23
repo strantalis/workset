@@ -44,36 +44,35 @@ func (s *Service) ListWorkspaceSnapshots(ctx context.Context, opts WorkspaceSnap
 			}
 			return WorkspaceSnapshotResult{}, err
 		}
+		if err := s.migrateLegacyWorkspaceRemotes(ctx, &cfg, info.Path, root, &wsConfig); err != nil {
+			return WorkspaceSnapshotResult{}, err
+		}
 
 		repos := make([]RepoSnapshotJSON, 0, len(wsConfig.Repos))
+		repoDefaults := make(map[string]string, len(wsConfig.Repos))
 		for _, repo := range wsConfig.Repos {
 			config.ApplyRepoDefaults(&repo, cfg.Defaults)
-			base := repo.Remotes.Base.Name
-			if repo.Remotes.Base.DefaultBranch != "" {
-				base = fmt.Sprintf("%s/%s", base, repo.Remotes.Base.DefaultBranch)
-			}
-			write := repo.Remotes.Write.Name
-			if repo.Remotes.Write.DefaultBranch != "" {
-				write = fmt.Sprintf("%s/%s", write, repo.Remotes.Write.DefaultBranch)
-			}
+			defaults := resolveRepoDefaults(cfg, repo.Name)
+			repoDefaults[repo.Name] = defaults.DefaultBranch
 			repos = append(repos, RepoSnapshotJSON{
-				Name:        repo.Name,
-				LocalPath:   repo.LocalPath,
-				Managed:     repo.Managed,
-				RepoDir:     repo.RepoDir,
-				Base:        base,
-				Write:       write,
-				Dirty:       false,
-				Missing:     false,
-				StatusKnown: false,
+				Name:          repo.Name,
+				LocalPath:     repo.LocalPath,
+				Managed:       repo.Managed,
+				RepoDir:       repo.RepoDir,
+				Remote:        defaults.Remote,
+				DefaultBranch: defaults.DefaultBranch,
+				Dirty:         false,
+				Missing:       false,
+				StatusKnown:   false,
 			})
 		}
 
 		if opts.IncludeStatus {
 			statuses, err := ops.Status(ctx, ops.StatusInput{
-				WorkspaceRoot: root,
-				Defaults:      cfg.Defaults,
-				Git:           s.git,
+				WorkspaceRoot:       root,
+				Defaults:            cfg.Defaults,
+				RepoDefaultBranches: repoDefaults,
+				Git:                 s.git,
 			})
 			if err != nil {
 				return WorkspaceSnapshotResult{}, err

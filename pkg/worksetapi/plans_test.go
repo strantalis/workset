@@ -8,7 +8,7 @@ import (
 
 func TestBuildNewWorkspaceRepoPlans(t *testing.T) {
 	cfg := config.GlobalConfig{
-		Defaults: config.Defaults{BaseBranch: "main"},
+		Defaults: config.Defaults{BaseBranch: "main", Remote: "origin"},
 		Repos: map[string]config.RepoAlias{
 			"app": {URL: "https://example.com/app.git", DefaultBranch: "dev"},
 		},
@@ -30,14 +30,14 @@ func TestBuildNewWorkspaceRepoPlans(t *testing.T) {
 	if len(plans) != 1 {
 		t.Fatalf("expected one plan, got %d", len(plans))
 	}
-	if plans[0].Name != "app" || plans[0].Remotes.Base.DefaultBranch != "dev" {
+	if plans[0].Name != "app" || plans[0].DefaultBranch != "dev" || plans[0].Remote != "origin" {
 		t.Fatalf("unexpected plan: %+v", plans[0])
 	}
 }
 
-func TestBuildNewWorkspaceRepoPlansConflict(t *testing.T) {
+func TestBuildNewWorkspaceRepoPlansNoConflict(t *testing.T) {
 	cfg := config.GlobalConfig{
-		Defaults: config.Defaults{BaseBranch: "main"},
+		Defaults: config.Defaults{BaseBranch: "main", Remote: "origin"},
 		Repos: map[string]config.RepoAlias{
 			"app": {URL: "https://example.com/app.git"},
 		},
@@ -46,19 +46,18 @@ func TestBuildNewWorkspaceRepoPlansConflict(t *testing.T) {
 				Members: []config.GroupMember{
 					{
 						Repo: "app",
-						Remotes: config.Remotes{
-							Base:  config.RemoteConfig{Name: "origin"},
-							Write: config.RemoteConfig{Name: "origin"},
-						},
 					},
 				},
 			},
 		},
 	}
 
-	_, err := buildNewWorkspaceRepoPlans(cfg, []string{"core"}, []string{"app"})
-	if err == nil {
-		t.Fatalf("expected conflict error")
+	plans, err := buildNewWorkspaceRepoPlans(cfg, []string{"core"}, []string{"app"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(plans) != 1 {
+		t.Fatalf("expected one plan, got %d", len(plans))
 	}
 }
 

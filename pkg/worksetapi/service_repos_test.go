@@ -25,7 +25,6 @@ func TestListRepos(t *testing.T) {
 		{
 			Name:      "repo-a",
 			RepoDir:   "repo-a",
-			Remotes:   config.Remotes{Base: config.RemoteConfig{Name: "origin", DefaultBranch: "main"}, Write: config.RemoteConfig{Name: "origin"}},
 			LocalPath: "/tmp/repo-a",
 		},
 	}
@@ -40,8 +39,11 @@ func TestListRepos(t *testing.T) {
 	if len(result.Repos) != 1 {
 		t.Fatalf("expected 1 repo")
 	}
-	if result.Repos[0].Base != "origin/main" {
-		t.Fatalf("unexpected base: %s", result.Repos[0].Base)
+	if result.Repos[0].Remote != "origin" {
+		t.Fatalf("unexpected remote: %s", result.Repos[0].Remote)
+	}
+	if result.Repos[0].DefaultBranch != "main" {
+		t.Fatalf("unexpected default branch: %s", result.Repos[0].DefaultBranch)
 	}
 }
 
@@ -138,36 +140,6 @@ func TestAddRepoFromAliasURL(t *testing.T) {
 	}
 }
 
-func TestUpdateRepoRemotes(t *testing.T) {
-	env := newTestEnv(t)
-	root := env.createWorkspace(context.Background(), "demo")
-	local := env.createLocalRepo("repo-a")
-
-	if _, err := env.svc.AddRepo(context.Background(), RepoAddInput{
-		Workspace:  WorkspaceSelector{Value: root},
-		Name:       "repo-a",
-		NameSet:    true,
-		SourcePath: local,
-	}); err != nil {
-		t.Fatalf("add repo: %v", err)
-	}
-
-	result, _, err := env.svc.UpdateRepoRemotes(context.Background(), RepoRemotesUpdateInput{
-		Workspace:      WorkspaceSelector{Value: root},
-		Name:           "repo-a",
-		BaseRemote:     "upstream",
-		WriteRemote:    "origin",
-		BaseRemoteSet:  true,
-		WriteRemoteSet: true,
-	})
-	if err != nil {
-		t.Fatalf("update remotes: %v", err)
-	}
-	if result.Base != "upstream/main" || result.Write != "origin/main" {
-		t.Fatalf("unexpected remotes: %+v", result)
-	}
-}
-
 func TestRemoveRepoSafetyAndConfirmation(t *testing.T) {
 	env := newTestEnv(t)
 	root := env.createWorkspace(context.Background(), "demo")
@@ -247,9 +219,8 @@ func TestAddRepoUpdatesAliasFromLocalPath(t *testing.T) {
 	env.saveConfig(cfg)
 
 	_, err := env.svc.AddRepo(context.Background(), RepoAddInput{
-		Workspace:     WorkspaceSelector{Value: root},
-		Source:        "repo-a",
-		UpdateAliases: true,
+		Workspace: WorkspaceSelector{Value: root},
+		Source:    "repo-a",
 	})
 	if err != nil {
 		t.Fatalf("add repo: %v", err)
@@ -439,14 +410,4 @@ func TestRemoveRepoUnmergedUnsafe(t *testing.T) {
 		DeleteWorktrees: true,
 	})
 	_ = requireErrorType[UnsafeOperation](t, err)
-}
-
-func TestUpdateRepoRemotesValidation(t *testing.T) {
-	env := newTestEnv(t)
-	root := env.createWorkspace(context.Background(), "demo")
-
-	_, _, err := env.svc.UpdateRepoRemotes(context.Background(), RepoRemotesUpdateInput{
-		Workspace: WorkspaceSelector{Value: root},
-	})
-	_ = requireErrorType[ValidationError](t, err)
 }

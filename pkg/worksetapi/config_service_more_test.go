@@ -17,8 +17,17 @@ func TestGetConfig(t *testing.T) {
 	if cfg.Defaults.BaseBranch != "main" {
 		t.Fatalf("unexpected defaults: %+v", cfg.Defaults)
 	}
+	if cfg.Defaults.Remote != "origin" {
+		t.Fatalf("unexpected defaults remote: %q", cfg.Defaults.Remote)
+	}
 	if cfg.Defaults.Agent != "codex" {
 		t.Fatalf("unexpected agent default: %q", cfg.Defaults.Agent)
+	}
+	if cfg.Defaults.TerminalRenderer != "auto" {
+		t.Fatalf("unexpected terminal renderer default: %q", cfg.Defaults.TerminalRenderer)
+	}
+	if cfg.Defaults.TerminalIdleTimeout == "" {
+		t.Fatalf("unexpected terminal idle timeout default: %q", cfg.Defaults.TerminalIdleTimeout)
 	}
 }
 
@@ -28,9 +37,15 @@ func TestSetDefaultUpdatesConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("set default: %v", err)
 	}
+	if _, _, err := env.svc.SetDefault(context.Background(), "defaults.remote", "upstream"); err != nil {
+		t.Fatalf("set default remote: %v", err)
+	}
 	cfg := env.loadConfig()
 	if cfg.Defaults.BaseBranch != "develop" {
 		t.Fatalf("expected base branch updated")
+	}
+	if cfg.Defaults.Remote != "upstream" {
+		t.Fatalf("expected remote updated")
 	}
 }
 
@@ -60,6 +75,7 @@ func TestSetDefaultErrors(t *testing.T) {
 func TestSetDefaultVariousKeys(t *testing.T) {
 	env := newTestEnv(t)
 	cases := map[string]string{
+		"defaults.remote":                    "origin",
 		"defaults.workspace":                 "demo",
 		"defaults.workspace_root":            "/tmp/workspaces",
 		"defaults.repo_store_root":           "/tmp/repos",
@@ -71,6 +87,8 @@ func TestSetDefaultVariousKeys(t *testing.T) {
 		"defaults.session_screen_hardstatus": "hard",
 		"defaults.session_backend":           "exec",
 		"defaults.agent":                     "codex",
+		"defaults.terminal_renderer":         "webgl",
+		"defaults.terminal_idle_timeout":     "0",
 	}
 	for key, value := range cases {
 		if _, _, err := env.svc.SetDefault(context.Background(), key, value); err != nil {
@@ -86,5 +104,11 @@ func TestSetDefaultVariousKeys(t *testing.T) {
 	}
 	if cfg.Defaults.Agent != "codex" {
 		t.Fatalf("agent default not set")
+	}
+	if cfg.Defaults.TerminalRenderer != "webgl" {
+		t.Fatalf("terminal renderer default not set")
+	}
+	if cfg.Defaults.TerminalIdleTimeout != "0" {
+		t.Fatalf("terminal idle timeout default not set")
 	}
 }

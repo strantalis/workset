@@ -26,22 +26,26 @@ type RepoBranchSafety struct {
 	Unpushed       bool
 	UnpushedErr    string
 	StatusErr      string
-	FetchBaseErr   string
-	FetchWriteErr  string
+	FetchRemoteErr string
 }
 
 type RepoSafetyReport struct {
-	RepoName    string
-	BaseRemote  string
-	BaseBranch  string
-	WriteRemote string
-	Branches    []RepoBranchSafety
+	RepoName      string
+	Remote        string
+	DefaultBranch string
+	Branches      []RepoBranchSafety
+}
+
+type RepoDefaults struct {
+	Remote        string
+	DefaultBranch string
 }
 
 type RepoSafetyInput struct {
 	WorkspaceRoot string
 	Repo          config.RepoConfig
 	Defaults      config.Defaults
+	RepoDefaults  RepoDefaults
 	Git           git.Client
 	FetchRemotes  bool
 }
@@ -61,15 +65,19 @@ func CheckRepoSafety(ctx context.Context, input RepoSafetyInput) (RepoSafetyRepo
 		return RepoSafetyReport{}, err
 	}
 
-	baseRemote := repo.Remotes.Base.Name
-	baseBranch := repo.Remotes.Base.DefaultBranch
-	writeRemote := repo.Remotes.Write.Name
+	remote := strings.TrimSpace(input.RepoDefaults.Remote)
+	if remote == "" {
+		remote = input.Defaults.Remote
+	}
+	defaultBranch := strings.TrimSpace(input.RepoDefaults.DefaultBranch)
+	if defaultBranch == "" {
+		defaultBranch = input.Defaults.BaseBranch
+	}
 
 	report := RepoSafetyReport{
-		RepoName:    repo.Name,
-		BaseRemote:  baseRemote,
-		BaseBranch:  baseBranch,
-		WriteRemote: writeRemote,
+		RepoName:      repo.Name,
+		Remote:        remote,
+		DefaultBranch: defaultBranch,
 	}
 	repoPathForRefs := repo.LocalPath
 
@@ -102,35 +110,26 @@ func CheckRepoSafety(ctx context.Context, input RepoSafetyInput) (RepoSafetyRepo
 		return report, nil
 	}
 
-	baseRemoteExists := false
-	writeRemoteExists := false
-	if baseRemote != "" {
-		exists, err := input.Git.RemoteExists(repoPathForRefs, baseRemote)
+	remoteExists := false
+	if remote != "" {
+		exists, err := input.Git.RemoteExists(repoPathForRefs, remote)
 		if err != nil {
 			return RepoSafetyReport{}, err
 		}
-		baseRemoteExists = exists
+		remoteExists = exists
 	}
-	if writeRemote != "" {
-		exists, err := input.Git.RemoteExists(repoPathForRefs, writeRemote)
-		if err != nil {
-			return RepoSafetyReport{}, err
-		}
-		writeRemoteExists = exists
+	if remote == "" {
+		return RepoSafetyReport{}, errors.New("remote required for safety checks")
+	}
+	if !remoteExists {
+		return RepoSafetyReport{}, fmt.Errorf("remote %q not found", remote)
 	}
 
 	if input.FetchRemotes {
-		if baseRemoteExists {
-			if err := input.Git.Fetch(ctx, repoPathForRefs, baseRemote); err != nil {
+		if remoteExists {
+			if err := input.Git.Fetch(ctx, repoPathForRefs, remote); err != nil {
 				for i := range report.Branches {
-					report.Branches[i].FetchBaseErr = err.Error()
-				}
-			}
-		}
-		if writeRemoteExists && writeRemote != baseRemote {
-			if err := input.Git.Fetch(ctx, repoPathForRefs, writeRemote); err != nil {
-				for i := range report.Branches {
-					report.Branches[i].FetchWriteErr = err.Error()
+					report.Branches[i].FetchRemoteErr = err.Error()
 				}
 			}
 		}
@@ -143,16 +142,16 @@ func CheckRepoSafety(ctx context.Context, input RepoSafetyInput) (RepoSafetyRepo
 	localBaseExists := false
 	var localBaseErr error
 	baseCheckAvailable := false
-	if baseBranch != "" {
-		localBaseRef = fmt.Sprintf("refs/heads/%s", baseBranch)
+	if defaultBranch != "" {
+		localBaseRef = fmt.Sprintf("refs/heads/%s", defaultBranch)
 		localBaseExists, localBaseErr = input.Git.ReferenceExists(repoPathForRefs, localBaseRef)
 	}
-	if baseRemoteExists && baseBranch != "" {
-		baseRef = fmt.Sprintf("refs/remotes/%s/%s", baseRemote, baseBranch)
+	if remoteExists && defaultBranch != "" {
+		baseRef = fmt.Sprintf("refs/remotes/%s/%s", remote, defaultBranch)
 		baseRefExists, baseRefErr = input.Git.ReferenceExists(repoPathForRefs, baseRef)
 	}
-	if baseBranch != "" {
-		if baseRemoteExists && baseRefExists && baseRefErr == nil {
+	if defaultBranch != "" {
+		if remoteExists && baseRefExists && baseRefErr == nil {
 			baseCheckAvailable = true
 		} else if localBaseExists && localBaseErr == nil {
 			baseCheckAvailable = true
@@ -167,7 +166,7 @@ func CheckRepoSafety(ctx context.Context, input RepoSafetyInput) (RepoSafetyRepo
 
 		branchRef := fmt.Sprintf("refs/heads/%s", entry.Branch)
 
-		if baseRemoteExists && baseBranch != "" && baseRefExists && baseRefErr == nil {
+		if remoteExists && defaultBranch != "" && baseRefExists && baseRefErr == nil {
 			merged, err := input.Git.IsAncestor(repoPathForRefs, branchRef, baseRef)
 			if err != nil {
 				entry.UnmergedErr = err.Error()
@@ -176,10 +175,10 @@ func CheckRepoSafety(ctx context.Context, input RepoSafetyInput) (RepoSafetyRepo
 				if err != nil {
 					entry.UnmergedErr = err.Error()
 					entry.Unmerged = true
-					entry.UnmergedReason = fmt.Sprintf("unmerged check failed for %s/%s", baseRemote, baseBranch)
+					entry.UnmergedReason = fmt.Sprintf("unmerged check failed for %s/%s", remote, defaultBranch)
 				} else if !contentMerged {
 					localMerged := false
-					if entry.FetchBaseErr != "" {
+					if entry.FetchRemoteErr != "" {
 						if localBaseExists && localBaseErr == nil {
 							if mergedLocal, err := input.Git.IsContentMerged(repoPathForRefs, branchRef, localBaseRef); err == nil {
 								localMerged = mergedLocal
@@ -188,23 +187,23 @@ func CheckRepoSafety(ctx context.Context, input RepoSafetyInput) (RepoSafetyRepo
 					}
 					if !localMerged {
 						entry.Unmerged = true
-						if entry.FetchBaseErr != "" {
-							entry.UnmergedReason = fmt.Sprintf("branch content not found in %s/%s history (base fetch failed; local %s differs)", baseRemote, baseBranch, baseBranch)
+						if entry.FetchRemoteErr != "" {
+							entry.UnmergedReason = fmt.Sprintf("branch content not found in %s/%s history (remote fetch failed; local %s differs)", remote, defaultBranch, defaultBranch)
 						} else {
-							entry.UnmergedReason = fmt.Sprintf("branch content not found in %s/%s history", baseRemote, baseBranch)
+							entry.UnmergedReason = fmt.Sprintf("branch content not found in %s/%s history", remote, defaultBranch)
 						}
 					}
 				}
 			}
-		} else if localBaseExists && localBaseErr == nil && baseBranch != "" {
+		} else if localBaseExists && localBaseErr == nil && defaultBranch != "" {
 			contentMerged, err := input.Git.IsContentMerged(repoPathForRefs, branchRef, localBaseRef)
 			if err != nil {
 				entry.UnmergedErr = err.Error()
 				entry.Unmerged = true
-				entry.UnmergedReason = fmt.Sprintf("unmerged check failed for local %s", baseBranch)
+				entry.UnmergedReason = fmt.Sprintf("unmerged check failed for local %s", defaultBranch)
 			} else if !contentMerged {
 				entry.Unmerged = true
-				entry.UnmergedReason = fmt.Sprintf("branch content not found in local %s history", baseBranch)
+				entry.UnmergedReason = fmt.Sprintf("branch content not found in local %s history", defaultBranch)
 			}
 		} else if baseRefErr != nil {
 			entry.UnmergedErr = baseRefErr.Error()
@@ -212,17 +211,17 @@ func CheckRepoSafety(ctx context.Context, input RepoSafetyInput) (RepoSafetyRepo
 			entry.UnmergedErr = localBaseErr.Error()
 		}
 
-		if writeRemoteExists {
-			writeRef := fmt.Sprintf("refs/remotes/%s/%s", writeRemote, entry.Branch)
-			writeRefExists, err := input.Git.ReferenceExists(repoPathForRefs, writeRef)
+		if remoteExists {
+			remoteRef := fmt.Sprintf("refs/remotes/%s/%s", remote, entry.Branch)
+			remoteRefExists, err := input.Git.ReferenceExists(repoPathForRefs, remoteRef)
 			if err != nil {
 				entry.UnpushedErr = err.Error()
-			} else if !writeRefExists {
+			} else if !remoteRefExists {
 				if entry.Unmerged || !baseCheckAvailable {
 					entry.Unpushed = true
 				}
 			} else {
-				pushed, err := input.Git.IsAncestor(repoPathForRefs, writeRef, branchRef)
+				pushed, err := input.Git.IsAncestor(repoPathForRefs, remoteRef, branchRef)
 				if err != nil {
 					entry.UnpushedErr = err.Error()
 				} else if !pushed {
@@ -461,6 +460,7 @@ func CleanupWorkspaceWorktrees(input CleanupWorkspaceWorktreesInput) error {
 type WorkspaceSafetyInput struct {
 	WorkspaceRoot string
 	Defaults      config.Defaults
+	RepoDefaults  map[string]RepoDefaults
 	Git           git.Client
 	FetchRemotes  bool
 }
@@ -476,10 +476,15 @@ func CheckWorkspaceSafety(ctx context.Context, input WorkspaceSafetyInput) (Work
 
 	report := WorkspaceSafetyReport{Root: input.WorkspaceRoot}
 	for _, repo := range ws.Config.Repos {
+		repoDefaults := RepoDefaults{}
+		if input.RepoDefaults != nil {
+			repoDefaults = input.RepoDefaults[repo.Name]
+		}
 		repoReport, err := CheckRepoSafety(ctx, RepoSafetyInput{
 			WorkspaceRoot: input.WorkspaceRoot,
 			Repo:          repo,
 			Defaults:      input.Defaults,
+			RepoDefaults:  repoDefaults,
 			Git:           input.Git,
 			FetchRemotes:  input.FetchRemotes,
 		})

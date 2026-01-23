@@ -20,10 +20,6 @@ func TestListWorkspaceSnapshotsWithoutStatus(t *testing.T) {
 	wsCfg.Repos = append(wsCfg.Repos, config.RepoConfig{
 		Name:    "app",
 		RepoDir: "app",
-		Remotes: config.Remotes{
-			Base:  config.RemoteConfig{Name: "origin"},
-			Write: config.RemoteConfig{Name: "origin"},
-		},
 	})
 	if err := config.SaveWorkspace(workspace.WorksetFile(root), wsCfg); err != nil {
 		t.Fatalf("save workspace: %v", err)
@@ -59,10 +55,6 @@ func TestListWorkspaceSnapshotsWithStatus(t *testing.T) {
 	wsCfg.Repos = append(wsCfg.Repos, config.RepoConfig{
 		Name:    "app",
 		RepoDir: "app",
-		Remotes: config.Remotes{
-			Base:  config.RemoteConfig{Name: "origin"},
-			Write: config.RemoteConfig{Name: "origin"},
-		},
 	})
 	if err := config.SaveWorkspace(workspace.WorksetFile(root), wsCfg); err != nil {
 		t.Fatalf("save workspace: %v", err)

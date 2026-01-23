@@ -8,10 +8,11 @@ import (
 )
 
 type repoPlan struct {
-	Name       string
-	URL        string
-	SourcePath string
-	Remotes    config.Remotes
+	Name          string
+	URL           string
+	SourcePath    string
+	Remote        string
+	DefaultBranch string
 }
 
 func buildNewWorkspaceRepoPlans(cfg config.GlobalConfig, groupNames, repoNames []string) ([]repoPlan, error) {
@@ -25,7 +26,7 @@ func buildNewWorkspaceRepoPlans(cfg config.GlobalConfig, groupNames, repoNames [
 	addPlan := func(plan repoPlan) error {
 		if existing, ok := seen[plan.Name]; ok {
 			if !repoPlanEqual(existing, plan) {
-				return fmt.Errorf("conflicting repo %q: %s vs %s", plan.Name, describeRemotes(existing.Remotes), describeRemotes(plan.Remotes))
+				return fmt.Errorf("conflicting repo %q: %s vs %s", plan.Name, describeRepoDefaults(existing), describeRepoDefaults(plan))
 			}
 			return nil
 		}
@@ -77,36 +78,21 @@ func resolveGroupMemberPlan(cfg config.GlobalConfig, member config.GroupMember) 
 		return repoPlan{}, fmt.Errorf("repo alias %q not found in config", member.Repo)
 	}
 
-	baseBranch := cfg.Defaults.BaseBranch
-	if member.Remotes.Base.DefaultBranch != "" {
-		baseBranch = member.Remotes.Base.DefaultBranch
-	} else if alias.DefaultBranch != "" {
-		baseBranch = alias.DefaultBranch
+	defaultBranch := cfg.Defaults.BaseBranch
+	if alias.DefaultBranch != "" {
+		defaultBranch = alias.DefaultBranch
 	}
-
-	baseRemote := strings.TrimSpace(member.Remotes.Base.Name)
-	writeRemote := strings.TrimSpace(member.Remotes.Write.Name)
-	if baseRemote == "" && writeRemote != "" {
-		baseRemote = writeRemote
-	}
-	if writeRemote == "" && baseRemote != "" {
-		writeRemote = baseRemote
+	remote := strings.TrimSpace(alias.Remote)
+	if remote == "" {
+		remote = cfg.Defaults.Remote
 	}
 
 	plan := repoPlan{
-		Name:       member.Repo,
-		URL:        alias.URL,
-		SourcePath: alias.Path,
-		Remotes: config.Remotes{
-			Base: config.RemoteConfig{
-				Name:          baseRemote,
-				DefaultBranch: baseBranch,
-			},
-			Write: config.RemoteConfig{
-				Name:          writeRemote,
-				DefaultBranch: baseBranch,
-			},
-		},
+		Name:          member.Repo,
+		URL:           alias.URL,
+		SourcePath:    alias.Path,
+		Remote:        remote,
+		DefaultBranch: defaultBranch,
 	}
 	if plan.URL == "" && plan.SourcePath == "" {
 		return repoPlan{}, fmt.Errorf("repo alias %q has no source", member.Repo)
@@ -120,23 +106,21 @@ func resolveAliasPlan(cfg config.GlobalConfig, name string) (repoPlan, error) {
 		return repoPlan{}, fmt.Errorf("repo alias %q not found in config", name)
 	}
 
-	baseBranch := cfg.Defaults.BaseBranch
+	defaultBranch := cfg.Defaults.BaseBranch
 	if alias.DefaultBranch != "" {
-		baseBranch = alias.DefaultBranch
+		defaultBranch = alias.DefaultBranch
+	}
+	remote := strings.TrimSpace(alias.Remote)
+	if remote == "" {
+		remote = cfg.Defaults.Remote
 	}
 
 	plan := repoPlan{
-		Name:       name,
-		URL:        alias.URL,
-		SourcePath: alias.Path,
-		Remotes: config.Remotes{
-			Base: config.RemoteConfig{
-				DefaultBranch: baseBranch,
-			},
-			Write: config.RemoteConfig{
-				DefaultBranch: baseBranch,
-			},
-		},
+		Name:          name,
+		URL:           alias.URL,
+		SourcePath:    alias.Path,
+		Remote:        remote,
+		DefaultBranch: defaultBranch,
 	}
 	if plan.URL == "" && plan.SourcePath == "" {
 		return repoPlan{}, fmt.Errorf("repo alias %q has no source", name)
@@ -148,22 +132,13 @@ func repoPlanEqual(a, b repoPlan) bool {
 	return a.Name == b.Name &&
 		a.URL == b.URL &&
 		a.SourcePath == b.SourcePath &&
-		remoteEqual(a.Remotes.Base, b.Remotes.Base) &&
-		remoteEqual(a.Remotes.Write, b.Remotes.Write)
+		a.Remote == b.Remote &&
+		a.DefaultBranch == b.DefaultBranch
 }
 
-func remoteEqual(a, b config.RemoteConfig) bool {
-	return a.Name == b.Name && a.DefaultBranch == b.DefaultBranch
-}
-
-func describeRemotes(remotes config.Remotes) string {
-	base := remotes.Base.Name
-	if remotes.Base.DefaultBranch != "" {
-		base = fmt.Sprintf("%s/%s", base, remotes.Base.DefaultBranch)
+func describeRepoDefaults(plan repoPlan) string {
+	if plan.Remote == "" && plan.DefaultBranch == "" {
+		return "remote=<empty> branch=<empty>"
 	}
-	write := remotes.Write.Name
-	if remotes.Write.DefaultBranch != "" {
-		write = fmt.Sprintf("%s/%s", write, remotes.Write.DefaultBranch)
-	}
-	return fmt.Sprintf("base=%s write=%s", base, write)
+	return fmt.Sprintf("remote=%s branch=%s", plan.Remote, plan.DefaultBranch)
 }

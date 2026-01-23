@@ -14,6 +14,11 @@ import (
 
 func (s *Service) loadGlobal(ctx context.Context) (config.GlobalConfig, config.GlobalConfigLoadInfo, error) {
 	cfg, info, err := s.configs.Load(ctx, s.configPath)
+	if err == nil {
+		if migrateErr := s.migrateLegacyGroupRemotes(ctx, &cfg, info.Path); migrateErr != nil {
+			return config.GlobalConfig{}, info, migrateErr
+		}
+	}
 	return cfg, info, err
 }
 

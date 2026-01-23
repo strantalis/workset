@@ -18,6 +18,7 @@ import (
 
 func TestAddRepoLinksLocal(t *testing.T) {
 	source := setupRepo(t)
+	addRemote(t, source, "origin", source)
 	root := filepath.Join(t.TempDir(), "ws")
 	defaults := config.DefaultConfig().Defaults
 
@@ -25,19 +26,24 @@ func TestAddRepoLinksLocal(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	_, err := AddRepo(context.Background(), AddRepoInput{
+	_, resolvedRemote, warnings, err := AddRepo(context.Background(), AddRepoInput{
 		WorkspaceRoot: root,
 		Name:          "demo-repo",
 		URL:           source,
 		Defaults:      defaults,
-		Remotes: config.Remotes{
-			Base:  config.RemoteConfig{DefaultBranch: defaults.BaseBranch},
-			Write: config.RemoteConfig{DefaultBranch: defaults.BaseBranch},
-		},
-		Git: git.NewGoGitClient(),
+		Remote:        defaults.Remote,
+		DefaultBranch: defaults.BaseBranch,
+		AllowFallback: false,
+		Git:           git.NewGoGitClient(),
 	})
 	if err != nil {
 		t.Fatalf("AddRepo: %v", err)
+	}
+	if resolvedRemote != "origin" {
+		t.Fatalf("expected resolved remote origin, got %q", resolvedRemote)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("expected no warnings, got %v", warnings)
 	}
 
 	ws, err := config.LoadWorkspace(workspace.WorksetFile(root))
@@ -56,7 +62,32 @@ func TestAddRepoLinksLocal(t *testing.T) {
 	}
 }
 
-func TestAddRepoDerivesRemotesFromLocal(t *testing.T) {
+func TestAddRepoMissingRemoteErrors(t *testing.T) {
+	source := setupRepo(t)
+	addRemote(t, source, "upstream", source)
+	root := filepath.Join(t.TempDir(), "ws")
+	defaults := config.DefaultConfig().Defaults
+
+	if _, err := workspace.Init(root, "demo", defaults); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	_, _, _, err := AddRepo(context.Background(), AddRepoInput{
+		WorkspaceRoot: root,
+		Name:          "demo-repo",
+		URL:           source,
+		Defaults:      defaults,
+		Remote:        defaults.Remote,
+		DefaultBranch: defaults.BaseBranch,
+		AllowFallback: false,
+		Git:           git.NewGoGitClient(),
+	})
+	if err == nil {
+		t.Fatalf("expected missing remote error")
+	}
+}
+
+func TestStatusDirty(t *testing.T) {
 	source := setupRepo(t)
 	addRemote(t, source, "origin", source)
 	root := filepath.Join(t.TempDir(), "ws")
@@ -66,55 +97,15 @@ func TestAddRepoDerivesRemotesFromLocal(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 
-	_, err := AddRepo(context.Background(), AddRepoInput{
+	_, _, _, err := AddRepo(context.Background(), AddRepoInput{
 		WorkspaceRoot: root,
 		Name:          "demo-repo",
 		URL:           source,
 		Defaults:      defaults,
-		Remotes: config.Remotes{
-			Base:  config.RemoteConfig{DefaultBranch: defaults.BaseBranch},
-			Write: config.RemoteConfig{DefaultBranch: defaults.BaseBranch},
-		},
-		Git: git.NewGoGitClient(),
-	})
-	if err != nil {
-		t.Fatalf("AddRepo: %v", err)
-	}
-
-	ws, err := config.LoadWorkspace(workspace.WorksetFile(root))
-	if err != nil {
-		t.Fatalf("LoadWorkspace: %v", err)
-	}
-	if len(ws.Repos) != 1 {
-		t.Fatalf("expected repo in workspace")
-	}
-	if ws.Repos[0].Remotes.Base.Name != "origin" {
-		t.Fatalf("expected base remote origin, got %q", ws.Repos[0].Remotes.Base.Name)
-	}
-	if ws.Repos[0].Remotes.Write.Name != "origin" {
-		t.Fatalf("expected write remote origin, got %q", ws.Repos[0].Remotes.Write.Name)
-	}
-}
-
-func TestStatusDirty(t *testing.T) {
-	source := setupRepo(t)
-	root := filepath.Join(t.TempDir(), "ws")
-	defaults := config.DefaultConfig().Defaults
-
-	if _, err := workspace.Init(root, "demo", defaults); err != nil {
-		t.Fatalf("Init: %v", err)
-	}
-
-	_, err := AddRepo(context.Background(), AddRepoInput{
-		WorkspaceRoot: root,
-		Name:          "demo-repo",
-		URL:           source,
-		Defaults:      defaults,
-		Remotes: config.Remotes{
-			Base:  config.RemoteConfig{DefaultBranch: defaults.BaseBranch},
-			Write: config.RemoteConfig{DefaultBranch: defaults.BaseBranch},
-		},
-		Git: git.NewGoGitClient(),
+		Remote:        defaults.Remote,
+		DefaultBranch: defaults.BaseBranch,
+		AllowFallback: false,
+		Git:           git.NewGoGitClient(),
 	})
 	if err != nil {
 		t.Fatalf("AddRepo: %v", err)
@@ -126,9 +117,10 @@ func TestStatusDirty(t *testing.T) {
 	}
 
 	statuses, err := Status(context.Background(), StatusInput{
-		WorkspaceRoot: root,
-		Defaults:      defaults,
-		Git:           git.NewGoGitClient(),
+		WorkspaceRoot:       root,
+		Defaults:            defaults,
+		RepoDefaultBranches: map[string]string{"demo-repo": defaults.BaseBranch},
+		Git:                 git.NewGoGitClient(),
 	})
 	if err != nil {
 		t.Fatalf("Status: %v", err)

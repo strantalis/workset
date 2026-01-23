@@ -8,18 +8,21 @@ import (
 func DefaultConfig() GlobalConfig {
 	return GlobalConfig{
 		Defaults: Defaults{
-			BaseBranch:        "main",
-			Workspace:         "",
-			WorkspaceRoot:     defaultWorkspaceRoot(),
-			RepoStoreRoot:     defaultRepoStoreRoot(),
-			SessionBackend:    "auto",
-			SessionNameFormat: "workset-{workspace}",
-			SessionTheme:      "",
-			SessionTmuxStyle:  "",
-			SessionTmuxLeft:   "",
-			SessionTmuxRight:  "",
-			SessionScreenHard: "",
-			Agent:             "codex",
+			Remote:              "origin",
+			BaseBranch:          "main",
+			Workspace:           "",
+			WorkspaceRoot:       defaultWorkspaceRoot(),
+			RepoStoreRoot:       defaultRepoStoreRoot(),
+			SessionBackend:      "auto",
+			SessionNameFormat:   "workset-{workspace}",
+			SessionTheme:        "",
+			SessionTmuxStyle:    "",
+			SessionTmuxLeft:     "",
+			SessionTmuxRight:    "",
+			SessionScreenHard:   "",
+			Agent:               "codex",
+			TerminalRenderer:    "auto",
+			TerminalIdleTimeout: "30m",
 		},
 		Hooks: HooksConfig{
 			Enabled: true,
@@ -56,12 +59,6 @@ func (cfg *GlobalConfig) EnsureMaps() {
 func ApplyRepoDefaults(repo *RepoConfig, defaults Defaults) {
 	if repo.RepoDir == "" {
 		repo.RepoDir = repo.Name
-	}
-	if repo.Remotes.Base.DefaultBranch == "" {
-		repo.Remotes.Base.DefaultBranch = defaults.BaseBranch
-	}
-	if repo.Remotes.Write.DefaultBranch == "" {
-		repo.Remotes.Write.DefaultBranch = defaults.BaseBranch
 	}
 }
 

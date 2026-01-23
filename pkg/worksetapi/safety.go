@@ -12,11 +12,8 @@ func summarizeRepoSafety(report ops.RepoSafetyReport) (dirty []string, unmerged 
 		if branch.StatusErr != "" {
 			warnings = append(warnings, fmt.Sprintf("%s: status failed (%s)", branch.Branch, branch.StatusErr))
 		}
-		if branch.FetchBaseErr != "" {
-			warnings = append(warnings, fmt.Sprintf("%s: base fetch failed (%s)", branch.Branch, branch.FetchBaseErr))
-		}
-		if branch.FetchWriteErr != "" {
-			warnings = append(warnings, fmt.Sprintf("%s: write fetch failed (%s)", branch.Branch, branch.FetchWriteErr))
+		if branch.FetchRemoteErr != "" {
+			warnings = append(warnings, fmt.Sprintf("%s: remote fetch failed (%s)", branch.Branch, branch.FetchRemoteErr))
 		}
 		if branch.UnmergedErr != "" {
 			warnings = append(warnings, fmt.Sprintf("%s: unmerged check failed (%s)", branch.Branch, branch.UnmergedErr))
@@ -58,8 +55,8 @@ func summarizeWorkspaceSafety(report ops.WorkspaceSafetyReport) (dirty []string,
 
 func unmergedRepoDetails(report ops.RepoSafetyReport) []string {
 	baseRef := ""
-	if report.BaseRemote != "" && report.BaseBranch != "" {
-		baseRef = fmt.Sprintf("%s/%s", report.BaseRemote, report.BaseBranch)
+	if report.Remote != "" && report.DefaultBranch != "" {
+		baseRef = fmt.Sprintf("%s/%s", report.Remote, report.DefaultBranch)
 	}
 	details := make([]string, 0)
 	for _, branch := range report.Branches {

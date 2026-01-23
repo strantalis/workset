@@ -3,6 +3,7 @@ package worksetapi
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/strantalis/workset/internal/config"
 	"github.com/strantalis/workset/internal/session"
@@ -31,6 +32,8 @@ func (s *Service) SetDefault(ctx context.Context, key, value string) (ConfigSetR
 
 func setGlobalDefault(cfg *config.GlobalConfig, key, value string) error {
 	switch key {
+	case "defaults.remote":
+		cfg.Defaults.Remote = value
 	case "defaults.base_branch":
 		cfg.Defaults.BaseBranch = value
 	case "defaults.workspace":
@@ -59,8 +62,18 @@ func setGlobalDefault(cfg *config.GlobalConfig, key, value string) error {
 		cfg.Defaults.SessionScreenHard = value
 	case "defaults.agent":
 		cfg.Defaults.Agent = value
+	case "defaults.terminal_renderer":
+		renderer := strings.ToLower(strings.TrimSpace(value))
+		switch renderer {
+		case "auto", "webgl", "canvas":
+			cfg.Defaults.TerminalRenderer = renderer
+		default:
+			return fmt.Errorf("unsupported terminal renderer %q", value)
+		}
+	case "defaults.terminal_idle_timeout":
+		cfg.Defaults.TerminalIdleTimeout = value
 	case "defaults.remotes.base", "defaults.remotes.write":
-		return fmt.Errorf("%s was removed; set repo remotes per workspace repo instead", key)
+		return fmt.Errorf("%s was removed; set defaults.remote or alias remote instead", key)
 	case "defaults.parallelism":
 		return fmt.Errorf("%s was removed; parallelism is no longer configurable", key)
 	default:

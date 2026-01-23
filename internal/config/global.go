@@ -137,6 +137,7 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 
 	k := koanf.New(".")
 	if err := k.Load(confmap.Provider(map[string]interface{}{
+		"defaults.remote":                    defaults.Defaults.Remote,
 		"defaults.base_branch":               defaults.Defaults.BaseBranch,
 		"defaults.workspace":                 defaults.Defaults.Workspace,
 		"defaults.workspace_root":            defaults.Defaults.WorkspaceRoot,
@@ -149,6 +150,8 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 		"defaults.session_tmux_status_right": defaults.Defaults.SessionTmuxRight,
 		"defaults.session_screen_hardstatus": defaults.Defaults.SessionScreenHard,
 		"defaults.agent":                     defaults.Defaults.Agent,
+		"defaults.terminal_renderer":         defaults.Defaults.TerminalRenderer,
+		"defaults.terminal_idle_timeout":     defaults.Defaults.TerminalIdleTimeout,
 		"hooks.enabled":                      defaults.Hooks.Enabled,
 		"hooks.on_error":                     defaults.Hooks.OnError,
 		"hooks.repo_hooks.trusted_repos":     defaults.Hooks.RepoHooks.TrustedRepos,
@@ -170,6 +173,9 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 		return GlobalConfig{}, info, err
 	}
 	cfg.EnsureMaps()
+	if cfg.Defaults.Remote == "" {
+		cfg.Defaults.Remote = defaults.Defaults.Remote
+	}
 	if cfg.Defaults.BaseBranch == "" {
 		cfg.Defaults = defaults.Defaults
 	}
@@ -206,6 +212,12 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 	if cfg.Defaults.Agent == "" {
 		cfg.Defaults.Agent = defaults.Defaults.Agent
 	}
+	if cfg.Defaults.TerminalRenderer == "" {
+		cfg.Defaults.TerminalRenderer = defaults.Defaults.TerminalRenderer
+	}
+	if cfg.Defaults.TerminalIdleTimeout == "" {
+		cfg.Defaults.TerminalIdleTimeout = defaults.Defaults.TerminalIdleTimeout
+	}
 	if cfg.Hooks.OnError == "" {
 		cfg.Hooks.OnError = defaults.Hooks.OnError
 	}
@@ -227,6 +239,7 @@ func SaveGlobal(path string, cfg GlobalConfig) error {
 		}
 	}
 	cfg.EnsureMaps()
+	cfg = stripLegacyGroupRemotes(cfg)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -235,4 +248,26 @@ func SaveGlobal(path string, cfg GlobalConfig) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0o644)
+}
+
+func stripLegacyGroupRemotes(cfg GlobalConfig) GlobalConfig {
+	if cfg.Groups == nil {
+		return cfg
+	}
+	for name, group := range cfg.Groups {
+		if len(group.Members) == 0 {
+			continue
+		}
+		updated := false
+		for i := range group.Members {
+			if group.Members[i].LegacyRemotes != nil {
+				group.Members[i].LegacyRemotes = nil
+				updated = true
+			}
+		}
+		if updated {
+			cfg.Groups[name] = group
+		}
+	}
+	return cfg
 }

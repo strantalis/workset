@@ -17,11 +17,20 @@ func TestLoadGlobalDefaults(t *testing.T) {
 	if cfg.Defaults.BaseBranch != "main" {
 		t.Fatalf("expected default base_branch main, got %q", cfg.Defaults.BaseBranch)
 	}
+	if cfg.Defaults.Remote != "origin" {
+		t.Fatalf("expected default remote origin, got %q", cfg.Defaults.Remote)
+	}
 	if cfg.Defaults.SessionBackend == "" {
 		t.Fatalf("expected default session_backend set")
 	}
 	if cfg.Defaults.SessionNameFormat == "" {
 		t.Fatalf("expected default session_name_format set")
+	}
+	if cfg.Defaults.TerminalRenderer == "" {
+		t.Fatalf("expected default terminal_renderer set")
+	}
+	if cfg.Defaults.TerminalIdleTimeout == "" {
+		t.Fatalf("expected default terminal_idle_timeout set")
 	}
 }
 

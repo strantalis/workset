@@ -229,8 +229,8 @@ func TestStatusWorkspaceReportsDirtyAndMissing(t *testing.T) {
 		t.Fatalf("load workspace config: %v", err)
 	}
 	wsCfg.Repos = []config.RepoConfig{
-		{Name: "repo-a", RepoDir: "repo-a", Remotes: config.Remotes{Base: config.RemoteConfig{Name: "origin"}}},
-		{Name: "repo-b", RepoDir: "repo-b", Remotes: config.Remotes{Base: config.RemoteConfig{Name: "origin"}}},
+		{Name: "repo-a", RepoDir: "repo-a"},
+		{Name: "repo-b", RepoDir: "repo-b"},
 	}
 	if err := config.SaveWorkspace(workspace.WorksetFile(root), wsCfg); err != nil {
 		t.Fatalf("save workspace config: %v", err)

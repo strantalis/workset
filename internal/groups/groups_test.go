@@ -52,10 +52,6 @@ func TestFromWorkspace(t *testing.T) {
 		Repos: []config.RepoConfig{
 			{
 				Name: "repo1",
-				Remotes: config.Remotes{
-					Base:  config.RemoteConfig{Name: "origin", DefaultBranch: "main"},
-					Write: config.RemoteConfig{Name: "origin", DefaultBranch: "main"},
-				},
 			},
 		},
 	}

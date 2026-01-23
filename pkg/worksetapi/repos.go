@@ -25,21 +25,14 @@ func (s *Service) ListRepos(ctx context.Context, selector WorkspaceSelector) (Re
 	rows := make([]RepoJSON, 0, len(wsConfig.Repos))
 	for _, repo := range wsConfig.Repos {
 		config.ApplyRepoDefaults(&repo, cfg.Defaults)
-		base := repo.Remotes.Base.Name
-		if repo.Remotes.Base.DefaultBranch != "" {
-			base = fmt.Sprintf("%s/%s", base, repo.Remotes.Base.DefaultBranch)
-		}
-		write := repo.Remotes.Write.Name
-		if repo.Remotes.Write.DefaultBranch != "" {
-			write = fmt.Sprintf("%s/%s", write, repo.Remotes.Write.DefaultBranch)
-		}
+		repoDefaults := resolveRepoDefaults(cfg, repo.Name)
 		rows = append(rows, RepoJSON{
-			Name:      repo.Name,
-			LocalPath: repo.LocalPath,
-			Managed:   repo.Managed,
-			RepoDir:   repo.RepoDir,
-			Base:      base,
-			Write:     write,
+			Name:          repo.Name,
+			LocalPath:     repo.LocalPath,
+			Managed:       repo.Managed,
+			RepoDir:       repo.RepoDir,
+			Remote:        repoDefaults.Remote,
+			DefaultBranch: repoDefaults.DefaultBranch,
 		})
 	}
 
@@ -79,11 +72,9 @@ func (s *Service) AddRepo(ctx context.Context, input RepoAddInput) (RepoAddResul
 			if sourcePath == "" && looksLikeLocalPath(url) {
 				sourcePath = url
 				url = ""
-				if input.UpdateAliases {
-					alias.Path = sourcePath
-					alias.URL = ""
-					cfg.Repos[source] = alias
-				}
+				alias.Path = sourcePath
+				alias.URL = ""
+				cfg.Repos[source] = alias
 			}
 		} else if looksLikeURL(source) {
 			url = source
@@ -105,13 +96,11 @@ func (s *Service) AddRepo(ctx context.Context, input RepoAddInput) (RepoAddResul
 		if !nameProvided && name == "" {
 			name = filepath.Base(sourcePath)
 		}
-		if input.UpdateAliases {
-			if alias, ok := cfg.Repos[name]; ok {
-				if alias.Path != sourcePath {
-					alias.Path = sourcePath
-					alias.URL = ""
-					cfg.Repos[name] = alias
-				}
+		if alias, ok := cfg.Repos[name]; ok {
+			if alias.Path != sourcePath {
+				alias.Path = sourcePath
+				alias.URL = ""
+				cfg.Repos[name] = alias
 			}
 		}
 	}
@@ -122,34 +111,68 @@ func (s *Service) AddRepo(ctx context.Context, input RepoAddInput) (RepoAddResul
 		name = strings.TrimSpace(input.Name)
 	}
 
+	alias, aliasExists := cfg.Repos[name]
 	defaultBranch := cfg.Defaults.BaseBranch
-	if alias, ok := cfg.Repos[name]; ok && alias.DefaultBranch != "" {
+	if aliasExists && alias.DefaultBranch != "" {
 		defaultBranch = alias.DefaultBranch
 	}
-
-	remotes := input.Remotes
-	if remotes.Base.DefaultBranch == "" {
-		remotes.Base.DefaultBranch = defaultBranch
+	remote := cfg.Defaults.Remote
+	if aliasExists && alias.Remote != "" {
+		remote = alias.Remote
 	}
-	if remotes.Write.DefaultBranch == "" {
-		remotes.Write.DefaultBranch = defaultBranch
-	}
-
-	if _, err := ops.AddRepo(ctx, ops.AddRepoInput{
+	_, resolvedRemote, repoWarnings, err := ops.AddRepo(ctx, ops.AddRepoInput{
 		WorkspaceRoot: wsRoot,
 		Name:          name,
 		URL:           url,
 		SourcePath:    sourcePath,
 		RepoDir:       input.RepoDir,
 		Defaults:      cfg.Defaults,
-		Remotes:       remotes,
+		Remote:        remote,
+		DefaultBranch: defaultBranch,
+		AllowFallback: false,
 		Git:           s.git,
-	}); err != nil {
+	})
+	if err != nil {
 		return RepoAddResult{}, err
 	}
 
 	warnings := []string{}
 	pendingHooks := []HookPending{}
+	if len(repoWarnings) > 0 {
+		warnings = append(warnings, repoWarnings...)
+	}
+
+	aliasUpdated := false
+	if !aliasExists {
+		alias = config.RepoAlias{}
+		aliasUpdated = true
+	}
+	if alias.Path == "" && alias.URL == "" {
+		if sourcePath != "" {
+			alias.Path = sourcePath
+			alias.URL = ""
+			aliasUpdated = true
+		} else if url != "" {
+			alias.URL = url
+			alias.Path = ""
+			aliasUpdated = true
+		}
+	}
+	if alias.DefaultBranch == "" && defaultBranch != "" {
+		alias.DefaultBranch = defaultBranch
+		aliasUpdated = true
+	}
+	if alias.Remote == "" && resolvedRemote != "" {
+		alias.Remote = resolvedRemote
+		aliasUpdated = true
+	}
+	if aliasUpdated {
+		if cfg.Repos == nil {
+			cfg.Repos = map[string]config.RepoAlias{}
+		}
+		cfg.Repos[name] = alias
+	}
+
 	registerWorkspace(&cfg, wsConfig.Name, wsRoot, s.clock())
 	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
 		return RepoAddResult{}, err
@@ -219,75 +242,6 @@ func (s *Service) AddRepo(ctx context.Context, input RepoAddInput) (RepoAddResul
 	}, nil
 }
 
-// UpdateRepoRemotes updates a workspace repo's remote configuration.
-func (s *Service) UpdateRepoRemotes(ctx context.Context, input RepoRemotesUpdateInput) (RepoRemotesUpdateResultJSON, config.GlobalConfigLoadInfo, error) {
-	cfg, info, err := s.loadGlobal(ctx)
-	if err != nil {
-		return RepoRemotesUpdateResultJSON{}, info, err
-	}
-	wsRoot, wsConfig, err := s.resolveWorkspace(ctx, &cfg, info.Path, input.Workspace)
-	if err != nil {
-		return RepoRemotesUpdateResultJSON{}, info, err
-	}
-
-	name := strings.TrimSpace(input.Name)
-	if name == "" {
-		return RepoRemotesUpdateResultJSON{}, info, ValidationError{Message: "repo name required"}
-	}
-
-	updated, err := ops.UpdateRepoRemotes(ops.UpdateRepoRemotesInput{
-		WorkspaceRoot:  wsRoot,
-		Name:           name,
-		Defaults:       cfg.Defaults,
-		BaseRemote:     input.BaseRemote,
-		WriteRemote:    input.WriteRemote,
-		BaseBranch:     input.BaseBranch,
-		WriteBranch:    input.WriteBranch,
-		BaseRemoteSet:  input.BaseRemoteSet,
-		WriteRemoteSet: input.WriteRemoteSet,
-		BaseBranchSet:  input.BaseBranchSet,
-		WriteBranchSet: input.WriteBranchSet,
-	})
-	if err != nil {
-		return RepoRemotesUpdateResultJSON{}, info, err
-	}
-
-	registerWorkspace(&cfg, wsConfig.Name, wsRoot, s.clock())
-	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
-		return RepoRemotesUpdateResultJSON{}, info, err
-	}
-
-	var updatedRepo config.RepoConfig
-	found := false
-	for _, repo := range updated.Repos {
-		if repo.Name == name {
-			updatedRepo = repo
-			found = true
-			break
-		}
-	}
-	if !found {
-		return RepoRemotesUpdateResultJSON{}, info, NotFoundError{Message: "repo not found after update"}
-	}
-
-	base := updatedRepo.Remotes.Base.Name
-	if updatedRepo.Remotes.Base.DefaultBranch != "" {
-		base = fmt.Sprintf("%s/%s", base, updatedRepo.Remotes.Base.DefaultBranch)
-	}
-	write := updatedRepo.Remotes.Write.Name
-	if updatedRepo.Remotes.Write.DefaultBranch != "" {
-		write = fmt.Sprintf("%s/%s", write, updatedRepo.Remotes.Write.DefaultBranch)
-	}
-
-	return RepoRemotesUpdateResultJSON{
-		Status:    "ok",
-		Workspace: wsConfig.Name,
-		Repo:      name,
-		Base:      base,
-		Write:     write,
-	}, info, nil
-}
-
 // RemoveRepo removes a repo from a workspace and optionally deletes files.
 func (s *Service) RemoveRepo(ctx context.Context, input RepoRemoveInput) (RepoRemoveResult, error) {
 	cfg, info, err := s.loadGlobal(ctx)
@@ -308,10 +262,12 @@ func (s *Service) RemoveRepo(ctx context.Context, input RepoRemoveInput) (RepoRe
 		return RepoRemoveResult{}, NotFoundError{Message: "repo not found in workspace"}
 	}
 
+	repoDefaults := resolveRepoDefaults(cfg, repoCfg.Name)
 	report, err := ops.CheckRepoSafety(ctx, ops.RepoSafetyInput{
 		WorkspaceRoot: wsRoot,
 		Repo:          repoCfg,
 		Defaults:      cfg.Defaults,
+		RepoDefaults:  repoDefaults,
 		Git:           s.git,
 		FetchRemotes:  input.FetchRemotes,
 	})
