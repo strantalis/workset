@@ -11,7 +11,7 @@ If you have an existing config at `~/.config/workset/config.yaml`, Workset migra
 
 `defaults.workspace` can point to a registered workspace name or a path. When set, workspace commands use it if `-w` is omitted.
 `defaults.repo_store_root` is where URL-based repos are cloned when added to a workspace.
-Remote names for local repos are derived from the repo itself; URL-based repos default to `origin`. Use `workset repo remotes set` to override per workspace repo.
+Remote names and default branches come from repo aliases (`repos.<name>.remote` / `repos.<name>.default_branch`) or from `defaults.remote` / `defaults.base_branch`. For local repos, the configured remote must exist or Workset errors.
 
 ## Global config (`~/.workset/config.yaml`)
 
@@ -28,6 +28,7 @@ Remote names for local repos are derived from the repo itself; URL-based repos d
 
 | Field | Description |
 | --- | --- |
+| `remote` | Default remote name for repos (used when aliases omit one). |
 | `base_branch` | Default branch for new worktrees. |
 | `workspace` | Default workspace name or absolute path. |
 | `workspace_root` | Base directory for new workspaces. |
@@ -60,6 +61,7 @@ For screen, the `session_screen_hardstatus` value is passed to `screen -X hardst
 | --- | --- |
 | `url` | Git URL to clone. |
 | `path` | Local repo path (saved as absolute). |
+| `remote` | Remote name for this repo alias (defaults to `defaults.remote`). |
 | `default_branch` | Default branch for this repo alias. |
 
 ### `workspaces` entries
@@ -72,6 +74,7 @@ For screen, the `session_screen_hardstatus` value is passed to `screen -X hardst
 
 ```yaml
 defaults:
+  remote: origin
   base_branch: main
   workspace: core
   workspace_root: ~/.workset/workspaces
@@ -95,11 +98,13 @@ hooks:
 repos:
   platform:
     url: git@github.com:org/platform.git
+    remote: origin
     default_branch: main
 
 # local repos use "path" (relative paths are resolved to absolute on save)
   local-repo:
     path: /Users/sean/src/local-repo
+    remote: origin
     default_branch: main
 
 workspaces:
@@ -137,8 +142,8 @@ hooks:
 | `repo_dir` | Directory name under the workspace. |
 | `local_path` | Path to the repo's main working copy. |
 | `managed` | `true` if Workset owns the clone. |
-| `remotes.base` | Base remote name + default branch. |
-| `remotes.write` | Write remote name. |
+| `remote` | Derived from the repo alias or defaults (not stored in workspace config). |
+| `default_branch` | Derived from the repo alias or defaults (not stored in workspace config). |
 
 ## Example (workspace)
 
@@ -150,9 +155,7 @@ repos:
     repo_dir: platform
     local_path: /Users/sean/src/platform
     managed: false
-    remotes:
-      base:  { name: origin, default_branch: main }
-      write: { name: origin }
+    # remote + default_branch are derived from alias/defaults
 ```
 
 `local_path` points at the repo's main working copy. When a repo is added from a URL, Workset clones it into `defaults.repo_store_root` and marks it `managed: true`.

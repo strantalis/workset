@@ -1,5 +1,5 @@
 ---
-description: Workset is a Go CLI for managing multi-repo workspaces with linked Git worktrees and explicit remotes.
+description: Workset is a Go CLI for managing multi-repo workspaces with linked Git worktrees and consistent repo defaults.
 ---
 
 # Workset
@@ -28,7 +28,7 @@ workset status -w demo
 - Workspaces that track intent across repos.
 - Linked worktrees for isolation without duplication.
 - URL repos cloned into `~/.workset/repos` (configurable).
-- Explicit base/write remotes for forks.
+- Repo defaults (remote + default branch) via aliases.
 - Templates for repeatable repo bundles.
 
 ## Next up

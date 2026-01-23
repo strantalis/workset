@@ -1,5 +1,5 @@
 ---
-description: Core Workset concepts including workspaces, repo sources, worktrees, remotes, and templates.
+description: Core Workset concepts including workspaces, repo sources, worktrees, defaults, and templates.
 ---
 
 # Concepts
@@ -27,12 +27,9 @@ Worktrees live under `<workspace>/<repo>` by default, keeping your main clones c
 !!! tip
     This makes branch work fast and isolated without duplicating repositories.
 
-## Remotes
+## Repo defaults
 
-Workset treats remotes as explicit intent:
-
-- **base**: the authoritative upstream
-- **write**: the fork or repo you can push to
+Repo aliases define the remote name and default branch for a repo. If an alias omits them, Workset falls back to `defaults.remote` and `defaults.base_branch`.
 
 ## Templates (groups)
 

@@ -16,7 +16,7 @@ Workset is a Go CLI for managing **multi-repo workspaces** with **linked Git wor
 
 - **Workspaces first**: treat related repos as a single unit of work.
 - **Linked worktrees by default**: branch work happens in isolated directories without duplicating repos.
-- **Explicit remotes**: base/write remotes are derived from the repo or set per workspace.
+- **Repo defaults**: remote + default branch come from aliases or global defaults.
 - **Templates**: reusable repo sets that expand into workspace config.
 - **Safe defaults**: no destructive actions without explicit flags.
 
@@ -85,7 +85,7 @@ workset session stop demo
 - **Workspace**: a directory with `workset.yaml` and `.workset/` state.
 - **Repo sources**: local paths stay put; URL clones land in `~/.workset/repos` (configurable).
 - **Worktrees**: worktrees live under `<workspace>/<repo>` by default.
-- **Remotes**: `base` (truth) and `write` (fork/origin).
+- **Repo defaults**: aliases and global defaults supply the remote + default branch.
 - **Templates**: global repo sets applied into a workspace.
 
 ## Docs

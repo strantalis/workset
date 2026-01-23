@@ -21,11 +21,11 @@ Non-goals
 - Persisting PR base preferences in config.
 - Changing git remote behavior beyond selection and validation.
 
-Current state (brief)
+Previous state (pre-refactor)
 - Global config: defaults.base_branch only.
 - Workspace config: repos[].remotes.base + repos[].remotes.write.
 - Group templates can override remotes/branch per member.
-- CLI: workset repo remotes set, group add --base-remote/--write-remote/--base-branch.
+- CLI: repo remotes set + group add remotes overrides.
 
 Proposed model
 - Repo alias becomes the single source of truth for:
@@ -59,7 +59,7 @@ Behavior changes
 - Add repo:
   - Resolve alias. If alias has no remote/default_branch, seed from defaults.
   - Validate alias.remote exists.
-  - Strict error if remote missing (except during alias creation fallback rules).
+  - Strict error if remote missing.
 - Worktree creation:
   - Uses alias.remote + alias.default_branch for start remote/branch.
 - Safety/status:
@@ -68,12 +68,8 @@ Behavior changes
   - No remotes/branch overrides (alias inherits).
 
 Missing remote policy (strict)
-During alias creation only:
-  - If defaults.remote missing in repo:
-    - If exactly one remote exists: warn, set alias.remote to that remote.
-    - Else error and require explicit --remote.
-All other operations:
-  - Error if alias.remote missing or remote does not exist in the repo.
+- Error if the configured remote does not exist for a local repo.
+- No automatic fallback to a different remote.
 
 CLI changes
 - Add/extend:

@@ -26,7 +26,6 @@ Quick lookup for CLI commands and intent.
 | `workset repo alias rm` | Remove a repo alias. |
 | `workset repo add` | Add a repo to a workspace. |
 | `workset repo ls` | List repos in a workspace. |
-| `workset repo remotes set` | Set repo remotes for a workspace repo. |
 | `workset repo rm` | Remove a repo from a workspace. |
 | `workset status` | Show workspace status. |
 | `workset group ls` | List templates (groups). |

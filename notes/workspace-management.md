@@ -13,7 +13,7 @@
 - [x] Add workspace rename support (config + workset.yaml).
 - [x] Surface archive status in Wails workspace snapshots and frontend types.
 - [x] Add Wails methods for workspace CRUD (create, rename, archive, unarchive, delete).
-- [x] Add Wails methods for repo add/remove/remotes update.
+- [x] Add Wails methods for repo add/remove.
 - [x] Build a management panel UI (create workspace, rename, archive/unarchive, delete, add/remove repo).
 - [x] Wire UI to refresh workspace list + selection state updates.
 - [x] Add tests for archive + rename helpers and list behavior.

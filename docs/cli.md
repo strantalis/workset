@@ -22,7 +22,6 @@ workset config show|set
 workset repo alias ls|add|set|rm
 workset repo add -w <workspace> <source> [--name] [--repo-dir]
 workset repo ls -w <workspace>
-workset repo remotes set -w <workspace> <name> [--base-remote] [--write-remote] [--base-branch]
 workset repo rm -w <workspace> <name> [--delete-worktrees] [--delete-local]
 workset status -w <workspace>
 workset group ls|show|create|rm|add|remove

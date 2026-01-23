@@ -102,6 +102,6 @@ For fish or powershell, see the [CLI](cli.md) page for the full set of commands.
 
 ## Next steps
 
-- Read the [Concepts](concepts.md) page to understand workspaces, remotes, and templates.
+- Read the [Concepts](concepts.md) page to understand workspaces, repo defaults, and templates.
 - Review the [Config](config.md) page to customize defaults and repo aliases.
 - Use the Command Index to find the right CLI call fast.
