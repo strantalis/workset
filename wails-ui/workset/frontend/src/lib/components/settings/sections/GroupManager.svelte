@@ -13,6 +13,7 @@
   import type {Alias, Group, GroupSummary} from '../../../types'
   import SettingsSection from '../SettingsSection.svelte'
   import GroupMemberRow from './GroupMemberRow.svelte'
+  import Button from '../../ui/Button.svelte'
 
   interface Props {
     onGroupCountChange: (count: number) => void;
@@ -33,11 +34,6 @@
 
   let addingMember = $state(false)
   let memberRepo = $state('')
-  let memberBaseRemote = $state('origin')
-  let memberBaseBranch = $state('main')
-  let memberWriteRemote = $state('origin')
-
-  let expandedMember: string | null = $state(null)
 
   const formatError = (err: unknown): string => {
     if (err instanceof Error) return err.message
@@ -61,7 +57,6 @@
       formName = selectedGroup.name
       formDescription = selectedGroup.description ?? ''
       addingMember = false
-      expandedMember = null
       error = null
       success = null
     } catch (err) {
@@ -75,7 +70,6 @@
     formName = ''
     formDescription = ''
     addingMember = false
-    expandedMember = null
     error = null
     success = null
   }
@@ -156,10 +150,6 @@
   const startAddMember = (): void => {
     addingMember = true
     memberRepo = ''
-    memberBaseRemote = 'origin'
-    memberBaseBranch = 'main'
-    memberWriteRemote = 'origin'
-    expandedMember = null
   }
 
   const cancelAddMember = (): void => {
@@ -170,12 +160,6 @@
     const target = event.target as HTMLInputElement | null
     const value = target?.value ?? ''
     memberRepo = value
-
-    // Auto-fill from alias if matched
-    const alias = aliases.find((a) => a.name === value)
-    if (alias?.default_branch) {
-      memberBaseBranch = alias.default_branch
-    }
   }
 
   const handleAddMember = async (): Promise<void> => {
@@ -192,41 +176,10 @@
     success = null
 
     try {
-      await addGroupMember(
-        selectedGroup.name,
-        repo,
-        memberBaseRemote.trim() || 'origin',
-        memberBaseBranch.trim() || 'main',
-        memberWriteRemote.trim() || 'origin'
-      )
+      await addGroupMember(selectedGroup.name, repo)
       success = `Added ${repo}.`
       selectedGroup = await getGroup(selectedGroup.name)
       addingMember = false
-    } catch (err) {
-      error = formatError(err)
-    } finally {
-      loading = false
-    }
-  }
-
-  const handleUpdateMember = async (
-    repo: string,
-    baseRemote: string,
-    baseBranch: string,
-    writeRemote: string
-  ): Promise<void> => {
-    if (!selectedGroup) return
-
-    loading = true
-    error = null
-    success = null
-
-    try {
-      await removeGroupMember(selectedGroup.name, repo)
-      await addGroupMember(selectedGroup.name, repo, baseRemote, baseBranch, writeRemote)
-      success = `Updated ${repo}.`
-      selectedGroup = await getGroup(selectedGroup.name)
-      expandedMember = null
     } catch (err) {
       error = formatError(err)
     } finally {
@@ -245,17 +198,11 @@
       await removeGroupMember(selectedGroup.name, repo)
       success = `Removed ${repo}.`
       selectedGroup = await getGroup(selectedGroup.name)
-      expandedMember = null
     } catch (err) {
       error = formatError(err)
     } finally {
       loading = false
     }
-  }
-
-  const toggleMember = (repo: string): void => {
-    expandedMember = expandedMember === repo ? null : repo
-    addingMember = false
   }
 
   onMount(() => {
@@ -265,12 +212,12 @@
 
 <SettingsSection
   title="Groups"
-  description="Collections of repos with preset remotes. Apply a group to quickly add multiple repos to a workspace."
+  description="Collections of repos that can be applied to new workspaces."
 >
   <div class="manager">
     <div class="list-header">
       <span class="list-count">{groups.length} group{groups.length === 1 ? '' : 's'}</span>
-      <button class="ghost small" type="button" onclick={startNew}>+ New</button>
+      <Button variant="ghost" size="sm" onclick={startNew}>+ New</Button>
     </div>
 
     {#if groups.length > 0 || isNew}
@@ -328,19 +275,19 @@
         </div>
         <div class="actions">
           {#if !isNew && selectedGroup}
-            <button class="danger" type="button" onclick={handleDelete} disabled={loading}>
+            <Button variant="danger" onclick={handleDelete} disabled={loading}>
               Delete group
-            </button>
+            </Button>
           {/if}
           <div class="spacer"></div>
           {#if isNew}
-            <button class="ghost" type="button" onclick={cancelEdit} disabled={loading}>
+            <Button variant="ghost" onclick={cancelEdit} disabled={loading}>
               Cancel
-            </button>
+            </Button>
           {/if}
-          <button class="primary" type="button" onclick={handleSave} disabled={loading}>
+          <Button variant="primary" onclick={handleSave} disabled={loading}>
             {loading ? 'Saving...' : isNew ? 'Create group' : 'Save group'}
-          </button>
+          </Button>
         </div>
 
         {#if selectedGroup && !isNew}
@@ -349,9 +296,9 @@
               <span class="members-label">
                 Members ({selectedGroup.members.length})
               </span>
-              <button class="ghost small" type="button" onclick={startAddMember}>
+              <Button variant="ghost" size="sm" onclick={startAddMember}>
                 + Add repo
-              </button>
+              </Button>
             </div>
 
             {#if addingMember}
@@ -373,27 +320,13 @@
                     </datalist>
                   </label>
                 </div>
-                <div class="form-row">
-                  <label class="field">
-                    <span>Base remote</span>
-                    <input type="text" bind:value={memberBaseRemote} placeholder="origin" />
-                  </label>
-                  <label class="field">
-                    <span>Base branch</span>
-                    <input type="text" bind:value={memberBaseBranch} placeholder="main" />
-                  </label>
-                  <label class="field">
-                    <span>Write remote</span>
-                    <input type="text" bind:value={memberWriteRemote} placeholder="origin" />
-                  </label>
-                </div>
                 <div class="add-member-actions">
-                  <button class="ghost small" type="button" onclick={cancelAddMember} disabled={loading}>
+                  <Button variant="ghost" size="sm" onclick={cancelAddMember} disabled={loading}>
                     Cancel
-                  </button>
-                  <button class="primary small" type="button" onclick={handleAddMember} disabled={loading}>
+                  </Button>
+                  <Button variant="primary" size="sm" onclick={handleAddMember} disabled={loading}>
                     {loading ? 'Adding...' : 'Add repo'}
-                  </button>
+                  </Button>
                 </div>
               </div>
             {/if}
@@ -402,10 +335,7 @@
               {#each selectedGroup.members as member}
                 <GroupMemberRow
                   {member}
-                  expanded={expandedMember === member.repo}
                   {loading}
-                  onToggle={() => toggleMember(member.repo)}
-                  onSave={(base, branch, write) => handleUpdateMember(member.repo, base, branch, write)}
                   onRemove={() => handleRemoveMember(member.repo)}
                 />
               {/each}
@@ -421,7 +351,7 @@
     {:else}
       <div class="empty">
         <p>No groups defined yet.</p>
-        <button class="ghost" type="button" onclick={startNew}>Create your first group</button>
+        <Button variant="ghost" onclick={startNew}>Create your first group</Button>
       </div>
     {/if}
   </div>
@@ -431,14 +361,14 @@
   .manager {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--space-3);
   }
 
   .list-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .list-count {
@@ -449,24 +379,25 @@
   .list {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-1);
     max-height: 160px;
     overflow-y: auto;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    padding: 4px;
+    padding: var(--space-1);
     background: var(--panel);
   }
 
   .list-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 10px 12px;
+    gap: var(--space-2);
+    padding: 10px var(--space-3);
     border: none;
     background: transparent;
     color: var(--text);
     font-size: 13px;
+    font-family: inherit;
     text-align: left;
     border-radius: var(--radius-sm);
     cursor: pointer;
@@ -498,8 +429,8 @@
   .detail {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 16px;
+    gap: var(--space-3);
+    padding: var(--space-4);
     background: var(--panel-soft);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
@@ -516,7 +447,7 @@
   .form {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--space-3);
   }
 
   .field {
@@ -532,8 +463,9 @@
     border: 1px solid rgba(255, 255, 255, 0.08);
     color: var(--text);
     border-radius: var(--radius-md);
-    padding: 10px 12px;
+    padding: 10px var(--space-3);
     font-size: 13px;
+    font-family: inherit;
     transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   }
 
@@ -551,8 +483,8 @@
   .actions {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding-top: 8px;
+    gap: var(--space-2);
+    padding-top: var(--space-2);
     border-top: 1px solid var(--border);
   }
 
@@ -563,8 +495,8 @@
   .members-section {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding-top: 12px;
+    gap: var(--space-3);
+    padding-top: var(--space-3);
     border-top: 1px solid var(--border);
   }
 
@@ -588,7 +520,7 @@
   }
 
   .empty-members {
-    padding: 16px;
+    padding: var(--space-4);
     text-align: center;
     font-size: 13px;
     color: var(--muted);
@@ -600,8 +532,8 @@
   .add-member-form {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 12px;
+    gap: var(--space-3);
+    padding: var(--space-3);
     background: var(--panel);
     border: 1px solid var(--accent-soft);
     border-radius: var(--radius-md);
@@ -610,18 +542,18 @@
   .form-row {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 12px;
+    gap: var(--space-3);
   }
 
   .add-member-actions {
     display: flex;
     justify-content: flex-end;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .message {
     font-size: 13px;
-    padding: 8px 12px;
+    padding: var(--space-2) var(--space-3);
     border-radius: var(--radius-md);
   }
 
@@ -639,7 +571,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
+    gap: var(--space-3);
     padding: 32px;
     background: var(--panel-soft);
     border: 1px solid var(--border);
@@ -651,79 +583,5 @@
     margin: 0;
     color: var(--muted);
     font-size: 14px;
-  }
-
-  .ghost {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 8px 14px;
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    font-size: 13px;
-    transition: border-color var(--transition-fast), background var(--transition-fast);
-  }
-
-  .ghost.small {
-    padding: 6px 10px;
-    font-size: 12px;
-  }
-
-  .ghost:hover:not(:disabled) {
-    border-color: var(--accent);
-    background: rgba(255, 255, 255, 0.04);
-  }
-
-  .ghost:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .primary {
-    background: var(--accent);
-    border: none;
-    color: #081018;
-    padding: 8px 14px;
-    border-radius: var(--radius-md);
-    font-weight: 600;
-    cursor: pointer;
-    font-size: 13px;
-    transition: background var(--transition-fast);
-  }
-
-  .primary.small {
-    padding: 6px 10px;
-    font-size: 12px;
-  }
-
-  .primary:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--accent) 85%, white);
-  }
-
-  .primary:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .danger {
-    background: var(--danger-subtle);
-    border: 1px solid var(--danger-soft);
-    color: #ff9a9a;
-    padding: 8px 14px;
-    border-radius: var(--radius-md);
-    font-weight: 600;
-    cursor: pointer;
-    font-size: 13px;
-    transition: background var(--transition-fast), border-color var(--transition-fast);
-  }
-
-  .danger:hover:not(:disabled) {
-    background: var(--danger-soft);
-    border-color: var(--danger);
-  }
-
-  .danger:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
   }
 </style>

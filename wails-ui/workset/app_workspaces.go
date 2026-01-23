@@ -17,17 +17,14 @@ type WorkspaceSnapshot struct {
 }
 
 type RepoSnapshot struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Path        string `json:"path"`
-	Branch      string `json:"branch,omitempty"`
-	BaseRemote  string `json:"baseRemote,omitempty"`
-	BaseBranch  string `json:"baseBranch,omitempty"`
-	WriteRemote string `json:"writeRemote,omitempty"`
-	WriteBranch string `json:"writeBranch,omitempty"`
-	Dirty       bool   `json:"dirty"`
-	Missing     bool   `json:"missing"`
-	StatusKnown bool   `json:"statusKnown"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Path          string `json:"path"`
+	Remote        string `json:"remote,omitempty"`
+	DefaultBranch string `json:"defaultBranch,omitempty"`
+	Dirty         bool   `json:"dirty"`
+	Missing       bool   `json:"missing"`
+	StatusKnown   bool   `json:"statusKnown"`
 }
 
 type WorkspaceSnapshotRequest struct {
@@ -58,20 +55,15 @@ func (a *App) ListWorkspaceSnapshots(input WorkspaceSnapshotRequest) ([]Workspac
 		repos := make([]RepoSnapshot, 0, len(workspace.Repos))
 		for _, repo := range workspace.Repos {
 			repoID := workspace.Name + "::" + repo.Name
-			baseRemote, baseBranch := splitRemoteBranch(repo.Base)
-			writeRemote, writeBranch := splitRemoteBranch(repo.Write)
 			repos = append(repos, RepoSnapshot{
-				ID:          repoID,
-				Name:        repo.Name,
-				Path:        repo.LocalPath,
-				Branch:      repo.Base,
-				BaseRemote:  baseRemote,
-				BaseBranch:  baseBranch,
-				WriteRemote: writeRemote,
-				WriteBranch: writeBranch,
-				Dirty:       repo.Dirty,
-				Missing:     repo.Missing,
-				StatusKnown: repo.StatusKnown,
+				ID:            repoID,
+				Name:          repo.Name,
+				Path:          repo.LocalPath,
+				Remote:        repo.Remote,
+				DefaultBranch: repo.DefaultBranch,
+				Dirty:         repo.Dirty,
+				Missing:       repo.Missing,
+				StatusKnown:   repo.StatusKnown,
 			})
 		}
 
@@ -87,16 +79,4 @@ func (a *App) ListWorkspaceSnapshots(input WorkspaceSnapshotRequest) ([]Workspac
 	}
 
 	return snapshots, nil
-}
-
-func splitRemoteBranch(value string) (string, string) {
-	if value == "" {
-		return "", ""
-	}
-	for i := 0; i < len(value); i++ {
-		if value[i] == '/' {
-			return value[:i], value[i+1:]
-		}
-	}
-	return value, ""
 }

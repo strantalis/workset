@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/user"
@@ -18,6 +19,13 @@ import (
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+const (
+	terminalBufferMaxBytes          = 512 * 1024
+	terminalTranscriptMaxBytes      = 5 * 1024 * 1024
+	terminalTranscriptTrimThreshold = 6 * 1024 * 1024
+	terminalTranscriptTailBytes     = 512 * 1024
+)
+
 type TerminalPayload struct {
 	WorkspaceID string `json:"workspaceId"`
 	Data        string `json:"data"`
@@ -27,6 +35,14 @@ type TerminalLifecyclePayload struct {
 	WorkspaceID string `json:"workspaceId"`
 	Status      string `json:"status"`
 	Message     string `json:"message,omitempty"`
+}
+
+type TerminalBacklogPayload struct {
+	WorkspaceID string `json:"workspaceId"`
+	Data        string `json:"data"`
+	NextOffset  int64  `json:"nextOffset"`
+	Truncated   bool   `json:"truncated"`
+	Source      string `json:"source,omitempty"`
 }
 
 type terminalState struct {
@@ -45,6 +61,11 @@ type terminalSession struct {
 	pty  *os.File
 	mu   sync.Mutex
 
+	buffer         *terminalBuffer
+	transcriptPath string
+	transcriptFile *os.File
+	transcriptSize int64
+
 	starting bool
 	startErr error
 	ready    chan struct{}
@@ -60,9 +81,82 @@ func newTerminalSession(id, path string) *terminalSession {
 	return &terminalSession{
 		id:       id,
 		path:     path,
+		buffer:   newTerminalBuffer(terminalBufferMaxBytes),
 		starting: true,
 		ready:    make(chan struct{}),
 	}
+}
+
+type bufferChunk struct {
+	start int64
+	data  []byte
+}
+
+type terminalBuffer struct {
+	mu       sync.Mutex
+	maxBytes int
+	chunks   []bufferChunk
+	size     int
+	total    int64
+}
+
+func newTerminalBuffer(maxBytes int) *terminalBuffer {
+	if maxBytes < 64*1024 {
+		maxBytes = 64 * 1024
+	}
+	return &terminalBuffer{maxBytes: maxBytes}
+}
+
+func (b *terminalBuffer) Append(data []byte) {
+	if len(data) == 0 {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	copied := make([]byte, len(data))
+	copy(copied, data)
+	chunk := bufferChunk{
+		start: b.total,
+		data:  copied,
+	}
+	b.chunks = append(b.chunks, chunk)
+	b.total += int64(len(copied))
+	b.size += len(copied)
+	for b.size > b.maxBytes && len(b.chunks) > 0 {
+		oldest := b.chunks[0]
+		b.chunks = b.chunks[1:]
+		b.size -= len(oldest.data)
+	}
+}
+
+func (b *terminalBuffer) ReadSince(offset int64) ([]byte, int64, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if len(b.chunks) == 0 {
+		return nil, b.total, false
+	}
+	oldest := b.chunks[0].start
+	truncated := false
+	if offset < oldest {
+		offset = oldest
+		truncated = true
+	}
+	out := make([]byte, 0, b.size)
+	for _, chunk := range b.chunks {
+		end := chunk.start + int64(len(chunk.data))
+		if end <= offset {
+			continue
+		}
+		if offset > chunk.start {
+			start := int(offset - chunk.start)
+			if start < len(chunk.data) {
+				out = append(out, chunk.data[start:]...)
+			}
+			continue
+		}
+		out = append(out, chunk.data...)
+	}
+	return out, b.total, truncated
 }
 
 func (s *terminalSession) markReady(err error) {
@@ -164,10 +258,34 @@ func (s *terminalSession) CloseWithReason(reason string) error {
 		_ = s.pty.Close()
 		s.pty = nil
 	}
+	if s.transcriptFile != nil {
+		_ = s.transcriptFile.Close()
+		s.transcriptFile = nil
+	}
 	if s.cmd != nil && s.cmd.Process != nil {
 		_ = s.cmd.Process.Kill()
 	}
 	return nil
+}
+
+func (s *terminalSession) recordOutput(data []byte) {
+	if len(data) == 0 {
+		return
+	}
+	if s.buffer != nil {
+		s.buffer.Append(data)
+	}
+	s.mu.Lock()
+	file := s.transcriptFile
+	s.mu.Unlock()
+	if file == nil {
+		return
+	}
+	if _, err := file.Write(data); err == nil {
+		s.mu.Lock()
+		s.transcriptSize += int64(len(data))
+		s.mu.Unlock()
+	}
 }
 
 func (a *App) StartWorkspaceTerminal(workspaceID string) error {
@@ -243,6 +361,62 @@ func (a *App) WriteWorkspaceTerminal(workspaceID, data string) error {
 		return err
 	}
 	return session.Write(data)
+}
+
+func (a *App) GetTerminalBacklog(workspaceID string, since int64) (TerminalBacklogPayload, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return TerminalBacklogPayload{}, fmt.Errorf("workspace id required")
+	}
+	a.terminalMu.Lock()
+	session := a.terminals[workspaceID]
+	a.terminalMu.Unlock()
+	if session != nil {
+		ctx := a.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		waitCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		err := session.waitReady(waitCtx)
+		cancel()
+		if err != nil {
+			return TerminalBacklogPayload{}, err
+		}
+		if since < 0 {
+			since = 0
+		}
+		if session.buffer != nil {
+			data, next, truncated := session.buffer.ReadSince(since)
+			if len(data) > 0 || next > 0 {
+				return TerminalBacklogPayload{
+					WorkspaceID: workspaceID,
+					Data:        string(data),
+					NextOffset:  next,
+					Truncated:   truncated,
+					Source:      "buffer",
+				}, nil
+			}
+		}
+	}
+	data, truncated, err := a.readTranscriptTail(workspaceID, terminalTranscriptTailBytes)
+	if err != nil {
+		return TerminalBacklogPayload{}, err
+	}
+	if len(data) == 0 {
+		return TerminalBacklogPayload{
+			WorkspaceID: workspaceID,
+			Data:        "",
+			NextOffset:  0,
+			Truncated:   false,
+		}, nil
+	}
+	return TerminalBacklogPayload{
+		WorkspaceID: workspaceID,
+		Data:        string(data),
+		NextOffset:  0,
+		Truncated:   truncated,
+		Source:      "transcript",
+	}, nil
 }
 
 func (a *App) ResizeWorkspaceTerminal(workspaceID string, cols, rows int) error {
@@ -361,6 +535,8 @@ func (a *App) streamTerminal(session *terminalSession) {
 		n, err := session.pty.Read(buf)
 		if n > 0 {
 			session.bumpActivity()
+			session.recordOutput(buf[:n])
+			a.trimTranscript(session)
 			pendingMu.Lock()
 			pending = append(pending, buf[:n]...)
 			pendingLen := len(pending)
@@ -423,6 +599,7 @@ func (a *App) startTerminalSession(ctx context.Context, session *terminalSession
 		return err
 	}
 
+	_ = a.openTranscript(session)
 	session.mu.Lock()
 	session.cmd = cmd
 	session.pty = ptmx
@@ -462,12 +639,44 @@ func (a *App) ensureIdleWatcher(session *terminalSession) {
 		session.mu.Unlock()
 		return
 	}
-	session.idleTimeout = 30 * time.Minute
+	idleTimeout := a.terminalIdleTimeout()
+	if idleTimeout <= 0 {
+		session.mu.Unlock()
+		return
+	}
+	session.idleTimeout = idleTimeout
 	session.lastActivity = time.Now()
 	session.idleTimer = time.AfterFunc(session.idleTimeout, func() {
 		a.handleIdleTimeout(session)
 	})
 	session.mu.Unlock()
+}
+
+func (a *App) terminalIdleTimeout() time.Duration {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.service == nil {
+		a.service = worksetapi.NewService(worksetapi.Options{})
+	}
+	cfg, _, err := a.service.GetConfig(ctx)
+	if err != nil {
+		return 30 * time.Minute
+	}
+	raw := strings.TrimSpace(cfg.Defaults.TerminalIdleTimeout)
+	if raw == "" {
+		return 30 * time.Minute
+	}
+	switch strings.ToLower(raw) {
+	case "0", "off", "disabled", "false":
+		return 0
+	}
+	timeout, err := time.ParseDuration(raw)
+	if err != nil || timeout < 0 {
+		return 30 * time.Minute
+	}
+	return timeout
 }
 
 func (a *App) handleIdleTimeout(session *terminalSession) {
@@ -525,6 +734,153 @@ func (a *App) terminalStatePath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(home, ".workset", "ui_sessions.json"), nil
+}
+
+func (a *App) terminalTranscriptPath(workspaceID string) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	safe := sanitizeTerminalID(workspaceID)
+	if safe == "" {
+		safe = "workspace"
+	}
+	return filepath.Join(home, ".workset", "terminal_logs", safe+".log"), nil
+}
+
+func sanitizeTerminalID(input string) string {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.Grow(len(trimmed))
+	for _, r := range trimmed {
+		if (r >= 'a' && r <= 'z') ||
+			(r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') ||
+			r == '-' || r == '_' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	return b.String()
+}
+
+func (a *App) openTranscript(session *terminalSession) error {
+	path, err := a.terminalTranscriptPath(session.id)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return err
+	}
+	session.mu.Lock()
+	session.transcriptPath = path
+	session.transcriptFile = file
+	session.transcriptSize = info.Size()
+	session.mu.Unlock()
+	return nil
+}
+
+func (a *App) readTranscriptTail(workspaceID string, maxBytes int64) ([]byte, bool, error) {
+	path, err := a.terminalTranscriptPath(workspaceID)
+	if err != nil {
+		return nil, false, err
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, false, err
+	}
+	size := info.Size()
+	if size == 0 {
+		return nil, false, nil
+	}
+	start := int64(0)
+	truncated := false
+	if maxBytes > 0 && size > maxBytes {
+		start = size - maxBytes
+		truncated = true
+	}
+	if _, err := file.Seek(start, 0); err != nil {
+		return nil, false, err
+	}
+	buf, err := io.ReadAll(file)
+	if err != nil {
+		return nil, false, err
+	}
+	return buf, truncated, nil
+}
+
+func (a *App) trimTranscript(session *terminalSession) {
+	session.mu.Lock()
+	path := session.transcriptPath
+	file := session.transcriptFile
+	size := session.transcriptSize
+	session.mu.Unlock()
+	if path == "" || file == nil || size <= terminalTranscriptTrimThreshold {
+		return
+	}
+	var err error
+	_ = file.Close()
+	data, truncated, err := a.readTranscriptTail(session.id, terminalTranscriptMaxBytes)
+	if err != nil {
+		return
+	}
+	if !truncated {
+		file, err = os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+		if err != nil {
+			return
+		}
+		info, err := file.Stat()
+		if err != nil {
+			_ = file.Close()
+			return
+		}
+		session.mu.Lock()
+		session.transcriptFile = file
+		session.transcriptSize = info.Size()
+		session.mu.Unlock()
+		return
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return
+	}
+	file, err = os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return
+	}
+	session.mu.Lock()
+	session.transcriptFile = file
+	session.transcriptSize = info.Size()
+	session.mu.Unlock()
 }
 
 func (a *App) restoreTerminalSessions(ctx context.Context) {

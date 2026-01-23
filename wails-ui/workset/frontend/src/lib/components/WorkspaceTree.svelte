@@ -1,6 +1,7 @@
 <script lang="ts">
   import type {Workspace} from '../types'
-  import {clickOutside} from '../actions/clickOutside'
+  import IconButton from './ui/IconButton.svelte'
+  import DropdownMenu from './ui/DropdownMenu.svelte'
 
   interface Props {
     workspaces?: Workspace[];
@@ -14,7 +15,7 @@
     onManageRepo: (
     workspaceId: string,
     repoId: string,
-    action: 'remotes' | 'remove'
+    action: 'remove'
   ) => void;
     sidebarCollapsed?: boolean;
     onToggleSidebar: () => void;
@@ -49,7 +50,10 @@
 
 <div class:collapsed={sidebarCollapsed} class="tree">
   <div class="tree-header">
-    <button class="icon-button" type="button" onclick={onToggleSidebar} aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+    <IconButton
+      label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+      onclick={onToggleSidebar}
+    >
       {#if sidebarCollapsed}
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M9 18l6-6-6-6" />
@@ -59,17 +63,20 @@
           <path d="M15 18l-6-6 6-6" />
         </svg>
       {/if}
-    </button>
+    </IconButton>
     <span class="title" class:collapsed={sidebarCollapsed}>Workspaces</span>
-    <button class="icon-button" type="button" onclick={onCreateWorkspace} aria-label="Create workspace">
-      +
-    </button>
+    <IconButton label="Create workspace" onclick={onCreateWorkspace}>
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 5v14m-7-7h14" />
+      </svg>
+    </IconButton>
   </div>
   {#each visibleWorkspaces as workspace}
     <div class="workspace">
       <div class="workspace-row">
         <button
           class="toggle"
+          class:expanded={!collapsed[workspace.id]}
           aria-label="Toggle workspace"
           onclick={(event) => {
             event.stopPropagation()
@@ -77,7 +84,9 @@
           }}
           type="button"
         >
-          {#if collapsed[workspace.id]}▸{:else}▾{/if}
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M9 18l6-6-6-6" />
+          </svg>
         </button>
         <button
           class:active={workspace.id === activeWorkspaceId}
@@ -90,59 +99,62 @@
           <span class="count">{workspace.repos.length}</span>
         </button>
         <div class="menu">
-          <button
-            class="icon-button"
-            type="button"
-            aria-label="Workspace actions"
+          <IconButton
+            label="Workspace actions"
             onclick={() => (workspaceMenu = workspaceMenu === workspace.id ? null : workspace.id)}
           >
-            ⋯
-          </button>
-          {#if workspaceMenu === workspace.id}
-            <div class="menu-card" use:clickOutside={() => (workspaceMenu = null)}>
-              <button
-                type="button"
-                onclick={() => {
-                  workspaceMenu = null
-                  onAddRepo(workspace.id)
-                }}
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-7-7h14" /></svg>
-                Add repo
-              </button>
-              <button
-                type="button"
-                onclick={() => {
-                  workspaceMenu = null
-                  onManageWorkspace(workspace.id, 'rename')
-                }}
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-                Rename
-              </button>
-              <button
-                type="button"
-                onclick={() => {
-                  workspaceMenu = null
-                  onManageWorkspace(workspace.id, 'archive')
-                }}
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="5" rx="1" /><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9" /><path d="M10 13h4" /></svg>
-                Archive
-              </button>
-              <button
-                class="danger"
-                type="button"
-                onclick={() => {
-                  workspaceMenu = null
-                  onManageWorkspace(workspace.id, 'remove')
-                }}
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
-                Remove
-              </button>
-            </div>
-          {/if}
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none" />
+              <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+              <circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none" />
+            </svg>
+          </IconButton>
+          <DropdownMenu
+            open={workspaceMenu === workspace.id}
+            onClose={() => (workspaceMenu = null)}
+          >
+            <button
+              type="button"
+              onclick={() => {
+                workspaceMenu = null
+                onAddRepo(workspace.id)
+              }}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-7-7h14" /></svg>
+              Add repo
+            </button>
+            <button
+              type="button"
+              onclick={() => {
+                workspaceMenu = null
+                onManageWorkspace(workspace.id, 'rename')
+              }}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+              Rename
+            </button>
+            <button
+              type="button"
+              onclick={() => {
+                workspaceMenu = null
+                onManageWorkspace(workspace.id, 'archive')
+              }}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="5" rx="1" /><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9" /><path d="M10 13h4" /></svg>
+              Archive
+            </button>
+            <button
+              class="danger"
+              type="button"
+              onclick={() => {
+                workspaceMenu = null
+                onManageWorkspace(workspace.id, 'remove')
+              }}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+              Remove
+            </button>
+          </DropdownMenu>
         </div>
       </div>
       {#if !collapsed[workspace.id]}
@@ -159,57 +171,69 @@
                 type="button"
               >
                 <span class="repo-name">{repo.name}</span>
-                <span class="meta">
-                  {#if repo.branch}
-                    <span class="branch">{repo.branch}</span>
+                  <span class="meta">
+                  {#if repo.remote || repo.defaultBranch}
+                    <span class="branch">
+                      {repo.remote && repo.defaultBranch
+                        ? `${repo.remote}/${repo.defaultBranch}`
+                        : repo.defaultBranch ?? repo.remote}
+                    </span>
                   {/if}
                   {#if repo.statusKnown === false}
-                    <span class="status-dot unknown" title="Status pending">●</span>
+                    <svg class="status-dot unknown" viewBox="0 0 6 6" role="img" aria-label="Status pending">
+                      <title>Status pending</title>
+                      <circle cx="3" cy="3" r="3" />
+                    </svg>
                   {:else if repo.missing}
-                    <span class="status-dot missing" title="Missing">●</span>
+                    <svg class="status-dot missing" viewBox="0 0 6 6" role="img" aria-label="Missing">
+                      <title>Missing</title>
+                      <circle cx="3" cy="3" r="3" />
+                    </svg>
                   {:else if repo.diff.added + repo.diff.removed > 0}
-                    <span class="status-dot changes" title="+{repo.diff.added}/-{repo.diff.removed}">●</span>
+                    <svg class="status-dot changes" viewBox="0 0 6 6" role="img" aria-label="+{repo.diff.added}/-{repo.diff.removed}">
+                      <title>+{repo.diff.added}/-{repo.diff.removed}</title>
+                      <circle cx="3" cy="3" r="3" />
+                    </svg>
                   {:else if repo.dirty}
-                    <span class="status-dot modified" title="Modified">●</span>
+                    <svg class="status-dot modified" viewBox="0 0 6 6" role="img" aria-label="Modified">
+                      <title>Modified</title>
+                      <circle cx="3" cy="3" r="3" />
+                    </svg>
                   {:else}
-                    <span class="status-dot clean" title="Clean">●</span>
+                    <svg class="status-dot clean" viewBox="0 0 6 6" role="img" aria-label="Clean">
+                      <title>Clean</title>
+                      <circle cx="3" cy="3" r="3" />
+                    </svg>
                   {/if}
                 </span>
               </button>
               <div class="repo-actions">
-                <button
-                  class="icon-button"
-                  type="button"
-                  aria-label="Repo actions"
+                <IconButton
+                  label="Repo actions"
                   onclick={() => (repoMenu = repoMenu === repo.id ? null : repo.id)}
                 >
-                  ⋯
-                </button>
-                {#if repoMenu === repo.id}
-                  <div class="menu-card" use:clickOutside={() => (repoMenu = null)}>
-                    <button
-                      type="button"
-                      onclick={() => {
-                        repoMenu = null
-                        onManageRepo(workspace.id, repo.name, 'remotes')
-                      }}
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="18" r="3" /><circle cx="6" cy="6" r="3" /><path d="M6 21V9a9 9 0 0 0 9 9" /></svg>
-                      Remotes
-                    </button>
-                    <button
-                      class="danger"
-                      type="button"
-                      onclick={() => {
-                        repoMenu = null
-                        onManageRepo(workspace.id, repo.name, 'remove')
-                      }}
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
-                      Remove
-                    </button>
-                  </div>
-                {/if}
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none" />
+                    <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+                    <circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none" />
+                  </svg>
+                </IconButton>
+                <DropdownMenu
+                  open={repoMenu === repo.id}
+                  onClose={() => (repoMenu = null)}
+                >
+                  <button
+                    class="danger"
+                    type="button"
+                    onclick={() => {
+                      repoMenu = null
+                      onManageRepo(workspace.id, repo.name, 'remove')
+                    }}
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+                    Remove
+                  </button>
+                </DropdownMenu>
               </div>
             </div>
           {/each}
@@ -223,20 +247,20 @@
   .tree {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--space-3);
   }
 
   .tree-header {
     display: grid;
     grid-template-columns: 28px 1fr 28px;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     font-size: 13px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--muted);
-    padding: 0 12px;
+    padding: 0 var(--space-3);
   }
 
   .tree-header .title.collapsed {
@@ -246,19 +270,29 @@
   .workspace {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-1);
     background: var(--panel-soft);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    padding: 8px;
-    margin: 4px 8px;
+    padding: var(--space-2);
+    margin: var(--space-1) var(--space-2);
+    transition: border-color var(--transition-normal), background var(--transition-normal);
+  }
+
+  .workspace:hover {
+    border-color: color-mix(in srgb, var(--border) 70%, var(--accent) 30%);
+    background: linear-gradient(
+      135deg,
+      var(--panel-soft) 0%,
+      color-mix(in srgb, var(--panel-soft) 95%, var(--accent) 5%) 100%
+    );
   }
 
   .workspace-row {
     display: grid;
     grid-template-columns: 20px 1fr 28px;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
   }
 
   .toggle {
@@ -266,11 +300,25 @@
     border: none;
     color: var(--muted);
     cursor: pointer;
-    font-size: 14px;
     position: relative;
     z-index: 3;
     padding: 2px 4px;
     pointer-events: auto;
+    display: grid;
+    place-items: center;
+  }
+
+  .toggle svg {
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    fill: none;
+    transition: transform var(--transition-fast);
+  }
+
+  .toggle.expanded svg {
+    transform: rotate(90deg);
   }
 
   .workspace-button {
@@ -280,7 +328,7 @@
     background: none;
     border: 1px solid transparent;
     color: var(--text);
-    padding: 6px 8px;
+    padding: 6px var(--space-2);
     border-radius: var(--radius-sm);
     cursor: pointer;
     text-align: left;
@@ -325,7 +373,7 @@
     display: grid;
     grid-template-columns: 1fr 28px;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
   }
 
   .repo-button {
@@ -336,7 +384,7 @@
     background: none;
     border: 1px solid transparent;
     color: var(--text);
-    padding: 6px 8px;
+    padding: 6px var(--space-2);
     border-radius: var(--radius-sm);
     cursor: pointer;
     text-align: left;
@@ -361,18 +409,29 @@
 
   .initial {
     display: none;
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
     border-radius: var(--radius-sm);
     background: var(--accent-subtle);
     color: var(--accent);
     font-weight: 600;
     font-size: 14px;
     place-items: center;
+    border: 1px solid transparent;
+    transition:
+      transform var(--transition-fast),
+      border-color var(--transition-fast),
+      background var(--transition-fast);
   }
 
   .tree.collapsed .initial {
     display: grid;
+  }
+
+  .tree.collapsed .initial:hover {
+    transform: scale(1.05);
+    border-color: var(--accent-soft);
+    background: color-mix(in srgb, var(--accent-subtle) 80%, var(--accent) 20%);
   }
 
   .tree.collapsed .workspace-button .name,
@@ -403,7 +462,7 @@
   }
 
   .tree.collapsed .workspace-button {
-    padding: 4px;
+    padding: var(--space-1);
     justify-content: center;
   }
 
@@ -419,7 +478,7 @@
   }
 
   .tree.collapsed .tree-header .title,
-  .tree.collapsed .tree-header .icon-button:last-child {
+  .tree.collapsed .tree-header > :global(*:last-child) {
     display: none;
   }
 
@@ -438,86 +497,10 @@
     padding-left: 0;
   }
 
-  .menu-card {
-    position: absolute;
-    right: 0;
-    top: 28px;
-    background: var(--panel-strong);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 6px;
-    display: grid;
-    gap: 4px;
-    z-index: 5;
-    min-width: 140px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-  }
-
-  .menu-card button {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: none;
-    border: none;
-    color: var(--text);
-    text-align: left;
-    padding: 8px 12px;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: background var(--transition-fast);
-  }
-
-  .menu-card button svg {
-    width: 14px;
-    height: 14px;
-    stroke: currentColor;
-    stroke-width: 1.6;
-    fill: none;
-    flex-shrink: 0;
-  }
-
-  .menu-card button:hover {
-    background: rgba(255, 255, 255, 0.06);
-  }
-
-  .menu-card button.danger {
-    color: var(--danger);
-  }
-
-  .menu-card button.danger:hover {
-    background: rgba(var(--danger-rgb, 239, 68, 68), 0.15);
-  }
-
-  .icon-button {
-    width: 28px;
-    height: 28px;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border);
-    background: rgba(255, 255, 255, 0.02);
-    color: var(--text);
-    cursor: pointer;
-    display: grid;
-    place-items: center;
-    transition: border-color var(--transition-fast), background var(--transition-fast);
-  }
-
-  .icon-button:hover {
-    border-color: var(--accent);
-    background: rgba(255, 255, 255, 0.04);
-  }
-
-  .icon-button svg {
-    width: 16px;
-    height: 16px;
-    stroke: currentColor;
-    stroke-width: 1.6;
-    fill: none;
-  }
-
   .meta {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     font-size: 11px;
     color: var(--muted);
     white-space: nowrap;
@@ -525,27 +508,28 @@
   }
 
   .status-dot {
-    font-size: 8px;
-    line-height: 1;
+    width: 6px;
+    height: 6px;
+    flex-shrink: 0;
   }
 
   .status-dot.missing {
-    color: var(--danger);
+    fill: var(--danger);
   }
 
   .status-dot.unknown {
-    color: var(--muted);
+    fill: var(--muted);
   }
 
   .status-dot.modified {
-    color: var(--warning);
+    fill: var(--warning);
   }
 
   .status-dot.changes {
-    color: var(--accent);
+    fill: var(--accent);
   }
 
   .status-dot.clean {
-    color: var(--success);
+    fill: var(--success);
   }
 </style>

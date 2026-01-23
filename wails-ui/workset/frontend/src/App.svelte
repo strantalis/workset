@@ -31,7 +31,6 @@
       | 'create'
       | 'rename'
       | 'add-repo'
-      | 'remotes'
       | 'archive'
       | 'remove-workspace'
       | 'remove-repo'
@@ -49,7 +48,6 @@
       | 'create'
       | 'rename'
       | 'add-repo'
-      | 'remotes'
       | 'archive'
       | 'remove-workspace'
       | 'remove-repo',
@@ -107,11 +105,7 @@
           }
         }}
         onManageRepo={(workspaceId, repoName, action) => {
-          if (action === 'remotes') {
-            openAction('remotes', workspaceId, repoName)
-          } else {
-            openAction('remove-repo', workspaceId, repoName)
-          }
+          openAction('remove-repo', workspaceId, repoName)
         }}
       />
     </aside>
@@ -134,19 +128,27 @@
               : 'Create your first workspace to begin.'
           }
         />
-      {:else if hasRepo}
-        {#key $activeRepoId}
-          <RepoDiff
-            repo={$activeRepo!}
-            workspaceId={$activeWorkspaceId ?? ''}
-            onClose={clearRepo}
-          />
-        {/key}
       {:else}
-        <TerminalPane
-          workspaceId={$activeWorkspace?.id ?? ''}
-          workspaceName={$activeWorkspace?.name ?? 'Workspace'}
-        />
+        <div class="view-stack">
+          <div class="view-pane" class:active={!hasRepo} aria-hidden={hasRepo}>
+            <TerminalPane
+              workspaceId={$activeWorkspace?.id ?? ''}
+              workspaceName={$activeWorkspace?.name ?? 'Workspace'}
+              active={!hasRepo}
+            />
+          </div>
+          {#if hasRepo}
+            <div class="view-pane active" aria-hidden={!hasRepo}>
+              {#key $activeRepoId}
+                <RepoDiff
+                  repo={$activeRepo!}
+                  workspaceId={$activeWorkspaceId ?? ''}
+                  onClose={clearRepo}
+                />
+              {/key}
+            </div>
+          {/if}
+        </div>
       {/if}
     </main>
   </div>
@@ -288,8 +290,30 @@
   }
 
   .main {
-    padding: 24px;
+    padding: 12px 16px;
     overflow: hidden;
+  }
+
+  .view-stack {
+    position: relative;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .view-pane {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--transition-fast);
+  }
+
+  .view-pane.active {
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .error {

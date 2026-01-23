@@ -1,29 +1,40 @@
 <script lang="ts">
+  import Button from './ui/Button.svelte'
+
   interface Props {
     title: string;
     body: string;
+    actionLabel?: string;
+    onAction?: () => void;
   }
 
-  let { title, body }: Props = $props();
+  let {
+    title,
+    body,
+    actionLabel = 'Create workspace',
+    onAction
+  }: Props = $props();
 </script>
 
 <section class="empty">
   <div class="title">{title}</div>
   <div class="body">{body}</div>
-  <div class="actions">
-    <button type="button">Create workspace</button>
-  </div>
+  {#if onAction}
+    <div class="actions">
+      <Button variant="primary" onclick={onAction}>{actionLabel}</Button>
+    </div>
+  {/if}
 </section>
 
 <style>
   .empty {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--space-3);
     align-items: flex-start;
     background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 16px;
+    border-radius: var(--radius-lg);
     padding: 32px;
   }
 
@@ -39,31 +50,7 @@
 
   .actions {
     display: flex;
-    gap: 12px;
+    gap: var(--space-3);
+    margin-top: var(--space-2);
   }
-
-  button {
-    background: var(--accent);
-    border: none;
-    color: #081018;
-    padding: 8px 14px;
-    border-radius: var(--radius-md);
-    font-weight: 600;
-    cursor: pointer;
-    transition: background var(--transition-fast), transform var(--transition-fast);
-  }
-
-  button:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--accent) 85%, white);
-  }
-
-  button:active:not(:disabled) {
-    transform: scale(0.98);
-  }
-
-  button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
 </style>

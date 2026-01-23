@@ -27,6 +27,12 @@
       placeholder: 'acme'
     },
     {
+      id: 'remote',
+      label: 'Default remote',
+      description: 'Primary remote for repos without an alias override.',
+      placeholder: 'origin'
+    },
+    {
       id: 'baseBranch',
       label: 'Base branch',
       description: 'Fallback branch for repos that do not specify one.',

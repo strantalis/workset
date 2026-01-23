@@ -8,8 +8,10 @@ import (
 )
 
 type WorkspaceCreateRequest struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
+	Name   string   `json:"name"`
+	Path   string   `json:"path"`
+	Repos  []string `json:"repos,omitempty"`
+	Groups []string `json:"groups,omitempty"`
 }
 
 type WorkspaceCreateResponse struct {
@@ -38,18 +40,10 @@ type RepoRemoveRequest struct {
 	DeleteLocal    bool   `json:"deleteLocal"`
 }
 
-type RepoRemotesUpdateRequest struct {
-	WorkspaceID string `json:"workspaceId"`
-	RepoName    string `json:"repoName"`
-	BaseRemote  string `json:"baseRemote"`
-	BaseBranch  string `json:"baseBranch"`
-	WriteRemote string `json:"writeRemote"`
-	WriteBranch string `json:"writeBranch"`
-}
-
 type AliasUpsertRequest struct {
 	Name          string `json:"name"`
 	Source        string `json:"source"`
+	Remote        string `json:"remote"`
 	DefaultBranch string `json:"defaultBranch"`
 }
 
@@ -59,11 +53,8 @@ type GroupUpsertRequest struct {
 }
 
 type GroupMemberRequest struct {
-	GroupName   string `json:"groupName"`
-	RepoName    string `json:"repoName"`
-	BaseRemote  string `json:"baseRemote"`
-	WriteRemote string `json:"writeRemote"`
-	BaseBranch  string `json:"baseBranch"`
+	GroupName string `json:"groupName"`
+	RepoName  string `json:"repoName"`
 }
 
 func (a *App) CreateWorkspace(input WorkspaceCreateRequest) (WorkspaceCreateResponse, error) {
@@ -76,8 +67,10 @@ func (a *App) CreateWorkspace(input WorkspaceCreateRequest) (WorkspaceCreateResp
 	}
 
 	result, err := a.service.CreateWorkspace(ctx, worksetapi.WorkspaceCreateInput{
-		Name: input.Name,
-		Path: input.Path,
+		Name:   input.Name,
+		Path:   input.Path,
+		Repos:  input.Repos,
+		Groups: input.Groups,
 	})
 	if err != nil {
 		return WorkspaceCreateResponse{}, err
@@ -219,38 +212,6 @@ func (a *App) RemoveRepo(input RepoRemoveRequest) (worksetapi.RepoRemoveResultJS
 	return result.Payload, nil
 }
 
-func (a *App) UpdateRepoRemotes(input RepoRemotesUpdateRequest) (worksetapi.RepoRemotesUpdateResultJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
-
-	baseRemote := input.BaseRemote
-	writeRemote := input.WriteRemote
-	baseBranch := input.BaseBranch
-	writeBranch := input.WriteBranch
-
-	result, _, err := a.service.UpdateRepoRemotes(ctx, worksetapi.RepoRemotesUpdateInput{
-		Workspace:      worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
-		Name:           input.RepoName,
-		BaseRemote:     baseRemote,
-		WriteRemote:    writeRemote,
-		BaseBranch:     baseBranch,
-		WriteBranch:    writeBranch,
-		BaseRemoteSet:  strings.TrimSpace(baseRemote) != "",
-		WriteRemoteSet: strings.TrimSpace(writeRemote) != "",
-		BaseBranchSet:  strings.TrimSpace(baseBranch) != "",
-		WriteBranchSet: strings.TrimSpace(writeBranch) != "",
-	})
-	if err != nil {
-		return worksetapi.RepoRemotesUpdateResultJSON{}, err
-	}
-	return result, nil
-}
-
 func (a *App) ListAliases() ([]worksetapi.AliasJSON, error) {
 	ctx := a.ctx
 	if ctx == nil {
@@ -277,8 +238,10 @@ func (a *App) CreateAlias(input AliasUpsertRequest) (worksetapi.AliasMutationRes
 	result, _, err := a.service.CreateAlias(ctx, worksetapi.AliasUpsertInput{
 		Name:             input.Name,
 		Source:           input.Source,
+		Remote:           input.Remote,
 		DefaultBranch:    input.DefaultBranch,
 		SourceSet:        strings.TrimSpace(input.Source) != "",
+		RemoteSet:        strings.TrimSpace(input.Remote) != "",
 		DefaultBranchSet: strings.TrimSpace(input.DefaultBranch) != "",
 	})
 	return result, err
@@ -295,8 +258,10 @@ func (a *App) UpdateAlias(input AliasUpsertRequest) (worksetapi.AliasMutationRes
 	result, _, err := a.service.UpdateAlias(ctx, worksetapi.AliasUpsertInput{
 		Name:             input.Name,
 		Source:           input.Source,
+		Remote:           input.Remote,
 		DefaultBranch:    input.DefaultBranch,
 		SourceSet:        strings.TrimSpace(input.Source) != "",
+		RemoteSet:        strings.TrimSpace(input.Remote) != "",
 		DefaultBranchSet: strings.TrimSpace(input.DefaultBranch) != "",
 	})
 	return result, err
@@ -392,11 +357,8 @@ func (a *App) AddGroupMember(input GroupMemberRequest) (worksetapi.GroupJSON, er
 		a.service = worksetapi.NewService(worksetapi.Options{})
 	}
 	result, _, err := a.service.AddGroupMember(ctx, worksetapi.GroupMemberInput{
-		GroupName:   input.GroupName,
-		RepoName:    input.RepoName,
-		BaseRemote:  input.BaseRemote,
-		WriteRemote: input.WriteRemote,
-		BaseBranch:  input.BaseBranch,
+		GroupName: input.GroupName,
+		RepoName:  input.RepoName,
 	})
 	return result, err
 }

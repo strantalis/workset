@@ -1,5 +1,17 @@
 export namespace config {
 	
+	export class GroupMember {
+	    repo: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GroupMember(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.repo = source["repo"];
+	    }
+	}
 	export class RemoteConfig {
 	    name: string;
 	    default_branch?: string;
@@ -46,18 +58,109 @@ export namespace config {
 		    return a;
 		}
 	}
-	export class GroupMember {
-	    repo: string;
-	    remotes: Remotes;
+
+}
+
+export namespace main {
+	
+	export class AliasUpsertRequest {
+	    name: string;
+	    source: string;
+	    remote: string;
+	    defaultBranch: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new GroupMember(source);
+	        return new AliasUpsertRequest(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.repo = source["repo"];
-	        this.remotes = this.convertValues(source["remotes"], Remotes);
+	        this.name = source["name"];
+	        this.source = source["source"];
+	        this.remote = source["remote"];
+	        this.defaultBranch = source["defaultBranch"];
+	    }
+	}
+	export class GroupMemberRequest {
+	    groupName: string;
+	    repoName: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GroupMemberRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.groupName = source["groupName"];
+	        this.repoName = source["repoName"];
+	    }
+	}
+	export class GroupUpsertRequest {
+	    name: string;
+	    description: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GroupUpsertRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.description = source["description"];
+	    }
+	}
+	export class PullRequestCreateRequest {
+	    workspaceId: string;
+	    repoId: string;
+	    title: string;
+	    body: string;
+	    base?: string;
+	    head?: string;
+	    draft: boolean;
+	    autoCommit: boolean;
+	    autoPush: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PullRequestCreateRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.workspaceId = source["workspaceId"];
+	        this.repoId = source["repoId"];
+	        this.title = source["title"];
+	        this.body = source["body"];
+	        this.base = source["base"];
+	        this.head = source["head"];
+	        this.draft = source["draft"];
+	        this.autoCommit = source["autoCommit"];
+	        this.autoPush = source["autoPush"];
+	    }
+	}
+	export class PullRequestGenerateRequest {
+	    workspaceId: string;
+	    repoId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PullRequestGenerateRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.workspaceId = source["workspaceId"];
+	        this.repoId = source["repoId"];
+	    }
+	}
+	export class PullRequestReviewCommentsPayload {
+	    comments: worksetapi.PullRequestReviewCommentJSON[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PullRequestReviewCommentsPayload(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.comments = this.convertValues(source["comments"], worksetapi.PullRequestReviewCommentJSON);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -78,60 +181,86 @@ export namespace config {
 		    return a;
 		}
 	}
-	
-
-}
-
-export namespace main {
-	
-	export class AliasUpsertRequest {
-	    name: string;
-	    source: string;
-	    defaultBranch: string;
+	export class PullRequestReviewsRequest {
+	    workspaceId: string;
+	    repoId: string;
+	    number?: number;
+	    branch?: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new AliasUpsertRequest(source);
+	        return new PullRequestReviewsRequest(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.source = source["source"];
-	        this.defaultBranch = source["defaultBranch"];
+	        this.workspaceId = source["workspaceId"];
+	        this.repoId = source["repoId"];
+	        this.number = source["number"];
+	        this.branch = source["branch"];
 	    }
 	}
-	export class GroupMemberRequest {
-	    groupName: string;
-	    repoName: string;
-	    baseRemote: string;
-	    writeRemote: string;
-	    baseBranch: string;
+	export class PullRequestStatusPayload {
+	    pullRequest: worksetapi.PullRequestStatusJSON;
+	    checks: worksetapi.PullRequestCheckJSON[];
 	
 	    static createFrom(source: any = {}) {
-	        return new GroupMemberRequest(source);
+	        return new PullRequestStatusPayload(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.groupName = source["groupName"];
-	        this.repoName = source["repoName"];
-	        this.baseRemote = source["baseRemote"];
-	        this.writeRemote = source["writeRemote"];
-	        this.baseBranch = source["baseBranch"];
+	        this.pullRequest = this.convertValues(source["pullRequest"], worksetapi.PullRequestStatusJSON);
+	        this.checks = this.convertValues(source["checks"], worksetapi.PullRequestCheckJSON);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class PullRequestStatusRequest {
+	    workspaceId: string;
+	    repoId: string;
+	    number?: number;
+	    branch?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PullRequestStatusRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.workspaceId = source["workspaceId"];
+	        this.repoId = source["repoId"];
+	        this.number = source["number"];
+	        this.branch = source["branch"];
 	    }
 	}
-	export class GroupUpsertRequest {
-	    name: string;
-	    description: string;
+	export class PullRequestTrackedRequest {
+	    workspaceId: string;
+	    repoId: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new GroupUpsertRequest(source);
+	        return new PullRequestTrackedRequest(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.description = source["description"];
+	        this.workspaceId = source["workspaceId"];
+	        this.repoId = source["repoId"];
 	    }
 	}
 	export class RepoAddRequest {
@@ -274,28 +403,6 @@ export namespace main {
 	        this.binary = source["binary"];
 	    }
 	}
-	export class RepoRemotesUpdateRequest {
-	    workspaceId: string;
-	    repoName: string;
-	    baseRemote: string;
-	    baseBranch: string;
-	    writeRemote: string;
-	    writeBranch: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new RepoRemotesUpdateRequest(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.workspaceId = source["workspaceId"];
-	        this.repoName = source["repoName"];
-	        this.baseRemote = source["baseRemote"];
-	        this.baseBranch = source["baseBranch"];
-	        this.writeRemote = source["writeRemote"];
-	        this.writeBranch = source["writeBranch"];
-	    }
-	}
 	export class RepoRemoveRequest {
 	    workspaceId: string;
 	    repoName: string;
@@ -318,11 +425,8 @@ export namespace main {
 	    id: string;
 	    name: string;
 	    path: string;
-	    branch?: string;
-	    baseRemote?: string;
-	    baseBranch?: string;
-	    writeRemote?: string;
-	    writeBranch?: string;
+	    remote?: string;
+	    defaultBranch?: string;
 	    dirty: boolean;
 	    missing: boolean;
 	    statusKnown: boolean;
@@ -336,17 +440,15 @@ export namespace main {
 	        this.id = source["id"];
 	        this.name = source["name"];
 	        this.path = source["path"];
-	        this.branch = source["branch"];
-	        this.baseRemote = source["baseRemote"];
-	        this.baseBranch = source["baseBranch"];
-	        this.writeRemote = source["writeRemote"];
-	        this.writeBranch = source["writeBranch"];
+	        this.remote = source["remote"];
+	        this.defaultBranch = source["defaultBranch"];
 	        this.dirty = source["dirty"];
 	        this.missing = source["missing"];
 	        this.statusKnown = source["statusKnown"];
 	    }
 	}
 	export class SettingsDefaults {
+	    remote: string;
 	    baseBranch: string;
 	    workspace: string;
 	    workspaceRoot: string;
@@ -359,6 +461,8 @@ export namespace main {
 	    sessionTmuxRight: string;
 	    sessionScreenHard: string;
 	    agent: string;
+	    terminalRenderer: string;
+	    terminalIdleTimeout: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SettingsDefaults(source);
@@ -366,6 +470,7 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.remote = source["remote"];
 	        this.baseBranch = source["baseBranch"];
 	        this.workspace = source["workspace"];
 	        this.workspaceRoot = source["workspaceRoot"];
@@ -378,6 +483,8 @@ export namespace main {
 	        this.sessionTmuxRight = source["sessionTmuxRight"];
 	        this.sessionScreenHard = source["sessionScreenHard"];
 	        this.agent = source["agent"];
+	        this.terminalRenderer = source["terminalRenderer"];
+	        this.terminalIdleTimeout = source["terminalIdleTimeout"];
 	    }
 	}
 	export class SettingsSnapshot {
@@ -412,9 +519,31 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class TerminalBacklogPayload {
+	    workspaceId: string;
+	    data: string;
+	    nextOffset: number;
+	    truncated: boolean;
+	    source?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TerminalBacklogPayload(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.workspaceId = source["workspaceId"];
+	        this.data = source["data"];
+	        this.nextOffset = source["nextOffset"];
+	        this.truncated = source["truncated"];
+	        this.source = source["source"];
+	    }
+	}
 	export class WorkspaceCreateRequest {
 	    name: string;
 	    path: string;
+	    repos?: string[];
+	    groups?: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new WorkspaceCreateRequest(source);
@@ -424,6 +553,8 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
 	        this.path = source["path"];
+	        this.repos = source["repos"];
+	        this.groups = source["groups"];
 	    }
 	}
 	export class WorkspaceCreateResponse {
@@ -525,6 +656,7 @@ export namespace worksetapi {
 	    name: string;
 	    url?: string;
 	    path?: string;
+	    remote?: string;
 	    default_branch?: string;
 	
 	    static createFrom(source: any = {}) {
@@ -536,6 +668,7 @@ export namespace worksetapi {
 	        this.name = source["name"];
 	        this.url = source["url"];
 	        this.path = source["path"];
+	        this.remote = source["remote"];
 	        this.default_branch = source["default_branch"];
 	    }
 	}
@@ -655,6 +788,184 @@ export namespace worksetapi {
 	        this.reason = source["reason"];
 	    }
 	}
+	export class PullRequestCheckJSON {
+	    name: string;
+	    status: string;
+	    conclusion?: string;
+	    details_url?: string;
+	    started_at?: string;
+	    completed_at?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PullRequestCheckJSON(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.status = source["status"];
+	        this.conclusion = source["conclusion"];
+	        this.details_url = source["details_url"];
+	        this.started_at = source["started_at"];
+	        this.completed_at = source["completed_at"];
+	    }
+	}
+	export class PullRequestCreatedJSON {
+	    repo: string;
+	    number: number;
+	    url: string;
+	    title: string;
+	    body?: string;
+	    draft: boolean;
+	    state: string;
+	    base_repo: string;
+	    base_branch: string;
+	    head_repo: string;
+	    head_branch: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PullRequestCreatedJSON(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.repo = source["repo"];
+	        this.number = source["number"];
+	        this.url = source["url"];
+	        this.title = source["title"];
+	        this.body = source["body"];
+	        this.draft = source["draft"];
+	        this.state = source["state"];
+	        this.base_repo = source["base_repo"];
+	        this.base_branch = source["base_branch"];
+	        this.head_repo = source["head_repo"];
+	        this.head_branch = source["head_branch"];
+	    }
+	}
+	export class PullRequestGeneratedJSON {
+	    title: string;
+	    body: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PullRequestGeneratedJSON(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.title = source["title"];
+	        this.body = source["body"];
+	    }
+	}
+	export class PullRequestReviewCommentJSON {
+	    id: number;
+	    review_id?: number;
+	    author?: string;
+	    body: string;
+	    path: string;
+	    line?: number;
+	    side?: string;
+	    commit_id?: string;
+	    original_commit_id?: string;
+	    original_line?: number;
+	    original_start_line?: number;
+	    outdated: boolean;
+	    url?: string;
+	    created_at?: string;
+	    updated_at?: string;
+	    in_reply_to?: number;
+	    resolved?: boolean;
+	    reply?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PullRequestReviewCommentJSON(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.review_id = source["review_id"];
+	        this.author = source["author"];
+	        this.body = source["body"];
+	        this.path = source["path"];
+	        this.line = source["line"];
+	        this.side = source["side"];
+	        this.commit_id = source["commit_id"];
+	        this.original_commit_id = source["original_commit_id"];
+	        this.original_line = source["original_line"];
+	        this.original_start_line = source["original_start_line"];
+	        this.outdated = source["outdated"];
+	        this.url = source["url"];
+	        this.created_at = source["created_at"];
+	        this.updated_at = source["updated_at"];
+	        this.in_reply_to = source["in_reply_to"];
+	        this.resolved = source["resolved"];
+	        this.reply = source["reply"];
+	    }
+	}
+	export class PullRequestStatusJSON {
+	    repo: string;
+	    number: number;
+	    url: string;
+	    title: string;
+	    state: string;
+	    draft: boolean;
+	    base_repo: string;
+	    base_branch: string;
+	    head_repo: string;
+	    head_branch: string;
+	    mergeable?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PullRequestStatusJSON(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.repo = source["repo"];
+	        this.number = source["number"];
+	        this.url = source["url"];
+	        this.title = source["title"];
+	        this.state = source["state"];
+	        this.draft = source["draft"];
+	        this.base_repo = source["base_repo"];
+	        this.base_branch = source["base_branch"];
+	        this.head_repo = source["head_repo"];
+	        this.head_branch = source["head_branch"];
+	        this.mergeable = source["mergeable"];
+	    }
+	}
+	export class PullRequestTrackedJSON {
+	    found: boolean;
+	    pull_request?: PullRequestCreatedJSON;
+	
+	    static createFrom(source: any = {}) {
+	        return new PullRequestTrackedJSON(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.found = source["found"];
+	        this.pull_request = this.convertValues(source["pull_request"], PullRequestCreatedJSON);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class RepoAddResultJSON {
 	    status: string;
 	    workspace: string;
@@ -694,26 +1005,6 @@ export namespace worksetapi {
 		    }
 		    return a;
 		}
-	}
-	export class RepoRemotesUpdateResultJSON {
-	    status: string;
-	    workspace: string;
-	    repo: string;
-	    base: string;
-	    write: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new RepoRemotesUpdateResultJSON(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.status = source["status"];
-	        this.workspace = source["workspace"];
-	        this.repo = source["repo"];
-	        this.base = source["base"];
-	        this.write = source["write"];
-	    }
 	}
 	export class RepoRemoveDeletedJSON {
 	    worktrees: boolean;

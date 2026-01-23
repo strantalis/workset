@@ -3,6 +3,7 @@
   import {createAlias, deleteAlias, listAliases, updateAlias} from '../../../api'
   import type {Alias} from '../../../types'
   import SettingsSection from '../SettingsSection.svelte'
+  import Button from '../../ui/Button.svelte'
 
   interface Props {
     onAliasCountChange: (count: number) => void;
@@ -19,6 +20,7 @@
 
   let formName = $state('')
   let formSource = $state('')
+  let formRemote = $state('')
   let formBranch = $state('')
 
   const formatError = (err: unknown): string => {
@@ -40,6 +42,7 @@
     isNew = false
     formName = alias.name
     formSource = alias.url ?? alias.path ?? ''
+    formRemote = alias.remote ?? ''
     formBranch = alias.default_branch ?? ''
     error = null
     success = null
@@ -50,6 +53,7 @@
     isNew = true
     formName = ''
     formSource = ''
+    formRemote = ''
     formBranch = ''
     error = null
     success = null
@@ -60,6 +64,7 @@
     isNew = false
     formName = ''
     formSource = ''
+    formRemote = ''
     formBranch = ''
     error = null
     success = null
@@ -68,6 +73,7 @@
   const handleSave = async (): Promise<void> => {
     const name = formName.trim()
     const source = formSource.trim()
+    const remote = formRemote.trim()
     const branch = formBranch.trim()
 
     if (!name) {
@@ -85,10 +91,10 @@
 
     try {
       if (isNew) {
-        await createAlias(name, source, branch)
+        await createAlias(name, source, remote, branch)
         success = `Created ${name}.`
       } else {
-        await updateAlias(name, source, branch)
+        await updateAlias(name, source, remote, branch)
         success = `Updated ${name}.`
       }
       await loadAliases()
@@ -119,6 +125,7 @@
       isNew = false
       formName = ''
       formSource = ''
+      formRemote = ''
       formBranch = ''
     } catch (err) {
       error = formatError(err)
@@ -147,7 +154,7 @@
   <div class="manager">
     <div class="list-header">
       <span class="list-count">{aliases.length} alias{aliases.length === 1 ? '' : 'es'}</span>
-      <button class="ghost small" type="button" onclick={startNew}>+ New</button>
+      <Button variant="ghost" size="sm" onclick={startNew}>+ New</Button>
     </div>
 
     {#if aliases.length > 0}
@@ -172,7 +179,7 @@
     {:else if !isNew}
       <div class="empty">
         <p>No aliases defined yet.</p>
-        <button class="ghost" type="button" onclick={startNew}>Create your first alias</button>
+        <Button variant="ghost" onclick={startNew}>Create your first alias</Button>
       </div>
     {/if}
 
@@ -210,6 +217,14 @@
             />
           </label>
           <label class="field">
+            <span>Remote (optional)</span>
+            <input
+              type="text"
+              bind:value={formRemote}
+              placeholder="origin"
+            />
+          </label>
+          <label class="field">
             <span>Default branch</span>
             <input
               type="text"
@@ -220,17 +235,17 @@
         </div>
         <div class="actions">
           {#if !isNew && selectedAlias}
-            <button class="danger" type="button" onclick={handleDelete} disabled={loading}>
+            <Button variant="danger" onclick={handleDelete} disabled={loading}>
               Delete
-            </button>
+            </Button>
           {/if}
           <div class="spacer"></div>
-          <button class="ghost" type="button" onclick={cancelEdit} disabled={loading}>
+          <Button variant="ghost" onclick={cancelEdit} disabled={loading}>
             Cancel
-          </button>
-          <button class="primary" type="button" onclick={handleSave} disabled={loading}>
+          </Button>
+          <Button variant="primary" onclick={handleSave} disabled={loading}>
             {loading ? 'Saving...' : isNew ? 'Create alias' : 'Save alias'}
-          </button>
+          </Button>
         </div>
       </div>
     {:else if aliases.length > 0}
@@ -243,14 +258,14 @@
   .manager {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--space-3);
   }
 
   .list-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .list-count {
@@ -261,12 +276,12 @@
   .list {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-1);
     max-height: 200px;
     overflow-y: auto;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    padding: 4px;
+    padding: var(--space-1);
     background: var(--panel);
   }
 
@@ -274,12 +289,13 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    padding: 10px 12px;
+    gap: var(--space-3);
+    padding: 10px var(--space-3);
     border: none;
     background: transparent;
     color: var(--text);
     font-size: 13px;
+    font-family: inherit;
     text-align: left;
     border-radius: var(--radius-sm);
     cursor: pointer;
@@ -314,8 +330,8 @@
   .detail {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 16px;
+    gap: var(--space-3);
+    padding: var(--space-4);
     background: var(--panel-soft);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
@@ -332,7 +348,7 @@
   .form {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--space-3);
   }
 
   .field {
@@ -348,8 +364,9 @@
     border: 1px solid rgba(255, 255, 255, 0.08);
     color: var(--text);
     border-radius: var(--radius-md);
-    padding: 10px 12px;
+    padding: 10px var(--space-3);
     font-size: 13px;
+    font-family: inherit;
     transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   }
 
@@ -367,8 +384,8 @@
   .actions {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding-top: 8px;
+    gap: var(--space-2);
+    padding-top: var(--space-2);
     border-top: 1px solid var(--border);
   }
 
@@ -378,7 +395,7 @@
 
   .message {
     font-size: 13px;
-    padding: 8px 12px;
+    padding: var(--space-2) var(--space-3);
     border-radius: var(--radius-md);
   }
 
@@ -396,7 +413,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
+    gap: var(--space-3);
     padding: 32px;
     background: var(--panel-soft);
     border: 1px solid var(--border);
@@ -410,79 +427,10 @@
     font-size: 14px;
   }
 
-  .ghost {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 8px 14px;
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    font-size: 13px;
-    transition: border-color var(--transition-fast), background var(--transition-fast);
-  }
-
-  .ghost.small {
-    padding: 6px 10px;
-    font-size: 12px;
-  }
-
-  .ghost:hover:not(:disabled) {
-    border-color: var(--accent);
-    background: rgba(255, 255, 255, 0.04);
-  }
-
-  .ghost:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .primary {
-    background: var(--accent);
-    border: none;
-    color: #081018;
-    padding: 8px 14px;
-    border-radius: var(--radius-md);
-    font-weight: 600;
-    cursor: pointer;
-    font-size: 13px;
-    transition: background var(--transition-fast);
-  }
-
-  .primary:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--accent) 85%, white);
-  }
-
-  .primary:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .danger {
-    background: var(--danger-subtle);
-    border: 1px solid var(--danger-soft);
-    color: #ff9a9a;
-    padding: 8px 14px;
-    border-radius: var(--radius-md);
-    font-weight: 600;
-    cursor: pointer;
-    font-size: 13px;
-    transition: background var(--transition-fast), border-color var(--transition-fast);
-  }
-
-  .danger:hover:not(:disabled) {
-    background: var(--danger-soft);
-    border-color: var(--danger);
-  }
-
-  .danger:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
   .hint {
     font-size: 13px;
     color: var(--muted);
-    padding: 16px;
+    padding: var(--space-4);
     text-align: center;
     background: var(--panel-soft);
     border: 1px solid var(--border);

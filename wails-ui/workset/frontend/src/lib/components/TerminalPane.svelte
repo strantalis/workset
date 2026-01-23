@@ -2,21 +2,26 @@
   import {onDestroy, onMount, untrack} from 'svelte'
   import {Terminal} from '@xterm/xterm'
   import {FitAddon} from '@xterm/addon-fit'
+  import {WebglAddon} from '@xterm/addon-webgl'
   import '@xterm/xterm/css/xterm.css'
   import {EventsOn, EventsOff} from '../../../wailsjs/runtime/runtime'
-  import {fetchAgentAvailability, fetchSettings} from '../api'
+  import {fetchAgentAvailability, fetchSettings, fetchTerminalBacklog} from '../api'
   import {
     ResizeWorkspaceTerminal,
     StartWorkspaceTerminal,
     WriteWorkspaceTerminal
   } from '../../../wailsjs/go/main/App'
+  import type {AgentOption} from '../types'
+  import Modal from './Modal.svelte'
+  import AgentSelector from './AgentSelector.svelte'
 
   interface Props {
     workspaceId: string;
     workspaceName: string;
+    active?: boolean;
   }
 
-  let { workspaceId, workspaceName }: Props = $props();
+  let { workspaceId, workspaceName, active = true }: Props = $props();
 
   let terminalContainer: HTMLDivElement | null = $state(null)
   let resizeObserver: ResizeObserver | null = null
@@ -30,6 +35,9 @@
 
   const terminals = new Map<string, TerminalHandle>()
   const outputQueues = new Map<string, {chunks: string[]; bytes: number; scheduled: boolean}>()
+  const backlogLoaded = new Set<string>()
+  const backlogLoading = new Set<string>()
+  const pendingBacklogOutput = new Map<string, string[]>()
   const lastDims = new Map<string, {cols: number; rows: number}>()
   const startupTimers = new Map<string, number>()
   const startInFlight = new Set<string>()
@@ -47,11 +55,14 @@
   let resizeScheduled = false
   let resizeTimer: number | null = null
   let debugInterval: number | null = null
+  let rendererPreference = $state<'auto' | 'webgl' | 'canvas'>('auto')
   let statusMap: Record<string, string> = $state({})
   let messageMap: Record<string, string> = $state({})
   let inputMap: Record<string, boolean> = $state({})
   let healthMap: Record<string, 'unknown' | 'checking' | 'ok' | 'stale'> = $state({})
   let healthMessageMap: Record<string, string> = $state({})
+  let rendererMap: Record<string, 'unknown' | 'webgl' | 'canvas'> = $state({})
+  let rendererModeMap: Record<string, 'auto' | 'webgl' | 'canvas'> = $state({})
   let debugEnabled = $state(false)
   let debugStats = $state({
     bytesIn: 0,
@@ -66,6 +77,10 @@
   let activeHealth = $derived(workspaceId ? healthMap[workspaceId] ?? 'unknown' : 'unknown')
   let activeHealthMessage =
     $derived(workspaceId ? healthMessageMap[workspaceId] ?? '' : '')
+  let activeRenderer =
+    $derived(workspaceId ? rendererMap[workspaceId] ?? 'unknown' : 'unknown')
+  let activeRendererMode =
+    $derived(workspaceId ? rendererModeMap[workspaceId] ?? 'auto' : 'auto')
   let hasUserInput = $derived(workspaceId ? inputMap[workspaceId] ?? false : false)
   const listeners = new Set<string>()
   const OUTPUT_FLUSH_BUDGET = 128 * 1024
@@ -73,12 +88,6 @@
   const RESIZE_DEBOUNCE_MS = 100
   const HEALTH_TIMEOUT_MS = 1200
   const STARTUP_OUTPUT_TIMEOUT_MS = 2000
-
-  type AgentOption = {
-    id: string
-    label: string
-    command: string
-  }
 
   const agentOptions: AgentOption[] = [
     {id: 'codex', label: 'Codex', command: 'codex'},
@@ -106,11 +115,16 @@
     try {
       const settings = await fetchSettings()
       const agent = settings.defaults?.agent?.trim()
+      const renderer = settings.defaults?.terminalRenderer?.trim().toLowerCase()
       if (agent) {
         selectedAgent = agent
       }
+      if (renderer === 'auto' || renderer === 'webgl' || renderer === 'canvas') {
+        rendererPreference = renderer
+      }
     } catch {
       selectedAgent = selectedAgent || 'codex'
+      rendererPreference = rendererPreference || 'auto'
     }
   }
 
@@ -328,17 +342,62 @@
     }, HEALTH_TIMEOUT_MS)
   }
 
+  const BASE_FONT_SIZE = 12
+  const BASE_LINE_HEIGHT = 1.333
+
+  const computeLineHeight = (fontSize: number, desired: number): number => {
+    const dpr =
+      typeof window !== 'undefined' && Number.isFinite(window.devicePixelRatio)
+        ? window.devicePixelRatio
+        : 1
+    const target = Math.round(fontSize * desired * dpr) / dpr
+    return Number((target / fontSize).toFixed(3))
+  }
+
+  const loadRendererAddon = async (
+    terminal: Terminal,
+    id: string,
+    mode: 'auto' | 'webgl' | 'canvas'
+  ): Promise<void> => {
+    rendererModeMap = {...rendererModeMap, [id]: mode}
+    if (mode === 'canvas') {
+      rendererMap = {...rendererMap, [id]: 'canvas'}
+      return
+    }
+    try {
+      if (typeof document !== 'undefined' && document.fonts?.ready) {
+        await document.fonts.ready
+      }
+    } catch {
+      // Font readiness is best-effort; continue if unavailable.
+    }
+
+    try {
+      const webglAddon = new WebglAddon(true)
+      webglAddon.onContextLoss(() => {
+        webglAddon.dispose()
+        rendererMap = {...rendererMap, [id]: 'canvas'}
+      })
+      terminal.loadAddon(webglAddon)
+      rendererMap = {...rendererMap, [id]: 'webgl'}
+    } catch {
+      rendererMap = {...rendererMap, [id]: 'canvas'}
+      // Canvas renderer remains as default.
+    }
+  }
+
   const createTerminal = (): Terminal => {
     const themeBackground = getToken('--panel-strong', '#111c29')
     const themeForeground = getToken('--text', '#eef3f9')
     const themeCursor = getToken('--accent', '#2d8cff')
     const themeSelection = getToken('--accent', '#2d8cff')
-    const fontMono = getToken('--font-mono', 'Menlo, Consolas, monospace')
+    const fontMono = getToken('--font-mono', '"JetBrains Mono", Menlo, Consolas, monospace')
 
     return new Terminal({
       fontFamily: fontMono,
-      fontSize: 12,
-      lineHeight: 1.4,
+      fontSize: BASE_FONT_SIZE,
+      // Keep fontSize * lineHeight * dpr an integer to avoid subpixel row artifacts.
+      lineHeight: computeLineHeight(BASE_FONT_SIZE, BASE_LINE_HEIGHT),
       cursorBlink: true,
       scrollback: 4000,
       theme: {
@@ -356,6 +415,16 @@
       const terminal = createTerminal()
       const fitAddon = new FitAddon()
       terminal.loadAddon(fitAddon)
+      terminal.attachCustomKeyEventHandler((event) => {
+        if (event.key === 'Enter' && event.shiftKey) {
+          inputMap = {...inputMap, [id]: true}
+          void beginTerminal(id)
+          // Codex CLI expects Ctrl+J (LF) for newline-in-input.
+          sendInput(id, '\x0a')
+          return false
+        }
+        return true
+      })
       const dataDisposable = terminal.onData((data) => {
         inputMap = {...inputMap, [id]: true}
         void beginTerminal(id)
@@ -385,6 +454,7 @@
       if (!terminalContainer.contains(handle.container)) {
         terminalContainer.appendChild(handle.container)
         handle.terminal.open(handle.container)
+        void loadRendererAddon(handle.terminal, id, rendererPreference)
       }
       handle.container.setAttribute('data-active', 'true')
       handle.fitAddon.fit()
@@ -392,7 +462,9 @@
       if (dims) {
         void ResizeWorkspaceTerminal(id, dims.cols, dims.rows).catch(() => undefined)
       }
-      handle.terminal.focus()
+      if (active) {
+        handle.terminal.focus()
+      }
       flushOutput(id, false)
     }
     return handle
@@ -403,6 +475,12 @@
       const handler = (payload: {workspaceId: string; data: string}): void => {
         const handle = terminals.get(payload.workspaceId)
         if (!handle) return
+        if (!backlogLoaded.has(payload.workspaceId)) {
+          const pending = pendingBacklogOutput.get(payload.workspaceId) ?? []
+          pending.push(payload.data)
+          pendingBacklogOutput.set(payload.workspaceId, pending)
+          return
+        }
         enqueueOutput(payload.workspaceId, payload.data)
       }
       EventsOn('terminal:data', handler)
@@ -473,12 +551,19 @@
     const token = ++initCounter
     ensureListener()
     attachTerminal(id, name)
+    void loadBacklog(id)
     if (token !== initCounter) return
     pendingHealthCheck.delete(id)
     if (!startedSessions.has(id) && !startInFlight.has(id)) {
       statusMap = {...statusMap, [id]: 'standby'}
       messageMap = {...messageMap, [id]: ''}
       setHealth(id, 'unknown')
+      if (!rendererMap[id]) {
+        rendererMap = {...rendererMap, [id]: 'unknown'}
+      }
+      if (!rendererModeMap[id]) {
+        rendererModeMap = {...rendererModeMap, [id]: rendererPreference}
+      }
       inputMap = {...inputMap, [id]: false}
     }
   }
@@ -486,6 +571,32 @@
   const restartTerminal = async (): Promise<void> => {
     if (!workspaceId) return
     await beginTerminal(workspaceId)
+  }
+
+  const loadBacklog = async (id: string): Promise<void> => {
+    if (!id || backlogLoaded.has(id) || backlogLoading.has(id)) {
+      return
+    }
+    backlogLoading.add(id)
+    try {
+      const result = await fetchTerminalBacklog(id, -1)
+      if (result?.data) {
+        const handle = terminals.get(id)
+        if (handle) {
+          handle.terminal.write(result.data)
+        }
+      }
+    } catch {
+      // Backlog is best-effort; fall through to live stream.
+    } finally {
+      backlogLoaded.add(id)
+      backlogLoading.delete(id)
+      const pending = pendingBacklogOutput.get(id)
+      if (pending && pending.length > 0) {
+        pendingBacklogOutput.delete(id)
+        enqueueOutput(id, pending.join(''))
+      }
+    }
   }
 
   onMount(() => {
@@ -504,6 +615,7 @@
         resizeScheduled = false
         const handle = terminals.get(workspaceId)
         if (!handle) return
+        handle.terminal.options.lineHeight = computeLineHeight(BASE_FONT_SIZE, BASE_LINE_HEIGHT)
         handle.fitAddon.fit()
         if (!startedSessions.has(workspaceId)) return
         const dims = handle.fitAddon.proposeDimensions()
@@ -562,30 +674,46 @@
     <div class="terminal-actions">
       {#if hasUserInput}
         <button
-          class="ghost agent-reset"
+          class="icon-btn"
           type="button"
+          title="Show agent launcher"
           onclick={() => {
             if (!workspaceId) return
             inputMap = {...inputMap, [workspaceId]: false}
           }}
         >
-          Show launcher
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="4" y="4" width="6" height="6" />
+            <rect x="14" y="4" width="6" height="6" />
+            <rect x="4" y="14" width="6" height="6" />
+            <rect x="14" y="14" width="6" height="6" />
+          </svg>
         </button>
       {/if}
-      <span
-        class="health-pill"
-        class:ok={activeHealth === 'ok'}
-        class:stale={activeHealth === 'stale'}
-        class:checking={activeHealth === 'checking'}
+      <div
+        class="renderer-status"
+        class:fallback={activeRenderer === 'canvas' && activeRendererMode !== 'canvas'}
+        class:forced={activeRenderer === 'canvas' && activeRendererMode === 'canvas'}
+        title="Terminal renderer"
       >
-        {activeHealth === 'ok'
-          ? 'Healthy'
-          : activeHealth === 'checking'
-            ? 'Checking…'
-            : activeHealth === 'stale'
-              ? 'Needs sync'
-              : 'Unknown'}
-      </span>
+        {#if activeRenderer === 'webgl'}
+          Renderer: WebGL
+        {:else if activeRenderer === 'canvas'}
+          {#if activeRendererMode === 'canvas'}
+            Renderer: Canvas (forced)
+          {:else}
+            Renderer: Canvas (fallback)
+          {/if}
+        {:else}
+          Renderer: Unknown
+        {/if}
+      </div>
+      <div class="health-status" class:ok={activeHealth === 'ok'} class:stale={activeHealth === 'stale'} class:checking={activeHealth === 'checking'}>
+        <span class="health-dot"></span>
+        <span class="health-label">
+          {activeHealth === 'ok' ? 'Healthy' : activeHealth === 'checking' ? 'Checking' : activeHealth === 'stale' ? 'Stale' : 'Unknown'}
+        </span>
+      </div>
     </div>
   </header>
   <div class="terminal-body">
@@ -636,51 +764,43 @@
     <div class="terminal-surface">
       <div class="terminal-mount" bind:this={terminalContainer}></div>
       {#if activeStatus !== 'starting' && !hasUserInput}
-        <div class="agent-launcher">
-          <div class="agent-card">
-            <div class="agent-title">Start agent</div>
-            <div class="agent-subtitle">Runs inside this terminal.</div>
-            <div class="agent-controls">
-              <label class="agent-select">
-                <span>Default</span>
-                <select bind:value={selectedAgent}>
-                  {#each agentOptions as option}
-                    <option value={option.id}>
-                      {option.label}
-                      {#if availabilityStatus === 'ready' && agentAvailability[option.id] === false}
-                        (missing)
-                      {/if}
-                    </option>
-                  {/each}
-                </select>
-              </label>
+        <div class="agent-launcher-overlay">
+          <Modal title="Launch Agent" subtitle="Runs inside this terminal" size="sm">
+            <AgentSelector
+              agents={agentOptions}
+              selected={selectedAgent}
+              availability={agentAvailability}
+              {availabilityStatus}
+              onSelect={(id) => (selectedAgent = id)}
+            />
+            {#if availabilityStatus === 'ready' && !selectedAgentAvailable}
+              <div class="agent-warning">Install {selectedAgent} to launch this agent.</div>
+            {:else if availabilityStatus === 'error'}
+              <div class="agent-warning">Unable to check agent availability.</div>
+            {/if}
+            {#snippet footer()}
               <button
-                class="primary agent-start"
+                class="primary full-width"
                 type="button"
                 onclick={startAgent}
                 disabled={!selectedAgentAvailable}
               >
-                Start
+                Start {agentOptions.find((a) => a.id === selectedAgent)?.label ?? 'Agent'}
               </button>
-            </div>
-            {#if availabilityStatus === 'ready' && !selectedAgentAvailable}
-              <div class="agent-missing">Install {selectedAgent} to launch this agent.</div>
-            {:else if availabilityStatus === 'error'}
-              <div class="agent-missing">Unable to check agent availability.</div>
-            {/if}
-            <button
-              class="ghost agent-skip"
-              type="button"
-              onclick={() => {
-                if (!workspaceId) return
-                inputMap = {...inputMap, [workspaceId]: true}
-                void beginTerminal(workspaceId)
-              }}
-            >
-              Use terminal without agent
-            </button>
-            <div class="agent-hint">Change default in Settings → Session.</div>
-          </div>
+              <button
+                class="ghost-link"
+                type="button"
+                onclick={() => {
+                  if (!workspaceId) return
+                  inputMap = {...inputMap, [workspaceId]: true}
+                  void beginTerminal(workspaceId)
+                }}
+              >
+                Use terminal without agent
+              </button>
+              <div class="agent-hint">Change default in Settings → Session</div>
+            {/snippet}
+          </Modal>
         </div>
       {/if}
     </div>
@@ -691,7 +811,7 @@
   .terminal {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 8px;
     height: 100%;
   }
 
@@ -699,65 +819,117 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 12px;
+    min-height: 32px;
+    gap: 8px;
   }
 
   .title {
-    font-size: 18px;
-    font-weight: 600;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--muted);
   }
 
   .meta {
-    color: var(--muted);
-    font-size: 12px;
+    display: none;
   }
 
   .terminal-body {
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 12px;
-    padding: 16px;
+    padding: 8px;
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
     min-height: 0;
   }
 
   .terminal-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
   }
 
-  .agent-reset {
-    font-size: 12px;
-  }
-
-  .health-pill {
+  .renderer-status {
     font-size: 11px;
-    padding: 4px 8px;
-    border-radius: 999px;
+    color: var(--muted);
     border: 1px solid var(--border);
-    background: rgba(255, 255, 255, 0.04);
+    border-radius: 999px;
+    padding: 2px 8px;
+    background: rgba(255, 255, 255, 0.02);
+    letter-spacing: 0.02em;
+  }
+
+  .renderer-status.fallback {
+    color: var(--warning);
+    border-color: color-mix(in srgb, var(--warning) 50%, var(--border));
+    background: color-mix(in srgb, var(--warning) 12%, transparent);
+  }
+
+  .renderer-status.forced {
+    color: var(--muted);
+    border-color: var(--border);
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .icon-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--muted);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: border-color var(--transition-fast), color var(--transition-fast);
+  }
+
+  .icon-btn:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .icon-btn svg {
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+    stroke-width: 2;
+    fill: none;
+  }
+
+  .health-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
     color: var(--muted);
   }
 
-  .health-pill.ok {
-    border-color: var(--success-soft);
-    color: var(--success);
-    background: var(--success-subtle);
+  .health-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
   }
 
-  .health-pill.stale {
-    border-color: var(--warning-soft);
-    color: var(--warning);
-    background: var(--warning-subtle);
+  .health-status.ok .health-dot {
+    background: var(--success);
   }
 
-  .health-pill.checking {
-    border-color: var(--border);
-    color: var(--text);
+  .health-status.stale .health-dot {
+    background: var(--warning);
+  }
+
+  .health-status.checking .health-dot {
+    background: var(--accent);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
   }
 
   .terminal-status {
@@ -819,89 +991,79 @@
     background: var(--panel-strong);
     border-radius: 10px;
     overflow: hidden;
-    border: 1px solid var(--border);
     position: relative;
   }
 
   .terminal-mount {
     position: absolute;
-    inset: 0;
+    inset: 8px;
     z-index: 1;
   }
 
-  .agent-launcher {
+  .agent-launcher-overlay {
     position: absolute;
     inset: 0;
     display: grid;
     place-items: center;
     z-index: 2;
     pointer-events: auto;
-    background: radial-gradient(circle at center, rgba(9, 15, 26, 0.55), rgba(9, 15, 26, 0.15) 55%, transparent 70%);
+    background: radial-gradient(
+      circle at center,
+      rgba(9, 15, 26, 0.65),
+      rgba(9, 15, 26, 0.25) 55%,
+      transparent 70%
+    );
   }
 
-  .agent-card {
-    width: min(360px, 70%);
-    padding: 20px 22px;
-    border-radius: 16px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    background: rgba(11, 18, 30, 0.85);
-    box-shadow: 0 16px 50px rgba(0, 0, 0, 0.45);
-    text-align: center;
-    display: grid;
-    gap: 12px;
-  }
-
-  .agent-title {
-    font-size: 18px;
-    font-weight: 600;
-  }
-
-  .agent-subtitle {
-    font-size: 12px;
-    color: var(--muted);
-  }
-
-  .agent-controls {
-    display: grid;
-    gap: 10px;
-  }
-
-  .agent-select {
-    display: grid;
-    gap: 6px;
-    text-align: left;
-    font-size: 11px;
-    color: var(--muted);
-  }
-
-  .agent-select span {
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-  }
-
-  .agent-select select {
-    width: 100%;
-    padding: 8px 10px;
-    border-radius: var(--radius-sm);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.03);
-    color: var(--text);
-    font-size: 13px;
-  }
-
-  .agent-start {
-    width: 100%;
-    justify-self: center;
-  }
-
-  .agent-missing {
+  .agent-warning {
     font-size: 11px;
     color: var(--warning);
+    text-align: center;
   }
 
-  .agent-skip {
-    justify-self: center;
+  .full-width {
+    width: 100%;
+  }
+
+  .primary {
+    background: var(--accent);
+    color: #081018;
+    border: none;
+    padding: 10px 16px;
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition:
+      background var(--transition-fast),
+      transform var(--transition-fast);
+  }
+
+  .primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent) 85%, white);
+  }
+
+  .primary:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  .primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .ghost-link {
+    background: transparent;
+    border: none;
+    color: var(--muted);
     font-size: 12px;
+    cursor: pointer;
+    padding: 4px 8px;
+    transition: color var(--transition-fast);
+  }
+
+  .ghost-link:hover {
+    color: var(--text);
   }
 
   .agent-hint {

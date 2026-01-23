@@ -6,8 +6,26 @@
     FileDiffOptions,
     ParsedPatch
   } from '@pierre/diffs'
-  import type {Repo, RepoDiffFileSummary, RepoDiffSummary, RepoFileDiff} from '../types'
-  import {fetchRepoDiffSummary, fetchRepoFileDiff} from '../api'
+  import type {
+    PullRequestCreated,
+    PullRequestGenerated,
+    PullRequestReviewComment,
+    PullRequestStatusResult,
+    Repo,
+    RepoDiffFileSummary,
+    RepoDiffSummary,
+    RepoFileDiff
+  } from '../types'
+  import {
+    createPullRequest,
+    fetchTrackedPullRequest,
+    fetchPullRequestReviews,
+    fetchPullRequestStatus,
+    fetchRepoDiffSummary,
+    fetchRepoFileDiff,
+    generatePullRequestText,
+    sendPullRequestReviewsToTerminal
+  } from '../api'
 
   interface Props {
     repo: Repo;
@@ -38,6 +56,28 @@
   let diffModule: DiffsModule | null = null
   let rendererLoading = $state(false)
   let rendererError: string | null = $state(null)
+
+  let prTitle = $state('')
+  let prBody = $state('')
+  let prBase = $state('')
+  let prHead = $state('')
+  let prDraft = $state(false)
+  let prCreateError: string | null = $state(null)
+  let prCreateSuccess: PullRequestCreated | null = $state(null)
+  let prTracked: PullRequestCreated | null = $state(null)
+  let prCreating = $state(false)
+  let prGenerating = $state(false)
+
+  let prNumberInput = $state('')
+  let prBranchInput = $state('')
+  let prStatus: PullRequestStatusResult | null = $state(null)
+  let prStatusError: string | null = $state(null)
+  let prStatusLoading = $state(false)
+
+  let prReviews: PullRequestReviewComment[] = $state([])
+  let prReviewsError: string | null = $state(null)
+  let prReviewsLoading = $state(false)
+  let prReviewsSent = $state(false)
 
   let summaryRequest = 0
   let fileRequest = 0
@@ -70,8 +110,127 @@
     }
   }
 
-  const formatError = (err: unknown, fallback: string): string =>
-    err instanceof Error ? err.message : fallback
+  const formatError = (err: unknown, fallback: string): string => {
+    if (err instanceof Error) return err.message
+    if (typeof err === 'string') return err
+    if (err && typeof err === 'object' && 'message' in err) {
+      const message = (err as {message?: string}).message
+      if (typeof message === 'string') return message
+    }
+    return fallback
+  }
+
+  const parseNumber = (value: string): number | undefined => {
+    const parsed = Number.parseInt(value.trim(), 10)
+    return Number.isFinite(parsed) ? parsed : undefined
+  }
+
+  const loadPrStatus = async (): Promise<void> => {
+    prStatusLoading = true
+    prStatusError = null
+    try {
+      prStatus = await fetchPullRequestStatus(
+        workspaceId,
+        repo.id,
+        parseNumber(prNumberInput),
+        prBranchInput.trim() || undefined
+      )
+    } catch (err) {
+      prStatusError = formatError(err, 'Failed to load pull request status.')
+      prStatus = null
+    } finally {
+      prStatusLoading = false
+    }
+  }
+
+  const loadPrReviews = async (): Promise<void> => {
+    prReviewsLoading = true
+    prReviewsError = null
+    prReviewsSent = false
+    try {
+      prReviews = await fetchPullRequestReviews(
+        workspaceId,
+        repo.id,
+        parseNumber(prNumberInput),
+        prBranchInput.trim() || undefined
+      )
+    } catch (err) {
+      prReviewsError = formatError(err, 'Failed to load review comments.')
+      prReviews = []
+    } finally {
+      prReviewsLoading = false
+    }
+  }
+
+  const handleGenerate = async (): Promise<void> => {
+    if (prGenerating) return
+    prGenerating = true
+    prCreateError = null
+    try {
+      const generated: PullRequestGenerated = await generatePullRequestText(workspaceId, repo.id)
+      prTitle = generated.title
+      prBody = generated.body
+    } catch (err) {
+      prCreateError = formatError(err, 'Failed to generate PR text.')
+    } finally {
+      prGenerating = false
+    }
+  }
+
+  const handleCreatePR = async (): Promise<void> => {
+    if (prCreating) return
+    prCreateError = null
+    prCreateSuccess = null
+    const title = prTitle.trim()
+    if (!title) {
+      prCreateError = 'PR title is required.'
+      return
+    }
+    prCreating = true
+    try {
+      const created = await createPullRequest(workspaceId, repo.id, {
+        title,
+        body: prBody.trim(),
+        base: prBase.trim() || undefined,
+        head: prHead.trim() || undefined,
+        draft: prDraft,
+        autoCommit: true,
+        autoPush: true
+      })
+      prCreateSuccess = created
+      prTracked = created
+      prNumberInput = `${created.number}`
+      prStatus = {
+        pullRequest: created,
+        checks: []
+      }
+    } catch (err) {
+      prCreateError = formatError(err, 'Failed to create pull request.')
+    } finally {
+      prCreating = false
+    }
+  }
+
+  const handleSendReviews = async (): Promise<void> => {
+    prReviewsError = null
+    try {
+      await sendPullRequestReviewsToTerminal(
+        workspaceId,
+        repo.id,
+        parseNumber(prNumberInput),
+        prBranchInput.trim() || undefined
+      )
+      prReviewsSent = true
+    } catch (err) {
+      prReviewsError = formatError(err, 'Failed to send reviews to terminal.')
+    }
+  }
+
+  let filteredReviews = $derived(
+    prReviews.filter((comment) =>
+      selected?.path ? comment.path === selected.path : true
+    )
+  )
 
   const ensureRenderer = async (): Promise<void> => {
     if (diffModule || rendererLoading) return
@@ -83,6 +242,24 @@
       rendererError = formatError(err, 'Diff renderer failed to load.')
     } finally {
       rendererLoading = false
+    }
+  }
+
+  const loadTrackedPR = async (): Promise<void> => {
+    try {
+      const tracked = await fetchTrackedPullRequest(workspaceId, repo.id)
+      if (!tracked) {
+        return
+      }
+      prTracked = tracked
+      if (!prNumberInput) {
+        prNumberInput = `${tracked.number}`
+      }
+      if (!prBranchInput && tracked.headBranch) {
+        prBranchInput = tracked.headBranch
+      }
+    } catch {
+      // ignore tracking failures
     }
   }
 
@@ -192,6 +369,7 @@
 
   onMount(() => {
     void loadSummary()
+    void loadTrackedPR()
   })
 
   onDestroy(() => {
@@ -210,8 +388,8 @@
     <div class="title">
       <div class="repo-name">{repo.name}</div>
       <div class="meta">
-        {#if repo.branch}
-          <span>Branch: {repo.branch}</span>
+        {#if repo.defaultBranch}
+          <span>Default branch: {repo.defaultBranch}</span>
         {/if}
         {#if repo.statusKnown === false}
           <span class="status unknown">unknown</span>
@@ -256,6 +434,138 @@
     </div>
   </header>
 
+  <section class="pr-panel">
+    <div class="pr-column">
+      <div class="pr-title">Create pull request</div>
+      <label class="field">
+        <span>Title</span>
+        <input type="text" bind:value={prTitle} placeholder="Summarize the change" />
+      </label>
+      <label class="field">
+        <span>Body</span>
+        <textarea rows="5" bind:value={prBody} placeholder="Describe the change"></textarea>
+      </label>
+      <div class="row">
+        <label class="field">
+          <span>Base</span>
+          <input type="text" bind:value={prBase} placeholder="default branch" />
+        </label>
+        <label class="field">
+          <span>Head</span>
+          <input type="text" bind:value={prHead} placeholder="current branch" />
+        </label>
+      </div>
+      <label class="checkbox">
+        <input type="checkbox" bind:checked={prDraft} />
+        Draft
+      </label>
+      {#if prCreateError}
+        <div class="error">{prCreateError}</div>
+      {/if}
+      {#if prCreateSuccess}
+        <div class="success">
+          Created PR #{prCreateSuccess.number}.
+          <a class="link" href={prCreateSuccess.url} target="_blank" rel="noreferrer">
+            {prCreateSuccess.url}
+          </a>
+        </div>
+      {:else if prTracked}
+        <div class="success">
+          Last PR #{prTracked.number}.
+          <a class="link" href={prTracked.url} target="_blank" rel="noreferrer">
+            {prTracked.url}
+          </a>
+        </div>
+      {/if}
+      <div class="actions">
+        <button class="ghost" type="button" onclick={handleGenerate} disabled={prGenerating}>
+          {prGenerating ? 'Generating…' : 'Generate with agent'}
+        </button>
+        <button type="button" onclick={handleCreatePR} disabled={prCreating}>
+          {prCreating ? 'Creating…' : 'Create PR'}
+        </button>
+      </div>
+    </div>
+    <div class="pr-column">
+      <div class="pr-title">Status & reviews</div>
+      <div class="row">
+        <label class="field">
+          <span>PR #</span>
+          <input type="text" bind:value={prNumberInput} placeholder="auto" />
+        </label>
+        <label class="field">
+          <span>Branch</span>
+          <input type="text" bind:value={prBranchInput} placeholder="current branch" />
+        </label>
+      </div>
+      <div class="actions">
+        <button class="ghost" type="button" onclick={loadPrStatus} disabled={prStatusLoading}>
+          {prStatusLoading ? 'Loading…' : 'Refresh status'}
+        </button>
+        <button class="ghost" type="button" onclick={loadPrReviews} disabled={prReviewsLoading}>
+          {prReviewsLoading ? 'Loading…' : 'Load reviews'}
+        </button>
+        <button type="button" onclick={handleSendReviews} disabled={prReviews.length === 0}>
+          Send to agent
+        </button>
+      </div>
+      {#if prStatusError}
+        <div class="error">{prStatusError}</div>
+      {/if}
+      {#if prStatus}
+        <div class="status-summary">
+          <div class="status-title">
+            PR #{prStatus.pullRequest.number}: {prStatus.pullRequest.title}
+          </div>
+          <div class="status-meta">
+            <span>{prStatus.pullRequest.state}</span>
+            {#if prStatus.pullRequest.draft}
+              <span class="badge">Draft</span>
+            {/if}
+            {#if prStatus.pullRequest.mergeable}
+              <span class="badge">{prStatus.pullRequest.mergeable}</span>
+            {/if}
+          </div>
+          <div class="status-link">{prStatus.pullRequest.url}</div>
+        </div>
+        {#if prStatus.checks.length > 0}
+          <div class="checks">
+            {#each prStatus.checks as check}
+              <div class="check-row">
+                <span class="check-name">{check.name}</span>
+                <span class="check-status">{check.status}</span>
+                <span class="check-conclusion">{check.conclusion ?? ''}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      {/if}
+      {#if prReviewsError}
+        <div class="error">{prReviewsError}</div>
+      {/if}
+      {#if prReviewsSent}
+        <div class="success">Sent review feedback to terminal.</div>
+      {/if}
+      <div class="reviews">
+        {#if prReviewsLoading}
+          <div class="state compact">Loading reviews...</div>
+        {:else if filteredReviews.length === 0}
+          <div class="state compact">No review comments for the selected file.</div>
+        {:else}
+          {#each filteredReviews as comment}
+            <div class="review">
+              <div class="review-meta">
+                <span class="path">{comment.path}{comment.line ? `:${comment.line}` : ''}</span>
+                <span class="author">{comment.author ?? 'Reviewer'}</span>
+              </div>
+              <div class="review-body">{comment.body}</div>
+            </div>
+          {/each}
+        {/if}
+      </div>
+    </div>
+  </section>
+
   {#if summaryLoading}
     <div class="state">Loading diff summary...</div>
   {:else if summaryError}
@@ -266,7 +576,7 @@
   {:else if !summary || summary.files.length === 0}
     <div class="state">No changes detected in this repo.</div>
   {:else}
-    <div class="diff-body">
+  <div class="diff-body">
       <aside class="file-list">
         <div class="section-title">Changed files</div>
         {#each summary.files as file}
@@ -321,6 +631,178 @@
 </section>
 
 <style>
+  .pr-panel {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    padding: 16px;
+    border-radius: 14px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+  }
+
+  .pr-column {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .pr-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text);
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .field input,
+  .field textarea {
+    background: var(--panel-soft);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 10px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+  }
+
+  .field textarea {
+    resize: vertical;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+  }
+
+  .checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text);
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .actions button {
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--accent);
+    color: var(--text);
+    padding: 8px 12px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .actions button.ghost {
+    background: transparent;
+    color: var(--muted);
+  }
+
+  .status-summary {
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    padding: 10px;
+    background: var(--panel-soft);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .status-title {
+    font-weight: 600;
+    font-size: 13px;
+  }
+
+  .status-meta {
+    display: flex;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+    flex-wrap: wrap;
+  }
+
+  .badge {
+    padding: 2px 6px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text);
+  }
+
+  .status-link {
+    font-size: 11px;
+    color: var(--muted);
+    word-break: break-all;
+  }
+
+  .checks {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .check-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .check-name {
+    color: var(--text);
+  }
+
+  .reviews {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .review {
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    padding: 8px;
+    background: var(--panel-soft);
+    font-size: 12px;
+  }
+
+  .review-meta {
+    display: flex;
+    justify-content: space-between;
+    color: var(--muted);
+    font-size: 11px;
+  }
+
+  .review-body {
+    margin-top: 6px;
+    color: var(--text);
+    white-space: pre-wrap;
+  }
+
+  .error {
+    color: var(--danger);
+    font-size: 12px;
+  }
+
+  .success {
+    color: var(--success);
+    font-size: 12px;
+  }
+
   .diff {
     display: flex;
     flex-direction: column;
@@ -641,5 +1123,14 @@
 
   .ghost:active:not(:disabled) {
     transform: scale(0.98);
+  }
+
+  .link {
+    color: var(--accent);
+    text-decoration: none;
+  }
+
+  .link:hover {
+    text-decoration: underline;
   }
 </style>

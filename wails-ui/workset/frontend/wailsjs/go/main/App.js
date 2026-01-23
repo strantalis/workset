@@ -26,6 +26,10 @@ export function CreateGroup(arg1) {
   return window['go']['main']['App']['CreateGroup'](arg1);
 }
 
+export function CreatePullRequest(arg1) {
+  return window['go']['main']['App']['CreatePullRequest'](arg1);
+}
+
 export function CreateWorkspace(arg1) {
   return window['go']['main']['App']['CreateWorkspace'](arg1);
 }
@@ -38,12 +42,28 @@ export function DeleteGroup(arg1) {
   return window['go']['main']['App']['DeleteGroup'](arg1);
 }
 
+export function GeneratePullRequestText(arg1) {
+  return window['go']['main']['App']['GeneratePullRequestText'](arg1);
+}
+
 export function GetAgentAvailability() {
   return window['go']['main']['App']['GetAgentAvailability']();
 }
 
 export function GetGroup(arg1) {
   return window['go']['main']['App']['GetGroup'](arg1);
+}
+
+export function GetPullRequestReviews(arg1) {
+  return window['go']['main']['App']['GetPullRequestReviews'](arg1);
+}
+
+export function GetPullRequestStatus(arg1) {
+  return window['go']['main']['App']['GetPullRequestStatus'](arg1);
+}
+
+export function GetTrackedPullRequest(arg1) {
+  return window['go']['main']['App']['GetTrackedPullRequest'](arg1);
 }
 
 export function GetRepoDiff(arg1, arg2) {
@@ -60,6 +80,14 @@ export function GetRepoFileDiff(arg1, arg2, arg3, arg4, arg5) {
 
 export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
+}
+
+export function GetTerminalBacklog(arg1, arg2) {
+  return window['go']['main']['App']['GetTerminalBacklog'](arg1, arg2);
+}
+
+export function GetTrackedPullRequest(arg1) {
+  return window['go']['main']['App']['GetTrackedPullRequest'](arg1);
 }
 
 export function ListAliases() {
@@ -98,6 +126,10 @@ export function ResizeWorkspaceTerminal(arg1, arg2, arg3) {
   return window['go']['main']['App']['ResizeWorkspaceTerminal'](arg1, arg2, arg3);
 }
 
+export function SendPullRequestReviewsToTerminal(arg1) {
+  return window['go']['main']['App']['SendPullRequestReviewsToTerminal'](arg1);
+}
+
 export function SetDefaultSetting(arg1, arg2) {
   return window['go']['main']['App']['SetDefaultSetting'](arg1, arg2);
 }
@@ -120,10 +152,6 @@ export function UpdateAlias(arg1) {
 
 export function UpdateGroup(arg1) {
   return window['go']['main']['App']['UpdateGroup'](arg1);
-}
-
-export function UpdateRepoRemotes(arg1) {
-  return window['go']['main']['App']['UpdateRepoRemotes'](arg1);
 }
 
 export function WriteWorkspaceTerminal(arg1, arg2) {

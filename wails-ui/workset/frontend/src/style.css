@@ -42,6 +42,14 @@
   /* Transition timing */
   --transition-fast: 120ms ease;
   --transition-normal: 160ms ease;
+
+  /* Spacing tokens */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
 }
 
 *,

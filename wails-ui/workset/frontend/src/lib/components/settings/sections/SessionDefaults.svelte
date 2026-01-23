@@ -48,6 +48,23 @@
       ]
     },
     {
+      id: 'terminalRenderer',
+      label: 'Terminal renderer',
+      description: 'Auto (try WebGL), or force WebGL/Canvas.',
+      type: 'select',
+      options: [
+        {label: 'Auto', value: 'auto'},
+        {label: 'WebGL', value: 'webgl'},
+        {label: 'Canvas', value: 'canvas'}
+      ]
+    },
+    {
+      id: 'terminalIdleTimeout',
+      label: 'Terminal idle timeout',
+      description: 'How long before idle terminals are closed. Use 0 to disable.',
+      placeholder: '30m'
+    },
+    {
       id: 'sessionNameFormat',
       label: 'Session name format',
       description: 'Used when creating a new session.',

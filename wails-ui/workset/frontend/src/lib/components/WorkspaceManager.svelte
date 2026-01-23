@@ -16,7 +16,6 @@
     removeWorkspace,
     renameWorkspace,
     unarchiveWorkspace,
-    updateRepoRemotes
   } from '../api'
   import type {Repo, Workspace} from '../types'
 
@@ -24,7 +23,7 @@
     onClose: () => void;
     initialWorkspaceId?: string | null;
     initialRepoName?: string | null;
-    initialSection?: 'create' | 'rename' | 'repo' | 'remotes' | null;
+    initialSection?: 'create' | 'rename' | 'repo' | null;
   }
 
   let {
@@ -54,14 +53,6 @@
   let addSourceInput: HTMLInputElement | null = $state(null)
 
   let selectedRepoName: string | null = $state(null)
-  let remotesBaseRemote = $state('')
-  let remotesBaseBranch = $state('')
-  let remotesWriteRemote = $state('')
-  let remotesWriteBranch = $state('')
-  let remotesError: string | null = $state(null)
-  let remotesSuccess: string | null = $state(null)
-  let savingRemotes = $state(false)
-  let remotesBaseInput: HTMLInputElement | null = $state(null)
 
   let renameName = $state('')
   let renameError: string | null = $state(null)
@@ -106,8 +97,6 @@
       lastSelectedId = selectedWorkspace.id
       selectedRepoName = selectedWorkspace.repos[0]?.name ?? null
       lastSelectedRepoName = null
-      remotesError = null
-      remotesSuccess = null
     }
   });
   $effect(() => {
@@ -123,13 +112,7 @@
     $derived(selectedWorkspace?.repos.find((repo) => repo.name === selectedRepoName) ?? null)
   $effect(() => {
     if (selectedRepo && selectedRepo.name !== lastSelectedRepoName) {
-      remotesBaseRemote = selectedRepo.baseRemote ?? ''
-      remotesBaseBranch = selectedRepo.baseBranch ?? ''
-      remotesWriteRemote = selectedRepo.writeRemote ?? ''
-      remotesWriteBranch = selectedRepo.writeBranch ?? ''
       lastSelectedRepoName = selectedRepo.name
-      remotesError = null
-      remotesSuccess = null
     }
   });
 
@@ -303,31 +286,6 @@
     }
   }
 
-  const handleSaveRemotes = async (): Promise<void> => {
-    if (!selectedWorkspace || !selectedRepo) return
-    if (savingRemotes) return
-    remotesError = null
-    remotesSuccess = null
-    savingRemotes = true
-    try {
-      await updateRepoRemotes(
-        selectedWorkspace.id,
-        selectedRepo.name,
-        remotesBaseRemote.trim(),
-        remotesBaseBranch.trim(),
-        remotesWriteRemote.trim(),
-        remotesWriteBranch.trim()
-      )
-      await loadWorkspaces(true)
-      lastSelectedRepoName = null
-      remotesSuccess = 'Remotes updated.'
-    } catch (err) {
-      remotesError = formatError(err, 'Failed to update remotes.')
-    } finally {
-      savingRemotes = false
-    }
-  }
-
   onMount(() => {
     void loadWorkspaces(true)
     if (!selectedWorkspaceId) {
@@ -343,8 +301,6 @@
         renameInput?.focus()
       } else if (initialSection === 'repo') {
         addSourceInput?.focus()
-      } else if (initialSection === 'remotes') {
-        remotesBaseInput?.focus()
       }
     })
   })
@@ -633,40 +589,6 @@
               {/each}
             </div>
 
-            {#if selectedRepo}
-              <div class="repo-remotes">
-                <div class="section-title">Repo remotes</div>
-                <div class="form-grid">
-                  <label class="field">
-                    <span>Base remote</span>
-                    <input bind:this={remotesBaseInput} bind:value={remotesBaseRemote} placeholder="origin" />
-                  </label>
-                  <label class="field">
-                    <span>Base branch</span>
-                    <input bind:value={remotesBaseBranch} placeholder="main" />
-                  </label>
-                  <label class="field">
-                    <span>Write remote</span>
-                    <input bind:value={remotesWriteRemote} placeholder="origin" />
-                  </label>
-                  <label class="field">
-                    <span>Write branch</span>
-                    <input bind:value={remotesWriteBranch} placeholder="main" />
-                  </label>
-                </div>
-                <div class="inline-actions">
-                  <button class="primary" type="button" onclick={handleSaveRemotes} disabled={savingRemotes}>
-                    {savingRemotes ? 'Saving…' : 'Save remotes'}
-                  </button>
-                  {#if remotesError}
-                    <div class="note error">{remotesError}</div>
-                  {:else if remotesSuccess}
-                    <div class="note success">{remotesSuccess}</div>
-                  {/if}
-                </div>
-                <div class="hint">Updates apply to the workset config and remotes metadata.</div>
-              </div>
-            {/if}
           </div>
         {:else}
           <div class="details-card empty">

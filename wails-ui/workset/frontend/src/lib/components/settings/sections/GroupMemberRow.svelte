@@ -1,83 +1,29 @@
 <script lang="ts">
   import type {GroupMember} from '../../../types'
+  import Button from '../../ui/Button.svelte'
 
   interface Props {
     member: GroupMember;
-    expanded?: boolean;
     loading?: boolean;
-    onToggle: () => void;
-    onSave: (baseRemote: string, baseBranch: string, writeRemote: string) => void;
     onRemove: () => void;
   }
 
   let {
     member,
-    expanded = false,
     loading = false,
-    onToggle,
-    onSave,
     onRemove
   }: Props = $props();
-
-  let baseRemote = $state('')
-  let baseBranch = $state('')
-  let writeRemote = $state('')
-
-  const handleSave = (): void => {
-    onSave(baseRemote.trim(), baseBranch.trim(), writeRemote.trim())
-  }
-
-  $effect(() => {
-    if (!expanded) {
-      baseRemote = member.remotes.base.name
-      baseBranch = member.remotes.base.default_branch ?? ''
-      writeRemote = member.remotes.write.name
-    }
-  });
 </script>
 
-<div class="member" class:expanded>
-  <button class="member-header" type="button" onclick={onToggle}>
+<div class="member">
+  <div class="member-header">
     <span class="member-name">{member.repo}</span>
-    <span class="member-remotes">
-      {member.remotes.base.name}/{member.remotes.base.default_branch ?? 'main'}
-      {#if member.remotes.write.name !== member.remotes.base.name}
-        → {member.remotes.write.name}
-      {/if}
-    </span>
-    <span class="member-toggle">{expanded ? '▾' : '▸'}</span>
-  </button>
-
-  {#if expanded}
-    <div class="member-detail">
-      <div class="form-row">
-        <label class="field">
-          <span>Base remote</span>
-          <input type="text" bind:value={baseRemote} placeholder="origin" />
-        </label>
-        <label class="field">
-          <span>Base branch</span>
-          <input type="text" bind:value={baseBranch} placeholder="main" />
-        </label>
-        <label class="field">
-          <span>Write remote</span>
-          <input type="text" bind:value={writeRemote} placeholder="origin" />
-        </label>
-      </div>
-      <div class="member-actions">
-        <button class="danger small" type="button" onclick={onRemove} disabled={loading}>
-          Remove
-        </button>
-        <div class="spacer"></div>
-        <button class="ghost small" type="button" onclick={onToggle} disabled={loading}>
-          Cancel
-        </button>
-        <button class="primary small" type="button" onclick={handleSave} disabled={loading}>
-          {loading ? 'Saving...' : 'Save'}
-        </button>
-      </div>
+    <div class="member-actions">
+      <Button variant="danger" size="sm" onclick={onRemove} disabled={loading}>
+        Remove
+      </Button>
     </div>
-  {/if}
+  </div>
 </div>
 
 <style>
@@ -88,16 +34,12 @@
     overflow: hidden;
   }
 
-  .member.expanded {
-    background: var(--panel-soft);
-  }
-
   .member-header {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--space-3);
     width: 100%;
-    padding: 10px 12px;
+    padding: 10px var(--space-3);
     border: none;
     background: transparent;
     color: var(--text);
@@ -116,144 +58,10 @@
     flex-shrink: 0;
   }
 
-  .member-remotes {
-    flex: 1;
-    font-size: 12px;
-    color: var(--muted);
-    text-overflow: ellipsis;
-    overflow: hidden;
-    white-space: nowrap;
-  }
-
-  .member-toggle {
-    font-size: 10px;
-    color: var(--muted);
-  }
-
-  .member-detail {
-    padding: 12px;
-    border-top: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .form-row {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 12px;
-  }
-
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    font-size: 11px;
-    color: var(--muted);
-  }
-
-  .field input {
-    background: var(--panel-strong);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    color: var(--text);
-    border-radius: var(--radius-sm);
-    padding: 8px 10px;
-    font-size: 12px;
-    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
-  }
-
-  .field input:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent-soft);
-  }
-
   .member-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
-  }
-
-  .spacer {
-    flex: 1;
-  }
-
-  .ghost {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 8px 14px;
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    font-size: 13px;
-    transition: border-color var(--transition-fast), background var(--transition-fast);
-  }
-
-  .ghost.small {
-    padding: 6px 10px;
-    font-size: 12px;
-  }
-
-  .ghost:hover:not(:disabled) {
-    border-color: var(--accent);
-    background: rgba(255, 255, 255, 0.04);
-  }
-
-  .ghost:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .primary {
-    background: var(--accent);
-    border: none;
-    color: #081018;
-    padding: 8px 14px;
-    border-radius: var(--radius-md);
-    font-weight: 600;
-    cursor: pointer;
-    font-size: 13px;
-    transition: background var(--transition-fast);
-  }
-
-  .primary.small {
-    padding: 6px 10px;
-    font-size: 12px;
-  }
-
-  .primary:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--accent) 85%, white);
-  }
-
-  .primary:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .danger {
-    background: var(--danger-subtle);
-    border: 1px solid var(--danger-soft);
-    color: #ff9a9a;
-    padding: 8px 14px;
-    border-radius: var(--radius-md);
-    font-weight: 600;
-    cursor: pointer;
-    font-size: 13px;
-    transition: background var(--transition-fast), border-color var(--transition-fast);
-  }
-
-  .danger.small {
-    padding: 6px 10px;
-    font-size: 12px;
-  }
-
-  .danger:hover:not(:disabled) {
-    background: var(--danger-soft);
-    border-color: var(--danger);
-  }
-
-  .danger:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+    gap: var(--space-2);
+    margin-left: auto;
   }
 </style>

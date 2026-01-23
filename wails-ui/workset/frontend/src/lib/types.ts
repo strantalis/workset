@@ -9,11 +9,8 @@ export type Repo = {
   id: string
   name: string
   path: string
-  branch?: string
-  baseRemote?: string
-  baseBranch?: string
-  writeRemote?: string
-  writeBranch?: string
+  remote?: string
+  defaultBranch?: string
   ahead?: number
   behind?: number
   dirty: boolean
@@ -65,6 +62,7 @@ export type Alias = {
   name: string
   url?: string
   path?: string
+  remote?: string
   default_branch?: string
 }
 
@@ -76,10 +74,6 @@ export type GroupSummary = {
 
 export type GroupMember = {
   repo: string
-  remotes: {
-    base: {name: string; default_branch?: string}
-    write: {name: string; default_branch?: string}
-  }
 }
 
 export type Group = {
@@ -89,6 +83,7 @@ export type Group = {
 }
 
 export type SettingsDefaults = {
+  remote: string
   baseBranch: string
   workspace: string
   workspaceRoot: string
@@ -101,6 +96,8 @@ export type SettingsDefaults = {
   sessionTmuxRight: string
   sessionScreenHard: string
   agent: string
+  terminalRenderer: string
+  terminalIdleTimeout: string
 }
 
 export type SettingsSnapshot = {
@@ -129,4 +126,66 @@ export type RepoFileDiff = {
   totalBytes: number
   totalLines: number
   binary?: boolean
+}
+
+export type PullRequestSummary = {
+  repo: string
+  number: number
+  url: string
+  title: string
+  body?: string
+  state: string
+  draft: boolean
+  baseRepo: string
+  baseBranch: string
+  headRepo: string
+  headBranch: string
+  mergeable?: string
+}
+
+export type PullRequestCheck = {
+  name: string
+  status: string
+  conclusion?: string
+  detailsUrl?: string
+  startedAt?: string
+  completedAt?: string
+}
+
+export type PullRequestStatusResult = {
+  pullRequest: PullRequestSummary
+  checks: PullRequestCheck[]
+}
+
+export type PullRequestCreated = PullRequestSummary
+
+export type PullRequestReviewComment = {
+  id: number
+  reviewId?: number
+  author?: string
+  body: string
+  path: string
+  line?: number
+  side?: string
+  commitId?: string
+  originalCommit?: string
+  originalLine?: number
+  originalStart?: number
+  outdated: boolean
+  url?: string
+  createdAt?: string
+  updatedAt?: string
+  inReplyTo?: number
+  reply?: boolean
+}
+
+export type PullRequestGenerated = {
+  title: string
+  body: string
+}
+
+export type AgentOption = {
+  id: string
+  label: string
+  command: string
 }

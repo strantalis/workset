@@ -15,15 +15,25 @@ export function CreateAlias(arg1:main.AliasUpsertRequest):Promise<worksetapi.Ali
 
 export function CreateGroup(arg1:main.GroupUpsertRequest):Promise<worksetapi.GroupJSON>;
 
+export function CreatePullRequest(arg1:main.PullRequestCreateRequest):Promise<worksetapi.PullRequestCreatedJSON>;
+
 export function CreateWorkspace(arg1:main.WorkspaceCreateRequest):Promise<main.WorkspaceCreateResponse>;
 
 export function DeleteAlias(arg1:string):Promise<worksetapi.AliasMutationResultJSON>;
 
 export function DeleteGroup(arg1:string):Promise<worksetapi.AliasMutationResultJSON>;
 
+export function GeneratePullRequestText(arg1:main.PullRequestGenerateRequest):Promise<worksetapi.PullRequestGeneratedJSON>;
+
 export function GetAgentAvailability():Promise<Record<string, boolean>>;
 
 export function GetGroup(arg1:string):Promise<worksetapi.GroupJSON>;
+
+export function GetPullRequestReviews(arg1:main.PullRequestReviewsRequest):Promise<main.PullRequestReviewCommentsPayload>;
+
+export function GetPullRequestStatus(arg1:main.PullRequestStatusRequest):Promise<main.PullRequestStatusPayload>;
+
+export function GetTrackedPullRequest(arg1:main.PullRequestTrackedRequest):Promise<worksetapi.PullRequestTrackedJSON>;
 
 export function GetRepoDiff(arg1:string,arg2:string):Promise<main.RepoDiffSnapshot>;
 
@@ -32,6 +42,10 @@ export function GetRepoDiffSummary(arg1:string,arg2:string):Promise<main.RepoDif
 export function GetRepoFileDiff(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<main.RepoFileDiffSnapshot>;
 
 export function GetSettings():Promise<main.SettingsSnapshot>;
+
+export function GetTerminalBacklog(arg1:string,arg2:number):Promise<main.TerminalBacklogPayload>;
+
+export function GetTrackedPullRequest(arg1:main.PullRequestTrackedRequest):Promise<worksetapi.PullRequestTrackedJSON>;
 
 export function ListAliases():Promise<Array<worksetapi.AliasJSON>>;
 
@@ -51,6 +65,8 @@ export function RenameWorkspace(arg1:string,arg2:string):Promise<worksetapi.Work
 
 export function ResizeWorkspaceTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;
 
+export function SendPullRequestReviewsToTerminal(arg1:main.PullRequestReviewsRequest):Promise<void>;
+
 export function SetDefaultSetting(arg1:string,arg2:string):Promise<worksetapi.ConfigSetResultJSON>;
 
 export function StartWorkspaceTerminal(arg1:string):Promise<void>;
@@ -62,7 +78,5 @@ export function UnarchiveWorkspace(arg1:string):Promise<worksetapi.WorkspaceRefJ
 export function UpdateAlias(arg1:main.AliasUpsertRequest):Promise<worksetapi.AliasMutationResultJSON>;
 
 export function UpdateGroup(arg1:main.GroupUpsertRequest):Promise<worksetapi.GroupJSON>;
-
-export function UpdateRepoRemotes(arg1:main.RepoRemotesUpdateRequest):Promise<worksetapi.RepoRemotesUpdateResultJSON>;
 
 export function WriteWorkspaceTerminal(arg1:string,arg2:string):Promise<void>;

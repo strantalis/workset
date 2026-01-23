@@ -7,6 +7,7 @@
   import SessionDefaults from './settings/sections/SessionDefaults.svelte'
   import AliasManager from './settings/sections/AliasManager.svelte'
   import GroupManager from './settings/sections/GroupManager.svelte'
+  import Button from './ui/Button.svelte'
 
   interface Props {
     onClose: () => void;
@@ -22,6 +23,7 @@
 
   const allFields: Field[] = [
     {id: 'workspace', key: 'defaults.workspace'},
+    {id: 'remote', key: 'defaults.remote'},
     {id: 'baseBranch', key: 'defaults.base_branch'},
     {id: 'workspaceRoot', key: 'defaults.workspace_root'},
     {id: 'repoStoreRoot', key: 'defaults.repo_store_root'},
@@ -32,7 +34,9 @@
     {id: 'sessionTmuxLeft', key: 'defaults.session_tmux_status_left'},
     {id: 'sessionTmuxRight', key: 'defaults.session_tmux_status_right'},
     {id: 'sessionScreenHard', key: 'defaults.session_screen_hardstatus'},
-    {id: 'agent', key: 'defaults.agent'}
+    {id: 'agent', key: 'defaults.agent'},
+    {id: 'terminalRenderer', key: 'defaults.terminal_renderer'},
+    {id: 'terminalIdleTimeout', key: 'defaults.terminal_idle_timeout'}
   ]
 
   let snapshot: SettingsSnapshot | null = $state(null)
@@ -137,7 +141,7 @@
       <div class="title">Settings</div>
       <div class="subtitle">Configure defaults, aliases, and groups.</div>
     </div>
-    <button class="ghost" type="button" onclick={onClose}>Close</button>
+    <Button variant="ghost" onclick={onClose}>Close</Button>
   </header>
 
   {#if loading}
@@ -145,7 +149,7 @@
   {:else if error && !snapshot}
     <div class="state error">
       <div class="message">{error}</div>
-      <button class="ghost" type="button" onclick={loadSettings}>Retry</button>
+      <Button variant="ghost" onclick={loadSettings}>Retry</Button>
     </div>
   {:else if snapshot}
     <div class="body">
@@ -183,22 +187,20 @@
         <span class="status dirty">{dirtyCount()} unsaved</span>
       {/if}
       {#if activeSection === 'workspace' || activeSection === 'session'}
-        <button
-          class="ghost"
-          type="button"
+        <Button
+          variant="ghost"
           onclick={resetChanges}
           disabled={dirtyCount() === 0 || saving}
         >
           Reset
-        </button>
-        <button
-          class="primary"
-          type="button"
+        </Button>
+        <Button
+          variant="primary"
           onclick={saveChanges}
           disabled={saving || dirtyCount() === 0}
         >
           {saving ? 'Saving...' : 'Save'}
-        </button>
+        </Button>
       {/if}
     </footer>
   {/if}
@@ -221,8 +223,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 16px;
-    padding: 20px 24px;
+    gap: var(--space-4);
+    padding: var(--space-5) var(--space-6);
     border-bottom: 1px solid var(--border);
   }
 
@@ -235,15 +237,15 @@
   .subtitle {
     color: var(--muted);
     font-size: 13px;
-    margin-top: 4px;
+    margin-top: var(--space-1);
   }
 
   .state {
-    padding: 24px;
+    padding: var(--space-6);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: var(--space-3);
   }
 
   .state.error {
@@ -254,22 +256,22 @@
     display: flex;
     flex: 1;
     min-height: 0;
-    padding: 20px 24px;
-    gap: 24px;
+    padding: var(--space-5) var(--space-6);
+    gap: var(--space-6);
   }
 
   .content {
     flex: 1;
     min-width: 0;
     overflow-y: auto;
-    padding-right: 4px;
+    padding-right: var(--space-1);
   }
 
   .footer {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 16px 24px;
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-6);
     border-top: 1px solid var(--border);
     background: var(--panel);
   }
@@ -277,7 +279,7 @@
   .meta {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .config-label {
@@ -300,7 +302,7 @@
   .status {
     font-size: 12px;
     font-weight: 500;
-    padding: 4px 10px;
+    padding: var(--space-1) 10px;
     border-radius: 999px;
   }
 
@@ -317,55 +319,6 @@
   .status.error {
     background: var(--danger-subtle);
     color: var(--danger);
-  }
-
-  .ghost {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 8px 14px;
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    font-size: 13px;
-    transition: border-color var(--transition-fast), background var(--transition-fast);
-  }
-
-  .ghost:hover:not(:disabled) {
-    border-color: var(--accent);
-    background: rgba(255, 255, 255, 0.04);
-  }
-
-  .ghost:active:not(:disabled) {
-    transform: scale(0.98);
-  }
-
-  .ghost:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-
-  .primary {
-    background: var(--accent);
-    border: none;
-    color: #081018;
-    padding: 8px 14px;
-    border-radius: var(--radius-md);
-    font-weight: 600;
-    cursor: pointer;
-    transition: background var(--transition-fast), transform var(--transition-fast);
-  }
-
-  .primary:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--accent) 85%, white);
-  }
-
-  .primary:active:not(:disabled) {
-    transform: scale(0.98);
-  }
-
-  .primary:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
   }
 
   @media (max-width: 720px) {
