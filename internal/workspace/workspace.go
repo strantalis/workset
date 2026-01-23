@@ -26,8 +26,9 @@ type Workspace struct {
 }
 
 type State struct {
-	CurrentBranch string                  `json:"current_branch"`
-	Sessions      map[string]SessionState `json:"sessions,omitempty"`
+	CurrentBranch string                      `json:"current_branch"`
+	Sessions      map[string]SessionState     `json:"sessions,omitempty"`
+	PullRequests  map[string]PullRequestState `json:"pull_requests,omitempty"`
 }
 
 type SessionState struct {
@@ -36,6 +37,21 @@ type SessionState struct {
 	Command      []string `json:"command,omitempty"`
 	StartedAt    string   `json:"started_at,omitempty"`
 	LastAttached string   `json:"last_attached,omitempty"`
+}
+
+type PullRequestState struct {
+	Repo       string `json:"repo"`
+	Number     int    `json:"number"`
+	URL        string `json:"url"`
+	Title      string `json:"title"`
+	Body       string `json:"body,omitempty"`
+	State      string `json:"state"`
+	Draft      bool   `json:"draft"`
+	BaseRepo   string `json:"base_repo"`
+	BaseBranch string `json:"base_branch"`
+	HeadRepo   string `json:"head_repo"`
+	HeadBranch string `json:"head_branch"`
+	UpdatedAt  string `json:"updated_at,omitempty"`
 }
 
 func WorksetFile(root string) string {

@@ -50,6 +50,16 @@ func printConfigInfo(cmd *cli.Command, info interface{}) {
 		printConfigLoadInfo(cmd, cmd.String("config"), value.Config)
 	case worksetapi.HooksRunResult:
 		printConfigLoadInfo(cmd, cmd.String("config"), value.Config)
+	case worksetapi.PullRequestCreateResult:
+		printConfigLoadInfo(cmd, cmd.String("config"), value.Config)
+	case worksetapi.PullRequestStatusResult:
+		printConfigLoadInfo(cmd, cmd.String("config"), value.Config)
+	case worksetapi.PullRequestReviewCommentsResult:
+		printConfigLoadInfo(cmd, cmd.String("config"), value.Config)
+	case worksetapi.PullRequestGenerateResult:
+		printConfigLoadInfo(cmd, cmd.String("config"), value.Config)
+	case worksetapi.PullRequestTrackedResult:
+		printConfigLoadInfo(cmd, cmd.String("config"), value.Config)
 	default:
 		// no-op
 	}

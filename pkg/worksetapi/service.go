@@ -17,6 +17,7 @@ type Options struct {
 	WorkspaceStore WorkspaceStore
 	Git            git.Client
 	SessionRunner  session.Runner
+	CommandRunner  CommandRunner
 	// ExecFunc overrides how Exec runs commands (useful for embedding/tests).
 	ExecFunc func(ctx context.Context, root string, command []string, env []string) error
 	// HookRunner overrides how hooks run commands (useful for embedding/tests).
@@ -33,6 +34,7 @@ type Service struct {
 	workspaces WorkspaceStore
 	git        git.Client
 	runner     session.Runner
+	commands   CommandRunner
 	exec       func(ctx context.Context, root string, command []string, env []string) error
 	hookRunner hooks.Runner
 	clock      func() time.Time
@@ -57,6 +59,10 @@ func NewService(opts Options) *Service {
 	if runner == nil {
 		runner = session.ExecRunner{}
 	}
+	commandRunner := opts.CommandRunner
+	if commandRunner == nil {
+		commandRunner = runCommandCapture
+	}
 	execFunc := opts.ExecFunc
 	if execFunc == nil {
 		execFunc = runExecCommand
@@ -75,6 +81,7 @@ func NewService(opts Options) *Service {
 		workspaces: wsStore,
 		git:        gitClient,
 		runner:     runner,
+		commands:   commandRunner,
 		exec:       execFunc,
 		hookRunner: hookRunner,
 		clock:      clock,

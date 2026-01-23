@@ -106,6 +106,32 @@ func (c GoGitClient) RemoteNames(repoPath string) ([]string, error) {
 	return names, nil
 }
 
+func (c GoGitClient) RemoteURLs(repoPath, remoteName string) ([]string, error) {
+	if repoPath == "" {
+		return nil, errors.New("repo path required")
+	}
+	if remoteName == "" {
+		return nil, errors.New("remote name required")
+	}
+	repo, err := ggit.PlainOpenWithOptions(repoPath, &ggit.PlainOpenOptions{
+		EnableDotGitCommonDir: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	remote, err := repo.Remote(remoteName)
+	if err != nil {
+		return nil, err
+	}
+	cfg := remote.Config()
+	if cfg == nil || len(cfg.URLs) == 0 {
+		return nil, errors.New("remote has no URLs configured")
+	}
+	urls := append([]string{}, cfg.URLs...)
+	sort.Strings(urls)
+	return urls, nil
+}
+
 func (c GoGitClient) ReferenceExists(repoPath, ref string) (bool, error) {
 	if repoPath == "" || ref == "" {
 		return false, errors.New("repo path and ref required")

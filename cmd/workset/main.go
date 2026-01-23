@@ -44,6 +44,7 @@ func main() {
 			configCommand(),
 			groupCommand(),
 			repoCommand(),
+			prCommand(),
 			statusCommand(),
 		},
 	}

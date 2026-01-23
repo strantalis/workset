@@ -38,6 +38,7 @@ func newTestEnv(t *testing.T) *testEnv {
 
 	cfg := config.GlobalConfig{
 		Defaults: config.Defaults{
+			Remote:            "origin",
 			BaseBranch:        "main",
 			WorkspaceRoot:     workspaceRoot,
 			RepoStoreRoot:     repoRoot,
@@ -111,6 +112,7 @@ type fakeGit struct {
 	statusErr       map[string]error
 	refs            map[string]bool
 	remotes         map[string][]string
+	remoteURLs      map[string]map[string][]string
 	remoteExists    map[string]map[string]bool
 	ancestors       map[string]bool
 	contentMerged   map[string]bool
@@ -132,6 +134,7 @@ func newFakeGit() *fakeGit {
 		statusErr:     map[string]error{},
 		refs:          map[string]bool{},
 		remotes:       map[string][]string{},
+		remoteURLs:    map[string]map[string][]string{},
 		remoteExists:  map[string]map[string]bool{},
 		ancestors:     map[string]bool{},
 		contentMerged: map[string]bool{},
@@ -163,6 +166,18 @@ func (f *fakeGit) RemoteNames(repoPath string) ([]string, error) {
 		return remotes, nil
 	}
 	return []string{"origin"}, nil
+}
+
+func (f *fakeGit) RemoteURLs(repoPath, remoteName string) ([]string, error) {
+	if repoRemotes, ok := f.remoteURLs[repoPath]; ok {
+		if urls, ok := repoRemotes[remoteName]; ok {
+			return urls, nil
+		}
+	}
+	if remoteName == "" {
+		return nil, fmt.Errorf("remote name required")
+	}
+	return []string{}, nil
 }
 
 func (f *fakeGit) ReferenceExists(repoPath, ref string) (bool, error) {
