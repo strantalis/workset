@@ -3,6 +3,7 @@ package workspace
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/strantalis/workset/internal/config"
@@ -29,6 +30,14 @@ func TestInitCreatesWorkspace(t *testing.T) {
 	}
 	if _, err := os.Stat(StatePath(root)); err != nil {
 		t.Fatalf("state.json missing: %v", err)
+	}
+	agentsPath := AgentsFile(root)
+	content, err := os.ReadFile(agentsPath)
+	if err != nil {
+		t.Fatalf("agents file missing: %v", err)
+	}
+	if !strings.Contains(string(content), "Workset workspace root") {
+		t.Fatalf("agents file missing workspace context")
 	}
 }
 
