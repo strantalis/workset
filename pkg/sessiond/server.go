@@ -1,0 +1,419 @@
+package sessiond
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+)
+
+type Server struct {
+	opts     Options
+	sessions map[string]*Session
+	mu       sync.Mutex
+	shutdown func()
+}
+
+func NewServer(opts Options) *Server {
+	if opts.SocketPath == "" {
+		path, err := DefaultSocketPath()
+		if err == nil {
+			opts.SocketPath = path
+		}
+	}
+	if opts.TranscriptDir == "" {
+		dir, err := DefaultTranscriptDir()
+		if err == nil {
+			opts.TranscriptDir = dir
+		}
+	}
+	if opts.RecordDir == "" {
+		dir, err := DefaultRecordDir()
+		if err == nil {
+			opts.RecordDir = dir
+		}
+	}
+	if opts.StateDir == "" {
+		dir, err := DefaultStateDir()
+		if err == nil {
+			opts.StateDir = dir
+		}
+	}
+	if opts.BufferBytes == 0 {
+		opts.BufferBytes = DefaultOptions().BufferBytes
+	}
+	if opts.TranscriptMaxBytes == 0 {
+		opts.TranscriptMaxBytes = DefaultOptions().TranscriptMaxBytes
+	}
+	if opts.TranscriptTrimThreshold == 0 {
+		opts.TranscriptTrimThreshold = DefaultOptions().TranscriptTrimThreshold
+	}
+	if opts.TranscriptTailBytes == 0 {
+		opts.TranscriptTailBytes = DefaultOptions().TranscriptTailBytes
+	}
+	if opts.IdleTimeout == 0 {
+		opts.IdleTimeout = DefaultOptions().IdleTimeout
+	}
+	if opts.SnapshotInterval == 0 {
+		opts.SnapshotInterval = DefaultOptions().SnapshotInterval
+	}
+	if opts.HistoryLines == 0 {
+		opts.HistoryLines = DefaultOptions().HistoryLines
+	}
+	return &Server{
+		opts:     opts,
+		sessions: make(map[string]*Session),
+	}
+}
+
+func (s *Server) SetShutdown(fn func()) {
+	s.shutdown = fn
+}
+
+func (s *Server) Listen(ctx context.Context) error {
+	if s.opts.SocketPath == "" {
+		return fmt.Errorf("socket path required")
+	}
+	if err := os.MkdirAll(filepath.Dir(s.opts.SocketPath), 0o755); err != nil {
+		logServerf("mkdir_error path=%s err=%v", filepath.Dir(s.opts.SocketPath), err)
+		return err
+	}
+	if err := os.Remove(s.opts.SocketPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		logServerf("socket_remove_error path=%s err=%v", s.opts.SocketPath, err)
+	}
+	logServerf("listen_start socket=%s", s.opts.SocketPath)
+	ln, err := net.Listen("unix", s.opts.SocketPath)
+	if err != nil && shouldRetryListen(err) {
+		logServerf("listen_retry socket=%s err=%v", s.opts.SocketPath, err)
+		if rmErr := os.Remove(s.opts.SocketPath); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+			logServerf("listen_retry_remove_error socket=%s err=%v", s.opts.SocketPath, rmErr)
+		}
+		time.Sleep(100 * time.Millisecond)
+		ln, err = net.Listen("unix", s.opts.SocketPath)
+	}
+	if err != nil {
+		logServerf("listen_failed socket=%s err=%v", s.opts.SocketPath, err)
+		return err
+	}
+	logServerf("listen_ready socket=%s", s.opts.SocketPath)
+	defer func() {
+		_ = ln.Close()
+		_ = os.Remove(s.opts.SocketPath)
+		s.closeAll()
+	}()
+
+	go func() {
+		<-ctx.Done()
+		_ = ln.Close()
+	}()
+
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			if errors.Is(err, net.ErrClosed) || errors.Is(err, os.ErrClosed) {
+				logServerf("listen_closed socket=%s", s.opts.SocketPath)
+				return nil
+			}
+			continue
+		}
+		go s.handleConn(conn)
+	}
+}
+
+func (s *Server) handleConn(conn net.Conn) {
+	defer func() {
+		_ = conn.Close()
+	}()
+	reader := bufio.NewReader(conn)
+	line, err := reader.ReadBytes('\n')
+	if err != nil {
+		return
+	}
+	line = bytesTrimSpace(line)
+	if len(line) == 0 {
+		return
+	}
+	var envelope struct {
+		Type   string `json:"type"`
+		Method string `json:"method"`
+	}
+	if err := json.Unmarshal(line, &envelope); err != nil {
+		return
+	}
+	if envelope.Type == "attach" {
+		s.handleAttach(conn, line)
+		return
+	}
+	s.handleControl(conn, line)
+}
+
+func (s *Server) handleControl(conn net.Conn, line []byte) {
+	var req ControlRequest
+	if err := json.Unmarshal(line, &req); err != nil {
+		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: false, Error: err.Error()})
+		return
+	}
+	switch req.Method {
+	case "create":
+		var params CreateRequest
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			s.writeError(conn, err)
+			return
+		}
+		session, existing, err := s.getOrCreate(params.SessionID, params.Cwd)
+		if err != nil {
+			s.writeError(conn, err)
+			return
+		}
+		_ = json.NewEncoder(conn).Encode(ControlResponse{
+			OK: true,
+			Result: CreateResponse{
+				SessionID: session.id,
+				Existing:  existing,
+			},
+		})
+	case "send":
+		var params SendRequest
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			s.writeError(conn, err)
+			return
+		}
+		session := s.get(params.SessionID)
+		if session == nil {
+			s.writeError(conn, fmt.Errorf("session not found"))
+			return
+		}
+		if err := session.write(params.Data); err != nil {
+			s.writeError(conn, err)
+			return
+		}
+		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true})
+	case "resize":
+		var params ResizeRequest
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			s.writeError(conn, err)
+			return
+		}
+		session := s.get(params.SessionID)
+		if session == nil {
+			s.writeError(conn, fmt.Errorf("session not found"))
+			return
+		}
+		if err := session.resize(params.Cols, params.Rows); err != nil {
+			s.writeError(conn, err)
+			return
+		}
+		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true})
+	case "stop":
+		var params StopRequest
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			s.writeError(conn, err)
+			return
+		}
+		session := s.get(params.SessionID)
+		if session != nil {
+			session.closeWithReason("closed")
+			s.remove(params.SessionID)
+		}
+		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true})
+	case "backlog":
+		var params BacklogRequest
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			s.writeError(conn, err)
+			return
+		}
+		session := s.get(params.SessionID)
+		if session == nil {
+			s.writeError(conn, fmt.Errorf("session not found"))
+			return
+		}
+		backlog, err := session.backlog(params.Since)
+		if err != nil {
+			s.writeError(conn, err)
+			return
+		}
+		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true, Result: backlog})
+	case "snapshot":
+		var params SnapshotRequest
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			s.writeError(conn, err)
+			return
+		}
+		session := s.get(params.SessionID)
+		if session == nil {
+			s.writeError(conn, fmt.Errorf("session not found"))
+			return
+		}
+		snapshot := session.snapshot()
+		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true, Result: snapshot})
+	case "bootstrap":
+		var params BootstrapRequest
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			s.writeError(conn, err)
+			return
+		}
+		session := s.get(params.SessionID)
+		if session == nil {
+			s.writeError(conn, fmt.Errorf("session not found"))
+			return
+		}
+		bootstrap, err := session.bootstrap()
+		if err != nil {
+			s.writeError(conn, err)
+			return
+		}
+		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true, Result: bootstrap})
+	case "list":
+		s.mu.Lock()
+		sessions := make([]SessionInfo, 0, len(s.sessions))
+		for _, session := range s.sessions {
+			sessions = append(sessions, session.info())
+		}
+		s.mu.Unlock()
+		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true, Result: ListResponse{Sessions: sessions}})
+	case "shutdown":
+		logServerf("shutdown_requested")
+		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true})
+		logServerf("shutdown_ack")
+		go func() {
+			if s.shutdown != nil {
+				s.shutdown()
+			}
+			s.closeAll()
+		}()
+	default:
+		s.writeError(conn, fmt.Errorf("unknown method %q", req.Method))
+	}
+}
+
+func (s *Server) handleAttach(conn net.Conn, line []byte) {
+	enc := json.NewEncoder(conn)
+	var req AttachRequest
+	if err := json.Unmarshal(line, &req); err != nil {
+		_ = enc.Encode(StreamMessage{Type: "error", Error: err.Error()})
+		return
+	}
+	session := s.get(req.SessionID)
+	if session == nil {
+		_ = enc.Encode(StreamMessage{Type: "error", Error: "session not found"})
+		return
+	}
+	if req.WithBuffer {
+		backlog, err := session.backlog(req.Since)
+		if err != nil {
+			_ = enc.Encode(StreamMessage{Type: "error", Error: err.Error()})
+			return
+		}
+		_ = enc.Encode(StreamMessage{
+			Type:       "backlog",
+			SessionID:  backlog.SessionID,
+			Data:       backlog.Data,
+			NextOffset: backlog.NextOffset,
+			Truncated:  backlog.Truncated,
+			Source:     backlog.Source,
+		})
+	} else {
+		_ = enc.Encode(StreamMessage{Type: "backlog", SessionID: req.SessionID})
+	}
+	if snapshot := session.kittySnapshot(); snapshot != nil {
+		_ = enc.Encode(StreamMessage{Type: "kitty_snapshot", SessionID: req.SessionID, Kitty: snapshot})
+	}
+	sub := session.subscribe()
+	defer session.unsubscribe(sub)
+	for event := range sub.ch {
+		switch event.kind {
+		case "data":
+			if err := enc.Encode(StreamMessage{Type: "data", SessionID: req.SessionID, Data: string(event.data)}); err != nil {
+				return
+			}
+		case "kitty":
+			if event.kitty == nil {
+				continue
+			}
+			if err := enc.Encode(StreamMessage{Type: "kitty", SessionID: req.SessionID, Kitty: event.kitty}); err != nil {
+				return
+			}
+		}
+	}
+	_ = enc.Encode(StreamMessage{Type: "closed", SessionID: req.SessionID})
+}
+
+func (s *Server) writeError(conn net.Conn, err error) {
+	_ = json.NewEncoder(conn).Encode(ControlResponse{OK: false, Error: err.Error()})
+}
+
+func (s *Server) get(id string) *Session {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.sessions[id]
+}
+
+func (s *Server) remove(id string) {
+	s.mu.Lock()
+	delete(s.sessions, id)
+	s.mu.Unlock()
+}
+
+func (s *Server) closeAll() {
+	s.mu.Lock()
+	sessions := make([]*Session, 0, len(s.sessions))
+	for _, session := range s.sessions {
+		sessions = append(sessions, session)
+	}
+	s.sessions = make(map[string]*Session)
+	s.mu.Unlock()
+	if len(sessions) > 0 {
+		logServerf("close_all count=%d", len(sessions))
+	}
+	for _, session := range sessions {
+		session.closeWithReason("shutdown")
+	}
+}
+
+func (s *Server) getOrCreate(id, cwd string) (*Session, bool, error) {
+	if id == "" {
+		return nil, false, fmt.Errorf("session id required")
+	}
+	s.mu.Lock()
+	existing := s.sessions[id]
+	s.mu.Unlock()
+	if existing != nil {
+		return existing, true, nil
+	}
+	session := newSession(s.opts, id, cwd)
+	if err := session.start(context.Background()); err != nil {
+		return nil, false, err
+	}
+	s.mu.Lock()
+	s.sessions[id] = session
+	s.mu.Unlock()
+	return session, false, nil
+}
+
+func bytesTrimSpace(input []byte) []byte {
+	start := 0
+	for start < len(input) && (input[start] == ' ' || input[start] == '\n' || input[start] == '\r' || input[start] == '\t') {
+		start++
+	}
+	end := len(input)
+	for end > start && (input[end-1] == ' ' || input[end-1] == '\n' || input[end-1] == '\r' || input[end-1] == '\t') {
+		end--
+	}
+	return input[start:end]
+}
+
+func shouldRetryListen(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "address already in use") || strings.Contains(msg, "file exists")
+}
+
+func logServerf(format string, args ...any) {
+	_, _ = fmt.Fprintf(os.Stderr, "sessiond: "+format+"\n", args...)
+}

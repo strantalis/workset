@@ -1,0 +1,67 @@
+package sessiond
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"runtime"
+	"testing"
+	"time"
+)
+
+func startTestServer(t *testing.T) (*Client, func()) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("pty not supported on windows")
+	}
+	tmp, err := os.MkdirTemp("/tmp", "workset-sessiond-")
+	if err != nil {
+		t.Fatalf("create temp dir: %v", err)
+	}
+	socketPath := filepath.Join(tmp, "sessiond.sock")
+	opts := DefaultOptions()
+	opts.SocketPath = socketPath
+	opts.TranscriptDir = filepath.Join(tmp, "terminal_logs")
+	opts.RecordDir = filepath.Join(tmp, "terminal_records")
+	opts.StateDir = filepath.Join(tmp, "terminal_state")
+
+	server := NewServer(opts)
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- server.Listen(ctx)
+	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		select {
+		case err := <-errCh:
+			if err != nil {
+				t.Fatalf("sessiond listen failed: %v", err)
+			}
+			t.Fatalf("sessiond stopped before socket was ready")
+		default:
+		}
+		if _, err := os.Stat(socketPath); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("sessiond socket not ready")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	t.Setenv("SHELL", "/bin/sh")
+	t.Setenv("PS1", "")
+
+	client := NewClient(socketPath)
+	cleanup := func() {
+		cancel()
+		select {
+		case <-errCh:
+		case <-time.After(2 * time.Second):
+		}
+		_ = os.RemoveAll(tmp)
+	}
+	return client, cleanup
+}
