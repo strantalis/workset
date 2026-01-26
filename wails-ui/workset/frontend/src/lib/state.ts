@@ -84,3 +84,17 @@ export async function loadWorkspaces(includeArchived = false): Promise<void> {
     })
     .catch(() => {})
 }
+
+export async function refreshWorkspacesStatus(includeArchived = false): Promise<void> {
+  const sequence = ++loadSequence
+  try {
+    const data = await fetchWorkspaces(includeArchived, true)
+    if (sequence !== loadSequence) {
+      return
+    }
+    workspaces.set(data)
+    syncSelection(data)
+  } catch {
+    // Ignore status refresh failures to avoid interrupting the UI.
+  }
+}

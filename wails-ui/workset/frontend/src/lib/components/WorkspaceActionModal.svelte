@@ -14,7 +14,15 @@
     removeWorkspace,
     renameWorkspace
   } from '../api'
-  import {activeWorkspaceId, clearRepo, clearWorkspace, loadWorkspaces, selectWorkspace, workspaces} from '../state'
+  import {
+    activeWorkspaceId,
+    clearRepo,
+    clearWorkspace,
+    loadWorkspaces,
+    refreshWorkspacesStatus,
+    selectWorkspace,
+    workspaces
+  } from '../state'
   import type {Alias, GroupSummary, Repo, Workspace} from '../types'
   import {
     generateWorkspaceName,
@@ -125,6 +133,51 @@
   let archiveReason = $state('')
   let removeDeleteWorktree = $state(false)
   let removeDeleteLocal = $state(false)
+  let removeDeleteFiles = $state(false)
+  let removeForceDelete = $state(false)
+  let removeConfirmText = $state('')
+  let removeRepoConfirmText = $state('')
+  let removeRepoStatusRequested = $state(false)
+  let removeRepoStatusRefreshing = $state(false)
+
+  const removeConfirmValid = $derived(
+    !removeDeleteFiles || removeConfirmText.trim().toUpperCase() === 'DELETE'
+  )
+  const removeRepoConfirmRequired = $derived(removeDeleteWorktree || removeDeleteLocal)
+  const removeRepoConfirmValid = $derived(
+    !removeRepoConfirmRequired || removeRepoConfirmText.trim().toUpperCase() === 'DELETE'
+  )
+  const removeRepoStatus = $derived(
+    workspaceId && repoName
+      ? $workspaces.find((entry) => entry.id === workspaceId)?.repos.find((entry) => entry.name === repoName) ?? null
+      : null
+  )
+
+  $effect(() => {
+    if (!removeDeleteFiles && removeForceDelete) {
+      removeForceDelete = false
+    }
+    if (!removeDeleteFiles && removeConfirmText) {
+      removeConfirmText = ''
+    }
+    if (!removeRepoConfirmRequired && removeRepoConfirmText) {
+      removeRepoConfirmText = ''
+    }
+    if (!removeRepoConfirmRequired) {
+      removeRepoStatusRequested = false
+    }
+  })
+
+  $effect(() => {
+    if (removeRepoConfirmRequired && !removeRepoStatusRequested) {
+      removeRepoStatusRequested = true
+      removeRepoStatusRefreshing = true
+      void (async () => {
+        await refreshWorkspacesStatus(true)
+        removeRepoStatusRefreshing = false
+      })()
+    }
+  })
 
   const modeTitle = $derived(
     mode === 'create' ? 'Create workspace'
@@ -313,7 +366,14 @@
     loading = true
     error = null
     try {
-      await removeWorkspace(workspaceId)
+      if (removeDeleteFiles && !removeConfirmValid) {
+        error = 'Type DELETE to confirm file deletion.'
+        return
+      }
+      await removeWorkspace(workspaceId, {
+        deleteFiles: removeDeleteFiles,
+        force: removeForceDelete
+      })
       workspaces.update((current) => current.filter((entry) => entry.id !== workspaceId))
       if (get(activeWorkspaceId) === workspaceId) {
         clearWorkspace()
@@ -332,6 +392,10 @@
     loading = true
     error = null
     try {
+      if (!removeRepoConfirmValid) {
+        error = 'Type DELETE to confirm repo deletion.'
+        return
+      }
       await removeRepo(workspace.id, repo.name, removeDeleteWorktree, removeDeleteLocal)
       await loadWorkspaces(true)
       if (get(activeWorkspaceId) === workspace.id) {
@@ -341,6 +405,7 @@
     } catch (err) {
       error = formatError(err, 'Failed to remove repo.')
     } finally {
+      removeRepoConfirmText = ''
       loading = false
     }
   }
@@ -655,10 +720,39 @@
     </div>
   {:else if mode === 'remove-workspace'}
     <div class="form">
-      <div class="hint">
-        This only removes the workspace registration. Files and worktrees stay on disk.
-      </div>
-      <Button variant="danger" onclick={handleRemoveWorkspace} disabled={loading} class="action-btn">
+      <div class="hint">Remove workspace registration only by default.</div>
+      <label class="option">
+        <input type="checkbox" bind:checked={removeDeleteFiles} />
+        <span>Also delete workspace files and worktrees</span>
+      </label>
+      {#if removeDeleteFiles}
+        <div class="hint">Deletes the workspace directory and removes all worktrees.</div>
+        <label class="field">
+          <span>Type DELETE to confirm</span>
+          <input
+            bind:value={removeConfirmText}
+            placeholder="DELETE"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
+          />
+        </label>
+        <label class="option">
+          <input type="checkbox" bind:checked={removeForceDelete} />
+          <span>Force delete (skip safety checks)</span>
+        </label>
+        {#if removeForceDelete}
+          <Alert variant="warning">
+            Force delete bypasses dirty/unmerged checks and may delete uncommitted work.
+          </Alert>
+        {/if}
+      {/if}
+      <Button
+        variant="danger"
+        onclick={handleRemoveWorkspace}
+        disabled={loading || !removeConfirmValid}
+        class="action-btn"
+      >
         {loading ? 'Removing…' : 'Remove workspace'}
       </Button>
     </div>
@@ -673,20 +767,39 @@
         <input type="checkbox" bind:checked={removeDeleteLocal} />
         <span>Also delete local cache for this repo</span>
       </label>
+      {#if removeRepoConfirmRequired}
+        <label class="field">
+          <span>Type DELETE to confirm</span>
+          <input
+            bind:value={removeRepoConfirmText}
+            placeholder="DELETE"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
+          />
+        </label>
+      {/if}
       {#if removeDeleteWorktree || removeDeleteLocal}
         <div class="hint">Destructive deletes are permanent and cannot be undone.</div>
       {/if}
-      {#if repo?.statusKnown === false && (removeDeleteWorktree || removeDeleteLocal)}
+      {#if removeRepoStatusRefreshing}
+        <Alert variant="warning">Fetching repo status…</Alert>
+      {:else if removeRepoStatus?.statusKnown === false && (removeDeleteWorktree || removeDeleteLocal)}
         <Alert variant="warning">
-          Repo status is still loading. Destructive deletes may be blocked if the repo is dirty.
+          Repo status unknown. Destructive deletes may be blocked if the repo is dirty.
         </Alert>
       {/if}
-      {#if repo?.dirty && (removeDeleteWorktree || removeDeleteLocal)}
+      {#if removeRepoStatus?.dirty && (removeDeleteWorktree || removeDeleteLocal)}
         <Alert variant="warning">
           Uncommitted changes detected. Destructive deletes will be blocked until the repo is clean.
         </Alert>
       {/if}
-      <Button variant="danger" onclick={handleRemoveRepo} disabled={loading} class="action-btn">
+      <Button
+        variant="danger"
+        onclick={handleRemoveRepo}
+        disabled={loading || !removeRepoConfirmValid}
+        class="action-btn"
+      >
         {loading ? 'Removing…' : 'Remove repo'}
       </Button>
     </div>

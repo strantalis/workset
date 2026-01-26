@@ -848,6 +848,24 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class WorkspaceRemoveRequest {
+	    workspaceId: string;
+	    deleteFiles: boolean;
+	    force: boolean;
+	    fetchRemotes: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkspaceRemoveRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.workspaceId = source["workspaceId"];
+	        this.deleteFiles = source["deleteFiles"];
+	        this.force = source["force"];
+	        this.fetchRemotes = source["fetchRemotes"];
+	    }
+	}
 	export class WorkspaceSnapshot {
 	    id: string;
 	    name: string;

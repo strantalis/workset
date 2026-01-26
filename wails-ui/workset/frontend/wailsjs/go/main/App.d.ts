@@ -75,7 +75,7 @@ export function RemoveGroupMember(arg1:main.GroupMemberRequest):Promise<workseta
 
 export function RemoveRepo(arg1:main.RepoRemoveRequest):Promise<worksetapi.RepoRemoveResultJSON>;
 
-export function RemoveWorkspace(arg1:string):Promise<worksetapi.WorkspaceDeleteResultJSON>;
+export function RemoveWorkspace(arg1:main.WorkspaceRemoveRequest):Promise<worksetapi.WorkspaceDeleteResultJSON>;
 
 export function RenameWorkspace(arg1:string,arg2:string):Promise<worksetapi.WorkspaceRefJSON>;
 

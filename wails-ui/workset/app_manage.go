@@ -40,6 +40,13 @@ type RepoRemoveRequest struct {
 	DeleteLocal    bool   `json:"deleteLocal"`
 }
 
+type WorkspaceRemoveRequest struct {
+	WorkspaceID  string `json:"workspaceId"`
+	DeleteFiles  bool   `json:"deleteFiles"`
+	Force        bool   `json:"force"`
+	FetchRemotes bool   `json:"fetchRemotes"`
+}
+
 type AliasUpsertRequest struct {
 	Name          string `json:"name"`
 	Source        string `json:"source"`
@@ -115,7 +122,7 @@ func (a *App) UnarchiveWorkspace(workspaceID string) (worksetapi.WorkspaceRefJSO
 	return result, err
 }
 
-func (a *App) RemoveWorkspace(workspaceID string) (worksetapi.WorkspaceDeleteResultJSON, error) {
+func (a *App) RemoveWorkspace(input WorkspaceRemoveRequest) (worksetapi.WorkspaceDeleteResultJSON, error) {
 	ctx := a.ctx
 	if ctx == nil {
 		ctx = context.Background()
@@ -125,9 +132,11 @@ func (a *App) RemoveWorkspace(workspaceID string) (worksetapi.WorkspaceDeleteRes
 	}
 
 	result, err := a.service.DeleteWorkspace(ctx, worksetapi.WorkspaceDeleteInput{
-		Selector:    worksetapi.WorkspaceSelector{Value: workspaceID},
-		DeleteFiles: false,
-		Confirmed:   true,
+		Selector:     worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
+		DeleteFiles:  input.DeleteFiles,
+		Force:        input.Force,
+		Confirmed:    true,
+		FetchRemotes: input.FetchRemotes,
 	})
 	if err != nil {
 		return worksetapi.WorkspaceDeleteResultJSON{}, err

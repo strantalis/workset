@@ -328,8 +328,18 @@ export async function unarchiveWorkspace(workspaceId: string): Promise<void> {
   await UnarchiveWorkspace(workspaceId)
 }
 
-export async function removeWorkspace(workspaceId: string): Promise<void> {
-  await RemoveWorkspace(workspaceId)
+export type RemoveWorkspaceOptions = {
+  deleteFiles?: boolean
+  force?: boolean
+  fetchRemotes?: boolean
+}
+
+export async function removeWorkspace(
+  workspaceId: string,
+  options: RemoveWorkspaceOptions = {}
+): Promise<void> {
+  const {deleteFiles = false, force = false, fetchRemotes = deleteFiles} = options
+  await RemoveWorkspace({workspaceId, deleteFiles, force, fetchRemotes})
 }
 
 export async function addRepo(
