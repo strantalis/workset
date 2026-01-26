@@ -15,21 +15,13 @@ var ensureSSHAuthSockOnce sync.Once
 func EnsureSSHAuthSock() {
 	ensureSSHAuthSockOnce.Do(func() {
 		current := strings.TrimSpace(os.Getenv("SSH_AUTH_SOCK"))
-		if isSocket(current) {
-			return
-		}
-
 		identityAgent := resolveIdentityAgent()
 		if identityAgent == "" {
 			return
 		}
-
-		identityAgent = expandSSHPath(identityAgent)
-		if identityAgent == "" || !isSocket(identityAgent) {
-			return
+		if next, ok := applySSHAuthSock(current, identityAgent); ok {
+			_ = os.Setenv("SSH_AUTH_SOCK", next)
 		}
-
-		_ = os.Setenv("SSH_AUTH_SOCK", identityAgent)
 	})
 }
 
@@ -48,14 +40,14 @@ func shouldUseIdentityAgent(agent string) bool {
 		return false
 	}
 	lower := strings.ToLower(agent)
-	if lower == "none" || lower == "ssh_auth_sock" {
+	if lower == "none" || lower == "ssh_auth_sock" || lower == "*" {
 		return false
 	}
 	return true
 }
 
 func expandSSHPath(path string) string {
-	expanded := os.ExpandEnv(path)
+	expanded := trimQuotes(os.ExpandEnv(path))
 	if strings.HasPrefix(expanded, "~") {
 		home, err := os.UserHomeDir()
 		if err != nil || home == "" {
@@ -64,6 +56,21 @@ func expandSSHPath(path string) string {
 		expanded = filepath.Join(home, strings.TrimPrefix(expanded, "~"))
 	}
 	return expanded
+}
+
+func applySSHAuthSock(current, identityAgent string) (string, bool) {
+	identityAgent = strings.TrimSpace(identityAgent)
+	if !shouldUseIdentityAgent(identityAgent) {
+		return "", false
+	}
+	identityAgent = expandSSHPath(identityAgent)
+	if identityAgent == "" || !isSocket(identityAgent) {
+		return "", false
+	}
+	if current == identityAgent {
+		return "", false
+	}
+	return identityAgent, true
 }
 
 func isSocket(path string) bool {
@@ -75,4 +82,17 @@ func isSocket(path string) bool {
 		return false
 	}
 	return info.Mode()&os.ModeSocket != 0
+}
+
+func trimQuotes(value string) string {
+	if len(value) < 2 {
+		return value
+	}
+	if value[0] == '"' && value[len(value)-1] == '"' {
+		return value[1 : len(value)-1]
+	}
+	if value[0] == '\'' && value[len(value)-1] == '\'' {
+		return value[1 : len(value)-1]
+	}
+	return value
 }
