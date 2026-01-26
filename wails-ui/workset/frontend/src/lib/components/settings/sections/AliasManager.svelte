@@ -1,6 +1,6 @@
 <script lang="ts">
   import {onMount} from 'svelte'
-  import {createAlias, deleteAlias, listAliases, updateAlias} from '../../../api'
+  import {createAlias, deleteAlias, listAliases, openDirectoryDialog, updateAlias} from '../../../api'
   import type {Alias} from '../../../types'
   import SettingsSection from '../SettingsSection.svelte'
   import Button from '../../ui/Button.svelte'
@@ -142,6 +142,17 @@
     return source
   }
 
+  const handleBrowseSource = async (): Promise<void> => {
+    try {
+      const defaultDirectory = formSource.trim()
+      const path = await openDirectoryDialog('Select repository directory', defaultDirectory)
+      if (!path) return
+      formSource = path
+    } catch (err) {
+      error = formatError(err)
+    }
+  }
+
   onMount(() => {
     void loadAliases()
   })
@@ -213,14 +224,17 @@
           </label>
           <label class="field">
             <span>Source (URL or path)</span>
-            <input
-              type="text"
-              bind:value={formSource}
-              placeholder="git@github.com:org/repo.git"
-              autocapitalize="off"
-              autocorrect="off"
-              spellcheck="false"
-            />
+            <div class="inline">
+              <input
+                type="text"
+                bind:value={formSource}
+                placeholder="git@github.com:org/repo.git"
+                autocapitalize="off"
+                autocorrect="off"
+                spellcheck="false"
+              />
+              <Button variant="ghost" size="sm" onclick={handleBrowseSource}>Browse</Button>
+            </div>
           </label>
           <label class="field">
             <span>Remote (optional)</span>
@@ -391,6 +405,16 @@
   .field input:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+  }
+
+  .inline {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .inline input {
+    flex: 1;
   }
 
   .actions {
