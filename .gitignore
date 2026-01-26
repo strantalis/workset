@@ -14,3 +14,6 @@ coverage/
 .idea/
 .vscode/
 .venv/
+.agent-skills/
+.claude/
+wails-ui/workset/build/
