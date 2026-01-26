@@ -78,6 +78,11 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 		return WorkspaceCreateResult{}, err
 	}
 
+	registerWorkspace(&cfg, name, root, s.clock())
+	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+		return WorkspaceCreateResult{}, err
+	}
+
 	repoPlans, err := buildNewWorkspaceRepoPlans(cfg, input.Groups, input.Repos)
 	if err != nil {
 		return WorkspaceCreateResult{}, err

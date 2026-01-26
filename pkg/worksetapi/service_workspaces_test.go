@@ -2,6 +2,7 @@ package worksetapi
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -163,6 +164,33 @@ func TestCreateWorkspacePendingHooks(t *testing.T) {
 	}
 	if result.PendingHooks[0].Status != HookRunStatusSkipped || result.PendingHooks[0].Reason != "untrusted" {
 		t.Fatalf("expected skipped/untrusted status")
+	}
+}
+
+func TestCreateWorkspaceRegistersOnRepoFailure(t *testing.T) {
+	env := newTestEnv(t)
+	local := env.createLocalRepo("repo-a")
+	env.git.worktreeAddHook = func(string) error {
+		return errors.New("no auth")
+	}
+
+	cfg := env.loadConfig()
+	cfg.Repos = map[string]config.RepoAlias{
+		"repo-a": {Path: local},
+	}
+	env.saveConfig(cfg)
+
+	_, err := env.svc.CreateWorkspace(context.Background(), WorkspaceCreateInput{
+		Name:  "demo",
+		Repos: []string{"repo-a"},
+	})
+	if err == nil {
+		t.Fatalf("expected create workspace to fail")
+	}
+
+	cfg = env.loadConfig()
+	if _, ok := cfg.Workspaces["demo"]; !ok {
+		t.Fatalf("workspace not registered after failure")
 	}
 }
 
