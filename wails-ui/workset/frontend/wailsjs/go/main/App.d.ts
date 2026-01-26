@@ -11,6 +11,8 @@ export function ApplyGroup(arg1:string,arg2:string):Promise<worksetapi.GroupAppl
 
 export function ArchiveWorkspace(arg1:string,arg2:string):Promise<worksetapi.WorkspaceRefJSON>;
 
+export function CommitAndPush(arg1:main.CommitAndPushRequest):Promise<worksetapi.CommitAndPushResultJSON>;
+
 export function CreateAlias(arg1:main.AliasUpsertRequest):Promise<worksetapi.AliasMutationResultJSON>;
 
 export function CreateGroup(arg1:main.GroupUpsertRequest):Promise<worksetapi.GroupJSON>;
@@ -27,13 +29,15 @@ export function GeneratePullRequestText(arg1:main.PullRequestGenerateRequest):Pr
 
 export function GetAgentAvailability():Promise<Record<string, boolean>>;
 
+export function GetBranchDiffSummary(arg1:string,arg2:string,arg3:string,arg4:string):Promise<main.RepoDiffSummary>;
+
+export function GetBranchFileDiff(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string):Promise<main.RepoFileDiffSnapshot>;
+
 export function GetGroup(arg1:string):Promise<worksetapi.GroupJSON>;
 
 export function GetPullRequestReviews(arg1:main.PullRequestReviewsRequest):Promise<main.PullRequestReviewCommentsPayload>;
 
 export function GetPullRequestStatus(arg1:main.PullRequestStatusRequest):Promise<main.PullRequestStatusPayload>;
-
-export function GetTrackedPullRequest(arg1:main.PullRequestTrackedRequest):Promise<worksetapi.PullRequestTrackedJSON>;
 
 export function GetRepoDiff(arg1:string,arg2:string):Promise<main.RepoDiffSnapshot>;
 
@@ -41,17 +45,29 @@ export function GetRepoDiffSummary(arg1:string,arg2:string):Promise<main.RepoDif
 
 export function GetRepoFileDiff(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<main.RepoFileDiffSnapshot>;
 
+export function GetRepoLocalStatus(arg1:main.RepoLocalStatusRequest):Promise<worksetapi.RepoLocalStatusJSON>;
+
+export function GetSessiondStatus():Promise<main.SessiondStatus>;
+
 export function GetSettings():Promise<main.SettingsSnapshot>;
 
 export function GetTerminalBacklog(arg1:string,arg2:number):Promise<main.TerminalBacklogPayload>;
 
+export function GetTerminalBootstrap(arg1:string):Promise<main.TerminalBootstrapPayload>;
+
+export function GetTerminalSnapshot(arg1:string):Promise<main.TerminalSnapshotPayload>;
+
 export function GetTrackedPullRequest(arg1:main.PullRequestTrackedRequest):Promise<worksetapi.PullRequestTrackedJSON>;
+
+export function GetWorkspaceTerminalStatus(arg1:string):Promise<main.TerminalStatusPayload>;
 
 export function ListAliases():Promise<Array<worksetapi.AliasJSON>>;
 
 export function ListGroups():Promise<Array<worksetapi.GroupSummaryJSON>>;
 
 export function ListWorkspaceSnapshots(arg1:main.WorkspaceSnapshotRequest):Promise<Array<main.WorkspaceSnapshot>>;
+
+export function LogTerminalDebug(arg1:main.TerminalDebugPayload):Promise<void>;
 
 export function OpenDirectoryDialog(arg1:string,arg2:string):Promise<string>;
 
@@ -64,6 +80,8 @@ export function RemoveWorkspace(arg1:string):Promise<worksetapi.WorkspaceDeleteR
 export function RenameWorkspace(arg1:string,arg2:string):Promise<worksetapi.WorkspaceRefJSON>;
 
 export function ResizeWorkspaceTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;
+
+export function RestartSessiond():Promise<main.SessiondStatus>;
 
 export function SendPullRequestReviewsToTerminal(arg1:main.PullRequestReviewsRequest):Promise<void>;
 

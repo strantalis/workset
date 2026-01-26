@@ -1,6 +1,7 @@
 <script lang="ts">
   import {onMount} from 'svelte'
-  import {fetchSettings, setDefaultSetting} from '../api'
+  import {fetchSettings, setDefaultSetting, restartSessiond} from '../api'
+  import type {SessiondStatusResponse} from '../api'
   import type {SettingsDefaults, SettingsSnapshot} from '../types'
   import SettingsSidebar from './settings/SettingsSidebar.svelte'
   import WorkspaceDefaults from './settings/sections/WorkspaceDefaults.svelte'
@@ -42,6 +43,7 @@
   let snapshot: SettingsSnapshot | null = $state(null)
   let loading = $state(true)
   let saving = $state(false)
+  let restartingSessiond = $state(false)
   let error: string | null = $state(null)
   let success: string | null = $state(null)
   let baseline: Record<FieldId, string> = $state({} as Record<FieldId, string>)
@@ -118,6 +120,33 @@
     saving = false
   }
 
+  const handleRestartSessiond = async (): Promise<void> => {
+    if (saving || restartingSessiond) return
+    restartingSessiond = true
+    error = null
+    success = null
+    try {
+      const status = await Promise.race([
+        restartSessiond(),
+        new Promise<SessiondStatusResponse>((_, reject) => {
+          window.setTimeout(() => {
+            reject(new Error('Session daemon restart timed out.'))
+          }, 20000)
+        })
+      ])
+      if (status?.available) {
+        success = status.warning ? `Session daemon restarted. ${status.warning}` : 'Session daemon restarted.'
+      } else {
+        const warning = status?.warning ? ` ${status.warning}` : ''
+        error = status?.error ? `Failed to restart: ${status.error}${warning}` : `Failed to restart session daemon.${warning}`
+      }
+    } catch (err) {
+      error = `Failed to restart: ${formatError(err)}`
+    } finally {
+      restartingSessiond = false
+    }
+  }
+
   const resetChanges = (): void => {
     draft = {...baseline}
     success = null
@@ -164,7 +193,13 @@
         {#if activeSection === 'workspace'}
           <WorkspaceDefaults {draft} {baseline} onUpdate={updateField} />
         {:else if activeSection === 'session'}
-          <SessionDefaults {draft} {baseline} onUpdate={updateField} />
+          <SessionDefaults
+            {draft}
+            {baseline}
+            onUpdate={updateField}
+            onRestartSessiond={handleRestartSessiond}
+            restartingSessiond={restartingSessiond}
+          />
         {:else if activeSection === 'aliases'}
           <AliasManager onAliasCountChange={(count) => (aliasCount = count)} />
         {:else if activeSection === 'groups'}

@@ -61,6 +61,93 @@ export namespace config {
 
 }
 
+export namespace kitty {
+	
+	export class Image {
+	    id: string;
+	    number?: number;
+	    format: string;
+	    width?: number;
+	    height?: number;
+	    data?: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Image(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.number = source["number"];
+	        this.format = source["format"];
+	        this.width = source["width"];
+	        this.height = source["height"];
+	        this.data = source["data"];
+	    }
+	}
+	export class Placement {
+	    id: number;
+	    imageId: string;
+	    row: number;
+	    col: number;
+	    rows: number;
+	    cols: number;
+	    x?: number;
+	    y?: number;
+	    z?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Placement(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.imageId = source["imageId"];
+	        this.row = source["row"];
+	        this.col = source["col"];
+	        this.rows = source["rows"];
+	        this.cols = source["cols"];
+	        this.x = source["x"];
+	        this.y = source["y"];
+	        this.z = source["z"];
+	    }
+	}
+	export class Snapshot {
+	    images: Image[];
+	    placements: Placement[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Snapshot(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.images = this.convertValues(source["images"], Image);
+	        this.placements = this.convertValues(source["placements"], Placement);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace main {
 	
 	export class AliasUpsertRequest {
@@ -79,6 +166,22 @@ export namespace main {
 	        this.source = source["source"];
 	        this.remote = source["remote"];
 	        this.defaultBranch = source["defaultBranch"];
+	    }
+	}
+	export class CommitAndPushRequest {
+	    workspaceId: string;
+	    repoId: string;
+	    message?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CommitAndPushRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.workspaceId = source["workspaceId"];
+	        this.repoId = source["repoId"];
+	        this.message = source["message"];
 	    }
 	}
 	export class GroupMemberRequest {
@@ -403,6 +506,20 @@ export namespace main {
 	        this.binary = source["binary"];
 	    }
 	}
+	export class RepoLocalStatusRequest {
+	    workspaceId: string;
+	    repoId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RepoLocalStatusRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.workspaceId = source["workspaceId"];
+	        this.repoId = source["repoId"];
+	    }
+	}
 	export class RepoRemoveRequest {
 	    workspaceId: string;
 	    repoName: string;
@@ -445,6 +562,22 @@ export namespace main {
 	        this.dirty = source["dirty"];
 	        this.missing = source["missing"];
 	        this.statusKnown = source["statusKnown"];
+	    }
+	}
+	export class SessiondStatus {
+	    available: boolean;
+	    error?: string;
+	    warning?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SessiondStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.available = source["available"];
+	        this.error = source["error"];
+	        this.warning = source["warning"];
 	    }
 	}
 	export class SettingsDefaults {
@@ -537,6 +670,130 @@ export namespace main {
 	        this.nextOffset = source["nextOffset"];
 	        this.truncated = source["truncated"];
 	        this.source = source["source"];
+	    }
+	}
+	export class TerminalBootstrapPayload {
+	    workspaceId: string;
+	    snapshot?: string;
+	    snapshotSource?: string;
+	    kitty?: kitty.Snapshot;
+	    backlog?: string;
+	    backlogSource?: string;
+	    backlogTruncated?: boolean;
+	    nextOffset?: number;
+	    source?: string;
+	    altScreen?: boolean;
+	    mouse?: boolean;
+	    mouseSGR?: boolean;
+	    mouseEncoding?: string;
+	    safeToReplay?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new TerminalBootstrapPayload(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.workspaceId = source["workspaceId"];
+	        this.snapshot = source["snapshot"];
+	        this.snapshotSource = source["snapshotSource"];
+	        this.kitty = this.convertValues(source["kitty"], kitty.Snapshot);
+	        this.backlog = source["backlog"];
+	        this.backlogSource = source["backlogSource"];
+	        this.backlogTruncated = source["backlogTruncated"];
+	        this.nextOffset = source["nextOffset"];
+	        this.source = source["source"];
+	        this.altScreen = source["altScreen"];
+	        this.mouse = source["mouse"];
+	        this.mouseSGR = source["mouseSGR"];
+	        this.mouseEncoding = source["mouseEncoding"];
+	        this.safeToReplay = source["safeToReplay"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class TerminalDebugPayload {
+	    workspaceId: string;
+	    event: string;
+	    details?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TerminalDebugPayload(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.workspaceId = source["workspaceId"];
+	        this.event = source["event"];
+	        this.details = source["details"];
+	    }
+	}
+	export class TerminalSnapshotPayload {
+	    workspaceId: string;
+	    data: string;
+	    source?: string;
+	    kitty?: kitty.Snapshot;
+	
+	    static createFrom(source: any = {}) {
+	        return new TerminalSnapshotPayload(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.workspaceId = source["workspaceId"];
+	        this.data = source["data"];
+	        this.source = source["source"];
+	        this.kitty = this.convertValues(source["kitty"], kitty.Snapshot);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class TerminalStatusPayload {
+	    workspaceId: string;
+	    active: boolean;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TerminalStatusPayload(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.workspaceId = source["workspaceId"];
+	        this.active = source["active"];
+	        this.error = source["error"];
 	    }
 	}
 	export class WorkspaceCreateRequest {
@@ -684,6 +941,24 @@ export namespace worksetapi {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.status = source["status"];
 	        this.name = source["name"];
+	    }
+	}
+	export class CommitAndPushResultJSON {
+	    committed: boolean;
+	    pushed: boolean;
+	    message: string;
+	    sha?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CommitAndPushResultJSON(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.committed = source["committed"];
+	        this.pushed = source["pushed"];
+	        this.message = source["message"];
+	        this.sha = source["sha"];
 	    }
 	}
 	export class ConfigSetResultJSON {
@@ -1005,6 +1280,24 @@ export namespace worksetapi {
 		    }
 		    return a;
 		}
+	}
+	export class RepoLocalStatusJSON {
+	    hasUncommitted: boolean;
+	    ahead: number;
+	    behind: number;
+	    currentBranch: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RepoLocalStatusJSON(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.hasUncommitted = source["hasUncommitted"];
+	        this.ahead = source["ahead"];
+	        this.behind = source["behind"];
+	        this.currentBranch = source["currentBranch"];
+	    }
 	}
 	export class RepoRemoveDeletedJSON {
 	    worktrees: boolean;

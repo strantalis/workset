@@ -22,18 +22,24 @@ import {
   CreateWorkspace,
   CreateAlias,
   CreateGroup,
+  CommitAndPush,
   DeleteAlias,
   DeleteGroup,
   GetGroup,
   GetRepoDiff,
   GetRepoDiffSummary,
   GetRepoFileDiff,
+  GetRepoLocalStatus,
+  GetBranchDiffSummary,
+  GetBranchFileDiff,
   GetPullRequestReviews,
   GetPullRequestStatus,
   GetTrackedPullRequest,
   GetAgentAvailability,
   GeneratePullRequestText,
   GetSettings,
+  GetSessiondStatus,
+  RestartSessiond,
   ListAliases,
   ListGroups,
   ListWorkspaceSnapshots,
@@ -48,7 +54,11 @@ import {
   UnarchiveWorkspace,
   SetDefaultSetting,
   CreatePullRequest,
-  GetTerminalBacklog
+  GetTerminalBacklog,
+  GetTerminalBootstrap,
+  GetTerminalSnapshot,
+  LogTerminalDebug,
+  GetWorkspaceTerminalStatus
 } from '../../wailsjs/go/main/App'
 
 type WorkspaceSnapshot = {
@@ -134,12 +144,100 @@ type PullRequestReviewCommentResponse = {
   reply?: boolean
 }
 
+export type RepoLocalStatus = {
+  hasUncommitted: boolean
+  ahead: number
+  behind: number
+  currentBranch: string
+}
+
+export type CommitAndPushResult = {
+  committed: boolean
+  pushed: boolean
+  message: string
+  sha?: string
+}
+
 export type TerminalBacklogResponse = {
   workspaceId: string
   data: string
   nextOffset: number
   truncated: boolean
   source?: string
+}
+
+export type TerminalSnapshotResponse = {
+  workspaceId: string
+  data: string
+  source?: string
+  kitty?: {
+    images?: Array<{
+      id: string
+      format?: string
+      width?: number
+      height?: number
+      data?: string | number[]
+    }>
+    placements?: Array<{
+      id: number
+      imageId: string
+      row: number
+      col: number
+      rows: number
+      cols: number
+      x?: number
+      y?: number
+      z?: number
+    }>
+  }
+}
+
+export type TerminalBootstrapResponse = {
+  workspaceId: string
+  snapshot?: string
+  snapshotSource?: string
+  kitty?: {
+    images?: Array<{
+      id: string
+      format?: string
+      width?: number
+      height?: number
+      data?: string | number[]
+    }>
+    placements?: Array<{
+      id: number
+      imageId: string
+      row: number
+      col: number
+      rows: number
+      cols: number
+      x?: number
+      y?: number
+      z?: number
+    }>
+  }
+  backlog?: string
+  backlogSource?: string
+  backlogTruncated?: boolean
+  nextOffset?: number
+  source?: string
+  altScreen?: boolean
+  mouse?: boolean
+  mouseSGR?: boolean
+  mouseEncoding?: string
+  safeToReplay?: boolean
+}
+
+export type SessiondStatusResponse = {
+  available: boolean
+  error?: string
+  warning?: string
+}
+
+export type WorkspaceTerminalStatusResponse = {
+  workspaceId: string
+  active: boolean
+  error?: string
 }
 
 export async function fetchWorkspaces(
@@ -192,6 +290,32 @@ export async function openDirectoryDialog(
   return OpenDirectoryDialog(title, defaultDirectory)
 }
 
+export async function fetchWorkspaceTerminalStatus(
+  workspaceId: string
+): Promise<WorkspaceTerminalStatusResponse> {
+  return GetWorkspaceTerminalStatus(workspaceId)
+}
+
+export async function fetchTerminalSnapshot(
+  workspaceId: string
+): Promise<TerminalSnapshotResponse> {
+  return GetTerminalSnapshot(workspaceId)
+}
+
+export async function fetchTerminalBootstrap(
+  workspaceId: string
+): Promise<TerminalBootstrapResponse> {
+  return GetTerminalBootstrap(workspaceId)
+}
+
+export async function logTerminalDebug(
+  workspaceId: string,
+  event: string,
+  details = ''
+): Promise<void> {
+  await LogTerminalDebug({workspaceId, event, details})
+}
+
 export async function renameWorkspace(workspaceId: string, newName: string): Promise<void> {
   await RenameWorkspace(workspaceId, newName)
 }
@@ -231,6 +355,14 @@ export async function fetchTerminalBacklog(
   since: number
 ): Promise<TerminalBacklogResponse> {
   return GetTerminalBacklog(workspaceId, since)
+}
+
+export async function fetchSessiondStatus(): Promise<SessiondStatusResponse> {
+  return GetSessiondStatus()
+}
+
+export async function restartSessiond(): Promise<SessiondStatusResponse> {
+  return RestartSessiond()
 }
 
 export async function listAliases(): Promise<Alias[]> {
@@ -334,6 +466,26 @@ export async function fetchRepoFileDiff(
   status: string
 ): Promise<RepoFileDiff> {
   return GetRepoFileDiff(workspaceId, repoId, path, prevPath, status)
+}
+
+export async function fetchBranchDiffSummary(
+  workspaceId: string,
+  repoId: string,
+  base: string,
+  head: string
+): Promise<RepoDiffSummary> {
+  return GetBranchDiffSummary(workspaceId, repoId, base, head)
+}
+
+export async function fetchBranchFileDiff(
+  workspaceId: string,
+  repoId: string,
+  base: string,
+  head: string,
+  path: string,
+  prevPath: string
+): Promise<RepoFileDiff> {
+  return GetBranchFileDiff(workspaceId, repoId, base, head, path, prevPath)
 }
 
 export async function createPullRequest(
@@ -487,4 +639,28 @@ export async function sendPullRequestReviewsToTerminal(
     number: number ?? 0,
     branch: branch ?? ''
   })
+}
+
+export async function fetchRepoLocalStatus(
+  workspaceId: string,
+  repoId: string
+): Promise<RepoLocalStatus> {
+  const result = (await GetRepoLocalStatus({
+    workspaceId,
+    repoId
+  })) as RepoLocalStatus
+  return result
+}
+
+export async function commitAndPush(
+  workspaceId: string,
+  repoId: string,
+  message?: string
+): Promise<CommitAndPushResult> {
+  const result = (await CommitAndPush({
+    workspaceId,
+    repoId,
+    message: message ?? ''
+  })) as CommitAndPushResult
+  return result
 }

@@ -8,9 +8,11 @@
     draft: Record<FieldId, string>;
     baseline: Record<FieldId, string>;
     onUpdate: (id: FieldId, value: string) => void;
+    onRestartSessiond: () => void;
+    restartingSessiond?: boolean;
   }
 
-  let { draft, baseline, onUpdate }: Props = $props();
+  let { draft, baseline, onUpdate, onRestartSessiond, restartingSessiond = false }: Props = $props();
 
   type Field = {
     id: FieldId
@@ -50,7 +52,7 @@
     {
       id: 'terminalRenderer',
       label: 'Terminal renderer',
-      description: 'Auto (try WebGL), or force WebGL/Canvas.',
+      description: 'Auto picks WebGL when healthy, otherwise Canvas.',
       type: 'select',
       options: [
         {label: 'Auto', value: 'auto'},
@@ -149,6 +151,14 @@
     {/each}
   </div>
 </SettingsSection>
+<div class="sessiond-actions">
+  <div class="hint">
+    Restart the session daemon after changing idle timeout or other daemon settings.
+  </div>
+  <button class="restart" type="button" onclick={onRestartSessiond} disabled={restartingSessiond}>
+    {restartingSessiond ? 'Restarting session daemon…' : 'Restart session daemon'}
+  </button>
+</div>
 
 <style>
   .fields {
@@ -198,5 +208,42 @@
     margin: 0;
     font-size: 12px;
     color: var(--muted);
+  }
+
+  .sessiond-actions {
+    margin-top: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px dashed var(--border);
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .sessiond-actions .hint {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .restart {
+    background: var(--panel-strong);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: var(--radius-md);
+    padding: 8px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: border-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+  }
+
+  .restart:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .restart:active {
+    transform: scale(0.98);
   }
 </style>

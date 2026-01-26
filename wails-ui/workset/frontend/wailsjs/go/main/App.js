@@ -18,6 +18,10 @@ export function ArchiveWorkspace(arg1, arg2) {
   return window['go']['main']['App']['ArchiveWorkspace'](arg1, arg2);
 }
 
+export function CommitAndPush(arg1) {
+  return window['go']['main']['App']['CommitAndPush'](arg1);
+}
+
 export function CreateAlias(arg1) {
   return window['go']['main']['App']['CreateAlias'](arg1);
 }
@@ -50,6 +54,14 @@ export function GetAgentAvailability() {
   return window['go']['main']['App']['GetAgentAvailability']();
 }
 
+export function GetBranchDiffSummary(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['GetBranchDiffSummary'](arg1, arg2, arg3, arg4);
+}
+
+export function GetBranchFileDiff(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['GetBranchFileDiff'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
 export function GetGroup(arg1) {
   return window['go']['main']['App']['GetGroup'](arg1);
 }
@@ -60,10 +72,6 @@ export function GetPullRequestReviews(arg1) {
 
 export function GetPullRequestStatus(arg1) {
   return window['go']['main']['App']['GetPullRequestStatus'](arg1);
-}
-
-export function GetTrackedPullRequest(arg1) {
-  return window['go']['main']['App']['GetTrackedPullRequest'](arg1);
 }
 
 export function GetRepoDiff(arg1, arg2) {
@@ -78,6 +86,14 @@ export function GetRepoFileDiff(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['GetRepoFileDiff'](arg1, arg2, arg3, arg4, arg5);
 }
 
+export function GetRepoLocalStatus(arg1) {
+  return window['go']['main']['App']['GetRepoLocalStatus'](arg1);
+}
+
+export function GetSessiondStatus() {
+  return window['go']['main']['App']['GetSessiondStatus']();
+}
+
 export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }
@@ -86,8 +102,20 @@ export function GetTerminalBacklog(arg1, arg2) {
   return window['go']['main']['App']['GetTerminalBacklog'](arg1, arg2);
 }
 
+export function GetTerminalBootstrap(arg1) {
+  return window['go']['main']['App']['GetTerminalBootstrap'](arg1);
+}
+
+export function GetTerminalSnapshot(arg1) {
+  return window['go']['main']['App']['GetTerminalSnapshot'](arg1);
+}
+
 export function GetTrackedPullRequest(arg1) {
   return window['go']['main']['App']['GetTrackedPullRequest'](arg1);
+}
+
+export function GetWorkspaceTerminalStatus(arg1) {
+  return window['go']['main']['App']['GetWorkspaceTerminalStatus'](arg1);
 }
 
 export function ListAliases() {
@@ -100,6 +128,10 @@ export function ListGroups() {
 
 export function ListWorkspaceSnapshots(arg1) {
   return window['go']['main']['App']['ListWorkspaceSnapshots'](arg1);
+}
+
+export function LogTerminalDebug(arg1) {
+  return window['go']['main']['App']['LogTerminalDebug'](arg1);
 }
 
 export function OpenDirectoryDialog(arg1, arg2) {
@@ -124,6 +156,10 @@ export function RenameWorkspace(arg1, arg2) {
 
 export function ResizeWorkspaceTerminal(arg1, arg2, arg3) {
   return window['go']['main']['App']['ResizeWorkspaceTerminal'](arg1, arg2, arg3);
+}
+
+export function RestartSessiond() {
+  return window['go']['main']['App']['RestartSessiond']();
 }
 
 export function SendPullRequestReviewsToTerminal(arg1) {
