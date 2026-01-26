@@ -324,6 +324,9 @@
           placeholder="acme"
           bind:this={createInput}
           bind:value={createName}
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck="false"
           onkeydown={(event) => {
             if (event.key === 'Enter') void handleCreate()
           }}
@@ -334,6 +337,9 @@
         <input
           placeholder="~/workspaces/acme"
           bind:value={createPath}
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck="false"
           onkeydown={(event) => {
             if (event.key === 'Enter') void handleCreate()
           }}
@@ -462,6 +468,9 @@
                     placeholder="acme"
                     bind:this={renameInput}
                     bind:value={renameName}
+                    autocapitalize="off"
+                    autocorrect="off"
+                    spellcheck="false"
                     onkeydown={(event) => {
                       if (event.key === 'Enter') void handleRename()
                     }}
@@ -490,6 +499,9 @@
                     placeholder="alias, URL, or local path"
                     bind:this={addSourceInput}
                     bind:value={addSource}
+                    autocapitalize="off"
+                    autocorrect="off"
+                    spellcheck="false"
                     onkeydown={(event) => {
                       if (event.key === 'Enter') void handleAddRepo()
                     }}
@@ -497,11 +509,23 @@
                 </label>
                 <label class="field">
                   <span>Repo name (optional)</span>
-                  <input placeholder="agent-skills" bind:value={addName} />
+                  <input
+                    placeholder="agent-skills"
+                    bind:value={addName}
+                    autocapitalize="off"
+                    autocorrect="off"
+                    spellcheck="false"
+                  />
                 </label>
                 <label class="field">
                   <span>Repo dir (optional)</span>
-                  <input placeholder="agent-skills" bind:value={addRepoDir} />
+                  <input
+                    placeholder="agent-skills"
+                    bind:value={addRepoDir}
+                    autocapitalize="off"
+                    autocorrect="off"
+                    spellcheck="false"
+                  />
                 </label>
               </div>
               <div class="inline-actions">

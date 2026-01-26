@@ -206,6 +206,9 @@
               bind:value={formName}
               placeholder="repo-alias"
               disabled={!isNew && !!selectedAlias}
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
             />
           </label>
           <label class="field">
@@ -214,6 +217,9 @@
               type="text"
               bind:value={formSource}
               placeholder="git@github.com:org/repo.git"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
             />
           </label>
           <label class="field">
@@ -222,6 +228,9 @@
               type="text"
               bind:value={formRemote}
               placeholder="origin"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
             />
           </label>
           <label class="field">
@@ -230,6 +239,9 @@
               type="text"
               bind:value={formBranch}
               placeholder="main"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
             />
           </label>
         </div>

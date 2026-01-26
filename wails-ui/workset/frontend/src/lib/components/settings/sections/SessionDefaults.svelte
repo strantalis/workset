@@ -143,6 +143,9 @@
             type="text"
             placeholder={field.placeholder ?? ''}
             value={getValue(field.id)}
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
             oninput={(event) => handleInput(field.id, event)}
           />
         {/if}

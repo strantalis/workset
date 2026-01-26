@@ -374,6 +374,9 @@
             bind:this={nameInput}
             bind:value={primaryInput}
             placeholder="git@github.com:org/repo.git"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
           />
           <Button variant="ghost" size="sm" onclick={async () => {
             try {
@@ -426,6 +429,9 @@
                 <input
                   bind:value={customizeName}
                   placeholder={generatedName ?? ''}
+                  autocapitalize="off"
+                  autocorrect="off"
+                  spellcheck="false"
                 />
                 <Button variant="ghost" size="sm" onclick={regenerateName}>↻ New</Button>
               </div>
@@ -525,7 +531,14 @@
     <div class="form">
       <label class="field">
         <span>New name</span>
-        <input bind:this={nameInput} bind:value={renameName} placeholder="acme" />
+        <input
+          bind:this={nameInput}
+          bind:value={renameName}
+          placeholder="acme"
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck="false"
+        />
       </label>
       <div class="hint">Renaming updates config and workset.yaml. Files stay in place.</div>
       <Button variant="primary" onclick={handleRename} disabled={loading} class="action-btn">
@@ -541,6 +554,9 @@
             bind:this={nameInput}
             bind:value={addSource}
             placeholder="https://github.com/org/repo or /path/to/repo"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
           />
           <Button variant="ghost" size="sm" onclick={handleBrowse}>Browse</Button>
         </div>
@@ -624,7 +640,14 @@
       <div class="hint">Archiving hides the workspace but keeps files on disk.</div>
       <label class="field">
         <span>Reason (optional)</span>
-        <input bind:this={nameInput} bind:value={archiveReason} placeholder="paused" />
+        <input
+          bind:this={nameInput}
+          bind:value={archiveReason}
+          placeholder="paused"
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck="false"
+        />
       </label>
       <Button variant="danger" onclick={handleArchive} disabled={loading} class="action-btn">
         {loading ? 'Archiving…' : 'Archive'}

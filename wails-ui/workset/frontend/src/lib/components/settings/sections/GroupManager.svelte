@@ -262,6 +262,9 @@
               bind:value={formName}
               placeholder="core-services"
               disabled={!isNew && !!selectedGroup}
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
             />
           </label>
           <label class="field">
@@ -270,6 +273,9 @@
               type="text"
               bind:value={formDescription}
               placeholder="Core backend microservices"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
             />
           </label>
         </div>
@@ -312,6 +318,9 @@
                       oninput={handleRepoInput}
                       placeholder="auth-api"
                       list="alias-options"
+                      autocapitalize="off"
+                      autocorrect="off"
+                      spellcheck="false"
                     />
                     <datalist id="alias-options">
                       {#each aliases as alias}

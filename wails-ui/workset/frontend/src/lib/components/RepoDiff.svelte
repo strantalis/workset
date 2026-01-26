@@ -779,11 +779,25 @@
           <div class="row">
             <label class="field">
               <span>Base</span>
-              <input type="text" bind:value={prBase} placeholder="default branch" />
+              <input
+                type="text"
+                bind:value={prBase}
+                placeholder="default branch"
+                autocapitalize="off"
+                autocorrect="off"
+                spellcheck="false"
+              />
             </label>
             <label class="field">
               <span>Head</span>
-              <input type="text" bind:value={prHead} placeholder="current branch" />
+              <input
+                type="text"
+                bind:value={prHead}
+                placeholder="current branch"
+                autocapitalize="off"
+                autocorrect="off"
+                spellcheck="false"
+              />
             </label>
           </div>
         </div>
