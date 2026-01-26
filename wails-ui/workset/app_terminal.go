@@ -597,7 +597,7 @@ func (a *App) GetTerminalBootstrap(workspaceID string) (TerminalBootstrapPayload
 		return TerminalBootstrapPayload{}, err
 	}
 	backlog := sessiond.BacklogResponse{}
-	useBacklog := bootstrap.SafeToReplay
+	useBacklog := bootstrap.SafeToReplay && bootstrap.Snapshot == ""
 	if useBacklog {
 		if b, err := client.Backlog(ctx, workspaceID, 0); err == nil && b.Data != "" {
 			backlog = b

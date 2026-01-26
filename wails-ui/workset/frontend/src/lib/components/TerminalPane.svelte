@@ -18,7 +18,7 @@
     StartWorkspaceTerminal,
     WriteWorkspaceTerminal
   } from '../../../wailsjs/go/main/App'
-  import {stripMouseReports, stripTerminalReports} from '../terminal/inputFilter'
+  import {stripMouseReports} from '../terminal/inputFilter'
   import {encodeWheel, type MouseEncoding} from '../terminal/mouse'
   import type {AgentOption} from '../types'
   import Modal from './Modal.svelte'
@@ -168,7 +168,6 @@
   let healthMessageMap: Record<string, string> = $state({})
   let suppressMouseUntil: Record<string, number> = $state({})
   let mouseInputTail: Record<string, string> = $state({})
-  let terminalInputTail: Record<string, string> = $state({})
   let rendererMap: Record<string, 'unknown' | 'webgl' | 'canvas'> = $state({})
   let rendererModeMap: Record<string, 'auto' | 'webgl' | 'canvas'> = $state({})
   let modeMap: Record<
@@ -404,14 +403,7 @@
       return
     }
     const modes = modeMap[id] ?? {altScreen: false, mouse: false, mouseSGR: false, mouseEncoding: 'x10'}
-    const terminalResult = stripTerminalReports(data, modes, terminalInputTail[id] ?? '')
-    if (terminalResult.tail !== (terminalInputTail[id] ?? '')) {
-      terminalInputTail = {...terminalInputTail, [id]: terminalResult.tail}
-    }
-    if (!terminalResult.filtered) {
-      return
-    }
-    const mouseResult = stripMouseReports(terminalResult.filtered, modes, mouseInputTail[id] ?? '')
+    const mouseResult = stripMouseReports(data, modes, mouseInputTail[id] ?? '')
     if (mouseResult.tail !== (mouseInputTail[id] ?? '')) {
       mouseInputTail = {...mouseInputTail, [id]: mouseResult.tail}
     }
@@ -465,9 +457,6 @@
     if (mouseInputTail[id]) {
       mouseInputTail = {...mouseInputTail, [id]: ''}
     }
-    if (terminalInputTail[id]) {
-      terminalInputTail = {...terminalInputTail, [id]: ''}
-    }
   }
 
   const resetTerminalInstance = (id: string): void => {
@@ -484,9 +473,6 @@
     }
     if (mouseInputTail[id]) {
       mouseInputTail = {...mouseInputTail, [id]: ''}
-    }
-    if (terminalInputTail[id]) {
-      terminalInputTail = {...terminalInputTail, [id]: ''}
     }
     noteMouseSuppress(id, 2500)
     void loadRendererAddon(handle, id, rendererModeMap[id] ?? rendererPreference)
@@ -1355,7 +1341,12 @@
       }
     }
     if (resumed) {
-      await beginTerminal(id, true)
+      if (startedSessions.has(id) || startInFlight.has(id)) {
+        resetSessionState(id)
+        await loadBootstrap(id)
+      } else {
+        await beginTerminal(id, true)
+      }
       inputMap = {...inputMap, [id]: true}
       statusMap = {...statusMap, [id]: 'ready'}
       messageMap = {...messageMap, [id]: ''}

@@ -63,8 +63,8 @@ func TestSessiondMouseEncoding(t *testing.T) {
 	if err != nil {
 		t.Fatalf("snapshot: %v", err)
 	}
-	if snap.SafeToReplay {
-		t.Fatalf("expected safeToReplay false when mouse mode is active")
+	if !snap.SafeToReplay {
+		t.Fatalf("expected safeToReplay true when only mouse mode is active")
 	}
 }
 

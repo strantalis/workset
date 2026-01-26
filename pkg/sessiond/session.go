@@ -105,7 +105,11 @@ func (s *Session) snapshot() SnapshotResponse {
 	s.mu.Unlock()
 	data := ""
 	if emu != nil {
-		data = emu.SnapshotANSI()
+		if !altScreen && !tuiMode && emu.HistoryLen() > 0 {
+			data = emu.SnapshotANSIWithHistory()
+		} else {
+			data = emu.SnapshotANSI()
+		}
 	}
 	if emu != nil && emu.IsAltScreen() {
 		altScreen = true
@@ -641,14 +645,10 @@ func (s *Session) noteModesLocked(data []byte) (bool, bool) {
 	}
 	if containsAltScreenExit(merged) {
 		s.altScreen = false
-		if s.mouseMask == 0 {
-			s.tuiMode = false
-		}
+		s.tuiMode = false
 	}
 	s.applyMouseModes(merged)
-	if s.mouseMask != 0 {
-		s.tuiMode = true
-	} else if !s.altScreen {
+	if !s.altScreen {
 		s.tuiMode = false
 	}
 	if len(merged) > tailMax {
