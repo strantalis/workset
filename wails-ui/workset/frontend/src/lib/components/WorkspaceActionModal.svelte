@@ -16,6 +16,14 @@
   } from '../api'
   import {activeWorkspaceId, clearRepo, clearWorkspace, loadWorkspaces, selectWorkspace, workspaces} from '../state'
   import type {Alias, GroupSummary, Repo, Workspace} from '../types'
+  import {
+    generateWorkspaceName,
+    generateAlternatives,
+    deriveRepoName,
+    isRepoSource,
+    looksLikeUrl,
+    looksLikePath
+  } from '../names'
   import Alert from './ui/Alert.svelte'
   import Button from './ui/Button.svelte'
   import Modal from './Modal.svelte'
@@ -23,7 +31,7 @@
 
   interface Props {
     onClose: () => void;
-    mode: 
+    mode:
     | 'create'
     | 'rename'
     | 'add-repo'
@@ -51,7 +59,12 @@
 
   let nameInput: HTMLInputElement | null = $state(null)
 
-  let createName = $state('')
+  // Create mode: smart single input
+  let primaryInput = $state('')           // URL, path, or workspace name
+  let customizeName = $state('')          // Override for generated name
+  let createExpanded = $state(false)      // Show customize section
+  let alternatives: string[] = $state([]) // Alternative name suggestions
+
   let renameName = $state('')
 
   let addSource = $state('')
@@ -59,11 +72,52 @@
   let groupItems: GroupSummary[] = $state([])
   let groupDetails: Map<string, string[]> = $state(new Map()) // group name -> repo names
 
-  // Quick setup state for create mode
-  let quickSetupExpanded = $state(false)
-  let quickSetupSource = $state('')
+  // Selection state for create mode expanded section and add-repo mode
   let selectedAliases: Set<string> = $state(new Set())
   let selectedGroups: Set<string> = $state(new Set())
+
+  // Create mode: derived state
+  let detectedRepoName = $derived(deriveRepoName(primaryInput))
+  let inputIsSource = $derived(isRepoSource(primaryInput))
+
+  // Get the first selected alias name for auto-generation when no primary input
+  let firstSelectedAlias = $derived(
+    selectedAliases.size > 0 ? Array.from(selectedAliases)[0] : null
+  )
+
+  // Source for name generation: URL/path repo name, or first selected alias
+  let nameSource = $derived(detectedRepoName || firstSelectedAlias)
+
+  let generatedName = $derived(
+    nameSource ? generateWorkspaceName(nameSource) : null
+  )
+
+  // Final name: custom override > generated > plain text input
+  let finalName = $derived(
+    customizeName || generatedName || primaryInput.trim()
+  )
+
+  // Show name customization when we have a generated name (from URL/path or alias)
+  let showNameCustomization = $derived(!!nameSource)
+
+  // Regenerate alternatives when name source changes
+  $effect(() => {
+    if (nameSource) {
+      alternatives = generateAlternatives(nameSource, 2)
+    } else {
+      alternatives = []
+    }
+  })
+
+  function regenerateName(): void {
+    if (nameSource) {
+      customizeName = generateWorkspaceName(nameSource)
+    }
+  }
+
+  function selectAlternative(name: string): void {
+    customizeName = name
+  }
 
   // Helper to get alias display info
   const getAliasSource = (alias: Alias): string => alias.url || alias.path || ''
@@ -117,35 +171,35 @@
   }
 
   const handleCreate = async (): Promise<void> => {
-    const name = createName.trim()
-    if (!name) {
-      error = 'Workspace name is required.'
+    if (!finalName) {
+      error = 'Enter a repo URL, path, or workspace name.'
       return
     }
     loading = true
     error = null
     try {
-      // Collect aliases to pass to backend
-      const aliasesToAdd: string[] = []
-      if (quickSetupExpanded) {
-        // Add direct repo URL if provided
-        if (quickSetupSource.trim()) {
-          aliasesToAdd.push(quickSetupSource.trim())
-        }
-        // Add all selected aliases
+      const repos: string[] = []
+
+      // If primary input is URL/path, add it as first repo
+      if (inputIsSource) {
+        repos.push(primaryInput.trim())
+      }
+
+      // Add any selected aliases (from expanded section)
+      if (createExpanded) {
         for (const alias of selectedAliases) {
-          aliasesToAdd.push(alias)
+          repos.push(alias)
         }
       }
 
-      // Collect groups to pass to backend
-      const groupsToAdd = quickSetupExpanded ? Array.from(selectedGroups) : []
+      // Groups from expanded section
+      const groups = createExpanded ? Array.from(selectedGroups) : []
 
       const result = await createWorkspace(
-        name,
+        finalName,
         '',
-        aliasesToAdd.length > 0 ? aliasesToAdd : undefined,
-        groupsToAdd.length > 0 ? groupsToAdd : undefined
+        repos.length > 0 ? repos : undefined,
+        groups.length > 0 ? groups : undefined
       )
 
       await loadWorkspaces(true)
@@ -314,42 +368,87 @@
   {#if mode === 'create'}
     <div class="form">
       <label class="field">
-        <span>Name</span>
-        <input bind:this={nameInput} bind:value={createName} placeholder="acme" />
+        <span>Repo URL, path, or workspace name</span>
+        <div class="inline">
+          <input
+            bind:this={nameInput}
+            bind:value={primaryInput}
+            placeholder="git@github.com:org/repo.git"
+          />
+          <Button variant="ghost" size="sm" onclick={async () => {
+            try {
+              const path = await openDirectoryDialog('Select repo directory', primaryInput.trim())
+              if (path) primaryInput = path
+            } catch (err) {
+              error = formatError(err, 'Failed to open directory picker.')
+            }
+          }}>Browse</Button>
+        </div>
       </label>
+
+      {#if finalName}
+        <div class="feedback-box">
+          {#if generatedName}
+            <span class="feedback-check">✓</span>
+            <span class="feedback-text">
+              Will create workspace "<strong>{customizeName || generatedName}</strong>"
+              {#if !inputIsSource && selectedAliases.size > 0}
+                with {selectedAliases.size} repo{selectedAliases.size !== 1 ? 's' : ''}
+              {/if}
+            </span>
+            <button class="refresh-btn" type="button" onclick={regenerateName} title="Generate new name">
+              ↻
+            </button>
+          {:else}
+            <span class="feedback-check">✓</span>
+            <span class="feedback-text">
+              Will create empty workspace "<strong>{primaryInput.trim()}</strong>"
+            </span>
+          {/if}
+        </div>
+      {/if}
 
       <button
         class="collapsible-header"
         type="button"
-        onclick={() => quickSetupExpanded = !quickSetupExpanded}
+        onclick={() => createExpanded = !createExpanded}
       >
-        <span class="chevron" class:expanded={quickSetupExpanded}>▸</span>
-        Quick setup (optional)
+        <span class="chevron" class:expanded={createExpanded}>▸</span>
+        {inputIsSource ? 'Customize name or add more repos' : 'Add repos from aliases or groups'}
       </button>
 
-      {#if quickSetupExpanded}
+      {#if createExpanded}
         <div class="collapsible-content">
-          <label class="field">
-            <span>Add repo by URL or path</span>
-            <div class="inline">
-              <input
-                bind:value={quickSetupSource}
-                placeholder="https://github.com/org/repo or /path/to/repo"
-              />
-              <Button variant="ghost" size="sm" onclick={async () => {
-                try {
-                  const path = await openDirectoryDialog('Select repo directory', quickSetupSource.trim())
-                  if (path) quickSetupSource = path
-                } catch (err) {
-                  error = formatError(err, 'Failed to open directory picker.')
-                }
-              }}>Browse</Button>
-            </div>
-          </label>
+          {#if showNameCustomization}
+            <label class="field">
+              <span>Workspace name</span>
+              <div class="inline">
+                <input
+                  bind:value={customizeName}
+                  placeholder={generatedName ?? ''}
+                />
+                <Button variant="ghost" size="sm" onclick={regenerateName}>↻ New</Button>
+              </div>
+            </label>
+
+            {#if alternatives.length > 0}
+              <div class="suggestions">
+                Suggestions:
+                {#each alternatives as alt, i}
+                  {#if i > 0} · {/if}
+                  <button
+                    type="button"
+                    class="suggestion-btn"
+                    onclick={() => selectAlternative(alt)}
+                  >{alt}</button>
+                {/each}
+              </div>
+            {/if}
+          {/if}
 
           {#if aliasItems.length > 0}
             <div class="field">
-              <span>Select aliases</span>
+              <span>{inputIsSource ? 'Additional repos' : 'Select aliases'}</span>
               <div class="checkbox-list">
                 {#each aliasItems as alias}
                   <label class="checkbox-item">
@@ -418,7 +517,7 @@
         </div>
       {/if}
 
-      <Button variant="primary" onclick={handleCreate} disabled={loading} class="action-btn">
+      <Button variant="primary" onclick={handleCreate} disabled={loading || !finalName} class="action-btn">
         {loading ? 'Creating…' : 'Create'}
       </Button>
     </div>
@@ -613,6 +712,71 @@
   .hint {
     font-size: 12px;
     color: var(--muted);
+  }
+
+  /* Feedback box for create mode */
+  .feedback-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--panel-soft);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+
+  .feedback-check {
+    color: var(--success, #4ade80);
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .feedback-text {
+    flex: 1;
+    color: var(--text);
+  }
+
+  .feedback-text strong {
+    font-weight: 600;
+  }
+
+  .refresh-btn {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 4px 8px;
+    font-size: 14px;
+    border-radius: var(--radius-sm);
+    transition: color var(--transition-fast), background var(--transition-fast);
+  }
+
+  .refresh-btn:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  /* Suggestions */
+  .suggestions {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: -4px;
+  }
+
+  .suggestion-btn {
+    background: transparent;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    padding: 0;
+    font-size: 12px;
+    transition: opacity var(--transition-fast);
+  }
+
+  .suggestion-btn:hover {
+    opacity: 0.8;
+    text-decoration: underline;
   }
 
   .option {

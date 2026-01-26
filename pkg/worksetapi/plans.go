@@ -2,9 +2,11 @@ package worksetapi
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/strantalis/workset/internal/config"
+	"github.com/strantalis/workset/internal/ops"
 )
 
 type repoPlan struct {
@@ -60,9 +62,36 @@ func buildNewWorkspaceRepoPlans(cfg config.GlobalConfig, groupNames, repoNames [
 		if repoName == "" {
 			continue
 		}
-		plan, err := resolveAliasPlan(cfg, repoName)
-		if err != nil {
-			return nil, err
+
+		// Try alias first
+		if _, ok := cfg.Repos[repoName]; ok {
+			plan, err := resolveAliasPlan(cfg, repoName)
+			if err != nil {
+				return nil, err
+			}
+			if err := addPlan(plan); err != nil {
+				return nil, err
+			}
+			continue
+		}
+
+		// Handle URL or path directly
+		plan := repoPlan{
+			DefaultBranch: cfg.Defaults.BaseBranch,
+			Remote:        cfg.Defaults.Remote,
+		}
+		if looksLikeURL(repoName) {
+			plan.Name = ops.DeriveRepoNameFromURL(repoName)
+			plan.URL = repoName
+		} else if looksLikeLocalPath(repoName) {
+			resolved, err := resolveLocalPathInput(repoName)
+			if err != nil {
+				return nil, err
+			}
+			plan.Name = filepath.Base(resolved)
+			plan.SourcePath = resolved
+		} else {
+			return nil, fmt.Errorf("repo %q not found", repoName)
 		}
 		if err := addPlan(plan); err != nil {
 			return nil, err
