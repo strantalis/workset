@@ -14,11 +14,30 @@ type PullRequestCreateInput struct {
 	Repo       string
 	Base       string
 	Head       string
+	BaseRemote string // Optional: override auto-detected base remote
 	Title      string
 	Body       string
 	Draft      bool
 	AutoCommit bool
 	AutoPush   bool
+}
+
+// ListRemotesInput describes inputs for listing repo remotes.
+type ListRemotesInput struct {
+	Workspace WorkspaceSelector
+	Repo      string
+}
+
+// RemoteInfoJSON describes a git remote.
+type RemoteInfoJSON struct {
+	Name  string `json:"name"`
+	Owner string `json:"owner"`
+	Repo  string `json:"repo"`
+}
+
+// ListRemotesResult wraps the remotes list.
+type ListRemotesResult struct {
+	Remotes []RemoteInfoJSON
 }
 
 // PullRequestCreatedJSON describes a created pull request.

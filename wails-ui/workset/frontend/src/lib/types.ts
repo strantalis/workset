@@ -189,3 +189,9 @@ export type AgentOption = {
   label: string
   command: string
 }
+
+export type RemoteInfo = {
+  name: string
+  owner: string
+  repo: string
+}

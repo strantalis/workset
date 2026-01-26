@@ -39,7 +39,7 @@ func (s *Service) CreatePullRequest(ctx context.Context, input PullRequestCreate
 		return PullRequestCreateResult{}, err
 	}
 
-	headInfo, baseInfo, err := s.resolveRemoteInfo(ctx, resolution)
+	headInfo, baseInfo, err := s.resolveRemoteInfo(ctx, resolution, input.BaseRemote)
 	if err != nil {
 		return PullRequestCreateResult{}, err
 	}
@@ -307,6 +307,35 @@ func (s *Service) GetRepoLocalStatus(ctx context.Context, input RepoLocalStatusI
 	}, nil
 }
 
+// ListRemotes returns the list of git remotes for a repo with owner/repo info.
+func (s *Service) ListRemotes(ctx context.Context, input ListRemotesInput) (ListRemotesResult, error) {
+	resolution, err := s.resolveRepo(ctx, RepoSelectionInput(input))
+	if err != nil {
+		return ListRemotesResult{}, err
+	}
+
+	remoteNames, err := s.git.RemoteNames(resolution.RepoPath)
+	if err != nil {
+		return ListRemotesResult{}, err
+	}
+
+	remotes := make([]RemoteInfoJSON, 0, len(remoteNames))
+	for _, name := range remoteNames {
+		info, err := s.remoteInfoFor(resolution.RepoPath, name)
+		if err != nil {
+			// Skip remotes that can't be parsed (e.g., non-GitHub remotes)
+			continue
+		}
+		remotes = append(remotes, RemoteInfoJSON{
+			Name:  name,
+			Owner: info.Owner,
+			Repo:  info.Repo,
+		})
+	}
+
+	return ListRemotesResult{Remotes: remotes}, nil
+}
+
 // CommitAndPush commits all changes and pushes to the remote.
 func (s *Service) CommitAndPush(ctx context.Context, input CommitAndPushInput) (CommitAndPushResult, error) {
 	resolution, err := s.resolveRepo(ctx, RepoSelectionInput{
@@ -383,7 +412,7 @@ func (s *Service) CommitAndPush(ctx context.Context, input CommitAndPushInput) (
 	}
 
 	// Resolve remote for push
-	headInfo, _, err := s.resolveRemoteInfo(ctx, resolution)
+	headInfo, _, err := s.resolveRemoteInfo(ctx, resolution, "")
 	if err != nil {
 		return CommitAndPushResult{
 			Payload: CommitAndPushResultJSON{
@@ -445,7 +474,7 @@ func (s *Service) resolveGitHubToken(ctx context.Context, root string) (string, 
 	return token, nil
 }
 
-func (s *Service) resolveRemoteInfo(ctx context.Context, resolution repoResolution) (remoteInfo, remoteInfo, error) {
+func (s *Service) resolveRemoteInfo(ctx context.Context, resolution repoResolution, baseRemoteOverride string) (remoteInfo, remoteInfo, error) {
 	headRemote := strings.TrimSpace(resolution.RepoDefaults.Remote)
 	if headRemote == "" {
 		headRemote = "origin"
@@ -454,9 +483,13 @@ func (s *Service) resolveRemoteInfo(ctx context.Context, resolution repoResoluti
 	if err != nil {
 		return remoteInfo{}, remoteInfo{}, err
 	}
-	baseRemote := headRemote
-	if exists, err := s.git.RemoteExists(resolution.RepoPath, "upstream"); err == nil && exists {
-		baseRemote = "upstream"
+	baseRemote := strings.TrimSpace(baseRemoteOverride)
+	if baseRemote == "" {
+		// Auto-detect: use upstream if it exists, otherwise use head remote
+		baseRemote = headRemote
+		if exists, err := s.git.RemoteExists(resolution.RepoPath, "upstream"); err == nil && exists {
+			baseRemote = "upstream"
+		}
 	}
 	baseInfo, err := s.remoteInfoFor(resolution.RepoPath, baseRemote)
 	if err != nil {
@@ -538,7 +571,7 @@ func (s *Service) resolvePullRequest(ctx context.Context, input PullRequestStatu
 	if err != nil {
 		return nil, remoteInfo{}, remoteInfo{}, nil, repoResolution{}, err
 	}
-	headInfo, baseInfo, err := s.resolveRemoteInfo(ctx, resolution)
+	headInfo, baseInfo, err := s.resolveRemoteInfo(ctx, resolution, "")
 	if err != nil {
 		return nil, remoteInfo{}, remoteInfo{}, nil, repoResolution{}, err
 	}

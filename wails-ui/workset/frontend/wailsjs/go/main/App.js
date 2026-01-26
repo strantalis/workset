@@ -126,6 +126,10 @@ export function ListGroups() {
   return window['go']['main']['App']['ListGroups']();
 }
 
+export function ListRemotes(arg1) {
+  return window['go']['main']['App']['ListRemotes'](arg1);
+}
+
 export function ListWorkspaceSnapshots(arg1) {
   return window['go']['main']['App']['ListWorkspaceSnapshots'](arg1);
 }

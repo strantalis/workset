@@ -11,6 +11,7 @@
     PullRequestCreated,
     PullRequestReviewComment,
     PullRequestStatusResult,
+    RemoteInfo,
     Repo,
     RepoDiffFileSummary,
     RepoDiffSummary,
@@ -28,6 +29,7 @@
     fetchBranchDiffSummary,
     fetchBranchFileDiff,
     generatePullRequestText,
+    listRemotes,
     sendPullRequestReviewsToTerminal
   } from '../api'
   import type {RepoLocalStatus} from '../api'
@@ -93,16 +95,20 @@
   let rendererError: string | null = $state(null)
 
   let prBase = $state('')
-  let prHead = $state('')
+  let prBaseRemote = $state('')
   let prDraft = $state(false)
+  let prPanelExpanded = $state(false)
   let prCreateError: string | null = $state(null)
   let prCreateSuccess: PullRequestCreated | null = $state(null)
   let prTracked: PullRequestCreated | null = $state(null)
   let prCreating = $state(false)
 
+  // Remotes list for base remote dropdown
+  let remotes: RemoteInfo[] = $state([])
+  let remotesLoading = $state(false)
+
   // PR panel mode state
   let forceMode: 'create' | 'status' | null = $state(null)
-  let advancedExpanded = $state(false)
   let lastPollTime: Date | null = $state(null)
 
   let prNumberInput = $state('')
@@ -335,6 +341,18 @@
     }
   }
 
+  const loadRemotes = async (): Promise<void> => {
+    remotesLoading = true
+    try {
+      remotes = await listRemotes(workspaceId, repo.id)
+    } catch {
+      // Non-fatal: remotes loading is optional
+      remotes = []
+    } finally {
+      remotesLoading = false
+    }
+  }
+
   const handleCommitAndPush = async (): Promise<void> => {
     if (commitPushLoading) return
     commitPushLoading = true
@@ -379,7 +397,7 @@
         title: generated.title,
         body: generated.body,
         base: prBase.trim() || undefined,
-        head: prHead.trim() || undefined,
+        baseRemote: prBaseRemote || undefined,
         draft: prDraft,
         autoCommit: true,
         autoPush: true
@@ -618,6 +636,7 @@
   onMount(() => {
     void loadSummary()
     void loadTrackedPR()
+    void loadRemotes()
   })
 
   onDestroy(() => {
@@ -757,70 +776,66 @@
   <!-- PR Create form (only shown in create mode) -->
   {#if effectiveMode === 'create'}
     <section class="pr-panel">
-      <div class="pr-header">
-        <span class="pr-title">Create Pull Request</span>
-      </div>
-
-      <label class="checkbox">
-        <input type="checkbox" bind:checked={prDraft} />
-        Create as draft
-      </label>
-
       <button
-        class="advanced-toggle"
+        class="pr-panel-toggle"
         type="button"
-        onclick={() => advancedExpanded = !advancedExpanded}
+        onclick={() => prPanelExpanded = !prPanelExpanded}
       >
-        {advancedExpanded ? '▾' : '▸'} Advanced options
+        <span class="pr-panel-toggle-icon">{prPanelExpanded ? '▾' : '▸'}</span>
+        <span class="pr-title">Create Pull Request</span>
       </button>
 
-      <div class="advanced-section" class:expanded={advancedExpanded}>
-        <div class="advanced-content">
-          <div class="row">
-            <label class="field">
-              <span>Base</span>
+      <div class="pr-panel-content" class:expanded={prPanelExpanded}>
+        <div class="pr-panel-inner">
+          <div class="pr-form-row">
+            <label class="field-inline">
+              <span>Target</span>
+              <select
+                bind:value={prBaseRemote}
+                disabled={remotesLoading}
+                title="Base remote (defaults to upstream if available)"
+              >
+                <option value="">Auto</option>
+                {#each remotes as remote}
+                  <option value={remote.name}>{remote.name}</option>
+                {/each}
+              </select>
+            </label>
+            <span class="field-separator">/</span>
+            <label class="field-inline">
               <input
+                class="branch-input"
                 type="text"
                 bind:value={prBase}
-                placeholder="default branch"
+                placeholder="main"
                 autocapitalize="off"
                 autocorrect="off"
                 spellcheck="false"
               />
             </label>
-            <label class="field">
-              <span>Head</span>
-              <input
-                type="text"
-                bind:value={prHead}
-                placeholder="current branch"
-                autocapitalize="off"
-                autocorrect="off"
-                spellcheck="false"
-              />
+            <label class="checkbox-inline">
+              <input type="checkbox" bind:checked={prDraft} />
+              Draft
             </label>
+            <button class="pr-create-btn" type="button" onclick={handleCreatePR} disabled={prCreating}>
+              {prCreating ? 'Creating…' : 'Create PR'}
+            </button>
           </div>
+
+          {#if prCreateError}
+            <div class="error">{prCreateError}</div>
+          {/if}
+
+          {#if prTracked && !prCreateSuccess}
+            <div class="info-banner">
+              Existing PR #{prTracked.number} found.
+              <button class="mode-link" type="button" onclick={() => forceMode = 'status'}>
+                View status →
+              </button>
+            </div>
+          {/if}
         </div>
       </div>
-
-      {#if prCreateError}
-        <div class="error">{prCreateError}</div>
-      {/if}
-
-      <div class="actions">
-        <button type="button" onclick={handleCreatePR} disabled={prCreating}>
-          {prCreating ? 'Creating…' : 'Create PR'}
-        </button>
-      </div>
-
-      {#if prTracked && !prCreateSuccess}
-        <div class="info-banner">
-          Existing PR #{prTracked.number} found.
-          <button class="mode-link" type="button" onclick={() => forceMode = 'status'}>
-            View status →
-          </button>
-        </div>
-      {/if}
     </section>
   {/if}
 
@@ -1255,20 +1270,33 @@
   }
 
   .pr-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding: 16px;
     border-radius: 14px;
     background: var(--panel);
     border: 1px solid var(--border);
+    overflow: hidden;
   }
 
-  .pr-header {
+  .pr-panel-toggle {
     display: flex;
     align-items: center;
     gap: 8px;
-    flex-wrap: wrap;
+    width: 100%;
+    padding: 14px 16px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s ease;
+  }
+
+  .pr-panel-toggle:hover {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .pr-panel-toggle-icon {
+    font-size: 12px;
+    color: var(--muted);
+    width: 12px;
   }
 
   .pr-title {
@@ -1277,40 +1305,107 @@
     color: var(--text);
   }
 
-  .poll-time {
-    margin-left: auto;
-    font-size: 11px;
-    color: var(--muted);
-  }
-
-  .advanced-toggle {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 12px;
-    color: var(--muted);
-    cursor: pointer;
-    background: none;
-    border: none;
-    padding: 0;
-  }
-
-  .advanced-toggle:hover {
-    color: var(--text);
-  }
-
-  .advanced-section {
+  .pr-panel-content {
     display: grid;
     grid-template-rows: 0fr;
     transition: grid-template-rows 0.2s ease;
   }
 
-  .advanced-section.expanded {
+  .pr-panel-content.expanded {
     grid-template-rows: 1fr;
   }
 
-  .advanced-content {
+  .pr-panel-inner {
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 16px 14px;
+  }
+
+  .pr-form-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .field-inline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .field-inline span {
+    white-space: nowrap;
+  }
+
+  .field-inline input,
+  .field-inline select {
+    background: var(--panel-soft);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 10px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+  }
+
+  .field-inline select {
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238b949e' d='M3 4.5L6 7.5L9 4.5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 26px;
+    min-width: 80px;
+  }
+
+  .field-inline .branch-input {
+    width: 120px;
+  }
+
+  .field-separator {
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  .checkbox-inline {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .pr-create-btn {
+    padding: 6px 14px;
+    border-radius: 8px;
+    border: none;
+    background: var(--accent);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity 0.15s ease;
+  }
+
+  .pr-create-btn:hover:not(:disabled) {
+    opacity: 0.9;
+  }
+
+  .pr-create-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .poll-time {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--muted);
   }
 
   .info-banner {
@@ -1335,24 +1430,6 @@
 
   .mode-link:hover {
     color: var(--text);
-  }
-
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    font-size: 12px;
-    color: var(--muted);
-  }
-
-  .field input {
-    background: var(--panel-soft);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 8px 10px;
-    color: var(--text);
-    font-size: 13px;
-    font-family: inherit;
   }
 
   .row {

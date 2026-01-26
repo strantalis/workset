@@ -7,6 +7,7 @@ import type {
   PullRequestGenerated,
   PullRequestReviewComment,
   PullRequestStatusResult,
+  RemoteInfo,
   RepoAddResponse,
   RepoDiffSummary,
   RepoFileDiff,
@@ -42,6 +43,7 @@ import {
   RestartSessiond,
   ListAliases,
   ListGroups,
+  ListRemotes,
   ListWorkspaceSnapshots,
   OpenDirectoryDialog,
   RemoveGroupMember,
@@ -506,6 +508,7 @@ export async function createPullRequest(
     body: string
     base?: string
     head?: string
+    baseRemote?: string
     draft: boolean
     autoCommit?: boolean
     autoPush?: boolean
@@ -518,11 +521,33 @@ export async function createPullRequest(
     body: payload.body,
     base: payload.base ?? '',
     head: payload.head ?? '',
+    baseRemote: payload.baseRemote ?? '',
     draft: payload.draft,
     autoCommit: payload.autoCommit ?? false,
     autoPush: payload.autoPush ?? false
   })) as PullRequestCreateResponse
   return mapPullRequest(result)
+}
+
+type RemoteInfoResponse = {
+  name: string
+  owner: string
+  repo: string
+}
+
+export async function listRemotes(
+  workspaceId: string,
+  repoId: string
+): Promise<RemoteInfo[]> {
+  const result = (await ListRemotes({
+    workspaceId,
+    repoId
+  })) as RemoteInfoResponse[]
+  return result.map((r) => ({
+    name: r.name,
+    owner: r.owner,
+    repo: r.repo
+  }))
 }
 
 export async function fetchTrackedPullRequest(

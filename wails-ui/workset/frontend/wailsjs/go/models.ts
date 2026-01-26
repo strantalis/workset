@@ -212,6 +212,20 @@ export namespace main {
 	        this.description = source["description"];
 	    }
 	}
+	export class ListRemotesRequest {
+	    workspaceId: string;
+	    repoId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ListRemotesRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.workspaceId = source["workspaceId"];
+	        this.repoId = source["repoId"];
+	    }
+	}
 	export class PullRequestCreateRequest {
 	    workspaceId: string;
 	    repoId: string;
@@ -219,6 +233,7 @@ export namespace main {
 	    body: string;
 	    base?: string;
 	    head?: string;
+	    baseRemote?: string;
 	    draft: boolean;
 	    autoCommit: boolean;
 	    autoPush: boolean;
@@ -235,6 +250,7 @@ export namespace main {
 	        this.body = source["body"];
 	        this.base = source["base"];
 	        this.head = source["head"];
+	        this.baseRemote = source["baseRemote"];
 	        this.draft = source["draft"];
 	        this.autoCommit = source["autoCommit"];
 	        this.autoPush = source["autoPush"];
@@ -1258,6 +1274,22 @@ export namespace worksetapi {
 		    }
 		    return a;
 		}
+	}
+	export class RemoteInfoJSON {
+	    name: string;
+	    owner: string;
+	    repo: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RemoteInfoJSON(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.owner = source["owner"];
+	        this.repo = source["repo"];
+	    }
 	}
 	export class RepoAddResultJSON {
 	    status: string;

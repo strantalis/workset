@@ -65,6 +65,8 @@ export function ListAliases():Promise<Array<worksetapi.AliasJSON>>;
 
 export function ListGroups():Promise<Array<worksetapi.GroupSummaryJSON>>;
 
+export function ListRemotes(arg1:main.ListRemotesRequest):Promise<Array<worksetapi.RemoteInfoJSON>>;
+
 export function ListWorkspaceSnapshots(arg1:main.WorkspaceSnapshotRequest):Promise<Array<main.WorkspaceSnapshot>>;
 
 export function LogTerminalDebug(arg1:main.TerminalDebugPayload):Promise<void>;

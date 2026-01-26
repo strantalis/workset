@@ -16,9 +16,15 @@ type PullRequestCreateRequest struct {
 	Body        string `json:"body"`
 	Base        string `json:"base,omitempty"`
 	Head        string `json:"head,omitempty"`
+	BaseRemote  string `json:"baseRemote,omitempty"`
 	Draft       bool   `json:"draft"`
 	AutoCommit  bool   `json:"autoCommit"`
 	AutoPush    bool   `json:"autoPush"`
+}
+
+type ListRemotesRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	RepoID      string `json:"repoId"`
 }
 
 type PullRequestStatusRequest struct {
@@ -71,6 +77,7 @@ func (a *App) CreatePullRequest(input PullRequestCreateRequest) (worksetapi.Pull
 		Repo:       repoName,
 		Base:       input.Base,
 		Head:       input.Head,
+		BaseRemote: input.BaseRemote,
 		Title:      input.Title,
 		Body:       input.Body,
 		Draft:      input.Draft,
@@ -263,6 +270,28 @@ func (a *App) GetRepoLocalStatus(input RepoLocalStatusRequest) (worksetapi.RepoL
 		return worksetapi.RepoLocalStatusJSON{}, err
 	}
 	return result.Payload, nil
+}
+
+func (a *App) ListRemotes(input ListRemotesRequest) ([]worksetapi.RemoteInfoJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.service == nil {
+		a.service = worksetapi.NewService(worksetapi.Options{})
+	}
+	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
+	if err != nil {
+		return nil, err
+	}
+	result, err := a.service.ListRemotes(ctx, worksetapi.ListRemotesInput{
+		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
+		Repo:      repoName,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.Remotes, nil
 }
 
 func resolveRepoAlias(workspaceID, repoID string) (string, error) {
