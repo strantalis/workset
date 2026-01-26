@@ -119,9 +119,9 @@ func (s *sessiondStartState) wait() {
 }
 
 type sessiondRestartState struct {
-	mu        sync.Mutex
+	mu         sync.Mutex
 	restarting bool
-	waitCh    chan struct{}
+	waitCh     chan struct{}
 }
 
 func (s *sessiondRestartState) begin() (chan struct{}, bool) {
@@ -283,4 +283,59 @@ func ensureSessiondStarted(a *App) {
 			_, _ = a.getSessiondClient()
 		}()
 	})
+}
+
+var sessiondUpgradeOnce sync.Once
+
+func ensureSessiondUpToDate(a *App) {
+	sessiondUpgradeOnce.Do(func() {
+		go a.checkSessiondUpgrade()
+	})
+}
+
+func (a *App) checkSessiondUpgrade() {
+	expectedPath, err := sessiond.FindSessiondBinary()
+	if err != nil {
+		logRestartf("upgrade_expected_binary_missing err=%v", err)
+		return
+	}
+	expectedHash, err := sessiond.BinaryHash(expectedPath)
+	if err != nil {
+		logRestartf("upgrade_expected_hash_failed path=%s err=%v", expectedPath, err)
+		return
+	}
+
+	client, err := a.getSessiondClientInternal(false)
+	if err != nil {
+		logRestartf("upgrade_client_failed err=%v", err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	info, err := client.Info(ctx)
+	cancel()
+	if err != nil {
+		if strings.Contains(err.Error(), "unknown method") {
+			logRestartf("upgrade_info_unsupported err=%v", err)
+			status := a.RestartSessiond()
+			if !status.Available || status.Error != "" {
+				logRestartf("upgrade_restart_failed err=%s warning=%s", status.Error, status.Warning)
+			}
+		} else {
+			logRestartf("upgrade_info_failed err=%v", err)
+		}
+		return
+	}
+	if info.BinaryHash == "" {
+		logRestartf("upgrade_info_empty expected=%s", expectedHash)
+		return
+	}
+	if info.BinaryHash != expectedHash {
+		logRestartf("upgrade_mismatch expected=%s got=%s exe=%s", expectedHash, info.BinaryHash, info.Executable)
+		status := a.RestartSessiond()
+		if !status.Available || status.Error != "" {
+			logRestartf("upgrade_restart_failed err=%s warning=%s", status.Error, status.Warning)
+		}
+		return
+	}
+	logRestartf("upgrade_match hash=%s", expectedHash)
 }

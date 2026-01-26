@@ -112,6 +112,11 @@ type AttachRequest struct {
 	WithBuffer bool   `json:"withBuffer"`
 }
 
+type InfoResponse struct {
+	Executable string `json:"executable"`
+	BinaryHash string `json:"binaryHash"`
+}
+
 type StreamMessage struct {
 	Type       string       `json:"type"`
 	SessionID  string       `json:"sessionId,omitempty"`

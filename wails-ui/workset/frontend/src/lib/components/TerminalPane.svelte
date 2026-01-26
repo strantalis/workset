@@ -18,6 +18,7 @@
     StartWorkspaceTerminal,
     WriteWorkspaceTerminal
   } from '../../../wailsjs/go/main/App'
+  import {stripMouseReports, stripTerminalReports} from '../terminal/inputFilter'
   import {encodeWheel, type MouseEncoding} from '../terminal/mouse'
   import type {AgentOption} from '../types'
   import Modal from './Modal.svelte'
@@ -166,6 +167,8 @@
   let healthMap: Record<string, 'unknown' | 'checking' | 'ok' | 'stale'> = $state({})
   let healthMessageMap: Record<string, string> = $state({})
   let suppressMouseUntil: Record<string, number> = $state({})
+  let mouseInputTail: Record<string, string> = $state({})
+  let terminalInputTail: Record<string, string> = $state({})
   let rendererMap: Record<string, 'unknown' | 'webgl' | 'canvas'> = $state({})
   let rendererModeMap: Record<string, 'auto' | 'webgl' | 'canvas'> = $state({})
   let modeMap: Record<
@@ -384,26 +387,12 @@
     startupTimers.set(id, timer)
   }
 
-  const mouseReportPattern = /\x1b\[<\d+;\d+;\d+[mM]/g
-  const mouseReportBarePattern = /^(\d+;\d+;\d+[mM])+$/
-
-  const stripMouseReports = (id: string, data: string): string => {
-    const modes = modeMap[id]
-    if (modes?.mouse) {
-      return data
-    }
-    if (mouseReportBarePattern.test(data)) {
-      return ''
-    }
-    return data.replace(mouseReportPattern, '')
-  }
-
   const shouldSuppressMouseInput = (id: string, data: string): boolean => {
     const until = suppressMouseUntil[id]
     if (!until || Date.now() >= until) {
       return false
     }
-    return mouseReportPattern.test(data) || mouseReportBarePattern.test(data)
+    return data.includes('\x1b[<')
   }
 
   const noteMouseSuppress = (id: string, durationMs: number): void => {
@@ -414,7 +403,19 @@
     if (shouldSuppressMouseInput(id, data)) {
       return
     }
-    const filtered = stripMouseReports(id, data)
+    const modes = modeMap[id] ?? {altScreen: false, mouse: false, mouseSGR: false, mouseEncoding: 'x10'}
+    const terminalResult = stripTerminalReports(data, modes, terminalInputTail[id] ?? '')
+    if (terminalResult.tail !== (terminalInputTail[id] ?? '')) {
+      terminalInputTail = {...terminalInputTail, [id]: terminalResult.tail}
+    }
+    if (!terminalResult.filtered) {
+      return
+    }
+    const mouseResult = stripMouseReports(terminalResult.filtered, modes, mouseInputTail[id] ?? '')
+    if (mouseResult.tail !== (mouseInputTail[id] ?? '')) {
+      mouseInputTail = {...mouseInputTail, [id]: mouseResult.tail}
+    }
+    const filtered = mouseResult.filtered
     if (!filtered) {
       return
     }
@@ -461,6 +462,12 @@
     pendingRenderCheck.delete(id)
     renderStatsMap.delete(id)
     pendingRedraw.delete(id)
+    if (mouseInputTail[id]) {
+      mouseInputTail = {...mouseInputTail, [id]: ''}
+    }
+    if (terminalInputTail[id]) {
+      terminalInputTail = {...terminalInputTail, [id]: ''}
+    }
   }
 
   const resetTerminalInstance = (id: string): void => {
@@ -474,6 +481,12 @@
     modeMap = {
       ...modeMap,
       [id]: {altScreen: false, mouse: false, mouseSGR: false, mouseEncoding: 'x10'}
+    }
+    if (mouseInputTail[id]) {
+      mouseInputTail = {...mouseInputTail, [id]: ''}
+    }
+    if (terminalInputTail[id]) {
+      terminalInputTail = {...terminalInputTail, [id]: ''}
     }
     noteMouseSuppress(id, 2500)
     void loadRendererAddon(handle, id, rendererModeMap[id] ?? rendererPreference)

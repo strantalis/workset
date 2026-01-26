@@ -178,6 +178,17 @@ func applyDeadline(ctx context.Context, conn net.Conn) error {
 	return nil
 }
 
+func isTimeoutErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	return errors.Is(err, context.DeadlineExceeded)
+}
+
 var ensureCounter int64
 
 func EnsureRunning(ctx context.Context) (*Client, error) {
@@ -188,6 +199,9 @@ func EnsureRunning(ctx context.Context) (*Client, error) {
 	client := NewClient(socketPath)
 	if err := client.Ping(ctx); err == nil {
 		return client, nil
+	} else if isTimeoutErr(err) {
+		// Treat an unresponsive daemon as stale so we can replace it.
+		_ = os.Remove(socketPath)
 	}
 	if err := removeStaleSocket(socketPath); err != nil {
 		return nil, err
@@ -212,6 +226,12 @@ func (c *Client) Ping(ctx context.Context) error {
 	return c.call(ctx, "list", struct{}{}, nil)
 }
 
+func (c *Client) Info(ctx context.Context) (InfoResponse, error) {
+	var resp InfoResponse
+	err := c.call(ctx, "info", struct{}{}, &resp)
+	return resp, err
+}
+
 func removeStaleSocket(path string) error {
 	conn, err := net.DialTimeout("unix", path, 200*time.Millisecond)
 	if err == nil {
@@ -226,7 +246,7 @@ func removeStaleSocket(path string) error {
 }
 
 func startDaemon(_ context.Context, socketPath string) error {
-	bin, err := findSessiondBinary()
+	bin, err := FindSessiondBinary()
 	if err != nil {
 		return fmt.Errorf("workset-sessiond not found in PATH")
 	}
@@ -262,7 +282,7 @@ func startDaemon(_ context.Context, socketPath string) error {
 	return nil
 }
 
-func findSessiondBinary() (string, error) {
+func FindSessiondBinary() (string, error) {
 	if env := os.Getenv("WORKSET_SESSIOND_PATH"); env != "" {
 		if _, err := os.Stat(env); err == nil {
 			return env, nil

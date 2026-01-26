@@ -2,6 +2,7 @@ package sessiond
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -64,6 +65,34 @@ func TestSessiondMouseEncoding(t *testing.T) {
 	}
 	if snap.SafeToReplay {
 		t.Fatalf("expected safeToReplay false when mouse mode is active")
+	}
+}
+
+func TestSessiondInfo(t *testing.T) {
+	client, cleanup := startTestServer(t)
+	defer cleanup()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	info, err := client.Info(ctx)
+	cancel()
+	if err != nil {
+		t.Fatalf("info: %v", err)
+	}
+	if info.Executable == "" {
+		t.Fatalf("expected executable path")
+	}
+	if info.BinaryHash == "" {
+		t.Fatalf("expected binary hash")
+	}
+	if _, err := os.Stat(info.Executable); err != nil {
+		t.Fatalf("stat executable: %v", err)
+	}
+	hash, err := BinaryHash(info.Executable)
+	if err != nil {
+		t.Fatalf("hash executable: %v", err)
+	}
+	if hash != info.BinaryHash {
+		t.Fatalf("expected hash %s, got %s", hash, info.BinaryHash)
 	}
 }
 

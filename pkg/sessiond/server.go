@@ -278,6 +278,24 @@ func (s *Server) handleControl(conn net.Conn, line []byte) {
 		}
 		s.mu.Unlock()
 		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true, Result: ListResponse{Sessions: sessions}})
+	case "info":
+		exe, err := os.Executable()
+		if err != nil {
+			s.writeError(conn, err)
+			return
+		}
+		hash, err := BinaryHash(exe)
+		if err != nil {
+			s.writeError(conn, err)
+			return
+		}
+		_ = json.NewEncoder(conn).Encode(ControlResponse{
+			OK: true,
+			Result: InfoResponse{
+				Executable: exe,
+				BinaryHash: hash,
+			},
+		})
 	case "shutdown":
 		logServerf("shutdown_requested")
 		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true})

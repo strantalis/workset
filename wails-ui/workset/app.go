@@ -13,24 +13,24 @@ import (
 
 // App struct
 type App struct {
-	ctx            context.Context
-	service        *worksetapi.Service
-	terminalMu     sync.Mutex
-	terminals      map[string]*terminalSession
-	restoredModes  map[string]terminalModeState
-	sessiondMu     sync.Mutex
-	sessiondClient *sessiond.Client
-	sessiondStart  *sessiondStartState
+	ctx             context.Context
+	service         *worksetapi.Service
+	terminalMu      sync.Mutex
+	terminals       map[string]*terminalSession
+	restoredModes   map[string]terminalModeState
+	sessiondMu      sync.Mutex
+	sessiondClient  *sessiond.Client
+	sessiondStart   *sessiondStartState
 	sessiondRestart *sessiondRestartState
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{
-		service:       worksetapi.NewService(worksetapi.Options{}),
-		terminals:     map[string]*terminalSession{},
-		restoredModes: map[string]terminalModeState{},
-		sessiondStart: &sessiondStartState{},
+		service:         worksetapi.NewService(worksetapi.Options{}),
+		terminals:       map[string]*terminalSession{},
+		restoredModes:   map[string]terminalModeState{},
+		sessiondStart:   &sessiondStartState{},
 		sessiondRestart: &sessiondRestartState{},
 	}
 }
@@ -41,6 +41,7 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	logRestartf("app_startup build_marker=restart-logging-v2")
 	setSessiondPathFromCwd()
+	ensureSessiondUpToDate(a)
 	ensureSessiondStarted(a)
 	go a.restoreTerminalSessions(ctx)
 }
