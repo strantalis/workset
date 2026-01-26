@@ -159,6 +159,13 @@ jobs:
             exit 1
           fi
           for app in "${apps[@]}"; do
+            if [ -d "$app/Contents/Resources" ]; then
+              while IFS= read -r -d '' bin; do
+                if file "$bin" | grep -q "Mach-O"; then
+                  /usr/bin/codesign --force --options runtime --timestamp --sign "$identity" "$bin"
+                fi
+              done < <(find "$app/Contents/Resources" -type f -perm -111 -print0)
+            fi
             /usr/bin/codesign --deep --force --options runtime --timestamp --sign "$identity" "$app"
           done
       - name: Notarize and staple app
@@ -183,11 +190,21 @@ jobs:
           for app in "${apps[@]}"; do
             zip_path="${app}.zip"
             ditto -c -k --sequesterRsrc --keepParent "$app" "$zip_path"
-            xcrun notarytool submit "$zip_path" \
+            result=$(xcrun notarytool submit "$zip_path" \
               --key "$key" \
               --key-id "$MACOS_NOTARY_KEY_ID" \
               --issuer "$MACOS_NOTARY_ISSUER_ID" \
-              --wait
+              --wait \
+              --output-format json)
+            id=$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+            status=$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
+            if [ "$status" != "Accepted" ]; then
+              xcrun notarytool log "$id" \
+                --key "$key" \
+                --key-id "$MACOS_NOTARY_KEY_ID" \
+                --issuer "$MACOS_NOTARY_ISSUER_ID"
+              exit 1
+            fi
             xcrun stapler staple "$app"
             rm -f "$zip_path"
           done
