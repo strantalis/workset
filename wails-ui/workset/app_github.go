@@ -209,6 +209,62 @@ func (a *App) SendPullRequestReviewsToTerminal(input PullRequestReviewsRequest) 
 	return a.WriteWorkspaceTerminal(input.WorkspaceID, summary)
 }
 
+type CommitAndPushRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	RepoID      string `json:"repoId"`
+	Message     string `json:"message,omitempty"`
+}
+
+type RepoLocalStatusRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	RepoID      string `json:"repoId"`
+}
+
+func (a *App) CommitAndPush(input CommitAndPushRequest) (worksetapi.CommitAndPushResultJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.service == nil {
+		a.service = worksetapi.NewService(worksetapi.Options{})
+	}
+	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
+	if err != nil {
+		return worksetapi.CommitAndPushResultJSON{}, err
+	}
+	result, err := a.service.CommitAndPush(ctx, worksetapi.CommitAndPushInput{
+		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
+		Repo:      repoName,
+		Message:   input.Message,
+	})
+	if err != nil {
+		return worksetapi.CommitAndPushResultJSON{}, err
+	}
+	return result.Payload, nil
+}
+
+func (a *App) GetRepoLocalStatus(input RepoLocalStatusRequest) (worksetapi.RepoLocalStatusJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.service == nil {
+		a.service = worksetapi.NewService(worksetapi.Options{})
+	}
+	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
+	if err != nil {
+		return worksetapi.RepoLocalStatusJSON{}, err
+	}
+	result, err := a.service.GetRepoLocalStatus(ctx, worksetapi.RepoLocalStatusInput{
+		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
+		Repo:      repoName,
+	})
+	if err != nil {
+		return worksetapi.RepoLocalStatusJSON{}, err
+	}
+	return result.Payload, nil
+}
+
 func resolveRepoAlias(workspaceID, repoID string) (string, error) {
 	repoID = strings.TrimSpace(repoID)
 	if repoID == "" {

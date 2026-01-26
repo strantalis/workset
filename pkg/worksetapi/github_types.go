@@ -156,3 +156,44 @@ type PullRequestGenerateResult struct {
 	Payload PullRequestGeneratedJSON
 	Config  config.GlobalConfigLoadInfo
 }
+
+// CommitAndPushInput describes inputs for committing and pushing changes.
+type CommitAndPushInput struct {
+	Workspace WorkspaceSelector
+	Repo      string
+	Message   string // Empty = auto-generate via agent
+}
+
+// CommitAndPushResultJSON describes the result of a commit and push operation.
+type CommitAndPushResultJSON struct {
+	Committed bool   `json:"committed"`
+	Pushed    bool   `json:"pushed"`
+	Message   string `json:"message"`
+	SHA       string `json:"sha,omitempty"`
+}
+
+// CommitAndPushResult wraps the commit/push result with config metadata.
+type CommitAndPushResult struct {
+	Payload CommitAndPushResultJSON
+	Config  config.GlobalConfigLoadInfo
+}
+
+// RepoLocalStatusInput describes inputs for checking local repo status.
+type RepoLocalStatusInput struct {
+	Workspace WorkspaceSelector
+	Repo      string
+}
+
+// RepoLocalStatusJSON describes the local status of a repo.
+type RepoLocalStatusJSON struct {
+	HasUncommitted bool   `json:"hasUncommitted"`
+	Ahead          int    `json:"ahead"`
+	Behind         int    `json:"behind"`
+	CurrentBranch  string `json:"currentBranch"`
+}
+
+// RepoLocalStatusResult wraps local status with config metadata.
+type RepoLocalStatusResult struct {
+	Payload RepoLocalStatusJSON
+	Config  config.GlobalConfigLoadInfo
+}

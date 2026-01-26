@@ -606,6 +606,198 @@ func gitDiffNoIndexNumstat(ctx context.Context, repoPath, relativePath string) (
 const maxDiffBytes = 2_000_000
 const maxDiffLines = 20_000
 
+// GetBranchDiffSummary returns a list of changed files between two refs (for PR view).
+func (a *App) GetBranchDiffSummary(workspaceID, repoID, base, head string) (RepoDiffSummary, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.service == nil {
+		a.service = worksetapi.NewService(worksetapi.Options{})
+	}
+
+	repoPath, err := a.resolveRepoPath(ctx, workspaceID, repoID)
+	if err != nil {
+		return RepoDiffSummary{}, err
+	}
+
+	if base == "" {
+		base = "HEAD~1"
+	}
+	if head == "" {
+		head = "HEAD"
+	}
+
+	files, err := collectBranchDiffSummary(ctx, repoPath, base, head)
+	if err != nil {
+		return RepoDiffSummary{}, err
+	}
+
+	summary := RepoDiffSummary{Files: files}
+	for _, file := range files {
+		summary.TotalAdded += file.Added
+		summary.TotalRemoved += file.Removed
+	}
+	return summary, nil
+}
+
+// GetBranchFileDiff returns a patch for a single file between two refs (for PR view).
+func (a *App) GetBranchFileDiff(workspaceID, repoID, base, head, path, prevPath string) (RepoFileDiffSnapshot, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.service == nil {
+		a.service = worksetapi.NewService(worksetapi.Options{})
+	}
+
+	repoPath, err := a.resolveRepoPath(ctx, workspaceID, repoID)
+	if err != nil {
+		return RepoFileDiffSnapshot{}, err
+	}
+	if path == "" {
+		return RepoFileDiffSnapshot{}, errors.New("file path is required")
+	}
+
+	if base == "" {
+		base = "HEAD~1"
+	}
+	if head == "" {
+		head = "HEAD"
+	}
+
+	patch, err := gitBranchFileDiff(ctx, repoPath, base, head, path, prevPath)
+	if err != nil {
+		return RepoFileDiffSnapshot{}, err
+	}
+
+	return finalizePatch(patch), nil
+}
+
+func collectBranchDiffSummary(ctx context.Context, repoPath, base, head string) ([]RepoDiffFile, error) {
+	// Use merge-base to get the common ancestor for proper three-dot diff
+	mergeBase, err := gitMergeBase(ctx, repoPath, base, head)
+	if err != nil {
+		// Fall back to direct diff if merge-base fails
+		mergeBase = base
+	}
+
+	statusEntries, err := gitBranchNameStatus(ctx, repoPath, mergeBase, head)
+	if err != nil {
+		return nil, err
+	}
+	statsEntries, err := gitBranchNumstat(ctx, repoPath, mergeBase, head)
+	if err != nil {
+		return nil, err
+	}
+
+	fileMap := map[string]RepoDiffFile{}
+	order := []string{}
+	upsert := func(file RepoDiffFile) {
+		key := fileKey(file.Path, file.PrevPath)
+		if _, exists := fileMap[key]; !exists {
+			order = append(order, key)
+		}
+		fileMap[key] = file
+	}
+
+	for _, entry := range statusEntries {
+		file := RepoDiffFile{
+			Path:     entry.path,
+			PrevPath: entry.prevPath,
+			Status:   statusLabel(entry.status),
+		}
+		upsert(file)
+	}
+
+	for _, entry := range statsEntries {
+		key := fileKey(entry.path, entry.prevPath)
+		file := fileMap[key]
+		file.Path = entry.path
+		file.PrevPath = entry.prevPath
+		file.Added += entry.added
+		file.Removed += entry.removed
+		file.Binary = file.Binary || entry.binary
+		if file.Status == "" {
+			file.Status = "modified"
+		}
+		if entry.binary {
+			file.Status = "binary"
+		}
+		upsert(file)
+	}
+
+	files := make([]RepoDiffFile, 0, len(order))
+	for _, key := range order {
+		files = append(files, fileMap[key])
+	}
+	return files, nil
+}
+
+func gitMergeBase(ctx context.Context, repoPath, ref1, ref2 string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", "-C", repoPath, "merge-base", ref1, ref2)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git merge-base failed: %w", err)
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
+func gitBranchNameStatus(ctx context.Context, repoPath, base, head string) ([]nameStatusEntry, error) {
+	args := []string{"-C", repoPath, "diff", "--name-status", "--find-renames", "-z", base, head}
+	cmd := exec.CommandContext(ctx, "git", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git diff name-status failed: %w", err)
+	}
+	return parseNameStatusZ(output), nil
+}
+
+func gitBranchNumstat(ctx context.Context, repoPath, base, head string) ([]numstatEntry, error) {
+	args := []string{"-C", repoPath, "diff", "--numstat", "--find-renames", "-z", base, head}
+	cmd := exec.CommandContext(ctx, "git", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git diff numstat failed: %w", err)
+	}
+	return parseNumstatZ(output), nil
+}
+
+func gitBranchFileDiff(ctx context.Context, repoPath, base, head, path, prevPath string) (string, error) {
+	// Use merge-base for proper three-dot diff
+	mergeBase, err := gitMergeBase(ctx, repoPath, base, head)
+	if err != nil {
+		mergeBase = base
+	}
+
+	args := []string{
+		"-c", "color.ui=false",
+		"-C", repoPath,
+		"diff",
+		"--no-ext-diff",
+		"--unified=3",
+		"--find-renames",
+		mergeBase,
+		head,
+		"--",
+		path,
+	}
+	if prevPath != "" && prevPath != path {
+		args = append(args, prevPath)
+	}
+	cmd := exec.CommandContext(ctx, "git", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		if exitErr := (&exec.ExitError{}); errors.As(err, &exitErr) {
+			if exitErr.ExitCode() == 1 {
+				return string(output), nil
+			}
+		}
+		return "", fmt.Errorf("git diff failed: %s", strings.TrimSpace(string(output)))
+	}
+	return string(output), nil
+}
+
 func finalizePatch(patch string) RepoFileDiffSnapshot {
 	totalBytes := len(patch)
 	totalLines := 0

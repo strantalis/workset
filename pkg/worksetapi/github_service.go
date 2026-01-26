@@ -270,6 +270,156 @@ func (s *Service) GeneratePullRequestText(ctx context.Context, input PullRequest
 	return PullRequestGenerateResult{Payload: result, Config: resolution.ConfigInfo}, nil
 }
 
+// GetRepoLocalStatus returns the local uncommitted/ahead/behind status for a repo.
+func (s *Service) GetRepoLocalStatus(ctx context.Context, input RepoLocalStatusInput) (RepoLocalStatusResult, error) {
+	resolution, err := s.resolveRepo(ctx, RepoSelectionInput(input))
+	if err != nil {
+		return RepoLocalStatusResult{}, err
+	}
+
+	// Get current branch
+	branch, err := s.resolveCurrentBranch(resolution)
+	if err != nil {
+		return RepoLocalStatusResult{}, err
+	}
+
+	// Check for uncommitted changes via git status --porcelain
+	hasUncommitted, err := gitHasUncommittedChanges(ctx, resolution.RepoPath, s.commands)
+	if err != nil {
+		return RepoLocalStatusResult{}, err
+	}
+
+	// Get ahead/behind counts
+	ahead, behind, err := gitAheadBehind(ctx, resolution.RepoPath, branch, s.commands)
+	if err != nil {
+		// Non-fatal: upstream tracking may not be configured
+		ahead, behind = 0, 0
+	}
+
+	return RepoLocalStatusResult{
+		Payload: RepoLocalStatusJSON{
+			HasUncommitted: hasUncommitted,
+			Ahead:          ahead,
+			Behind:         behind,
+			CurrentBranch:  branch,
+		},
+		Config: resolution.ConfigInfo,
+	}, nil
+}
+
+// CommitAndPush commits all changes and pushes to the remote.
+func (s *Service) CommitAndPush(ctx context.Context, input CommitAndPushInput) (CommitAndPushResult, error) {
+	resolution, err := s.resolveRepo(ctx, RepoSelectionInput{
+		Workspace: input.Workspace,
+		Repo:      input.Repo,
+	}) // Cannot use type conversion here due to Message field
+	if err != nil {
+		return CommitAndPushResult{}, err
+	}
+
+	branch, err := s.resolveCurrentBranch(resolution)
+	if err != nil {
+		return CommitAndPushResult{}, err
+	}
+
+	// Check for changes to commit
+	hasUncommitted, err := gitHasUncommittedChanges(ctx, resolution.RepoPath, s.commands)
+	if err != nil {
+		return CommitAndPushResult{}, err
+	}
+	if !hasUncommitted {
+		return CommitAndPushResult{}, ValidationError{Message: "no changes to commit"}
+	}
+
+	// Generate commit message if not provided
+	message := strings.TrimSpace(input.Message)
+	if message == "" {
+		agent := strings.TrimSpace(resolution.Defaults.Agent)
+		if agent == "" {
+			return CommitAndPushResult{}, ValidationError{Message: "defaults.agent is not configured; cannot auto-generate commit message"}
+		}
+		patch, err := buildRepoPatch(ctx, resolution.RepoPath, defaultDiffLimit, s.commands)
+		if err != nil {
+			return CommitAndPushResult{}, err
+		}
+		prompt := formatCommitPrompt(resolution.Repo.Name, branch, patch)
+		schema, err := ensureCommitSchema()
+		if err != nil {
+			return CommitAndPushResult{}, err
+		}
+		output, err := s.runAgentPromptRaw(ctx, resolution.RepoPath, agent, prompt, schema)
+		if err != nil {
+			return CommitAndPushResult{}, err
+		}
+		message, err = parseCommitJSON(output)
+		if err != nil {
+			return CommitAndPushResult{}, err
+		}
+	}
+
+	// Stage all changes
+	if err := gitAddAll(ctx, resolution.RepoPath, s.commands); err != nil {
+		return CommitAndPushResult{}, err
+	}
+
+	// Verify staged changes exist
+	hasStaged, err := gitHasStagedChanges(ctx, resolution.RepoPath, s.commands)
+	if err != nil {
+		return CommitAndPushResult{}, err
+	}
+	if !hasStaged {
+		return CommitAndPushResult{}, ValidationError{Message: "no changes staged after git add"}
+	}
+
+	// Commit
+	if err := gitCommitMessage(ctx, resolution.RepoPath, message, s.commands); err != nil {
+		return CommitAndPushResult{}, err
+	}
+
+	// Get the new commit SHA
+	sha, err := gitHeadSHA(ctx, resolution.RepoPath, s.commands)
+	if err != nil {
+		sha = ""
+	}
+
+	// Resolve remote for push
+	headInfo, _, err := s.resolveRemoteInfo(ctx, resolution)
+	if err != nil {
+		return CommitAndPushResult{
+			Payload: CommitAndPushResultJSON{
+				Committed: true,
+				Pushed:    false,
+				Message:   message,
+				SHA:       sha,
+			},
+			Config: resolution.ConfigInfo,
+		}, err
+	}
+
+	// Push
+	if err := gitPushBranch(ctx, resolution.RepoPath, headInfo.Remote, branch, s.commands); err != nil {
+		return CommitAndPushResult{
+			Payload: CommitAndPushResultJSON{
+				Committed: true,
+				Pushed:    false,
+				Message:   message,
+				SHA:       sha,
+			},
+			Config: resolution.ConfigInfo,
+		}, err
+	}
+
+	return CommitAndPushResult{
+		Payload: CommitAndPushResultJSON{
+			Committed: true,
+			Pushed:    true,
+			Message:   message,
+			SHA:       sha,
+		},
+		Config: resolution.ConfigInfo,
+	}, nil
+}
+
 func (s *Service) resolveGitHubToken(ctx context.Context, root string) (string, error) {
 	if token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); token != "" {
 		return token, nil
@@ -1069,4 +1219,69 @@ func gitUntracked(ctx context.Context, repoPath string, runner CommandRunner) ([
 		files = append(files, line)
 	}
 	return files, nil
+}
+
+func gitHasUncommittedChanges(ctx context.Context, repoPath string, runner CommandRunner) (bool, error) {
+	result, err := runner(ctx, repoPath, []string{"git", "status", "--porcelain"}, os.Environ(), "")
+	if err != nil || result.ExitCode != 0 {
+		message := strings.TrimSpace(result.Stderr)
+		if message == "" && err != nil {
+			message = err.Error()
+		}
+		if message == "" {
+			message = "unable to check uncommitted changes"
+		}
+		return false, ValidationError{Message: message}
+	}
+	return strings.TrimSpace(result.Stdout) != "", nil
+}
+
+func gitAheadBehind(ctx context.Context, repoPath, branch string, runner CommandRunner) (int, int, error) {
+	// Get upstream tracking branch
+	upstreamResult, err := runner(ctx, repoPath, []string{"git", "rev-parse", "--abbrev-ref", branch + "@{upstream}"}, os.Environ(), "")
+	if err != nil || upstreamResult.ExitCode != 0 {
+		return 0, 0, ValidationError{Message: "no upstream tracking branch configured"}
+	}
+	upstream := strings.TrimSpace(upstreamResult.Stdout)
+	if upstream == "" {
+		return 0, 0, ValidationError{Message: "no upstream tracking branch configured"}
+	}
+
+	// Get ahead count
+	aheadResult, err := runner(ctx, repoPath, []string{"git", "rev-list", "--count", upstream + ".." + branch}, os.Environ(), "")
+	ahead := 0
+	if err == nil && aheadResult.ExitCode == 0 {
+		if parsed, parseErr := parseCount(aheadResult.Stdout); parseErr == nil {
+			ahead = parsed
+		}
+	}
+
+	// Get behind count
+	behindResult, err := runner(ctx, repoPath, []string{"git", "rev-list", "--count", branch + ".." + upstream}, os.Environ(), "")
+	behind := 0
+	if err == nil && behindResult.ExitCode == 0 {
+		if parsed, parseErr := parseCount(behindResult.Stdout); parseErr == nil {
+			behind = parsed
+		}
+	}
+
+	return ahead, behind, nil
+}
+
+func parseCount(output string) (int, error) {
+	output = strings.TrimSpace(output)
+	if output == "" {
+		return 0, errors.New("empty output")
+	}
+	var count int
+	_, err := fmt.Sscanf(output, "%d", &count)
+	return count, err
+}
+
+func gitHeadSHA(ctx context.Context, repoPath string, runner CommandRunner) (string, error) {
+	result, err := runner(ctx, repoPath, []string{"git", "rev-parse", "HEAD"}, os.Environ(), "")
+	if err != nil || result.ExitCode != 0 {
+		return "", errors.New("unable to get HEAD SHA")
+	}
+	return strings.TrimSpace(result.Stdout), nil
 }
