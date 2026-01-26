@@ -1,29 +1,22 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
-	"os/user"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
+	"github.com/strantalis/workset/pkg/kitty"
+	"github.com/strantalis/workset/pkg/sessiond"
 	"github.com/strantalis/workset/pkg/worksetapi"
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
-)
-
-const (
-	terminalBufferMaxBytes          = 512 * 1024
-	terminalTranscriptMaxBytes      = 5 * 1024 * 1024
-	terminalTranscriptTrimThreshold = 6 * 1024 * 1024
-	terminalTranscriptTailBytes     = 512 * 1024
 )
 
 type TerminalPayload struct {
@@ -37,6 +30,11 @@ type TerminalLifecyclePayload struct {
 	Message     string `json:"message,omitempty"`
 }
 
+type TerminalKittyPayload struct {
+	WorkspaceID string      `json:"workspaceId"`
+	Event       kitty.Event `json:"event"`
+}
+
 type TerminalBacklogPayload struct {
 	WorkspaceID string `json:"workspaceId"`
 	Data        string `json:"data"`
@@ -45,26 +43,86 @@ type TerminalBacklogPayload struct {
 	Source      string `json:"source,omitempty"`
 }
 
+type TerminalSnapshotPayload struct {
+	WorkspaceID string          `json:"workspaceId"`
+	Data        string          `json:"data"`
+	Source      string          `json:"source,omitempty"`
+	Kitty       *kitty.Snapshot `json:"kitty,omitempty"`
+}
+
+type TerminalBootstrapPayload struct {
+	WorkspaceID      string          `json:"workspaceId"`
+	Snapshot         string          `json:"snapshot,omitempty"`
+	SnapshotSource   string          `json:"snapshotSource,omitempty"`
+	Kitty            *kitty.Snapshot `json:"kitty,omitempty"`
+	Backlog          string          `json:"backlog,omitempty"`
+	BacklogSource    string          `json:"backlogSource,omitempty"`
+	BacklogTruncated bool            `json:"backlogTruncated,omitempty"`
+	NextOffset       int64           `json:"nextOffset,omitempty"`
+	Source           string          `json:"source,omitempty"`
+	AltScreen        bool            `json:"altScreen,omitempty"`
+	Mouse            bool            `json:"mouse,omitempty"`
+	MouseSGR         bool            `json:"mouseSGR,omitempty"`
+	MouseEncoding    string          `json:"mouseEncoding,omitempty"`
+	SafeToReplay     bool            `json:"safeToReplay,omitempty"`
+}
+
+type TerminalStatusPayload struct {
+	WorkspaceID string `json:"workspaceId"`
+	Active      bool   `json:"active"`
+	Error       string `json:"error,omitempty"`
+}
+
+type TerminalModesPayload struct {
+	WorkspaceID   string `json:"workspaceId"`
+	AltScreen     bool   `json:"altScreen"`
+	Mouse         bool   `json:"mouse"`
+	MouseSGR      bool   `json:"mouseSGR"`
+	MouseEncoding string `json:"mouseEncoding"`
+}
+
+type TerminalDebugPayload struct {
+	WorkspaceID string `json:"workspaceId"`
+	Event       string `json:"event"`
+	Details     string `json:"details,omitempty"`
+}
+
 type terminalState struct {
 	Sessions []terminalStateEntry `json:"sessions"`
 }
 
 type terminalStateEntry struct {
-	WorkspaceID string    `json:"workspaceId"`
-	LastActive  time.Time `json:"lastActive"`
+	WorkspaceID string             `json:"workspaceId"`
+	LastActive  time.Time          `json:"lastActive"`
+	Modes       *terminalModeState `json:"modes,omitempty"`
+}
+
+type terminalModeState struct {
+	AltScreen  bool  `json:"altScreen,omitempty"`
+	MouseMask  uint8 `json:"mouseMask,omitempty"`
+	MouseSGR   bool  `json:"mouseSGR,omitempty"`
+	MouseUTF8  bool  `json:"mouseUTF8,omitempty"`
+	MouseURXVT bool  `json:"mouseURXVT,omitempty"`
 }
 
 type terminalSession struct {
 	id   string
 	path string
-	cmd  *exec.Cmd
-	pty  *os.File
 	mu   sync.Mutex
 
-	buffer         *terminalBuffer
-	transcriptPath string
-	transcriptFile *os.File
-	transcriptSize int64
+	client       *sessiond.Client
+	stream       *sessiond.Stream
+	streamCancel context.CancelFunc
+
+	tuiMode      bool
+	altScreen    bool
+	seqTail      []byte
+	mouseMask    uint8
+	mouseSGR     bool
+	mouseUTF8    bool
+	mouseURXVT   bool
+	c1Normalizer c1Normalizer
+	escapeFilter escapeStringFilter
 
 	starting bool
 	startErr error
@@ -75,88 +133,16 @@ type terminalSession struct {
 	idleTimer    *time.Timer
 	closed       bool
 	closeReason  string
+	resumed      bool
 }
 
 func newTerminalSession(id, path string) *terminalSession {
 	return &terminalSession{
 		id:       id,
 		path:     path,
-		buffer:   newTerminalBuffer(terminalBufferMaxBytes),
 		starting: true,
 		ready:    make(chan struct{}),
 	}
-}
-
-type bufferChunk struct {
-	start int64
-	data  []byte
-}
-
-type terminalBuffer struct {
-	mu       sync.Mutex
-	maxBytes int
-	chunks   []bufferChunk
-	size     int
-	total    int64
-}
-
-func newTerminalBuffer(maxBytes int) *terminalBuffer {
-	if maxBytes < 64*1024 {
-		maxBytes = 64 * 1024
-	}
-	return &terminalBuffer{maxBytes: maxBytes}
-}
-
-func (b *terminalBuffer) Append(data []byte) {
-	if len(data) == 0 {
-		return
-	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	copied := make([]byte, len(data))
-	copy(copied, data)
-	chunk := bufferChunk{
-		start: b.total,
-		data:  copied,
-	}
-	b.chunks = append(b.chunks, chunk)
-	b.total += int64(len(copied))
-	b.size += len(copied)
-	for b.size > b.maxBytes && len(b.chunks) > 0 {
-		oldest := b.chunks[0]
-		b.chunks = b.chunks[1:]
-		b.size -= len(oldest.data)
-	}
-}
-
-func (b *terminalBuffer) ReadSince(offset int64) ([]byte, int64, bool) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if len(b.chunks) == 0 {
-		return nil, b.total, false
-	}
-	oldest := b.chunks[0].start
-	truncated := false
-	if offset < oldest {
-		offset = oldest
-		truncated = true
-	}
-	out := make([]byte, 0, b.size)
-	for _, chunk := range b.chunks {
-		end := chunk.start + int64(len(chunk.data))
-		if end <= offset {
-			continue
-		}
-		if offset > chunk.start {
-			start := int(offset - chunk.start)
-			if start < len(chunk.data) {
-				out = append(out, chunk.data[start:]...)
-			}
-			continue
-		}
-		out = append(out, chunk.data...)
-	}
-	return out, b.total, truncated
 }
 
 func (s *terminalSession) markReady(err error) {
@@ -193,7 +179,7 @@ func (s *terminalSession) waitReady(ctx context.Context) error {
 func (s *terminalSession) snapshot() (time.Time, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.starting || s.closed || s.pty == nil {
+	if s.starting || s.closed || s.client == nil {
 		return time.Time{}, false
 	}
 	return s.lastActivity, true
@@ -212,28 +198,190 @@ func (s *terminalSession) bumpActivity() {
 	}
 }
 
-func (s *terminalSession) Write(data string) error {
+func (s *terminalSession) noteModes(data []byte) (bool, bool) {
+	if len(data) == 0 {
+		return false, false
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.pty == nil {
-		return fmt.Errorf("terminal not started")
+	const tailMax = 64
+	prevAlt := s.altScreen
+	prevMask := s.mouseMask
+	prevSGR := s.mouseSGR
+	prevUTF8 := s.mouseUTF8
+	prevURXVT := s.mouseURXVT
+	merged := append(append([]byte{}, s.seqTail...), data...)
+	if containsAltScreenEnter(merged) {
+		s.tuiMode = true
+		s.altScreen = true
 	}
-	_, err := s.pty.Write([]byte(data))
-	s.lastActivity = time.Now()
-	if s.idleTimer != nil {
-		_ = s.idleTimer.Stop()
-		s.idleTimer.Reset(s.idleTimeout)
+	if containsAltScreenExit(merged) {
+		s.altScreen = false
+		if s.mouseMask == 0 {
+			s.tuiMode = false
+		}
 	}
-	return err
+	s.applyMouseModes(merged)
+	if s.mouseMask != 0 {
+		s.tuiMode = true
+	} else if !s.altScreen {
+		s.tuiMode = false
+	}
+	if len(merged) > tailMax {
+		merged = merged[len(merged)-tailMax:]
+	}
+	s.seqTail = merged
+	altChanged := prevAlt != s.altScreen
+	mouseChanged := prevMask != s.mouseMask || prevSGR != s.mouseSGR || prevUTF8 != s.mouseUTF8 || prevURXVT != s.mouseURXVT
+	return altChanged, mouseChanged
+}
+
+func containsAltScreenEnter(data []byte) bool {
+	return bytes.Contains(data, []byte("\x1b[?1049h")) ||
+		bytes.Contains(data, []byte("\x1b[?1047h")) ||
+		bytes.Contains(data, []byte("\x1b[?47h"))
+}
+
+func containsAltScreenExit(data []byte) bool {
+	return bytes.Contains(data, []byte("\x1b[?1049l")) ||
+		bytes.Contains(data, []byte("\x1b[?1047l")) ||
+		bytes.Contains(data, []byte("\x1b[?47l"))
+}
+
+func containsClearScreen(data []byte) bool {
+	return bytes.Contains(data, []byte("\x1b[2J")) ||
+		bytes.Contains(data, []byte("\x1b[3J"))
+}
+
+func (s *terminalSession) applyMouseModes(data []byte) {
+	for i := 0; i < len(data); i++ {
+		if data[i] == 0x1b {
+			if i+2 < len(data) && data[i+1] == '[' && data[i+2] == '?' {
+				i = s.parseMouseCSI(data, i+3)
+			}
+			continue
+		}
+		if data[i] == 0x9b {
+			if i+1 < len(data) && data[i+1] == '?' {
+				i = s.parseMouseCSI(data, i+2)
+			}
+		}
+	}
+}
+
+func (s *terminalSession) parseMouseCSI(data []byte, start int) int {
+	params := make([]int, 0, 4)
+	val := 0
+	hasVal := false
+	for i := start; i < len(data); i++ {
+		b := data[i]
+		if b >= '0' && b <= '9' {
+			val = val*10 + int(b-'0')
+			hasVal = true
+			continue
+		}
+		if b == ';' {
+			if hasVal {
+				params = append(params, val)
+			} else {
+				params = append(params, 0)
+			}
+			val = 0
+			hasVal = false
+			continue
+		}
+		if b >= 0x40 && b <= 0x7e {
+			if hasVal || len(params) > 0 {
+				params = append(params, val)
+			}
+			if b == 'h' || b == 'l' {
+				on := b == 'h'
+				for _, p := range params {
+					switch p {
+					case 1000:
+						s.setMouseMask(0, on)
+					case 1002:
+						s.setMouseMask(1, on)
+					case 1003:
+						s.setMouseMask(2, on)
+					case 1005:
+						s.mouseUTF8 = on
+					case 1015:
+						s.mouseURXVT = on
+					case 1006:
+						s.mouseSGR = on
+					}
+				}
+			}
+			return i
+		}
+	}
+	return len(data) - 1
+}
+
+func (s *terminalSession) setMouseMask(bit uint8, on bool) {
+	mask := uint8(1 << bit)
+	if on {
+		s.mouseMask |= mask
+		return
+	}
+	s.mouseMask &^= mask
+}
+
+func (s *terminalSession) mouseEnabled() bool {
+	return s.mouseMask != 0
+}
+
+func (s *terminalSession) mouseEncoding() string {
+	if s.mouseSGR {
+		return "sgr"
+	}
+	if s.mouseURXVT {
+		return "urxvt"
+	}
+	if s.mouseUTF8 {
+		return "utf8"
+	}
+	return "x10"
+}
+
+func (s *terminalSession) Write(data string) error {
+	s.mu.Lock()
+	client := s.client
+	s.mu.Unlock()
+	if client != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		err := client.Send(ctx, s.id, data)
+		if err == nil {
+			s.bumpActivity()
+		}
+		if err != nil && strings.Contains(err.Error(), "session not found") {
+			s.mu.Lock()
+			s.client = nil
+			s.mu.Unlock()
+		}
+		return err
+	}
+	return fmt.Errorf("terminal not started")
 }
 
 func (s *terminalSession) Resize(cols, rows int) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.pty == nil {
-		return fmt.Errorf("terminal not started")
+	client := s.client
+	s.mu.Unlock()
+	if client != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		err := client.Resize(ctx, s.id, cols, rows)
+		if err != nil && strings.Contains(err.Error(), "session not found") {
+			s.mu.Lock()
+			s.client = nil
+			s.mu.Unlock()
+		}
+		return err
 	}
-	return resizePTY(s.pty, cols, rows)
+	return fmt.Errorf("terminal not started")
 }
 
 func (s *terminalSession) Close() error {
@@ -242,6 +390,14 @@ func (s *terminalSession) Close() error {
 
 func (s *terminalSession) CloseWithReason(reason string) error {
 	s.mu.Lock()
+	if s.streamCancel != nil {
+		s.streamCancel()
+		s.streamCancel = nil
+	}
+	if s.stream != nil {
+		_ = s.stream.Close()
+		s.stream = nil
+	}
 	defer s.mu.Unlock()
 	if s.closed {
 		return nil
@@ -254,38 +410,7 @@ func (s *terminalSession) CloseWithReason(reason string) error {
 		_ = s.idleTimer.Stop()
 		s.idleTimer = nil
 	}
-	if s.pty != nil {
-		_ = s.pty.Close()
-		s.pty = nil
-	}
-	if s.transcriptFile != nil {
-		_ = s.transcriptFile.Close()
-		s.transcriptFile = nil
-	}
-	if s.cmd != nil && s.cmd.Process != nil {
-		_ = s.cmd.Process.Kill()
-	}
 	return nil
-}
-
-func (s *terminalSession) recordOutput(data []byte) {
-	if len(data) == 0 {
-		return
-	}
-	if s.buffer != nil {
-		s.buffer.Append(data)
-	}
-	s.mu.Lock()
-	file := s.transcriptFile
-	s.mu.Unlock()
-	if file == nil {
-		return
-	}
-	if _, err := file.Write(data); err == nil {
-		s.mu.Lock()
-		s.transcriptSize += int64(len(data))
-		s.mu.Unlock()
-	}
 }
 
 func (a *App) StartWorkspaceTerminal(workspaceID string) error {
@@ -319,9 +444,9 @@ func (a *App) StartWorkspaceTerminal(workspaceID string) error {
 				return err
 			}
 			existing.mu.Lock()
-			hasPTY := existing.pty != nil
+			hasSession := existing.client != nil
 			existing.mu.Unlock()
-			if hasPTY {
+			if hasSession {
 				return nil
 			}
 			a.terminalMu.Lock()
@@ -333,10 +458,42 @@ func (a *App) StartWorkspaceTerminal(workspaceID string) error {
 		}
 
 		session := newTerminalSession(workspaceID, root)
+		var restore terminalModeState
+		var hasRestore bool
+		if a.restoredModes != nil {
+			restore, hasRestore = a.restoredModes[workspaceID]
+		}
+		if hasRestore {
+			session.mu.Lock()
+			session.altScreen = restore.AltScreen
+			session.tuiMode = restore.AltScreen
+			session.mouseMask = restore.MouseMask
+			session.mouseSGR = restore.MouseSGR
+			session.mouseUTF8 = restore.MouseUTF8
+			session.mouseURXVT = restore.MouseURXVT
+			session.mu.Unlock()
+		}
+		client, err := a.getSessiondClient()
+		if err != nil {
+			a.terminalMu.Unlock()
+			return err
+		}
+		session.client = client
 		a.terminals[workspaceID] = session
 		a.terminalMu.Unlock()
 
-		err := a.startTerminalSession(ctx, session, root, workspaceID)
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		resp, createErr := session.client.Create(ctx, workspaceID, root)
+		if createErr == nil && resp.Existing {
+			session.resumed = true
+		}
+		err = createErr
+		cancel()
+		if err == nil {
+			session.mu.Lock()
+			session.lastActivity = time.Now()
+			session.mu.Unlock()
+		}
 		session.markReady(err)
 		if err != nil {
 			a.terminalMu.Lock()
@@ -348,8 +505,22 @@ func (a *App) StartWorkspaceTerminal(workspaceID string) error {
 			return err
 		}
 		a.ensureIdleWatcher(session)
-		a.emitTerminalLifecycle("started", workspaceID, "")
-		_ = a.persistTerminalState()
+		if session.resumed {
+			a.emitTerminalLifecycle("started", workspaceID, "Session resumed.")
+		} else {
+			a.emitTerminalLifecycle("started", workspaceID, "")
+		}
+		emitModes := hasRestore
+		if emitModes {
+			session.mu.Lock()
+			altScreen := session.altScreen
+			mouseEnabled := session.mouseEnabled()
+			mouseSGR := session.mouseSGR
+			mouseEncoding := session.mouseEncoding()
+			session.mu.Unlock()
+			a.emitTerminalModes(workspaceID, altScreen, mouseEnabled, mouseSGR, mouseEncoding)
+			_ = a.persistTerminalState()
+		}
 		go a.streamTerminal(session)
 		return nil
 	}
@@ -368,55 +539,163 @@ func (a *App) GetTerminalBacklog(workspaceID string, since int64) (TerminalBackl
 	if workspaceID == "" {
 		return TerminalBacklogPayload{}, fmt.Errorf("workspace id required")
 	}
+	client, err := a.getSessiondClient()
+	if err != nil {
+		return TerminalBacklogPayload{}, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	backlog, err := client.Backlog(ctx, workspaceID, since)
+	if err != nil {
+		return TerminalBacklogPayload{}, err
+	}
+	return TerminalBacklogPayload{
+		WorkspaceID: backlog.SessionID,
+		Data:        backlog.Data,
+		NextOffset:  backlog.NextOffset,
+		Truncated:   backlog.Truncated,
+		Source:      backlog.Source,
+	}, nil
+}
+
+func (a *App) GetTerminalSnapshot(workspaceID string) (TerminalSnapshotPayload, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return TerminalSnapshotPayload{}, fmt.Errorf("workspace id required")
+	}
+	client, err := a.getSessiondClient()
+	if err != nil {
+		return TerminalSnapshotPayload{}, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	snap, err := client.Snapshot(ctx, workspaceID)
+	if err != nil {
+		return TerminalSnapshotPayload{}, err
+	}
+	return TerminalSnapshotPayload{
+		WorkspaceID: snap.SessionID,
+		Data:        snap.Data,
+		Source:      snap.Source,
+		Kitty:       snap.Kitty,
+	}, nil
+}
+
+func (a *App) GetTerminalBootstrap(workspaceID string) (TerminalBootstrapPayload, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return TerminalBootstrapPayload{}, fmt.Errorf("workspace id required")
+	}
+	client, err := a.getSessiondClient()
+	if err != nil {
+		return TerminalBootstrapPayload{}, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	bootstrap, err := client.Bootstrap(ctx, workspaceID)
+	if err != nil {
+		return TerminalBootstrapPayload{}, err
+	}
+	backlog := sessiond.BacklogResponse{}
+	useBacklog := bootstrap.SafeToReplay
+	if useBacklog {
+		if b, err := client.Backlog(ctx, workspaceID, 0); err == nil && b.Data != "" {
+			backlog = b
+		} else {
+			useBacklog = false
+		}
+	}
 	a.terminalMu.Lock()
 	session := a.terminals[workspaceID]
 	a.terminalMu.Unlock()
 	if session != nil {
-		ctx := a.ctx
-		if ctx == nil {
-			ctx = context.Background()
+		session.mu.Lock()
+		session.altScreen = bootstrap.AltScreen
+		if bootstrap.AltScreen {
+			session.tuiMode = true
 		}
-		waitCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		err := session.waitReady(waitCtx)
-		cancel()
-		if err != nil {
-			return TerminalBacklogPayload{}, err
+		if bootstrap.MouseMask != 0 {
+			session.mouseMask = bootstrap.MouseMask
+		} else if bootstrap.Mouse {
+			session.mouseMask = 1
+		} else {
+			session.mouseMask = 0
 		}
-		if since < 0 {
-			since = 0
-		}
-		if session.buffer != nil {
-			data, next, truncated := session.buffer.ReadSince(since)
-			if len(data) > 0 || next > 0 {
-				return TerminalBacklogPayload{
-					WorkspaceID: workspaceID,
-					Data:        string(data),
-					NextOffset:  next,
-					Truncated:   truncated,
-					Source:      "buffer",
-				}, nil
-			}
-		}
+		session.mouseSGR = bootstrap.MouseSGR
+		session.mouseUTF8 = bootstrap.MouseEncoding == "utf8"
+		session.mouseURXVT = bootstrap.MouseEncoding == "urxvt"
+		session.mu.Unlock()
+		_ = a.persistTerminalState()
 	}
-	data, truncated, err := a.readTranscriptTail(workspaceID, terminalTranscriptTailBytes)
-	if err != nil {
-		return TerminalBacklogPayload{}, err
-	}
-	if len(data) == 0 {
-		return TerminalBacklogPayload{
-			WorkspaceID: workspaceID,
-			Data:        "",
-			NextOffset:  0,
-			Truncated:   false,
+	if useBacklog {
+		return TerminalBootstrapPayload{
+			WorkspaceID:      backlog.SessionID,
+			Backlog:          backlog.Data,
+			BacklogSource:    backlog.Source,
+			BacklogTruncated: backlog.Truncated,
+			NextOffset:       backlog.NextOffset,
+			Source:           "sessiond",
+			AltScreen:        bootstrap.AltScreen,
+			Mouse:            bootstrap.Mouse,
+			MouseSGR:         bootstrap.MouseSGR,
+			MouseEncoding:    bootstrap.MouseEncoding,
+			SafeToReplay:     bootstrap.SafeToReplay,
 		}, nil
 	}
-	return TerminalBacklogPayload{
-		WorkspaceID: workspaceID,
-		Data:        string(data),
-		NextOffset:  0,
-		Truncated:   truncated,
-		Source:      "transcript",
+	return TerminalBootstrapPayload{
+		WorkspaceID:      bootstrap.SessionID,
+		Snapshot:         bootstrap.Snapshot,
+		SnapshotSource:   bootstrap.SnapshotSource,
+		Kitty:            bootstrap.Kitty,
+		Backlog:          bootstrap.Backlog,
+		BacklogSource:    bootstrap.BacklogSource,
+		BacklogTruncated: bootstrap.BacklogTruncated,
+		NextOffset:       bootstrap.NextOffset,
+		Source:           "sessiond",
+		AltScreen:        bootstrap.AltScreen,
+		Mouse:            bootstrap.Mouse,
+		MouseSGR:         bootstrap.MouseSGR,
+		MouseEncoding:    bootstrap.MouseEncoding,
+		SafeToReplay:     bootstrap.SafeToReplay,
 	}, nil
+}
+
+func (a *App) LogTerminalDebug(payload TerminalDebugPayload) {
+	logTerminalDebug(payload)
+}
+
+func (a *App) GetWorkspaceTerminalStatus(workspaceID string) TerminalStatusPayload {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return TerminalStatusPayload{Active: false, Error: "workspace id required"}
+	}
+	a.terminalMu.Lock()
+	session := a.terminals[workspaceID]
+	a.terminalMu.Unlock()
+	if session != nil {
+		session.mu.Lock()
+		hasSession := !session.closed && session.client != nil
+		session.mu.Unlock()
+		if hasSession {
+			return TerminalStatusPayload{WorkspaceID: workspaceID, Active: true}
+		}
+	}
+	client, err := a.getSessiondClient()
+	if err != nil {
+		return TerminalStatusPayload{WorkspaceID: workspaceID, Active: false, Error: err.Error()}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	list, err := client.List(ctx)
+	if err != nil {
+		return TerminalStatusPayload{WorkspaceID: workspaceID, Active: false, Error: err.Error()}
+	}
+	for _, info := range list.Sessions {
+		if info.SessionID == workspaceID && info.Running {
+			return TerminalStatusPayload{WorkspaceID: workspaceID, Active: true}
+		}
+	}
+	return TerminalStatusPayload{WorkspaceID: workspaceID, Active: false}
 }
 
 func (a *App) ResizeWorkspaceTerminal(workspaceID string, cols, rows int) error {
@@ -442,6 +721,14 @@ func (a *App) StopWorkspaceTerminal(workspaceID string) error {
 	a.terminalMu.Unlock()
 	if !ok {
 		return nil
+	}
+	session.mu.Lock()
+	client := session.client
+	session.mu.Unlock()
+	if client != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		_ = client.Stop(ctx, workspaceID)
+		cancel()
 	}
 	err := session.CloseWithReason("closed")
 	a.emitTerminalLifecycle("closed", workspaceID, "")
@@ -470,143 +757,884 @@ func (a *App) getTerminal(workspaceID string) (*terminalSession, error) {
 }
 
 func (a *App) streamTerminal(session *terminalSession) {
-	buf := make([]byte, 4096)
-	const flushThreshold = 8 * 1024
-	const maxPending = 256 * 1024
-	const maxChunk = 64 * 1024
-	flushInterval := 25 * time.Millisecond
-	pending := make([]byte, 0, flushThreshold)
-	var pendingMu sync.Mutex
-	flushTimer := time.NewTimer(flushInterval)
-	if !flushTimer.Stop() {
-		select {
-		case <-flushTimer.C:
-		default:
-		}
+	session.mu.Lock()
+	client := session.client
+	session.mu.Unlock()
+	if client == nil {
+		a.emitTerminalLifecycle("error", session.id, "sessiond unavailable")
+		return
 	}
-	done := make(chan struct{})
-
-	flushPending := func() {
-		pendingMu.Lock()
-		if len(pending) == 0 {
-			pendingMu.Unlock()
+	ctx, cancel := context.WithCancel(context.Background())
+	session.mu.Lock()
+	session.streamCancel = cancel
+	session.mu.Unlock()
+	stream, first, err := client.Attach(ctx, session.id, 0, false)
+	if err != nil {
+		session.mu.Lock()
+		session.client = nil
+		session.mu.Unlock()
+		a.emitTerminalLifecycle("error", session.id, err.Error())
+		return
+	}
+	session.mu.Lock()
+	session.stream = stream
+	session.mu.Unlock()
+	if first.Type == "error" && first.Error != "" {
+		session.mu.Lock()
+		session.client = nil
+		session.mu.Unlock()
+		a.emitTerminalLifecycle("error", session.id, first.Error)
+		return
+	}
+	applyModes := func(data string) {
+		if data == "" {
 			return
 		}
-		data := pending
-		pending = make([]byte, 0, flushThreshold)
-		pendingMu.Unlock()
-		for len(data) > 0 {
-			chunk := data
-			if len(chunk) > maxChunk {
-				chunk = data[:maxChunk]
-				data = data[maxChunk:]
-			} else {
-				data = nil
-			}
-			wruntime.EventsEmit(a.ctx, "terminal:data", TerminalPayload{
-				WorkspaceID: session.id,
-				Data:        string(chunk),
-			})
+		session.bumpActivity()
+		altChanged, mouseChanged := session.noteModes([]byte(data))
+		session.mu.Lock()
+		altScreen := session.altScreen
+		mouseEnabled := session.mouseEnabled()
+		mouseSGR := session.mouseSGR
+		mouseEncoding := session.mouseEncoding()
+		session.mu.Unlock()
+		if mouseChanged || altChanged {
+			a.emitTerminalModes(session.id, altScreen, mouseEnabled, mouseSGR, mouseEncoding)
+			_ = a.persistTerminalState()
 		}
 	}
-
-	go func() {
-		for {
-			select {
-			case <-flushTimer.C:
-				flushPending()
-			case <-done:
-				return
-			}
-		}
-	}()
-
-	defer func() {
-		close(done)
-		if !flushTimer.Stop() {
-			select {
-			case <-flushTimer.C:
-			default:
-			}
-		}
-		flushPending()
-	}()
 	for {
-		n, err := session.pty.Read(buf)
-		if n > 0 {
-			session.bumpActivity()
-			session.recordOutput(buf[:n])
-			a.trimTranscript(session)
-			pendingMu.Lock()
-			pending = append(pending, buf[:n]...)
-			pendingLen := len(pending)
-			pendingMu.Unlock()
-			shouldFlush := pendingLen >= flushThreshold
-			forcedFlush := pendingLen >= maxPending
-			if shouldFlush {
-				if !flushTimer.Stop() {
-					select {
-					case <-flushTimer.C:
-					default:
-					}
-				}
-				flushPending()
-				if forcedFlush {
-					continue
-				}
-			} else {
-				if !flushTimer.Stop() {
-					select {
-					case <-flushTimer.C:
-					default:
-					}
-				}
-				flushTimer.Reset(flushInterval)
+		var msg sessiond.StreamMessage
+		if err := stream.Next(&msg); err != nil {
+			session.mu.Lock()
+			session.client = nil
+			session.mu.Unlock()
+			break
+		}
+		if msg.Type == "backlog" {
+			if msg.Truncated {
+				a.emitTerminalLifecycle("started", session.id, "Backlog truncated; skipping replay.")
+				continue
+			}
+			if msg.Data != "" {
+				applyModes(msg.Data)
+				wruntime.EventsEmit(a.ctx, "terminal:data", TerminalPayload{
+					WorkspaceID: session.id,
+					Data:        msg.Data,
+				})
 			}
 		}
-		if err != nil {
-			a.terminalMu.Lock()
-			if current := a.terminals[session.id]; current == session {
-				delete(a.terminals, session.id)
-			}
-			a.terminalMu.Unlock()
-			session.mu.Lock()
-			reason := session.closeReason
-			session.mu.Unlock()
-			if reason != "idle" {
-				a.emitTerminalLifecycle("closed", session.id, "")
-			}
-			_ = a.persistTerminalState()
+		if msg.Type == "kitty_snapshot" && msg.Kitty != nil {
+			wruntime.EventsEmit(a.ctx, "terminal:kitty", TerminalKittyPayload{
+				WorkspaceID: session.id,
+				Event:       *msg.Kitty,
+			})
+		}
+		if msg.Type == "kitty" && msg.Kitty != nil {
+			wruntime.EventsEmit(a.ctx, "terminal:kitty", TerminalKittyPayload{
+				WorkspaceID: session.id,
+				Event:       *msg.Kitty,
+			})
+		}
+		if msg.Type == "data" && msg.Data != "" {
+			applyModes(msg.Data)
+			wruntime.EventsEmit(a.ctx, "terminal:data", TerminalPayload{
+				WorkspaceID: session.id,
+				Data:        msg.Data,
+			})
+		}
+		if msg.Type == "closed" {
 			break
+		}
+	}
+	_ = session.CloseWithReason("closed")
+	a.emitTerminalLifecycle("closed", session.id, "")
+	return
+}
+
+func (a *App) invalidateTerminalSessions(reason string) {
+	a.terminalMu.Lock()
+	sessions := make([]*terminalSession, 0, len(a.terminals))
+	for _, session := range a.terminals {
+		sessions = append(sessions, session)
+	}
+	a.terminalMu.Unlock()
+	for _, session := range sessions {
+		_ = session.CloseWithReason("sessiond reset")
+		session.mu.Lock()
+		session.client = nil
+		session.mu.Unlock()
+		if reason != "" {
+			a.emitTerminalLifecycle("error", session.id, reason)
 		}
 	}
 }
 
-func (a *App) startTerminalSession(ctx context.Context, session *terminalSession, root, workspaceID string) error {
-	execName, execArgs := resolveShellCommand()
-	cmd := exec.CommandContext(ctx, execName, execArgs...)
-	cmd.Dir = root
-	cmd.Env = os.Environ()
-	cmd.Env = append(cmd.Env,
-		"TERM=xterm-256color",
-		"WORKSET_WORKSPACE="+workspaceID,
-		"WORKSET_ROOT="+root,
-	)
-	cmd.Env = setEnv(cmd.Env, "SHELL", execName)
+var (
+	terminalFilterOnce    sync.Once
+	terminalFilterEnabled bool
+	terminalFilterDebug   bool
+	terminalFilterLog     *os.File
+	terminalFilterMu      sync.Mutex
 
-	ptmx, err := startPTY(cmd)
+	terminalDebugOnce    sync.Once
+	terminalDebugEnabled bool
+	terminalDebugLog     *os.File
+	terminalDebugMu      sync.Mutex
+)
+
+func terminalFilterConfig() (bool, bool) {
+	terminalFilterOnce.Do(func() {
+		terminalFilterEnabled = envTruthy(os.Getenv("WORKSET_TERMINAL_FILTER"))
+		terminalFilterDebug = envTruthy(os.Getenv("WORKSET_TERMINAL_FILTER_DEBUG"))
+		if terminalFilterDebug {
+			logPath, err := terminalFilterLogPath()
+			if err != nil {
+				terminalFilterDebug = false
+				return
+			}
+			if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+				terminalFilterDebug = false
+				return
+			}
+			file, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+			if err != nil {
+				terminalFilterDebug = false
+				return
+			}
+			terminalFilterLog = file
+		}
+	})
+	return terminalFilterEnabled, terminalFilterDebug
+}
+
+func terminalFilterLogPath() (string, error) {
+	home, err := os.UserHomeDir()
 	if err != nil {
-		return err
+		return "", err
 	}
+	return filepath.Join(home, ".workset", "terminal_filter.log"), nil
+}
 
-	_ = a.openTranscript(session)
-	session.mu.Lock()
-	session.cmd = cmd
-	session.pty = ptmx
-	session.path = root
-	session.lastActivity = time.Now()
-	session.mu.Unlock()
-	return nil
+func terminalDebugLogPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".workset", "terminal_debug.log"), nil
+}
+
+func envTruthy(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+func terminalDebugConfig() bool {
+	terminalDebugOnce.Do(func() {
+		terminalDebugEnabled = envTruthy(os.Getenv("WORKSET_TERMINAL_DEBUG_LOG"))
+		if !terminalDebugEnabled {
+			return
+		}
+		logPath := strings.TrimSpace(os.Getenv("WORKSET_TERMINAL_DEBUG_LOG_PATH"))
+		if logPath == "" {
+			path, err := terminalDebugLogPath()
+			if err != nil {
+				terminalDebugEnabled = false
+				return
+			}
+			logPath = path
+		}
+		if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+			terminalDebugEnabled = false
+			return
+		}
+		file, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+		if err != nil {
+			terminalDebugEnabled = false
+			return
+		}
+		terminalDebugLog = file
+	})
+	return terminalDebugEnabled && terminalDebugLog != nil
+}
+
+func logTerminalDebug(payload TerminalDebugPayload) {
+	if !terminalDebugConfig() {
+		return
+	}
+	if payload.Event == "" {
+		payload.Event = "event"
+	}
+	details := strings.ReplaceAll(payload.Details, "\n", "\\n")
+	terminalDebugMu.Lock()
+	defer terminalDebugMu.Unlock()
+	_, _ = fmt.Fprintf(
+		terminalDebugLog,
+		"%s event=%s workspace=%s details=%s\n",
+		time.Now().Format(time.RFC3339Nano),
+		payload.Event,
+		payload.WorkspaceID,
+		details,
+	)
+}
+
+func logTerminalFilter(kind string, seq []byte) {
+	if terminalFilterLog == nil {
+		return
+	}
+	terminalFilterMu.Lock()
+	defer terminalFilterMu.Unlock()
+	_, _ = fmt.Fprintf(
+		terminalFilterLog,
+		"%s %s len=%d hex=%x ascii=%q\n",
+		time.Now().Format(time.RFC3339Nano),
+		kind,
+		len(seq),
+		seq,
+		seq,
+	)
+}
+
+func filterTerminalOutput(data []byte) []byte {
+	const esc = 0x1b
+	const bel = 0x07
+	if len(data) == 0 {
+		return data
+	}
+	enabled, debug := terminalFilterConfig()
+	if !enabled && !debug {
+		return data
+	}
+	var out []byte
+	last := 0
+	dropped := false
+	for i := 0; i < len(data); i++ {
+		if data[i] != esc || i+1 >= len(data) {
+			continue
+		}
+		switch data[i+1] {
+		case ']':
+			end, drop := scanOSC(data, i)
+			if end == i {
+				continue
+			}
+			if drop {
+				if debug {
+					logTerminalFilter("OSC", data[i:end])
+				}
+				dropped = true
+				if !enabled {
+					i = end - 1
+					continue
+				}
+				if out == nil {
+					out = make([]byte, 0, len(data))
+				}
+				if last < i {
+					out = append(out, data[last:i]...)
+				}
+				last = end
+			}
+			i = end - 1
+		case 'P':
+			end, drop := scanEscapeString(data, i)
+			if end == i {
+				continue
+			}
+			if drop {
+				if debug {
+					logTerminalFilter("DCS", data[i:end])
+				}
+				dropped = true
+				if !enabled {
+					i = end - 1
+					continue
+				}
+				if out == nil {
+					out = make([]byte, 0, len(data))
+				}
+				if last < i {
+					out = append(out, data[last:i]...)
+				}
+				last = end
+			}
+			i = end - 1
+		case '_':
+			end, drop := scanEscapeString(data, i)
+			if end == i {
+				continue
+			}
+			if drop {
+				if debug {
+					logTerminalFilter("APC", data[i:end])
+				}
+				dropped = true
+				if !enabled {
+					i = end - 1
+					continue
+				}
+				if out == nil {
+					out = make([]byte, 0, len(data))
+				}
+				if last < i {
+					out = append(out, data[last:i]...)
+				}
+				last = end
+			}
+			i = end - 1
+		case '^':
+			end, drop := scanEscapeString(data, i)
+			if end == i {
+				continue
+			}
+			if drop {
+				if debug {
+					logTerminalFilter("PM", data[i:end])
+				}
+				dropped = true
+				if !enabled {
+					i = end - 1
+					continue
+				}
+				if out == nil {
+					out = make([]byte, 0, len(data))
+				}
+				if last < i {
+					out = append(out, data[last:i]...)
+				}
+				last = end
+			}
+			i = end - 1
+		case 'X':
+			end, drop := scanEscapeString(data, i)
+			if end == i {
+				continue
+			}
+			if drop {
+				if debug {
+					logTerminalFilter("SOS", data[i:end])
+				}
+				dropped = true
+				if !enabled {
+					i = end - 1
+					continue
+				}
+				if out == nil {
+					out = make([]byte, 0, len(data))
+				}
+				if last < i {
+					out = append(out, data[last:i]...)
+				}
+				last = end
+			}
+			i = end - 1
+		case '[':
+			end, drop := scanCSI(data, i)
+			if end == i {
+				continue
+			}
+			if drop {
+				if debug {
+					logTerminalFilter("CSI", data[i:end])
+				}
+				dropped = true
+				if !enabled {
+					i = end - 1
+					continue
+				}
+				if out == nil {
+					out = make([]byte, 0, len(data))
+				}
+				if last < i {
+					out = append(out, data[last:i]...)
+				}
+				last = end
+			}
+			i = end - 1
+		default:
+			continue
+		}
+	}
+	if !enabled {
+		return data
+	}
+	if !dropped || out == nil {
+		return data
+	}
+	if last < len(data) {
+		out = append(out, data[last:]...)
+	}
+	return out
+}
+
+type escapeStringFilter struct {
+	enabled    bool
+	debug      bool
+	configured bool
+	active     bool
+	pendingEsc bool
+	kind       string
+	logBuf     []byte
+}
+
+func (f *escapeStringFilter) ensureConfig() {
+	if f.configured {
+		return
+	}
+	f.enabled, f.debug = terminalFilterConfig()
+	f.configured = true
+}
+
+func (f *escapeStringFilter) reset() {
+	f.active = false
+	f.pendingEsc = false
+	f.kind = ""
+	f.logBuf = nil
+}
+
+func (f *escapeStringFilter) appendLog(data []byte) {
+	const maxLog = 4096
+	if !f.debug || len(data) == 0 {
+		return
+	}
+	if len(f.logBuf) >= maxLog {
+		return
+	}
+	remain := maxLog - len(f.logBuf)
+	if len(data) > remain {
+		data = data[:remain]
+	}
+	f.logBuf = append(f.logBuf, data...)
+}
+
+func filterTerminalOutputStreaming(data []byte, f *escapeStringFilter) []byte {
+	const esc = 0x1b
+	if len(data) == 0 {
+		return data
+	}
+	f.ensureConfig()
+	if !f.enabled && !f.debug {
+		return data
+	}
+	if f.pendingEsc {
+		data = append([]byte{esc}, data...)
+		f.pendingEsc = false
+	}
+	if f.active {
+		end := scanEscapeStringTerminator(data, 0)
+		if end == 0 {
+			f.appendLog(data)
+			if f.enabled {
+				return nil
+			}
+			return data
+		}
+		f.appendLog(data[:end])
+		if f.debug && len(f.logBuf) > 0 {
+			logTerminalFilter(f.kind, f.logBuf)
+		}
+		f.reset()
+		if f.enabled {
+			data = data[end:]
+		} else {
+			return data
+		}
+	}
+	if !f.enabled {
+		return filterTerminalOutput(data)
+	}
+	enabled, debug := f.enabled, f.debug
+	var out []byte
+	last := 0
+	dropped := false
+	for i := 0; i < len(data); i++ {
+		if data[i] != esc || i+1 >= len(data) {
+			if data[i] == esc && i+1 >= len(data) {
+				if f.enabled || f.debug {
+					if out == nil && i > 0 {
+						out = make([]byte, 0, len(data))
+						out = append(out, data[:i]...)
+					} else if out != nil && last < i {
+						out = append(out, data[last:i]...)
+					}
+					f.pendingEsc = true
+					if out == nil {
+						return nil
+					}
+					return out
+				}
+			}
+			continue
+		}
+		switch data[i+1] {
+		case ']':
+			end, drop := scanOSC(data, i)
+			if end == i {
+				continue
+			}
+			if drop {
+				if debug {
+					logTerminalFilter("OSC", data[i:end])
+				}
+				dropped = true
+				if !enabled {
+					i = end - 1
+					continue
+				}
+				if out == nil {
+					out = make([]byte, 0, len(data))
+				}
+				if last < i {
+					out = append(out, data[last:i]...)
+				}
+				last = end
+			}
+			i = end - 1
+		case 'P':
+			kind := "DCS"
+			end, drop := scanEscapeString(data, i)
+			if end == i {
+				f.active = true
+				f.kind = kind
+				f.appendLog(data[i:])
+				if out == nil {
+					out = make([]byte, 0, len(data))
+					out = append(out, data[:i]...)
+				}
+				return out
+			}
+			if drop {
+				if debug {
+					logTerminalFilter(kind, data[i:end])
+				}
+				dropped = true
+				if out == nil {
+					out = make([]byte, 0, len(data))
+				}
+				if last < i {
+					out = append(out, data[last:i]...)
+				}
+				last = end
+			}
+			i = end - 1
+		case '_':
+			kind := "APC"
+			end, drop := scanEscapeString(data, i)
+			if end == i {
+				f.active = true
+				f.kind = kind
+				f.appendLog(data[i:])
+				if out == nil {
+					out = make([]byte, 0, len(data))
+					out = append(out, data[:i]...)
+				}
+				return out
+			}
+			if drop {
+				if debug {
+					logTerminalFilter(kind, data[i:end])
+				}
+				dropped = true
+				if out == nil {
+					out = make([]byte, 0, len(data))
+				}
+				if last < i {
+					out = append(out, data[last:i]...)
+				}
+				last = end
+			}
+			i = end - 1
+		case '^':
+			kind := "PM"
+			end, drop := scanEscapeString(data, i)
+			if end == i {
+				f.active = true
+				f.kind = kind
+				f.appendLog(data[i:])
+				if out == nil {
+					out = make([]byte, 0, len(data))
+					out = append(out, data[:i]...)
+				}
+				return out
+			}
+			if drop {
+				if debug {
+					logTerminalFilter(kind, data[i:end])
+				}
+				dropped = true
+				if out == nil {
+					out = make([]byte, 0, len(data))
+				}
+				if last < i {
+					out = append(out, data[last:i]...)
+				}
+				last = end
+			}
+			i = end - 1
+		case 'X':
+			kind := "SOS"
+			end, drop := scanEscapeString(data, i)
+			if end == i {
+				f.active = true
+				f.kind = kind
+				f.appendLog(data[i:])
+				if out == nil {
+					out = make([]byte, 0, len(data))
+					out = append(out, data[:i]...)
+				}
+				return out
+			}
+			if drop {
+				if debug {
+					logTerminalFilter(kind, data[i:end])
+				}
+				dropped = true
+				if out == nil {
+					out = make([]byte, 0, len(data))
+				}
+				if last < i {
+					out = append(out, data[last:i]...)
+				}
+				last = end
+			}
+			i = end - 1
+		case '[':
+			end, drop := scanCSI(data, i)
+			if end == i {
+				continue
+			}
+			if drop {
+				if debug {
+					logTerminalFilter("CSI", data[i:end])
+				}
+				dropped = true
+				if !enabled {
+					i = end - 1
+					continue
+				}
+				if out == nil {
+					out = make([]byte, 0, len(data))
+				}
+				if last < i {
+					out = append(out, data[last:i]...)
+				}
+				last = end
+			}
+			i = end - 1
+		default:
+			continue
+		}
+	}
+	if !dropped || out == nil {
+		return data
+	}
+	if last < len(data) {
+		out = append(out, data[last:]...)
+	}
+	return out
+}
+
+type c1Normalizer struct {
+	utf8Tail []byte
+}
+
+func (n *c1Normalizer) Normalize(data []byte) []byte {
+	if len(data) == 0 {
+		return data
+	}
+	if len(n.utf8Tail) > 0 {
+		data = append(n.utf8Tail, data...)
+		n.utf8Tail = nil
+	}
+	var out []byte
+	i := 0
+	for i < len(data) {
+		b := data[i]
+		if b < 0x80 {
+			if out != nil {
+				out = append(out, b)
+			}
+			i++
+			continue
+		}
+		if !utf8.FullRune(data[i:]) {
+			if out == nil {
+				out = make([]byte, 0, len(data))
+				out = append(out, data[:i]...)
+			}
+			n.utf8Tail = append(n.utf8Tail, data[i:]...)
+			break
+		}
+		r, size := utf8.DecodeRune(data[i:])
+		if r != utf8.RuneError || size > 1 {
+			if out != nil {
+				out = append(out, data[i:i+size]...)
+			}
+			i += size
+			continue
+		}
+		mapped := mapC1Control(b)
+		if mapped == nil {
+			if out != nil {
+				out = append(out, b)
+			}
+			i++
+			continue
+		}
+		if out == nil {
+			out = make([]byte, 0, len(data)+len(mapped))
+			out = append(out, data[:i]...)
+		}
+		out = append(out, mapped...)
+		i++
+	}
+	if out == nil {
+		return data
+	}
+	return out
+}
+
+func mapC1Control(b byte) []byte {
+	switch b {
+	case 0x84: // IND
+		return []byte{0x1b, 'D'}
+	case 0x85: // NEL
+		return []byte{0x1b, 'E'}
+	case 0x88: // HTS
+		return []byte{0x1b, 'H'}
+	case 0x8d: // RI
+		return []byte{0x1b, 'M'}
+	case 0x8e: // SS2
+		return []byte{0x1b, 'N'}
+	case 0x8f: // SS3
+		return []byte{0x1b, 'O'}
+	case 0x90: // DCS
+		return []byte{0x1b, 'P'}
+	case 0x98: // SOS
+		return []byte{0x1b, 'X'}
+	case 0x9b: // CSI
+		return []byte{0x1b, '['}
+	case 0x9c: // ST
+		return []byte{0x1b, '\\'}
+	case 0x9d: // OSC
+		return []byte{0x1b, ']'}
+	case 0x9e: // PM
+		return []byte{0x1b, '^'}
+	case 0x9f: // APC
+		return []byte{0x1b, '_'}
+	default:
+		return nil
+	}
+}
+
+func scanOSC(data []byte, start int) (int, bool) {
+	const esc = 0x1b
+	const bel = 0x07
+	i := start + 2
+	for i < len(data) {
+		switch data[i] {
+		case bel:
+			return i + 1, shouldDropOSC(data[start+2 : i])
+		case esc:
+			if i+1 < len(data) && data[i+1] == '\\' {
+				return i + 2, shouldDropOSC(data[start+2 : i])
+			}
+		}
+		i++
+	}
+	return start, false
+}
+
+func scanEscapeString(data []byte, start int) (int, bool) {
+	const esc = 0x1b
+	const bel = 0x07
+	i := start + 2
+	for i < len(data) {
+		switch data[i] {
+		case bel:
+			return i + 1, true
+		case esc:
+			if i+1 < len(data) && data[i+1] == '\\' {
+				return i + 2, true
+			}
+		}
+		i++
+	}
+	return start, false
+}
+
+func scanEscapeStringTerminator(data []byte, start int) int {
+	const esc = 0x1b
+	const bel = 0x07
+	i := start
+	for i < len(data) {
+		switch data[i] {
+		case bel:
+			return i + 1
+		case esc:
+			if i+1 < len(data) && data[i+1] == '\\' {
+				return i + 2
+			}
+		}
+		i++
+	}
+	return 0
+}
+
+func shouldDropOSC(payload []byte) bool {
+	if len(payload) == 0 {
+		return false
+	}
+	hasRGB := false
+	for i := 0; i+3 < len(payload); i++ {
+		if payload[i] == 'r' && payload[i+1] == 'g' && payload[i+2] == 'b' && payload[i+3] == ':' {
+			hasRGB = true
+			break
+		}
+	}
+	if !hasRGB {
+		return false
+	}
+	if len(payload) >= 3 && payload[0] == '1' && payload[1] == '0' && payload[2] == ';' {
+		return true
+	}
+	if len(payload) >= 3 && payload[0] == '1' && payload[1] == '1' && payload[2] == ';' {
+		return true
+	}
+	if len(payload) >= 2 && payload[0] == '4' && payload[1] == ';' {
+		return true
+	}
+	return false
+}
+
+func scanCSI(data []byte, start int) (int, bool) {
+	i := start + 2
+	for i < len(data) {
+		b := data[i]
+		if b >= 0x40 && b <= 0x7e {
+			return i + 1, shouldDropCSI(data[start+2:i], b)
+		}
+		i++
+	}
+	return start, false
+}
+
+func shouldDropCSI(params []byte, final byte) bool {
+	if final == 'R' {
+		return true
+	}
+	if final == 'c' {
+		for _, b := range params {
+			if b == '?' || b == '>' {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (a *App) resolveWorkspaceRoot(ctx context.Context, workspaceID string) (string, error) {
@@ -633,8 +1661,22 @@ func (a *App) emitTerminalLifecycle(status, workspaceID, message string) {
 	})
 }
 
+func (a *App) emitTerminalModes(workspaceID string, altScreen, mouse, mouseSGR bool, mouseEncoding string) {
+	wruntime.EventsEmit(a.ctx, "terminal:modes", TerminalModesPayload{
+		WorkspaceID:   workspaceID,
+		AltScreen:     altScreen,
+		Mouse:         mouse,
+		MouseSGR:      mouseSGR,
+		MouseEncoding: mouseEncoding,
+	})
+}
+
 func (a *App) ensureIdleWatcher(session *terminalSession) {
 	session.mu.Lock()
+	if session.client != nil {
+		session.mu.Unlock()
+		return
+	}
 	if session.idleTimer != nil {
 		session.mu.Unlock()
 		return
@@ -716,9 +1758,19 @@ func (a *App) snapshotTerminalState() terminalState {
 	entries := make([]terminalStateEntry, 0, len(a.terminals))
 	for _, session := range a.terminals {
 		if lastActive, ok := session.snapshot(); ok {
+			session.mu.Lock()
+			modes := terminalModeState{
+				AltScreen:  session.altScreen,
+				MouseMask:  session.mouseMask,
+				MouseSGR:   session.mouseSGR,
+				MouseUTF8:  session.mouseUTF8,
+				MouseURXVT: session.mouseURXVT,
+			}
+			session.mu.Unlock()
 			entries = append(entries, terminalStateEntry{
 				WorkspaceID: session.id,
 				LastActive:  lastActive,
+				Modes:       &modes,
 			})
 		}
 	}
@@ -736,228 +1788,42 @@ func (a *App) terminalStatePath() (string, error) {
 	return filepath.Join(home, ".workset", "ui_sessions.json"), nil
 }
 
-func (a *App) terminalTranscriptPath(workspaceID string) (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	safe := sanitizeTerminalID(workspaceID)
-	if safe == "" {
-		safe = "workspace"
-	}
-	return filepath.Join(home, ".workset", "terminal_logs", safe+".log"), nil
-}
-
-func sanitizeTerminalID(input string) string {
-	trimmed := strings.TrimSpace(input)
-	if trimmed == "" {
-		return ""
-	}
-	var b strings.Builder
-	b.Grow(len(trimmed))
-	for _, r := range trimmed {
-		if (r >= 'a' && r <= 'z') ||
-			(r >= 'A' && r <= 'Z') ||
-			(r >= '0' && r <= '9') ||
-			r == '-' || r == '_' {
-			b.WriteRune(r)
-		} else {
-			b.WriteByte('_')
-		}
-	}
-	return b.String()
-}
-
-func (a *App) openTranscript(session *terminalSession) error {
-	path, err := a.terminalTranscriptPath(session.id)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-	info, err := file.Stat()
-	if err != nil {
-		_ = file.Close()
-		return err
-	}
-	session.mu.Lock()
-	session.transcriptPath = path
-	session.transcriptFile = file
-	session.transcriptSize = info.Size()
-	session.mu.Unlock()
-	return nil
-}
-
-func (a *App) readTranscriptTail(workspaceID string, maxBytes int64) ([]byte, bool, error) {
-	path, err := a.terminalTranscriptPath(workspaceID)
-	if err != nil {
-		return nil, false, err
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, false, nil
-		}
-		return nil, false, err
-	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil {
-		return nil, false, err
-	}
-	size := info.Size()
-	if size == 0 {
-		return nil, false, nil
-	}
-	start := int64(0)
-	truncated := false
-	if maxBytes > 0 && size > maxBytes {
-		start = size - maxBytes
-		truncated = true
-	}
-	if _, err := file.Seek(start, 0); err != nil {
-		return nil, false, err
-	}
-	buf, err := io.ReadAll(file)
-	if err != nil {
-		return nil, false, err
-	}
-	return buf, truncated, nil
-}
-
-func (a *App) trimTranscript(session *terminalSession) {
-	session.mu.Lock()
-	path := session.transcriptPath
-	file := session.transcriptFile
-	size := session.transcriptSize
-	session.mu.Unlock()
-	if path == "" || file == nil || size <= terminalTranscriptTrimThreshold {
-		return
-	}
-	var err error
-	_ = file.Close()
-	data, truncated, err := a.readTranscriptTail(session.id, terminalTranscriptMaxBytes)
-	if err != nil {
-		return
-	}
-	if !truncated {
-		file, err = os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-		if err != nil {
-			return
-		}
-		info, err := file.Stat()
-		if err != nil {
-			_ = file.Close()
-			return
-		}
-		session.mu.Lock()
-		session.transcriptFile = file
-		session.transcriptSize = info.Size()
-		session.mu.Unlock()
-		return
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		return
-	}
-	file, err = os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		return
-	}
-	info, err := file.Stat()
-	if err != nil {
-		_ = file.Close()
-		return
-	}
-	session.mu.Lock()
-	session.transcriptFile = file
-	session.transcriptSize = info.Size()
-	session.mu.Unlock()
-}
-
 func (a *App) restoreTerminalSessions(ctx context.Context) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	statePath, err := a.terminalStatePath()
-	if err != nil {
-		return
-	}
-	data, err := os.ReadFile(statePath)
-	if err != nil {
-		return
-	}
 	var state terminalState
-	if err := json.Unmarshal(data, &state); err != nil {
-		return
+	if err == nil {
+		if data, readErr := os.ReadFile(statePath); readErr == nil {
+			if jsonErr := json.Unmarshal(data, &state); jsonErr == nil {
+				a.terminalMu.Lock()
+				if a.restoredModes == nil {
+					a.restoredModes = map[string]terminalModeState{}
+				}
+				for _, entry := range state.Sessions {
+					if entry.Modes != nil {
+						a.restoredModes[entry.WorkspaceID] = *entry.Modes
+					}
+				}
+				a.terminalMu.Unlock()
+			}
+		}
+	}
+	if client, err := a.getSessiondClient(); err == nil {
+		listCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		list, err := client.List(listCtx)
+		cancel()
+		if err == nil && len(list.Sessions) > 0 {
+			for _, info := range list.Sessions {
+				if info.Running {
+					_ = a.StartWorkspaceTerminal(info.SessionID)
+				}
+			}
+			return
+		}
 	}
 	for _, entry := range state.Sessions {
 		_ = a.StartWorkspaceTerminal(entry.WorkspaceID)
 	}
-}
-
-func resolveShellCommand() (string, []string) {
-	if runtime.GOOS == "windows" {
-		if shell := os.Getenv("COMSPEC"); shell != "" {
-			return shell, nil
-		}
-		return "cmd.exe", nil
-	}
-
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = lookupUserShell()
-	}
-	if shell == "" {
-		shell = "/bin/sh"
-	}
-
-	switch strings.ToLower(filepath.Base(shell)) {
-	case "zsh", "bash":
-		return shell, []string{"-l", "-i"}
-	case "fish":
-		return shell, []string{"-l"}
-	default:
-		return shell, nil
-	}
-}
-
-func lookupUserShell() string {
-	current, err := user.Current()
-	if err != nil || current.Username == "" {
-		return ""
-	}
-	data, err := os.ReadFile("/etc/passwd")
-	if err != nil {
-		return ""
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		parts := strings.Split(line, ":")
-		if len(parts) < 7 {
-			continue
-		}
-		if parts[0] == current.Username {
-			return strings.TrimSpace(parts[6])
-		}
-	}
-	return ""
-}
-
-func setEnv(env []string, key, value string) []string {
-	prefix := key + "="
-	for i, entry := range env {
-		if strings.HasPrefix(entry, prefix) {
-			env[i] = prefix + value
-			return env
-		}
-	}
-	return append(env, prefix+value)
 }

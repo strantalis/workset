@@ -1,0 +1,13 @@
+codex
+
+.workset/workspaces/Test-wails on ☁️
+❯ codex
+
+╭──────────────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.89.0)                                │
+│                                                          │
+│ mode:      Pair Programming   shift + tab to change mode │
+│ directory: ~/.workset/workspaces/Test-wails              │
+╰──────────────────────────────────────────────────────────╯
+
+  Tip: Type / to open the command popup; Tab autocompletes slash commands and saved prompts.
