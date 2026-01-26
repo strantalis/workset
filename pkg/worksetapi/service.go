@@ -43,6 +43,8 @@ type Service struct {
 
 // NewService constructs a Service with injected dependencies or defaults.
 func NewService(opts Options) *Service {
+	git.EnsureSSHAuthSock()
+
 	cfgStore := opts.ConfigStore
 	if cfgStore == nil {
 		cfgStore = FileConfigStore{}

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/go-git/go-billy/v6/osfs"
 	ggit "github.com/go-git/go-git/v6"
@@ -35,10 +36,7 @@ func (c GoGitClient) Clone(ctx context.Context, url, path, remoteName string) er
 		RemoteName: remoteName,
 		Bare:       false,
 	})
-	if err != nil {
-		return err
-	}
-	return nil
+	return wrapAuthError(err)
 }
 
 func (c GoGitClient) CloneBare(ctx context.Context, url, path, remoteName string) error {
@@ -53,10 +51,7 @@ func (c GoGitClient) CloneBare(ctx context.Context, url, path, remoteName string
 		RemoteName: remoteName,
 		Bare:       true,
 	})
-	if err != nil {
-		return err
-	}
-	return nil
+	return wrapAuthError(err)
 }
 
 func (c GoGitClient) AddRemote(path, name, url string) error {
@@ -162,7 +157,7 @@ func (c GoGitClient) Fetch(ctx context.Context, repoPath, remoteName string) err
 		return err
 	}
 	if err := repo.FetchContext(ctx, &ggit.FetchOptions{RemoteName: remoteName}); err != nil && !errors.Is(err, ggit.NoErrAlreadyUpToDate) {
-		return err
+		return wrapAuthError(err)
 	}
 	return nil
 }
@@ -298,7 +293,7 @@ func (c GoGitClient) WorktreeAdd(ctx context.Context, opts WorktreeAddOptions) e
 
 	if opts.StartRemote != "" {
 		if err := repo.FetchContext(ctx, &ggit.FetchOptions{RemoteName: opts.StartRemote}); err != nil && !errors.Is(err, ggit.NoErrAlreadyUpToDate) {
-			return fmt.Errorf("fetch %s: %w", opts.StartRemote, err)
+			return fmt.Errorf("fetch %s: %w", opts.StartRemote, wrapAuthError(err))
 		}
 	}
 
@@ -419,4 +414,19 @@ func resolveStartHash(repo *ggit.Repository, remoteName, branchName string) (plu
 		return plumbing.ZeroHash, err
 	}
 	return ref.Hash(), nil
+}
+
+func wrapAuthError(err error) error {
+	if err == nil {
+		return nil
+	}
+	message := strings.ToLower(err.Error())
+	if strings.Contains(message, "ssh: handshake failed") ||
+		strings.Contains(message, "unable to authenticate") ||
+		strings.Contains(message, "no supported methods remain") ||
+		strings.Contains(message, "error creating ssh agent") ||
+		strings.Contains(message, "authentication required") {
+		return fmt.Errorf("%w (ssh auth failed; check SSH_AUTH_SOCK/agent or unlock 1Password)", err)
+	}
+	return err
 }
