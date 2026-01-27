@@ -6,7 +6,6 @@
   import '@xterm/xterm/css/xterm.css'
   import {EventsOn, EventsOff} from '../../../wailsjs/runtime/runtime'
   import {
-    fetchAgentAvailability,
     fetchSettings,
     fetchSessiondStatus,
     fetchWorkspaceTerminalStatus,
@@ -20,9 +19,6 @@
   } from '../../../wailsjs/go/main/App'
   import {stripMouseReports} from '../terminal/inputFilter'
   import {encodeWheel, type MouseEncoding} from '../terminal/mouse'
-  import type {AgentOption} from '../types'
-  import Modal from './Modal.svelte'
-  import AgentSelector from './AgentSelector.svelte'
 
   interface Props {
     workspaceId: string;
@@ -192,7 +188,6 @@
     $derived(workspaceId ? rendererMap[workspaceId] ?? 'unknown' : 'unknown')
   let activeRendererMode =
     $derived(workspaceId ? rendererModeMap[workspaceId] ?? 'auto' : 'auto')
-  let hasUserInput = $derived(workspaceId ? inputMap[workspaceId] ?? false : false)
   const listeners = new Set<string>()
   const OUTPUT_FLUSH_BUDGET = 128 * 1024
   const OUTPUT_BACKLOG_LIMIT = 512 * 1024
@@ -247,71 +242,21 @@
   const RENDER_CHECK_DELAY_MS = 350
   const RENDER_RECOVERY_DELAY_MS = 150
 
-  const agentOptions: AgentOption[] = [
-    {id: 'codex', label: 'Codex', command: 'codex'},
-    {id: 'claude', label: 'Claude Code', command: 'claude'},
-    {id: 'opencode', label: 'OpenCode', command: 'opencode'},
-    {id: 'pi', label: 'Pi', command: 'pi'},
-    {id: 'cursor', label: 'Cursor Agent', command: 'cursor agent'}
-  ]
-
-  let selectedAgent = $state('codex')
-  let agentAvailability: Record<string, boolean> = $state({})
-  let availabilityStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle')
-  let availabilityMessage = $state('')
-
-  let selectedAgentAvailable = $derived(
-    availabilityStatus !== 'ready' ? true : agentAvailability[selectedAgent] ?? false
-  )
-
   const getToken = (name: string, fallback: string): string => {
     const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
     return value || fallback
   }
 
-  const loadAgentDefault = async (): Promise<void> => {
+  const loadTerminalDefaults = async (): Promise<void> => {
     try {
       const settings = await fetchSettings()
-      const agent = settings.defaults?.agent?.trim()
       const renderer = settings.defaults?.terminalRenderer?.trim().toLowerCase()
-      if (agent) {
-        selectedAgent = agent
-      }
       if (renderer === 'auto' || renderer === 'webgl' || renderer === 'canvas') {
         rendererPreference = renderer
       }
     } catch {
-      selectedAgent = selectedAgent || 'codex'
       rendererPreference = rendererPreference || 'auto'
     }
-  }
-
-  const loadAgentAvailability = async (): Promise<void> => {
-    availabilityStatus = 'loading'
-    availabilityMessage = ''
-    try {
-      const availability = await fetchAgentAvailability()
-      agentAvailability = availability ?? {}
-      availabilityStatus = 'ready'
-    } catch (error) {
-      availabilityStatus = 'error'
-      availabilityMessage = String(error)
-    }
-  }
-
-  const resolveAgentCommand = (): string => {
-    const option = agentOptions.find((entry) => entry.id === selectedAgent)
-    return option?.command ?? selectedAgent
-  }
-
-  const startAgent = (): void => {
-    if (!workspaceId) return
-    if (!selectedAgentAvailable) return
-    const command = resolveAgentCommand()
-    if (!command) return
-    inputMap = {...inputMap, [workspaceId]: true}
-    void beginTerminal(workspaceId)
-    sendInput(workspaceId, `${command}\n`)
   }
 
   const beginTerminal = async (id: string, quiet = false): Promise<void> => {
@@ -1487,8 +1432,7 @@
     if (!terminalContainer) return
     debugEnabled =
       typeof localStorage !== 'undefined' && localStorage.getItem('worksetTerminalDebug') === '1'
-    void loadAgentDefault()
-    void loadAgentAvailability()
+    void loadTerminalDefaults()
     void refreshSessiondStatus()
     resizeObserver = new ResizeObserver(() => {
       if (!workspaceId || resizeScheduled) return
@@ -1535,6 +1479,14 @@
     })
   })
 
+  $effect(() => {
+    if (!workspaceId || !active) return
+    if (startedSessions.has(workspaceId) || startInFlight.has(workspaceId)) return
+    if (statusMap[workspaceId] === 'standby') {
+      void beginTerminal(workspaceId)
+    }
+  })
+
   onDestroy(() => {
     resizeObserver?.disconnect()
     if (resizeTimer) {
@@ -1558,24 +1510,6 @@
       <div class="meta">Workspace: {workspaceName}</div>
     </div>
     <div class="terminal-actions">
-      {#if hasUserInput}
-        <button
-          class="icon-btn"
-          type="button"
-          title="Show agent launcher"
-          onclick={() => {
-            if (!workspaceId) return
-            inputMap = {...inputMap, [workspaceId]: false}
-          }}
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <rect x="4" y="4" width="6" height="6" />
-            <rect x="14" y="4" width="6" height="6" />
-            <rect x="4" y="14" width="6" height="6" />
-            <rect x="14" y="14" width="6" height="6" />
-          </svg>
-        </button>
-      {/if}
       <div
         class="daemon-status"
         class:offline={sessiondAvailable === false}
@@ -1667,46 +1601,6 @@
     {/if}
     <div class="terminal-surface">
       <div class="terminal-mount" bind:this={terminalContainer}></div>
-      {#if activeStatus !== 'starting' && !hasUserInput}
-        <div class="agent-launcher-overlay">
-          <Modal title="Launch Agent" subtitle="Runs inside this terminal" size="sm">
-            <AgentSelector
-              agents={agentOptions}
-              selected={selectedAgent}
-              availability={agentAvailability}
-              {availabilityStatus}
-              onSelect={(id) => (selectedAgent = id)}
-            />
-            {#if availabilityStatus === 'ready' && !selectedAgentAvailable}
-              <div class="agent-warning">Install {selectedAgent} to launch this agent.</div>
-            {:else if availabilityStatus === 'error'}
-              <div class="agent-warning">Unable to check agent availability.</div>
-            {/if}
-            {#snippet footer()}
-              <button
-                class="primary full-width"
-                type="button"
-                onclick={startAgent}
-                disabled={!selectedAgentAvailable}
-              >
-                Start {agentOptions.find((a) => a.id === selectedAgent)?.label ?? 'Agent'}
-              </button>
-              <button
-                class="ghost-link"
-                type="button"
-                onclick={() => {
-                  if (!workspaceId) return
-                  inputMap = {...inputMap, [workspaceId]: true}
-                  void beginTerminal(workspaceId)
-                }}
-              >
-                Use terminal without agent
-              </button>
-              <div class="agent-hint">Change default in Settings → Session</div>
-            {/snippet}
-          </Modal>
-        </div>
-      {/if}
     </div>
   </div>
 </section>
@@ -1797,32 +1691,6 @@
     color: var(--muted);
     border-color: var(--border);
     background: rgba(255, 255, 255, 0.02);
-  }
-
-  .icon-btn {
-    width: 28px;
-    height: 28px;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border);
-    background: rgba(255, 255, 255, 0.02);
-    color: var(--muted);
-    cursor: pointer;
-    display: grid;
-    place-items: center;
-    transition: border-color var(--transition-fast), color var(--transition-fast);
-  }
-
-  .icon-btn:hover {
-    border-color: var(--accent);
-    color: var(--text);
-  }
-
-  .icon-btn svg {
-    width: 14px;
-    height: 14px;
-    stroke: currentColor;
-    stroke-width: 2;
-    fill: none;
   }
 
   .health-status {
@@ -1924,77 +1792,6 @@
     position: absolute;
     inset: 8px;
     z-index: 1;
-  }
-
-  .agent-launcher-overlay {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    z-index: 2;
-    pointer-events: auto;
-    background: radial-gradient(
-      circle at center,
-      rgba(9, 15, 26, 0.65),
-      rgba(9, 15, 26, 0.25) 55%,
-      transparent 70%
-    );
-  }
-
-  .agent-warning {
-    font-size: 11px;
-    color: var(--warning);
-    text-align: center;
-  }
-
-  .full-width {
-    width: 100%;
-  }
-
-  .primary {
-    background: var(--accent);
-    color: #081018;
-    border: none;
-    padding: 10px 16px;
-    border-radius: var(--radius-md);
-    font-weight: 600;
-    font-size: 14px;
-    cursor: pointer;
-    transition:
-      background var(--transition-fast),
-      transform var(--transition-fast);
-  }
-
-  .primary:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--accent) 85%, white);
-  }
-
-  .primary:active:not(:disabled) {
-    transform: scale(0.98);
-  }
-
-  .primary:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .ghost-link {
-    background: transparent;
-    border: none;
-    color: var(--muted);
-    font-size: 12px;
-    cursor: pointer;
-    padding: 4px 8px;
-    transition: color var(--transition-fast);
-  }
-
-  .ghost-link:hover {
-    color: var(--text);
-  }
-
-  .agent-hint {
-    font-size: 11px;
-    color: var(--muted);
   }
 
   :global(.terminal-instance) {
