@@ -12,8 +12,9 @@
       "bump-patch-for-minor-pre-major": false
     },
     "wails-ui/workset": {
+      "component": "wails-ui/workset",
       "release-type": "go",
-      "include-component-in-tag": false,
+      "include-component-in-tag": true,
       "include-v-in-tag": true,
       "versioning": "always-bump-minor",
       "initial-version": "0.1.0",
