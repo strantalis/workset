@@ -49,6 +49,7 @@ type PullRequestReviewsRequest struct {
 	RepoID      string `json:"repoId"`
 	Number      int    `json:"number,omitempty"`
 	Branch      string `json:"branch,omitempty"`
+	TerminalID  string `json:"terminalId,omitempty"`
 }
 
 type PullRequestReviewCommentsPayload struct {
@@ -206,14 +207,27 @@ func (a *App) SendPullRequestReviewsToTerminal(input PullRequestReviewsRequest) 
 	if err != nil {
 		return err
 	}
-	if err := a.StartWorkspaceTerminal(input.WorkspaceID); err != nil {
-		return err
-	}
 	summary := formatReviewSummary(result.Comments)
 	if summary == "" {
 		return fmt.Errorf("no review comments to send")
 	}
-	return a.WriteWorkspaceTerminal(input.WorkspaceID, summary)
+	terminalID := strings.TrimSpace(input.TerminalID)
+	if terminalID == "" {
+		if latest := a.latestTerminalForWorkspace(input.WorkspaceID); latest != nil {
+			terminalID = latest.terminalID
+		}
+	}
+	if terminalID == "" {
+		created, err := a.CreateWorkspaceTerminal(input.WorkspaceID)
+		if err != nil {
+			return err
+		}
+		terminalID = created.TerminalID
+	}
+	if err := a.StartWorkspaceTerminal(input.WorkspaceID, terminalID); err != nil {
+		return err
+	}
+	return a.WriteWorkspaceTerminal(input.WorkspaceID, terminalID, summary)
 }
 
 type CommitAndPushRequest struct {

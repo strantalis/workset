@@ -23,10 +23,13 @@
   interface Props {
     workspaceId: string;
     workspaceName: string;
+    terminalId: string;
     active?: boolean;
+    compact?: boolean;
   }
 
-  let { workspaceId, workspaceName, active = true }: Props = $props();
+  let { workspaceId, workspaceName, terminalId, active = true, compact = false }: Props = $props();
+  let terminalKey = $derived(terminalId || workspaceId)
 
   let terminalContainer: HTMLDivElement | null = $state(null)
   let resizeObserver: ResizeObserver | null = null
@@ -179,15 +182,15 @@
     lastCprAt: 0
   })
 
-  let activeStatus = $derived(workspaceId ? statusMap[workspaceId] ?? '' : '')
-  let activeMessage = $derived(workspaceId ? messageMap[workspaceId] ?? '' : '')
-  let activeHealth = $derived(workspaceId ? healthMap[workspaceId] ?? 'unknown' : 'unknown')
+  let activeStatus = $derived(terminalKey ? statusMap[terminalKey] ?? '' : '')
+  let activeMessage = $derived(terminalKey ? messageMap[terminalKey] ?? '' : '')
+  let activeHealth = $derived(terminalKey ? healthMap[terminalKey] ?? 'unknown' : 'unknown')
   let activeHealthMessage =
-    $derived(workspaceId ? healthMessageMap[workspaceId] ?? '' : '')
+    $derived(terminalKey ? healthMessageMap[terminalKey] ?? '' : '')
   let activeRenderer =
-    $derived(workspaceId ? rendererMap[workspaceId] ?? 'unknown' : 'unknown')
+    $derived(terminalKey ? rendererMap[terminalKey] ?? 'unknown' : 'unknown')
   let activeRendererMode =
-    $derived(workspaceId ? rendererModeMap[workspaceId] ?? 'auto' : 'auto')
+    $derived(terminalKey ? rendererModeMap[terminalKey] ?? 'auto' : 'auto')
   const listeners = new Set<string>()
   const OUTPUT_FLUSH_BUDGET = 128 * 1024
   const OUTPUT_BACKLOG_LIMIT = 512 * 1024
@@ -271,12 +274,12 @@
       scheduleStartupTimeout(id)
     }
     try {
-      await StartWorkspaceTerminal(id)
+      await StartWorkspaceTerminal(workspaceId, id)
       startedSessions.add(id)
       const queued = pendingInput.get(id)
       if (queued) {
         pendingInput.delete(id)
-        await WriteWorkspaceTerminal(id, queued)
+        await WriteWorkspaceTerminal(workspaceId, id, queued)
       }
       await loadBootstrap(id)
     } catch (error) {
@@ -363,7 +366,7 @@
     updateStats(id, (stats) => {
       stats.bytesOut += filtered.length
     })
-    void WriteWorkspaceTerminal(id, filtered).catch((error) => {
+    void WriteWorkspaceTerminal(workspaceId, id, filtered).catch((error) => {
       pendingInput.set(id, (pendingInput.get(id) ?? '') + filtered)
       startedSessions.delete(id)
       if (
@@ -479,7 +482,7 @@
       clearStartupTimeout(id)
     }
 
-    const isActive = id === workspaceId
+    const isActive = id === terminalKey
     if (queue.bytes >= OUTPUT_BACKLOG_LIMIT) {
       flushOutput(id, true)
       return
@@ -502,7 +505,7 @@
     if (!queue || queue.bytes === 0) return
     const handle = terminals.get(id)
     if (!handle) return
-    const isActive = id === workspaceId
+    const isActive = id === terminalKey
     if (!isActive && !force) return
 
     let size = 0
@@ -567,7 +570,7 @@
   const logDebug = (id: string, event: string, details?: Record<string, unknown>): void => {
     if (!debugEnabled) return
     const payload = details ? JSON.stringify(details) : ''
-    void logTerminalDebug(id, event, payload)
+    void logTerminalDebug(workspaceId, id, event, payload)
   }
 
   const noteRender = (id: string): void => {
@@ -617,10 +620,10 @@
     const rows = Math.max(1, dims.rows)
     const nudgeCols = cols + 1
     pendingRedraw.add(id)
-    void ResizeWorkspaceTerminal(id, nudgeCols, rows).catch(() => undefined)
+    void ResizeWorkspaceTerminal(workspaceId, id, nudgeCols, rows).catch(() => undefined)
     logDebug(id, 'redraw_nudge', {cols, rows, nudgeCols})
     window.setTimeout(() => {
-      void ResizeWorkspaceTerminal(id, cols, rows).catch(() => undefined)
+      void ResizeWorkspaceTerminal(workspaceId, id, cols, rows).catch(() => undefined)
       pendingRedraw.delete(id)
     }, 60)
   }
@@ -1073,7 +1076,7 @@
               resizeKittyOverlay(current)
               const updated = current.fitAddon.proposeDimensions()
               if (updated) {
-                void ResizeWorkspaceTerminal(id, updated.cols, updated.rows).catch(() => undefined)
+                void ResizeWorkspaceTerminal(workspaceId, id, updated.cols, updated.rows).catch(() => undefined)
               }
             })
             .catch(() => undefined)
@@ -1084,7 +1087,7 @@
       resizeKittyOverlay(handle)
       const dims = handle.fitAddon.proposeDimensions()
       if (dims) {
-        void ResizeWorkspaceTerminal(id, dims.cols, dims.rows).catch(() => undefined)
+        void ResizeWorkspaceTerminal(workspaceId, id, dims.cols, dims.rows).catch(() => undefined)
       }
       if (active) {
         handle.terminal.focus()
@@ -1096,37 +1099,37 @@
 
   const ensureListener = (): void => {
     if (!listeners.has('terminal:data')) {
-      const handler = (payload: {workspaceId: string; data: string}): void => {
-        const handle = terminals.get(payload.workspaceId)
+      const handler = (payload: {workspaceId: string; terminalId: string; data: string}): void => {
+        const handle = terminals.get(payload.terminalId)
         if (!handle) return
-        if (!inputMap[payload.workspaceId]) {
-          inputMap = {...inputMap, [payload.workspaceId]: true}
+        if (!inputMap[payload.terminalId]) {
+          inputMap = {...inputMap, [payload.terminalId]: true}
         }
-        if (replayState.get(payload.workspaceId) !== 'live') {
-          const pending = pendingReplayOutput.get(payload.workspaceId) ?? []
+        if (replayState.get(payload.terminalId) !== 'live') {
+          const pending = pendingReplayOutput.get(payload.terminalId) ?? []
           pending.push(payload.data)
-          pendingReplayOutput.set(payload.workspaceId, pending)
+          pendingReplayOutput.set(payload.terminalId, pending)
           return
         }
-        enqueueOutput(payload.workspaceId, payload.data)
+        enqueueOutput(payload.terminalId, payload.data)
       }
       EventsOn('terminal:data', handler)
       listeners.add('terminal:data')
     }
     if (!listeners.has('terminal:kitty')) {
-      const handler = (payload: {workspaceId: string; event: KittyEventPayload}): void => {
-        const handle = terminals.get(payload.workspaceId)
+      const handler = (payload: {workspaceId: string; terminalId: string; event: KittyEventPayload}): void => {
+        const handle = terminals.get(payload.terminalId)
         if (!handle) return
-        if (!inputMap[payload.workspaceId]) {
-          inputMap = {...inputMap, [payload.workspaceId]: true}
+        if (!inputMap[payload.terminalId]) {
+          inputMap = {...inputMap, [payload.terminalId]: true}
         }
-        if (replayState.get(payload.workspaceId) !== 'live') {
-          const pending = pendingReplayKitty.get(payload.workspaceId) ?? []
+        if (replayState.get(payload.terminalId) !== 'live') {
+          const pending = pendingReplayKitty.get(payload.terminalId) ?? []
           pending.push(payload.event)
-          pendingReplayKitty.set(payload.workspaceId, pending)
+          pendingReplayKitty.set(payload.terminalId, pending)
           return
         }
-        void applyKittyEvent(payload.workspaceId, payload.event)
+        void applyKittyEvent(payload.terminalId, payload.event)
       }
       EventsOn('terminal:kitty', handler)
       listeners.add('terminal:kitty')
@@ -1134,6 +1137,7 @@
     if (!listeners.has('terminal:lifecycle')) {
       const handler = (payload: {
         workspaceId: string
+        terminalId: string
         status: 'started' | 'closed' | 'error' | 'idle'
         message?: string
       }): void => {
@@ -1141,57 +1145,57 @@
           const message = payload.message?.toLowerCase() ?? ''
           const isResume =
             message.includes('backlog truncated') || message.includes('session resumed')
-          startedSessions.add(payload.workspaceId)
+          startedSessions.add(payload.terminalId)
           statusMap = {
             ...statusMap,
-            [payload.workspaceId]: isResume ? 'ready' : 'starting'
+            [payload.terminalId]: isResume ? 'ready' : 'starting'
           }
           messageMap = {
             ...messageMap,
-            [payload.workspaceId]: isResume
+            [payload.terminalId]: isResume
               ? payload.message ?? ''
               : 'Waiting for shell output…'
           }
-          inputMap = {...inputMap, [payload.workspaceId]: isResume}
+          inputMap = {...inputMap, [payload.terminalId]: isResume}
           if (isResume) {
-            clearStartupTimeout(payload.workspaceId)
-            setHealth(payload.workspaceId, 'ok', 'Session resumed (TUI state not replayed).')
+            clearStartupTimeout(payload.terminalId)
+            setHealth(payload.terminalId, 'ok', 'Session resumed (TUI state not replayed).')
           } else {
-            scheduleStartupTimeout(payload.workspaceId)
-            setHealth(payload.workspaceId, 'unknown')
+            scheduleStartupTimeout(payload.terminalId)
+            setHealth(payload.terminalId, 'unknown')
           }
           return
         }
         if (payload.status === 'closed') {
-          startedSessions.delete(payload.workspaceId)
-          statusMap = {...statusMap, [payload.workspaceId]: 'closed'}
-          setHealth(payload.workspaceId, 'stale', 'Terminal closed.')
-          clearStartupTimeout(payload.workspaceId)
-          resetSessionState(payload.workspaceId)
+          startedSessions.delete(payload.terminalId)
+          statusMap = {...statusMap, [payload.terminalId]: 'closed'}
+          setHealth(payload.terminalId, 'stale', 'Terminal closed.')
+          clearStartupTimeout(payload.terminalId)
+          resetSessionState(payload.terminalId)
           return
         }
         if (payload.status === 'idle') {
-          startedSessions.delete(payload.workspaceId)
-          statusMap = {...statusMap, [payload.workspaceId]: 'idle'}
-          setHealth(payload.workspaceId, 'stale', 'Terminal idle.')
-          clearStartupTimeout(payload.workspaceId)
-          resetSessionState(payload.workspaceId)
+          startedSessions.delete(payload.terminalId)
+          statusMap = {...statusMap, [payload.terminalId]: 'idle'}
+          setHealth(payload.terminalId, 'stale', 'Terminal idle.')
+          clearStartupTimeout(payload.terminalId)
+          resetSessionState(payload.terminalId)
           return
         }
         if (payload.status === 'error') {
-          startedSessions.delete(payload.workspaceId)
-          statusMap = {...statusMap, [payload.workspaceId]: 'error'}
+          startedSessions.delete(payload.terminalId)
+          statusMap = {...statusMap, [payload.terminalId]: 'error'}
           messageMap = {
             ...messageMap,
-            [payload.workspaceId]: payload.message ?? 'Terminal error'
+            [payload.terminalId]: payload.message ?? 'Terminal error'
           }
-          const term = terminals.get(payload.workspaceId)
+          const term = terminals.get(payload.terminalId)
           if (term && payload.message) {
             term.terminal.write(`\r\n[workset] ${payload.message}`)
           }
-          setHealth(payload.workspaceId, 'stale', payload.message ?? 'Terminal error.')
-          clearStartupTimeout(payload.workspaceId)
-          resetSessionState(payload.workspaceId)
+          setHealth(payload.terminalId, 'stale', payload.message ?? 'Terminal error.')
+          clearStartupTimeout(payload.terminalId)
+          resetSessionState(payload.terminalId)
         }
       }
       EventsOn('terminal:lifecycle', handler)
@@ -1200,6 +1204,7 @@
     if (!listeners.has('terminal:modes')) {
       const handler = (payload: {
         workspaceId: string
+        terminalId: string
         altScreen: boolean
         mouse: boolean
         mouseSGR: boolean
@@ -1207,7 +1212,7 @@
       }): void => {
         modeMap = {
           ...modeMap,
-          [payload.workspaceId]: {
+          [payload.terminalId]: {
             altScreen: payload.altScreen,
             mouse: payload.mouse,
             mouseSGR: payload.mouseSGR,
@@ -1222,22 +1227,22 @@
       const handler = (): void => {
         sessiondChecked = false
         void (async () => {
-          if (workspaceId) {
-            statusMap = {...statusMap, [workspaceId]: 'starting'}
+          if (terminalKey) {
+            statusMap = {...statusMap, [terminalKey]: 'starting'}
             messageMap = {
               ...messageMap,
-              [workspaceId]: 'Session daemon restarted. Reconnecting…'
+              [terminalKey]: 'Session daemon restarted. Reconnecting…'
             }
-            setHealth(workspaceId, 'checking', 'Reconnecting after daemon restart.')
+            setHealth(terminalKey, 'checking', 'Reconnecting after daemon restart.')
           }
           await refreshSessiondStatus()
-          if (!workspaceId || sessiondAvailable !== true) return
-          startedSessions.delete(workspaceId)
-          startInFlight.delete(workspaceId)
-          resetTerminalInstance(workspaceId)
-          resetSessionState(workspaceId)
-          noteMouseSuppress(workspaceId, 4000)
-          void beginTerminal(workspaceId, true)
+          if (!terminalKey || sessiondAvailable !== true) return
+          startedSessions.delete(terminalKey)
+          startInFlight.delete(terminalKey)
+          resetTerminalInstance(terminalKey)
+          resetSessionState(terminalKey)
+          noteMouseSuppress(terminalKey, 4000)
+          void beginTerminal(terminalKey, true)
         })()
       }
       EventsOn('sessiond:restarted', handler)
@@ -1279,7 +1284,7 @@
     let resumed = false
     if (sessiondAvailable === true) {
       try {
-        const status = await fetchWorkspaceTerminalStatus(id)
+        const status = await fetchWorkspaceTerminalStatus(workspaceId, id)
         resumed = status?.active ?? false
       } catch {
         resumed = false
@@ -1322,8 +1327,8 @@
   }
 
   const restartTerminal = async (): Promise<void> => {
-    if (!workspaceId) return
-    await beginTerminal(workspaceId)
+    if (!workspaceId || !terminalKey) return
+    await beginTerminal(terminalKey)
   }
 
   const refreshSessiondStatus = async (): Promise<void> => {
@@ -1349,7 +1354,7 @@
       setReplayState(id, 'live')
     }
     try {
-      const result = await fetchTerminalBootstrap(id)
+      const result = await fetchTerminalBootstrap(workspaceId, id)
       const snapshotBytes = result?.snapshot?.length ?? 0
       const backlogBytes = result?.backlog?.length ?? 0
       logDebug(id, 'bootstrap', {
@@ -1435,25 +1440,25 @@
     void loadTerminalDefaults()
     void refreshSessiondStatus()
     resizeObserver = new ResizeObserver(() => {
-      if (!workspaceId || resizeScheduled) return
+      if (!terminalKey || resizeScheduled) return
       resizeScheduled = true
       if (resizeTimer) {
         window.clearTimeout(resizeTimer)
       }
       resizeTimer = window.setTimeout(() => {
         resizeScheduled = false
-        const handle = terminals.get(workspaceId)
+        const handle = terminals.get(terminalKey)
         if (!handle) return
         handle.terminal.options.lineHeight = computeLineHeight(BASE_FONT_SIZE, BASE_LINE_HEIGHT)
         handle.fitAddon.fit()
         resizeKittyOverlay(handle)
-        if (!startedSessions.has(workspaceId)) return
+        if (!startedSessions.has(terminalKey)) return
         const dims = handle.fitAddon.proposeDimensions()
         if (dims) {
-          const prev = lastDims.get(workspaceId)
+          const prev = lastDims.get(terminalKey)
           if (!prev || prev.cols !== dims.cols || prev.rows !== dims.rows) {
-            lastDims.set(workspaceId, {cols: dims.cols, rows: dims.rows})
-            void ResizeWorkspaceTerminal(workspaceId, dims.cols, dims.rows).catch(() => undefined)
+            lastDims.set(terminalKey, {cols: dims.cols, rows: dims.rows})
+            void ResizeWorkspaceTerminal(workspaceId, terminalKey, dims.cols, dims.rows).catch(() => undefined)
           }
         }
       }, RESIZE_DEBOUNCE_MS)
@@ -1462,17 +1467,17 @@
 
     if (debugEnabled) {
       debugInterval = window.setInterval(() => {
-        if (!workspaceId) return
+        if (!terminalKey) return
         const stats =
-          statsMap.get(workspaceId) ?? {bytesIn: 0, bytesOut: 0, backlog: 0, lastOutputAt: 0, lastCprAt: 0}
+          statsMap.get(terminalKey) ?? {bytesIn: 0, bytesOut: 0, backlog: 0, lastOutputAt: 0, lastCprAt: 0}
         debugStats = {...stats}
       }, 1000)
     }
   })
 
   $effect(() => {
-    if (!workspaceId || !terminalContainer) return
-    const id = workspaceId
+    if (!terminalKey || !terminalContainer) return
+    const id = terminalKey
     const name = workspaceName
     untrack(() => {
       void initTerminal(id, name)
@@ -1480,10 +1485,10 @@
   })
 
   $effect(() => {
-    if (!workspaceId || !active) return
-    if (startedSessions.has(workspaceId) || startInFlight.has(workspaceId)) return
-    if (statusMap[workspaceId] === 'standby') {
-      void beginTerminal(workspaceId)
+    if (!terminalKey || !active) return
+    if (startedSessions.has(terminalKey) || startInFlight.has(terminalKey)) return
+    if (statusMap[terminalKey] === 'standby') {
+      void beginTerminal(terminalKey)
     }
   })
 
@@ -1503,57 +1508,59 @@
   })
 </script>
 
-<section class="terminal">
-  <header class="terminal-header">
-    <div>
-      <div class="title">Workspace terminal</div>
-      <div class="meta">Workspace: {workspaceName}</div>
-    </div>
-    <div class="terminal-actions">
-      <div
-        class="daemon-status"
-        class:offline={sessiondAvailable === false}
-        class:online={sessiondAvailable === true}
-        title={sessiondAvailable === true
-          ? 'Session daemon active'
-          : sessiondAvailable === false
-            ? 'Session daemon unavailable (using local shell)'
-            : 'Checking session daemon status'}
-      >
-        {#if sessiondAvailable === true}
-          Session: daemon
-        {:else if sessiondAvailable === false}
-          Session: local
-        {:else}
-          Session: checking
-        {/if}
+<section class="terminal" class:compact={compact}>
+  {#if !compact}
+    <header class="terminal-header">
+      <div>
+        <div class="title">Workspace terminal</div>
+        <div class="meta">Workspace: {workspaceName}</div>
       </div>
-      <div
-        class="renderer-status"
-        class:fallback={activeRenderer === 'canvas' && activeRendererMode !== 'canvas'}
-        class:forced={activeRenderer === 'canvas' && activeRendererMode === 'canvas'}
-        title="Terminal renderer"
-      >
-        {#if activeRenderer === 'webgl'}
-          Renderer: WebGL
-        {:else if activeRenderer === 'canvas'}
-          {#if activeRendererMode === 'canvas'}
-            Renderer: Canvas (forced)
+      <div class="terminal-actions">
+        <div
+          class="daemon-status"
+          class:offline={sessiondAvailable === false}
+          class:online={sessiondAvailable === true}
+          title={sessiondAvailable === true
+            ? 'Session daemon active'
+            : sessiondAvailable === false
+              ? 'Session daemon unavailable (using local shell)'
+              : 'Checking session daemon status'}
+        >
+          {#if sessiondAvailable === true}
+            Session: daemon
+          {:else if sessiondAvailable === false}
+            Session: local
           {:else}
-            Renderer: Canvas (fallback)
+            Session: checking
           {/if}
-        {:else}
-          Renderer: Unknown
-        {/if}
+        </div>
+        <div
+          class="renderer-status"
+          class:fallback={activeRenderer === 'canvas' && activeRendererMode !== 'canvas'}
+          class:forced={activeRenderer === 'canvas' && activeRendererMode === 'canvas'}
+          title="Terminal renderer"
+        >
+          {#if activeRenderer === 'webgl'}
+            Renderer: WebGL
+          {:else if activeRenderer === 'canvas'}
+            {#if activeRendererMode === 'canvas'}
+              Renderer: Canvas (forced)
+            {:else}
+              Renderer: Canvas (fallback)
+            {/if}
+          {:else}
+            Renderer: Unknown
+          {/if}
+        </div>
+        <div class="health-status" class:ok={activeHealth === 'ok'} class:stale={activeHealth === 'stale'} class:checking={activeHealth === 'checking'}>
+          <span class="health-dot"></span>
+          <span class="health-label">
+            {activeHealth === 'ok' ? 'Healthy' : activeHealth === 'checking' ? 'Checking' : activeHealth === 'stale' ? 'Stale' : 'Unknown'}
+          </span>
+        </div>
       </div>
-      <div class="health-status" class:ok={activeHealth === 'ok'} class:stale={activeHealth === 'stale'} class:checking={activeHealth === 'checking'}>
-        <span class="health-dot"></span>
-        <span class="health-label">
-          {activeHealth === 'ok' ? 'Healthy' : activeHealth === 'checking' ? 'Checking' : activeHealth === 'stale' ? 'Stale' : 'Unknown'}
-        </span>
-      </div>
-    </div>
-  </header>
+    </header>
+  {/if}
   <div class="terminal-body">
     {#if activeStatus && activeStatus !== 'ready' && activeStatus !== 'standby'}
       <div class="terminal-status">
@@ -1584,7 +1591,7 @@
         <button
           class="restart"
           type="button"
-          onclick={() => workspaceId && requestHealthCheck(workspaceId)}
+          onclick={() => terminalKey && requestHealthCheck(terminalKey)}
         >
           Retry check
         </button>
@@ -1611,6 +1618,10 @@
     flex-direction: column;
     gap: 8px;
     height: 100%;
+  }
+
+  .terminal.compact {
+    gap: 6px;
   }
 
   .terminal-header {
@@ -1647,6 +1658,11 @@
     display: flex;
     align-items: center;
     gap: 10px;
+  }
+
+  .terminal.compact .terminal-body {
+    padding: 6px;
+    border-radius: 10px;
   }
 
   .daemon-status {

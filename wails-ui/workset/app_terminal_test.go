@@ -18,17 +18,18 @@ func TestGetTerminalBootstrapSessiond(t *testing.T) {
 
 	createCtx, createCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer createCancel()
-	if _, err := client.Create(createCtx, "bootstrap-app", "/tmp"); err != nil {
+	sessionID := terminalSessionID("bootstrap-app", "test")
+	if _, err := client.Create(createCtx, sessionID, "/tmp"); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 
 	sendCtx, sendCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer sendCancel()
-	if err := client.Send(sendCtx, "bootstrap-app", "printf '\\033[?1000h\\033[?1006h\\033[?1049hREADY\\n'\n"); err != nil {
+	if err := client.Send(sendCtx, sessionID, "printf '\\033[?1000h\\033[?1006h\\033[?1049hREADY\\n'\n"); err != nil {
 		t.Fatalf("send output: %v", err)
 	}
 
-	if !waitForSessiondSnapshot(t, client, "bootstrap-app", "READY", 3*time.Second) {
+	if !waitForSessiondSnapshot(t, client, sessionID, "READY", 3*time.Second) {
 		t.Fatalf("snapshot did not contain expected output")
 	}
 
@@ -36,7 +37,7 @@ func TestGetTerminalBootstrapSessiond(t *testing.T) {
 	app.sessiondClient = client
 	app.ctx = context.Background()
 
-	bootstrap, err := app.GetTerminalBootstrap("bootstrap-app")
+	bootstrap, err := app.GetTerminalBootstrap("bootstrap-app", "test")
 	if err != nil {
 		t.Fatalf("GetTerminalBootstrap: %v", err)
 	}

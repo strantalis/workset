@@ -38,6 +38,10 @@ export function CreateWorkspace(arg1) {
   return window['go']['main']['App']['CreateWorkspace'](arg1);
 }
 
+export function CreateWorkspaceTerminal(arg1) {
+  return window['go']['main']['App']['CreateWorkspaceTerminal'](arg1);
+}
+
 export function DeleteAlias(arg1) {
   return window['go']['main']['App']['DeleteAlias'](arg1);
 }
@@ -48,10 +52,6 @@ export function DeleteGroup(arg1) {
 
 export function GeneratePullRequestText(arg1) {
   return window['go']['main']['App']['GeneratePullRequestText'](arg1);
-}
-
-export function GetAgentAvailability() {
-  return window['go']['main']['App']['GetAgentAvailability']();
 }
 
 export function GetBranchDiffSummary(arg1, arg2, arg3, arg4) {
@@ -98,24 +98,24 @@ export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }
 
-export function GetTerminalBacklog(arg1, arg2) {
-  return window['go']['main']['App']['GetTerminalBacklog'](arg1, arg2);
+export function GetTerminalBacklog(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetTerminalBacklog'](arg1, arg2, arg3);
 }
 
-export function GetTerminalBootstrap(arg1) {
-  return window['go']['main']['App']['GetTerminalBootstrap'](arg1);
+export function GetTerminalBootstrap(arg1, arg2) {
+  return window['go']['main']['App']['GetTerminalBootstrap'](arg1, arg2);
 }
 
-export function GetTerminalSnapshot(arg1) {
-  return window['go']['main']['App']['GetTerminalSnapshot'](arg1);
+export function GetTerminalSnapshot(arg1, arg2) {
+  return window['go']['main']['App']['GetTerminalSnapshot'](arg1, arg2);
 }
 
 export function GetTrackedPullRequest(arg1) {
   return window['go']['main']['App']['GetTrackedPullRequest'](arg1);
 }
 
-export function GetWorkspaceTerminalStatus(arg1) {
-  return window['go']['main']['App']['GetWorkspaceTerminalStatus'](arg1);
+export function GetWorkspaceTerminalStatus(arg1, arg2) {
+  return window['go']['main']['App']['GetWorkspaceTerminalStatus'](arg1, arg2);
 }
 
 export function ListAliases() {
@@ -158,8 +158,8 @@ export function RenameWorkspace(arg1, arg2) {
   return window['go']['main']['App']['RenameWorkspace'](arg1, arg2);
 }
 
-export function ResizeWorkspaceTerminal(arg1, arg2, arg3) {
-  return window['go']['main']['App']['ResizeWorkspaceTerminal'](arg1, arg2, arg3);
+export function ResizeWorkspaceTerminal(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ResizeWorkspaceTerminal'](arg1, arg2, arg3, arg4);
 }
 
 export function RestartSessiond() {
@@ -174,12 +174,12 @@ export function SetDefaultSetting(arg1, arg2) {
   return window['go']['main']['App']['SetDefaultSetting'](arg1, arg2);
 }
 
-export function StartWorkspaceTerminal(arg1) {
-  return window['go']['main']['App']['StartWorkspaceTerminal'](arg1);
+export function StartWorkspaceTerminal(arg1, arg2) {
+  return window['go']['main']['App']['StartWorkspaceTerminal'](arg1, arg2);
 }
 
-export function StopWorkspaceTerminal(arg1) {
-  return window['go']['main']['App']['StopWorkspaceTerminal'](arg1);
+export function StopWorkspaceTerminal(arg1, arg2) {
+  return window['go']['main']['App']['StopWorkspaceTerminal'](arg1, arg2);
 }
 
 export function UnarchiveWorkspace(arg1) {
@@ -194,6 +194,6 @@ export function UpdateGroup(arg1) {
   return window['go']['main']['App']['UpdateGroup'](arg1);
 }
 
-export function WriteWorkspaceTerminal(arg1, arg2) {
-  return window['go']['main']['App']['WriteWorkspaceTerminal'](arg1, arg2);
+export function WriteWorkspaceTerminal(arg1, arg2, arg3) {
+  return window['go']['main']['App']['WriteWorkspaceTerminal'](arg1, arg2, arg3);
 }

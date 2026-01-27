@@ -59,7 +59,8 @@ import {
   GetTerminalBootstrap,
   GetTerminalSnapshot,
   LogTerminalDebug,
-  GetWorkspaceTerminalStatus
+  GetWorkspaceTerminalStatus,
+  CreateWorkspaceTerminal
 } from '../../wailsjs/go/main/App'
 
 type WorkspaceSnapshot = {
@@ -161,6 +162,7 @@ export type CommitAndPushResult = {
 
 export type TerminalBacklogResponse = {
   workspaceId: string
+  terminalId: string
   data: string
   nextOffset: number
   truncated: boolean
@@ -169,6 +171,7 @@ export type TerminalBacklogResponse = {
 
 export type TerminalSnapshotResponse = {
   workspaceId: string
+  terminalId: string
   data: string
   source?: string
   kitty?: {
@@ -195,6 +198,7 @@ export type TerminalSnapshotResponse = {
 
 export type TerminalBootstrapResponse = {
   workspaceId: string
+  terminalId: string
   snapshot?: string
   snapshotSource?: string
   kitty?: {
@@ -237,6 +241,7 @@ export type SessiondStatusResponse = {
 
 export type WorkspaceTerminalStatusResponse = {
   workspaceId: string
+  terminalId?: string
   active: boolean
   error?: string
 }
@@ -292,29 +297,33 @@ export async function openDirectoryDialog(
 }
 
 export async function fetchWorkspaceTerminalStatus(
-  workspaceId: string
+  workspaceId: string,
+  terminalId: string
 ): Promise<WorkspaceTerminalStatusResponse> {
-  return GetWorkspaceTerminalStatus(workspaceId)
+  return GetWorkspaceTerminalStatus(workspaceId, terminalId)
 }
 
 export async function fetchTerminalSnapshot(
-  workspaceId: string
+  workspaceId: string,
+  terminalId: string
 ): Promise<TerminalSnapshotResponse> {
-  return GetTerminalSnapshot(workspaceId)
+  return GetTerminalSnapshot(workspaceId, terminalId)
 }
 
 export async function fetchTerminalBootstrap(
-  workspaceId: string
+  workspaceId: string,
+  terminalId: string
 ): Promise<TerminalBootstrapResponse> {
-  return GetTerminalBootstrap(workspaceId)
+  return GetTerminalBootstrap(workspaceId, terminalId)
 }
 
 export async function logTerminalDebug(
   workspaceId: string,
+  terminalId: string,
   event: string,
   details = ''
 ): Promise<void> {
-  await LogTerminalDebug({workspaceId, event, details})
+  await LogTerminalDebug({workspaceId, terminalId, event, details})
 }
 
 export async function renameWorkspace(workspaceId: string, newName: string): Promise<void> {
@@ -363,9 +372,16 @@ export async function removeRepo(
 
 export async function fetchTerminalBacklog(
   workspaceId: string,
+  terminalId: string,
   since: number
 ): Promise<TerminalBacklogResponse> {
-  return GetTerminalBacklog(workspaceId, since)
+  return GetTerminalBacklog(workspaceId, terminalId, since)
+}
+
+export async function createWorkspaceTerminal(
+  workspaceId: string
+): Promise<{workspaceId: string; terminalId: string}> {
+  return CreateWorkspaceTerminal(workspaceId)
 }
 
 export async function fetchSessiondStatus(): Promise<SessiondStatusResponse> {
@@ -661,13 +677,15 @@ export async function sendPullRequestReviewsToTerminal(
   workspaceId: string,
   repoId: string,
   number?: number,
-  branch?: string
+  branch?: string,
+  terminalId?: string
 ): Promise<void> {
   await SendPullRequestReviewsToTerminal({
     workspaceId,
     repoId,
     number: number ?? 0,
-    branch: branch ?? ''
+    branch: branch ?? '',
+    terminalId: terminalId ?? ''
   })
 }
 

@@ -16,7 +16,7 @@
   import EmptyState from './lib/components/EmptyState.svelte'
   import RepoDiff from './lib/components/RepoDiff.svelte'
   import SettingsPanel from './lib/components/SettingsPanel.svelte'
-  import TerminalPane from './lib/components/TerminalPane.svelte'
+  import TerminalWorkspace from './lib/components/TerminalWorkspace.svelte'
   import WorkspaceActionModal from './lib/components/WorkspaceActionModal.svelte'
   import WorkspaceTree from './lib/components/WorkspaceTree.svelte'
 
@@ -131,7 +131,7 @@
       {:else}
         <div class="view-stack">
           <div class="view-pane" class:active={!hasRepo} aria-hidden={hasRepo}>
-            <TerminalPane
+            <TerminalWorkspace
               workspaceId={$activeWorkspace?.id ?? ''}
               workspaceName={$activeWorkspace?.name ?? 'Workspace'}
               active={!hasRepo}

@@ -21,13 +21,13 @@ export function CreatePullRequest(arg1:main.PullRequestCreateRequest):Promise<wo
 
 export function CreateWorkspace(arg1:main.WorkspaceCreateRequest):Promise<main.WorkspaceCreateResponse>;
 
+export function CreateWorkspaceTerminal(arg1:string):Promise<main.TerminalCreatePayload>;
+
 export function DeleteAlias(arg1:string):Promise<worksetapi.AliasMutationResultJSON>;
 
 export function DeleteGroup(arg1:string):Promise<worksetapi.AliasMutationResultJSON>;
 
 export function GeneratePullRequestText(arg1:main.PullRequestGenerateRequest):Promise<worksetapi.PullRequestGeneratedJSON>;
-
-export function GetAgentAvailability():Promise<Record<string, boolean>>;
 
 export function GetBranchDiffSummary(arg1:string,arg2:string,arg3:string,arg4:string):Promise<main.RepoDiffSummary>;
 
@@ -51,15 +51,15 @@ export function GetSessiondStatus():Promise<main.SessiondStatus>;
 
 export function GetSettings():Promise<main.SettingsSnapshot>;
 
-export function GetTerminalBacklog(arg1:string,arg2:number):Promise<main.TerminalBacklogPayload>;
+export function GetTerminalBacklog(arg1:string,arg2:string,arg3:number):Promise<main.TerminalBacklogPayload>;
 
-export function GetTerminalBootstrap(arg1:string):Promise<main.TerminalBootstrapPayload>;
+export function GetTerminalBootstrap(arg1:string,arg2:string):Promise<main.TerminalBootstrapPayload>;
 
-export function GetTerminalSnapshot(arg1:string):Promise<main.TerminalSnapshotPayload>;
+export function GetTerminalSnapshot(arg1:string,arg2:string):Promise<main.TerminalSnapshotPayload>;
 
 export function GetTrackedPullRequest(arg1:main.PullRequestTrackedRequest):Promise<worksetapi.PullRequestTrackedJSON>;
 
-export function GetWorkspaceTerminalStatus(arg1:string):Promise<main.TerminalStatusPayload>;
+export function GetWorkspaceTerminalStatus(arg1:string,arg2:string):Promise<main.TerminalStatusPayload>;
 
 export function ListAliases():Promise<Array<worksetapi.AliasJSON>>;
 
@@ -81,7 +81,7 @@ export function RemoveWorkspace(arg1:main.WorkspaceRemoveRequest):Promise<workse
 
 export function RenameWorkspace(arg1:string,arg2:string):Promise<worksetapi.WorkspaceRefJSON>;
 
-export function ResizeWorkspaceTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;
+export function ResizeWorkspaceTerminal(arg1:string,arg2:string,arg3:number,arg4:number):Promise<void>;
 
 export function RestartSessiond():Promise<main.SessiondStatus>;
 
@@ -89,9 +89,9 @@ export function SendPullRequestReviewsToTerminal(arg1:main.PullRequestReviewsReq
 
 export function SetDefaultSetting(arg1:string,arg2:string):Promise<worksetapi.ConfigSetResultJSON>;
 
-export function StartWorkspaceTerminal(arg1:string):Promise<void>;
+export function StartWorkspaceTerminal(arg1:string,arg2:string):Promise<void>;
 
-export function StopWorkspaceTerminal(arg1:string):Promise<void>;
+export function StopWorkspaceTerminal(arg1:string,arg2:string):Promise<void>;
 
 export function UnarchiveWorkspace(arg1:string):Promise<worksetapi.WorkspaceRefJSON>;
 
@@ -99,4 +99,4 @@ export function UpdateAlias(arg1:main.AliasUpsertRequest):Promise<worksetapi.Ali
 
 export function UpdateGroup(arg1:main.GroupUpsertRequest):Promise<worksetapi.GroupJSON>;
 
-export function WriteWorkspaceTerminal(arg1:string,arg2:string):Promise<void>;
+export function WriteWorkspaceTerminal(arg1:string,arg2:string,arg3:string):Promise<void>;

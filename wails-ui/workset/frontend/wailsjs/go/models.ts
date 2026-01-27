@@ -305,6 +305,7 @@ export namespace main {
 	    repoId: string;
 	    number?: number;
 	    branch?: string;
+	    terminalId?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new PullRequestReviewsRequest(source);
@@ -316,6 +317,7 @@ export namespace main {
 	        this.repoId = source["repoId"];
 	        this.number = source["number"];
 	        this.branch = source["branch"];
+	        this.terminalId = source["terminalId"];
 	    }
 	}
 	export class PullRequestStatusPayload {
@@ -670,6 +672,7 @@ export namespace main {
 	}
 	export class TerminalBacklogPayload {
 	    workspaceId: string;
+	    terminalId: string;
 	    data: string;
 	    nextOffset: number;
 	    truncated: boolean;
@@ -682,6 +685,7 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.workspaceId = source["workspaceId"];
+	        this.terminalId = source["terminalId"];
 	        this.data = source["data"];
 	        this.nextOffset = source["nextOffset"];
 	        this.truncated = source["truncated"];
@@ -690,6 +694,7 @@ export namespace main {
 	}
 	export class TerminalBootstrapPayload {
 	    workspaceId: string;
+	    terminalId: string;
 	    snapshot?: string;
 	    snapshotSource?: string;
 	    kitty?: kitty.Snapshot;
@@ -711,6 +716,7 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.workspaceId = source["workspaceId"];
+	        this.terminalId = source["terminalId"];
 	        this.snapshot = source["snapshot"];
 	        this.snapshotSource = source["snapshotSource"];
 	        this.kitty = this.convertValues(source["kitty"], kitty.Snapshot);
@@ -744,8 +750,23 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class TerminalCreatePayload {
+	    workspaceId: string;
+	    terminalId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TerminalCreatePayload(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.workspaceId = source["workspaceId"];
+	        this.terminalId = source["terminalId"];
+	    }
+	}
 	export class TerminalDebugPayload {
 	    workspaceId: string;
+	    terminalId: string;
 	    event: string;
 	    details?: string;
 	
@@ -756,12 +777,14 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.workspaceId = source["workspaceId"];
+	        this.terminalId = source["terminalId"];
 	        this.event = source["event"];
 	        this.details = source["details"];
 	    }
 	}
 	export class TerminalSnapshotPayload {
 	    workspaceId: string;
+	    terminalId: string;
 	    data: string;
 	    source?: string;
 	    kitty?: kitty.Snapshot;
@@ -773,6 +796,7 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.workspaceId = source["workspaceId"];
+	        this.terminalId = source["terminalId"];
 	        this.data = source["data"];
 	        this.source = source["source"];
 	        this.kitty = this.convertValues(source["kitty"], kitty.Snapshot);
@@ -798,6 +822,7 @@ export namespace main {
 	}
 	export class TerminalStatusPayload {
 	    workspaceId: string;
+	    terminalId?: string;
 	    active: boolean;
 	    error?: string;
 	
@@ -808,6 +833,7 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.workspaceId = source["workspaceId"];
+	        this.terminalId = source["terminalId"];
 	        this.active = source["active"];
 	        this.error = source["error"];
 	    }
