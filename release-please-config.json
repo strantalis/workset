@@ -1,11 +1,11 @@
 {
   "separate-pull-requests": true,
-  "include-component-in-tag": true,
+  "include-component-in-tag": false,
   "packages": {
     ".": {
-      "component": "workset",
       "release-type": "go",
       "changelog-path": "CHANGELOG.md",
+      "include-component-in-tag": false,
       "include-v-in-tag": true,
       "versioning": "always-bump-minor",
       "initial-version": "0.1.0",
@@ -15,7 +15,8 @@
     "wails-ui/workset": {
       "component": "workset-wails",
       "release-type": "go",
-      "changelog-path": "wails-ui/workset/CHANGELOG.md",
+      "changelog-path": "CHANGELOG.md",
+      "include-component-in-tag": true,
       "include-v-in-tag": true,
       "versioning": "always-bump-minor",
       "initial-version": "0.1.0",
