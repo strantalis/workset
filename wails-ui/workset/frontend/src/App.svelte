@@ -19,6 +19,8 @@
   import TerminalWorkspace from './lib/components/TerminalWorkspace.svelte'
   import WorkspaceActionModal from './lib/components/WorkspaceActionModal.svelte'
   import WorkspaceTree from './lib/components/WorkspaceTree.svelte'
+  import {fetchAppVersion} from './lib/api'
+  import type {AppVersion} from './lib/types'
 
   let hasWorkspace = $derived($activeWorkspace !== null)
   let hasRepo = $derived($activeRepo !== null)
@@ -26,6 +28,17 @@
   let settingsOpen = $state(false)
   let sidebarCollapsed = $state(false)
   let actionOpen = $state(false)
+  let appVersion = $state<AppVersion | null>(null)
+  let versionLabel = $derived(
+    appVersion
+      ? `${appVersion.version}${appVersion.dirty ? '+dirty' : ''} (${appVersion.commit ? appVersion.commit.slice(0, 7) : 'unknown'})`
+      : ''
+  )
+  let versionTitle = $derived(
+    appVersion
+      ? `${appVersion.version}${appVersion.dirty ? '+dirty' : ''} (${appVersion.commit || 'unknown'})`
+      : ''
+  )
   let actionContext: {
     mode:
       | 'create'
@@ -60,6 +73,13 @@
 
   onMount(() => {
     void loadWorkspaces()
+    void (async () => {
+      try {
+        appVersion = await fetchAppVersion()
+      } catch {
+        appVersion = null
+      }
+    })()
   })
 </script>
 
@@ -199,13 +219,19 @@
       </div>
     </div>
   {/if}
+
+  <footer class="app-footer" aria-label="App version">
+    {#if appVersion}
+      <span class="app-version" title={versionTitle}>{versionLabel}</span>
+    {/if}
+  </footer>
 </div>
 
 <style>
   .app {
     height: 100vh;
     display: grid;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: auto 1fr auto;
     overflow: hidden;
   }
 
@@ -407,5 +433,22 @@
     .overlay {
       padding: 0;
     }
+  }
+
+  .app-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--muted);
+    font-size: 12px;
+    --wails-draggable: no-drag;
+  }
+
+  .app-version {
+    font-family: var(--font-mono);
+    letter-spacing: 0.02em;
   }
 </style>

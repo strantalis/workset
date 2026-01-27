@@ -62,6 +62,10 @@ export function GeneratePullRequestText(arg1) {
   return window['go']['main']['App']['GeneratePullRequestText'](arg1);
 }
 
+export function GetAppVersion() {
+  return window['go']['main']['App']['GetAppVersion']();
+}
+
 export function GetBranchDiffSummary(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['GetBranchDiffSummary'](arg1, arg2, arg3, arg4);
 }

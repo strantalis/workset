@@ -105,6 +105,12 @@ export type SettingsSnapshot = {
   configPath: string
 }
 
+export type AppVersion = {
+  version: string
+  commit: string
+  dirty: boolean
+}
+
 export type RepoDiffFileSummary = {
   path: string
   prevPath?: string

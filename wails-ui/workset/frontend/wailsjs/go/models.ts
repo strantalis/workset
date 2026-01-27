@@ -168,6 +168,22 @@ export namespace main {
 	        this.defaultBranch = source["defaultBranch"];
 	    }
 	}
+	export class AppVersion {
+	    version: string;
+	    commit: string;
+	    dirty: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new AppVersion(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.commit = source["commit"];
+	        this.dirty = source["dirty"];
+	    }
+	}
 	export class CommitAndPushRequest {
 	    workspaceId: string;
 	    repoId: string;

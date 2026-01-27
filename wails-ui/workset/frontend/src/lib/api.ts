@@ -12,6 +12,7 @@ import type {
   RepoDiffSummary,
   RepoFileDiff,
   SettingsSnapshot,
+  AppVersion,
   Workspace,
   WorkspaceCreateResponse
 } from './types'
@@ -65,7 +66,8 @@ import {
   GetTerminalSnapshot,
   LogTerminalDebug,
   GetWorkspaceTerminalStatus,
-  CreateWorkspaceTerminal
+  CreateWorkspaceTerminal,
+  GetAppVersion
 } from '../../wailsjs/go/main/App'
 
 type WorkspaceSnapshot = {
@@ -91,6 +93,10 @@ type RepoSnapshot = {
 
 type RepoDiffSnapshot = {
   patch: string
+}
+
+export async function fetchAppVersion(): Promise<AppVersion> {
+  return (await GetAppVersion()) as AppVersion
 }
 
 type PullRequestStatusResponse = {

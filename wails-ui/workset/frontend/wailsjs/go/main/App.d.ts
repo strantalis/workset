@@ -33,6 +33,8 @@ export function EditReviewComment(arg1:main.EditReviewCommentRequest):Promise<wo
 
 export function GeneratePullRequestText(arg1:main.PullRequestGenerateRequest):Promise<worksetapi.PullRequestGeneratedJSON>;
 
+export function GetAppVersion():Promise<main.AppVersion>;
+
 export function GetBranchDiffSummary(arg1:string,arg2:string,arg3:string,arg4:string):Promise<main.RepoDiffSummary>;
 
 export function GetBranchFileDiff(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string):Promise<main.RepoFileDiffSnapshot>;

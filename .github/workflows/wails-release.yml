@@ -93,8 +93,18 @@ jobs:
           node-version: "24"
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      - name: Compute build metadata
+        id: build_meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ needs.prepare.outputs.release_tag }}"
+          tag="${tag##*/}"
+          version="${tag#wails-ui/workset-}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "commit=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
       - name: Build Wails app
-        run: wails build
+        run: wails build -ldflags "-X main.appVersion=${{ steps.build_meta.outputs.version }} -X main.appCommit=${{ steps.build_meta.outputs.commit }}"
         working-directory: wails-ui/workset
       - name: Signing status
         id: signing
@@ -272,8 +282,17 @@ jobs:
           node-version: "24"
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      - name: Compute build metadata
+        id: build_meta
+        shell: pwsh
+        run: |
+          $tag = "${{ needs.prepare.outputs.release_tag }}"
+          $tag = Split-Path -Leaf $tag
+          $version = $tag -replace '^wails-ui/workset-', ''
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "commit=${{ github.sha }}" >> $env:GITHUB_OUTPUT
       - name: Build Wails app
-        run: wails build
+        run: wails build -ldflags "-X main.appVersion=${{ steps.build_meta.outputs.version }} -X main.appCommit=${{ steps.build_meta.outputs.commit }}"
         working-directory: wails-ui/workset
       - name: Rename artifacts
         shell: pwsh
