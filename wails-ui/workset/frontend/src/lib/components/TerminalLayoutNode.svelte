@@ -294,6 +294,9 @@
       tabindex="0"
       onclick={() => onFocusPane(node.id)}
       onkeydown={(event) => {
+        if (event.currentTarget !== event.target) {
+          return
+        }
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault()
           onFocusPane(node.id)
