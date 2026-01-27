@@ -36,7 +36,6 @@ import {
   GetPullRequestReviews,
   GetPullRequestStatus,
   GetTrackedPullRequest,
-  GetAgentAvailability,
   GeneratePullRequestText,
   GetSettings,
   GetSessiondStatus,
@@ -446,10 +445,6 @@ export async function applyGroup(workspaceId: string, groupName: string): Promis
 
 export async function fetchSettings(): Promise<SettingsSnapshot> {
   return (await GetSettings()) as unknown as SettingsSnapshot
-}
-
-export async function fetchAgentAvailability(): Promise<Record<string, boolean>> {
-  return GetAgentAvailability()
 }
 
 export async function setDefaultSetting(key: string, value: string): Promise<void> {

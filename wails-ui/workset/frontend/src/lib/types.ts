@@ -184,12 +184,6 @@ export type PullRequestGenerated = {
   body: string
 }
 
-export type AgentOption = {
-  id: string
-  label: string
-  command: string
-}
-
 export type RemoteInfo = {
   name: string
   owner: string
