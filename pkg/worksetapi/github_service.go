@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -730,6 +731,9 @@ func (s *Service) runAgentPromptRaw(ctx context.Context, repoPath, agent, prompt
 	if err != nil {
 		return "", err
 	}
+	if wrapped, ok := wrapAgentCommandForShell(command); ok {
+		command = wrapped
+	}
 	result, err := s.commands(ctx, repoPath, command, env, stdin)
 	if err != nil || result.ExitCode != 0 {
 		if shouldRetryWithPTY(err, result) {
@@ -757,6 +761,48 @@ func (s *Service) runAgentPromptRaw(ctx context.Context, repoPath, agent, prompt
 		return "", ValidationError{Message: message}
 	}
 	return result.Stdout, nil
+}
+
+func wrapAgentCommandForShell(command []string) ([]string, bool) {
+	if runtime.GOOS == "windows" || len(command) == 0 {
+		return command, false
+	}
+	shell := strings.TrimSpace(os.Getenv("SHELL"))
+	if shell == "" {
+		shell = "/bin/sh"
+	}
+	shellBase := strings.ToLower(filepath.Base(shell))
+	commandLine := shellJoinArgs(command)
+	args := shellArgsFor(shellBase, commandLine)
+	return append([]string{shell}, args...), true
+}
+
+func shellArgsFor(shellBase, command string) []string {
+	switch shellBase {
+	case "fish", "csh", "tcsh":
+		return []string{"-l", "-c", command}
+	default:
+		return []string{"-lc", command}
+	}
+}
+
+func shellJoinArgs(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(args))
+	for _, arg := range args {
+		parts = append(parts, shellEscape(arg))
+	}
+	return strings.Join(parts, " ")
+}
+
+func shellEscape(value string) string {
+	if value == "" {
+		return "''"
+	}
+	escaped := strings.ReplaceAll(value, "'", `'"'"'`)
+	return "'" + escaped + "'"
 }
 
 func parseAgentJSON(output string) (PullRequestGeneratedJSON, error) {
