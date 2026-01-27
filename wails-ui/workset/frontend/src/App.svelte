@@ -203,9 +203,10 @@
 
 <style>
   .app {
-    min-height: 100vh;
+    height: 100vh;
     display: grid;
     grid-template-rows: auto 1fr;
+    overflow: hidden;
   }
 
   .topbar {
@@ -271,6 +272,7 @@
     display: grid;
     grid-template-columns: 280px 1fr;
     height: 100%;
+    min-height: 0;
   }
 
   .layout.collapsed {
@@ -282,6 +284,8 @@
     padding: 20px 12px;
     background: var(--panel);
     transition: width 160ms ease, padding 160ms ease;
+    overflow-y: auto;
+    min-height: 0;
   }
 
   .sidebar.collapsed {

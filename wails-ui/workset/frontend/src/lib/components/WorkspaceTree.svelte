@@ -46,6 +46,22 @@
   }
 
   let visibleWorkspaces = $derived(workspaces.filter((workspace) => !workspace.archived))
+
+  let searchQuery = $state('')
+
+  let filteredWorkspaces = $derived.by(() => {
+    const query = searchQuery.toLowerCase().trim()
+    if (!query) return visibleWorkspaces
+
+    return visibleWorkspaces
+      .map(ws => ({
+        ...ws,
+        repos: ws.repos.filter(r => r.name.toLowerCase().includes(query))
+      }))
+      .filter(ws =>
+        ws.name.toLowerCase().includes(query) || ws.repos.length > 0
+      )
+  })
 </script>
 
 <div class:collapsed={sidebarCollapsed} class="tree">
@@ -71,7 +87,28 @@
       </svg>
     </IconButton>
   </div>
-  {#each visibleWorkspaces as workspace}
+  {#if !sidebarCollapsed}
+    <div class="search-bar">
+      <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="11" cy="11" r="8" />
+        <path d="m21 21-4.35-4.35" />
+      </svg>
+      <input
+        type="text"
+        placeholder="Filter workspaces..."
+        bind:value={searchQuery}
+        class="search-input"
+      />
+      {#if searchQuery}
+        <button class="clear-btn" onclick={() => searchQuery = ''} type="button" aria-label="Clear search">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+      {/if}
+    </div>
+  {/if}
+  {#each filteredWorkspaces as workspace}
     <div class="workspace">
       <div class="workspace-row">
         <button
@@ -248,6 +285,62 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+  }
+
+  .search-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-2) var(--space-3);
+    background: var(--panel-soft);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    margin: 0 var(--space-2);
+  }
+
+  .search-icon {
+    width: 14px;
+    height: 14px;
+    stroke: var(--muted);
+    stroke-width: 2;
+    fill: none;
+    flex-shrink: 0;
+  }
+
+  .search-input {
+    flex: 1;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 13px;
+    outline: none;
+    min-width: 0;
+  }
+
+  .search-input::placeholder {
+    color: var(--muted);
+  }
+
+  .clear-btn {
+    background: none;
+    border: none;
+    padding: 2px;
+    cursor: pointer;
+    color: var(--muted);
+    display: grid;
+    place-items: center;
+  }
+
+  .clear-btn:hover {
+    color: var(--text);
+  }
+
+  .clear-btn svg {
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+    stroke-width: 2;
+    fill: none;
   }
 
   .tree-header {
