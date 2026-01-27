@@ -1,21 +1,21 @@
 package git
 
 import (
+	"bufio"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
-
-	"github.com/kevinburke/ssh_config"
 )
 
 var ensureSSHAuthSockOnce sync.Once
 
-// EnsureSSHAuthSock maps ssh_config IdentityAgent to SSH_AUTH_SOCK when unset.
+// EnsureSSHAuthSock maps ssh IdentityAgent to SSH_AUTH_SOCK when available.
 func EnsureSSHAuthSock() {
 	ensureSSHAuthSockOnce.Do(func() {
 		current := strings.TrimSpace(os.Getenv("SSH_AUTH_SOCK"))
-		identityAgent := resolveIdentityAgent()
+		identityAgent := resolveIdentityAgentFromSSH()
 		if identityAgent == "" {
 			return
 		}
@@ -23,16 +23,6 @@ func EnsureSSHAuthSock() {
 			_ = os.Setenv("SSH_AUTH_SOCK", next)
 		}
 	})
-}
-
-func resolveIdentityAgent() string {
-	for _, host := range []string{"github.com", "gitlab.com", "bitbucket.org"} {
-		agent := strings.TrimSpace(ssh_config.Get(host, "IdentityAgent"))
-		if shouldUseIdentityAgent(agent) {
-			return agent
-		}
-	}
-	return ""
 }
 
 func shouldUseIdentityAgent(agent string) bool {
@@ -64,7 +54,7 @@ func applySSHAuthSock(current, identityAgent string) (string, bool) {
 		return "", false
 	}
 	identityAgent = expandSSHPath(identityAgent)
-	if identityAgent == "" || !isSocket(identityAgent) {
+	if identityAgent == "" {
 		return "", false
 	}
 	if current == identityAgent {
@@ -95,4 +85,36 @@ func trimQuotes(value string) string {
 		return value[1 : len(value)-1]
 	}
 	return value
+}
+
+func resolveIdentityAgentFromSSH() string {
+	for _, host := range []string{"github.com", "gitlab.com", "bitbucket.org"} {
+		if agent, ok := sshConfigIdentityAgent(host); ok {
+			return agent
+		}
+	}
+	return ""
+}
+
+func sshConfigIdentityAgent(host string) (string, bool) {
+	output, err := exec.Command("ssh", "-G", host).Output()
+	if err != nil {
+		return "", false
+	}
+	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, "identityagent ") {
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) < 2 {
+			continue
+		}
+		return strings.Join(parts[1:], " "), true
+	}
+	return "", false
 }

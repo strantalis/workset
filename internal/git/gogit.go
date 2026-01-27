@@ -426,7 +426,22 @@ func wrapAuthError(err error) error {
 		strings.Contains(message, "no supported methods remain") ||
 		strings.Contains(message, "error creating ssh agent") ||
 		strings.Contains(message, "authentication required") {
-		return fmt.Errorf("%w (ssh auth failed; check SSH_AUTH_SOCK/agent or unlock 1Password)", err)
+		hint := sshAuthHint()
+		if hint == "" {
+			hint = "ssh auth failed; check SSH_AUTH_SOCK/agent or unlock your SSH agent"
+		}
+		return fmt.Errorf("%w (%s)", err, hint)
 	}
 	return err
+}
+
+func sshAuthHint() string {
+	sock := strings.TrimSpace(os.Getenv("SSH_AUTH_SOCK"))
+	if sock == "" {
+		return "ssh auth failed; SSH_AUTH_SOCK is unset"
+	}
+	if !isSocket(sock) {
+		return fmt.Sprintf("ssh auth failed; SSH_AUTH_SOCK is not a socket (%s)", sock)
+	}
+	return ""
 }

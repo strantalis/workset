@@ -30,7 +30,7 @@ func TestApplySSHAuthSockSkipsSameSocket(t *testing.T) {
 	}
 }
 
-func TestApplySSHAuthSockSkipsInvalidIdentityAgent(t *testing.T) {
+func TestApplySSHAuthSockUsesIdentityAgentPath(t *testing.T) {
 	dir := tempSocketDir(t)
 	current := makeSocket(t, dir, "current.sock")
 	identity := filepath.Join(dir, "not-a-socket")
@@ -38,8 +38,8 @@ func TestApplySSHAuthSockSkipsInvalidIdentityAgent(t *testing.T) {
 		t.Fatalf("write file: %v", err)
 	}
 
-	if next, ok := applySSHAuthSock(current, identity); ok || next != "" {
-		t.Fatalf("expected no change for non-socket identity agent")
+	if next, ok := applySSHAuthSock(current, identity); !ok || next != identity {
+		t.Fatalf("expected override to identity agent path")
 	}
 }
 
