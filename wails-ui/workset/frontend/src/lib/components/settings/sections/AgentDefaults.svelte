@@ -1,6 +1,7 @@
 <script lang="ts">
   import type {SettingsDefaults} from '../../../types'
   import SettingsSection from '../SettingsSection.svelte'
+  import Select from '../../ui/Select.svelte'
 
   type FieldId = keyof SettingsDefaults
 
@@ -39,11 +40,6 @@
   const getValue = (id: FieldId): string => draft[id] ?? ''
 
   const isChanged = (id: FieldId): boolean => draft[id] !== baseline[id]
-
-  const handleSelect = (id: FieldId, event: Event): void => {
-    const target = event.target as HTMLSelectElement | null
-    onUpdate(id, target?.value ?? '')
-  }
 </script>
 
 <SettingsSection
@@ -55,15 +51,12 @@
       <div class="field" class:changed={isChanged(field.id)}>
         <label for={field.id}>{field.label}</label>
         {#if field.type === 'select'}
-          <select
+          <Select
             id={field.id}
             value={getValue(field.id)}
-            onchange={(event) => handleSelect(field.id, event)}
-          >
-            {#each field.options ?? [] as option}
-              <option value={option.value}>{option.label}</option>
-            {/each}
-          </select>
+            options={field.options ?? []}
+            onchange={(val) => onUpdate(field.id, val)}
+          />
         {/if}
         <p>{field.description}</p>
       </div>
@@ -95,22 +88,6 @@
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: rgba(255, 255, 255, 0.7);
-  }
-
-  .field select {
-    background: var(--panel-strong);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    color: var(--text);
-    border-radius: var(--radius-md);
-    padding: 10px 12px;
-    font-size: 13px;
-    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
-  }
-
-  .field select:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent-soft);
   }
 
   .field p {

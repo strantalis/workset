@@ -1,6 +1,7 @@
 <script lang="ts">
   import type {SettingsDefaults} from '../../../types'
   import SettingsSection from '../SettingsSection.svelte'
+  import Select from '../../ui/Select.svelte'
 
   type FieldId = keyof SettingsDefaults
 
@@ -51,103 +52,106 @@
     const target = event.target as HTMLInputElement | null
     onUpdate(id, target?.value ?? '')
   }
-
-  const handleSelect = (id: FieldId, event: Event): void => {
-    const target = event.target as HTMLSelectElement | null
-    onUpdate(id, target?.value ?? '')
-  }
 </script>
 
 <SettingsSection
   title="Terminal defaults"
   description="Defaults for the GUI terminal launcher."
 >
-  <div class="fields">
+  <div class="compact-fields">
     {#each fields as field}
-      <div class="field" class:changed={isChanged(field.id)}>
+      <div class="compact-field" class:changed={isChanged(field.id)}>
         <label for={field.id}>{field.label}</label>
-        {#if field.type === 'select'}
-          <select
-            id={field.id}
-            value={getValue(field.id)}
-            onchange={(event) => handleSelect(field.id, event)}
-          >
-            {#each field.options ?? [] as option}
-              <option value={option.value}>{option.label}</option>
-            {/each}
-          </select>
-        {:else}
-          <input
-            id={field.id}
-            type="text"
-            placeholder={field.placeholder ?? ''}
-            value={getValue(field.id)}
-            autocapitalize="off"
-            autocorrect="off"
-            spellcheck="false"
-            oninput={(event) => handleInput(field.id, event)}
-          />
-        {/if}
-        <p>{field.description}</p>
+        <div class="input-row">
+          {#if field.type === 'select'}
+            <Select
+              id={field.id}
+              value={getValue(field.id)}
+              options={field.options ?? []}
+              onchange={(val) => onUpdate(field.id, val)}
+            />
+          {:else}
+            <input
+              id={field.id}
+              type="text"
+              placeholder={field.placeholder ?? ''}
+              value={getValue(field.id)}
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
+              oninput={(event) => handleInput(field.id, event)}
+            />
+          {/if}
+          <span class="hint">{field.description}</span>
+        </div>
       </div>
     {/each}
   </div>
-</SettingsSection>
-<div class="sessiond-actions">
-  <div class="hint">
-    Restart the session daemon if terminals get stuck or after changing daemon settings via CLI.
+
+  <div class="sessiond-actions">
+    <span class="hint">Restart if terminals get stuck or after changing daemon settings.</span>
+    <button class="restart" type="button" onclick={onRestartSessiond} disabled={restartingSessiond}>
+      {restartingSessiond ? 'Restarting…' : 'Restart daemon'}
+    </button>
   </div>
-  <button class="restart" type="button" onclick={onRestartSessiond} disabled={restartingSessiond}>
-    {restartingSessiond ? 'Restarting session daemon…' : 'Restart session daemon'}
-  </button>
-</div>
+</SettingsSection>
 
 <style>
-  .fields {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 16px;
-  }
-
-  .field {
+  .compact-fields {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 12px;
   }
 
-  .field.changed label::after {
+  .compact-field {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .compact-field.changed label::after {
     content: '*';
     color: var(--warning);
     margin-left: 4px;
   }
 
-  .field label {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: rgba(255, 255, 255, 0.7);
+  .compact-field label {
+    font-size: 13px;
+    color: var(--text);
+    min-width: 140px;
+    flex-shrink: 0;
   }
 
-  .field input,
-  .field select {
+  .input-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+  }
+
+  .input-row :global(.select-wrapper) {
+    width: 140px;
+    flex-shrink: 0;
+  }
+
+  .compact-field input {
+    width: 100px;
     background: var(--panel-strong);
     border: 1px solid rgba(255, 255, 255, 0.08);
     color: var(--text);
     border-radius: var(--radius-md);
-    padding: 10px 12px;
+    padding: 8px 12px;
     font-size: 13px;
     transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   }
 
-  .field input:focus,
-  .field select:focus {
+  .compact-field input:focus {
     outline: none;
     border-color: var(--accent);
     box-shadow: 0 0 0 2px var(--accent-soft);
   }
 
-  .field p {
-    margin: 0;
+  .hint {
     font-size: 12px;
     color: var(--muted);
   }
@@ -156,17 +160,15 @@
     margin-top: 16px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 12px;
-    padding: 12px 14px;
-    border-radius: 12px;
+    padding: 10px 14px;
+    border-radius: 10px;
     border: 1px dashed var(--border);
     background: rgba(255, 255, 255, 0.02);
   }
 
   .sessiond-actions .hint {
-    font-size: 12px;
-    color: var(--muted);
+    flex: 1;
   }
 
   .restart {
@@ -174,18 +176,44 @@
     border: 1px solid var(--border);
     color: var(--text);
     border-radius: var(--radius-md);
-    padding: 8px 12px;
+    padding: 6px 12px;
     font-size: 12px;
     cursor: pointer;
+    white-space: nowrap;
     transition: border-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
   }
 
   .restart:hover {
     border-color: var(--accent);
-    color: var(--text);
   }
 
   .restart:active {
     transform: scale(0.98);
+  }
+
+  @media (max-width: 600px) {
+    .compact-field {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+    }
+
+    .compact-field label {
+      min-width: unset;
+    }
+
+    .input-row {
+      flex-direction: column;
+      align-items: flex-start;
+      width: 100%;
+    }
+
+    .input-row :global(.select-wrapper) {
+      width: 100%;
+    }
+
+    .compact-field input {
+      width: 100%;
+    }
   }
 </style>
