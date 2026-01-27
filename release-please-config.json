@@ -3,7 +3,9 @@
   "include-component-in-tag": true,
   "packages": {
     ".": {
+      "component": "workset",
       "release-type": "go",
+      "changelog-path": "CHANGELOG.md",
       "include-v-in-tag": true,
       "versioning": "always-bump-minor",
       "initial-version": "0.1.0",
@@ -11,7 +13,9 @@
       "bump-patch-for-minor-pre-major": false
     },
     "wails-ui/workset": {
+      "component": "workset-wails",
       "release-type": "go",
+      "changelog-path": "wails-ui/workset/CHANGELOG.md",
       "include-v-in-tag": true,
       "versioning": "always-bump-minor",
       "initial-version": "0.1.0",
