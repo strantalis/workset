@@ -43,6 +43,7 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	logRestartf("app_startup build_marker=restart-logging-v2")
 	normalizePathFromShell()
+	logPathState()
 	setSessiondPathFromCwd()
 	ensureSessiondUpToDate(a)
 	ensureSessiondStarted(a)
@@ -134,4 +135,11 @@ func mergePathEntries(current, fromLogin string) string {
 		merged = append(merged, value)
 	}
 	return strings.Join(merged, ":")
+}
+
+func logPathState() {
+	if !envTruthy(os.Getenv("WORKSET_DEBUG_PATH")) {
+		return
+	}
+	logRestartf("env_path shell=%q path=%q", os.Getenv("SHELL"), os.Getenv("PATH"))
 }
