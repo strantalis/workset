@@ -92,13 +92,17 @@ func normalizePathFromShell() {
 	if shell == "" {
 		shell = "/bin/sh"
 	}
-	cmd := exec.Command(shell, "-lc", "printf '%s' \"$PATH\"")
-	output, err := cmd.Output()
+	loginPath, err := pathFromShell(shell)
 	if err != nil {
+		if envTruthy(os.Getenv("WORKSET_DEBUG_PATH")) {
+			logRestartf("env_path_shell_failed shell=%q err=%v", shell, err)
+		}
 		return
 	}
-	loginPath := strings.TrimSpace(string(output))
 	if loginPath == "" {
+		if envTruthy(os.Getenv("WORKSET_DEBUG_PATH")) {
+			logRestartf("env_path_shell_empty shell=%q", shell)
+		}
 		return
 	}
 	currentPath := os.Getenv("PATH")
@@ -106,6 +110,35 @@ func normalizePathFromShell() {
 	if merged != "" && merged != currentPath {
 		_ = os.Setenv("PATH", merged)
 	}
+}
+
+const pathOutputPrefix = "__WORKSET_PATH__"
+
+func pathFromShell(shell string) (string, error) {
+	command := "printf '__WORKSET_PATH__%s\\n' \"$PATH\""
+	args := []string{"-lc", command}
+	isZsh := strings.HasSuffix(filepath.Base(shell), "zsh")
+	if isZsh {
+		args = []string{"-lic", command}
+	}
+	output, err := exec.Command(shell, args...).Output()
+	if err != nil && isZsh {
+		output, err = exec.Command(shell, "-lc", command).Output()
+	}
+	if err != nil {
+		return "", err
+	}
+	return extractPathFromShellOutput(string(output)), nil
+}
+
+func extractPathFromShellOutput(output string) string {
+	var path string
+	for _, line := range strings.Split(output, "\n") {
+		if strings.HasPrefix(line, pathOutputPrefix) {
+			path = strings.TrimPrefix(line, pathOutputPrefix)
+		}
+	}
+	return strings.TrimSpace(path)
 }
 
 func mergePathEntries(current, fromLogin string) string {
