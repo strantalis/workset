@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/strantalis/workset/pkg/sessiond"
@@ -40,6 +42,7 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	logRestartf("app_startup build_marker=restart-logging-v2")
+	normalizePathFromShell()
 	setSessiondPathFromCwd()
 	ensureSessiondUpToDate(a)
 	ensureSessiondStarted(a)
@@ -78,4 +81,57 @@ func setSessiondPathFromCwd() {
 			return
 		}
 	}
+}
+
+func normalizePathFromShell() {
+	if runtime.GOOS == "windows" {
+		return
+	}
+	shell := strings.TrimSpace(os.Getenv("SHELL"))
+	if shell == "" {
+		shell = "/bin/sh"
+	}
+	cmd := exec.Command(shell, "-lc", "printf '%s' \"$PATH\"")
+	output, err := cmd.Output()
+	if err != nil {
+		return
+	}
+	loginPath := strings.TrimSpace(string(output))
+	if loginPath == "" {
+		return
+	}
+	currentPath := os.Getenv("PATH")
+	merged := mergePathEntries(currentPath, loginPath)
+	if merged != "" && merged != currentPath {
+		_ = os.Setenv("PATH", merged)
+	}
+}
+
+func mergePathEntries(current, fromLogin string) string {
+	if current == "" {
+		return fromLogin
+	}
+	seen := make(map[string]struct{})
+	merged := make([]string, 0, 16)
+	for _, value := range strings.Split(current, ":") {
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		merged = append(merged, value)
+	}
+	for _, value := range strings.Split(fromLogin, ":") {
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		merged = append(merged, value)
+	}
+	return strings.Join(merged, ":")
 }
