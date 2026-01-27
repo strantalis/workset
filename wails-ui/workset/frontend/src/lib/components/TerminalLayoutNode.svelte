@@ -1,6 +1,7 @@
 <script lang="ts">
   import TerminalPane from './TerminalPane.svelte'
   import Self from './TerminalLayoutNode.svelte'
+  import {shouldHandlePaneKeydown} from './terminalLayoutKeydown'
 
   type DragState = {
     tabId: string
@@ -294,13 +295,11 @@
       tabindex="0"
       onclick={() => onFocusPane(node.id)}
       onkeydown={(event) => {
-        if (event.currentTarget !== event.target) {
+        if (!shouldHandlePaneKeydown(event)) {
           return
         }
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          onFocusPane(node.id)
-        }
+        event.preventDefault()
+        onFocusPane(node.id)
       }}
       ondragleave={handleDragLeave}
     >
