@@ -26,6 +26,9 @@ import {
   CommitAndPush,
   DeleteAlias,
   DeleteGroup,
+  DeleteReviewComment,
+  EditReviewComment,
+  GetCurrentGitHubUser,
   GetGroup,
   GetRepoDiff,
   GetRepoDiffSummary,
@@ -49,6 +52,8 @@ import {
   RemoveRepo,
   RemoveWorkspace,
   RenameWorkspace,
+  ReplyToReviewComment,
+  ResolveReviewThread,
   SendPullRequestReviewsToTerminal,
   UpdateAlias,
   UpdateGroup,
@@ -128,8 +133,11 @@ type PullRequestCreateResponse = {
 
 type PullRequestReviewCommentResponse = {
   id: number
+  node_id?: string
+  thread_id?: string
   review_id?: number
   author?: string
+  author_id?: number
   body: string
   path: string
   line?: number
@@ -144,6 +152,7 @@ type PullRequestReviewCommentResponse = {
   updated_at?: string
   in_reply_to?: number
   reply?: boolean
+  resolved?: boolean
 }
 
 export type RepoLocalStatus = {
@@ -643,8 +652,11 @@ export async function fetchPullRequestReviews(
   })) as unknown as {comments: PullRequestReviewCommentResponse[]}
   return (result.comments ?? []).map((comment) => ({
     id: comment.id,
+    nodeId: comment.node_id,
+    threadId: comment.thread_id,
     reviewId: comment.review_id,
     author: comment.author,
+    authorId: comment.author_id,
     body: comment.body,
     path: comment.path,
     line: comment.line,
@@ -658,7 +670,8 @@ export async function fetchPullRequestReviews(
     createdAt: comment.created_at,
     updatedAt: comment.updated_at,
     inReplyTo: comment.in_reply_to,
-    reply: comment.reply
+    reply: comment.reply,
+    resolved: comment.resolved
   }))
 }
 
@@ -710,5 +723,109 @@ export async function commitAndPush(
     repoId,
     message: message ?? ''
   })) as CommitAndPushResult
+  return result
+}
+
+function mapCommentResponse(comment: PullRequestReviewCommentResponse): PullRequestReviewComment {
+  return {
+    id: comment.id,
+    nodeId: comment.node_id,
+    threadId: comment.thread_id,
+    reviewId: comment.review_id,
+    author: comment.author,
+    authorId: comment.author_id,
+    body: comment.body,
+    path: comment.path,
+    line: comment.line,
+    side: comment.side,
+    commitId: comment.commit_id,
+    originalCommit: comment.original_commit_id,
+    originalLine: comment.original_line,
+    originalStart: comment.original_start_line,
+    outdated: comment.outdated,
+    url: comment.url,
+    createdAt: comment.created_at,
+    updatedAt: comment.updated_at,
+    inReplyTo: comment.in_reply_to,
+    reply: comment.reply,
+    resolved: comment.resolved
+  }
+}
+
+export async function replyToReviewComment(
+  workspaceId: string,
+  repoId: string,
+  commentId: number,
+  body: string,
+  number?: number,
+  branch?: string
+): Promise<PullRequestReviewComment> {
+  const result = (await ReplyToReviewComment({
+    workspaceId,
+    repoId,
+    commentId,
+    body,
+    number: number ?? 0,
+    branch: branch ?? ''
+  })) as PullRequestReviewCommentResponse
+  return mapCommentResponse(result)
+}
+
+export async function editReviewComment(
+  workspaceId: string,
+  repoId: string,
+  commentId: number,
+  body: string
+): Promise<PullRequestReviewComment> {
+  const result = (await EditReviewComment({
+    workspaceId,
+    repoId,
+    commentId,
+    body
+  })) as PullRequestReviewCommentResponse
+  return mapCommentResponse(result)
+}
+
+export async function deleteReviewComment(
+  workspaceId: string,
+  repoId: string,
+  commentId: number
+): Promise<void> {
+  await DeleteReviewComment({
+    workspaceId,
+    repoId,
+    commentId
+  })
+}
+
+export async function resolveReviewThread(
+  workspaceId: string,
+  repoId: string,
+  threadId: string,
+  resolve: boolean
+): Promise<boolean> {
+  return (await ResolveReviewThread({
+    workspaceId,
+    repoId,
+    threadId,
+    resolve
+  })) as boolean
+}
+
+export type GitHubUser = {
+  id: number
+  login: string
+  name?: string
+  email?: string
+}
+
+export async function fetchCurrentGitHubUser(
+  workspaceId: string,
+  repoId: string
+): Promise<GitHubUser> {
+  const result = (await GetCurrentGitHubUser({
+    workspaceId,
+    repoId
+  })) as GitHubUser
   return result
 }

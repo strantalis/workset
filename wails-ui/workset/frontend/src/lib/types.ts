@@ -161,8 +161,11 @@ export type PullRequestCreated = PullRequestSummary
 
 export type PullRequestReviewComment = {
   id: number
+  nodeId?: string
+  threadId?: string
   reviewId?: number
   author?: string
+  authorId?: number
   body: string
   path: string
   line?: number
@@ -177,6 +180,7 @@ export type PullRequestReviewComment = {
   updatedAt?: string
   inReplyTo?: number
   reply?: boolean
+  resolved?: boolean
 }
 
 export type PullRequestGenerated = {

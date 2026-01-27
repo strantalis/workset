@@ -130,8 +130,11 @@ type PullRequestReviewsInput struct {
 // PullRequestReviewCommentJSON describes a review comment.
 type PullRequestReviewCommentJSON struct {
 	ID             int64  `json:"id"`
+	NodeID         string `json:"node_id,omitempty"`
+	ThreadID       string `json:"thread_id,omitempty"`
 	ReviewID       int64  `json:"review_id,omitempty"`
 	Author         string `json:"author,omitempty"`
+	AuthorID       int64  `json:"author_id,omitempty"`
 	Body           string `json:"body"`
 	Path           string `json:"path"`
 	Line           int    `json:"line,omitempty"`
@@ -153,6 +156,77 @@ type PullRequestReviewCommentJSON struct {
 type PullRequestReviewCommentsResult struct {
 	Comments []PullRequestReviewCommentJSON
 	Config   config.GlobalConfigLoadInfo
+}
+
+// ReplyToReviewCommentInput describes inputs for replying to a review comment.
+type ReplyToReviewCommentInput struct {
+	Workspace WorkspaceSelector
+	Repo      string
+	Number    int    // PR number (0 = auto-detect)
+	Branch    string // Branch to resolve PR if Number is 0
+	CommentID int64
+	Body      string
+}
+
+// ReviewCommentResult wraps a single review comment with config metadata.
+type ReviewCommentResult struct {
+	Comment PullRequestReviewCommentJSON
+	Config  config.GlobalConfigLoadInfo
+}
+
+// EditReviewCommentInput describes inputs for editing a review comment.
+type EditReviewCommentInput struct {
+	Workspace WorkspaceSelector
+	Repo      string
+	CommentID int64
+	Body      string
+}
+
+// DeleteReviewCommentInput describes inputs for deleting a review comment.
+type DeleteReviewCommentInput struct {
+	Workspace WorkspaceSelector
+	Repo      string
+	CommentID int64
+}
+
+// DeleteReviewCommentResult wraps the result of a delete operation.
+type DeleteReviewCommentResult struct {
+	Success bool
+	Config  config.GlobalConfigLoadInfo
+}
+
+// ResolveReviewThreadInput describes inputs for resolving/unresolving a review thread.
+type ResolveReviewThreadInput struct {
+	Workspace WorkspaceSelector
+	Repo      string
+	ThreadID  string // GraphQL node ID
+	Resolve   bool   // true = resolve, false = unresolve
+}
+
+// ResolveReviewThreadResult wraps the result of a resolve/unresolve operation.
+type ResolveReviewThreadResult struct {
+	Resolved bool
+	Config   config.GlobalConfigLoadInfo
+}
+
+// GitHubUserInput describes inputs for getting the current GitHub user.
+type GitHubUserInput struct {
+	Workspace WorkspaceSelector
+	Repo      string
+}
+
+// GitHubUserJSON describes a GitHub user.
+type GitHubUserJSON struct {
+	ID    int64  `json:"id"`
+	Login string `json:"login"`
+	Name  string `json:"name,omitempty"`
+	Email string `json:"email,omitempty"`
+}
+
+// GitHubUserResult wraps the current user with config metadata.
+type GitHubUserResult struct {
+	User   GitHubUserJSON
+	Config config.GlobalConfigLoadInfo
 }
 
 // PullRequestGenerateInput describes inputs for AI PR generation.

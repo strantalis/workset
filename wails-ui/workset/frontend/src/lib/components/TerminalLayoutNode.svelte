@@ -239,6 +239,8 @@
         {onTabSplitDrop}
       />
     </div>
+    <!-- role="separator" with tabindex makes this an interactive widget per WAI-ARIA -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
     <div
       class="split-divider"
       class:active={isDraggingDivider}

@@ -20,6 +20,9 @@
   import {
     commitAndPush,
     createPullRequest,
+    deleteReviewComment,
+    editReviewComment,
+    fetchCurrentGitHubUser,
     fetchTrackedPullRequest,
     fetchPullRequestReviews,
     fetchPullRequestStatus,
@@ -30,6 +33,8 @@
     fetchBranchFileDiff,
     generatePullRequestText,
     listRemotes,
+    replyToReviewComment,
+    resolveReviewThread,
     sendPullRequestReviewsToTerminal
   } from '../api'
   import type {RepoLocalStatus} from '../api'
@@ -122,6 +127,9 @@
   let prReviewsLoading = $state(false)
   let prReviewsSent = $state(false)
 
+  // Comment management state
+  let currentUserId: number | null = $state(null)
+
   let localStatus: RepoLocalStatus | null = $state(null)
   let commitPushLoading = $state(false)
   let commitPushError: string | null = $state(null)
@@ -156,14 +164,19 @@
   // Annotation metadata type for review comment threads
   type ReviewCommentItem = {
     id: number
+    nodeId?: string
+    threadId?: string
     author: string
+    authorId?: number
     body: string
     url?: string
     isReply: boolean
+    resolved?: boolean
   }
 
   type ReviewAnnotation = {
     thread: ReviewCommentItem[]
+    resolved: boolean
   }
 
   const buildOptions = (): FileDiffOptions<ReviewAnnotation> => ({
@@ -179,18 +192,250 @@
       if (!annotation.metadata || annotation.metadata.thread.length === 0) return undefined
       const el = document.createElement('div')
       el.className = 'diff-annotation-thread'
-      el.innerHTML = annotation.metadata.thread.map((comment, idx) => `
-        <div class="diff-annotation${idx > 0 ? ' diff-annotation-reply' : ''}">
+
+      const lastComment = annotation.metadata.thread[annotation.metadata.thread.length - 1]
+      const rootComment = annotation.metadata.thread[0]
+      const isResolved = annotation.metadata.resolved
+      const resolvedThreadId =
+        rootComment.threadId ??
+        (rootComment.nodeId && rootComment.nodeId.startsWith('PRRT_') ? rootComment.nodeId : undefined)
+
+      // If resolved, show collapsed view by default
+      if (isResolved) {
+        el.classList.add('diff-annotation-resolved', 'diff-annotation-collapsed')
+      }
+
+      // Collapsed header for resolved threads
+      const collapsedHeader = document.createElement('div')
+      collapsedHeader.className = 'diff-annotation-collapsed-header'
+      collapsedHeader.innerHTML = `
+        <span class="diff-annotation-collapsed-icon">▸</span>
+        <span class="diff-annotation-collapsed-badge">Resolved</span>
+        <span class="diff-annotation-collapsed-preview">${escapeHtml(rootComment.body.substring(0, 60))}${rootComment.body.length > 60 ? '...' : ''}</span>
+        <span class="diff-annotation-collapsed-count">${annotation.metadata.thread.length} comment${annotation.metadata.thread.length > 1 ? 's' : ''}</span>
+      `
+      el.appendChild(collapsedHeader)
+
+      // Full thread content wrapper
+      const contentWrapper = document.createElement('div')
+      contentWrapper.className = 'diff-annotation-content'
+      contentWrapper.innerHTML = annotation.metadata.thread.map((comment, idx) => {
+        const isOwn = currentUserId && comment.authorId && comment.authorId === currentUserId
+
+        return `
+        <div class="diff-annotation${idx > 0 ? ' diff-annotation-reply' : ''}" data-comment-id="${comment.id}">
           <div class="diff-annotation-header">
             <span class="diff-annotation-avatar">${comment.author[0].toUpperCase()}</span>
             <span class="diff-annotation-author">${comment.author}</span>
+            <div class="diff-annotation-actions">
+              ${isOwn ? `
+                <button class="diff-action-btn" data-action="edit" data-comment-id="${comment.id}" title="Edit">✎</button>
+                <button class="diff-action-btn diff-action-delete" data-action="delete" data-comment-id="${comment.id}" title="Delete">×</button>
+              ` : ''}
+            </div>
           </div>
           <div class="diff-annotation-body">${escapeHtml(comment.body)}</div>
         </div>
-      `).join('')
+      `}).join('')
+      el.appendChild(contentWrapper)
+
+      // Add thread footer with reply and resolve buttons
+      const footerEl = document.createElement('div')
+      footerEl.className = 'diff-annotation-footer'
+      footerEl.innerHTML = `
+        <button class="diff-action-btn diff-action-reply" data-action="reply" data-comment-id="${lastComment.id}" title="Reply">↩ Reply</button>
+        ${resolvedThreadId ? `
+          <button class="diff-action-btn ${isResolved ? 'diff-action-unresolve' : 'diff-action-resolve'}" data-action="${isResolved ? 'unresolve' : 'resolve'}" data-thread-id="${resolvedThreadId}" title="${isResolved ? 'Unresolve thread' : 'Resolve thread'}">${isResolved ? '↺ Unresolve' : '✓ Resolve'}</button>
+        ` : ''}
+      `
+      el.appendChild(footerEl)
+
+      // Add event listeners
+      el.addEventListener('click', async (e) => {
+        const target = e.target as HTMLElement
+
+        // Handle collapsed header click to expand
+        if (target.closest('.diff-annotation-collapsed-header')) {
+          el.classList.remove('diff-annotation-collapsed')
+          return
+        }
+
+        const btn = target.closest('[data-action]') as HTMLElement
+        if (!btn) return
+
+        const action = btn.dataset.action
+        const commentId = btn.dataset.commentId ? parseInt(btn.dataset.commentId, 10) : null
+        const threadId = btn.dataset.threadId
+
+        if (action === 'reply' && commentId) {
+          injectReplyForm(el, commentId)
+        } else if (action === 'edit' && commentId) {
+          const comment = prReviews.find(c => c.id === commentId)
+          if (comment) injectEditForm(el, comment)
+        } else if (action === 'delete' && commentId) {
+          handleDeleteComment(commentId)
+        } else if (action === 'resolve' && threadId) {
+          handleResolveThread(threadId, true)
+        } else if (action === 'unresolve' && threadId) {
+          handleResolveThread(threadId, false)
+        } else if (action === 'cancel-reply') {
+          removeInlineForm(el)
+        } else if (action === 'submit-reply' && commentId) {
+          await submitInlineReply(el, commentId)
+        } else if (action === 'cancel-edit') {
+          removeInlineForm(el)
+        } else if (action === 'submit-edit' && commentId) {
+          await submitInlineEdit(el, commentId)
+        }
+      })
+
       return el
     }
   })
+
+  const injectReplyForm = (threadEl: HTMLElement, commentId: number): void => {
+    // Remove any existing form
+    removeInlineForm(threadEl)
+
+    const formEl = document.createElement('div')
+    formEl.className = 'diff-annotation-inline-form'
+    formEl.innerHTML = `
+      <textarea class="diff-inline-textarea" placeholder="Write your reply..." rows="3"></textarea>
+      <div class="diff-inline-form-actions">
+        <button class="btn-ghost" data-action="cancel-reply" type="button">Cancel</button>
+        <button class="btn-primary" data-action="submit-reply" data-comment-id="${commentId}" type="button">Reply</button>
+      </div>
+    `
+    threadEl.appendChild(formEl)
+
+    // Focus the textarea
+    const textarea = formEl.querySelector('textarea')
+    textarea?.focus()
+  }
+
+  const injectEditForm = (threadEl: HTMLElement, comment: PullRequestReviewComment): void => {
+    // Remove any existing form
+    removeInlineForm(threadEl)
+
+    // Find and hide the original comment body
+    const commentEl = threadEl.querySelector(`[data-comment-id="${comment.id}"]`)
+    const bodyEl = commentEl?.querySelector('.diff-annotation-body') as HTMLElement
+    if (bodyEl) bodyEl.style.display = 'none'
+
+    const formEl = document.createElement('div')
+    formEl.className = 'diff-annotation-inline-form'
+    formEl.dataset.editingId = String(comment.id)
+    formEl.innerHTML = `
+      <textarea class="diff-inline-textarea" rows="3">${escapeHtml(comment.body)}</textarea>
+      <div class="diff-inline-form-actions">
+        <button class="btn-ghost" data-action="cancel-edit" type="button">Cancel</button>
+        <button class="btn-primary" data-action="submit-edit" data-comment-id="${comment.id}" type="button">Save</button>
+      </div>
+    `
+
+    // Insert after the comment header
+    if (commentEl) {
+      commentEl.appendChild(formEl)
+    } else {
+      threadEl.appendChild(formEl)
+    }
+
+    // Focus the textarea
+    const textarea = formEl.querySelector('textarea')
+    textarea?.focus()
+  }
+
+  const removeInlineForm = (threadEl: HTMLElement): void => {
+    const existingForm = threadEl.querySelector('.diff-annotation-inline-form')
+    if (existingForm) {
+      // If editing, restore the hidden body
+      const editingId = (existingForm as HTMLElement).dataset.editingId
+      if (editingId) {
+        const commentEl = threadEl.querySelector(`[data-comment-id="${editingId}"]`)
+        const bodyEl = commentEl?.querySelector('.diff-annotation-body') as HTMLElement
+        if (bodyEl) bodyEl.style.display = ''
+      }
+      existingForm.remove()
+    }
+  }
+
+  const submitInlineReply = async (threadEl: HTMLElement, commentId: number): Promise<void> => {
+    const formEl = threadEl.querySelector('.diff-annotation-inline-form')
+    const textarea = formEl?.querySelector('textarea') as HTMLTextAreaElement
+    const submitBtn = formEl?.querySelector('[data-action="submit-reply"]') as HTMLButtonElement
+
+    if (!textarea || !textarea.value.trim()) return
+
+    // Disable form while submitting
+    textarea.disabled = true
+    if (submitBtn) {
+      submitBtn.disabled = true
+      submitBtn.textContent = 'Posting...'
+    }
+
+    try {
+      const newComment = await replyToReviewComment(
+        workspaceId,
+        repo.id,
+        commentId,
+        textarea.value.trim(),
+        parseNumber(prNumberInput),
+        prBranchInput.trim() || undefined
+      )
+      prReviews = [...prReviews, newComment]
+      removeInlineForm(threadEl)
+      // Re-render the diff to show the new comment
+      renderDiff()
+    } catch (err) {
+      // Re-enable form on error
+      textarea.disabled = false
+      if (submitBtn) {
+        submitBtn.disabled = false
+        submitBtn.textContent = 'Reply'
+      }
+      const errorMsg = formatError(err, 'Failed to post reply.')
+      alert(errorMsg)
+    }
+  }
+
+  const submitInlineEdit = async (threadEl: HTMLElement, commentId: number): Promise<void> => {
+    const formEl = threadEl.querySelector('.diff-annotation-inline-form')
+    const textarea = formEl?.querySelector('textarea') as HTMLTextAreaElement
+    const submitBtn = formEl?.querySelector('[data-action="submit-edit"]') as HTMLButtonElement
+
+    if (!textarea || !textarea.value.trim()) return
+
+    // Disable form while submitting
+    textarea.disabled = true
+    if (submitBtn) {
+      submitBtn.disabled = true
+      submitBtn.textContent = 'Saving...'
+    }
+
+    try {
+      const updated = await editReviewComment(
+        workspaceId,
+        repo.id,
+        commentId,
+        textarea.value.trim()
+      )
+      prReviews = prReviews.map((c) =>
+        c.id === updated.id ? { ...c, ...updated, threadId: updated.threadId ?? c.threadId } : c
+      )
+      removeInlineForm(threadEl)
+      // Re-render the diff to show the updated comment
+      renderDiff()
+    } catch (err) {
+      // Re-enable form on error
+      textarea.disabled = false
+      if (submitBtn) {
+        submitBtn.disabled = false
+        submitBtn.textContent = 'Save'
+      }
+      const errorMsg = formatError(err, 'Failed to save edit.')
+      alert(errorMsg)
+    }
+  }
 
   const escapeHtml = (text: string): string => {
     const div = document.createElement('div')
@@ -243,20 +488,29 @@
       side: (root.side?.toLowerCase() === 'left' ? 'deletions' : 'additions') as 'deletions' | 'additions',
       lineNumber: root.line!,
       metadata: {
+        resolved: root.resolved ?? false,
         thread: [
           {
             id: root.id,
+            nodeId: root.nodeId,
+            threadId: root.threadId,
             author: root.author ?? 'Reviewer',
+            authorId: root.authorId,
             body: root.body,
             url: root.url,
-            isReply: false
+            isReply: false,
+            resolved: root.resolved
           },
           ...replies.map(r => ({
             id: r.id,
+            nodeId: r.nodeId,
+            threadId: r.threadId ?? root.threadId,
             author: r.author ?? 'Reviewer',
+            authorId: r.authorId,
             body: r.body,
             url: r.url,
-            isReply: true
+            isReply: true,
+            resolved: root.resolved
           }))
         ]
       }
@@ -324,11 +578,25 @@
         parseNumber(prNumberInput),
         prBranchInput.trim() || undefined
       )
+      // Also fetch current user for edit/delete permissions
+      if (currentUserId === null) {
+        loadCurrentUser()
+      }
     } catch (err) {
       prReviewsError = formatError(err, 'Failed to load review comments.')
       prReviews = []
     } finally {
       prReviewsLoading = false
+    }
+  }
+
+  const loadCurrentUser = async (): Promise<void> => {
+    try {
+      const user = await fetchCurrentGitHubUser(workspaceId, repo.id)
+      currentUserId = user.id
+    } catch {
+      // Non-fatal: if we can't get user, edit/delete buttons won't show
+      currentUserId = null
     }
   }
 
@@ -429,6 +697,40 @@
       prReviewsSent = true
     } catch (err) {
       prReviewsError = formatError(err, 'Failed to send reviews to terminal.')
+    }
+  }
+
+  const handleDeleteComment = async (commentId: number): Promise<void> => {
+    // Note: native confirm() doesn't work in Wails WebView on macOS
+    // The delete button click is explicit enough user intent
+    try {
+      await deleteReviewComment(workspaceId, repo.id, commentId)
+      await loadPrReviews()
+      renderDiff()
+    } catch (err) {
+      alert(formatError(err, 'Failed to delete comment.'))
+    }
+  }
+
+  let resolvingThread = $state(false)
+
+  const handleResolveThread = async (threadId: string, resolve: boolean): Promise<void> => {
+    if (!threadId) {
+      alert('No thread ID found for this comment')
+      return
+    }
+    if (resolvingThread) return
+    resolvingThread = true
+    try {
+      await resolveReviewThread(workspaceId, repo.id, threadId, resolve)
+      // Refresh reviews to get updated state
+      await loadPrReviews()
+      // Re-render diff with updated data
+      renderDiff()
+    } catch (err) {
+      alert(formatError(err, resolve ? 'Failed to resolve thread.' : 'Failed to unresolve thread.'))
+    } finally {
+      resolvingThread = false
     }
   }
 
@@ -2358,5 +2660,237 @@
 
   :global(.diff-annotation-reply .diff-annotation-body) {
     font-size: 12px;
+  }
+
+  /* Comment action buttons */
+  :global(.diff-annotation-actions) {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  :global(.diff-annotation:hover .diff-annotation-actions) {
+    opacity: 1;
+  }
+
+  :global(.diff-action-btn) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border: none;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--muted);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  :global(.diff-action-btn:hover) {
+    background: rgba(255, 255, 255, 0.15);
+    color: var(--text);
+  }
+
+  :global(.diff-action-delete:hover) {
+    background: rgba(248, 81, 73, 0.2);
+    color: #f85149;
+  }
+
+  :global(.diff-annotation-footer) {
+    display: flex;
+    gap: 8px;
+    padding: 10px 14px;
+    background: rgba(99, 102, 241, 0.04);
+    border-top: 1px solid rgba(99, 102, 241, 0.15);
+  }
+
+  :global(.diff-action-reply) {
+    color: #6366f1;
+  }
+
+  :global(.diff-action-reply:hover) {
+    background: rgba(99, 102, 241, 0.15);
+    color: #818cf8;
+  }
+
+  :global(.diff-action-resolve) {
+    color: #3fb950;
+  }
+
+  :global(.diff-action-resolve:hover) {
+    background: rgba(46, 160, 67, 0.15);
+    color: #4ade80;
+  }
+
+  /* Inline comment form */
+  :global(.diff-annotation-inline-form) {
+    padding: 12px 14px;
+    background: rgba(99, 102, 241, 0.06);
+    border-top: 1px solid rgba(99, 102, 241, 0.15);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  :global(.diff-inline-textarea) {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.5;
+    resize: vertical;
+    min-height: 80px;
+  }
+
+  :global(.diff-inline-textarea:focus) {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  :global(.diff-inline-textarea:disabled) {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  :global(.diff-inline-form-actions) {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  :global(.diff-inline-form-actions .btn-ghost) {
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  :global(.diff-inline-form-actions .btn-ghost:hover:not(:disabled)) {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text);
+  }
+
+  :global(.diff-inline-form-actions .btn-primary) {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 6px;
+    background: var(--accent);
+    color: white;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  :global(.diff-inline-form-actions .btn-primary:hover:not(:disabled)) {
+    opacity: 0.9;
+  }
+
+  :global(.diff-inline-form-actions .btn-primary:disabled),
+  :global(.diff-inline-form-actions .btn-ghost:disabled) {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* Resolved thread styles */
+  :global(.diff-annotation-thread.diff-annotation-resolved) {
+    border-color: rgba(46, 160, 67, 0.25);
+    border-left-color: #3fb950;
+  }
+
+  :global(.diff-annotation-thread.diff-annotation-resolved .diff-annotation) {
+    background: linear-gradient(135deg, rgba(46, 160, 67, 0.06) 0%, rgba(46, 160, 67, 0.04) 100%);
+  }
+
+  :global(.diff-annotation-thread.diff-annotation-resolved .diff-annotation-reply) {
+    background: linear-gradient(135deg, rgba(46, 160, 67, 0.03) 0%, rgba(46, 160, 67, 0.02) 100%);
+    border-top-color: rgba(46, 160, 67, 0.15);
+  }
+
+  :global(.diff-annotation-thread.diff-annotation-resolved .diff-annotation-footer) {
+    background: rgba(46, 160, 67, 0.04);
+    border-top-color: rgba(46, 160, 67, 0.15);
+  }
+
+  /* Collapsed header for resolved threads */
+  :global(.diff-annotation-collapsed-header) {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: linear-gradient(135deg, rgba(46, 160, 67, 0.08) 0%, rgba(46, 160, 67, 0.05) 100%);
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  :global(.diff-annotation-collapsed-header:hover) {
+    background: linear-gradient(135deg, rgba(46, 160, 67, 0.12) 0%, rgba(46, 160, 67, 0.08) 100%);
+  }
+
+  :global(.diff-annotation-collapsed .diff-annotation-collapsed-header) {
+    display: flex;
+  }
+
+  :global(.diff-annotation-collapsed .diff-annotation-content),
+  :global(.diff-annotation-collapsed .diff-annotation-footer) {
+    display: none;
+  }
+
+  :global(.diff-annotation-collapsed-icon) {
+    font-size: 10px;
+    color: #3fb950;
+    transition: transform 0.15s ease;
+  }
+
+  :global(.diff-annotation-thread:not(.diff-annotation-collapsed) .diff-annotation-collapsed-icon) {
+    transform: rotate(90deg);
+  }
+
+  :global(.diff-annotation-collapsed-badge) {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(46, 160, 67, 0.2);
+    color: #3fb950;
+  }
+
+  :global(.diff-annotation-collapsed-preview) {
+    flex: 1;
+    font-size: 12px;
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  :global(.diff-annotation-collapsed-count) {
+    font-size: 11px;
+    color: var(--muted);
+    opacity: 0.7;
+  }
+
+  /* Unresolve button style */
+  :global(.diff-action-unresolve) {
+    color: #d29922;
+  }
+
+  :global(.diff-action-unresolve:hover) {
+    background: rgba(210, 153, 34, 0.15);
+    color: #f0b429;
   }
 </style>

@@ -50,6 +50,14 @@ export function DeleteGroup(arg1) {
   return window['go']['main']['App']['DeleteGroup'](arg1);
 }
 
+export function DeleteReviewComment(arg1) {
+  return window['go']['main']['App']['DeleteReviewComment'](arg1);
+}
+
+export function EditReviewComment(arg1) {
+  return window['go']['main']['App']['EditReviewComment'](arg1);
+}
+
 export function GeneratePullRequestText(arg1) {
   return window['go']['main']['App']['GeneratePullRequestText'](arg1);
 }
@@ -60,6 +68,10 @@ export function GetBranchDiffSummary(arg1, arg2, arg3, arg4) {
 
 export function GetBranchFileDiff(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['GetBranchFileDiff'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
+export function GetCurrentGitHubUser(arg1) {
+  return window['go']['main']['App']['GetCurrentGitHubUser'](arg1);
 }
 
 export function GetGroup(arg1) {
@@ -158,8 +170,16 @@ export function RenameWorkspace(arg1, arg2) {
   return window['go']['main']['App']['RenameWorkspace'](arg1, arg2);
 }
 
+export function ReplyToReviewComment(arg1) {
+  return window['go']['main']['App']['ReplyToReviewComment'](arg1);
+}
+
 export function ResizeWorkspaceTerminal(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['ResizeWorkspaceTerminal'](arg1, arg2, arg3, arg4);
+}
+
+export function ResolveReviewThread(arg1) {
+  return window['go']['main']['App']['ResolveReviewThread'](arg1);
 }
 
 export function RestartSessiond() {

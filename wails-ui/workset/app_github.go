@@ -61,6 +61,11 @@ type PullRequestGenerateRequest struct {
 	RepoID      string `json:"repoId"`
 }
 
+type GitHubUserRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	RepoID      string `json:"repoId"`
+}
+
 func (a *App) CreatePullRequest(input PullRequestCreateRequest) (worksetapi.PullRequestCreatedJSON, error) {
 	ctx := a.ctx
 	if ctx == nil {
@@ -236,6 +241,35 @@ type CommitAndPushRequest struct {
 	Message     string `json:"message,omitempty"`
 }
 
+type ReplyToReviewCommentRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	RepoID      string `json:"repoId"`
+	Number      int    `json:"number,omitempty"`
+	Branch      string `json:"branch,omitempty"`
+	CommentID   int64  `json:"commentId"`
+	Body        string `json:"body"`
+}
+
+type EditReviewCommentRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	RepoID      string `json:"repoId"`
+	CommentID   int64  `json:"commentId"`
+	Body        string `json:"body"`
+}
+
+type DeleteReviewCommentRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	RepoID      string `json:"repoId"`
+	CommentID   int64  `json:"commentId"`
+}
+
+type ResolveReviewThreadRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	RepoID      string `json:"repoId"`
+	ThreadID    string `json:"threadId"`
+	Resolve     bool   `json:"resolve"`
+}
+
 type RepoLocalStatusRequest struct {
 	WorkspaceID string `json:"workspaceId"`
 	RepoID      string `json:"repoId"`
@@ -306,6 +340,122 @@ func (a *App) ListRemotes(input ListRemotesRequest) ([]worksetapi.RemoteInfoJSON
 		return nil, err
 	}
 	return result.Remotes, nil
+}
+
+func (a *App) GetCurrentGitHubUser(input GitHubUserRequest) (worksetapi.GitHubUserJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.service == nil {
+		a.service = worksetapi.NewService(worksetapi.Options{})
+	}
+	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
+	if err != nil {
+		return worksetapi.GitHubUserJSON{}, err
+	}
+	result, err := a.service.GetCurrentGitHubUser(ctx, worksetapi.GitHubUserInput{
+		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
+		Repo:      repoName,
+	})
+	if err != nil {
+		return worksetapi.GitHubUserJSON{}, err
+	}
+	return result.User, nil
+}
+
+func (a *App) ReplyToReviewComment(input ReplyToReviewCommentRequest) (worksetapi.PullRequestReviewCommentJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.service == nil {
+		a.service = worksetapi.NewService(worksetapi.Options{})
+	}
+	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
+	if err != nil {
+		return worksetapi.PullRequestReviewCommentJSON{}, err
+	}
+	result, err := a.service.ReplyToReviewComment(ctx, worksetapi.ReplyToReviewCommentInput{
+		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
+		Repo:      repoName,
+		Number:    input.Number,
+		Branch:    input.Branch,
+		CommentID: input.CommentID,
+		Body:      input.Body,
+	})
+	if err != nil {
+		return worksetapi.PullRequestReviewCommentJSON{}, err
+	}
+	return result.Comment, nil
+}
+
+func (a *App) EditReviewComment(input EditReviewCommentRequest) (worksetapi.PullRequestReviewCommentJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.service == nil {
+		a.service = worksetapi.NewService(worksetapi.Options{})
+	}
+	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
+	if err != nil {
+		return worksetapi.PullRequestReviewCommentJSON{}, err
+	}
+	result, err := a.service.EditReviewComment(ctx, worksetapi.EditReviewCommentInput{
+		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
+		Repo:      repoName,
+		CommentID: input.CommentID,
+		Body:      input.Body,
+	})
+	if err != nil {
+		return worksetapi.PullRequestReviewCommentJSON{}, err
+	}
+	return result.Comment, nil
+}
+
+func (a *App) DeleteReviewComment(input DeleteReviewCommentRequest) error {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.service == nil {
+		a.service = worksetapi.NewService(worksetapi.Options{})
+	}
+	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
+	if err != nil {
+		return err
+	}
+	_, err = a.service.DeleteReviewComment(ctx, worksetapi.DeleteReviewCommentInput{
+		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
+		Repo:      repoName,
+		CommentID: input.CommentID,
+	})
+	return err
+}
+
+func (a *App) ResolveReviewThread(input ResolveReviewThreadRequest) (bool, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.service == nil {
+		a.service = worksetapi.NewService(worksetapi.Options{})
+	}
+	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
+	if err != nil {
+		return false, err
+	}
+	result, err := a.service.ResolveReviewThread(ctx, worksetapi.ResolveReviewThreadInput{
+		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
+		Repo:      repoName,
+		ThreadID:  input.ThreadID,
+		Resolve:   input.Resolve,
+	})
+	if err != nil {
+		return false, err
+	}
+	return result.Resolved, nil
 }
 
 func resolveRepoAlias(workspaceID, repoID string) (string, error) {

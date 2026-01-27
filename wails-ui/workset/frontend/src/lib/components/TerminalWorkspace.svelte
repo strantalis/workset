@@ -569,6 +569,8 @@
   })
 </script>
 
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<!-- role="application" is a complex widget that manages its own keyboard handling -->
 <section
   class="terminal-workspace"
   role="application"

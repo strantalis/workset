@@ -184,6 +184,54 @@ export namespace main {
 	        this.message = source["message"];
 	    }
 	}
+	export class DeleteReviewCommentRequest {
+	    workspaceId: string;
+	    repoId: string;
+	    commentId: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DeleteReviewCommentRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.workspaceId = source["workspaceId"];
+	        this.repoId = source["repoId"];
+	        this.commentId = source["commentId"];
+	    }
+	}
+	export class EditReviewCommentRequest {
+	    workspaceId: string;
+	    repoId: string;
+	    commentId: number;
+	    body: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EditReviewCommentRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.workspaceId = source["workspaceId"];
+	        this.repoId = source["repoId"];
+	        this.commentId = source["commentId"];
+	        this.body = source["body"];
+	    }
+	}
+	export class GitHubUserRequest {
+	    workspaceId: string;
+	    repoId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GitHubUserRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.workspaceId = source["workspaceId"];
+	        this.repoId = source["repoId"];
+	    }
+	}
 	export class GroupMemberRequest {
 	    groupName: string;
 	    repoName: string;
@@ -384,6 +432,28 @@ export namespace main {
 	        this.repoId = source["repoId"];
 	    }
 	}
+	export class ReplyToReviewCommentRequest {
+	    workspaceId: string;
+	    repoId: string;
+	    number?: number;
+	    branch?: string;
+	    commentId: number;
+	    body: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ReplyToReviewCommentRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.workspaceId = source["workspaceId"];
+	        this.repoId = source["repoId"];
+	        this.number = source["number"];
+	        this.branch = source["branch"];
+	        this.commentId = source["commentId"];
+	        this.body = source["body"];
+	    }
+	}
 	export class RepoAddRequest {
 	    workspaceId: string;
 	    source: string;
@@ -580,6 +650,24 @@ export namespace main {
 	        this.dirty = source["dirty"];
 	        this.missing = source["missing"];
 	        this.statusKnown = source["statusKnown"];
+	    }
+	}
+	export class ResolveReviewThreadRequest {
+	    workspaceId: string;
+	    repoId: string;
+	    threadId: string;
+	    resolve: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ResolveReviewThreadRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.workspaceId = source["workspaceId"];
+	        this.repoId = source["repoId"];
+	        this.threadId = source["threadId"];
+	        this.resolve = source["resolve"];
 	    }
 	}
 	export class SessiondStatus {
@@ -1037,6 +1125,24 @@ export namespace worksetapi {
 	        this.value = source["value"];
 	    }
 	}
+	export class GitHubUserJSON {
+	    id: number;
+	    login: string;
+	    name?: string;
+	    email?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GitHubUserJSON(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.login = source["login"];
+	        this.name = source["name"];
+	        this.email = source["email"];
+	    }
+	}
 	export class GroupApplyResultJSON {
 	    status: string;
 	    template: string;
@@ -1193,8 +1299,11 @@ export namespace worksetapi {
 	}
 	export class PullRequestReviewCommentJSON {
 	    id: number;
+	    node_id?: string;
+	    thread_id?: string;
 	    review_id?: number;
 	    author?: string;
+	    author_id?: number;
 	    body: string;
 	    path: string;
 	    line?: number;
@@ -1218,8 +1327,11 @@ export namespace worksetapi {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
+	        this.node_id = source["node_id"];
+	        this.thread_id = source["thread_id"];
 	        this.review_id = source["review_id"];
 	        this.author = source["author"];
+	        this.author_id = source["author_id"];
 	        this.body = source["body"];
 	        this.path = source["path"];
 	        this.line = source["line"];

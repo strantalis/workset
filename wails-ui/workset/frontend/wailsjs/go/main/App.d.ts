@@ -27,11 +27,17 @@ export function DeleteAlias(arg1:string):Promise<worksetapi.AliasMutationResultJ
 
 export function DeleteGroup(arg1:string):Promise<worksetapi.AliasMutationResultJSON>;
 
+export function DeleteReviewComment(arg1:main.DeleteReviewCommentRequest):Promise<void>;
+
+export function EditReviewComment(arg1:main.EditReviewCommentRequest):Promise<worksetapi.PullRequestReviewCommentJSON>;
+
 export function GeneratePullRequestText(arg1:main.PullRequestGenerateRequest):Promise<worksetapi.PullRequestGeneratedJSON>;
 
 export function GetBranchDiffSummary(arg1:string,arg2:string,arg3:string,arg4:string):Promise<main.RepoDiffSummary>;
 
 export function GetBranchFileDiff(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string):Promise<main.RepoFileDiffSnapshot>;
+
+export function GetCurrentGitHubUser(arg1:main.GitHubUserRequest):Promise<worksetapi.GitHubUserJSON>;
 
 export function GetGroup(arg1:string):Promise<worksetapi.GroupJSON>;
 
@@ -81,7 +87,11 @@ export function RemoveWorkspace(arg1:main.WorkspaceRemoveRequest):Promise<workse
 
 export function RenameWorkspace(arg1:string,arg2:string):Promise<worksetapi.WorkspaceRefJSON>;
 
+export function ReplyToReviewComment(arg1:main.ReplyToReviewCommentRequest):Promise<worksetapi.PullRequestReviewCommentJSON>;
+
 export function ResizeWorkspaceTerminal(arg1:string,arg2:string,arg3:number,arg4:number):Promise<void>;
+
+export function ResolveReviewThread(arg1:main.ResolveReviewThreadRequest):Promise<boolean>;
 
 export function RestartSessiond():Promise<main.SessiondStatus>;
 
