@@ -374,11 +374,7 @@
 
   .workspace:hover {
     border-color: color-mix(in srgb, var(--border) 70%, var(--accent) 30%);
-    background: linear-gradient(
-      135deg,
-      var(--panel-soft) 0%,
-      color-mix(in srgb, var(--panel-soft) 95%, var(--accent) 5%) 100%
-    );
+    background: color-mix(in srgb, var(--panel-soft) 95%, var(--accent) 5%);
   }
 
   .workspace-row {
@@ -445,7 +441,7 @@
   }
 
   .workspace-button.active {
-    background: var(--panel);
+    background: var(--accent-subtle);
     border: 1px solid var(--accent);
     box-shadow: inset 3px 0 0 var(--accent);
   }

@@ -2228,9 +2228,10 @@
     --diffs-dark-deletion-color: var(--danger);
     --diffs-dark-modified-color: var(--accent);
     --diffs-font-family: var(--font-mono);
+    --diffs-font-size: 12px;
     --diffs-header-font-family: var(--font-body);
-    --diffs-gap-block: 10px;
-    --diffs-gap-inline: 12px;
+    --diffs-gap-block: 8px;
+    --diffs-gap-inline: 10px;
   }
 
   diffs-container {
@@ -2272,7 +2273,7 @@
   /* Inline Review Annotations via @pierre/diffs renderAnnotation callback */
   :global(.diff-annotation-thread) {
     margin: 8px 0;
-    max-width: 560px;
+    max-width: 720px;
     border-radius: 10px;
     overflow: hidden;
     border: 1px solid rgba(99, 102, 241, 0.25);

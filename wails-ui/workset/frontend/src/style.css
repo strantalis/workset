@@ -50,6 +50,18 @@
   --space-4: 16px;
   --space-5: 20px;
   --space-6: 24px;
+
+  /* Vibrancy surfaces */
+  --surface-translucent: rgba(15, 24, 36, 0.65);
+  --surface-translucent-strong: rgba(20, 31, 46, 0.75);
+
+  /* Subtle shadows for depth */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.15);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.25);
+
+  /* Inset highlights for glass effect */
+  --inset-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 *,

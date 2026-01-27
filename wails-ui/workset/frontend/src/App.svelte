@@ -213,15 +213,17 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 16px 24px;
+    padding: 20px 24px;
+    padding-left: 88px; /* Space for traffic lights */
     border-bottom: 1px solid var(--border);
     background: var(--panel-strong);
+    --wails-draggable: drag;
   }
 
   .brand {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
   }
 
   .logo {
@@ -240,6 +242,7 @@
   .actions {
     display: flex;
     gap: 10px;
+    --wails-draggable: no-drag;
   }
 
   .icon-button {
@@ -280,7 +283,7 @@
   }
 
   .sidebar {
-    border-right: 1px solid var(--border);
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
     padding: 20px 12px;
     background: var(--panel);
     transition: width 160ms ease, padding 160ms ease;
@@ -296,6 +299,7 @@
   .main {
     padding: 12px 16px;
     overflow: hidden;
+    background: transparent; /* Let vibrancy show through */
   }
 
   .view-stack {

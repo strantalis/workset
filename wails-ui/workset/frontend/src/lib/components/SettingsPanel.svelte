@@ -248,9 +248,9 @@
     display: flex;
     flex-direction: column;
     background: var(--panel-strong);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 20px;
-    box-shadow: 0 20px 60px rgba(5, 10, 18, 0.55);
+    box-shadow: var(--shadow-lg), var(--inset-highlight);
     overflow: hidden;
   }
 
@@ -260,7 +260,7 @@
     justify-content: space-between;
     gap: var(--space-4);
     padding: var(--space-5) var(--space-6);
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   }
 
   .title {
@@ -307,7 +307,7 @@
     align-items: center;
     gap: var(--space-3);
     padding: var(--space-4) var(--space-6);
-    border-top: 1px solid var(--border);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
     background: var(--panel);
   }
 

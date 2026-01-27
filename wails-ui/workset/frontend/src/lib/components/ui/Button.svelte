@@ -80,10 +80,16 @@
     border: none;
     color: #081018;
     font-weight: 600;
+    box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.15);
   }
 
   .btn.primary:hover:not(:disabled) {
     background: color-mix(in srgb, var(--accent) 85%, white);
+    box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  }
+
+  .btn.primary:active:not(:disabled) {
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
   }
 
   .btn.primary:disabled {

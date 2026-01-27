@@ -450,16 +450,23 @@
     background: var(--panel);
     border-radius: 8px;
     overflow: hidden;
-    transition: opacity 0.15s ease;
+    border: 1px solid transparent;
+    transition: opacity 0.15s ease, border-color 0.15s ease;
+  }
+
+  .pane.focused {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
   }
 
   .pane:not(.focused) {
-    opacity: 0.5;
+    opacity: 0.6;
+    border-color: var(--border);
   }
 
   .pane:not(.focused):hover,
   .pane.drag-active {
-    opacity: 0.75;
+    opacity: 0.8;
   }
 
   .pane-header {

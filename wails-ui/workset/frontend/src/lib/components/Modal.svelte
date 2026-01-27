@@ -58,9 +58,9 @@
     width: min(var(--modal-width, 420px), 90%);
     padding: 20px 22px;
     border-radius: 16px;
-    border: 1px solid var(--border);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     background: var(--panel-strong);
-    box-shadow: 0 24px 60px rgba(6, 10, 16, 0.6);
+    box-shadow: var(--shadow-lg), var(--inset-highlight);
     display: flex;
     flex-direction: column;
     gap: 16px;

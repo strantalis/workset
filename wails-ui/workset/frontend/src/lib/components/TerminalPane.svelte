@@ -1511,53 +1511,49 @@
 <section class="terminal" class:compact={compact}>
   {#if !compact}
     <header class="terminal-header">
-      <div>
-        <div class="title">Workspace terminal</div>
-        <div class="meta">Workspace: {workspaceName}</div>
-      </div>
+      <div class="title">Terminal</div>
       <div class="terminal-actions">
-        <div
-          class="daemon-status"
-          class:offline={sessiondAvailable === false}
-          class:online={sessiondAvailable === true}
-          title={sessiondAvailable === true
-            ? 'Session daemon active'
-            : sessiondAvailable === false
-              ? 'Session daemon unavailable (using local shell)'
-              : 'Checking session daemon status'}
-        >
-          {#if sessiondAvailable === true}
-            Session: daemon
-          {:else if sessiondAvailable === false}
-            Session: local
-          {:else}
-            Session: checking
-          {/if}
-        </div>
-        <div
-          class="renderer-status"
-          class:fallback={activeRenderer === 'canvas' && activeRendererMode !== 'canvas'}
-          class:forced={activeRenderer === 'canvas' && activeRendererMode === 'canvas'}
-          title="Terminal renderer"
-        >
-          {#if activeRenderer === 'webgl'}
-            Renderer: WebGL
-          {:else if activeRenderer === 'canvas'}
-            {#if activeRendererMode === 'canvas'}
-              Renderer: Canvas (forced)
+        <span
+          class="health-indicator"
+          class:ok={activeHealth === 'ok'}
+          class:stale={activeHealth === 'stale'}
+          class:checking={activeHealth === 'checking'}
+          title="{sessiondAvailable === true ? 'daemon' : sessiondAvailable === false ? 'local' : 'checking'} | {activeRenderer} | {activeHealth}"
+        ></span>
+        {#if debugEnabled}
+          <div
+            class="daemon-status"
+            class:offline={sessiondAvailable === false}
+            class:online={sessiondAvailable === true}
+            title={sessiondAvailable === true
+              ? 'Session daemon active'
+              : sessiondAvailable === false
+                ? 'Session daemon unavailable (using local shell)'
+                : 'Checking session daemon status'}
+          >
+            {#if sessiondAvailable === true}
+              daemon
+            {:else if sessiondAvailable === false}
+              local
             {:else}
-              Renderer: Canvas (fallback)
+              checking
             {/if}
-          {:else}
-            Renderer: Unknown
-          {/if}
-        </div>
-        <div class="health-status" class:ok={activeHealth === 'ok'} class:stale={activeHealth === 'stale'} class:checking={activeHealth === 'checking'}>
-          <span class="health-dot"></span>
-          <span class="health-label">
-            {activeHealth === 'ok' ? 'Healthy' : activeHealth === 'checking' ? 'Checking' : activeHealth === 'stale' ? 'Stale' : 'Unknown'}
-          </span>
-        </div>
+          </div>
+          <div
+            class="renderer-status"
+            class:fallback={activeRenderer === 'canvas' && activeRendererMode !== 'canvas'}
+            class:forced={activeRenderer === 'canvas' && activeRendererMode === 'canvas'}
+            title="Terminal renderer"
+          >
+            {#if activeRenderer === 'webgl'}
+              WebGL
+            {:else if activeRenderer === 'canvas'}
+              Canvas
+            {:else}
+              ?
+            {/if}
+          </div>
+        {/if}
       </div>
     </header>
   {/if}
@@ -1638,10 +1634,6 @@
     color: var(--muted);
   }
 
-  .meta {
-    display: none;
-  }
-
   .terminal-body {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -1709,37 +1701,31 @@
     background: rgba(255, 255, 255, 0.02);
   }
 
-  .health-status {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    color: var(--muted);
-  }
-
-  .health-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--muted);
-  }
-
-  .health-status.ok .health-dot {
-    background: var(--success);
-  }
-
-  .health-status.stale .health-dot {
-    background: var(--warning);
-  }
-
-  .health-status.checking .health-dot {
-    background: var(--accent);
-    animation: pulse 1.5s ease-in-out infinite;
-  }
-
   @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
+  }
+
+  .health-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    cursor: help;
+    transition: background var(--transition-fast);
+  }
+
+  .health-indicator.ok {
+    background: var(--success);
+  }
+
+  .health-indicator.stale {
+    background: var(--warning);
+  }
+
+  .health-indicator.checking {
+    background: var(--accent);
+    animation: pulse 1.5s ease-in-out infinite;
   }
 
   .terminal-status {

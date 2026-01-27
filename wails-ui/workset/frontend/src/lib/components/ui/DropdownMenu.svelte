@@ -31,15 +31,15 @@
   .dropdown-menu {
     position: absolute;
     top: 28px;
-    background: var(--panel-strong);
-    border: 1px solid var(--border);
+    background: #141f2e;
+    border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 10px;
     padding: 6px;
     display: grid;
     gap: 4px;
-    z-index: 5;
+    z-index: 100;
     min-width: 140px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   }
 
   .dropdown-menu.right {
