@@ -5,6 +5,7 @@
   import type {SettingsDefaults, SettingsSnapshot} from '../types'
   import SettingsSidebar from './settings/SettingsSidebar.svelte'
   import WorkspaceDefaults from './settings/sections/WorkspaceDefaults.svelte'
+  import AgentDefaults from './settings/sections/AgentDefaults.svelte'
   import SessionDefaults from './settings/sections/SessionDefaults.svelte'
   import AliasManager from './settings/sections/AliasManager.svelte'
   import GroupManager from './settings/sections/GroupManager.svelte'
@@ -28,13 +29,6 @@
     {id: 'baseBranch', key: 'defaults.base_branch'},
     {id: 'workspaceRoot', key: 'defaults.workspace_root'},
     {id: 'repoStoreRoot', key: 'defaults.repo_store_root'},
-    {id: 'sessionBackend', key: 'defaults.session_backend'},
-    {id: 'sessionNameFormat', key: 'defaults.session_name_format'},
-    {id: 'sessionTheme', key: 'defaults.session_theme'},
-    {id: 'sessionTmuxStyle', key: 'defaults.session_tmux_status_style'},
-    {id: 'sessionTmuxLeft', key: 'defaults.session_tmux_status_left'},
-    {id: 'sessionTmuxRight', key: 'defaults.session_tmux_status_right'},
-    {id: 'sessionScreenHard', key: 'defaults.session_screen_hardstatus'},
     {id: 'agent', key: 'defaults.agent'},
     {id: 'terminalRenderer', key: 'defaults.terminal_renderer'},
     {id: 'terminalIdleTimeout', key: 'defaults.terminal_idle_timeout'}
@@ -192,6 +186,8 @@
       <div class="content">
         {#if activeSection === 'workspace'}
           <WorkspaceDefaults {draft} {baseline} onUpdate={updateField} />
+        {:else if activeSection === 'agent'}
+          <AgentDefaults {draft} {baseline} onUpdate={updateField} />
         {:else if activeSection === 'session'}
           <SessionDefaults
             {draft}
@@ -221,7 +217,7 @@
       {:else if dirtyCount() > 0}
         <span class="status dirty">{dirtyCount()} unsaved</span>
       {/if}
-      {#if activeSection === 'workspace' || activeSection === 'session'}
+      {#if activeSection === 'workspace' || activeSection === 'agent' || activeSection === 'session'}
         <Button
           variant="ghost"
           onclick={resetChanges}

@@ -29,7 +29,8 @@
       title: 'GENERAL',
       items: [
         {id: 'workspace', label: 'Workspace'},
-        {id: 'session', label: 'Session'}
+        {id: 'agent', label: 'Agent'},
+        {id: 'session', label: 'Terminal'}
       ]
     },
     {

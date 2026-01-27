@@ -33,6 +33,7 @@ Remote names and default branches come from repo aliases (`repos.<name>.remote` 
 | `workspace` | Default workspace name or absolute path. |
 | `workspace_root` | Base directory for new workspaces. |
 | `repo_store_root` | Where URL-based repos are cloned. |
+| `terminal_idle_timeout` | Idle timeout for GUI terminals (duration like `30m`; use `0` to disable). Default is `0`. |
 | `session_backend` | Default session backend (`auto`, `tmux`, `screen`, `exec`). |
 | `session_name_format` | Format string for session names (supports `{workspace}`). |
 | `session_theme` | Optional session theme for `tmux`/`screen` (`workset` to enable built-in theme). |
@@ -79,6 +80,7 @@ defaults:
   workspace: core
   workspace_root: ~/.workset/workspaces
   repo_store_root: ~/.workset/repos
+  terminal_idle_timeout: "0"
   session_backend: auto
   session_name_format: workset-{workspace}
   # optional: enable built-in session theme for tmux/screen

@@ -22,7 +22,7 @@ func DefaultConfig() GlobalConfig {
 			SessionScreenHard:   "",
 			Agent:               "codex",
 			TerminalRenderer:    "auto",
-			TerminalIdleTimeout: "30m",
+			TerminalIdleTimeout: "0",
 		},
 		Hooks: HooksConfig{
 			Enabled: true,
