@@ -17,6 +17,7 @@
     workspaceName,
     active = true,
     focusedPaneId,
+    totalPaneCount,
     dragState = null,
     onFocusPane,
     onSelectTab,
@@ -35,6 +36,7 @@
     workspaceName: string
     active?: boolean
     focusedPaneId?: string
+    totalPaneCount: number
     dragState?: DragState
     onFocusPane: (paneId: string) => void
     onSelectTab: (paneId: string, tabId: string) => void
@@ -226,6 +228,7 @@
         {workspaceName}
         {active}
         {focusedPaneId}
+        {totalPaneCount}
         {dragState}
         {onFocusPane}
         {onSelectTab}
@@ -264,6 +267,7 @@
         {workspaceName}
         {active}
         {focusedPaneId}
+        {totalPaneCount}
         {dragState}
         {onFocusPane}
         {onSelectTab}
@@ -340,7 +344,7 @@
               }}
             >
               <span class="tab-label">{tab.title}</span>
-              {#if node.tabs.length > 1}
+              {#if totalPaneCount > 1 || node.tabs.length > 1}
                 <button
                   type="button"
                   class="tab-close"
@@ -459,7 +463,6 @@
   }
 
   .pane.focused {
-    border-color: var(--accent);
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
   }
 
@@ -503,8 +506,8 @@
   .pane-tab {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 8px 12px;
+    gap: 8px;
+    padding: 8px 8px 8px 12px;
     font-size: 12px;
     background: transparent;
     color: var(--muted);
@@ -570,8 +573,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
+    margin-left: 4px;
     color: var(--muted);
     border: none;
     background: transparent;

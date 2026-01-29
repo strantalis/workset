@@ -625,12 +625,14 @@
     {:else if loading || !layout}
       <div class="terminal-loading">Preparing terminals…</div>
     {:else}
+      {@const totalPaneCount = collectPaneIds(layout.root).length}
       <TerminalLayoutNode
         node={layout.root}
         {workspaceId}
         {workspaceName}
         {active}
         focusedPaneId={layout.focusedPaneId}
+        {totalPaneCount}
         {dragState}
         onFocusPane={handleFocusPane}
         onSelectTab={handleSelectTab}
