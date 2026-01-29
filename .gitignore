@@ -16,4 +16,6 @@ coverage/
 .venv/
 .agent-skills/
 .claude/
+.cursor/
+.opencode/
 wails-ui/workset/build/

@@ -1,10 +1,11 @@
 <script lang="ts">
   import {onDestroy, onMount, untrack} from 'svelte'
-  import {Terminal} from '@xterm/xterm'
+  import {Terminal, type ITerminalInitOnlyOptions, type ITerminalOptions} from '@xterm/xterm'
   import {FitAddon} from '@xterm/addon-fit'
+  import {CanvasAddon} from '@xterm/addon-canvas'
   import {WebglAddon} from '@xterm/addon-webgl'
   import '@xterm/xterm/css/xterm.css'
-  import {EventsOn, EventsOff} from '../../../wailsjs/runtime/runtime'
+  import {Environment, EventsOn, EventsOff} from '../../../wailsjs/runtime/runtime'
   import {
     fetchSettings,
     fetchSessiondStatus,
@@ -43,6 +44,7 @@
     kittyState: KittyState
     kittyOverlay?: KittyOverlay
     kittyDisposables?: {dispose: () => void}[]
+    canvasAddon?: CanvasAddon
     webglAddon?: WebglAddon
   }
 
@@ -152,6 +154,8 @@
   const pendingHealthCheck = new Map<string, number>()
   const pendingRenderCheck = new Map<string, number>()
   const pendingRedraw = new Set<string>()
+  const renderCheckLogged = new Set<string>()
+  const reopenAttempted = new Set<string>()
   let initCounter = 0
   const startedSessions = new Set<string>()
   let resizeScheduled = false
@@ -160,6 +164,7 @@
   let rendererPreference = $state<'auto' | 'webgl' | 'canvas'>('auto')
   let sessiondAvailable = $state<boolean | null>(null)
   let sessiondChecked = $state(false)
+  let forceCanvasRendererEnabled = $state(false)
   let statusMap: Record<string, string> = $state({})
   let messageMap: Record<string, string> = $state({})
   let inputMap: Record<string, boolean> = $state({})
@@ -251,6 +256,10 @@
   }
 
   const loadTerminalDefaults = async (): Promise<void> => {
+    if (forceCanvasRendererEnabled) {
+      rendererPreference = 'canvas'
+      return
+    }
     try {
       const settings = await fetchSettings()
       const renderer = settings.defaults?.terminalRenderer?.trim().toLowerCase()
@@ -443,6 +452,7 @@
       pendingReplayOutput.delete(id)
       enqueueOutput(id, pending.join(''))
     }
+    flushOutput(id, true)
   }
 
   const noteCpr = (id: string): void => {
@@ -525,7 +535,85 @@
       stats.backlog = queue.bytes
     })
     if (output) {
-      handle.terminal.write(output)
+      const beforeRender = renderStatsMap.get(id) ?? {lastRenderAt: 0, renderCount: 0}
+      if (id === terminalKey && handle.container?.getAttribute('data-active') !== 'true') {
+        handle.container?.setAttribute('data-active', 'true')
+        handle.fitAddon.fit()
+        resizeKittyOverlay(handle)
+        nudgeTerminalRedraw(id)
+      }
+      const scheduleRenderCheck = (): void => {
+        if (renderCheckLogged.has(id)) return
+        renderCheckLogged.add(id)
+        requestAnimationFrame(() => {
+          const afterRender = renderStatsMap.get(id) ?? {lastRenderAt: 0, renderCount: 0}
+          const renderedAfterWrite = afterRender.lastRenderAt > beforeRender.lastRenderAt
+          if (renderedAfterWrite) {
+            return
+          }
+          const refreshFn = (
+            handle.terminal as unknown as {refresh?: (start: number, end: number) => void}
+          ).refresh
+          const canFallback = rendererMap[id] === 'webgl' && rendererModeMap[id] !== 'webgl'
+          if (canFallback) {
+            forceCanvasRenderer(id, handle)
+          }
+          handle.fitAddon.fit()
+          nudgeTerminalRedraw(id)
+          if (typeof refreshFn === 'function') {
+            try {
+              const end = Math.max(handle.terminal.rows - 1, 0)
+              refreshFn.call(handle.terminal, 0, end)
+            } catch {
+              // Best-effort refresh.
+            }
+          }
+          const renderService = (
+            handle.terminal as unknown as {
+              _core?: { _renderService?: { refreshRows?: (start: number, end: number) => void } }
+            }
+          )._core?._renderService
+          const coreRefresh = renderService?.refreshRows
+          if (typeof coreRefresh === 'function') {
+            try {
+              const end = Math.max(handle.terminal.rows - 1, 0)
+              coreRefresh.call(renderService, 0, end)
+            } catch {
+              // Best-effort refresh.
+            }
+          }
+          if (handle.terminal.element) {
+            const element = handle.terminal.element
+            element.style.transform = 'translateZ(0)'
+            requestAnimationFrame(() => {
+              element.style.transform = ''
+            })
+          }
+          if (id === terminalKey && handle.container) {
+            handle.container.setAttribute('data-active', 'false')
+            requestAnimationFrame(() => {
+              handle.container.setAttribute('data-active', 'true')
+              handle.fitAddon.fit()
+              nudgeTerminalRedraw(id)
+            })
+          }
+          if (!reopenAttempted.has(id) && handle.container) {
+            reopenAttempted.add(id)
+            try {
+              handle.terminal.open(handle.container)
+              handle.fitAddon.fit()
+              resizeKittyOverlay(handle)
+              nudgeTerminalRedraw(id)
+            } catch {
+              // Best-effort re-open.
+            }
+          }
+        })
+      }
+      handle.terminal.write(output, () => {
+        scheduleRenderCheck()
+      })
+      scheduleRenderCheck()
     }
     if (queue.chunks.length === 0) {
       outputQueues.delete(id)
@@ -602,6 +690,15 @@
         // Ignore disposal failures.
       }
       handle.webglAddon = undefined
+    }
+    if (!handle.canvasAddon) {
+      try {
+        const canvasAddon = new CanvasAddon()
+        handle.terminal.loadAddon(canvasAddon)
+        handle.canvasAddon = canvasAddon
+      } catch {
+        // Best-effort; fall back to DOM renderer.
+      }
     }
     rendererMap = {...rendererMap, [id]: 'canvas'}
     logDebug(id, 'renderer_fallback', {
@@ -944,10 +1041,22 @@
     id: string,
     mode: 'auto' | 'webgl' | 'canvas'
   ): Promise<void> => {
-    rendererModeMap = {...rendererModeMap, [id]: mode}
-    if (mode === 'canvas') {
+    const resolvedMode = forceCanvasRendererEnabled ? 'canvas' : mode
+    rendererModeMap = {...rendererModeMap, [id]: resolvedMode}
+    if (resolvedMode === 'canvas') {
+      const options = handle.terminal.options as {allowProposedApi?: boolean; rendererType?: string}
+      options.allowProposedApi = true
+      options.rendererType = 'canvas'
       forceCanvasRenderer(id, handle)
       return
+    }
+    if (handle.canvasAddon) {
+      try {
+        handle.canvasAddon.dispose()
+      } catch {
+        // Best-effort cleanup.
+      }
+      handle.canvasAddon = undefined
     }
     if (handle.webglAddon) {
       try {
@@ -989,20 +1098,23 @@
     const themeSelection = getToken('--accent', '#2d8cff')
     const fontMono = getToken('--font-mono', '"JetBrains Mono", Menlo, Consolas, monospace')
 
-    return new Terminal({
+    const options: ITerminalOptions & ITerminalInitOnlyOptions & {rendererType?: string} = {
       fontFamily: fontMono,
       fontSize: BASE_FONT_SIZE,
       // Keep fontSize * lineHeight * dpr an integer to avoid subpixel row artifacts.
       lineHeight: computeLineHeight(BASE_FONT_SIZE, BASE_LINE_HEIGHT),
       cursorBlink: true,
       scrollback: 4000,
+      allowProposedApi: true,
+      rendererType: 'canvas',
       theme: {
         background: themeBackground,
         foreground: themeForeground,
         cursor: themeCursor,
         selectionBackground: themeSelection
       }
-    })
+    }
+    return new Terminal(options)
   }
 
   const attachTerminal = (id: string, name: string): TerminalHandle => {
@@ -1056,11 +1168,14 @@
       }
     }
     if (terminalContainer) {
-      terminalContainer.querySelectorAll('.terminal-instance').forEach((node) => {
-        node.setAttribute('data-active', 'false')
-      })
-      if (!terminalContainer.contains(handle.container)) {
-        terminalContainer.appendChild(handle.container)
+      if (terminalContainer.firstChild !== handle.container) {
+        terminalContainer.replaceChildren(handle.container)
+      }
+      const terminalElement = handle.terminal.element
+      const needsOpen =
+        !terminalElement || terminalElement.parentElement !== handle.container
+      if (needsOpen) {
+        handle.container.replaceChildren()
         handle.terminal.open(handle.container)
         ensureKittyOverlay(handle, id)
         void loadRendererAddon(handle, id, rendererPreference)
@@ -1105,7 +1220,9 @@
         if (!inputMap[payload.terminalId]) {
           inputMap = {...inputMap, [payload.terminalId]: true}
         }
-        if (replayState.get(payload.terminalId) !== 'live') {
+        const replayStateValue = replayState.get(payload.terminalId) ?? 'unknown'
+        const isLive = replayStateValue === 'live'
+        if (!isLive) {
           const pending = pendingReplayOutput.get(payload.terminalId) ?? []
           pending.push(payload.data)
           pendingReplayOutput.set(payload.terminalId, pending)
@@ -1437,6 +1554,23 @@
     if (!terminalContainer) return
     debugEnabled =
       typeof localStorage !== 'undefined' && localStorage.getItem('worksetTerminalDebug') === '1'
+    void Environment()
+      .then((env) => {
+        if (env?.buildType === 'production' && env?.platform === 'darwin') {
+          forceCanvasRendererEnabled = true
+          rendererPreference = 'canvas'
+          for (const [id, handle] of terminals.entries()) {
+            const options = handle.terminal.options as {allowProposedApi?: boolean; rendererType?: string}
+            options.allowProposedApi = true
+            options.rendererType = 'canvas'
+            void loadRendererAddon(handle, id, 'canvas')
+            handle.fitAddon.fit()
+            resizeKittyOverlay(handle)
+            nudgeTerminalRedraw(id)
+          }
+        }
+      })
+      .catch(() => undefined)
     void loadTerminalDefaults()
     void refreshSessiondStatus()
     resizeObserver = new ResizeObserver(() => {
@@ -1799,8 +1933,9 @@
   :global(.terminal-instance) {
     position: absolute;
     inset: 0;
-    opacity: 0;
-    pointer-events: none;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
     z-index: 1;
     overflow: hidden;
   }
@@ -1820,12 +1955,31 @@
     z-index: 1;
   }
 
+  :global(.terminal-instance .xterm-viewport) {
+    background: transparent;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  }
+
+  :global(.terminal-instance .xterm-viewport::-webkit-scrollbar) {
+    width: 8px;
+  }
+
+  :global(.terminal-instance .xterm-viewport::-webkit-scrollbar-track) {
+    background: transparent;
+  }
+
+  :global(.terminal-instance .xterm-viewport::-webkit-scrollbar-thumb) {
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 6px;
+  }
+
   :global(.terminal-instance .kitty-overlay) {
     z-index: 2;
   }
 
   :global(.terminal-instance[data-active='true']) {
-    opacity: 1;
+    visibility: visible;
     pointer-events: auto;
   }
 </style>
