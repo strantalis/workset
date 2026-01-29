@@ -323,7 +323,7 @@
   }
 
   .main {
-    padding: 12px 16px;
+    padding: 8px;
     overflow: hidden;
     background: transparent; /* Let vibrancy show through */
   }

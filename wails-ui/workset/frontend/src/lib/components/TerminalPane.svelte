@@ -1772,11 +1772,11 @@
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 12px;
-    padding: 8px;
+    padding: 2px;
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 4px;
     min-height: 0;
   }
 
@@ -1787,7 +1787,7 @@
   }
 
   .terminal.compact .terminal-body {
-    padding: 6px;
+    padding: 2px;
     border-radius: 10px;
   }
 

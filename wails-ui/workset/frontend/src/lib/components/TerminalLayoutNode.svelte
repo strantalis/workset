@@ -362,6 +362,40 @@
             </div>
           {/each}
         </div>
+        <div class="pane-actions">
+          <button
+            type="button"
+            class="action-btn"
+            title="New tab"
+            onclick={() => onAddTab(node.id)}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="action-btn"
+            title="Split vertical"
+            onclick={() => onSplitPane(node.id, 'row')}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <rect x="1" y="2" width="12" height="10" rx="1.5" stroke="currentColor" stroke-width="1.2"/>
+              <path d="M7 2v10" stroke="currentColor" stroke-width="1.2"/>
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="action-btn"
+            title="Split horizontal"
+            onclick={() => onSplitPane(node.id, 'column')}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <rect x="1" y="2" width="12" height="10" rx="1.5" stroke="currentColor" stroke-width="1.2"/>
+              <path d="M1 7h12" stroke="currentColor" stroke-width="1.2"/>
+            </svg>
+          </button>
+        </div>
       </div>
       <div
         class="pane-body"
@@ -456,47 +490,52 @@
     min-height: 0;
     min-width: 0;
     background: var(--panel);
-    border-radius: 8px;
+    border-radius: 12px;
     overflow: hidden;
-    border: 1px solid transparent;
-    transition: opacity 0.15s ease, border-color 0.15s ease;
+    border: 1px solid var(--border);
+    transition: all 0.2s ease;
+    box-shadow: var(--shadow-sm);
   }
 
   .pane.focused {
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent),
+      var(--shadow-lg);
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
   }
 
   .pane:not(.focused) {
-    opacity: 0.6;
-    border-color: var(--border);
+    opacity: 0.75;
   }
 
   .pane:not(.focused):hover,
   .pane.drag-active {
-    opacity: 0.8;
+    opacity: 0.9;
+    box-shadow: var(--shadow-md);
   }
 
   .pane-header {
     display: flex;
     align-items: center;
-    padding: 0 8px;
+    padding: 6px 8px 4px;
+    background: color-mix(in srgb, var(--panel-strong) 80%, var(--panel));
+    transition: background 0.2s ease;
     border-bottom: 1px solid var(--border);
-    background: color-mix(in srgb, var(--bg) 50%, var(--panel));
-    transition: background 0.15s ease;
   }
 
   .pane-header.drop-target {
-    background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+    background: color-mix(in srgb, var(--accent) 8%, var(--panel-strong));
   }
 
   .pane-tabs {
     display: flex;
-    align-items: stretch;
-    gap: 0;
+    align-items: center;
+    gap: 4px;
     flex: 1;
     min-width: 0;
     overflow-x: auto;
     scrollbar-width: none;
+    padding: 0 4px;
   }
 
   .pane-tabs::-webkit-scrollbar {
@@ -506,47 +545,52 @@
   .pane-tab {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 8px 8px 12px;
+    gap: 6px;
+    padding: 6px 10px 6px 12px;
     font-size: 12px;
+    font-weight: 500;
     background: transparent;
     color: var(--muted);
     cursor: grab;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    transition: color 0.15s ease, border-color 0.15s ease;
+    border-radius: 8px;
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
     white-space: nowrap;
     position: relative;
+    border: 1px solid transparent;
   }
 
   .pane-tab:hover {
     color: var(--text);
+    background: color-mix(in srgb, var(--panel-strong) 50%, transparent);
+    border-color: var(--border);
   }
 
   .pane-tab:active {
     cursor: grabbing;
+    transform: scale(0.98);
   }
 
   .pane-tab.active {
     color: var(--text);
-    border-bottom-color: var(--accent);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--panel) 70%, var(--bg)) 0%, color-mix(in srgb, var(--panel) 90%, var(--bg)) 100%);
+    background: var(--panel);
+    border-color: var(--border);
     box-shadow:
-      0 -6px 24px rgba(0, 0, 0, 0.5),
-      0 -3px 10px rgba(0, 0, 0, 0.3),
-      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      var(--shadow-sm),
+      inset 0 1px 0 rgba(255, 255, 255, 0.04);
     z-index: 1;
-    position: relative;
   }
 
-  .pane-tab.active::before {
+  .pane-tab.active::after {
     content: '';
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.15) 50%, transparent 100%);
+    bottom: -5px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 6px;
+    height: 2px;
+    background: var(--accent);
+    border-radius: 1px;
+    box-shadow: 0 0 8px var(--accent);
   }
 
   .pane-tab.dragging {
@@ -598,7 +642,7 @@
   .pane-body {
     flex: 1;
     min-height: 0;
-    padding: 4px;
+    padding: 2px;
     position: relative;
   }
 
@@ -621,17 +665,18 @@
 
   .drop-zone {
     position: absolute;
-    background: color-mix(in srgb, var(--accent) 20%, transparent);
-    border: 2px solid transparent;
-    border-radius: 6px;
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border: 1px solid transparent;
+    border-radius: 8px;
     opacity: 0;
-    transition: opacity 0.1s ease, border-color 0.1s ease;
+    transition: opacity 0.15s ease, border-color 0.15s ease;
+    backdrop-filter: blur(2px);
   }
 
   .drop-zone.active {
     opacity: 1;
     border-color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 30%, transparent);
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
   }
 
   .drop-zone.left {
@@ -668,4 +713,38 @@
     top: 30%;
     bottom: 30%;
   }
+  .pane-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 8px 0 4px;
+    margin-left: auto;
+  }
+
+  .action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .action-btn:hover {
+    background: var(--panel-strong);
+    color: var(--text);
+    border-color: var(--accent);
+  }
+
+  .action-btn:active {
+    transform: scale(0.95);
+    box-shadow: none;
+  }
+
 </style>

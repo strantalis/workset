@@ -2,6 +2,7 @@
   import TerminalLayoutNode from './TerminalLayoutNode.svelte'
   import {createWorkspaceTerminal} from '../api'
   import {StartWorkspaceTerminal} from '../../../wailsjs/go/main/App'
+  import {generateTerminalName} from '../names'
 
   interface Props {
     workspaceId: string
@@ -212,7 +213,7 @@
 
   const nextTitle = (node: LayoutNode): string => {
     const count = collectTabs(node).length
-    return `Terminal ${count + 1}`
+    return generateTerminalName(workspaceName, count)
   }
 
   const buildTab = (terminalId: string, title: string): TerminalTab => ({
@@ -256,7 +257,7 @@
         return
       }
       const created = await createWorkspaceTerminal(workspaceId)
-      const tab = buildTab(created.terminalId, 'Terminal 1')
+      const tab = buildTab(created.terminalId, generateTerminalName(workspaceName, 0))
       const pane = buildPane(tab)
       updateLayout({version: STORAGE_VERSION, root: pane, focusedPaneId: pane.id})
     } catch (error) {
@@ -577,44 +578,6 @@
   tabindex="-1"
   onkeydown={handleWorkspaceKeydown}
 >
-  <header class="workspace-header">
-    <span class="title">Terminals</span>
-    <div class="workspace-actions">
-      <button
-        type="button"
-        class="action"
-        title="New tab (in focused pane)"
-        onclick={() => layout?.focusedPaneId && handleAddTab(layout.focusedPaneId)}
-      >
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-        </svg>
-      </button>
-      <button
-        type="button"
-        class="action"
-        title="Split vertical"
-        onclick={() => layout?.focusedPaneId && handleSplitPane(layout.focusedPaneId, 'row')}
-      >
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <rect x="1" y="2" width="12" height="10" rx="1.5" stroke="currentColor" stroke-width="1.2"/>
-          <path d="M7 2v10" stroke="currentColor" stroke-width="1.2"/>
-        </svg>
-      </button>
-      <button
-        type="button"
-        class="action"
-        title="Split horizontal"
-        onclick={() => layout?.focusedPaneId && handleSplitPane(layout.focusedPaneId, 'column')}
-      >
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <rect x="1" y="2" width="12" height="10" rx="1.5" stroke="currentColor" stroke-width="1.2"/>
-          <path d="M1 7h12" stroke="currentColor" stroke-width="1.2"/>
-        </svg>
-      </button>
-    </div>
-  </header>
-
   <div class="workspace-container">
     {#if initError}
       <div class="terminal-error">
@@ -648,55 +611,17 @@
       />
     {/if}
   </div>
+
+
 </section>
 
 <style>
   .terminal-workspace {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 0;
     height: 100%;
-  }
-
-  .workspace-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    padding: 0 4px;
-  }
-
-  .title {
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .workspace-actions {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-  }
-
-  .action {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border: none;
-    border-radius: 6px;
-    background: transparent;
-    color: var(--muted);
-    cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease;
-  }
-
-  .action:hover {
-    background: var(--border);
-    color: var(--text);
+    position: relative;
   }
 
   .workspace-container {
@@ -744,4 +669,6 @@
   .retry-action:hover {
     border-color: var(--accent);
   }
+
+
 </style>

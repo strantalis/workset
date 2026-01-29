@@ -102,3 +102,42 @@ export function deriveRepoName(source: string): string | null {
 export function isRepoSource(input: string): boolean {
   return looksLikeUrl(input) || looksLikePath(input)
 }
+
+/**
+ * Tech-themed suffixes for terminal name generation.
+ * These create fun, memorable terminal names that blend nature + tech.
+ */
+const techSuffixes = [
+  'byte', 'buffer', 'stack', 'cache', 'thread',
+  'kernel', 'node', 'packet', 'grid', 'core',
+  'flux', 'signal', 'stream', 'pulse', 'spark',
+  'loop', 'wire', 'link', 'seed', 'root'
+]
+
+/**
+ * Extract the nature word from a workspace name.
+ * Example: "platform-oak" → "oak"
+ */
+function extractNatureWord(workspaceName: string): string | null {
+  const parts = workspaceName.split('-')
+  const lastPart = parts[parts.length - 1]
+  
+  // Check if the last part is a nature word
+  if (natureWords.includes(lastPart.toLowerCase())) {
+    return lastPart.toLowerCase()
+  }
+  
+  // Otherwise, return a random nature word
+  return natureWords[Math.floor(Math.random() * natureWords.length)]
+}
+
+/**
+ * Generate a unique terminal name based on the workspace.
+ * Combines the workspace's nature word with a tech suffix.
+ * Example: "oak-byte", "thunder-kernel", "stream-node"
+ */
+export function generateTerminalName(workspaceName: string, index: number = 0): string {
+  const natureWord = extractNatureWord(workspaceName) || 'crystal'
+  const techWord = techSuffixes[index % techSuffixes.length]
+  return `${natureWord}-${techWord}`
+}
