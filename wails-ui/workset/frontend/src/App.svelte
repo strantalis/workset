@@ -86,7 +86,7 @@
 <div class="app">
   <header class="topbar">
     <div class="brand">
-      <div class="logo">Workset</div>
+      <img src="images/logo.png" alt="Workset" class="logo-img" />
       {#if hasWorkspace}
         <div class="context">Workspace: {$activeWorkspace?.name}</div>
       {:else}
@@ -248,19 +248,20 @@
 
   .brand {
     display: flex;
-    flex-direction: column;
-    gap: 2px;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
   }
 
-  .logo {
-    font-size: 18px;
-    font-weight: 600;
-    font-family: var(--font-display);
-    letter-spacing: 0.02em;
+  .logo-img {
+    height: 40px;
+    width: auto;
+    display: block;
+    object-fit: contain;
   }
 
   .context {
-    font-size: 14px;
+    font-size: 16px;
     color: var(--muted);
     font-weight: 500;
   }
