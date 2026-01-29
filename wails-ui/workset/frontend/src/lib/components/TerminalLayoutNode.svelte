@@ -527,6 +527,23 @@
   .pane-tab.active {
     color: var(--text);
     border-bottom-color: var(--accent);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--panel) 70%, var(--bg)) 0%, color-mix(in srgb, var(--panel) 90%, var(--bg)) 100%);
+    box-shadow:
+      0 -6px 24px rgba(0, 0, 0, 0.5),
+      0 -3px 10px rgba(0, 0, 0, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    z-index: 1;
+    position: relative;
+  }
+
+  .pane-tab.active::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.15) 50%, transparent 100%);
   }
 
   .pane-tab.dragging {
