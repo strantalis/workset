@@ -246,6 +246,7 @@ export type TerminalBootstrapResponse = {
   mouseSGR?: boolean
   mouseEncoding?: string
   safeToReplay?: boolean
+  initialCredit?: number
 }
 
 export type SessiondStatusResponse = {

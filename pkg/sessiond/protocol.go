@@ -55,6 +55,12 @@ type BootstrapRequest struct {
 	SessionID string `json:"sessionId"`
 }
 
+type AckRequest struct {
+	SessionID string `json:"sessionId"`
+	StreamID  string `json:"streamId"`
+	Bytes     int64  `json:"bytes"`
+}
+
 type BacklogResponse struct {
 	SessionID  string `json:"sessionId"`
 	Data       string `json:"data"`
@@ -91,6 +97,7 @@ type BootstrapResponse struct {
 	MouseSGR         bool            `json:"mouseSGR,omitempty"`
 	MouseEncoding    string          `json:"mouseEncoding,omitempty"`
 	SafeToReplay     bool            `json:"safeToReplay,omitempty"`
+	InitialCredit    int64           `json:"initialCredit,omitempty"`
 }
 
 type SessionInfo struct {
@@ -108,6 +115,7 @@ type ListResponse struct {
 type AttachRequest struct {
 	Type       string `json:"type"`
 	SessionID  string `json:"sessionId"`
+	StreamID   string `json:"streamId,omitempty"`
 	Since      int64  `json:"since"`
 	WithBuffer bool   `json:"withBuffer"`
 }
@@ -120,7 +128,9 @@ type InfoResponse struct {
 type StreamMessage struct {
 	Type       string       `json:"type"`
 	SessionID  string       `json:"sessionId,omitempty"`
+	StreamID   string       `json:"streamId,omitempty"`
 	Data       string       `json:"data,omitempty"`
+	Len        int          `json:"len,omitempty"`
 	NextOffset int64        `json:"nextOffset,omitempty"`
 	Truncated  bool         `json:"truncated,omitempty"`
 	Source     string       `json:"source,omitempty"`

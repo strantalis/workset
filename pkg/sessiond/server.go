@@ -67,6 +67,12 @@ func NewServer(opts Options) *Server {
 	if opts.HistoryLines == 0 {
 		opts.HistoryLines = DefaultOptions().HistoryLines
 	}
+	if opts.StreamCreditTimeout == 0 {
+		opts.StreamCreditTimeout = DefaultOptions().StreamCreditTimeout
+	}
+	if opts.StreamInitialCredit == 0 {
+		opts.StreamInitialCredit = DefaultOptions().StreamInitialCredit
+	}
 	return &Server{
 		opts:     opts,
 		sessions: make(map[string]*Session),
@@ -253,6 +259,22 @@ func (s *Server) handleControl(conn net.Conn, line []byte) {
 		}
 		snapshot := session.snapshot()
 		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true, Result: snapshot})
+	case "ack":
+		var params AckRequest
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			s.writeError(conn, err)
+			return
+		}
+		session := s.get(params.SessionID)
+		if session == nil {
+			s.writeError(conn, fmt.Errorf("session not found"))
+			return
+		}
+		if err := session.ack(params.StreamID, params.Bytes); err != nil {
+			s.writeError(conn, err)
+			return
+		}
+		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true})
 	case "bootstrap":
 		var params BootstrapRequest
 		if err := json.Unmarshal(req.Params, &params); err != nil {
@@ -323,6 +345,10 @@ func (s *Server) handleAttach(conn net.Conn, line []byte) {
 		_ = enc.Encode(StreamMessage{Type: "error", Error: "session not found"})
 		return
 	}
+	streamID := strings.TrimSpace(req.StreamID)
+	if streamID == "" {
+		streamID = newStreamID()
+	}
 	if req.WithBuffer {
 		backlog, err := session.backlog(req.Since)
 		if err != nil {
@@ -332,35 +358,47 @@ func (s *Server) handleAttach(conn net.Conn, line []byte) {
 		_ = enc.Encode(StreamMessage{
 			Type:       "backlog",
 			SessionID:  backlog.SessionID,
+			StreamID:   streamID,
 			Data:       backlog.Data,
+			Len:        len(backlog.Data),
 			NextOffset: backlog.NextOffset,
 			Truncated:  backlog.Truncated,
 			Source:     backlog.Source,
 		})
 	} else {
-		_ = enc.Encode(StreamMessage{Type: "backlog", SessionID: req.SessionID})
+		_ = enc.Encode(StreamMessage{Type: "backlog", SessionID: req.SessionID, StreamID: streamID})
 	}
 	if snapshot := session.kittySnapshot(); snapshot != nil {
-		_ = enc.Encode(StreamMessage{Type: "kitty_snapshot", SessionID: req.SessionID, Kitty: snapshot})
+		_ = enc.Encode(StreamMessage{Type: "kitty_snapshot", SessionID: req.SessionID, StreamID: streamID, Kitty: snapshot})
 	}
-	sub := session.subscribe()
+	sub := session.subscribe(streamID)
 	defer session.unsubscribe(sub)
 	for event := range sub.ch {
 		switch event.kind {
 		case "data":
-			if err := enc.Encode(StreamMessage{Type: "data", SessionID: req.SessionID, Data: string(event.data)}); err != nil {
+			if !sub.waitForCredit(int64(len(event.data)), session.streamTimeout) {
+				debugLogf("session_stream_timeout id=%s stream=%s", session.id, sub.streamID)
+				return
+			}
+			if err := enc.Encode(StreamMessage{
+				Type:      "data",
+				SessionID: req.SessionID,
+				StreamID:  streamID,
+				Data:      string(event.data),
+				Len:       len(event.data),
+			}); err != nil {
 				return
 			}
 		case "kitty":
 			if event.kitty == nil {
 				continue
 			}
-			if err := enc.Encode(StreamMessage{Type: "kitty", SessionID: req.SessionID, Kitty: event.kitty}); err != nil {
+			if err := enc.Encode(StreamMessage{Type: "kitty", SessionID: req.SessionID, StreamID: streamID, Kitty: event.kitty}); err != nil {
 				return
 			}
 		}
 	}
-	_ = enc.Encode(StreamMessage{Type: "closed", SessionID: req.SessionID})
+	_ = enc.Encode(StreamMessage{Type: "closed", SessionID: req.SessionID, StreamID: streamID})
 }
 
 func (s *Server) writeError(conn net.Conn, err error) {

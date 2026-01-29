@@ -18,6 +18,8 @@ type Options struct {
 	SnapshotInterval        time.Duration
 	HistoryLines            int
 	RecordPty               bool
+	StreamCreditTimeout     time.Duration
+	StreamInitialCredit     int64
 	Logger                  *log.Logger
 }
 
@@ -31,5 +33,7 @@ func DefaultOptions() Options {
 		SnapshotInterval:        2 * time.Second,
 		HistoryLines:            4000,
 		RecordPty:               false,
+		StreamCreditTimeout:     30 * time.Second,
+		StreamInitialCredit:     256 * 1024,
 	}
 }

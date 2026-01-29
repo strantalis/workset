@@ -58,6 +58,10 @@ func TestGetTerminalBootstrapSessiond(t *testing.T) {
 	if bootstrap.MouseEncoding != "sgr" {
 		t.Fatalf("expected mouse encoding sgr, got %q", bootstrap.MouseEncoding)
 	}
+	expectedCredit := sessiond.DefaultOptions().StreamInitialCredit
+	if bootstrap.InitialCredit != expectedCredit {
+		t.Fatalf("expected initial credit %d, got %d", expectedCredit, bootstrap.InitialCredit)
+	}
 }
 
 func startSessiondServer(t *testing.T) (*sessiond.Client, func()) {

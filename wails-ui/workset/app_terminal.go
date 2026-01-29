@@ -24,6 +24,7 @@ type TerminalPayload struct {
 	WorkspaceID string `json:"workspaceId"`
 	TerminalID  string `json:"terminalId"`
 	Data        string `json:"data"`
+	Bytes       int    `json:"bytes"`
 }
 
 type TerminalLifecyclePayload struct {
@@ -72,6 +73,7 @@ type TerminalBootstrapPayload struct {
 	MouseSGR         bool            `json:"mouseSGR,omitempty"`
 	MouseEncoding    string          `json:"mouseEncoding,omitempty"`
 	SafeToReplay     bool            `json:"safeToReplay,omitempty"`
+	InitialCredit    int64           `json:"initialCredit,omitempty"`
 }
 
 type TerminalStatusPayload struct {
@@ -126,6 +128,7 @@ type terminalSession struct {
 	client       *sessiond.Client
 	stream       *sessiond.Stream
 	streamCancel context.CancelFunc
+	streamID     string
 
 	tuiMode      bool
 	altScreen    bool
@@ -432,6 +435,7 @@ func (s *terminalSession) CloseWithReason(reason string) error {
 		_ = s.stream.Close()
 		s.stream = nil
 	}
+	s.streamID = ""
 	defer s.mu.Unlock()
 	if s.closed {
 		return nil
@@ -587,6 +591,29 @@ func (a *App) WriteWorkspaceTerminal(workspaceID, terminalID, data string) error
 	return session.Write(data)
 }
 
+func (a *App) AckWorkspaceTerminal(workspaceID, terminalID string, bytes int) error {
+	if bytes <= 0 {
+		return nil
+	}
+	session, err := a.getTerminal(workspaceID, terminalID)
+	if err != nil {
+		return err
+	}
+	session.mu.Lock()
+	client := session.client
+	streamID := session.streamID
+	session.mu.Unlock()
+	if client == nil {
+		return fmt.Errorf("terminal not started")
+	}
+	if streamID == "" {
+		return fmt.Errorf("terminal stream not ready")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return client.Ack(ctx, session.id, streamID, int64(bytes))
+}
+
 func (a *App) GetTerminalBacklog(workspaceID, terminalID string, since int64) (TerminalBacklogPayload, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
@@ -711,6 +738,7 @@ func (a *App) GetTerminalBootstrap(workspaceID, terminalID string) (TerminalBoot
 			MouseSGR:         bootstrap.MouseSGR,
 			MouseEncoding:    bootstrap.MouseEncoding,
 			SafeToReplay:     bootstrap.SafeToReplay,
+			InitialCredit:    bootstrap.InitialCredit,
 		}, nil
 	}
 	return TerminalBootstrapPayload{
@@ -729,6 +757,7 @@ func (a *App) GetTerminalBootstrap(workspaceID, terminalID string) (TerminalBoot
 		MouseSGR:         bootstrap.MouseSGR,
 		MouseEncoding:    bootstrap.MouseEncoding,
 		SafeToReplay:     bootstrap.SafeToReplay,
+		InitialCredit:    bootstrap.InitialCredit,
 	}, nil
 }
 
@@ -871,7 +900,7 @@ func (a *App) streamTerminal(session *terminalSession) {
 	session.mu.Lock()
 	session.streamCancel = cancel
 	session.mu.Unlock()
-	stream, first, err := client.Attach(ctx, session.id, 0, false)
+	stream, first, err := client.Attach(ctx, session.id, 0, false, "")
 	if err != nil {
 		session.mu.Lock()
 		session.client = nil
@@ -881,6 +910,7 @@ func (a *App) streamTerminal(session *terminalSession) {
 	}
 	session.mu.Lock()
 	session.stream = stream
+	session.streamID = stream.ID()
 	session.mu.Unlock()
 	if first.Type == "error" && first.Error != "" {
 		session.mu.Lock()
@@ -944,10 +974,15 @@ func (a *App) streamTerminal(session *terminalSession) {
 		}
 		if msg.Type == "data" && msg.Data != "" {
 			applyModes(msg.Data)
+			bytes := msg.Len
+			if bytes <= 0 {
+				bytes = len(msg.Data)
+			}
 			wruntime.EventsEmit(a.ctx, "terminal:data", TerminalPayload{
 				WorkspaceID: session.workspaceID,
 				TerminalID:  session.terminalID,
 				Data:        msg.Data,
+				Bytes:       bytes,
 			})
 		}
 		if msg.Type == "closed" {

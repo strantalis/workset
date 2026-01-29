@@ -10,6 +10,10 @@ import (
 )
 
 func startTestServer(t *testing.T) (*Client, func()) {
+	return startTestServerWithOptions(t, nil)
+}
+
+func startTestServerWithOptions(t *testing.T, mutate func(*Options)) (*Client, func()) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("pty not supported on windows")
@@ -24,6 +28,9 @@ func startTestServer(t *testing.T) (*Client, func()) {
 	opts.TranscriptDir = filepath.Join(tmp, "terminal_logs")
 	opts.RecordDir = filepath.Join(tmp, "terminal_records")
 	opts.StateDir = filepath.Join(tmp, "terminal_state")
+	if mutate != nil {
+		mutate(&opts)
+	}
 
 	server := NewServer(opts)
 	ctx, cancel := context.WithCancel(context.Background())

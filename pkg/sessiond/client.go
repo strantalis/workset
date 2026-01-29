@@ -23,6 +23,7 @@ type Client struct {
 type Stream struct {
 	conn net.Conn
 	dec  *json.Decoder
+	id   string
 }
 
 func NewClient(socketPath string) *Client {
@@ -78,15 +79,19 @@ func (c *Client) Shutdown(ctx context.Context) error {
 	return c.call(ctx, "shutdown", struct{}{}, nil)
 }
 
-func (c *Client) Attach(ctx context.Context, sessionID string, since int64, withBuffer bool) (*Stream, StreamMessage, error) {
+func (c *Client) Attach(ctx context.Context, sessionID string, since int64, withBuffer bool, streamID string) (*Stream, StreamMessage, error) {
 	conn, err := c.dial(ctx)
 	if err != nil {
 		return nil, StreamMessage{}, err
+	}
+	if streamID == "" {
+		streamID = newStreamID()
 	}
 	enc := json.NewEncoder(conn)
 	if err := enc.Encode(AttachRequest{
 		Type:       "attach",
 		SessionID:  sessionID,
+		StreamID:   streamID,
 		Since:      since,
 		WithBuffer: withBuffer,
 	}); err != nil {
@@ -99,7 +104,7 @@ func (c *Client) Attach(ctx context.Context, sessionID string, since int64, with
 		_ = conn.Close()
 		return nil, StreamMessage{}, err
 	}
-	return &Stream{conn: conn, dec: dec}, first, nil
+	return &Stream{conn: conn, dec: dec, id: streamID}, first, nil
 }
 
 func (s *Stream) Next(msg *StreamMessage) error {
@@ -109,11 +114,25 @@ func (s *Stream) Next(msg *StreamMessage) error {
 	return s.dec.Decode(msg)
 }
 
+func (s *Stream) ID() string {
+	if s == nil {
+		return ""
+	}
+	return s.id
+}
+
 func (s *Stream) Close() error {
 	if s == nil || s.conn == nil {
 		return nil
 	}
 	return s.conn.Close()
+}
+
+func (c *Client) Ack(ctx context.Context, sessionID, streamID string, bytes int64) error {
+	if bytes <= 0 {
+		return nil
+	}
+	return c.call(ctx, "ack", AckRequest{SessionID: sessionID, StreamID: streamID, Bytes: bytes}, nil)
 }
 
 func (c *Client) call(ctx context.Context, method string, params interface{}, out interface{}) error {
@@ -189,7 +208,12 @@ func isTimeoutErr(err error) bool {
 	return errors.Is(err, context.DeadlineExceeded)
 }
 
-var ensureCounter int64
+var streamCounter int64
+
+func newStreamID() string {
+	seq := atomic.AddInt64(&streamCounter, 1)
+	return fmt.Sprintf("stream-%d-%d", time.Now().UnixNano(), seq)
+}
 
 func EnsureRunning(ctx context.Context) (*Client, error) {
 	socketPath, err := DefaultSocketPath()
@@ -274,7 +298,6 @@ func startDaemon(_ context.Context, socketPath string) error {
 		_ = logFile.Close()
 		return err
 	}
-	atomic.AddInt64(&ensureCounter, 1)
 	go func() {
 		_ = cmd.Wait()
 		_ = logFile.Close()

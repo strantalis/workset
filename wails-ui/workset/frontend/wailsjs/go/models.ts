@@ -812,6 +812,7 @@ export namespace main {
 	    mouseSGR?: boolean;
 	    mouseEncoding?: string;
 	    safeToReplay?: boolean;
+	    initialCredit?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new TerminalBootstrapPayload(source);
@@ -834,6 +835,7 @@ export namespace main {
 	        this.mouseSGR = source["mouseSGR"];
 	        this.mouseEncoding = source["mouseEncoding"];
 	        this.safeToReplay = source["safeToReplay"];
+	        this.initialCredit = source["initialCredit"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1617,4 +1619,3 @@ export namespace worksetapi {
 	}
 
 }
-

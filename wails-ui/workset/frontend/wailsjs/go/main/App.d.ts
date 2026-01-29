@@ -3,6 +3,8 @@
 import {main} from '../models';
 import {worksetapi} from '../models';
 
+export function AckWorkspaceTerminal(arg1:string,arg2:string,arg3:number):Promise<void>;
+
 export function AddGroupMember(arg1:main.GroupMemberRequest):Promise<worksetapi.GroupJSON>;
 
 export function AddRepo(arg1:main.RepoAddRequest):Promise<main.RepoAddResponse>;

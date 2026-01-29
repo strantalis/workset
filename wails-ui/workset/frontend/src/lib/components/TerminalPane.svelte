@@ -14,6 +14,7 @@
     logTerminalDebug
   } from '../api'
   import {
+    AckWorkspaceTerminal,
     ResizeWorkspaceTerminal,
     StartWorkspaceTerminal,
     WriteWorkspaceTerminal
@@ -86,6 +87,11 @@
     renderScheduled: boolean
   }
 
+  type OutputChunk = {
+    data: string
+    bytes: number
+  }
+
   type KittyEventPayload = {
     kind: string
     image?: {
@@ -134,10 +140,10 @@
   }
 
   const terminals = new Map<string, TerminalHandle>()
-  const outputQueues = new Map<string, {chunks: string[]; bytes: number; scheduled: boolean}>()
+  const outputQueues = new Map<string, {chunks: OutputChunk[]; bytes: number; scheduled: boolean}>()
   const replayState = new Map<string, 'idle' | 'replaying' | 'live'>()
   const replayLoading = new Set<string>()
-  const pendingReplayOutput = new Map<string, string[]>()
+  const pendingReplayOutput = new Map<string, OutputChunk[]>()
   const pendingReplayKitty = new Map<string, KittyEventPayload[]>()
   const lastDims = new Map<string, {cols: number; rows: number}>()
   const startupTimers = new Map<string, number>()
@@ -156,6 +162,10 @@
   const pendingRedraw = new Set<string>()
   const renderCheckLogged = new Set<string>()
   const reopenAttempted = new Set<string>()
+  const pendingAckBytes = new Map<string, number>()
+  const initialCreditMap = new Map<string, number>()
+  const ackTimers = new Map<string, number>()
+  const initialCreditSent = new Set<string>()
   let initCounter = 0
   const startedSessions = new Set<string>()
   let resizeScheduled = false
@@ -199,6 +209,18 @@
   const listeners = new Set<string>()
   const OUTPUT_FLUSH_BUDGET = 128 * 1024
   const OUTPUT_BACKLOG_LIMIT = 512 * 1024
+  const ACK_BATCH_BYTES = 32 * 1024
+  const ACK_FLUSH_DELAY_MS = 25
+  // Fallback when sessiond doesn't advertise the initial credit.
+  const INITIAL_STREAM_CREDIT = 256 * 1024
+  const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null
+
+  const countBytes = (data: string): number => {
+    if (textEncoder) {
+      return textEncoder.encode(data).length
+    }
+    return data.length
+  }
 
   const clamp = (value: number, min: number, max: number): number => {
     if (value < min) return min
@@ -304,6 +326,19 @@
     }
   }
 
+  const ensureSessionActive = async (id: string, quiet = true): Promise<void> => {
+    if (!id) return
+    if (startedSessions.has(id) || startInFlight.has(id)) return
+    const status = statusMap[id]
+    if (status === 'closed' || status === 'error' || status === 'idle') {
+      try {
+        await beginTerminal(id, quiet)
+      } catch (error) {
+        logDebug(id, 'ensure_session_failed', {error: String(error)})
+      }
+    }
+  }
+
   const updateStats = (id: string, updater: (stats: {
     bytesIn: number
     bytesOut: number
@@ -315,6 +350,47 @@
       statsMap.get(id) ?? {bytesIn: 0, bytesOut: 0, backlog: 0, lastOutputAt: 0, lastCprAt: 0}
     updater(existing)
     statsMap.set(id, existing)
+  }
+
+  const grantInitialCredit = (id: string): void => {
+    if (initialCreditSent.has(id) || !workspaceId) return
+    initialCreditSent.add(id)
+    const credit = initialCreditMap.get(id) ?? INITIAL_STREAM_CREDIT
+    void AckWorkspaceTerminal(workspaceId, id, credit).catch(() => {
+      initialCreditSent.delete(id)
+    })
+  }
+
+  const flushAck = (id: string): void => {
+    const queued = pendingAckBytes.get(id) ?? 0
+    if (queued <= 0 || !workspaceId) return
+    if (replayState.get(id) !== 'live') return
+    if (!startedSessions.has(id)) return
+    pendingAckBytes.set(id, 0)
+    void AckWorkspaceTerminal(workspaceId, id, queued).catch(() => {
+      pendingAckBytes.set(id, (pendingAckBytes.get(id) ?? 0) + queued)
+      scheduleAckFlush(id)
+    })
+  }
+
+  const scheduleAckFlush = (id: string): void => {
+    if (ackTimers.has(id)) return
+    const timer = window.setTimeout(() => {
+      ackTimers.delete(id)
+      flushAck(id)
+    }, ACK_FLUSH_DELAY_MS)
+    ackTimers.set(id, timer)
+  }
+
+  const queueAck = (id: string, bytes: number): void => {
+    if (bytes <= 0) return
+    const next = (pendingAckBytes.get(id) ?? 0) + bytes
+    pendingAckBytes.set(id, next)
+    if (next >= ACK_BATCH_BYTES) {
+      flushAck(id)
+      return
+    }
+    scheduleAckFlush(id)
   }
 
   const setHealth = (id: string, state: 'unknown' | 'checking' | 'ok' | 'stale', message = ''): void => {
@@ -368,6 +444,7 @@
     if (!filtered) {
       return
     }
+    void ensureSessionActive(id)
     if (!startedSessions.has(id)) {
       pendingInput.set(id, (pendingInput.get(id) ?? '') + filtered)
       return
@@ -403,6 +480,14 @@
     pendingReplayOutput.delete(id)
     pendingReplayKitty.delete(id)
     outputQueues.delete(id)
+    pendingAckBytes.delete(id)
+    initialCreditMap.delete(id)
+    const ackTimer = ackTimers.get(id)
+    if (ackTimer) {
+      window.clearTimeout(ackTimer)
+    }
+    ackTimers.delete(id)
+    initialCreditSent.delete(id)
     pendingHealthCheck.delete(id)
     const renderTimer = pendingRenderCheck.get(id)
     if (renderTimer) {
@@ -450,9 +535,13 @@
     const pending = pendingReplayOutput.get(id)
     if (pending && pending.length > 0) {
       pendingReplayOutput.delete(id)
-      enqueueOutput(id, pending.join(''))
+      for (const chunk of pending) {
+        enqueueOutput(id, chunk.data, chunk.bytes)
+      }
     }
     flushOutput(id, true)
+    grantInitialCredit(id)
+    flushAck(id)
   }
 
   const noteCpr = (id: string): void => {
@@ -471,17 +560,18 @@
     return true
   }
 
-  const enqueueOutput = (id: string, data: string): void => {
+  const enqueueOutput = (id: string, data: string, bytes?: number): void => {
+    const chunkBytes = bytes && bytes > 0 ? bytes : countBytes(data)
     updateStats(id, (stats) => {
-      stats.bytesIn += data.length
+      stats.bytesIn += chunkBytes
       stats.lastOutputAt = Date.now()
     })
     if (healthMap[id] === 'checking' || healthMap[id] === 'unknown') {
       setHealth(id, 'ok', 'Output received.')
     }
     const queue = outputQueues.get(id) ?? {chunks: [], bytes: 0, scheduled: false}
-    queue.chunks.push(data)
-    queue.bytes += data.length
+    queue.chunks.push({data, bytes: chunkBytes})
+    queue.bytes += chunkBytes
     outputQueues.set(id, queue)
     updateStats(id, (stats) => {
       stats.backlog = queue.bytes
@@ -493,9 +583,20 @@
     }
 
     const isActive = id === terminalKey
-    if (queue.bytes >= OUTPUT_BACKLOG_LIMIT) {
-      flushOutput(id, true)
-      return
+    if (queue.bytes > OUTPUT_BACKLOG_LIMIT) {
+      let droppedBytes = 0
+      while (queue.bytes > OUTPUT_BACKLOG_LIMIT && queue.chunks.length > 0) {
+        const dropped = queue.chunks.shift()
+        if (!dropped) break
+        queue.bytes = Math.max(0, queue.bytes - dropped.bytes)
+        droppedBytes += dropped.bytes
+      }
+      updateStats(id, (stats) => {
+        stats.backlog = queue.bytes
+      })
+      if (droppedBytes > 0) {
+        setHealth(id, 'ok', 'Output throttled; dropping oldest output.')
+      }
     }
     if (isActive && queue.bytes >= OUTPUT_FLUSH_BUDGET) {
       flushOutput(id, false)
@@ -520,15 +621,16 @@
 
     let size = 0
     let count = 0
-    while (count < queue.chunks.length && size + queue.chunks[count].length <= OUTPUT_FLUSH_BUDGET) {
-      size += queue.chunks[count].length
+    while (count < queue.chunks.length && size + queue.chunks[count].bytes <= OUTPUT_FLUSH_BUDGET) {
+      size += queue.chunks[count].bytes
       count += 1
     }
     if (count === 0 && queue.chunks.length > 0) {
-      size = queue.chunks[0].length
+      size = queue.chunks[0].bytes
       count = 1
     }
-    const output = queue.chunks.slice(0, count).join('')
+    const selected = queue.chunks.slice(0, count)
+    const output = selected.map((chunk) => chunk.data).join('')
     queue.chunks = queue.chunks.slice(count)
     queue.bytes = Math.max(0, queue.bytes - size)
     updateStats(id, (stats) => {
@@ -612,6 +714,7 @@
       }
       handle.terminal.write(output, () => {
         scheduleRenderCheck()
+        queueAck(id, size)
       })
       scheduleRenderCheck()
     }
@@ -1214,21 +1317,22 @@
 
   const ensureListener = (): void => {
     if (!listeners.has('terminal:data')) {
-      const handler = (payload: {workspaceId: string; terminalId: string; data: string}): void => {
+      const handler = (payload: {workspaceId: string; terminalId: string; data: string; bytes?: number}): void => {
         const handle = terminals.get(payload.terminalId)
         if (!handle) return
         if (!inputMap[payload.terminalId]) {
           inputMap = {...inputMap, [payload.terminalId]: true}
         }
+        const bytes = payload.bytes && payload.bytes > 0 ? payload.bytes : countBytes(payload.data)
         const replayStateValue = replayState.get(payload.terminalId) ?? 'unknown'
         const isLive = replayStateValue === 'live'
         if (!isLive) {
           const pending = pendingReplayOutput.get(payload.terminalId) ?? []
-          pending.push(payload.data)
+          pending.push({data: payload.data, bytes})
           pendingReplayOutput.set(payload.terminalId, pending)
           return
         }
-        enqueueOutput(payload.terminalId, payload.data)
+        enqueueOutput(payload.terminalId, payload.data, bytes)
       }
       EventsOn('terminal:data', handler)
       listeners.add('terminal:data')
@@ -1472,8 +1576,8 @@
     }
     try {
       const result = await fetchTerminalBootstrap(workspaceId, id)
-      const snapshotBytes = result?.snapshot?.length ?? 0
-      const backlogBytes = result?.backlog?.length ?? 0
+      const snapshotBytes = result?.snapshot ? countBytes(result.snapshot) : 0
+      const backlogBytes = result?.backlog ? countBytes(result.backlog) : 0
       logDebug(id, 'bootstrap', {
         snapshotBytes,
         backlogBytes,
@@ -1487,6 +1591,7 @@
         mouseEncoding: result?.mouseEncoding ?? '',
         safeToReplay: result?.safeToReplay ?? false
       })
+      initialCreditMap.set(id, result?.initialCredit ?? INITIAL_STREAM_CREDIT)
       if (result) {
         modeMap = {
           ...modeMap,
@@ -1607,6 +1712,16 @@
         debugStats = {...stats}
       }, 1000)
     }
+
+    const focusHandler = (): void => {
+      if (!terminalKey) return
+      void ensureSessionActive(terminalKey)
+    }
+    window.addEventListener('focus', focusHandler)
+
+    return () => {
+      window.removeEventListener('focus', focusHandler)
+    }
   })
 
   $effect(() => {
@@ -1616,6 +1731,11 @@
     untrack(() => {
       void initTerminal(id, name)
     })
+    if (active) {
+      untrack(() => {
+        void ensureSessionActive(id)
+      })
+    }
   })
 
   $effect(() => {
