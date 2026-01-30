@@ -1,0 +1,753 @@
+name: release
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: "Release type"
+        required: true
+        default: "stable"
+        type: choice
+        options:
+          - stable
+          - alpha
+      force_alpha:
+        description: "Force an alpha release even if no changes"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+concurrency:
+  group: release-${{ github.event_name == 'schedule' && 'alpha' || (inputs.release_type || 'stable') }}
+  cancel-in-progress: false
+
+jobs:
+  determine:
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.determine.outputs.mode }}
+      force_alpha: ${{ steps.determine.outputs.force_alpha }}
+    steps:
+      - name: Determine release mode
+        id: determine
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_RELEASE_TYPE: ${{ inputs.release_type }}
+          INPUT_FORCE_ALPHA: ${{ inputs.force_alpha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            mode="alpha"
+            force_alpha="false"
+          else
+            mode="${INPUT_RELEASE_TYPE:-stable}"
+            force_alpha="${INPUT_FORCE_ALPHA:-false}"
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "force_alpha=$force_alpha" >> "$GITHUB_OUTPUT"
+
+  prepare-alpha:
+    needs: determine
+    if: ${{ needs.determine.outputs.mode == 'alpha' }}
+    runs-on: ubuntu-latest
+    outputs:
+      alpha_version: ${{ steps.compute.outputs.alpha_version }}
+      has_cli_changes: ${{ steps.compute.outputs.has_cli_changes }}
+      has_wails_changes: ${{ steps.compute.outputs.has_wails_changes }}
+      should_run: ${{ steps.compute.outputs.should_run }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v5
+        with:
+          fetch-depth: 0
+      - name: Compute alpha version and change set
+        id: compute
+        shell: bash
+        env:
+          FORCE_RELEASE: ${{ needs.determine.outputs.force_alpha }}
+        run: |
+          set -euo pipefail
+
+          last_tag=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          if [ -z "$last_tag" ]; then
+            changes=$(git ls-files)
+          else
+            changes=$(git diff --name-only "${last_tag}"..HEAD)
+          fi
+
+          has_wails_changes=false
+          if printf '%s\n' "$changes" | grep -Eq '^wails-ui/workset/'; then
+            has_wails_changes=true
+          fi
+
+          has_cli_changes=false
+          if printf '%s\n' "$changes" | grep -Eq '^(cmd/|internal/|pkg/|go\.mod$|go\.sum$|\.goreleaser\.yaml$)'; then
+            has_cli_changes=true
+          fi
+
+          force="${FORCE_RELEASE:-false}"
+          should_run=false
+          if [ "$force" = "true" ]; then
+            should_run=true
+            has_cli_changes=true
+            has_wails_changes=true
+          elif [ "$has_cli_changes" = "true" ] || [ "$has_wails_changes" = "true" ]; then
+            should_run=true
+          fi
+
+          last_stable_tag=$(
+            {
+              git tag -l 'v[0-9]*.[0-9]*.[0-9]*' \
+                | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+                | sort -V \
+                | tail -n1
+            } || true
+          )
+          if [ -z "$last_stable_tag" ]; then
+            base_version="v0.1.0"
+          else
+            IFS='.' read -r major minor patch <<<"${last_stable_tag#v}"
+            next_minor=$((minor + 1))
+            base_version="v${major}.${next_minor}.0"
+          fi
+
+          last_alpha=$(git tag -l "${base_version}-alpha.*" --sort=-v:refname | head -n1)
+          if [ -z "$last_alpha" ]; then
+            alpha_num=1
+          else
+            alpha_num="${last_alpha##*.}"
+            alpha_num=$((alpha_num + 1))
+          fi
+          alpha_version="${base_version}-alpha.${alpha_num}"
+
+          echo "alpha_version=${alpha_version}" >> "$GITHUB_OUTPUT"
+          echo "has_cli_changes=${has_cli_changes}" >> "$GITHUB_OUTPUT"
+          echo "has_wails_changes=${has_wails_changes}" >> "$GITHUB_OUTPUT"
+          echo "should_run=${should_run}" >> "$GITHUB_OUTPUT"
+
+  alpha-release:
+    needs: prepare-alpha
+    if: ${{ needs.prepare-alpha.outputs.should_run == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create alpha GitHub release
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
+        with:
+          tag_name: ${{ needs.prepare-alpha.outputs.alpha_version }}
+          name: ${{ needs.prepare-alpha.outputs.alpha_version }}
+          prerelease: true
+          target_commitish: ${{ github.sha }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  alpha-cli:
+    needs: [prepare-alpha, alpha-release]
+    if: ${{ needs.prepare-alpha.outputs.has_cli_changes == 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ALPHA_VERSION: ${{ needs.prepare-alpha.outputs.alpha_version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v5
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6
+        with:
+          go-version-file: go.mod
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@62ad5284b8ced813296287a0b63906cb364b73ee # v0
+      - name: GoReleaser (snapshot)
+        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+        with:
+          distribution: goreleaser-pro
+          args: release --snapshot --clean
+        env:
+          GORELEASER_KEY: ${{ secrets.GORELEASER_PRO }}
+      - uses: actions/attest-build-provenance@00014ed6ed5efc5b1ab7f7f34a39eb55d41aa4f8 # v3
+        with:
+          subject-checksums: dist/checksums.txt
+      - name: Upload CLI artifacts to alpha release
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
+        with:
+          tag_name: ${{ needs.prepare-alpha.outputs.alpha_version }}
+          prerelease: true
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sbom*
+            dist/checksums.txt
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload artifacts
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
+        with:
+          name: workset-alpha-${{ github.sha }}
+          path: dist/*
+
+  wails-macos-alpha:
+    needs: [prepare-alpha, alpha-release]
+    if: ${{ needs.prepare-alpha.outputs.has_wails_changes == 'true' }}
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v5
+      - name: Set up Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6
+        with:
+          go-version-file: wails-ui/workset/go.mod
+      - name: Set up Node
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "24"
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      - name: Compute build metadata
+        id: build_meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ needs.prepare-alpha.outputs.alpha_version }}"
+          version="${tag#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "commit=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - name: Build Wails app
+        run: wails build -trimpath -ldflags "-s -w -X main.appVersion=${{ steps.build_meta.outputs.version }} -X main.appCommit=${{ steps.build_meta.outputs.commit }}"
+        working-directory: wails-ui/workset
+      - name: Signing status
+        id: signing
+        shell: bash
+        env:
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for var in MACOS_SIGN_P12 MACOS_SIGN_PASSWORD MACOS_NOTARY_KEY MACOS_NOTARY_KEY_ID MACOS_NOTARY_ISSUER_ID; do
+            if [ -z "${!var:-}" ]; then
+              missing+=("$var")
+            fi
+          done
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::macOS signing/notarization skipped; missing: ${missing[*]}"
+          fi
+      - name: Import signing cert
+        if: steps.signing.outputs.enabled == 'true'
+        shell: bash
+        env:
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          CERT_PATH: ${{ runner.temp }}/signing.p12
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/wails-signing.keychain-db"
+          cert="$RUNNER_TEMP/signing.p12"
+          python3 - <<'PY'
+          import base64, os
+          data = os.environ["MACOS_SIGN_P12"]
+          with open(os.environ["CERT_PATH"], "wb") as f:
+              f.write(base64.b64decode(data))
+          PY
+          security create-keychain -p "" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "" "$keychain"
+          security import "$cert" -k "$keychain" -P "$MACOS_SIGN_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security list-keychains -s "$keychain"
+      - name: Codesign app
+        if: steps.signing.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          dir="wails-ui/workset/build/bin"
+          apps=("$dir"/*.app)
+          if [ ${#apps[@]} -eq 0 ]; then
+            echo "No .app bundles found in $dir"
+            exit 1
+          fi
+          identity=$(security find-identity -v -p codesigning | awk -F\" '/Developer ID Application/ {print $2; exit}')
+          if [ -z "$identity" ]; then
+            echo "Developer ID Application identity not found"
+            security find-identity -v -p codesigning || true
+            exit 1
+          fi
+          for app in "${apps[@]}"; do
+            if [ -d "$app/Contents/Resources" ]; then
+              while IFS= read -r -d '' bin; do
+                if file "$bin" | grep -q "Mach-O"; then
+                  /usr/bin/codesign --force --options runtime --timestamp --sign "$identity" "$bin"
+                fi
+              done < <(find "$app/Contents/Resources" -type f -perm -111 -print0)
+            fi
+            /usr/bin/codesign --deep --force --options runtime --timestamp --sign "$identity" "$app"
+          done
+      - name: Notarize and staple app
+        if: steps.signing.outputs.enabled == 'true'
+        shell: bash
+        env:
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+          KEY_PATH: ${{ runner.temp }}/notary_api_key.p8
+        run: |
+          set -euo pipefail
+          dir="wails-ui/workset/build/bin"
+          key="$RUNNER_TEMP/notary_api_key.p8"
+          python3 - <<'PY'
+          import base64, os
+          data = os.environ["MACOS_NOTARY_KEY"]
+          with open(os.environ["KEY_PATH"], "wb") as f:
+              f.write(base64.b64decode(data))
+          PY
+          apps=("$dir"/*.app)
+          for app in "${apps[@]}"; do
+            zip_path="${app}.zip"
+            ditto -c -k --sequesterRsrc --keepParent "$app" "$zip_path"
+            result=$(xcrun notarytool submit "$zip_path" \
+              --key "$key" \
+              --key-id "$MACOS_NOTARY_KEY_ID" \
+              --issuer "$MACOS_NOTARY_ISSUER_ID" \
+              --wait \
+              --output-format json)
+            id=$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+            status=$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
+            if [ "$status" != "Accepted" ]; then
+              xcrun notarytool log "$id" \
+                --key "$key" \
+                --key-id "$MACOS_NOTARY_KEY_ID" \
+                --issuer "$MACOS_NOTARY_ISSUER_ID"
+              exit 1
+            fi
+            xcrun stapler staple "$app"
+            rm -f "$zip_path"
+          done
+      - name: Rename artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ needs.prepare-alpha.outputs.alpha_version }}"
+          os="macos"
+          dir="wails-ui/workset/build/bin"
+          if [ ! -d "$dir" ]; then
+            echo "Missing build output directory: $dir"
+            exit 1
+          fi
+          shopt -s nullglob
+          for path in "$dir"/*; do
+            base="$(basename "$path")"
+            if [[ "$base" == *.app ]]; then
+              new="workset-${tag}-${os}.app"
+            elif [[ "$base" == *.exe ]]; then
+              new="workset-${tag}-${os}.exe"
+            else
+              new="workset-${tag}-${os}-${base}"
+            fi
+            mv "$path" "$dir/$new"
+          done
+      - name: Package macOS app
+        shell: bash
+        run: |
+          set -euo pipefail
+          dir="wails-ui/workset/build/bin"
+          shopt -s nullglob
+          apps=("$dir"/*.app)
+          if [ ${#apps[@]} -eq 0 ]; then
+            echo "No .app bundles found to package in $dir"
+            exit 1
+          fi
+          for app in "${apps[@]}"; do
+            zip_path="${app}.zip"
+            ditto -c -k --sequesterRsrc --keepParent "$app" "$zip_path"
+          done
+      - name: Upload release assets
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
+        with:
+          tag_name: ${{ needs.prepare-alpha.outputs.alpha_version }}
+          prerelease: true
+          files: wails-ui/workset/build/bin/*
+
+  wails-windows-alpha:
+    needs: [prepare-alpha, alpha-release]
+    if: ${{ needs.prepare-alpha.outputs.has_wails_changes == 'true' }}
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v5
+      - name: Set up Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6
+        with:
+          go-version-file: wails-ui/workset/go.mod
+      - name: Set up Node
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "24"
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      - name: Compute build metadata
+        id: build_meta
+        shell: pwsh
+        run: |
+          $tag = "${{ needs.prepare-alpha.outputs.alpha_version }}"
+          $version = $tag -replace '^v', ''
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "commit=${{ github.sha }}" >> $env:GITHUB_OUTPUT
+      - name: Build Wails app
+        run: wails build -trimpath -ldflags "-s -w -X main.appVersion=${{ steps.build_meta.outputs.version }} -X main.appCommit=${{ steps.build_meta.outputs.commit }}"
+        working-directory: wails-ui/workset
+      - name: Rename artifacts
+        shell: pwsh
+        run: |
+          $tag = "${{ needs.prepare-alpha.outputs.alpha_version }}"
+          $os = "windows"
+          $dir = "wails-ui/workset/build/bin"
+          if (-not (Test-Path $dir)) {
+            Write-Error "Missing build output directory: $dir"
+            exit 1
+          }
+          Get-ChildItem -Path $dir | ForEach-Object {
+            $ext = $_.Extension
+            if ($ext -eq ".exe") {
+              $newName = "workset-$tag-$os.exe"
+            } else {
+              $newName = "workset-$tag-$os-$($_.Name)"
+            }
+            Move-Item -Path $_.FullName -Destination (Join-Path $dir $newName)
+          }
+      - name: Upload release assets
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
+        with:
+          tag_name: ${{ needs.prepare-alpha.outputs.alpha_version }}
+          prerelease: true
+          files: wails-ui/workset/build/bin/*
+
+  stable-release:
+    needs: determine
+    if: ${{ needs.determine.outputs.mode == 'stable' }}
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.version }}
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GORELEASER_GH_TOKEN: ${{ secrets.GORELEASER_GH_TOKEN }}
+      MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+      MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+      MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+      MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+      MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v5
+        with:
+          fetch-depth: 0
+      - name: Cocogitto release
+        id: release
+        uses: cocogitto/cocogitto-action@v3
+        with:
+          release: true
+          check: true
+          check-latest-tag-only: true
+          git-user: "github-actions[bot]"
+          git-user-email: "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Push release commit and tag
+        run: |
+          set -euo pipefail
+          git push origin HEAD:main
+          git push origin "${{ steps.release.outputs.version }}"
+      - name: Generate release notes
+        run: cog changelog --at "${{ steps.release.outputs.version }}" -t remote > GITHUB_CHANGELOG.md
+      - name: Set up Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6
+        with:
+          go-version-file: go.mod
+      - name: Set up Node
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+      - name: Ensure npm supports trusted publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install -g npm@11.5.1
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@62ad5284b8ced813296287a0b63906cb364b73ee # v0
+      - name: Notarization status
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for var in MACOS_SIGN_P12 MACOS_SIGN_PASSWORD MACOS_NOTARY_KEY MACOS_NOTARY_KEY_ID MACOS_NOTARY_ISSUER_ID; do
+            if [ -z "${!var:-}" ]; then
+              missing+=("$var")
+            fi
+          done
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "::notice::macOS notarization enabled (all required env vars present)."
+          else
+            echo "::notice::macOS notarization skipped; missing: ${missing[*]}"
+          fi
+      - name: GoReleaser (release)
+        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+        with:
+          distribution: goreleaser-pro
+          args: release --release-notes=GITHUB_CHANGELOG.md --clean
+        env:
+          GORELEASER_KEY: ${{ secrets.GORELEASER_PRO }}
+      - uses: actions/attest-build-provenance@00014ed6ed5efc5b1ab7f7f34a39eb55d41aa4f8 # v3
+        with:
+          subject-checksums: dist/checksums.txt
+
+  wails-macos-stable:
+    needs: stable-release
+    if: ${{ needs.stable-release.outputs.tag != '' }}
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v5
+      - name: Set up Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6
+        with:
+          go-version-file: wails-ui/workset/go.mod
+      - name: Set up Node
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "24"
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      - name: Compute build metadata
+        id: build_meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ needs.stable-release.outputs.tag }}"
+          version="${tag#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "commit=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - name: Build Wails app
+        run: wails build -trimpath -ldflags "-s -w -X main.appVersion=${{ steps.build_meta.outputs.version }} -X main.appCommit=${{ steps.build_meta.outputs.commit }}"
+        working-directory: wails-ui/workset
+      - name: Signing status
+        id: signing
+        shell: bash
+        env:
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for var in MACOS_SIGN_P12 MACOS_SIGN_PASSWORD MACOS_NOTARY_KEY MACOS_NOTARY_KEY_ID MACOS_NOTARY_ISSUER_ID; do
+            if [ -z "${!var:-}" ]; then
+              missing+=("$var")
+            fi
+          done
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::macOS signing/notarization skipped; missing: ${missing[*]}"
+          fi
+      - name: Import signing cert
+        if: steps.signing.outputs.enabled == 'true'
+        shell: bash
+        env:
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          CERT_PATH: ${{ runner.temp }}/signing.p12
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/wails-signing.keychain-db"
+          cert="$RUNNER_TEMP/signing.p12"
+          python3 - <<'PY'
+          import base64, os
+          data = os.environ["MACOS_SIGN_P12"]
+          with open(os.environ["CERT_PATH"], "wb") as f:
+              f.write(base64.b64decode(data))
+          PY
+          security create-keychain -p "" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "" "$keychain"
+          security import "$cert" -k "$keychain" -P "$MACOS_SIGN_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security list-keychains -s "$keychain"
+      - name: Codesign app
+        if: steps.signing.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          dir="wails-ui/workset/build/bin"
+          apps=("$dir"/*.app)
+          if [ ${#apps[@]} -eq 0 ]; then
+            echo "No .app bundles found in $dir"
+            exit 1
+          fi
+          identity=$(security find-identity -v -p codesigning | awk -F\" '/Developer ID Application/ {print $2; exit}')
+          if [ -z "$identity" ]; then
+            echo "Developer ID Application identity not found"
+            security find-identity -v -p codesigning || true
+            exit 1
+          fi
+          for app in "${apps[@]}"; do
+            if [ -d "$app/Contents/Resources" ]; then
+              while IFS= read -r -d '' bin; do
+                if file "$bin" | grep -q "Mach-O"; then
+                  /usr/bin/codesign --force --options runtime --timestamp --sign "$identity" "$bin"
+                fi
+              done < <(find "$app/Contents/Resources" -type f -perm -111 -print0)
+            fi
+            /usr/bin/codesign --deep --force --options runtime --timestamp --sign "$identity" "$app"
+          done
+      - name: Notarize and staple app
+        if: steps.signing.outputs.enabled == 'true'
+        shell: bash
+        env:
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+          KEY_PATH: ${{ runner.temp }}/notary_api_key.p8
+        run: |
+          set -euo pipefail
+          dir="wails-ui/workset/build/bin"
+          key="$RUNNER_TEMP/notary_api_key.p8"
+          python3 - <<'PY'
+          import base64, os
+          data = os.environ["MACOS_NOTARY_KEY"]
+          with open(os.environ["KEY_PATH"], "wb") as f:
+              f.write(base64.b64decode(data))
+          PY
+          apps=("$dir"/*.app)
+          for app in "${apps[@]}"; do
+            zip_path="${app}.zip"
+            ditto -c -k --sequesterRsrc --keepParent "$app" "$zip_path"
+            result=$(xcrun notarytool submit "$zip_path" \
+              --key "$key" \
+              --key-id "$MACOS_NOTARY_KEY_ID" \
+              --issuer "$MACOS_NOTARY_ISSUER_ID" \
+              --wait \
+              --output-format json)
+            id=$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+            status=$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
+            if [ "$status" != "Accepted" ]; then
+              xcrun notarytool log "$id" \
+                --key "$key" \
+                --key-id "$MACOS_NOTARY_KEY_ID" \
+                --issuer "$MACOS_NOTARY_ISSUER_ID"
+              exit 1
+            fi
+            xcrun stapler staple "$app"
+            rm -f "$zip_path"
+          done
+      - name: Rename artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ needs.stable-release.outputs.tag }}"
+          os="macos"
+          dir="wails-ui/workset/build/bin"
+          if [ ! -d "$dir" ]; then
+            echo "Missing build output directory: $dir"
+            exit 1
+          fi
+          shopt -s nullglob
+          for path in "$dir"/*; do
+            base="$(basename "$path")"
+            if [[ "$base" == *.app ]]; then
+              new="workset-${tag}-${os}.app"
+            elif [[ "$base" == *.exe ]]; then
+              new="workset-${tag}-${os}.exe"
+            else
+              new="workset-${tag}-${os}-${base}"
+            fi
+            mv "$path" "$dir/$new"
+          done
+      - name: Package macOS app
+        shell: bash
+        run: |
+          set -euo pipefail
+          dir="wails-ui/workset/build/bin"
+          shopt -s nullglob
+          apps=("$dir"/*.app)
+          if [ ${#apps[@]} -eq 0 ]; then
+            echo "No .app bundles found to package in $dir"
+            exit 1
+          fi
+          for app in "${apps[@]}"; do
+            zip_path="${app}.zip"
+            ditto -c -k --sequesterRsrc --keepParent "$app" "$zip_path"
+          done
+      - name: Upload release assets
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
+        with:
+          tag_name: ${{ needs.stable-release.outputs.tag }}
+          prerelease: false
+          files: wails-ui/workset/build/bin/*
+
+  wails-windows-stable:
+    needs: stable-release
+    if: ${{ needs.stable-release.outputs.tag != '' }}
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v5
+      - name: Set up Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6
+        with:
+          go-version-file: wails-ui/workset/go.mod
+      - name: Set up Node
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "24"
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      - name: Compute build metadata
+        id: build_meta
+        shell: pwsh
+        run: |
+          $tag = "${{ needs.stable-release.outputs.tag }}"
+          $version = $tag -replace '^v', ''
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "commit=${{ github.sha }}" >> $env:GITHUB_OUTPUT
+      - name: Build Wails app
+        run: wails build -trimpath -ldflags "-s -w -X main.appVersion=${{ steps.build_meta.outputs.version }} -X main.appCommit=${{ steps.build_meta.outputs.commit }}"
+        working-directory: wails-ui/workset
+      - name: Rename artifacts
+        shell: pwsh
+        run: |
+          $tag = "${{ needs.stable-release.outputs.tag }}"
+          $os = "windows"
+          $dir = "wails-ui/workset/build/bin"
+          if (-not (Test-Path $dir)) {
+            Write-Error "Missing build output directory: $dir"
+            exit 1
+          }
+          Get-ChildItem -Path $dir | ForEach-Object {
+            $ext = $_.Extension
+            if ($ext -eq ".exe") {
+              $newName = "workset-$tag-$os.exe"
+            } else {
+              $newName = "workset-$tag-$os-$($_.Name)"
+            }
+            Move-Item -Path $_.FullName -Destination (Join-Path $dir $newName)
+          }
+      - name: Upload release assets
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
+        with:
+          tag_name: ${{ needs.stable-release.outputs.tag }}
+          prerelease: false
+          files: wails-ui/workset/build/bin/*

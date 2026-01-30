@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   commitlint:
-    if: github.actor != 'dependabot[bot]'
+    if: ${{ github.actor != 'dependabot[bot]' && (github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]')) }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

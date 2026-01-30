@@ -1,9 +1,9 @@
 name: docs
 
 on:
-  push:
-    tags:
-      - "v*"
+  release:
+    types:
+      - published
   workflow_dispatch:
 
 permissions:
@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   build:
+    if: ${{ github.event_name != 'release' || github.event.release.prerelease != true }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

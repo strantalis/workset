@@ -2,8 +2,7 @@
 
 [![test](https://github.com/strantalis/workset/actions/workflows/test.yml/badge.svg)](https://github.com/strantalis/workset/actions/workflows/test.yml)
 [![lint](https://github.com/strantalis/workset/actions/workflows/lint.yml/badge.svg)](https://github.com/strantalis/workset/actions/workflows/lint.yml)
-[![goreleaser](https://github.com/strantalis/workset/actions/workflows/goreleaser.yml/badge.svg)](https://github.com/strantalis/workset/actions/workflows/goreleaser.yml)
-[![release-please](https://github.com/strantalis/workset/actions/workflows/release-please.yml/badge.svg)](https://github.com/strantalis/workset/actions/workflows/release-please.yml)
+[![release](https://github.com/strantalis/workset/actions/workflows/release.yml/badge.svg)](https://github.com/strantalis/workset/actions/workflows/release.yml)
 [![docs](https://github.com/strantalis/workset/actions/workflows/docs.yml/badge.svg)](https://github.com/strantalis/workset/actions/workflows/docs.yml)
 
 <p align="center">

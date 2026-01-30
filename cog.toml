@@ -1,0 +1,14 @@
+from_latest_tag = true
+ignore_merge_commits = true
+skip_ci = "[skip ci]"
+tag_prefix = "v"
+
+[changelog]
+path = "CHANGELOG.md"
+template = "remote"
+remote = "github.com"
+owner = "strantalis"
+repository = "workset"
+
+[commit_types]
+fix = { bump_minor = true, bump_patch = false }

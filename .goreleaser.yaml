@@ -23,7 +23,7 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - -X main.version={{ .Version }}
+      - -s -w -X main.version={{ .Version }}
 
 archives:
   - id: default
