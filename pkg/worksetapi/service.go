@@ -18,6 +18,8 @@ type Options struct {
 	Git            git.Client
 	SessionRunner  session.Runner
 	CommandRunner  CommandRunner
+	GitHubProvider GitHubProvider
+	TokenStore     TokenStore
 	// ExecFunc overrides how Exec runs commands (useful for embedding/tests).
 	ExecFunc func(ctx context.Context, root string, command []string, env []string) error
 	// HookRunner overrides how hooks run commands (useful for embedding/tests).
@@ -39,6 +41,7 @@ type Service struct {
 	hookRunner hooks.Runner
 	clock      func() time.Time
 	logf       func(format string, args ...any)
+	github     GitHubProvider
 }
 
 // NewService constructs a Service with injected dependencies or defaults.
@@ -55,7 +58,7 @@ func NewService(opts Options) *Service {
 	}
 	gitClient := opts.Git
 	if gitClient == nil {
-		gitClient = git.NewGoGitClient()
+		gitClient = git.NewCLIClient()
 	}
 	runner := opts.SessionRunner
 	if runner == nil {
@@ -77,6 +80,14 @@ func NewService(opts Options) *Service {
 	if clock == nil {
 		clock = time.Now
 	}
+	tokenStore := opts.TokenStore
+	if tokenStore == nil {
+		tokenStore = KeyringTokenStore{}
+	}
+	githubProvider := opts.GitHubProvider
+	if githubProvider == nil {
+		githubProvider = NewGitHubProviderSelector(tokenStore)
+	}
 	return &Service{
 		configPath: opts.ConfigPath,
 		configs:    cfgStore,
@@ -88,5 +99,6 @@ func NewService(opts Options) *Service {
 		hookRunner: hookRunner,
 		clock:      clock,
 		logf:       opts.Logf,
+		github:     githubProvider,
 	}
 }

@@ -66,6 +66,19 @@ type GitHubUserRequest struct {
 	RepoID      string `json:"repoId"`
 }
 
+type GitHubTokenRequest struct {
+	Token  string `json:"token"`
+	Source string `json:"source,omitempty"`
+}
+
+type GitHubAuthModeRequest struct {
+	Mode string `json:"mode"`
+}
+
+type GitHubCLIPathRequest struct {
+	Path string `json:"path"`
+}
+
 func (a *App) CreatePullRequest(input PullRequestCreateRequest) (worksetapi.PullRequestCreatedJSON, error) {
 	ctx := a.ctx
 	if ctx == nil {
@@ -362,6 +375,75 @@ func (a *App) GetCurrentGitHubUser(input GitHubUserRequest) (worksetapi.GitHubUs
 		return worksetapi.GitHubUserJSON{}, err
 	}
 	return result.User, nil
+}
+
+func (a *App) GetGitHubAuthStatus() (worksetapi.GitHubAuthStatusJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.service == nil {
+		a.service = worksetapi.NewService(worksetapi.Options{})
+	}
+	return a.service.GetGitHubAuthStatus(ctx)
+}
+
+func (a *App) GetGitHubAuthInfo() (worksetapi.GitHubAuthInfoJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.service == nil {
+		a.service = worksetapi.NewService(worksetapi.Options{})
+	}
+	return a.service.GetGitHubAuthInfo(ctx)
+}
+
+func (a *App) SetGitHubToken(input GitHubTokenRequest) (worksetapi.GitHubAuthStatusJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.service == nil {
+		a.service = worksetapi.NewService(worksetapi.Options{})
+	}
+	return a.service.SetGitHubToken(ctx, worksetapi.GitHubTokenInput{
+		Token:  input.Token,
+		Source: input.Source,
+	})
+}
+
+func (a *App) SetGitHubAuthMode(input GitHubAuthModeRequest) (worksetapi.GitHubAuthInfoJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.service == nil {
+		a.service = worksetapi.NewService(worksetapi.Options{})
+	}
+	return a.service.SetGitHubAuthMode(ctx, input.Mode)
+}
+
+func (a *App) SetGitHubCLIPath(input GitHubCLIPathRequest) (worksetapi.GitHubAuthInfoJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.service == nil {
+		a.service = worksetapi.NewService(worksetapi.Options{})
+	}
+	return a.service.SetGitHubCLIPath(ctx, input.Path)
+}
+
+func (a *App) DisconnectGitHub() error {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.service == nil {
+		a.service = worksetapi.NewService(worksetapi.Options{})
+	}
+	return a.service.ClearGitHubAuth(ctx)
 }
 
 func (a *App) ReplyToReviewComment(input ReplyToReviewCommentRequest) (worksetapi.PullRequestReviewCommentJSON, error) {

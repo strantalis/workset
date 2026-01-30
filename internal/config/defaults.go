@@ -24,6 +24,9 @@ func DefaultConfig() GlobalConfig {
 			TerminalRenderer:    "auto",
 			TerminalIdleTimeout: "0",
 		},
+		GitHub: GitHubConfig{
+			CLIPath: "",
+		},
 		Hooks: HooksConfig{
 			Enabled: true,
 			OnError: "fail",

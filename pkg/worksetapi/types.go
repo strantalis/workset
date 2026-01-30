@@ -1,7 +1,9 @@
 package worksetapi
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/strantalis/workset/internal/config"
 	"github.com/strantalis/workset/internal/ops"
@@ -333,6 +335,30 @@ func (e NotFoundError) Error() string { return e.Message }
 type ConflictError struct{ Message string }
 
 func (e ConflictError) Error() string { return e.Message }
+
+const authRequiredPrefix = "AUTH_REQUIRED: "
+
+// AuthRequiredError indicates a missing or invalid authentication token.
+type AuthRequiredError struct{ Message string }
+
+func (e AuthRequiredError) Error() string {
+	if e.Message == "" {
+		return authRequiredPrefix + "authentication required"
+	}
+	return authRequiredPrefix + e.Message
+}
+
+// IsAuthRequiredError reports whether the error indicates missing authentication.
+func IsAuthRequiredError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var authErr AuthRequiredError
+	if errors.As(err, &authErr) {
+		return true
+	}
+	return strings.HasPrefix(err.Error(), authRequiredPrefix)
+}
 
 // ConfirmationRequired indicates an operation needs explicit confirmation.
 type ConfirmationRequired struct{ Message string }

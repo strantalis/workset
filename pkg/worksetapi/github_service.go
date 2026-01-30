@@ -38,16 +38,12 @@ func (s *Service) CreatePullRequest(ctx context.Context, input PullRequestCreate
 	if strings.TrimSpace(input.Title) == "" {
 		return PullRequestCreateResult{}, ValidationError{Message: "title required"}
 	}
-	token, err := s.resolveGitHubToken(ctx, resolution.WorkspaceRoot)
-	if err != nil {
-		return PullRequestCreateResult{}, err
-	}
 
 	headInfo, baseInfo, err := s.resolveRemoteInfo(ctx, resolution, input.BaseRemote)
 	if err != nil {
 		return PullRequestCreateResult{}, err
 	}
-	client, err := s.newGitHubClient(token, baseInfo.Host)
+	client, err := s.githubClient(ctx, baseInfo.Host)
 	if err != nil {
 		return PullRequestCreateResult{}, err
 	}
@@ -90,14 +86,13 @@ func (s *Service) CreatePullRequest(ctx context.Context, input PullRequestCreate
 	}
 
 	headRef := fmt.Sprintf("%s:%s", headInfo.Owner, headBranch)
-	newPR := &github.NewPullRequest{
-		Title: github.Ptr(input.Title),
-		Head:  github.Ptr(headRef),
-		Base:  github.Ptr(baseBranch),
-		Body:  github.Ptr(strings.TrimSpace(input.Body)),
-		Draft: github.Ptr(input.Draft),
-	}
-	pr, _, err := client.PullRequests.Create(ctx, baseInfo.Owner, baseInfo.Repo, newPR)
+	pr, err := client.CreatePullRequest(ctx, baseInfo.Owner, baseInfo.Repo, GitHubNewPullRequest{
+		Title: input.Title,
+		Head:  headRef,
+		Base:  baseBranch,
+		Body:  strings.TrimSpace(input.Body),
+		Draft: input.Draft,
+	})
 	if err != nil {
 		if isInvalidHeadError(err) {
 			return PullRequestCreateResult{}, ValidationError{Message: fmt.Sprintf("GitHub rejected head %q; ensure the branch exists on %s/%s and that remote %q points to your fork", headRef, headInfo.Owner, headInfo.Repo, headInfo.Remote)}
@@ -107,12 +102,12 @@ func (s *Service) CreatePullRequest(ctx context.Context, input PullRequestCreate
 
 	payload := PullRequestCreatedJSON{
 		Repo:       resolution.Repo.Name,
-		Number:     pr.GetNumber(),
-		URL:        pr.GetHTMLURL(),
-		Title:      pr.GetTitle(),
-		Body:       pr.GetBody(),
-		Draft:      pr.GetDraft(),
-		State:      pr.GetState(),
+		Number:     pr.Number,
+		URL:        pr.URL,
+		Title:      pr.Title,
+		Body:       pr.Body,
+		Draft:      pr.Draft,
+		State:      pr.State,
 		BaseRepo:   fmt.Sprintf("%s/%s", baseInfo.Owner, baseInfo.Repo),
 		BaseBranch: baseBranch,
 		HeadRepo:   fmt.Sprintf("%s/%s", headInfo.Owner, headInfo.Repo),
@@ -132,7 +127,7 @@ func (s *Service) GetPullRequestStatus(ctx context.Context, input PullRequestSta
 	mergeable := ""
 	if pr.Mergeable != nil {
 		switch {
-		case pr.GetMergeable():
+		case *pr.Mergeable:
 			mergeable = "mergeable"
 		default:
 			mergeable = "conflicts"
@@ -146,15 +141,15 @@ func (s *Service) GetPullRequestStatus(ctx context.Context, input PullRequestSta
 
 	status := PullRequestStatusJSON{
 		Repo:       resolution.Repo.Name,
-		Number:     pr.GetNumber(),
-		URL:        pr.GetHTMLURL(),
-		Title:      pr.GetTitle(),
-		State:      pr.GetState(),
-		Draft:      pr.GetDraft(),
+		Number:     pr.Number,
+		URL:        pr.URL,
+		Title:      pr.Title,
+		State:      pr.State,
+		Draft:      pr.Draft,
 		BaseRepo:   fmt.Sprintf("%s/%s", baseInfo.Owner, baseInfo.Repo),
-		BaseBranch: pr.Base.GetRef(),
+		BaseBranch: pr.BaseRef,
 		HeadRepo:   fmt.Sprintf("%s/%s", headInfo.Owner, headInfo.Repo),
-		HeadBranch: pr.Head.GetRef(),
+		HeadBranch: pr.HeadRef,
 		Mergeable:  mergeable,
 	}
 
@@ -212,22 +207,21 @@ func (s *Service) ListPullRequestReviewComments(ctx context.Context, input PullR
 	}
 
 	threadMap := map[string]threadInfo{}
-	token, err := s.resolveGitHubToken(ctx, resolution.WorkspaceRoot)
-	if err == nil {
-		threadMap, _ = s.graphQLReviewThreadMap(ctx, token, baseInfo.Host, baseInfo.Owner, baseInfo.Repo, pr.GetNumber())
+	if client != nil {
+		if mapResult, err := client.ReviewThreadMap(ctx, baseInfo.Owner, baseInfo.Repo, pr.Number); err == nil {
+			threadMap = mapResult
+		}
 	}
 
 	comments := make([]PullRequestReviewCommentJSON, 0)
-	opts := &github.PullRequestListCommentsOptions{
-		ListOptions: github.ListOptions{PerPage: 100},
-	}
+	page := 1
 	for {
-		page, resp, err := client.PullRequests.ListComments(ctx, baseInfo.Owner, baseInfo.Repo, pr.GetNumber(), opts)
+		pageComments, nextPage, err := client.ListReviewComments(ctx, baseInfo.Owner, baseInfo.Repo, pr.Number, page, 100)
 		if err != nil {
 			return PullRequestReviewCommentsResult{}, err
 		}
-		for _, comment := range page {
-			mapped := mapReviewComment(comment)
+		for _, comment := range pageComments {
+			mapped := comment
 			if mapped.NodeID != "" {
 				if info, ok := threadMap[mapped.NodeID]; ok {
 					mapped.ThreadID = info.ThreadID
@@ -236,10 +230,10 @@ func (s *Service) ListPullRequestReviewComments(ctx context.Context, input PullR
 			}
 			comments = append(comments, mapped)
 		}
-		if resp == nil || resp.NextPage == 0 {
+		if nextPage == 0 {
 			break
 		}
-		opts.Page = resp.NextPage
+		page = nextPage
 	}
 
 	return PullRequestReviewCommentsResult{
@@ -268,20 +262,20 @@ func (s *Service) ReplyToReviewComment(ctx context.Context, input ReplyToReviewC
 		return ReviewCommentResult{}, err
 	}
 
-	comment, _, err := client.PullRequests.CreateCommentInReplyTo(
+	comment, err := client.CreateReplyComment(
 		ctx,
 		baseInfo.Owner,
 		baseInfo.Repo,
-		pr.GetNumber(),
-		strings.TrimSpace(input.Body),
+		pr.Number,
 		input.CommentID,
+		strings.TrimSpace(input.Body),
 	)
 	if err != nil {
 		return ReviewCommentResult{}, ValidationError{Message: formatGitHubAPIError(err)}
 	}
 
 	return ReviewCommentResult{
-		Comment: mapReviewComment(comment),
+		Comment: comment,
 		Config:  resolution.ConfigInfo,
 	}, nil
 }
@@ -303,36 +297,29 @@ func (s *Service) EditReviewComment(ctx context.Context, input EditReviewComment
 		return ReviewCommentResult{}, err
 	}
 
-	token, err := s.resolveGitHubToken(ctx, resolution.WorkspaceRoot)
-	if err != nil {
-		return ReviewCommentResult{}, err
-	}
-
 	_, baseInfo, err := s.resolveRemoteInfo(ctx, resolution, "")
 	if err != nil {
 		return ReviewCommentResult{}, err
 	}
 
-	client, err := s.newGitHubClient(token, baseInfo.Host)
+	client, err := s.githubClient(ctx, baseInfo.Host)
 	if err != nil {
 		return ReviewCommentResult{}, err
 	}
 
-	comment, _, err := client.PullRequests.EditComment(
+	comment, err := client.EditReviewComment(
 		ctx,
 		baseInfo.Owner,
 		baseInfo.Repo,
 		input.CommentID,
-		&github.PullRequestComment{
-			Body: github.Ptr(strings.TrimSpace(input.Body)),
-		},
+		strings.TrimSpace(input.Body),
 	)
 	if err != nil {
 		return ReviewCommentResult{}, ValidationError{Message: formatGitHubAPIError(err)}
 	}
 
 	return ReviewCommentResult{
-		Comment: mapReviewComment(comment),
+		Comment: comment,
 		Config:  resolution.ConfigInfo,
 	}, nil
 }
@@ -351,22 +338,17 @@ func (s *Service) DeleteReviewComment(ctx context.Context, input DeleteReviewCom
 		return DeleteReviewCommentResult{}, err
 	}
 
-	token, err := s.resolveGitHubToken(ctx, resolution.WorkspaceRoot)
-	if err != nil {
-		return DeleteReviewCommentResult{}, err
-	}
-
 	_, baseInfo, err := s.resolveRemoteInfo(ctx, resolution, "")
 	if err != nil {
 		return DeleteReviewCommentResult{}, err
 	}
 
-	client, err := s.newGitHubClient(token, baseInfo.Host)
+	client, err := s.githubClient(ctx, baseInfo.Host)
 	if err != nil {
 		return DeleteReviewCommentResult{}, err
 	}
 
-	_, err = client.PullRequests.DeleteComment(ctx, baseInfo.Owner, baseInfo.Repo, input.CommentID)
+	err = client.DeleteReviewComment(ctx, baseInfo.Owner, baseInfo.Repo, input.CommentID)
 	if err != nil {
 		return DeleteReviewCommentResult{}, ValidationError{Message: formatGitHubAPIError(err)}
 	}
@@ -392,29 +374,25 @@ func (s *Service) ResolveReviewThread(ctx context.Context, input ResolveReviewTh
 		return ResolveReviewThreadResult{}, err
 	}
 
-	token, err := s.resolveGitHubToken(ctx, resolution.WorkspaceRoot)
-	if err != nil {
-		return ResolveReviewThreadResult{}, err
-	}
-
 	_, baseInfo, err := s.resolveRemoteInfo(ctx, resolution, "")
 	if err != nil {
 		return ResolveReviewThreadResult{}, err
 	}
 
+	client, err := s.githubClient(ctx, baseInfo.Host)
+	if err != nil {
+		return ResolveReviewThreadResult{}, err
+	}
+
 	if strings.HasPrefix(threadID, "PRRC_") {
-		endpoint := "https://api.github.com/graphql"
-		if baseInfo.Host != "" && baseInfo.Host != defaultGitHubHost {
-			endpoint = fmt.Sprintf("https://%s/api/graphql", baseInfo.Host)
-		}
-		resolvedThreadID, err := s.graphQLGetThreadID(ctx, endpoint, token, threadID)
+		resolvedThreadID, err := client.GetReviewThreadID(ctx, threadID)
 		if err != nil {
 			return ResolveReviewThreadResult{}, err
 		}
 		threadID = resolvedThreadID
 	}
 
-	resolved, err := s.graphQLResolveThread(ctx, token, baseInfo.Host, threadID, input.Resolve)
+	resolved, err := client.ResolveReviewThread(ctx, threadID, input.Resolve)
 	if err != nil {
 		return ResolveReviewThreadResult{}, err
 	}
@@ -426,7 +404,7 @@ func (s *Service) ResolveReviewThread(ctx context.Context, input ResolveReviewTh
 }
 
 // graphQLResolveThread calls the GitHub GraphQL API to resolve/unresolve a thread by node ID.
-func (s *Service) graphQLResolveThread(ctx context.Context, token, host, threadID string, resolve bool) (bool, error) {
+func graphQLResolveThread(ctx context.Context, token, host, threadID string, resolve bool) (bool, error) {
 	endpoint := "https://api.github.com/graphql"
 	if host != "" && host != defaultGitHubHost {
 		endpoint = fmt.Sprintf("https://%s/api/graphql", host)
@@ -512,7 +490,7 @@ type threadInfo struct {
 }
 
 // graphQLReviewThreadMap fetches review threads for a PR and maps comment node IDs to thread info.
-func (s *Service) graphQLReviewThreadMap(ctx context.Context, token, host, owner, repo string, number int) (map[string]threadInfo, error) {
+func graphQLReviewThreadMap(ctx context.Context, token, host, owner, repo string, number int) (map[string]threadInfo, error) {
 	endpoint := "https://api.github.com/graphql"
 	if host != "" && host != defaultGitHubHost {
 		endpoint = fmt.Sprintf("https://%s/api/graphql", host)
@@ -641,7 +619,7 @@ func (s *Service) graphQLReviewThreadMap(ctx context.Context, token, host, owner
 }
 
 // graphQLGetThreadID fetches the thread ID for a comment node ID by querying through the PR.
-func (s *Service) graphQLGetThreadID(ctx context.Context, endpoint, token, commentNodeID string) (string, error) {
+func graphQLGetThreadID(ctx context.Context, endpoint, token, commentNodeID string) (string, error) {
 	// Query the comment to get its PR, then find the thread containing this comment
 	query := fmt.Sprintf(`query {
 		node(id: %q) {
@@ -741,33 +719,23 @@ func (s *Service) GetCurrentGitHubUser(ctx context.Context, input GitHubUserInpu
 		return GitHubUserResult{}, err
 	}
 
-	token, err := s.resolveGitHubToken(ctx, resolution.WorkspaceRoot)
-	if err != nil {
-		return GitHubUserResult{}, err
-	}
-
 	_, baseInfo, err := s.resolveRemoteInfo(ctx, resolution, "")
 	if err != nil {
 		return GitHubUserResult{}, err
 	}
 
-	client, err := s.newGitHubClient(token, baseInfo.Host)
+	client, err := s.githubClient(ctx, baseInfo.Host)
 	if err != nil {
 		return GitHubUserResult{}, err
 	}
 
-	user, _, err := client.Users.Get(ctx, "")
+	user, _, err := client.GetCurrentUser(ctx)
 	if err != nil {
 		return GitHubUserResult{}, ValidationError{Message: formatGitHubAPIError(err)}
 	}
 
 	return GitHubUserResult{
-		User: GitHubUserJSON{
-			ID:    user.GetID(),
-			Login: user.GetLogin(),
-			Name:  user.GetName(),
-			Email: user.GetEmail(),
-		},
+		User:   user,
 		Config: resolution.ConfigInfo,
 	}, nil
 }
@@ -990,31 +958,6 @@ func (s *Service) CommitAndPush(ctx context.Context, input CommitAndPushInput) (
 	}, nil
 }
 
-func (s *Service) resolveGitHubToken(ctx context.Context, root string) (string, error) {
-	if token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); token != "" {
-		return token, nil
-	}
-	if token := strings.TrimSpace(os.Getenv("GH_TOKEN")); token != "" {
-		return token, nil
-	}
-	result, err := s.commands(ctx, root, []string{"gh", "auth", "token"}, os.Environ(), "")
-	if err != nil || result.ExitCode != 0 {
-		message := strings.TrimSpace(result.Stderr)
-		var execErr *exec.Error
-		if errors.As(err, &execErr) {
-			message = "GitHub CLI not found; install `gh` and run `gh auth login`"
-		} else if message == "" {
-			message = "run `gh auth login` to authenticate GitHub CLI"
-		}
-		return "", ValidationError{Message: message}
-	}
-	token := strings.TrimSpace(result.Stdout)
-	if token == "" {
-		return "", ValidationError{Message: "gh auth token returned empty output"}
-	}
-	return token, nil
-}
-
 func (s *Service) resolveRemoteInfo(ctx context.Context, resolution repoResolution, baseRemoteOverride string) (remoteInfo, remoteInfo, error) {
 	headRemote := strings.TrimSpace(resolution.RepoDefaults.Remote)
 	if headRemote == "" {
@@ -1038,6 +981,9 @@ func (s *Service) resolveRemoteInfo(ctx context.Context, resolution repoResoluti
 	}
 	if headInfo.Host != baseInfo.Host {
 		return remoteInfo{}, remoteInfo{}, ValidationError{Message: "head and base remotes must share the same GitHub host"}
+	}
+	if headInfo.Host != defaultGitHubHost {
+		return remoteInfo{}, remoteInfo{}, ValidationError{Message: fmt.Sprintf("unsupported GitHub host %q: only github.com is supported in this release", headInfo.Host)}
 	}
 	return headInfo, baseInfo, nil
 }
@@ -1076,10 +1022,20 @@ func (s *Service) resolveCurrentBranch(resolution repoResolution) (string, error
 	return branch, nil
 }
 
-func (s *Service) resolveDefaultBranch(ctx context.Context, client *github.Client, base remoteInfo, resolution repoResolution) (string, error) {
-	repo, _, err := client.Repositories.Get(ctx, base.Owner, base.Repo)
-	if err == nil && repo != nil && repo.GetDefaultBranch() != "" {
-		return repo.GetDefaultBranch(), nil
+func (s *Service) githubClient(ctx context.Context, host string) (GitHubClient, error) {
+	if s.github == nil {
+		return nil, AuthRequiredError{Message: "GitHub authentication required"}
+	}
+	if err := s.importGitHubPATFromEnv(ctx); err != nil {
+		return nil, err
+	}
+	return s.github.Client(ctx, host)
+}
+
+func (s *Service) resolveDefaultBranch(ctx context.Context, client GitHubClient, base remoteInfo, resolution repoResolution) (string, error) {
+	branch, err := client.GetRepoDefaultBranch(ctx, base.Owner, base.Repo)
+	if err == nil && strings.TrimSpace(branch) != "" {
+		return branch, nil
 	}
 	if resolution.RepoDefaults.DefaultBranch != "" {
 		return resolution.RepoDefaults.DefaultBranch, nil
@@ -1087,38 +1043,21 @@ func (s *Service) resolveDefaultBranch(ctx context.Context, client *github.Clien
 	return "", ValidationError{Message: "base branch required"}
 }
 
-func (s *Service) newGitHubClient(token, host string) (*github.Client, error) {
-	if host == "" || host == defaultGitHubHost {
-		return github.NewClient(nil).WithAuthToken(token), nil
-	}
-	baseURL := fmt.Sprintf("https://%s/api/v3/", host)
-	uploadURL := fmt.Sprintf("https://%s/api/uploads/", host)
-	client, err := github.NewClient(nil).WithEnterpriseURLs(baseURL, uploadURL)
-	if err != nil {
-		return nil, err
-	}
-	return client.WithAuthToken(token), nil
-}
-
-func (s *Service) resolvePullRequest(ctx context.Context, input PullRequestStatusInput) (*github.PullRequest, remoteInfo, remoteInfo, *github.Client, repoResolution, error) {
+func (s *Service) resolvePullRequest(ctx context.Context, input PullRequestStatusInput) (GitHubPullRequest, remoteInfo, remoteInfo, GitHubClient, repoResolution, error) {
 	resolution, err := s.resolveRepo(ctx, RepoSelectionInput{
 		Workspace: input.Workspace,
 		Repo:      input.Repo,
 	})
 	if err != nil {
-		return nil, remoteInfo{}, remoteInfo{}, nil, repoResolution{}, err
-	}
-	token, err := s.resolveGitHubToken(ctx, resolution.WorkspaceRoot)
-	if err != nil {
-		return nil, remoteInfo{}, remoteInfo{}, nil, repoResolution{}, err
+		return GitHubPullRequest{}, remoteInfo{}, remoteInfo{}, nil, repoResolution{}, err
 	}
 	headInfo, baseInfo, err := s.resolveRemoteInfo(ctx, resolution, "")
 	if err != nil {
-		return nil, remoteInfo{}, remoteInfo{}, nil, repoResolution{}, err
+		return GitHubPullRequest{}, remoteInfo{}, remoteInfo{}, nil, repoResolution{}, err
 	}
-	client, err := s.newGitHubClient(token, baseInfo.Host)
+	client, err := s.githubClient(ctx, baseInfo.Host)
 	if err != nil {
-		return nil, remoteInfo{}, remoteInfo{}, nil, repoResolution{}, err
+		return GitHubPullRequest{}, remoteInfo{}, remoteInfo{}, nil, repoResolution{}, err
 	}
 
 	number := input.Number
@@ -1127,108 +1066,59 @@ func (s *Service) resolvePullRequest(ctx context.Context, input PullRequestStatu
 		if branch == "" {
 			branch, err = s.resolveCurrentBranch(resolution)
 			if err != nil {
-				return nil, remoteInfo{}, remoteInfo{}, nil, repoResolution{}, err
+				return GitHubPullRequest{}, remoteInfo{}, remoteInfo{}, nil, repoResolution{}, err
 			}
 		}
 		number, err = s.findPullRequestNumber(ctx, client, baseInfo, headInfo, branch)
 		if err != nil {
-			return nil, remoteInfo{}, remoteInfo{}, nil, repoResolution{}, err
+			return GitHubPullRequest{}, remoteInfo{}, remoteInfo{}, nil, repoResolution{}, err
 		}
 	}
-	pr, _, err := client.PullRequests.Get(ctx, baseInfo.Owner, baseInfo.Repo, number)
+	pr, err := client.GetPullRequest(ctx, baseInfo.Owner, baseInfo.Repo, number)
 	if err != nil {
-		return nil, remoteInfo{}, remoteInfo{}, nil, repoResolution{}, err
+		return GitHubPullRequest{}, remoteInfo{}, remoteInfo{}, nil, repoResolution{}, err
 	}
 	return pr, headInfo, baseInfo, client, resolution, nil
 }
 
-func (s *Service) findPullRequestNumber(ctx context.Context, client *github.Client, base remoteInfo, head remoteInfo, branch string) (int, error) {
+func (s *Service) findPullRequestNumber(ctx context.Context, client GitHubClient, base remoteInfo, head remoteInfo, branch string) (int, error) {
 	headRef := fmt.Sprintf("%s:%s", head.Owner, branch)
-	opts := &github.PullRequestListOptions{
-		State:       "open",
-		Head:        headRef,
-		ListOptions: github.ListOptions{PerPage: 50},
-	}
+	page := 1
 	for {
-		prs, resp, err := client.PullRequests.List(ctx, base.Owner, base.Repo, opts)
+		prs, next, err := client.ListPullRequests(ctx, base.Owner, base.Repo, headRef, "open", page, 50)
 		if err != nil {
 			return 0, err
 		}
 		if len(prs) > 0 {
-			return prs[0].GetNumber(), nil
+			return prs[0].Number, nil
 		}
-		if resp == nil || resp.NextPage == 0 {
+		if next == 0 {
 			break
 		}
-		opts.Page = resp.NextPage
+		page = next
 	}
 	return 0, NotFoundError{Message: "pull request not found for current branch"}
 }
 
-func (s *Service) listCheckRuns(ctx context.Context, client *github.Client, base remoteInfo, pr *github.PullRequest) ([]PullRequestCheckJSON, error) {
-	sha := pr.GetHead().GetSHA()
+func (s *Service) listCheckRuns(ctx context.Context, client GitHubClient, base remoteInfo, pr GitHubPullRequest) ([]PullRequestCheckJSON, error) {
+	sha := pr.HeadSHA
 	if sha == "" {
 		return nil, nil
 	}
-	opts := &github.ListCheckRunsOptions{ListOptions: github.ListOptions{PerPage: 100}}
 	checks := make([]PullRequestCheckJSON, 0)
+	page := 1
 	for {
-		result, resp, err := client.Checks.ListCheckRunsForRef(ctx, base.Owner, base.Repo, sha, opts)
+		pageChecks, next, err := client.ListCheckRuns(ctx, base.Owner, base.Repo, sha, page, 100)
 		if err != nil {
 			return nil, err
 		}
-		for _, run := range result.CheckRuns {
-			checks = append(checks, PullRequestCheckJSON{
-				Name:        run.GetName(),
-				Status:      run.GetStatus(),
-				Conclusion:  run.GetConclusion(),
-				DetailsURL:  run.GetDetailsURL(),
-				StartedAt:   formatTimestamp(run.StartedAt),
-				CompletedAt: formatTimestamp(run.CompletedAt),
-			})
-		}
-		if resp == nil || resp.NextPage == 0 {
+		checks = append(checks, pageChecks...)
+		if next == 0 {
 			break
 		}
-		opts.Page = resp.NextPage
+		page = next
 	}
 	return checks, nil
-}
-
-func mapReviewComment(comment *github.PullRequestComment) PullRequestReviewCommentJSON {
-	outdated := comment.GetPosition() == 0 && comment.GetOriginalPosition() != 0
-	var authorID int64
-	if comment.User != nil {
-		authorID = comment.User.GetID()
-	}
-	return PullRequestReviewCommentJSON{
-		ID:             comment.GetID(),
-		NodeID:         comment.GetNodeID(),
-		ReviewID:       comment.GetPullRequestReviewID(),
-		Author:         comment.User.GetLogin(),
-		AuthorID:       authorID,
-		Body:           comment.GetBody(),
-		Path:           comment.GetPath(),
-		Line:           comment.GetLine(),
-		Side:           comment.GetSide(),
-		CommitID:       comment.GetCommitID(),
-		OriginalCommit: comment.GetOriginalCommitID(),
-		OriginalLine:   comment.GetOriginalLine(),
-		OriginalStart:  comment.GetOriginalStartLine(),
-		Outdated:       outdated,
-		URL:            comment.GetHTMLURL(),
-		CreatedAt:      formatTimestamp(comment.CreatedAt),
-		UpdatedAt:      formatTimestamp(comment.UpdatedAt),
-		InReplyTo:      comment.GetInReplyTo(),
-		ReplyToComment: comment.GetInReplyTo() != 0,
-	}
-}
-
-func formatTimestamp(ts *github.Timestamp) string {
-	if ts == nil || ts.IsZero() {
-		return ""
-	}
-	return ts.Format(time.RFC3339)
 }
 
 func formatPRPrompt(repoName, branch, patch string) string {

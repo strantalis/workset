@@ -58,6 +58,10 @@ export function DeleteReviewComment(arg1) {
   return window['go']['main']['App']['DeleteReviewComment'](arg1);
 }
 
+export function DisconnectGitHub() {
+  return window['go']['main']['App']['DisconnectGitHub']();
+}
+
 export function EditReviewComment(arg1) {
   return window['go']['main']['App']['EditReviewComment'](arg1);
 }
@@ -80,6 +84,14 @@ export function GetBranchFileDiff(arg1, arg2, arg3, arg4, arg5, arg6) {
 
 export function GetCurrentGitHubUser(arg1) {
   return window['go']['main']['App']['GetCurrentGitHubUser'](arg1);
+}
+
+export function GetGitHubAuthInfo() {
+  return window['go']['main']['App']['GetGitHubAuthInfo']();
+}
+
+export function GetGitHubAuthStatus() {
+  return window['go']['main']['App']['GetGitHubAuthStatus']();
 }
 
 export function GetGroup(arg1) {
@@ -162,6 +174,10 @@ export function OpenDirectoryDialog(arg1, arg2) {
   return window['go']['main']['App']['OpenDirectoryDialog'](arg1, arg2);
 }
 
+export function OpenFileDialog(arg1, arg2) {
+  return window['go']['main']['App']['OpenFileDialog'](arg1, arg2);
+}
+
 export function RemoveGroupMember(arg1) {
   return window['go']['main']['App']['RemoveGroupMember'](arg1);
 }
@@ -200,6 +216,18 @@ export function SendPullRequestReviewsToTerminal(arg1) {
 
 export function SetDefaultSetting(arg1, arg2) {
   return window['go']['main']['App']['SetDefaultSetting'](arg1, arg2);
+}
+
+export function SetGitHubAuthMode(arg1) {
+  return window['go']['main']['App']['SetGitHubAuthMode'](arg1);
+}
+
+export function SetGitHubCLIPath(arg1) {
+  return window['go']['main']['App']['SetGitHubCLIPath'](arg1);
+}
+
+export function SetGitHubToken(arg1) {
+  return window['go']['main']['App']['SetGitHubToken'](arg1);
 }
 
 export function StartWorkspaceTerminal(arg1, arg2) {

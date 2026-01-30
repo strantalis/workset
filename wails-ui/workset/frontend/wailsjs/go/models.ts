@@ -234,6 +234,44 @@ export namespace main {
 	        this.body = source["body"];
 	    }
 	}
+	export class GitHubAuthModeRequest {
+	    mode: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GitHubAuthModeRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mode = source["mode"];
+	    }
+	}
+	export class GitHubCLIPathRequest {
+	    path: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GitHubCLIPathRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	    }
+	}
+	export class GitHubTokenRequest {
+	    token: string;
+	    source?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GitHubTokenRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.token = source["token"];
+	        this.source = source["source"];
+	    }
+	}
 	export class GitHubUserRequest {
 	    workspaceId: string;
 	    repoId: string;
@@ -1143,6 +1181,82 @@ export namespace worksetapi {
 	        this.value = source["value"];
 	    }
 	}
+	export class GitHubCLIStatusJSON {
+	    installed: boolean;
+	    version?: string;
+	    path?: string;
+	    configuredPath?: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GitHubCLIStatusJSON(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.installed = source["installed"];
+	        this.version = source["version"];
+	        this.path = source["path"];
+	        this.configuredPath = source["configuredPath"];
+	        this.error = source["error"];
+	    }
+	}
+	export class GitHubAuthStatusJSON {
+	    authenticated: boolean;
+	    login?: string;
+	    name?: string;
+	    scopes?: string[];
+	    tokenSource?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GitHubAuthStatusJSON(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.authenticated = source["authenticated"];
+	        this.login = source["login"];
+	        this.name = source["name"];
+	        this.scopes = source["scopes"];
+	        this.tokenSource = source["tokenSource"];
+	    }
+	}
+	export class GitHubAuthInfoJSON {
+	    mode: string;
+	    status: GitHubAuthStatusJSON;
+	    cli: GitHubCLIStatusJSON;
+	
+	    static createFrom(source: any = {}) {
+	        return new GitHubAuthInfoJSON(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mode = source["mode"];
+	        this.status = this.convertValues(source["status"], GitHubAuthStatusJSON);
+	        this.cli = this.convertValues(source["cli"], GitHubCLIStatusJSON);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
 	export class GitHubUserJSON {
 	    id: number;
 	    login: string;

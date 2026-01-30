@@ -34,6 +34,12 @@
       ]
     },
     {
+      title: 'INTEGRATIONS',
+      items: [
+        {id: 'github', label: 'GitHub'}
+      ]
+    },
+    {
       title: 'LIBRARY',
       items: [
         {id: 'aliases', label: 'Aliases', count: aliasCount},

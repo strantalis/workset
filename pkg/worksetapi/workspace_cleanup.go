@@ -127,6 +127,7 @@ func (s *Service) removeWorkspaceRepoWorktrees(ctx context.Context, root string,
 			Git:             s.git,
 			DeleteWorktrees: true,
 			DeleteLocal:     false,
+			Force:           force,
 			Logf:            logf,
 		}); err != nil {
 			if force {

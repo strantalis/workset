@@ -63,17 +63,6 @@ func applySSHAuthSock(current, identityAgent string) (string, bool) {
 	return identityAgent, true
 }
 
-func isSocket(path string) bool {
-	if path == "" {
-		return false
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-	return info.Mode()&os.ModeSocket != 0
-}
-
 func trimQuotes(value string) string {
 	if len(value) < 2 {
 		return value

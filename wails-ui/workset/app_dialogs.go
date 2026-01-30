@@ -17,3 +17,14 @@ func (a *App) OpenDirectoryDialog(title, defaultDirectory string) (string, error
 		CanCreateDirectories: true,
 	})
 }
+
+func (a *App) OpenFileDialog(title, defaultDirectory string) (string, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return runtime.OpenFileDialog(ctx, runtime.OpenDialogOptions{
+		Title:            title,
+		DefaultDirectory: defaultDirectory,
+	})
+}

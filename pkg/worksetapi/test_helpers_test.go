@@ -126,6 +126,7 @@ type fakeGit struct {
 type worktreeRemoveCall struct {
 	repoPath string
 	name     string
+	force    bool
 }
 
 func newFakeGit() *fakeGit {
@@ -257,10 +258,11 @@ func (f *fakeGit) WorktreeAdd(_ context.Context, opts git.WorktreeAddOptions) er
 	return nil
 }
 
-func (f *fakeGit) WorktreeRemove(repoPath, worktreeName string) error {
+func (f *fakeGit) WorktreeRemove(opts git.WorktreeRemoveOptions) error {
 	f.worktreeRemovs = append(f.worktreeRemovs, worktreeRemoveCall{
-		repoPath: repoPath,
-		name:     worktreeName,
+		repoPath: opts.RepoPath,
+		name:     opts.WorktreeName,
+		force:    opts.Force,
 	})
 	return nil
 }

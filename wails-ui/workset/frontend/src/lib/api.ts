@@ -2,6 +2,8 @@ import type {
   Alias,
   Group,
   GroupSummary,
+  GitHubAuthInfo,
+  GitHubAuthStatus,
   PullRequestCheck,
   PullRequestCreated,
   PullRequestGenerated,
@@ -49,6 +51,7 @@ import {
   ListRemotes,
   ListWorkspaceSnapshots,
   OpenDirectoryDialog,
+  OpenFileDialog,
   RemoveGroupMember,
   RemoveRepo,
   RemoveWorkspace,
@@ -67,7 +70,13 @@ import {
   LogTerminalDebug,
   GetWorkspaceTerminalStatus,
   CreateWorkspaceTerminal,
-  GetAppVersion
+  GetAppVersion,
+  GetGitHubAuthInfo,
+  GetGitHubAuthStatus,
+  DisconnectGitHub,
+  SetGitHubCLIPath,
+  SetGitHubAuthMode,
+  SetGitHubToken
 } from '../../wailsjs/go/main/App'
 
 type WorkspaceSnapshot = {
@@ -97,6 +106,34 @@ type RepoDiffSnapshot = {
 
 export async function fetchAppVersion(): Promise<AppVersion> {
   return (await GetAppVersion()) as AppVersion
+}
+
+export async function fetchGitHubAuthStatus(): Promise<GitHubAuthStatus> {
+  return (await GetGitHubAuthStatus()) as GitHubAuthStatus
+}
+
+export async function fetchGitHubAuthInfo(): Promise<GitHubAuthInfo> {
+  return (await GetGitHubAuthInfo()) as GitHubAuthInfo
+}
+
+export async function setGitHubToken(token: string, source = 'pat'): Promise<GitHubAuthStatus> {
+  return (await SetGitHubToken({token, source})) as GitHubAuthStatus
+}
+
+export async function setGitHubAuthMode(mode: string): Promise<GitHubAuthInfo> {
+  return (await SetGitHubAuthMode({mode})) as GitHubAuthInfo
+}
+
+export async function disconnectGitHub(): Promise<void> {
+  await DisconnectGitHub()
+}
+
+export async function setGitHubCLIPath(path: string): Promise<GitHubAuthInfo> {
+  return (await SetGitHubCLIPath({path})) as GitHubAuthInfo
+}
+
+export async function openFileDialog(title: string, defaultDirectory: string): Promise<string> {
+  return (await OpenFileDialog(title, defaultDirectory)) as string
 }
 
 type PullRequestStatusResponse = {

@@ -31,6 +31,8 @@ export function DeleteGroup(arg1:string):Promise<worksetapi.AliasMutationResultJ
 
 export function DeleteReviewComment(arg1:main.DeleteReviewCommentRequest):Promise<void>;
 
+export function DisconnectGitHub():Promise<void>;
+
 export function EditReviewComment(arg1:main.EditReviewCommentRequest):Promise<worksetapi.PullRequestReviewCommentJSON>;
 
 export function GeneratePullRequestText(arg1:main.PullRequestGenerateRequest):Promise<worksetapi.PullRequestGeneratedJSON>;
@@ -42,6 +44,10 @@ export function GetBranchDiffSummary(arg1:string,arg2:string,arg3:string,arg4:st
 export function GetBranchFileDiff(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string):Promise<main.RepoFileDiffSnapshot>;
 
 export function GetCurrentGitHubUser(arg1:main.GitHubUserRequest):Promise<worksetapi.GitHubUserJSON>;
+
+export function GetGitHubAuthInfo():Promise<worksetapi.GitHubAuthInfoJSON>;
+
+export function GetGitHubAuthStatus():Promise<worksetapi.GitHubAuthStatusJSON>;
 
 export function GetGroup(arg1:string):Promise<worksetapi.GroupJSON>;
 
@@ -83,6 +89,8 @@ export function LogTerminalDebug(arg1:main.TerminalDebugPayload):Promise<void>;
 
 export function OpenDirectoryDialog(arg1:string,arg2:string):Promise<string>;
 
+export function OpenFileDialog(arg1:string,arg2:string):Promise<string>;
+
 export function RemoveGroupMember(arg1:main.GroupMemberRequest):Promise<worksetapi.GroupJSON>;
 
 export function RemoveRepo(arg1:main.RepoRemoveRequest):Promise<worksetapi.RepoRemoveResultJSON>;
@@ -102,6 +110,12 @@ export function RestartSessiond():Promise<main.SessiondStatus>;
 export function SendPullRequestReviewsToTerminal(arg1:main.PullRequestReviewsRequest):Promise<void>;
 
 export function SetDefaultSetting(arg1:string,arg2:string):Promise<worksetapi.ConfigSetResultJSON>;
+
+export function SetGitHubAuthMode(arg1:main.GitHubAuthModeRequest):Promise<worksetapi.GitHubAuthInfoJSON>;
+
+export function SetGitHubCLIPath(arg1:main.GitHubCLIPathRequest):Promise<worksetapi.GitHubAuthInfoJSON>;
+
+export function SetGitHubToken(arg1:main.GitHubTokenRequest):Promise<worksetapi.GitHubAuthStatusJSON>;
 
 export function StartWorkspaceTerminal(arg1:string,arg2:string):Promise<void>;
 

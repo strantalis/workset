@@ -194,6 +194,28 @@ export type PullRequestGenerated = {
   body: string
 }
 
+export type GitHubAuthStatus = {
+  authenticated: boolean
+  login?: string
+  name?: string
+  scopes?: string[]
+  tokenSource?: string
+}
+
+export type GitHubCLIStatus = {
+  installed: boolean
+  version?: string
+  path?: string
+  configuredPath?: string
+  error?: string
+}
+
+export type GitHubAuthInfo = {
+  mode: string
+  status: GitHubAuthStatus
+  cli: GitHubCLIStatus
+}
+
 export type RemoteInfo = {
   name: string
   owner: string

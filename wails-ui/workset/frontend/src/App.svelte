@@ -14,12 +14,13 @@
     workspaces
   } from './lib/state'
   import EmptyState from './lib/components/EmptyState.svelte'
+  import GitHubLoginModal from './lib/components/GitHubLoginModal.svelte'
   import RepoDiff from './lib/components/RepoDiff.svelte'
   import SettingsPanel from './lib/components/SettingsPanel.svelte'
   import TerminalWorkspace from './lib/components/TerminalWorkspace.svelte'
   import WorkspaceActionModal from './lib/components/WorkspaceActionModal.svelte'
   import WorkspaceTree from './lib/components/WorkspaceTree.svelte'
-  import {fetchAppVersion} from './lib/api'
+  import {fetchAppVersion, fetchGitHubAuthInfo} from './lib/api'
   import type {AppVersion} from './lib/types'
 
   let hasWorkspace = $derived($activeWorkspace !== null)
@@ -28,6 +29,8 @@
   let settingsOpen = $state(false)
   let sidebarCollapsed = $state(false)
   let actionOpen = $state(false)
+  let authModalOpen = $state(false)
+  let authModalDismissed = $state(false)
   let appVersion = $state<AppVersion | null>(null)
   let versionLabel = $derived(
     appVersion
@@ -71,8 +74,31 @@
     actionOpen = true
   }
 
+  const checkGitHubAuth = async (): Promise<void> => {
+    if (authModalDismissed) return
+    try {
+      const info = await fetchGitHubAuthInfo()
+      if (!info.status.authenticated) {
+        authModalOpen = true
+      }
+    } catch (error) {
+      console.warn('Unable to check GitHub auth status', error)
+    }
+  }
+
+  const handleAuthClose = (): void => {
+    authModalOpen = false
+    authModalDismissed = true
+  }
+
+  const handleAuthSuccess = (): void => {
+    authModalOpen = false
+    authModalDismissed = true
+  }
+
   onMount(() => {
     void loadWorkspaces()
+    void checkGitHubAuth()
     void (async () => {
       try {
         appVersion = await fetchAppVersion()
@@ -215,6 +241,31 @@
           mode={actionContext.mode}
           workspaceId={actionContext.workspaceId}
           repoName={actionContext.repoName}
+        />
+      </div>
+    </div>
+  {/if}
+
+  {#if authModalOpen}
+    <div
+      class="overlay"
+      role="button"
+      tabindex="0"
+      onclick={handleAuthClose}
+      onkeydown={(event) => {
+        if (event.key === 'Escape') handleAuthClose()
+      }}
+    >
+      <div
+        class="overlay-panel"
+        role="presentation"
+        onclick={(event) => event.stopPropagation()}
+        onkeydown={(event) => event.stopPropagation()}
+      >
+        <GitHubLoginModal
+          cancelLabel="Not now"
+          onClose={handleAuthClose}
+          onSuccess={handleAuthSuccess}
         />
       </div>
     </div>

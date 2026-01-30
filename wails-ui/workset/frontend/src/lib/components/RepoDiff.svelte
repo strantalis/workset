@@ -38,6 +38,7 @@
     sendPullRequestReviewsToTerminal
   } from '../api'
   import type {RepoLocalStatus} from '../api'
+  import GitHubLoginModal from './GitHubLoginModal.svelte'
 
   // Local type definitions for @pierre/diffs generic types
   // (The library exports these but TypeScript doesn't resolve the generics correctly)
@@ -129,6 +130,9 @@
 
   // Comment management state
   let currentUserId: number | null = $state(null)
+  let authModalOpen = $state(false)
+  let authModalMessage: string | null = $state(null)
+  let authPendingAction: (() => Promise<void>) | null = null
 
   let localStatus: RepoLocalStatus | null = $state(null)
   let commitPushLoading = $state(false)
@@ -544,6 +548,52 @@
     return fallback
   }
 
+  const authRequiredPrefix = 'AUTH_REQUIRED:'
+
+  const isAuthRequiredMessage = (message: string): boolean =>
+    message.startsWith(authRequiredPrefix)
+
+  const stripAuthPrefix = (message: string): string =>
+    message.replace(/^AUTH_REQUIRED:\s*/, '') || 'GitHub authentication required.'
+
+  const runGitHubAction = async (
+    action: () => Promise<void>,
+    onError: (message: string) => void,
+    fallback: string
+  ): Promise<void> => {
+    if (authModalOpen) {
+      authPendingAction = () => runGitHubAction(action, onError, fallback)
+      return
+    }
+    try {
+      await action()
+    } catch (err) {
+      const message = formatError(err, fallback)
+      if (isAuthRequiredMessage(message)) {
+        authModalMessage = stripAuthPrefix(message)
+        authPendingAction = () => runGitHubAction(action, onError, fallback)
+        authModalOpen = true
+        return
+      }
+      onError(message)
+    }
+  }
+
+  const handleAuthSuccess = async (): Promise<void> => {
+    authModalOpen = false
+    authModalMessage = null
+    const pending = authPendingAction
+    authPendingAction = null
+    if (pending) {
+      await pending()
+    }
+  }
+
+  const handleAuthClose = (): void => {
+    authModalOpen = false
+    authPendingAction = null
+  }
+
   const parseNumber = (value: string): number | undefined => {
     const parsed = Number.parseInt(value.trim(), 10)
     return Number.isFinite(parsed) ? parsed : undefined
@@ -553,15 +603,21 @@
     prStatusLoading = true
     prStatusError = null
     try {
-      prStatus = await fetchPullRequestStatus(
-        workspaceId,
-        repo.id,
-        parseNumber(prNumberInput),
-        prBranchInput.trim() || undefined
+      await runGitHubAction(
+        async () => {
+          prStatus = await fetchPullRequestStatus(
+            workspaceId,
+            repo.id,
+            parseNumber(prNumberInput),
+            prBranchInput.trim() || undefined
+          )
+        },
+        (message) => {
+          prStatusError = message
+          prStatus = null
+        },
+        'Failed to load pull request status.'
       )
-    } catch (err) {
-      prStatusError = formatError(err, 'Failed to load pull request status.')
-      prStatus = null
     } finally {
       prStatusLoading = false
     }
@@ -572,19 +628,25 @@
     prReviewsError = null
     prReviewsSent = false
     try {
-      prReviews = await fetchPullRequestReviews(
-        workspaceId,
-        repo.id,
-        parseNumber(prNumberInput),
-        prBranchInput.trim() || undefined
+      await runGitHubAction(
+        async () => {
+          prReviews = await fetchPullRequestReviews(
+            workspaceId,
+            repo.id,
+            parseNumber(prNumberInput),
+            prBranchInput.trim() || undefined
+          )
+          // Also fetch current user for edit/delete permissions
+          if (currentUserId === null) {
+            loadCurrentUser()
+          }
+        },
+        (message) => {
+          prReviewsError = message
+          prReviews = []
+        },
+        'Failed to load review comments.'
       )
-      // Also fetch current user for edit/delete permissions
-      if (currentUserId === null) {
-        loadCurrentUser()
-      }
-    } catch (err) {
-      prReviewsError = formatError(err, 'Failed to load review comments.')
-      prReviews = []
     } finally {
       prReviewsLoading = false
     }
@@ -657,29 +719,35 @@
     prCreateError = null
     prCreateSuccess = null
     try {
-      // Auto-generate title/body
-      const generated = await generatePullRequestText(workspaceId, repo.id)
+      await runGitHubAction(
+        async () => {
+          // Auto-generate title/body
+          const generated = await generatePullRequestText(workspaceId, repo.id)
 
-      // Create PR with generated content
-      const created = await createPullRequest(workspaceId, repo.id, {
-        title: generated.title,
-        body: generated.body,
-        base: prBase.trim() || undefined,
-        baseRemote: prBaseRemote || undefined,
-        draft: prDraft,
-        autoCommit: true,
-        autoPush: true
-      })
-      prCreateSuccess = created
-      prTracked = created
-      forceMode = null // Auto-switch to status mode (polling starts)
-      prNumberInput = `${created.number}`
-      prStatus = {
-        pullRequest: created,
-        checks: []
-      }
-    } catch (err) {
-      prCreateError = formatError(err, 'Failed to create pull request.')
+          // Create PR with generated content
+          const created = await createPullRequest(workspaceId, repo.id, {
+            title: generated.title,
+            body: generated.body,
+            base: prBase.trim() || undefined,
+            baseRemote: prBaseRemote || undefined,
+            draft: prDraft,
+            autoCommit: true,
+            autoPush: true
+          })
+          prCreateSuccess = created
+          prTracked = created
+          forceMode = null // Auto-switch to status mode (polling starts)
+          prNumberInput = `${created.number}`
+          prStatus = {
+            pullRequest: created,
+            checks: []
+          }
+        },
+        (message) => {
+          prCreateError = message
+        },
+        'Failed to create pull request.'
+      )
     } finally {
       prCreating = false
     }
@@ -687,29 +755,37 @@
 
   const handleSendReviews = async (): Promise<void> => {
     prReviewsError = null
-    try {
-      await sendPullRequestReviewsToTerminal(
-        workspaceId,
-        repo.id,
-        parseNumber(prNumberInput),
-        prBranchInput.trim() || undefined
-      )
-      prReviewsSent = true
-    } catch (err) {
-      prReviewsError = formatError(err, 'Failed to send reviews to terminal.')
-    }
+    await runGitHubAction(
+      async () => {
+        await sendPullRequestReviewsToTerminal(
+          workspaceId,
+          repo.id,
+          parseNumber(prNumberInput),
+          prBranchInput.trim() || undefined
+        )
+        prReviewsSent = true
+      },
+      (message) => {
+        prReviewsError = message
+      },
+      'Failed to send reviews to terminal.'
+    )
   }
 
   const handleDeleteComment = async (commentId: number): Promise<void> => {
     // Note: native confirm() doesn't work in Wails WebView on macOS
     // The delete button click is explicit enough user intent
-    try {
-      await deleteReviewComment(workspaceId, repo.id, commentId)
-      await loadPrReviews()
-      renderDiff()
-    } catch (err) {
-      alert(formatError(err, 'Failed to delete comment.'))
-    }
+    await runGitHubAction(
+      async () => {
+        await deleteReviewComment(workspaceId, repo.id, commentId)
+        await loadPrReviews()
+        renderDiff()
+      },
+      (message) => {
+        alert(message)
+      },
+      'Failed to delete comment.'
+    )
   }
 
   let resolvingThread = $state(false)
@@ -721,17 +797,20 @@
     }
     if (resolvingThread) return
     resolvingThread = true
-    try {
-      await resolveReviewThread(workspaceId, repo.id, threadId, resolve)
-      // Refresh reviews to get updated state
-      await loadPrReviews()
-      // Re-render diff with updated data
-      renderDiff()
-    } catch (err) {
-      alert(formatError(err, resolve ? 'Failed to resolve thread.' : 'Failed to unresolve thread.'))
-    } finally {
-      resolvingThread = false
-    }
+    await runGitHubAction(
+      async () => {
+        await resolveReviewThread(workspaceId, repo.id, threadId, resolve)
+        // Refresh reviews to get updated state
+        await loadPrReviews()
+        // Re-render diff with updated data
+        renderDiff()
+      },
+      (message) => {
+        alert(message)
+      },
+      resolve ? 'Failed to resolve thread.' : 'Failed to unresolve thread.'
+    )
+    resolvingThread = false
   }
 
   let filteredReviews = $derived(
@@ -1335,6 +1414,31 @@
     </div>
   {/if}
 </section>
+
+{#if authModalOpen}
+  <div
+    class="overlay"
+    role="button"
+    tabindex="0"
+    onclick={handleAuthClose}
+    onkeydown={(event) => {
+      if (event.key === 'Escape') handleAuthClose()
+    }}
+  >
+    <div
+      class="overlay-panel"
+      role="presentation"
+      onclick={(event) => event.stopPropagation()}
+      onkeydown={(event) => event.stopPropagation()}
+    >
+      <GitHubLoginModal
+        notice={authModalMessage}
+        onClose={handleAuthClose}
+        onSuccess={handleAuthSuccess}
+      />
+    </div>
+  </div>
+{/if}
 
 <style>
   /* Sidebar tabs */
@@ -2892,5 +2996,45 @@
   :global(.diff-action-unresolve:hover) {
     background: rgba(210, 153, 34, 0.15);
     color: #f0b429;
+  }
+
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(6, 9, 14, 0.78);
+    display: grid;
+    place-items: center;
+    z-index: 30;
+    padding: 24px;
+    animation: overlayFadeIn var(--transition-normal) ease-out;
+  }
+
+  .overlay-panel {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    animation: modalSlideIn 200ms ease-out;
+  }
+
+  @keyframes overlayFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes modalSlideIn {
+    from {
+      opacity: 0;
+      transform: translateY(-8px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @media (max-width: 720px) {
+    .overlay {
+      padding: 0;
+    }
   }
 </style>

@@ -2,15 +2,12 @@ package ops
 
 import (
 	"context"
-	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
-	"time"
 
-	ggit "github.com/go-git/go-git/v6"
-	ggitconfig "github.com/go-git/go-git/v6/config"
-	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/strantalis/workset/internal/config"
 	"github.com/strantalis/workset/internal/git"
 	"github.com/strantalis/workset/internal/workspace"
@@ -34,7 +31,7 @@ func TestAddRepoLinksLocal(t *testing.T) {
 		Remote:        defaults.Remote,
 		DefaultBranch: defaults.BaseBranch,
 		AllowFallback: false,
-		Git:           git.NewGoGitClient(),
+		Git:           git.NewCLIClient(),
 	})
 	if err != nil {
 		t.Fatalf("AddRepo: %v", err)
@@ -80,7 +77,7 @@ func TestAddRepoMissingRemoteErrors(t *testing.T) {
 		Remote:        defaults.Remote,
 		DefaultBranch: defaults.BaseBranch,
 		AllowFallback: false,
-		Git:           git.NewGoGitClient(),
+		Git:           git.NewCLIClient(),
 	})
 	if err == nil {
 		t.Fatalf("expected missing remote error")
@@ -105,7 +102,7 @@ func TestStatusDirty(t *testing.T) {
 		Remote:        defaults.Remote,
 		DefaultBranch: defaults.BaseBranch,
 		AllowFallback: false,
-		Git:           git.NewGoGitClient(),
+		Git:           git.NewCLIClient(),
 	})
 	if err != nil {
 		t.Fatalf("AddRepo: %v", err)
@@ -120,7 +117,7 @@ func TestStatusDirty(t *testing.T) {
 		WorkspaceRoot:       root,
 		Defaults:            defaults,
 		RepoDefaultBranches: map[string]string{"demo-repo": defaults.BaseBranch},
-		Git:                 git.NewGoGitClient(),
+		Git:                 git.NewCLIClient(),
 	})
 	if err != nil {
 		t.Fatalf("Status: %v", err)
@@ -136,43 +133,31 @@ func TestStatusDirty(t *testing.T) {
 func setupRepo(t *testing.T) string {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "source")
-	repo, err := ggit.PlainInit(root, false)
-	if err != nil {
-		t.Fatalf("PlainInit: %v", err)
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
 	}
+	runGit(t, root, "init", "-b", "main")
+	runGit(t, root, "config", "user.name", "Tester")
+	runGit(t, root, "config", "user.email", "tester@example.com")
 	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("hello"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	worktree, err := repo.Worktree()
-	if err != nil {
-		t.Fatalf("Worktree: %v", err)
-	}
-	if _, err := worktree.Add("README.md"); err != nil {
-		t.Fatalf("Add: %v", err)
-	}
-	_, err = worktree.Commit("initial", &ggit.CommitOptions{
-		Author: &object.Signature{
-			Name:  "Tester",
-			Email: "tester@example.com",
-			When:  time.Now(),
-		},
-	})
-	if err != nil {
-		t.Fatalf("Commit: %v", err)
-	}
+	runGit(t, root, "add", "README.md")
+	runGit(t, root, "commit", "-m", "initial")
 	return root
 }
 
 func addRemote(t *testing.T, repoPath, name, url string) {
 	t.Helper()
-	repo, err := ggit.PlainOpen(repoPath)
+	runGit(t, repoPath, "remote", "add", name, url)
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("PlainOpen: %v", err)
-	}
-	if _, err := repo.CreateRemote(&ggitconfig.RemoteConfig{
-		Name: name,
-		URLs: []string{url},
-	}); err != nil && !errors.Is(err, ggit.ErrRemoteExists) {
-		t.Fatalf("CreateRemote: %v", err)
+		t.Fatalf("git %s: %v (%s)", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
 	}
 }

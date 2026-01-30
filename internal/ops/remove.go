@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	xworktree "github.com/go-git/go-git/v6/x/plumbing/worktree"
 	"github.com/strantalis/workset/internal/config"
 	"github.com/strantalis/workset/internal/git"
 	"github.com/strantalis/workset/internal/workspace"
@@ -241,6 +240,7 @@ type RemoveRepoInput struct {
 	Git             git.Client
 	DeleteWorktrees bool
 	DeleteLocal     bool
+	Force           bool
 	Logf            func(format string, args ...any)
 }
 
@@ -324,8 +324,12 @@ func RemoveRepo(ctx context.Context, input RemoveRepoInput) (config.WorkspaceCon
 				input.Logf("repo remove: removing worktree %s (gitdir %s, path %s)", worktreeName, removeGitDir, worktreePath)
 			}
 			if removeGitDir != "" {
-				if err := input.Git.WorktreeRemove(removeGitDir, worktreeName); err != nil {
-					if !errors.Is(err, xworktree.ErrWorktreeNotFound) {
+				if err := input.Git.WorktreeRemove(git.WorktreeRemoveOptions{
+					RepoPath:     removeGitDir,
+					WorktreeName: worktreeName,
+					Force:        input.Force,
+				}); err != nil {
+					if !errors.Is(err, git.ErrWorktreeNotFound) {
 						if input.Logf != nil {
 							input.Logf("repo remove: worktree remove failed for %s (%v)", worktreeName, err)
 						}
@@ -338,8 +342,12 @@ func RemoveRepo(ctx context.Context, input RemoveRepoInput) (config.WorkspaceCon
 						if input.Logf != nil {
 							input.Logf("repo remove: retry remove as %s (matched by gitdir)", resolvedName)
 						}
-						if err := input.Git.WorktreeRemove(removeGitDir, resolvedName); err != nil {
-							if !errors.Is(err, xworktree.ErrWorktreeNotFound) {
+						if err := input.Git.WorktreeRemove(git.WorktreeRemoveOptions{
+							RepoPath:     removeGitDir,
+							WorktreeName: resolvedName,
+							Force:        input.Force,
+						}); err != nil {
+							if !errors.Is(err, git.ErrWorktreeNotFound) {
 								if input.Logf != nil {
 									input.Logf("repo remove: retry remove failed for %s (%v)", resolvedName, err)
 								}
@@ -435,8 +443,12 @@ func CleanupWorkspaceWorktrees(input CleanupWorkspaceWorktreesInput) error {
 		if input.Logf != nil {
 			input.Logf("worktree cleanup: removing %s (gitdir %s)", worktreeName, commonDir)
 		}
-		if err := input.Git.WorktreeRemove(commonDir, worktreeName); err != nil {
-			if errors.Is(err, xworktree.ErrWorktreeNotFound) {
+		if err := input.Git.WorktreeRemove(git.WorktreeRemoveOptions{
+			RepoPath:     commonDir,
+			WorktreeName: worktreeName,
+			Force:        input.Force,
+		}); err != nil {
+			if errors.Is(err, git.ErrWorktreeNotFound) {
 				if input.Logf != nil {
 					input.Logf("worktree cleanup: %s not found in %s", worktreeName, commonDir)
 				}

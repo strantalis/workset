@@ -184,6 +184,14 @@ func TestRemoveRepoSafetyAndConfirmation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("remove repo: %v", err)
 	}
+	if len(env.git.worktreeRemovs) == 0 {
+		t.Fatalf("expected worktree removals to be attempted")
+	}
+	for _, call := range env.git.worktreeRemovs {
+		if !call.force {
+			t.Fatalf("expected worktree removal to set force=true")
+		}
+	}
 }
 
 func TestAddRepoRequiresSource(t *testing.T) {

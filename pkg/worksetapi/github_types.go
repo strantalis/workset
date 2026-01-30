@@ -229,6 +229,37 @@ type GitHubUserResult struct {
 	Config config.GlobalConfigLoadInfo
 }
 
+// GitHubAuthStatusJSON describes the current GitHub auth state.
+type GitHubAuthStatusJSON struct {
+	Authenticated bool     `json:"authenticated"`
+	Login         string   `json:"login,omitempty"`
+	Name          string   `json:"name,omitempty"`
+	Scopes        []string `json:"scopes,omitempty"`
+	TokenSource   string   `json:"tokenSource,omitempty"`
+}
+
+// GitHubCLIStatusJSON describes the local GitHub CLI availability.
+type GitHubCLIStatusJSON struct {
+	Installed      bool   `json:"installed"`
+	Version        string `json:"version,omitempty"`
+	Path           string `json:"path,omitempty"`
+	ConfiguredPath string `json:"configuredPath,omitempty"`
+	Error          string `json:"error,omitempty"`
+}
+
+// GitHubAuthInfoJSON wraps auth mode, status, and CLI availability.
+type GitHubAuthInfoJSON struct {
+	Mode   string               `json:"mode"`
+	Status GitHubAuthStatusJSON `json:"status"`
+	CLI    GitHubCLIStatusJSON  `json:"cli"`
+}
+
+// GitHubTokenInput stores a GitHub API token.
+type GitHubTokenInput struct {
+	Token  string `json:"token"`
+	Source string `json:"source,omitempty"`
+}
+
 // PullRequestGenerateInput describes inputs for AI PR generation.
 type PullRequestGenerateInput struct {
 	Workspace    WorkspaceSelector

@@ -32,6 +32,27 @@ workset completion <bash|zsh|fish|powershell>
 
 Commands that operate on a workspace require an explicit target: pass `-w <workspace>` (name or path) or set `defaults.workspace`. Most flags should appear before positional args; `-w/--workspace`, `--path`, `--group`, `--repo`, `--json`, `--plain`, `--config`, and `--verbose` are also recognized after args.
 
+## GitHub auth (CLI-only)
+
+If you are not using the desktop UI, Workset will use your GitHub CLI session by default.
+
+```
+gh auth login
+```
+
+To import a PAT without the GUI, set `WORKSET_GITHUB_PAT` in your environment. This stores the token in your OS keychain and switches auth mode to PAT.
+
+```
+WORKSET_GITHUB_PAT=ghp_... workset <command>
+```
+
+If `gh` is not on PATH (e.g., Nix), set the override in `~/.workset/config.yaml`:
+
+```
+github:
+  cli_path: /Users/you/.nix-profile/bin/gh
+```
+
 ## Safety checks
 
 `workset rm --delete` and `workset repo rm --delete-*` run safety checks before removing files. Branches are treated as merged when the base branch already contains the same file contents (covers squash merges).

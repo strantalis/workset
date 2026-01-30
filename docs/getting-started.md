@@ -80,6 +80,14 @@ To force a backend:
 workset session start demo --backend exec --interactive
 ```
 
+## GitHub authentication (desktop app)
+
+Workset’s desktop UI uses **GitHub CLI** by default. Install `gh`, run `gh auth login`, then open Settings → GitHub to confirm you’re connected.
+
+If you prefer not to use the CLI, switch to **Personal access token** in Settings → GitHub and save a token with access to the repos you need (including private repos). Workset stores the token in your OS keychain.
+
+CLI-only usage (no GUI): set `WORKSET_GITHUB_PAT` to import a PAT into the keychain, or add a `github.cli_path` override in `~/.workset/config.yaml` if `gh` is not on PATH.
+
 ## Run a one-off command
 
 ```bash

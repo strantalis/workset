@@ -7,6 +7,7 @@
   import WorkspaceDefaults from './settings/sections/WorkspaceDefaults.svelte'
   import AgentDefaults from './settings/sections/AgentDefaults.svelte'
   import SessionDefaults from './settings/sections/SessionDefaults.svelte'
+  import GitHubAuth from './settings/sections/GitHubAuth.svelte'
   import AliasManager from './settings/sections/AliasManager.svelte'
   import GroupManager from './settings/sections/GroupManager.svelte'
   import Button from './ui/Button.svelte'
@@ -196,6 +197,8 @@
             onRestartSessiond={handleRestartSessiond}
             restartingSessiond={restartingSessiond}
           />
+        {:else if activeSection === 'github'}
+          <GitHubAuth />
         {:else if activeSection === 'aliases'}
           <AliasManager onAliasCountChange={(count) => (aliasCount = count)} />
         {:else if activeSection === 'groups'}

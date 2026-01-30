@@ -152,6 +152,7 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 		"defaults.agent":                     defaults.Defaults.Agent,
 		"defaults.terminal_renderer":         defaults.Defaults.TerminalRenderer,
 		"defaults.terminal_idle_timeout":     defaults.Defaults.TerminalIdleTimeout,
+		"github.cli_path":                    defaults.GitHub.CLIPath,
 		"hooks.enabled":                      defaults.Hooks.Enabled,
 		"hooks.on_error":                     defaults.Hooks.OnError,
 		"hooks.repo_hooks.trusted_repos":     defaults.Hooks.RepoHooks.TrustedRepos,

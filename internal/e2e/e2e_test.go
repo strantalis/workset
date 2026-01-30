@@ -7,12 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
-
-	ggit "github.com/go-git/go-git/v6"
-	ggitcfg "github.com/go-git/go-git/v6/config"
-	"github.com/go-git/go-git/v6/plumbing"
-	"github.com/go-git/go-git/v6/plumbing/object"
 )
 
 var worksetBin string
@@ -766,64 +760,22 @@ func setupRepo(t *testing.T, path string) string {
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		t.Fatalf("mkdir repo: %v", err)
 	}
-	repo, err := ggit.PlainInit(path, false)
-	if err != nil {
-		t.Fatalf("PlainInit: %v", err)
-	}
-	if _, err := repo.CreateRemote(&ggitcfg.RemoteConfig{
-		Name: "origin",
-		URLs: []string{path},
-	}); err != nil {
-		t.Fatalf("CreateRemote: %v", err)
-	}
-	if err := repo.Storer.SetReference(plumbing.NewSymbolicReference(plumbing.HEAD, plumbing.NewBranchReferenceName("main"))); err != nil {
-		t.Fatalf("set HEAD: %v", err)
-	}
+	runGit(t, path, "init", "-b", "main")
+	runGit(t, path, "config", "user.name", "Tester")
+	runGit(t, path, "config", "user.email", "tester@example.com")
+	runGit(t, path, "remote", "add", "origin", path)
 	if err := os.WriteFile(filepath.Join(path, "README.md"), []byte("hello"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	worktree, err := repo.Worktree()
-	if err != nil {
-		t.Fatalf("Worktree: %v", err)
-	}
-	if _, err := worktree.Add("README.md"); err != nil {
-		t.Fatalf("Add: %v", err)
-	}
-	_, err = worktree.Commit("initial", &ggit.CommitOptions{
-		Author: &object.Signature{
-			Name:  "Tester",
-			Email: "tester@example.com",
-			When:  time.Now(),
-		},
-	})
-	if err != nil {
-		t.Fatalf("Commit: %v", err)
-	}
+	runGit(t, path, "add", "README.md")
+	runGit(t, path, "commit", "-m", "initial")
 	return path
 }
 
 func commitFile(t *testing.T, repoPath, branch, filename, contents, message string) {
 	t.Helper()
-
-	repo, err := ggit.PlainOpenWithOptions(repoPath, &ggit.PlainOpenOptions{
-		EnableDotGitCommonDir: true,
-	})
-	if err != nil {
-		t.Fatalf("open repo: %v", err)
-	}
-
-	worktree, err := repo.Worktree()
-	if err != nil {
-		t.Fatalf("worktree: %v", err)
-	}
-
 	if branch != "" {
-		branchRef := plumbing.NewBranchReferenceName(branch)
-		if err := worktree.Checkout(&ggit.CheckoutOptions{Branch: branchRef}); err != nil {
-			if err := worktree.Checkout(&ggit.CheckoutOptions{Branch: branchRef, Create: true}); err != nil {
-				t.Fatalf("checkout %s: %v", branch, err)
-			}
-		}
+		runGit(t, repoPath, "checkout", "-B", branch)
 	}
 
 	if err := os.MkdirAll(filepath.Dir(filepath.Join(repoPath, filename)), 0o755); err != nil {
@@ -832,17 +784,17 @@ func commitFile(t *testing.T, repoPath, branch, filename, contents, message stri
 	if err := os.WriteFile(filepath.Join(repoPath, filename), []byte(contents), 0o644); err != nil {
 		t.Fatalf("write file: %v", err)
 	}
-	if _, err := worktree.Add(filename); err != nil {
-		t.Fatalf("add file: %v", err)
-	}
-	if _, err := worktree.Commit(message, &ggit.CommitOptions{
-		Author: &object.Signature{
-			Name:  "Tester",
-			Email: "tester@example.com",
-			When:  time.Now(),
-		},
-	}); err != nil {
-		t.Fatalf("commit: %v", err)
+	runGit(t, repoPath, "add", filename)
+	runGit(t, repoPath, "commit", "-m", message)
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s: %v (%s)", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
 	}
 }
 

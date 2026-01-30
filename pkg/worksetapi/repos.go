@@ -309,6 +309,7 @@ func (s *Service) RemoveRepo(ctx context.Context, input RepoRemoveInput) (RepoRe
 		Git:             s.git,
 		DeleteWorktrees: input.DeleteWorktrees,
 		DeleteLocal:     input.DeleteLocal,
+		Force:           input.Force,
 		Logf:            s.logf,
 	}); err != nil {
 		return RepoRemoveResult{}, err

@@ -1,6 +1,12 @@
 package git
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+// ErrWorktreeNotFound indicates a worktree entry was missing.
+var ErrWorktreeNotFound = errors.New("worktree not found")
 
 type StatusSummary struct {
 	Dirty   bool
@@ -15,6 +21,12 @@ type WorktreeAddOptions struct {
 	StartRemote   string
 	StartBranch   string
 	ForceCheckout bool
+}
+
+type WorktreeRemoveOptions struct {
+	RepoPath     string
+	WorktreeName string
+	Force        bool
 }
 
 type Client interface {
@@ -32,6 +44,6 @@ type Client interface {
 	CurrentBranch(repoPath string) (string, bool, error)
 	RemoteExists(repoPath, remoteName string) (bool, error)
 	WorktreeAdd(ctx context.Context, opts WorktreeAddOptions) error
-	WorktreeRemove(repoPath, worktreeName string) error
+	WorktreeRemove(opts WorktreeRemoveOptions) error
 	WorktreeList(repoPath string) ([]string, error)
 }
