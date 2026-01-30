@@ -65,6 +65,10 @@
   let success: string | null = $state(null)
   let loading = $state(false)
 
+  // Removal modal state for loading overlay
+  let removing = $state(false)
+  let removalSuccess = $state(false)
+
   let nameInput: HTMLInputElement | null = $state(null)
 
   // Create mode: smart single input
@@ -225,6 +229,7 @@
 
   let archiveReason = $state('')
   let removeDeleteWorktree = $state(false)
+  // Note: removeDeleteLocal is disabled in UI due to cross-workspace safety concerns
   let removeDeleteLocal = $state(false)
   let removeDeleteFiles = $state(false)
   let removeForceDelete = $state(false)
@@ -236,7 +241,7 @@
   const removeConfirmValid = $derived(
     !removeDeleteFiles || removeConfirmText.trim().toUpperCase() === 'DELETE'
   )
-  const removeRepoConfirmRequired = $derived(removeDeleteWorktree || removeDeleteLocal)
+  const removeRepoConfirmRequired = $derived(removeDeleteWorktree)
   const removeRepoConfirmValid = $derived(
     !removeRepoConfirmRequired || removeRepoConfirmText.trim().toUpperCase() === 'DELETE'
   )
@@ -457,10 +462,12 @@
   const handleRemoveWorkspace = async (): Promise<void> => {
     if (!workspaceId) return
     loading = true
+    removing = true
     error = null
     try {
       if (removeDeleteFiles && !removeConfirmValid) {
         error = 'Type DELETE to confirm file deletion.'
+        removing = false
         return
       }
       await removeWorkspace(workspaceId, {
@@ -471,10 +478,14 @@
       if (get(activeWorkspaceId) === workspaceId) {
         clearWorkspace()
       }
+      // Show success state before closing
+      removalSuccess = true
+      await new Promise((resolve) => setTimeout(resolve, 800))
       onClose()
       void loadWorkspaces(true)
     } catch (err) {
       error = formatError(err, 'Failed to remove workspace.')
+      removing = false
     } finally {
       loading = false
     }
@@ -483,20 +494,26 @@
   const handleRemoveRepo = async (): Promise<void> => {
     if (!workspace || !repo) return
     loading = true
+    removing = true
     error = null
     try {
       if (!removeRepoConfirmValid) {
         error = 'Type DELETE to confirm repo deletion.'
+        removing = false
         return
       }
-      await removeRepo(workspace.id, repo.name, removeDeleteWorktree, removeDeleteLocal)
+      await removeRepo(workspace.id, repo.name, removeDeleteWorktree, false)
       await loadWorkspaces(true)
       if (get(activeWorkspaceId) === workspace.id) {
         clearRepo()
       }
+      // Show success state before closing
+      removalSuccess = true
+      await new Promise((resolve) => setTimeout(resolve, 800))
       onClose()
     } catch (err) {
       error = formatError(err, 'Failed to remove repo.')
+      removing = false
     } finally {
       removeRepoConfirmText = ''
       loading = false
@@ -516,6 +533,7 @@
   size="xl"
   headerAlign="left"
   {onClose}
+  disableClose={removing}
 >
   {#if error}
     <Alert variant="error">{error}</Alert>
@@ -875,89 +893,127 @@
       </Button>
     </div>
   {:else if mode === 'remove-workspace'}
-    <div class="form">
-      <div class="hint">Remove workspace registration only by default.</div>
-      <label class="option">
-        <input type="checkbox" bind:checked={removeDeleteFiles} />
-        <span>Also delete workspace files and worktrees</span>
-      </label>
-      {#if removeDeleteFiles}
-        <div class="hint">Deletes the workspace directory and removes all worktrees.</div>
-        <label class="field">
-          <span>Type DELETE to confirm</span>
-          <input
-            bind:value={removeConfirmText}
-            placeholder="DELETE"
-            autocapitalize="off"
-            autocorrect="off"
-            spellcheck="false"
-          />
+    <div class="form form-removing" class:removing={removing} class:success={removalSuccess}>
+      <div class="form-content">
+        <div class="hint hint-intro">Remove workspace registration only by default.</div>
+        <label class="option option-main">
+          <input type="checkbox" bind:checked={removeDeleteFiles} />
+          <span>Also delete workspace files and worktrees</span>
         </label>
-        <label class="option">
-          <input type="checkbox" bind:checked={removeForceDelete} />
-          <span>Force delete (skip safety checks)</span>
-        </label>
-        {#if removeForceDelete}
-          <Alert variant="warning">
-            Force delete bypasses dirty/unmerged checks and may delete uncommitted work.
-          </Alert>
+        {#if removeDeleteFiles}
+          <div class="deletion-options">
+            <div class="hint deletion-hint">Deletes the workspace directory and removes all worktrees.</div>
+            <label class="field">
+              <span>Type DELETE to confirm</span>
+              <input
+                bind:value={removeConfirmText}
+                placeholder="DELETE"
+                autocapitalize="off"
+                autocorrect="off"
+                spellcheck="false"
+              />
+            </label>
+            <label class="option">
+              <input type="checkbox" bind:checked={removeForceDelete} />
+              <span>Force delete (skip safety checks)</span>
+            </label>
+            {#if removeForceDelete}
+              <Alert variant="warning">
+                Force delete bypasses dirty/unmerged checks and may delete uncommitted work.
+              </Alert>
+            {/if}
+          </div>
         {/if}
+        <Button
+          variant="danger"
+          onclick={handleRemoveWorkspace}
+          disabled={loading || !removeConfirmValid}
+          class="action-btn"
+        >
+          {loading ? 'Removing…' : 'Remove workspace'}
+        </Button>
+      </div>
+      {#if removing}
+        <div class="removal-overlay">
+          {#if removalSuccess}
+            <div class="removal-success">
+              <svg class="success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+              <span class="removal-text">Removed successfully</span>
+            </div>
+          {:else}
+            <div class="removal-loading">
+              <div class="spinner"></div>
+              <span class="removal-text">Removing workspace…</span>
+            </div>
+          {/if}
+        </div>
       {/if}
-      <Button
-        variant="danger"
-        onclick={handleRemoveWorkspace}
-        disabled={loading || !removeConfirmValid}
-        class="action-btn"
-      >
-        {loading ? 'Removing…' : 'Remove workspace'}
-      </Button>
     </div>
   {:else if mode === 'remove-repo'}
-    <div class="form">
-      <div class="hint">This removes the repo from the workspace config by default.</div>
-      <label class="option">
-        <input type="checkbox" bind:checked={removeDeleteWorktree} />
-        <span>Also delete worktrees for this repo</span>
-      </label>
-      <label class="option">
-        <input type="checkbox" bind:checked={removeDeleteLocal} />
-        <span>Also delete local cache for this repo</span>
-      </label>
-      {#if removeRepoConfirmRequired}
-        <label class="field">
-          <span>Type DELETE to confirm</span>
-          <input
-            bind:value={removeRepoConfirmText}
-            placeholder="DELETE"
-            autocapitalize="off"
-            autocorrect="off"
-            spellcheck="false"
-          />
+    <div class="form form-removing" class:removing={removing} class:success={removalSuccess}>
+      <div class="form-content">
+        <div class="hint hint-intro">This removes the repo from the workspace config by default.</div>
+        <label class="option option-main">
+          <input type="checkbox" bind:checked={removeDeleteWorktree} />
+          <span>Also delete worktrees for this repo</span>
         </label>
+        {#if removeRepoConfirmRequired}
+          <div class="deletion-options">
+            <label class="field">
+              <span>Type DELETE to confirm</span>
+              <input
+                bind:value={removeRepoConfirmText}
+                placeholder="DELETE"
+                autocapitalize="off"
+                autocorrect="off"
+                spellcheck="false"
+              />
+            </label>
+            {#if removeDeleteWorktree}
+              <div class="hint deletion-hint">Destructive deletes are permanent and cannot be undone.</div>
+            {/if}
+            {#if removeRepoStatusRefreshing}
+              <Alert variant="warning">Fetching repo status…</Alert>
+            {:else if removeRepoStatus?.statusKnown === false && removeDeleteWorktree}
+              <Alert variant="warning">
+                Repo status unknown. Destructive deletes may be blocked if the repo is dirty.
+              </Alert>
+            {/if}
+            {#if removeRepoStatus?.dirty && removeDeleteWorktree}
+              <Alert variant="warning">
+                Uncommitted changes detected. Destructive deletes will be blocked until the repo is clean.
+              </Alert>
+            {/if}
+          </div>
+        {/if}
+        <Button
+          variant="danger"
+          onclick={handleRemoveRepo}
+          disabled={loading || !removeRepoConfirmValid}
+          class="action-btn"
+        >
+          {loading ? 'Removing…' : 'Remove repo'}
+        </Button>
+      </div>
+      {#if removing}
+        <div class="removal-overlay">
+          {#if removalSuccess}
+            <div class="removal-success">
+              <svg class="success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+              <span class="removal-text">Removed successfully</span>
+            </div>
+          {:else}
+            <div class="removal-loading">
+              <div class="spinner"></div>
+              <span class="removal-text">Removing repo…</span>
+            </div>
+          {/if}
+        </div>
       {/if}
-      {#if removeDeleteWorktree || removeDeleteLocal}
-        <div class="hint">Destructive deletes are permanent and cannot be undone.</div>
-      {/if}
-      {#if removeRepoStatusRefreshing}
-        <Alert variant="warning">Fetching repo status…</Alert>
-      {:else if removeRepoStatus?.statusKnown === false && (removeDeleteWorktree || removeDeleteLocal)}
-        <Alert variant="warning">
-          Repo status unknown. Destructive deletes may be blocked if the repo is dirty.
-        </Alert>
-      {/if}
-      {#if removeRepoStatus?.dirty && (removeDeleteWorktree || removeDeleteLocal)}
-        <Alert variant="warning">
-          Uncommitted changes detected. Destructive deletes will be blocked until the repo is clean.
-        </Alert>
-      {/if}
-      <Button
-        variant="danger"
-        onclick={handleRemoveRepo}
-        disabled={loading || !removeRepoConfirmValid}
-        class="action-btn"
-      >
-        {loading ? 'Removing…' : 'Remove repo'}
-      </Button>
     </div>
   {/if}
 </Modal>
@@ -967,6 +1023,41 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
+  }
+
+  .form.form-removing {
+    gap: 20px;
+  }
+
+  .deletion-options {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 4px;
+  }
+
+  .deletion-options :global(.alert) {
+    margin: 0;
+  }
+
+  .deletion-hint {
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  /* Better spacing for removal modal elements */
+  .hint-intro {
+    margin-bottom: 8px;
+    line-height: 1.5;
+  }
+
+  .option-main {
+    margin-top: 4px;
+    margin-bottom: 4px;
   }
 
   .field {
@@ -1000,6 +1091,10 @@
   :global(.action-btn) {
     width: 100%;
     margin-top: 8px;
+  }
+
+  .form-removing :global(.action-btn) {
+    margin-top: 16px;
   }
 
   .hint {
@@ -1406,5 +1501,128 @@
 
   .group-members li {
     margin: 2px 0;
+  }
+
+  /* Removal modal loading overlay styles */
+  .form-removing {
+    position: relative;
+  }
+
+  .form-content {
+    transition: opacity 0.3s ease, filter 0.3s ease;
+  }
+
+  .form-removing.removing .form-content {
+    opacity: 0.4;
+    filter: blur(1px);
+    pointer-events: none;
+  }
+
+  .form-removing.success .form-content {
+    opacity: 0.3;
+    filter: blur(2px);
+    pointer-events: none;
+  }
+
+  .removal-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(11, 15, 24, 0.6);
+    border-radius: var(--radius-md);
+    animation: overlayFadeIn 0.2s ease-out;
+  }
+
+  @keyframes overlayFadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .removal-loading,
+  .removal-success {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 24px;
+    animation: contentSlideIn 0.3s ease-out;
+  }
+
+  @keyframes contentSlideIn {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--muted);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .removal-text {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .success-icon {
+    width: 48px;
+    height: 48px;
+    color: var(--success);
+    animation: successPop 0.4s ease-out;
+  }
+
+  @keyframes successPop {
+    0% {
+      transform: scale(0.5);
+      opacity: 0;
+    }
+    50% {
+      transform: scale(1.1);
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  .removal-success {
+    animation: containerPulse 1.2s ease-out;
+  }
+
+  @keyframes containerPulse {
+    0% {
+      box-shadow: 0 0 0 0 rgba(var(--success-rgb), 0.4);
+    }
+    50% {
+      box-shadow: 0 0 16px 6px rgba(var(--success-rgb), 0.15);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(var(--success-rgb), 0);
+    }
   }
 </style>

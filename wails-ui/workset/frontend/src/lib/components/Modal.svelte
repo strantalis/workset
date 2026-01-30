@@ -8,6 +8,7 @@
     size?: 'sm' | 'md' | 'lg' | 'xl' | 'full'
     headerAlign?: 'center' | 'left'
     onClose?: () => void
+    disableClose?: boolean
     children: Snippet
     footer?: Snippet
   }
@@ -18,6 +19,7 @@
     size = 'md',
     headerAlign = 'center',
     onClose,
+    disableClose = false,
     children,
     footer
   }: Props = $props()
@@ -40,7 +42,7 @@
       {/if}
     </div>
     {#if onClose}
-      <Button variant="ghost" size="sm" onclick={onClose}>Close</Button>
+      <Button variant="ghost" size="sm" onclick={onClose} disabled={disableClose}>Close</Button>
     {/if}
   </header>
   <div class="modal-body">
