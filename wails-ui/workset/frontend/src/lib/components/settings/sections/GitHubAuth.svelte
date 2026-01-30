@@ -20,6 +20,7 @@
   let statusMessage = $state<string | null>(null)
   let patToken = $state('')
   let cliPath = $state('')
+  let successPulse = $state(false)
 
   let authMode = $derived(info?.mode ?? 'cli')
   let authenticated = $derived(info?.status.authenticated ?? false)
@@ -40,9 +41,16 @@
     loading = true
     error = null
     statusMessage = null
+    successPulse = false
     try {
       info = await fetchGitHubAuthInfo()
       cliPath = info?.cli.configuredPath ?? ''
+      if (info?.status.authenticated) {
+        successPulse = true
+        setTimeout(() => {
+          successPulse = false
+        }, 1500)
+      }
     } catch (err) {
       error = formatError(err, 'Failed to load GitHub auth status.')
     } finally {
@@ -151,7 +159,7 @@
   {:else if error && !info}
     <Alert variant="error">{error}</Alert>
   {:else if info}
-    <div class="status-card">
+    <div class="status-card" class:success-pulse={successPulse}>
       {#if error}
         <Alert variant="error">{error}</Alert>
       {/if}
@@ -301,6 +309,25 @@
     border-radius: 12px;
     border: 1px solid var(--border);
     background: var(--panel-strong);
+    transition: box-shadow var(--transition-fast), border-color var(--transition-fast);
+  }
+
+  .status-card.success-pulse {
+    animation: statusPulse 1.2s ease-out;
+    border-color: var(--success-soft);
+  }
+
+  @keyframes statusPulse {
+    0% {
+      box-shadow: 0 0 0 0 rgba(var(--success-rgb), 0.5);
+    }
+    50% {
+      box-shadow: 0 0 20px 8px rgba(var(--success-rgb), 0.2);
+      border-color: var(--success);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(var(--success-rgb), 0);
+    }
   }
 
   .status-meta {

@@ -58,7 +58,11 @@
     }
   }
 
-  function close() {
+  function close(event?: MouseEvent) {
+    // Don't close if clicking on the trigger button (handled by toggle)
+    if (event && triggerRef && (event.target === triggerRef || triggerRef.contains(event.target as Node))) {
+      return
+    }
     open = false
     highlightedIndex = -1
   }

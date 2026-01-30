@@ -15,6 +15,20 @@
 
   let { draft, baseline, onUpdate, onRestartSessiond, restartingSessiond = false }: Props = $props();
 
+  let restartCompleted = $state(false)
+  let previousRestarting = $state(false)
+
+  $effect(() => {
+    const isRestarting = restartingSessiond
+    if (previousRestarting && !isRestarting) {
+      restartCompleted = true
+      setTimeout(() => {
+        restartCompleted = false
+      }, 1500)
+    }
+    previousRestarting = isRestarting
+  })
+
   type Field = {
     id: FieldId
     label: string
@@ -88,10 +102,20 @@
     {/each}
   </div>
 
-  <div class="sessiond-actions">
+  <div class="sessiond-actions" class:restart-completed={restartCompleted}>
     <span class="hint">Restart if terminals get stuck or after changing daemon settings.</span>
-    <button class="restart" type="button" onclick={onRestartSessiond} disabled={restartingSessiond}>
-      {restartingSessiond ? 'Restarting…' : 'Restart daemon'}
+    <button
+      class="restart"
+      type="button"
+      onclick={onRestartSessiond}
+      disabled={restartingSessiond}
+      class:restarting={restartingSessiond}
+    >
+      {#if restartingSessiond}
+        <span class="spin-icon">⟳</span> Restarting…
+      {:else}
+        Restart daemon
+      {/if}
     </button>
   </div>
 </SettingsSection>
@@ -180,7 +204,10 @@
     font-size: 12px;
     cursor: pointer;
     white-space: nowrap;
-    transition: border-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: border-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
   }
 
   .restart:hover {
@@ -188,7 +215,45 @@
   }
 
   .restart:active {
-    transform: scale(0.98);
+    transform: scale(0.96) translateY(1px);
+  }
+
+  .restart.restarting {
+    border-color: var(--warning);
+    color: var(--warning);
+  }
+
+  .spin-icon {
+    display: inline-block;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .sessiond-actions.restart-completed {
+    animation: containerPulse 1.2s ease-out;
+    border-color: var(--success-soft);
+    border-style: solid;
+  }
+
+  @keyframes containerPulse {
+    0% {
+      box-shadow: 0 0 0 0 rgba(var(--success-rgb), 0.4);
+    }
+    50% {
+      box-shadow: 0 0 16px 6px rgba(var(--success-rgb), 0.15);
+      border-color: var(--success);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(var(--success-rgb), 0);
+    }
   }
 
   @media (max-width: 600px) {

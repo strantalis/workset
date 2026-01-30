@@ -29,10 +29,16 @@
   /* Semantic colors with opacity (using color-mix) */
   --accent-subtle: color-mix(in srgb, var(--accent) 12%, transparent);
   --accent-soft: color-mix(in srgb, var(--accent) 35%, transparent);
+  --accent-rgb: 45, 140, 255;
   --danger-subtle: color-mix(in srgb, var(--danger) 12%, transparent);
   --danger-soft: color-mix(in srgb, var(--danger) 50%, transparent);
+  --danger-rgb: 255, 107, 107;
   --warning-subtle: color-mix(in srgb, var(--warning) 8%, transparent);
   --warning-soft: color-mix(in srgb, var(--warning) 30%, transparent);
+  --warning-rgb: 242, 140, 40;
+  --success-subtle: color-mix(in srgb, var(--success) 8%, transparent);
+  --success-soft: color-mix(in srgb, var(--success) 30%, transparent);
+  --success-rgb: 134, 196, 66;
 
   /* Standardized radii */
   --radius-sm: 8px;
