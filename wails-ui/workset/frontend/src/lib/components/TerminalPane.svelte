@@ -1,6 +1,11 @@
 <script lang="ts">
   import {onDestroy, onMount, untrack} from 'svelte'
-  import {Terminal, type ITerminalInitOnlyOptions, type ITerminalOptions} from '@xterm/xterm'
+  import {
+    Terminal,
+    type ITerminalInitOnlyOptions,
+    type ITerminalOptions,
+    type ITheme
+  } from '@xterm/xterm'
   import {FitAddon} from '@xterm/addon-fit'
   import {CanvasAddon} from '@xterm/addon-canvas'
   import {WebglAddon} from '@xterm/addon-webgl'
@@ -45,6 +50,7 @@
     kittyState: KittyState
     kittyOverlay?: KittyOverlay
     kittyDisposables?: {dispose: () => void}[]
+    oscDisposables?: {dispose: () => void}[]
     canvasAddon?: CanvasAddon
     webglAddon?: WebglAddon
   }
@@ -271,10 +277,99 @@
   const STARTUP_OUTPUT_TIMEOUT_MS = 2000
   const RENDER_CHECK_DELAY_MS = 350
   const RENDER_RECOVERY_DELAY_MS = 150
+  let colorParser: CanvasRenderingContext2D | null = null
 
   const getToken = (name: string, fallback: string): string => {
     const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
     return value || fallback
+  }
+
+  const normalizeHex = (value: string): string | null => {
+    let hex = value.trim()
+    if (!hex) return null
+    if (hex.startsWith('#')) {
+      hex = hex.slice(1)
+    }
+    if (hex.length === 3) {
+      hex = hex
+        .split('')
+        .map((ch) => ch + ch)
+        .join('')
+    }
+    if (hex.length !== 6 || /[^0-9a-fA-F]/.test(hex)) {
+      return null
+    }
+    return hex.toLowerCase()
+  }
+
+  const parseCssColor = (value: string): {r: number; g: number; b: number} | null => {
+    if (!value) return null
+    if (!colorParser && typeof document !== 'undefined') {
+      const canvas = document.createElement('canvas')
+      colorParser = canvas.getContext('2d')
+    }
+    if (!colorParser) return null
+    colorParser.fillStyle = '#000'
+    colorParser.fillStyle = value
+    const normalized = colorParser.fillStyle
+    if (normalized.startsWith('#')) {
+      const hex = normalizeHex(normalized)
+      if (!hex) return null
+      return {
+        r: parseInt(hex.slice(0, 2), 16),
+        g: parseInt(hex.slice(2, 4), 16),
+        b: parseInt(hex.slice(4, 6), 16)
+      }
+    }
+    const match = normalized.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i)
+    if (!match) return null
+    return {r: Number(match[1]), g: Number(match[2]), b: Number(match[3])}
+  }
+
+  const toOscRgb = (value: string | undefined): string | null => {
+    if (!value) return null
+    const parsed = parseCssColor(value)
+    if (!parsed) return null
+    const to16 = (v: number): string => {
+      const clamped = Math.max(0, Math.min(255, v))
+      return (clamped * 257).toString(16).padStart(4, '0')
+    }
+    return `rgb:${to16(parsed.r)}/${to16(parsed.g)}/${to16(parsed.b)}`
+  }
+
+  const themePalette = (theme: ITheme): (string | undefined)[] => [
+    theme.black,
+    theme.red,
+    theme.green,
+    theme.yellow,
+    theme.blue,
+    theme.magenta,
+    theme.cyan,
+    theme.white,
+    theme.brightBlack,
+    theme.brightRed,
+    theme.brightGreen,
+    theme.brightYellow,
+    theme.brightBlue,
+    theme.brightMagenta,
+    theme.brightCyan,
+    theme.brightWhite
+  ]
+
+  const resolveThemeColor = (value: string | undefined, fallback: string): string | null => {
+    return toOscRgb(value ?? fallback)
+  }
+
+  const resolveAnsiColor = (terminal: Terminal, index: number): string | null => {
+    const theme = terminal.options.theme ?? {}
+    if (index < 16) {
+      const value = themePalette(theme)[index]
+      return toOscRgb(value)
+    }
+    if (index >= 16 && theme.extendedAnsi && theme.extendedAnsi[index - 16]) {
+      return toOscRgb(theme.extendedAnsi[index - 16])
+    }
+    return null
   }
 
   const loadTerminalDefaults = async (): Promise<void> => {
@@ -1194,6 +1289,63 @@
     }
   }
 
+  const registerOscHandlers = (id: string, terminal: Terminal): {dispose: () => void}[] => {
+    const disposables: {dispose: () => void}[] = []
+    const respond = (payload: string): void => {
+      sendInput(id, `\x1b]${payload}\x07`)
+    }
+    disposables.push(
+      terminal.parser.registerOscHandler(10, (data) => {
+        if (data !== '?') return false
+        const rgb = resolveThemeColor(terminal.options.theme?.foreground, getToken('--text', '#eef3f9'))
+        if (!rgb) return false
+        respond(`10;${rgb}`)
+        return true
+      })
+    )
+    disposables.push(
+      terminal.parser.registerOscHandler(11, (data) => {
+        if (data !== '?') return false
+        const rgb = resolveThemeColor(terminal.options.theme?.background, getToken('--panel-strong', '#111c29'))
+        if (!rgb) return false
+        respond(`11;${rgb}`)
+        return true
+      })
+    )
+    disposables.push(
+      terminal.parser.registerOscHandler(12, (data) => {
+        if (data !== '?') return false
+        const rgb = resolveThemeColor(terminal.options.theme?.cursor, getToken('--accent', '#2d8cff'))
+        if (!rgb) return false
+        respond(`12;${rgb}`)
+        return true
+      })
+    )
+    disposables.push(
+      terminal.parser.registerOscHandler(4, (data) => {
+        const parts = data.split(';')
+        if (parts.length < 2 || parts.length % 2 !== 0) return false
+        const responses: string[] = []
+        for (let i = 0; i < parts.length; i += 2) {
+          const index = Number.parseInt(parts[i], 10)
+          const query = parts[i + 1]
+          if (!Number.isFinite(index) || query !== '?') {
+            return false
+          }
+          const rgb = resolveAnsiColor(terminal, index)
+          if (!rgb) return false
+          responses.push(`4;${index};${rgb}`)
+        }
+        if (responses.length === 0) return false
+        for (const response of responses) {
+          respond(response)
+        }
+        return true
+      })
+    )
+    return disposables
+  }
+
   const createTerminal = (): Terminal => {
     const themeBackground = getToken('--panel-strong', '#111c29')
     const themeForeground = getToken('--text', '#eef3f9')
@@ -1262,6 +1414,7 @@
         container,
         kittyState: createKittyState()
       }
+      handle.oscDisposables = registerOscHandlers(id, terminal)
       terminals.set(id, handle)
       if (!modeMap[id]) {
         modeMap = {
