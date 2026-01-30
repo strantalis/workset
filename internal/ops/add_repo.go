@@ -199,6 +199,9 @@ func AddRepo(ctx context.Context, input AddRepoInput) (config.WorkspaceConfig, s
 	if err := config.SaveWorkspace(workspace.WorksetFile(input.WorkspaceRoot), ws.Config); err != nil {
 		return config.WorkspaceConfig{}, "", nil, err
 	}
+	if err := workspace.UpdateAgentsFile(input.WorkspaceRoot, ws.Config, ws.State); err != nil {
+		return config.WorkspaceConfig{}, "", nil, fmt.Errorf("update agents: %w", err)
+	}
 	return ws.Config, remote, warnings, nil
 }
 

@@ -57,6 +57,17 @@ func TestAddRepoLinksLocal(t *testing.T) {
 	if ws.Repos[0].LocalPath != expectedPath {
 		t.Fatalf("expected local_path %s, got %s", expectedPath, ws.Repos[0].LocalPath)
 	}
+
+	agentsContent, err := os.ReadFile(workspace.AgentsFile(root))
+	if err != nil {
+		t.Fatalf("agents file missing: %v", err)
+	}
+	if !strings.Contains(string(agentsContent), "Configured Repos (from workset.yaml)") {
+		t.Fatalf("agents file missing configured repos section")
+	}
+	if !strings.Contains(string(agentsContent), "demo-repo") {
+		t.Fatalf("agents file missing repo entry")
+	}
 }
 
 func TestAddRepoMissingRemoteErrors(t *testing.T) {

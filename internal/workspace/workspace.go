@@ -130,9 +130,6 @@ func Init(root, name string, defaults config.Defaults) (Workspace, error) {
 	if err := os.MkdirAll(LogsPath(root), 0o755); err != nil {
 		return Workspace{}, err
 	}
-	if err := ensureAgentsFile(root); err != nil {
-		return Workspace{}, err
-	}
 
 	wsConfig := config.WorkspaceConfig{
 		Name:  name,
@@ -150,31 +147,15 @@ func Init(root, name string, defaults config.Defaults) (Workspace, error) {
 	if err := saveState(root, state); err != nil {
 		return Workspace{}, err
 	}
+	if err := UpdateAgentsFile(root, wsConfig, state); err != nil {
+		return Workspace{}, err
+	}
 
 	return Workspace{
 		Root:   root,
 		Config: wsConfig,
 		State:  state,
 	}, nil
-}
-
-func ensureAgentsFile(root string) error {
-	path := AgentsFile(root)
-	if _, err := os.Stat(path); err == nil {
-		return nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	content := []byte(`# Workspace Guidance
-
-READ FIRST: This is a Workset workspace root, not necessarily a git repo.
-If you enter a repo within this workspace, read that repo's AGENTS.md after this file.
-
-Tips:
-- Workspace roots are marked by workset.yaml.
-- Use workset commands to manage repos and sessions in this workspace.
-`)
-	return os.WriteFile(path, content, 0o644)
 }
 
 func Load(root string, defaults config.Defaults) (Workspace, error) {

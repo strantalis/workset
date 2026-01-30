@@ -39,6 +39,12 @@ func TestInitCreatesWorkspace(t *testing.T) {
 	if !strings.Contains(string(content), "Workset workspace root") {
 		t.Fatalf("agents file missing workspace context")
 	}
+	if !strings.Contains(string(content), agentsGeneratedStart) {
+		t.Fatalf("agents file missing generated section start")
+	}
+	if !strings.Contains(string(content), "Configured Repos (from workset.yaml)") {
+		t.Fatalf("agents file missing configured repos section")
+	}
 }
 
 func TestLoadRecreatesState(t *testing.T) {
