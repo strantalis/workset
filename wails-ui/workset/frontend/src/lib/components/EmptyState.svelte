@@ -6,24 +6,33 @@
     body: string;
     actionLabel?: string;
     onAction?: () => void;
+    hint?: string;
+    variant?: 'default' | 'centered';
   }
 
   let {
     title,
     body,
     actionLabel = 'Create workspace',
-    onAction
+    onAction,
+    hint,
+    variant = 'default'
   }: Props = $props();
 </script>
 
-<section class="empty">
-  <div class="title">{title}</div>
-  <div class="body">{body}</div>
-  {#if onAction}
-    <div class="actions">
-      <Button variant="primary" onclick={onAction}>{actionLabel}</Button>
-    </div>
-  {/if}
+<section class="empty" class:centered={variant === 'centered'}>
+  <div class="content">
+    <div class="title">{title}</div>
+    <div class="body">{body}</div>
+    {#if onAction}
+      <div class="actions">
+        <Button variant="primary" onclick={onAction}>{actionLabel}</Button>
+      </div>
+    {/if}
+    {#if hint}
+      <div class="hint">{hint}</div>
+    {/if}
+  </div>
 </section>
 
 <style>
@@ -36,6 +45,30 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     padding: 32px;
+    width: 100%;
+  }
+
+  .empty.centered {
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    background: transparent;
+    border: none;
+    max-width: 480px;
+    margin: auto;
+    height: 100%;
+    min-height: 300px;
+  }
+
+  .content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    align-items: inherit;
+  }
+
+  .centered .content {
+    align-items: center;
   }
 
   .title {
@@ -43,14 +76,39 @@
     font-weight: 600;
   }
 
+  .centered .title {
+    font-size: 24px;
+  }
+
   .body {
     color: var(--muted);
     font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .centered .body {
+    font-size: 15px;
+    max-width: 420px;
   }
 
   .actions {
     display: flex;
     gap: var(--space-3);
     margin-top: var(--space-2);
+  }
+
+  .centered .actions {
+    margin-top: var(--space-4);
+  }
+
+  .hint {
+    color: var(--muted);
+    font-size: 13px;
+    opacity: 0.7;
+    margin-top: var(--space-2);
+  }
+
+  .centered .hint {
+    margin-top: var(--space-4);
   }
 </style>
