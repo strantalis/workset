@@ -1322,6 +1322,8 @@ type escapeStringFilter struct {
 	pendingEsc bool
 	kind       string
 	logBuf     []byte
+	pending    []byte
+	truncated  bool
 }
 
 func (f *escapeStringFilter) ensureConfig() {
@@ -1337,6 +1339,8 @@ func (f *escapeStringFilter) reset() {
 	f.pendingEsc = false
 	f.kind = ""
 	f.logBuf = nil
+	f.pending = nil
+	f.truncated = false
 }
 
 func (f *escapeStringFilter) appendLog(data []byte) {
@@ -1354,6 +1358,22 @@ func (f *escapeStringFilter) appendLog(data []byte) {
 	f.logBuf = append(f.logBuf, data...)
 }
 
+func (f *escapeStringFilter) appendPending(data []byte) {
+	const maxPending = 64 * 1024
+	if len(data) == 0 || f.truncated {
+		return
+	}
+	if len(f.pending)+len(data) > maxPending {
+		remain := maxPending - len(f.pending)
+		if remain > 0 {
+			f.pending = append(f.pending, data[:remain]...)
+		}
+		f.truncated = true
+		return
+	}
+	f.pending = append(f.pending, data...)
+}
+
 func filterTerminalOutputStreaming(data []byte, f *escapeStringFilter) []byte {
 	const esc = 0x1b
 	if len(data) == 0 {
@@ -1367,21 +1387,34 @@ func filterTerminalOutputStreaming(data []byte, f *escapeStringFilter) []byte {
 		data = append([]byte{esc}, data...)
 		f.pendingEsc = false
 	}
+	var prefix []byte
 	if f.active {
 		end := scanEscapeStringTerminator(data, 0)
 		if end == 0 {
 			f.appendLog(data)
+			if f.kind == "OSC" {
+				f.appendPending(data)
+			}
 			if f.enabled {
 				return nil
 			}
 			return data
 		}
 		f.appendLog(data[:end])
+		if f.kind == "OSC" {
+			f.appendPending(data[:end])
+		}
 		if f.debug && len(f.logBuf) > 0 {
 			logTerminalFilter(f.kind, f.logBuf)
 		}
+		pending := f.pending
+		kind := f.kind
+		truncated := f.truncated
 		f.reset()
 		if f.enabled {
+			if kind == "OSC" && !truncated && !shouldDropOSC(extractOSCPayload(pending)) {
+				prefix = pending
+			}
 			data = data[end:]
 		} else {
 			return data
@@ -1394,6 +1427,11 @@ func filterTerminalOutputStreaming(data []byte, f *escapeStringFilter) []byte {
 	var out []byte
 	last := 0
 	dropped := false
+	if len(prefix) > 0 {
+		out = make([]byte, 0, len(prefix)+len(data))
+		out = append(out, prefix...)
+		dropped = true
+	}
 	for i := 0; i < len(data); i++ {
 		if data[i] != esc || i+1 >= len(data) {
 			if data[i] == esc && i+1 >= len(data) {
@@ -1579,6 +1617,27 @@ func filterTerminalOutputStreaming(data []byte, f *escapeStringFilter) []byte {
 		out = append(out, data[last:]...)
 	}
 	return out
+}
+
+func extractOSCPayload(seq []byte) []byte {
+	const esc = 0x1b
+	const bel = 0x07
+	if len(seq) < 3 || seq[0] != esc || seq[1] != ']' {
+		return nil
+	}
+	end := len(seq)
+	switch {
+	case seq[end-1] == bel:
+		end--
+	case end >= 2 && seq[end-2] == esc && seq[end-1] == '\\':
+		end -= 2
+	default:
+		return nil
+	}
+	if end <= 2 {
+		return nil
+	}
+	return seq[2:end]
 }
 
 type c1Normalizer struct {
