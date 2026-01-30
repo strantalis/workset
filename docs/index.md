@@ -1,5 +1,5 @@
 ---
-description: Workset is a Go CLI for managing multi-repo workspaces with linked Git worktrees and consistent repo defaults.
+description: Workset is a Go CLI and desktop app for managing multi-repo workspaces with linked Git worktrees and consistent repo defaults.
 ---
 
 # Workset
@@ -8,7 +8,7 @@ description: Workset is a Go CLI for managing multi-repo workspaces with linked 
   <img src="assets/workset.png" alt="Workset" width="640">
 </p>
 
-Workset is a Go CLI for managing multi-repo workspaces with linked worktrees by default. It keeps your main clones where they are and spins up workspace worktrees under the workspace directory.
+Workset is a Go CLI plus a Wails desktop app for managing multi-repo workspaces with linked worktrees by default. It keeps your main clones where they are and spins up workspace worktrees under the workspace directory.
 
 ## Quickstart
 
@@ -30,6 +30,7 @@ workset status -w demo
 - URL repos cloned into `~/.workset/repos` (configurable).
 - Repo defaults (remote + default branch) via aliases.
 - Templates for repeatable repo bundles.
+- A desktop app for workspace management, terminals, and GitHub workflows.
 
 ## Next up
 
@@ -40,3 +41,4 @@ Branch create/checkout and worktree lifecycle commands are next in the roadmap.
 - [Getting Started](getting-started.md)
 - [Concepts](concepts.md)
 - [Config](config.md)
+- [Desktop App](desktop-app.md)

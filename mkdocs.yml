@@ -24,6 +24,10 @@ theme:
 extra_css:
   - stylesheets/extra.css
 
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/mermaid@10.9.0/dist/mermaid.min.js
+  - javascripts/mermaid.js
+
 markdown_extensions:
   - toc
   - tables
@@ -31,7 +35,11 @@ markdown_extensions:
   - meta
   - admonition
   - pymdownx.details
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
 
@@ -46,9 +54,12 @@ nav:
   - Home: index.md
   - Getting Started: getting-started.md
   - Concepts: concepts.md
+  - Desktop App: desktop-app.md
   - CLI:
       - Overview: cli.md
       - Command Index: commands.md
   - Config: config.md
   - Templates: templates.md
+  - Architecture:
+      - Terminal: architecture/terminal.md
   - Releases: releases/index.md

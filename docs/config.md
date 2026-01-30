@@ -20,6 +20,7 @@ Remote names and default branches come from repo aliases (`repos.<name>.remote` 
 | Key | Description |
 | --- | --- |
 | `defaults` | Global defaults for commands and workspace behavior. |
+| `github` | GitHub auth defaults and overrides. |
 | `hooks` | Hook execution defaults and repo trust list. |
 | `repos` | Named repo aliases for URL or local path. |
 | `workspaces` | Registry of named workspaces and their paths. |
@@ -33,7 +34,6 @@ Remote names and default branches come from repo aliases (`repos.<name>.remote` 
 | `workspace` | Default workspace name or absolute path. |
 | `workspace_root` | Base directory for new workspaces. |
 | `repo_store_root` | Where URL-based repos are cloned. |
-| `terminal_idle_timeout` | Idle timeout for GUI terminals (duration like `30m`; use `0` to disable). Default is `0`. |
 | `session_backend` | Default session backend (`auto`, `tmux`, `screen`, `exec`). |
 | `session_name_format` | Format string for session names (supports `{workspace}`). |
 | `session_theme` | Optional session theme for `tmux`/`screen` (`workset` to enable built-in theme). |
@@ -41,6 +41,9 @@ Remote names and default branches come from repo aliases (`repos.<name>.remote` 
 | `session_tmux_status_left` | Override tmux `status-left` when a session theme is enabled. |
 | `session_tmux_status_right` | Override tmux `status-right` when a session theme is enabled. |
 | `session_screen_hardstatus` | Override screen `hardstatus` when a session theme is enabled. |
+| `agent` | Default agent for PR text generation, commit messages, and the GUI terminal launcher. |
+| `terminal_renderer` | Default GUI terminal renderer (`auto`, `webgl`, `canvas`). |
+| `terminal_idle_timeout` | Idle timeout for GUI terminals/sessiond (duration like `30m`; use `0` to disable). Default is `0`. |
 
 ### `hooks`
 
@@ -49,6 +52,12 @@ Remote names and default branches come from repo aliases (`repos.<name>.remote` 
 | `enabled` | Enable hook execution (default `true`). |
 | `on_error` | Default hook error handling (`fail` or `warn`). |
 | `repo_hooks.trusted_repos` | Repo names whose `.workset/hooks.yaml` can run without prompting. |
+
+### `github`
+
+| Field | Description |
+| --- | --- |
+| `cli_path` | Optional override for the `gh` CLI path (useful for Nix or custom installs). |
 
 ### Session themes
 
@@ -80,6 +89,8 @@ defaults:
   workspace: core
   workspace_root: ~/.workset/workspaces
   repo_store_root: ~/.workset/repos
+  agent: codex
+  terminal_renderer: auto
   terminal_idle_timeout: "0"
   session_backend: auto
   session_name_format: workset-{workspace}

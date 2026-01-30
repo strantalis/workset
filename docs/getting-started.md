@@ -38,6 +38,18 @@ description: Install Workset, create a workspace, add repos, and set defaults.
 !!! tip
     If you use `go install`, ensure `$(go env GOPATH)/bin` is on your PATH.
 
+## Desktop app (Wails)
+
+Workset includes a desktop UI built with Wails (Go backend + Svelte frontend). The app lives in `wails-ui/workset`.
+
+```bash
+cd wails-ui/workset
+wails dev
+wails build
+```
+
+You'll need the Wails CLI plus Go and Node.js installed locally.
+
 ## Create a workspace
 
 === "From scratch"
@@ -82,9 +94,9 @@ workset session start demo --backend exec --interactive
 
 ## GitHub authentication (desktop app)
 
-Workset’s desktop UI uses **GitHub CLI** by default. Install `gh`, run `gh auth login`, then open Settings → GitHub to confirm you’re connected.
+Workset's desktop UI uses **GitHub CLI** by default. Install `gh`, run `gh auth login`, then open Settings -> GitHub to confirm you're connected.
 
-If you prefer not to use the CLI, switch to **Personal access token** in Settings → GitHub and save a token with access to the repos you need (including private repos). Workset stores the token in your OS keychain.
+If you prefer not to use the CLI, switch to **Personal access token** in Settings -> GitHub and save a token with access to the repos you need (including private repos). Workset stores the token in your OS keychain.
 
 CLI-only usage (no GUI): set `WORKSET_GITHUB_PAT` to import a PAT into the keychain, or add a `github.cli_path` override in `~/.workset/config.yaml` if `gh` is not on PATH.
 
@@ -113,3 +125,4 @@ For fish or powershell, see the [CLI](cli.md) page for the full set of commands.
 - Read the [Concepts](concepts.md) page to understand workspaces, repo defaults, and templates.
 - Review the [Config](config.md) page to customize defaults and repo aliases.
 - Use the Command Index to find the right CLI call fast.
+- Explore the [Desktop App](desktop-app.md) if you prefer a GUI.

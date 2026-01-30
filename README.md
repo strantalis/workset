@@ -9,7 +9,7 @@
   <img src="docs/assets/workset.png" alt="Workset" width="560">
 </p>
 
-Workset is a Go CLI for managing **multi-repo workspaces** with **linked Git worktrees** by default. It captures intent ("these repos move together") and keeps multi-repo work safe, explicit, and predictable.
+Workset is a Go CLI for managing **multi-repo workspaces** with **linked Git worktrees** by default. It captures intent ("these repos move together") and keeps multi-repo work safe, explicit, and predictable. It also includes a Wails desktop app in `wails-ui/workset`.
 
 ## Why Workset
 
@@ -18,6 +18,7 @@ Workset is a Go CLI for managing **multi-repo workspaces** with **linked Git wor
 - **Repo defaults**: remote + default branch come from aliases or global defaults.
 - **Templates**: reusable repo sets that expand into workspace config.
 - **Safe defaults**: no destructive actions without explicit flags.
+- **Desktop app**: GUI for workspace management, terminals, and GitHub workflows.
 
 ## Status
 
@@ -89,7 +90,7 @@ workset session stop demo
 
 ## Docs
 
-Docs are built with **MkDocs + Material**. The site config is `mkdocs.yml`, markdown content lives in `docs/`, and the published site is `workset.dev`.
+Docs are built with **MkDocs + Material**. The site config is `mkdocs.yml`, markdown content lives in `docs/`, and the published site is `workset.dev` (see `docs/desktop-app.md` and `docs/architecture/terminal.md` for the GUI and terminal internals).
 
 Local dev (requires `uv`):
 
