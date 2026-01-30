@@ -458,10 +458,11 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(6, 9, 14, 0.78);
+    background: rgba(6, 9, 14, 0.85);
+    backdrop-filter: blur(2px);
     display: grid;
     place-items: center;
-    z-index: 20;
+    z-index: 200;
     padding: 24px;
     animation: overlayFadeIn var(--transition-normal) ease-out;
   }

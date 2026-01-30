@@ -70,8 +70,13 @@
   // Create mode: smart single input
   let primaryInput = $state('')           // URL, path, or workspace name
   let customizeName = $state('')          // Override for generated name
-  let createExpanded = $state(false)      // Show customize section
   let alternatives: string[] = $state([]) // Alternative name suggestions
+
+  // Tabbed interface state
+  type CreateTab = 'direct' | 'aliases' | 'groups'
+  let activeTab = $state<CreateTab>('direct')
+  let searchQuery = $state('')
+  let expandedGroups = $state<Set<string>>(new Set())
 
   let renameName = $state('')
 
@@ -88,13 +93,16 @@
   let detectedRepoName = $derived(deriveRepoName(primaryInput))
   let inputIsSource = $derived(isRepoSource(primaryInput))
 
-  // Get the first selected alias name for auto-generation when no primary input
+  // Get the first selected alias or group name for auto-generation
   let firstSelectedAlias = $derived(
     selectedAliases.size > 0 ? Array.from(selectedAliases)[0] : null
   )
+  let firstSelectedGroup = $derived(
+    selectedGroups.size > 0 ? Array.from(selectedGroups)[0] : null
+  )
 
-  // Source for name generation: URL/path repo name, or first selected alias
-  let nameSource = $derived(detectedRepoName || firstSelectedAlias)
+  // Source for name generation: URL/path repo name, first alias, or first group
+  let nameSource = $derived(detectedRepoName || firstSelectedAlias || firstSelectedGroup)
 
   let generatedName = $derived(
     nameSource ? generateWorkspaceName(nameSource) : null
@@ -105,8 +113,42 @@
     customizeName || generatedName || primaryInput.trim()
   )
 
-  // Show name customization when we have a generated name (from URL/path or alias)
-  let showNameCustomization = $derived(!!nameSource)
+  // Check if anything is selected
+  let hasAnySelection = $derived(
+    primaryInput.trim() || selectedAliases.size > 0 || selectedGroups.size > 0
+  )
+
+  // Show name customization when anything is selected
+  let showNameCustomization = $derived(hasAnySelection)
+
+  // Tab filtering logic
+  let filteredAliases = $derived(
+    searchQuery
+      ? aliasItems.filter(a => a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                               getAliasSource(a).toLowerCase().includes(searchQuery.toLowerCase()))
+      : aliasItems
+  )
+
+  let filteredGroups = $derived(
+    searchQuery
+      ? groupItems.filter(g => g.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                               (g.description?.toLowerCase() || '').includes(searchQuery.toLowerCase()))
+      : groupItems
+  )
+
+  // Total repos for preview
+  let totalRepos = $derived(
+    (inputIsSource ? 1 : 0) +
+    selectedAliases.size +
+    Array.from(selectedGroups).reduce((sum, g) => sum + (groupItems.find(i => i.name === g)?.repo_count || 0), 0)
+  )
+
+  // Get selected items for preview
+  let selectedItems = $derived([
+    ...(inputIsSource ? [{ type: 'repo', name: detectedRepoName || primaryInput.trim() }] : []),
+    ...Array.from(selectedAliases).map(name => ({ type: 'alias', name })),
+    ...Array.from(selectedGroups).map(name => ({ type: 'group', name }))
+  ])
 
   // Regenerate alternatives when name source changes
   $effect(() => {
@@ -114,6 +156,15 @@
       alternatives = generateAlternatives(nameSource, 2)
     } else {
       alternatives = []
+    }
+  })
+
+  // Initialize tab based on available items
+  $effect(() => {
+    if (mode === 'create' && aliasItems.length > 0) {
+      activeTab = 'aliases'
+    } else if (mode === 'create') {
+      activeTab = 'direct'
     }
   })
 
@@ -129,6 +180,48 @@
 
   // Helper to get alias display info
   const getAliasSource = (alias: Alias): string => alias.url || alias.path || ''
+
+  // Tab helper functions
+  function toggleAlias(name: string): void {
+    if (selectedAliases.has(name)) {
+      selectedAliases.delete(name)
+    } else {
+      selectedAliases.add(name)
+    }
+    selectedAliases = new Set(selectedAliases)
+  }
+
+  function toggleGroup(name: string): void {
+    if (selectedGroups.has(name)) {
+      selectedGroups.delete(name)
+    } else {
+      selectedGroups.add(name)
+    }
+    selectedGroups = new Set(selectedGroups)
+  }
+
+  function toggleGroupExpand(name: string): void {
+    if (expandedGroups.has(name)) {
+      expandedGroups.delete(name)
+    } else {
+      expandedGroups.add(name)
+    }
+    expandedGroups = new Set(expandedGroups)
+  }
+
+  function removeAlias(name: string): void {
+    selectedAliases.delete(name)
+    selectedAliases = new Set(selectedAliases)
+  }
+
+  function removeGroup(name: string): void {
+    selectedGroups.delete(name)
+    selectedGroups = new Set(selectedGroups)
+  }
+
+  function removeRepoFromPreview(): void {
+    primaryInput = ''
+  }
 
   let archiveReason = $state('')
   let removeDeleteWorktree = $state(false)
@@ -189,6 +282,8 @@
     : 'Workspace action'
   )
 
+
+
   const formatError = (err: unknown, fallback: string): string => {
     if (err instanceof Error) return err.message
     if (typeof err === 'string') return err
@@ -238,15 +333,13 @@
         repos.push(primaryInput.trim())
       }
 
-      // Add any selected aliases (from expanded section)
-      if (createExpanded) {
-        for (const alias of selectedAliases) {
-          repos.push(alias)
-        }
+      // Add any selected aliases
+      for (const alias of selectedAliases) {
+        repos.push(alias)
       }
 
-      // Groups from expanded section
-      const groups = createExpanded ? Array.from(selectedGroups) : []
+      // Groups from selection
+      const groups = Array.from(selectedGroups)
 
       const result = await createWorkspace(
         finalName,
@@ -419,7 +512,7 @@
 
 <Modal
   title={modeTitle}
-  subtitle={workspace?.name ?? 'Workset'}
+  subtitle={mode === 'create' ? '' : (workspace?.name ?? '')}
   size="xl"
   headerAlign="left"
   {onClose}
@@ -432,109 +525,89 @@
 
   {#if mode === 'create'}
     <div class="form">
-      <label class="field">
-        <span>Repo URL, path, or workspace name</span>
-        <div class="inline">
-          <input
-            bind:this={nameInput}
-            bind:value={primaryInput}
-            placeholder="git@github.com:org/repo.git"
-            autocapitalize="off"
-            autocorrect="off"
-            spellcheck="false"
-          />
-          <Button variant="ghost" size="sm" onclick={async () => {
-            try {
-              const path = await openDirectoryDialog('Select repo directory', primaryInput.trim())
-              if (path) primaryInput = path
-            } catch (err) {
-              error = formatError(err, 'Failed to open directory picker.')
-            }
-          }}>Browse</Button>
-        </div>
-      </label>
-
-      {#if finalName}
-        <div class="feedback-box">
-          {#if generatedName}
-            <span class="feedback-check">✓</span>
-            <span class="feedback-text">
-              Will create workspace "<strong>{customizeName || generatedName}</strong>"
-              {#if !inputIsSource && selectedAliases.size > 0}
-                with {selectedAliases.size} repo{selectedAliases.size !== 1 ? 's' : ''}
-              {/if}
-            </span>
-            <button class="refresh-btn" type="button" onclick={regenerateName} title="Generate new name">
-              ↻
+      <!-- Tab Bar - only when aliases/groups exist -->
+      {#if aliasItems.length > 0 || groupItems.length > 0}
+        <div class="tab-bar">
+          <button
+            class="tab"
+            class:active={activeTab === 'direct'}
+            type="button"
+            onclick={() => { activeTab = 'direct'; searchQuery = '' }}
+          >
+            Direct
+          </button>
+          {#if aliasItems.length > 0}
+            <button
+              class="tab"
+              class:active={activeTab === 'aliases'}
+              type="button"
+              onclick={() => { activeTab = 'aliases'; searchQuery = '' }}
+            >
+              Aliases ({aliasItems.length})
             </button>
-          {:else}
-            <span class="feedback-check">✓</span>
-            <span class="feedback-text">
-              Will create empty workspace "<strong>{primaryInput.trim()}</strong>"
-            </span>
+          {/if}
+          {#if groupItems.length > 0}
+            <button
+              class="tab"
+              class:active={activeTab === 'groups'}
+              type="button"
+              onclick={() => { activeTab = 'groups'; searchQuery = '' }}
+            >
+              Groups ({groupItems.length})
+            </button>
           {/if}
         </div>
       {/if}
 
-      <button
-        class="collapsible-header"
-        type="button"
-        onclick={() => createExpanded = !createExpanded}
-      >
-        <span class="chevron" class:expanded={createExpanded}>▸</span>
-        {inputIsSource ? 'Customize name or add more repos' : 'Add repos from aliases or groups'}
-      </button>
+      <!-- Tab Content -->
+      <div class="tab-content">
+        {#if activeTab === 'direct'}
+          <label class="field">
+            <span>Repo URL or local path</span>
+            <div class="inline">
+              <input
+                bind:value={primaryInput}
+                placeholder="git@github.com:org/repo.git"
+                autocapitalize="off"
+                autocorrect="off"
+                spellcheck="false"
+              />
+              <Button variant="ghost" size="sm" onclick={async () => {
+                try {
+                  const path = await openDirectoryDialog('Select repo directory', primaryInput.trim())
+                  if (path) primaryInput = path
+                } catch (err) {
+                  error = formatError(err, 'Failed to open directory picker.')
+                }
+              }}>Browse</Button>
+            </div>
+          </label>
 
-      {#if createExpanded}
-        <div class="collapsible-content">
-          {#if showNameCustomization}
-            <label class="field">
-              <span>Workspace name</span>
-              <div class="inline">
-                <input
-                  bind:value={customizeName}
-                  placeholder={generatedName ?? ''}
-                  autocapitalize="off"
-                  autocorrect="off"
-                  spellcheck="false"
-                />
-                <Button variant="ghost" size="sm" onclick={regenerateName}>↻ New</Button>
-              </div>
-            </label>
-
-            {#if alternatives.length > 0}
-              <div class="suggestions">
-                Suggestions:
-                {#each alternatives as alt, i}
-                  {#if i > 0} · {/if}
-                  <button
-                    type="button"
-                    class="suggestion-btn"
-                    onclick={() => selectAlternative(alt)}
-                  >{alt}</button>
-                {/each}
-              </div>
-            {/if}
-          {/if}
-
-          {#if aliasItems.length > 0}
-            <div class="field">
-              <span>{inputIsSource ? 'Additional repos' : 'Select aliases'}</span>
-              <div class="checkbox-list">
-                {#each aliasItems as alias}
-                  <label class="checkbox-item">
+        {:else if activeTab === 'aliases'}
+          <div class="field">
+            <div class="inline">
+              <input
+                bind:value={searchQuery}
+                placeholder="Search aliases..."
+                class="search-input"
+                autocapitalize="off"
+                autocorrect="off"
+                spellcheck="false"
+              />
+              {#if searchQuery}
+                <button type="button" class="search-clear" onclick={() => searchQuery = ''}>Clear</button>
+              {/if}
+            </div>
+            <div class="checkbox-list">
+              {#if filteredAliases.length === 0}
+                <div class="empty-search">No aliases match "{searchQuery}"</div>
+              {:else}
+                {#each filteredAliases as alias}
+                  <label class="checkbox-item" class:selected={selectedAliases.has(alias.name)}>
                     <input
                       type="checkbox"
                       checked={selectedAliases.has(alias.name)}
-                      onchange={() => {
-                        if (selectedAliases.has(alias.name)) {
-                          selectedAliases.delete(alias.name)
-                          selectedAliases = new Set(selectedAliases)
-                        } else {
-                          selectedAliases.add(alias.name)
-                          selectedAliases = new Set(selectedAliases)
-                        }
-                      }}
+                      onchange={() => toggleAlias(alias.name)}
                     />
                     <div class="checkbox-content">
                       <span class="checkbox-name">{alias.name}</span>
@@ -542,48 +615,131 @@
                     </div>
                   </label>
                 {/each}
-              </div>
+              {/if}
             </div>
-          {/if}
+          </div>
 
-          {#if groupItems.length > 0}
-            <div class="field">
-              <span>Select groups</span>
-              <div class="checkbox-list">
-                {#each groupItems as group}
-                  <Tooltip text={groupDetails.get(group.name) || []} position="cursor" class="checkbox-tooltip">
-                    <label class="checkbox-item">
-                      <input
-                        type="checkbox"
-                        checked={selectedGroups.has(group.name)}
-                        onchange={() => {
-                          if (selectedGroups.has(group.name)) {
-                            selectedGroups.delete(group.name)
-                            selectedGroups = new Set(selectedGroups)
-                          } else {
-                            selectedGroups.add(group.name)
-                            selectedGroups = new Set(selectedGroups)
-                          }
-                        }}
-                      />
-                      <div class="checkbox-content">
-                        <span class="checkbox-name">{group.name}</span>
-                        <span class="checkbox-meta">
-                          {group.repo_count} repo{group.repo_count !== 1 ? 's' : ''}
-                          {#if group.description}
-                            · {group.description}
-                          {/if}
-                        </span>
+        {:else if activeTab === 'groups'}
+          <div class="field">
+            <div class="inline">
+              <input
+                bind:value={searchQuery}
+                placeholder="Search groups..."
+                class="search-input"
+                autocapitalize="off"
+                autocorrect="off"
+                spellcheck="false"
+              />
+              {#if searchQuery}
+                <button type="button" class="search-clear" onclick={() => searchQuery = ''}>Clear</button>
+              {/if}
+            </div>
+            <div class="group-list">
+              {#if filteredGroups.length === 0}
+                <div class="empty-search">No groups match "{searchQuery}"</div>
+              {:else}
+                {#each filteredGroups as group}
+                  <label class="group-card" class:selected={selectedGroups.has(group.name)}>
+                    <input
+                      type="checkbox"
+                      checked={selectedGroups.has(group.name)}
+                      onchange={() => toggleGroup(group.name)}
+                    />
+                    <div class="group-content">
+                      <div class="group-header">
+                        <span class="group-name">{group.name}</span>
+                        <span class="group-badge">{group.repo_count} repo{group.repo_count !== 1 ? 's' : ''}</span>
                       </div>
-                    </label>
-                  </Tooltip>
+                      {#if group.description}
+                        <span class="group-description">{group.description}</span>
+                      {/if}
+                      <button
+                        type="button"
+                        class="group-expand"
+                        onclick={(e) => { e.preventDefault(); toggleGroupExpand(group.name) }}
+                      >
+                        {expandedGroups.has(group.name) ? '▾ Hide' : '▸ Show'} repos
+                      </button>
+                      {#if expandedGroups.has(group.name)}
+                        <ul class="group-members">
+                          {#each (groupDetails.get(group.name) || []) as repoName}
+                            <li>{repoName}</li>
+                          {/each}
+                        </ul>
+                      {/if}
+                    </div>
+                  </label>
                 {/each}
-              </div>
+              {/if}
             </div>
-          {/if}
+          </div>
+        {/if}
+      </div>
 
-          {#if aliasItems.length === 0 && groupItems.length === 0}
-            <div class="hint">No aliases or groups configured. Add them in Settings.</div>
+      {#if aliasItems.length === 0 && groupItems.length === 0}
+        <div class="hint">No aliases or groups configured. Add them in Settings.</div>
+      {/if}
+
+      <!-- Workspace Name Customization -->
+      {#if showNameCustomization}
+        <label class="field workspace-name-field">
+          <span>Workspace name</span>
+          <div class="inline">
+            <input
+              bind:value={customizeName}
+              placeholder={generatedName ?? ''}
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
+            />
+            <Button variant="ghost" size="sm" onclick={regenerateName}>↻ New</Button>
+          </div>
+        </label>
+
+        {#if alternatives.length > 0}
+          <div class="suggestions">
+            Suggestions:
+            {#each alternatives as alt, i}
+              {#if i > 0} · {/if}
+              <button
+                type="button"
+                class="suggestion-btn"
+                onclick={() => selectAlternative(alt)}
+              >{alt}</button>
+            {/each}
+          </div>
+        {/if}
+      {/if}
+
+      <!-- Preview Panel -->
+      {#if hasAnySelection}
+        <div class="preview-panel compact">
+          <div class="preview-header">
+            <span class="preview-check">✓</span>
+            <span class="preview-text">
+              Creating "<strong>{finalName}</strong>"
+              {#if totalRepos > 0}
+                with {totalRepos} repo{totalRepos !== 1 ? 's' : ''}
+              {/if}
+            </span>
+          </div>
+          {#if selectedItems.length > 0}
+            <div class="preview-chips">
+              {#each selectedItems as item}
+                <span class="preview-chip" class:group={item.type === 'group'} class:alias={item.type === 'alias'}>
+                  {item.name}
+                  <button
+                    type="button"
+                    class="chip-remove"
+                    onclick={() => {
+                      if (item.type === 'alias') removeAlias(item.name)
+                      else if (item.type === 'group') removeGroup(item.name)
+                      else if (item.type === 'repo') removeRepoFromPreview()
+                    }}
+                  >×</button>
+                </span>
+              {/each}
+            </div>
           {/if}
         </div>
       {/if}
@@ -842,55 +998,13 @@
   }
 
   :global(.action-btn) {
-    width: fit-content;
+    width: 100%;
+    margin-top: 8px;
   }
 
   .hint {
     font-size: 12px;
     color: var(--muted);
-  }
-
-  /* Feedback box for create mode */
-  .feedback-box {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: var(--panel-soft);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 10px 12px;
-    font-size: 13px;
-  }
-
-  .feedback-check {
-    color: var(--success, #4ade80);
-    font-size: 14px;
-    flex-shrink: 0;
-  }
-
-  .feedback-text {
-    flex: 1;
-    color: var(--text);
-  }
-
-  .feedback-text strong {
-    font-weight: 600;
-  }
-
-  .refresh-btn {
-    background: transparent;
-    border: none;
-    color: var(--muted);
-    cursor: pointer;
-    padding: 4px 8px;
-    font-size: 14px;
-    border-radius: var(--radius-sm);
-    transition: color var(--transition-fast), background var(--transition-fast);
-  }
-
-  .refresh-btn:hover {
-    color: var(--text);
-    background: rgba(255, 255, 255, 0.05);
   }
 
   /* Suggestions */
@@ -927,107 +1041,57 @@
     accent-color: var(--accent);
   }
 
-  /* Collapsible section styles */
-  .collapsible-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: transparent;
-    border: none;
-    color: var(--muted);
-    font-size: 12px;
-    cursor: pointer;
-    padding: 4px 0;
-    transition: color var(--transition-fast);
-  }
-
-  .collapsible-header:hover {
-    color: var(--text);
-  }
-
-  .chevron {
-    display: inline-block;
-    transition: transform var(--transition-fast);
-  }
-
-  .chevron.expanded {
-    transform: rotate(90deg);
-  }
-
-  .collapsible-content {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding: 12px 0 4px 0;
-    animation: fadeIn var(--transition-fast) ease-out;
-  }
-
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-      transform: translateY(-4px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  /* Checkbox list styles */
+  /* Checkbox list styles - clean with subtle dividers */
   .checkbox-list {
-    background: var(--panel-soft);
+    background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    max-height: 180px;
+    max-height: 200px;
     overflow-y: auto;
   }
 
   .checkbox-item {
     display: flex;
-    align-items: flex-start;
-    gap: 10px;
+    align-items: center;
+    gap: 12px;
     padding: 10px 12px;
     cursor: pointer;
-    transition: background var(--transition-fast);
+    transition: all var(--transition-fast);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .checkbox-item:last-child {
+    border-bottom: none;
   }
 
   .checkbox-item:hover {
     background: rgba(255, 255, 255, 0.03);
   }
 
-  .checkbox-item:not(:last-child) {
-    border-bottom: 1px solid var(--border);
-  }
-
-  /* When checkbox-item is wrapped in a Tooltip, apply border to wrapper instead */
-  :global(.checkbox-tooltip:not(:last-child)) .checkbox-item {
-    border-bottom: 1px solid var(--border);
-  }
-
-  :global(.checkbox-tooltip:last-child) .checkbox-item {
-    border-bottom: none;
+  .checkbox-item.selected {
+    background: rgba(var(--accent-rgb, 59, 130, 246), 0.08);
   }
 
   .checkbox-item input[type="checkbox"] {
     appearance: none;
     -webkit-appearance: none;
-    width: 16px;
-    height: 16px;
-    min-width: 16px;
-    min-height: 16px;
-    margin-top: 3px;
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    min-height: 18px;
     flex-shrink: 0;
-    background: var(--panel-soft);
-    border: 1.5px solid var(--border);
-    border-radius: 3px;
+    background: var(--panel-strong);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
     cursor: pointer;
     display: grid;
     place-content: center;
-    transition: border-color var(--transition-fast), background var(--transition-fast);
+    transition: all var(--transition-fast);
   }
 
   .checkbox-item input[type="checkbox"]:hover {
-    border-color: var(--accent);
+    border-color: rgba(255, 255, 255, 0.4);
+    background: var(--panel);
   }
 
   .checkbox-item input[type="checkbox"]:checked {
@@ -1069,5 +1133,278 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  /* Preview Panel */
+  .preview-panel {
+    background: var(--panel-soft);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 12px;
+    margin-bottom: 8px;
+  }
+
+  .preview-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text);
+  }
+
+  .preview-check {
+    color: var(--success, #4ade80);
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .preview-text strong {
+    font-weight: 600;
+  }
+
+  .preview-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  .preview-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--accent);
+    color: #0a0f14;
+    padding: 3px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .preview-chip.alias {
+    background: #8b5cf6;
+    color: white;
+  }
+
+  .preview-chip.group {
+    background: #f59e0b;
+    color: #0a0f14;
+  }
+
+  .chip-remove {
+    background: transparent;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 0;
+    font-size: 14px;
+    line-height: 1;
+    opacity: 0.7;
+    transition: opacity var(--transition-fast);
+  }
+
+  .chip-remove:hover {
+    opacity: 1;
+  }
+
+  /* Tab Bar */
+  .tab-bar {
+    display: flex;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+  }
+
+  .tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    padding: 6px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    border-radius: var(--radius-md);
+    transition: all var(--transition-fast);
+  }
+
+  .tab:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .tab.active {
+    color: var(--text);
+    background: var(--accent);
+    font-weight: 500;
+  }
+
+  /* Tab Content */
+  .tab-content {
+    max-height: 280px;
+    overflow-y: auto;
+  }
+
+  /* Search */
+  .search-input {
+    flex: 1;
+    background: var(--panel-soft);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+
+  .search-clear {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-size: 12px;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+
+  .search-clear:hover {
+    color: var(--text);
+  }
+
+  .empty-search {
+    padding: 20px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  /* Group Cards - clean with subtle dividers matching aliases */
+  .group-list {
+    display: flex;
+    flex-direction: column;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    max-height: 240px;
+    overflow-y: auto;
+  }
+
+  .group-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .group-card:last-child {
+    border-bottom: none;
+  }
+
+  .group-card:hover {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .group-card.selected {
+    background: rgba(var(--accent-rgb, 59, 130, 246), 0.08);
+  }
+
+  .group-card input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    margin-top: 2px;
+    background: var(--panel-strong);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    cursor: pointer;
+    display: grid;
+    place-content: center;
+    transition: all var(--transition-fast);
+  }
+
+  .group-card input[type="checkbox"]:hover {
+    border-color: rgba(255, 255, 255, 0.4);
+    background: var(--panel);
+  }
+
+  .group-card input[type="checkbox"]:checked {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .group-card input[type="checkbox"]::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    transform: scale(0);
+    transition: transform 0.1s ease-in-out;
+    clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+    background: #0a0f14;
+  }
+
+  .group-card input[type="checkbox"]:checked::before {
+    transform: scale(1);
+  }
+
+  .group-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .group-name {
+    font-weight: 500;
+    font-size: 14px;
+    color: var(--text);
+  }
+
+  .group-badge {
+    font-size: 11px;
+    color: var(--muted);
+    background: rgba(255, 255, 255, 0.05);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+  }
+
+  .group-description {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .group-expand {
+    font-size: 11px;
+    color: var(--accent);
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    text-align: left;
+    margin-top: 2px;
+  }
+
+  .group-expand:hover {
+    text-decoration: underline;
+  }
+
+  .group-members {
+    margin: 6px 0 0 0;
+    padding-left: 16px;
+    font-size: 12px;
+    color: var(--muted);
+    list-style: disc;
+  }
+
+  .group-members li {
+    margin: 2px 0;
   }
 </style>

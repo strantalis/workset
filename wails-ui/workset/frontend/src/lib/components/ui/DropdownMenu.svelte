@@ -35,10 +35,20 @@
     
     const triggerRect = trigger.getBoundingClientRect()
     const menuRect = menuElement.getBoundingClientRect()
+    const gap = 4 // px gap between trigger and menu
     
     // Calculate position relative to viewport
-    let top = triggerRect.bottom + 4 // 4px gap below trigger
+    let top = triggerRect.bottom + gap
     let left = 0
+    
+    // Check if menu would go off bottom of viewport
+    const spaceBelow = window.innerHeight - triggerRect.bottom - gap
+    const spaceAbove = triggerRect.top - gap
+    
+    if (menuRect.height > spaceBelow && spaceAbove > spaceBelow) {
+      // Flip to open upward if there's more space above
+      top = triggerRect.top - menuRect.height - gap
+    }
     
     if (position === 'right') {
       left = triggerRect.right - menuRect.width
@@ -46,11 +56,14 @@
       left = triggerRect.left
     }
     
-    // Prevent going off screen
+    // Prevent going off screen horizontally
     if (left < 8) left = 8
     if (left + menuRect.width > window.innerWidth - 8) {
       left = window.innerWidth - menuRect.width - 8
     }
+    
+    // Ensure menu doesn't go off top of viewport
+    if (top < 8) top = 8
     
     menuPosition = { top, left }
   }
