@@ -9,7 +9,7 @@ require (
 	github.com/knadh/koanf/parsers/yaml v1.1.0
 	github.com/knadh/koanf/providers/confmap v1.0.0
 	github.com/knadh/koanf/providers/file v1.2.1
-	github.com/knadh/koanf/v2 v2.3.0
+	github.com/knadh/koanf/v2 v2.3.2
 	github.com/urfave/cli/v3 v3.6.2
 	github.com/zalando/go-keyring v0.2.6
 	golang.org/x/term v0.39.0
