@@ -1,25 +1,66 @@
 <script lang="ts">
   import type {Snippet} from 'svelte'
   import {clickOutside} from '../../actions/clickOutside'
+  import {tick} from 'svelte'
 
   interface Props {
     open: boolean
     onClose: () => void
     position?: 'left' | 'right'
     children: Snippet
+    trigger?: HTMLElement | null
   }
 
   let {
     open,
     onClose,
     position = 'right',
-    children
-  }: Props = $props()
+    children,
+    trigger = null
+  }: Props = $props();
+
+  let menuElement: HTMLElement | null = $state(null)
+  let menuPosition = $state({ top: 0, left: 0 })
+
+  $effect(() => {
+    if (open && trigger && menuElement) {
+      tick().then(() => {
+        updatePosition()
+      })
+    }
+  })
+
+  function updatePosition() {
+    if (!trigger || !menuElement) return
+    
+    const triggerRect = trigger.getBoundingClientRect()
+    const menuRect = menuElement.getBoundingClientRect()
+    
+    // Calculate position relative to viewport
+    let top = triggerRect.bottom + 4 // 4px gap below trigger
+    let left = 0
+    
+    if (position === 'right') {
+      left = triggerRect.right - menuRect.width
+    } else {
+      left = triggerRect.left
+    }
+    
+    // Prevent going off screen
+    if (left < 8) left = 8
+    if (left + menuRect.width > window.innerWidth - 8) {
+      left = window.innerWidth - menuRect.width - 8
+    }
+    
+    menuPosition = { top, left }
+  }
 </script>
 
 {#if open}
   <div
+    bind:this={menuElement}
     class="dropdown-menu {position}"
+    style="top: {menuPosition.top}px; left: {menuPosition.left}px;"
     use:clickOutside={onClose}
     role="menu"
   >
@@ -29,25 +70,16 @@
 
 <style>
   .dropdown-menu {
-    position: absolute;
-    top: 28px;
+    position: fixed;
     background: #141f2e;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 10px;
     padding: 6px;
     display: grid;
     gap: 4px;
-    z-index: 100;
+    z-index: 1000;
     min-width: 140px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-  }
-
-  .dropdown-menu.right {
-    right: 0;
-  }
-
-  .dropdown-menu.left {
-    left: 0;
   }
 
   /* Menu item styles */

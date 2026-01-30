@@ -354,6 +354,7 @@
     grid-template-columns: 280px 1fr;
     height: 100%;
     min-height: 0;
+    position: relative;
   }
 
   .layout.collapsed {
@@ -366,7 +367,13 @@
     background: var(--panel);
     transition: width 160ms ease, padding 160ms ease;
     overflow-y: auto;
+    overflow-x: visible;
     min-height: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    z-index: 100;
   }
 
   .sidebar.collapsed {
@@ -376,7 +383,8 @@
 
   .main {
     padding: 8px;
-    overflow: hidden;
+    overflow-x: visible;
+    overflow-y: hidden;
     background: transparent; /* Let vibrancy show through */
   }
 
