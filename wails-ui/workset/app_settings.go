@@ -29,6 +29,15 @@ type SettingsSnapshot struct {
 	ConfigPath string           `json:"configPath"`
 }
 
+type AgentCheckRequest struct {
+	Agent string `json:"agent"`
+}
+
+type AgentCLIPathRequest struct {
+	Agent string `json:"agent"`
+	Path  string `json:"path"`
+}
+
 func (a *App) GetSettings() (SettingsSnapshot, error) {
 	ctx := a.ctx
 	if ctx == nil {
@@ -75,4 +84,26 @@ func (a *App) SetDefaultSetting(key, value string) (worksetapi.ConfigSetResultJS
 	}
 	result, _, err := a.service.SetDefault(ctx, key, value)
 	return result, err
+}
+
+func (a *App) CheckAgentStatus(input AgentCheckRequest) (worksetapi.AgentCLIStatusJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.service == nil {
+		a.service = worksetapi.NewService(worksetapi.Options{})
+	}
+	return a.service.GetAgentCLIStatus(ctx, input.Agent)
+}
+
+func (a *App) SetAgentCLIPath(input AgentCLIPathRequest) (worksetapi.AgentCLIStatusJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.service == nil {
+		a.service = worksetapi.NewService(worksetapi.Options{})
+	}
+	return a.service.SetAgentCLIPath(ctx, input.Agent, input.Path)
 }

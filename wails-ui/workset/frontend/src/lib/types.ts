@@ -105,6 +105,14 @@ export type SettingsSnapshot = {
   configPath: string
 }
 
+export type AgentCLIStatus = {
+  installed: boolean
+  path?: string
+  configuredPath?: string
+  command: string
+  error?: string
+}
+
 export type AppVersion = {
   version: string
   commit: string

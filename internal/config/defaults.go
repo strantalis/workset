@@ -27,6 +27,9 @@ func DefaultConfig() GlobalConfig {
 		GitHub: GitHubConfig{
 			CLIPath: "",
 		},
+		Agent: AgentConfig{
+			CLIPath: "",
+		},
 		Hooks: HooksConfig{
 			Enabled: true,
 			OnError: "fail",

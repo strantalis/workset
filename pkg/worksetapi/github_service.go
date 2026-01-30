@@ -1163,6 +1163,13 @@ func (s *Service) runAgentPromptRaw(ctx context.Context, repoPath, agent, prompt
 	if len(command) == 0 {
 		return "", ValidationError{Message: "agent command required"}
 	}
+	if configuredPath, err := s.agentCLIPathFromConfig(ctx); err != nil {
+		return "", err
+	} else if configuredPath != "" && isExecutableCandidate(configuredPath) {
+		if filepath.Base(configuredPath) == filepath.Base(command[0]) {
+			command[0] = configuredPath
+		}
+	}
 	command, env, stdin, err := prepareAgentCommand(command, prompt, schema)
 	if err != nil {
 		return "", err
@@ -1442,6 +1449,9 @@ func prepareAgentCommand(command []string, prompt string, schema string) ([]stri
 	)
 	if len(command) == 0 {
 		return nil, nil, "", errors.New("agent command required")
+	}
+	if resolved := resolveCLIPath(command[0]); resolved != "" {
+		command[0] = resolved
 	}
 	if filepath.Base(command[0]) != "codex" {
 		return command, env, prompt, nil

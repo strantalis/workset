@@ -22,6 +22,14 @@ export function ArchiveWorkspace(arg1, arg2) {
   return window['go']['main']['App']['ArchiveWorkspace'](arg1, arg2);
 }
 
+export function CheckAgentStatus(arg1) {
+  return window['go']['main']['App']['CheckAgentStatus'](arg1);
+}
+
+export function SetAgentCLIPath(arg1) {
+  return window['go']['main']['App']['SetAgentCLIPath'](arg1);
+}
+
 export function CommitAndPush(arg1) {
   return window['go']['main']['App']['CommitAndPush'](arg1);
 }

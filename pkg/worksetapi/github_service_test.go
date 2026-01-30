@@ -18,7 +18,7 @@ func TestPrepareAgentCommandCodexAddsExecAndPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
-	if len(command) < 2 || command[0] != "codex" || command[1] != "exec" {
+	if len(command) < 2 || filepath.Base(command[0]) != "codex" || command[1] != "exec" {
 		t.Fatalf("unexpected command: %v", command)
 	}
 	if !sliceHasExact(command, "-") {

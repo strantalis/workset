@@ -150,6 +150,32 @@ export namespace kitty {
 
 export namespace main {
 	
+	export class AgentCheckRequest {
+	    agent: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AgentCheckRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.agent = source["agent"];
+	    }
+	}
+	export class AgentCLIPathRequest {
+	    agent: string;
+	    path: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AgentCLIPathRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.agent = source["agent"];
+	        this.path = source["path"];
+	    }
+	}
 	export class AliasUpsertRequest {
 	    name: string;
 	    source: string;
@@ -1113,6 +1139,26 @@ export namespace main {
 
 export namespace worksetapi {
 	
+	export class AgentCLIStatusJSON {
+	    installed: boolean;
+	    path?: string;
+	    configuredPath?: string;
+	    command: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AgentCLIStatusJSON(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.installed = source["installed"];
+	        this.path = source["path"];
+	        this.configuredPath = source["configuredPath"];
+	        this.command = source["command"];
+	        this.error = source["error"];
+	    }
+	}
 	export class AliasJSON {
 	    name: string;
 	    url?: string;
@@ -1733,4 +1779,3 @@ export namespace worksetapi {
 	}
 
 }
-

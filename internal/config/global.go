@@ -153,6 +153,7 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 		"defaults.terminal_renderer":         defaults.Defaults.TerminalRenderer,
 		"defaults.terminal_idle_timeout":     defaults.Defaults.TerminalIdleTimeout,
 		"github.cli_path":                    defaults.GitHub.CLIPath,
+		"agent.cli_path":                     defaults.Agent.CLIPath,
 		"hooks.enabled":                      defaults.Hooks.Enabled,
 		"hooks.on_error":                     defaults.Hooks.OnError,
 		"hooks.repo_hooks.trusted_repos":     defaults.Hooks.RepoHooks.TrustedRepos,
@@ -218,6 +219,9 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 	}
 	if cfg.Defaults.TerminalIdleTimeout == "" {
 		cfg.Defaults.TerminalIdleTimeout = defaults.Defaults.TerminalIdleTimeout
+	}
+	if cfg.Agent.CLIPath == "" {
+		cfg.Agent.CLIPath = defaults.Agent.CLIPath
 	}
 	if cfg.Hooks.OnError == "" {
 		cfg.Hooks.OnError = defaults.Hooks.OnError

@@ -13,6 +13,7 @@ import type {
   RepoAddResponse,
   RepoDiffSummary,
   RepoFileDiff,
+  AgentCLIStatus,
   SettingsSnapshot,
   AppVersion,
   Workspace,
@@ -76,7 +77,9 @@ import {
   DisconnectGitHub,
   SetGitHubCLIPath,
   SetGitHubAuthMode,
-  SetGitHubToken
+  SetGitHubToken,
+  CheckAgentStatus,
+  SetAgentCLIPath
 } from '../../wailsjs/go/main/App'
 
 type WorkspaceSnapshot = {
@@ -130,6 +133,14 @@ export async function disconnectGitHub(): Promise<void> {
 
 export async function setGitHubCLIPath(path: string): Promise<GitHubAuthInfo> {
   return (await SetGitHubCLIPath({path})) as GitHubAuthInfo
+}
+
+export async function checkAgentStatus(agent: string): Promise<AgentCLIStatus> {
+  return (await CheckAgentStatus({agent})) as AgentCLIStatus
+}
+
+export async function setAgentCLIPath(agent: string, path: string): Promise<AgentCLIStatus> {
+  return (await SetAgentCLIPath({agent, path})) as AgentCLIStatus
 }
 
 export async function openFileDialog(title: string, defaultDirectory: string): Promise<string> {
