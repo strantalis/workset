@@ -182,6 +182,35 @@ func AddRepo(ctx context.Context, input AddRepoInput) (config.WorkspaceConfig, s
 	}
 
 	if !worktreeExists {
+		if startRemote != "" && defaultBranch != "" {
+			if err := input.Git.Fetch(ctx, gitDirPath, startRemote); err != nil {
+				warnings = append(warnings, fmt.Sprintf("fetch %s failed: %v", startRemote, err))
+			} else {
+				localRef := fmt.Sprintf("refs/heads/%s", defaultBranch)
+				remoteRef := fmt.Sprintf("refs/remotes/%s/%s", startRemote, defaultBranch)
+				localExists, err := input.Git.ReferenceExists(gitDirPath, localRef)
+				if err != nil {
+					warnings = append(warnings, fmt.Sprintf("check local base branch %s: %v", defaultBranch, err))
+				}
+				remoteExists, err := input.Git.ReferenceExists(gitDirPath, remoteRef)
+				if err != nil {
+					warnings = append(warnings, fmt.Sprintf("check remote base branch %s/%s: %v", startRemote, defaultBranch, err))
+				}
+				if localExists && remoteExists {
+					ancestor, err := input.Git.IsAncestor(gitDirPath, localRef, remoteRef)
+					if err != nil {
+						warnings = append(warnings, fmt.Sprintf("compare base branch %s to %s/%s: %v", defaultBranch, startRemote, defaultBranch, err))
+					} else if ancestor {
+						if err := input.Git.UpdateBranch(ctx, gitDirPath, defaultBranch, fmt.Sprintf("%s/%s", startRemote, defaultBranch)); err != nil {
+							warnings = append(warnings, fmt.Sprintf("fast-forward %s to %s/%s failed: %v", defaultBranch, startRemote, defaultBranch, err))
+						}
+					} else {
+						warnings = append(warnings, fmt.Sprintf("base branch %s does not fast-forward to %s/%s; leaving local branch unchanged", defaultBranch, startRemote, defaultBranch))
+					}
+				}
+			}
+		}
+
 		worktreeName := workspace.WorktreeName(targetBranch)
 		if err := input.Git.WorktreeAdd(ctx, git.WorktreeAddOptions{
 			RepoPath:     gitDirPath,

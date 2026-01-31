@@ -37,6 +37,7 @@ type Client interface {
 	RemoteURLs(repoPath, remoteName string) ([]string, error)
 	ReferenceExists(repoPath, ref string) (bool, error)
 	Fetch(ctx context.Context, repoPath, remoteName string) error
+	UpdateBranch(ctx context.Context, repoPath, branchName, targetRef string) error
 	Status(path string) (StatusSummary, error)
 	IsRepo(path string) (bool, error)
 	IsAncestor(repoPath, ancestorRef, descendantRef string) (bool, error)

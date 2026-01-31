@@ -172,6 +172,20 @@ func (c CLIClient) Fetch(ctx context.Context, repoPath, remoteName string) error
 	return err
 }
 
+func (c CLIClient) UpdateBranch(ctx context.Context, repoPath, branchName, targetRef string) error {
+	if repoPath == "" {
+		return errors.New("repo path required")
+	}
+	if branchName == "" {
+		return errors.New("branch name required")
+	}
+	if targetRef == "" {
+		return errors.New("target ref required")
+	}
+	_, err := c.run(ctx, repoPath, "branch", "-f", branchName, targetRef)
+	return err
+}
+
 func (c CLIClient) Status(path string) (StatusSummary, error) {
 	if path == "" {
 		return StatusSummary{}, errors.New("repo path required")
