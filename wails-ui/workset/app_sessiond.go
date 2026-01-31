@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/strantalis/workset/pkg/sessiond"
+	"github.com/strantalis/workset/pkg/worksetapi"
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -49,12 +50,21 @@ func (a *App) getSessiondClientInternal(waitForRestart bool) (*sessiond.Client, 
 	logRestartf("client_ensure_running")
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
-	client, err := sessiond.EnsureRunning(ctx)
+	startOpts := sessiond.StartOptions{}
+	if a.service == nil {
+		a.service = worksetapi.NewService(worksetapi.Options{})
+	}
+	if cfg, _, cfgErr := a.service.GetConfig(ctx); cfgErr == nil {
+		if envTruthy(cfg.Defaults.TerminalProtocolLog) {
+			startOpts.ProtocolLogEnabled = true
+		}
+	}
+	client, err := sessiond.EnsureRunningWithOptions(ctx, startOpts)
 	if err != nil {
 		if strings.Contains(err.Error(), "sessiond did not start") {
 			logRestartf("client_ensure_retry err=%v", err)
 			ctxRetry, cancelRetry := context.WithTimeout(context.Background(), 8*time.Second)
-			client, err = sessiond.EnsureRunning(ctxRetry)
+			client, err = sessiond.EnsureRunningWithOptions(ctxRetry, startOpts)
 			cancelRetry()
 		}
 		if err != nil {

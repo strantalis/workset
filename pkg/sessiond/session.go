@@ -18,6 +18,7 @@ import (
 
 	"github.com/strantalis/workset/pkg/kitty"
 	"github.com/strantalis/workset/pkg/termemu"
+	"github.com/strantalis/workset/pkg/unifiedlog"
 )
 
 type streamEvent struct {
@@ -139,6 +140,7 @@ type Session struct {
 	seqTail          []byte
 	c1Normalizer     c1Normalizer
 	escapeFilter     escapeStringFilter
+	protocolLog      *unifiedlog.Logger
 	kittyDecoder     kitty.Decoder
 	kittyState       *kitty.State
 	kittyStatePath   string
@@ -310,6 +312,7 @@ func newSession(opts Options, id, cwd string) *Session {
 		kittyState:     kitty.NewState(),
 		kittyStatePath: kittyStatePath,
 		recordEnabled:  opts.RecordPty,
+		protocolLog:    opts.ProtocolLogger,
 		statePath:      statePath,
 		modesPath:      modesPath,
 		snapshotEvery:  opts.SnapshotInterval,
@@ -402,6 +405,7 @@ func (s *Session) write(data string) error {
 	if s.pty == nil {
 		return fmt.Errorf("terminal not started")
 	}
+	s.logProtocol("in", []byte(data))
 	if _, err := s.pty.Write([]byte(data)); err != nil {
 		return err
 	}
@@ -614,6 +618,7 @@ func (s *Session) readLoop() {
 				s.emu.Write(cleaned)
 				s.maybePersistSnapshot()
 			}
+			s.logProtocol("out", cleaned)
 			filtered := filterTerminalOutputStreaming(cleaned, &s.escapeFilter)
 			if len(filtered) == 0 {
 				continue
@@ -1651,6 +1656,103 @@ func shouldDropCSI(params []byte, final byte) bool {
 				return true
 			}
 		}
+	}
+	return false
+}
+
+func (s *Session) logProtocol(direction string, data []byte) {
+	if s.protocolLog == nil || len(data) == 0 {
+		return
+	}
+	const esc = 0x1b
+	for i := 0; i < len(data); i++ {
+		if data[i] != esc || i+1 >= len(data) {
+			continue
+		}
+		switch data[i+1] {
+		case ']':
+			end, _ := scanOSC(data, i)
+			if end == i || end > len(data) {
+				continue
+			}
+			payloadEnd := end
+			if payloadEnd >= 2 && data[payloadEnd-2] == esc && data[payloadEnd-1] == '\\' {
+				payloadEnd -= 2
+			} else if payloadEnd >= 1 && data[payloadEnd-1] == 0x07 {
+				payloadEnd--
+			}
+			if payloadEnd < i+2 {
+				payloadEnd = i + 2
+			}
+			payload := data[i+2 : payloadEnd]
+			s.logOSCProtocol(direction, data[i:end], payload)
+			i = end - 1
+		case '[':
+			end, _ := scanCSI(data, i)
+			if end == i || end > len(data) {
+				continue
+			}
+			if end-1 <= i+1 {
+				continue
+			}
+			final := data[end-1]
+			params := data[i+2 : end-1]
+			s.logCSIProtocol(direction, data[i:end], params, final)
+			i = end - 1
+		default:
+			continue
+		}
+	}
+}
+
+func (s *Session) logOSCProtocol(direction string, seq []byte, payload []byte) {
+	if s.protocolLog == nil {
+		return
+	}
+	if isOSCColorQueryRequest(payload) {
+		s.protocolLog.Log("terminal.protocol", direction, "event", "osc_color_query_request", seq)
+	}
+	if shouldDropOSC(payload) {
+		s.protocolLog.Log("terminal.protocol", direction, "drop", "osc_color_query_response", seq)
+	}
+}
+
+func (s *Session) logCSIProtocol(direction string, seq []byte, params []byte, final byte) {
+	if s.protocolLog == nil {
+		return
+	}
+	switch final {
+	case 'n':
+		s.protocolLog.Log("terminal.protocol", direction, "event", "dsr_request", seq)
+	case 'R':
+		s.protocolLog.Log("terminal.protocol", direction, "drop", "dsr_response", seq)
+	case 'c':
+		if hasCSIQueryPrefix(params) {
+			s.protocolLog.Log("terminal.protocol", direction, "drop", "device_attributes_response", seq)
+		} else {
+			s.protocolLog.Log("terminal.protocol", direction, "event", "device_attributes_request", seq)
+		}
+	}
+}
+
+func hasCSIQueryPrefix(params []byte) bool {
+	for _, b := range params {
+		if b == '?' || b == '>' {
+			return true
+		}
+	}
+	return false
+}
+
+func isOSCColorQueryRequest(payload []byte) bool {
+	if len(payload) < 4 {
+		return false
+	}
+	if bytes.HasPrefix(payload, []byte("10;?")) || bytes.HasPrefix(payload, []byte("11;?")) {
+		return true
+	}
+	if len(payload) >= 2 && payload[0] == '4' && payload[1] == ';' {
+		return bytes.Contains(payload, []byte(";?"))
 	}
 	return false
 }

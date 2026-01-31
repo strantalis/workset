@@ -3,6 +3,8 @@ package sessiond
 import (
 	"log"
 	"time"
+
+	"github.com/strantalis/workset/pkg/unifiedlog"
 )
 
 type Options struct {
@@ -21,6 +23,9 @@ type Options struct {
 	StreamCreditTimeout     time.Duration
 	StreamInitialCredit     int64
 	Logger                  *log.Logger
+	ProtocolLogEnabled      bool
+	ProtocolLogDir          string
+	ProtocolLogger          *unifiedlog.Logger
 }
 
 func DefaultOptions() Options {

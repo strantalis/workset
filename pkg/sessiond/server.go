@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/strantalis/workset/pkg/unifiedlog"
 )
 
 type Server struct {
@@ -72,6 +74,14 @@ func NewServer(opts Options) *Server {
 	}
 	if opts.StreamInitialCredit == 0 {
 		opts.StreamInitialCredit = DefaultOptions().StreamInitialCredit
+	}
+	if opts.ProtocolLogEnabled && opts.ProtocolLogger == nil {
+		logger, err := unifiedlog.Open("sessiond", opts.ProtocolLogDir)
+		if err != nil {
+			logServerf("protocol_log_open_failed err=%v", err)
+		} else {
+			opts.ProtocolLogger = logger
+		}
 	}
 	return &Server{
 		opts:     opts,

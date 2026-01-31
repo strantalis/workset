@@ -29,6 +29,9 @@ func TestGetConfig(t *testing.T) {
 	if cfg.Defaults.TerminalIdleTimeout == "" {
 		t.Fatalf("unexpected terminal idle timeout default: %q", cfg.Defaults.TerminalIdleTimeout)
 	}
+	if cfg.Defaults.TerminalProtocolLog == "" {
+		t.Fatalf("unexpected terminal protocol log default: %q", cfg.Defaults.TerminalProtocolLog)
+	}
 }
 
 func TestSetDefaultUpdatesConfig(t *testing.T) {
@@ -89,6 +92,7 @@ func TestSetDefaultVariousKeys(t *testing.T) {
 		"defaults.agent":                     "codex",
 		"defaults.terminal_renderer":         "webgl",
 		"defaults.terminal_idle_timeout":     "0",
+		"defaults.terminal_protocol_log":     "on",
 	}
 	for key, value := range cases {
 		if _, _, err := env.svc.SetDefault(context.Background(), key, value); err != nil {
@@ -110,5 +114,8 @@ func TestSetDefaultVariousKeys(t *testing.T) {
 	}
 	if cfg.Defaults.TerminalIdleTimeout != "0" {
 		t.Fatalf("terminal idle timeout default not set")
+	}
+	if cfg.Defaults.TerminalProtocolLog != "on" {
+		t.Fatalf("terminal protocol log default not set")
 	}
 }

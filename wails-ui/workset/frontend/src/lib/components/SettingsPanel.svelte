@@ -32,7 +32,8 @@
     {id: 'repoStoreRoot', key: 'defaults.repo_store_root'},
     {id: 'agent', key: 'defaults.agent'},
     {id: 'terminalRenderer', key: 'defaults.terminal_renderer'},
-    {id: 'terminalIdleTimeout', key: 'defaults.terminal_idle_timeout'}
+    {id: 'terminalIdleTimeout', key: 'defaults.terminal_idle_timeout'},
+    {id: 'terminalProtocolLog', key: 'defaults.terminal_protocol_log'}
   ]
 
   let snapshot: SettingsSnapshot | null = $state(null)
