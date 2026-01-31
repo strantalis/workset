@@ -657,6 +657,7 @@
     display: flex;
     flex-direction: column;
     padding-left: 24px;
+    padding-top: var(--space-1);
     padding-bottom: var(--space-2);
     gap: 2px;
   }
