@@ -5,6 +5,7 @@
 dist/
 bin/
 /workset
+go.work.sum
 coverage/
 *.out
 *.test
