@@ -5,11 +5,11 @@ import (
 	"encoding/gob"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 	"unicode/utf8"
+
+	"github.com/strantalis/workset/pkg/unifiedlog"
 )
 
 type ColorKind uint8
@@ -145,44 +145,46 @@ const (
 
 var (
 	traceOnce sync.Once
-	traceOn   bool
-	traceLog  *os.File
+	traceLog  *unifiedlog.Logger
 	traceMu   sync.Mutex
 )
 
 func traceEnabled() bool {
+	if traceLog != nil {
+		return true
+	}
 	traceOnce.Do(func() {
-		traceOn = envTruthy(os.Getenv("WORKSET_TERMEMU_TRACE"))
-		if !traceOn {
+		if !envTruthy(os.Getenv("WORKSET_TERMEMU_TRACE")) {
 			return
 		}
-		home, err := os.UserHomeDir()
+		logger, err := unifiedlog.Open("termemu", "")
 		if err != nil {
-			traceOn = false
 			return
 		}
-		logPath := filepath.Join(home, ".workset", "termemu_trace.log")
-		if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
-			traceOn = false
-			return
-		}
-		file, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-		if err != nil {
-			traceOn = false
-			return
-		}
-		traceLog = file
+		traceLog = logger
 	})
-	return traceOn && traceLog != nil
+	return traceLog != nil
 }
 
 func tracef(format string, args ...any) {
 	if !traceEnabled() {
 		return
 	}
+	message := fmt.Sprintf(format, args...)
 	traceMu.Lock()
-	defer traceMu.Unlock()
-	_, _ = fmt.Fprintf(traceLog, time.Now().Format(time.RFC3339Nano)+" "+format+"\n", args...)
+	traceLog.Write(unifiedlog.Entry{
+		Category:  "terminal.trace",
+		Direction: "none",
+		Action:    "event",
+		Detail:    message,
+	})
+	traceMu.Unlock()
+}
+
+func EnableTrace(logger *unifiedlog.Logger) {
+	traceMu.Lock()
+	traceLog = logger
+	traceMu.Unlock()
 }
 
 func envTruthy(value string) bool {

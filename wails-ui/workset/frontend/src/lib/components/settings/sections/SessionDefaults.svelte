@@ -51,6 +51,16 @@
       ]
     },
     {
+      id: 'terminalProtocolLog',
+      label: 'Protocol logging',
+      description: 'Logs OSC/CSI/DSR traffic to ~/.workset/terminal_logs (restart daemon).',
+      type: 'select',
+      options: [
+        {label: 'Off', value: 'off'},
+        {label: 'On', value: 'on'}
+      ]
+    },
+    {
       id: 'terminalIdleTimeout',
       label: 'Terminal idle timeout',
       description: 'Idle terminals are closed after this duration. Use 0 to disable.',

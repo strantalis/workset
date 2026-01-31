@@ -16,6 +16,7 @@ type Defaults struct {
 	Agent               string `yaml:"agent" json:"agent" mapstructure:"agent"`
 	TerminalRenderer    string `yaml:"terminal_renderer" json:"terminal_renderer" mapstructure:"terminal_renderer"`
 	TerminalIdleTimeout string `yaml:"terminal_idle_timeout" json:"terminal_idle_timeout" mapstructure:"terminal_idle_timeout"`
+	TerminalProtocolLog string `yaml:"terminal_protocol_log" json:"terminal_protocol_log" mapstructure:"terminal_protocol_log"`
 }
 
 type GitHubConfig struct {

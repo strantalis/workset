@@ -72,6 +72,8 @@ func setGlobalDefault(cfg *config.GlobalConfig, key, value string) error {
 		}
 	case "defaults.terminal_idle_timeout":
 		cfg.Defaults.TerminalIdleTimeout = value
+	case "defaults.terminal_protocol_log":
+		cfg.Defaults.TerminalProtocolLog = value
 	case "defaults.remotes.base", "defaults.remotes.write":
 		return fmt.Errorf("%s was removed; set defaults.remote or alias remote instead", key)
 	case "defaults.parallelism":

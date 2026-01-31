@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -216,6 +217,15 @@ func newStreamID() string {
 }
 
 func EnsureRunning(ctx context.Context) (*Client, error) {
+	return EnsureRunningWithOptions(ctx, StartOptions{})
+}
+
+type StartOptions struct {
+	ProtocolLogEnabled bool
+	ProtocolLogDir     string
+}
+
+func EnsureRunningWithOptions(ctx context.Context, opts StartOptions) (*Client, error) {
 	socketPath, err := DefaultSocketPath()
 	if err != nil {
 		return nil, err
@@ -230,7 +240,7 @@ func EnsureRunning(ctx context.Context) (*Client, error) {
 	if err := removeStaleSocket(socketPath); err != nil {
 		return nil, err
 	}
-	if err := startDaemon(ctx, socketPath); err != nil {
+	if err := startDaemon(ctx, socketPath, opts); err != nil {
 		return nil, err
 	}
 	deadline := time.Now().Add(5 * time.Second)
@@ -269,7 +279,7 @@ func removeStaleSocket(path string) error {
 	return nil
 }
 
-func startDaemon(_ context.Context, socketPath string) error {
+func startDaemon(_ context.Context, socketPath string, opts StartOptions) error {
 	bin, err := FindSessiondBinary()
 	if err != nil {
 		return fmt.Errorf("workset-sessiond not found in PATH")
@@ -285,7 +295,14 @@ func startDaemon(_ context.Context, socketPath string) error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(bin, "--socket", socketPath)
+	args := []string{"--socket", socketPath}
+	if opts.ProtocolLogEnabled {
+		args = append(args, "--verbose")
+		if strings.TrimSpace(opts.ProtocolLogDir) != "" {
+			args = append(args, "--protocol-log-dir", opts.ProtocolLogDir)
+		}
+	}
+	cmd := exec.Command(bin, args...)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	cmd.Env = append(os.Environ(), fmt.Sprintf("WORKSET_SESSIOND_LOG=%s", logPath))

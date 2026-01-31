@@ -152,8 +152,8 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 		"defaults.agent":                     defaults.Defaults.Agent,
 		"defaults.terminal_renderer":         defaults.Defaults.TerminalRenderer,
 		"defaults.terminal_idle_timeout":     defaults.Defaults.TerminalIdleTimeout,
+		"defaults.terminal_protocol_log":     defaults.Defaults.TerminalProtocolLog,
 		"github.cli_path":                    defaults.GitHub.CLIPath,
-		"agent.cli_path":                     defaults.Agent.CLIPath,
 		"hooks.enabled":                      defaults.Hooks.Enabled,
 		"hooks.on_error":                     defaults.Hooks.OnError,
 		"hooks.repo_hooks.trusted_repos":     defaults.Hooks.RepoHooks.TrustedRepos,
@@ -220,8 +220,8 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 	if cfg.Defaults.TerminalIdleTimeout == "" {
 		cfg.Defaults.TerminalIdleTimeout = defaults.Defaults.TerminalIdleTimeout
 	}
-	if cfg.Agent.CLIPath == "" {
-		cfg.Agent.CLIPath = defaults.Agent.CLIPath
+	if cfg.Defaults.TerminalProtocolLog == "" {
+		cfg.Defaults.TerminalProtocolLog = defaults.Defaults.TerminalProtocolLog
 	}
 	if cfg.Hooks.OnError == "" {
 		cfg.Hooks.OnError = defaults.Hooks.OnError
@@ -246,17 +246,6 @@ func SaveGlobal(path string, cfg GlobalConfig) error {
 	cfg.EnsureMaps()
 	cfg = stripLegacyGroupRemotes(cfg)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	if info, err := os.Stat(path); err == nil {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		if err := os.WriteFile(path+".bak", data, info.Mode().Perm()); err != nil {
-			return err
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	data, err := yaml.Marshal(cfg)

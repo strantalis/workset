@@ -31,10 +31,14 @@ func main() {
 	var idleTimeout string
 	var recordDir string
 	var recordPty bool
+	var verbose bool
+	var protocolLogDir string
 	flag.StringVar(&socketPath, "socket", "", "path to sessiond socket")
 	flag.StringVar(&idleTimeout, "idle-timeout", "", "idle timeout (e.g. 30m, 0 to disable)")
 	flag.StringVar(&recordDir, "record-dir", "", "directory to record raw PTY output")
 	flag.BoolVar(&recordPty, "record-pty", false, "record raw PTY output to disk")
+	flag.BoolVar(&verbose, "verbose", false, "enable protocol logging")
+	flag.StringVar(&protocolLogDir, "protocol-log-dir", "", "directory for protocol logs")
 	flag.Parse()
 
 	opts := sessiond.DefaultOptions()
@@ -51,6 +55,10 @@ func main() {
 		recordPty = envTruthy(os.Getenv("WORKSET_SESSIOND_RECORD_PTY"))
 	}
 	opts.RecordPty = recordPty
+	if verbose {
+		opts.ProtocolLogEnabled = true
+		opts.ProtocolLogDir = protocolLogDir
+	}
 
 	cfgIdle := loadIdleTimeout()
 	if idleTimeout != "" {

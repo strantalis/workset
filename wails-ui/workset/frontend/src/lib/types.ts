@@ -98,6 +98,7 @@ export type SettingsDefaults = {
   agent: string
   terminalRenderer: string
   terminalIdleTimeout: string
+  terminalProtocolLog: string
 }
 
 export type SettingsSnapshot = {

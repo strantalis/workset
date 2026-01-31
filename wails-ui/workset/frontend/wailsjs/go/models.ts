@@ -782,6 +782,7 @@ export namespace main {
 	    agent: string;
 	    terminalRenderer: string;
 	    terminalIdleTimeout: string;
+	    terminalProtocolLog: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SettingsDefaults(source);
@@ -804,6 +805,7 @@ export namespace main {
 	        this.agent = source["agent"];
 	        this.terminalRenderer = source["terminalRenderer"];
 	        this.terminalIdleTimeout = source["terminalIdleTimeout"];
+	        this.terminalProtocolLog = source["terminalProtocolLog"];
 	    }
 	}
 	export class SettingsSnapshot {

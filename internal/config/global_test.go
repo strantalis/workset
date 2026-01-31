@@ -33,6 +33,9 @@ func TestLoadGlobalDefaults(t *testing.T) {
 	if cfg.Defaults.TerminalIdleTimeout == "" {
 		t.Fatalf("expected default terminal_idle_timeout set")
 	}
+	if cfg.Defaults.TerminalProtocolLog == "" {
+		t.Fatalf("expected default terminal_protocol_log set")
+	}
 }
 
 func TestSaveLoadGlobal(t *testing.T) {

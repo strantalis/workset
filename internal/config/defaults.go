@@ -23,6 +23,7 @@ func DefaultConfig() GlobalConfig {
 			Agent:               "codex",
 			TerminalRenderer:    "auto",
 			TerminalIdleTimeout: "0",
+			TerminalProtocolLog: "off",
 		},
 		GitHub: GitHubConfig{
 			CLIPath: "",

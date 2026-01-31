@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/strantalis/workset/pkg/termemu"
+	"github.com/strantalis/workset/pkg/unifiedlog"
 )
 
 func main() {
@@ -15,11 +16,15 @@ func main() {
 	var cols int
 	var rows int
 	var limit int
+	var verbose bool
+	var protocolLogDir string
 	flag.StringVar(&inputPath, "input", "", "path to raw PTY capture")
 	flag.StringVar(&outputPath, "output", "", "path to write ANSI snapshot (stdout if empty)")
 	flag.IntVar(&cols, "cols", 120, "terminal columns")
 	flag.IntVar(&rows, "rows", 40, "terminal rows")
 	flag.IntVar(&limit, "limit", 0, "limit bytes from input (0 = all)")
+	flag.BoolVar(&verbose, "verbose", false, "enable protocol logging")
+	flag.StringVar(&protocolLogDir, "protocol-log-dir", "", "directory for protocol logs")
 	flag.Parse()
 
 	if inputPath == "" {
@@ -31,6 +36,13 @@ func main() {
 		exitErr(err)
 	}
 
+	if verbose {
+		logger, err := unifiedlog.Open("termemu", protocolLogDir)
+		if err != nil {
+			exitErr(err)
+		}
+		termemu.EnableTrace(logger)
+	}
 	emu := termemu.New(cols, rows)
 	if limit > 0 && limit < len(data) {
 		data = data[:limit]
