@@ -24,6 +24,7 @@ type Entry struct {
 
 type Logger struct {
 	component string
+	file      *os.File
 	handler   slog.Handler
 }
 
@@ -57,6 +58,7 @@ func Open(component, dir string) (*Logger, error) {
 	}
 	return &Logger{
 		component: component,
+		file:      file,
 		handler:   slog.NewTextHandler(file, &slog.HandlerOptions{Level: slog.LevelInfo}),
 	}, nil
 }
@@ -102,6 +104,13 @@ func (l *Logger) Log(category, direction, action, detail string, seq []byte) {
 		Hex:       fmt.Sprintf("%x", seq),
 		ASCII:     string(seq),
 	})
+}
+
+func (l *Logger) Close() error {
+	if l == nil || l.file == nil {
+		return nil
+	}
+	return l.file.Close()
 }
 
 func sanitizeComponent(component string) string {
