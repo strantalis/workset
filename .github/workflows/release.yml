@@ -455,7 +455,7 @@ jobs:
           fetch-depth: 0
       - name: Cocogitto release
         id: release
-        uses: cocogitto/cocogitto-action@v3
+        uses: cocogitto/cocogitto-action@v4
         with:
           release: true
           check: true
