@@ -17,6 +17,7 @@
     RepoDiffSummary,
     RepoFileDiff
   } from '../types'
+  import {resolveBranchRefs} from '../diff/branchRefs'
   import {
     commitAndPush,
     createPullRequest,
@@ -900,19 +901,7 @@
 
   // Check if we should use branch diff (when PR exists with branches)
   const useBranchDiff = (): { base: string; head: string } | null => {
-    if (prStatus?.pullRequest.baseBranch && prStatus?.pullRequest.headBranch) {
-      return {
-        base: prStatus.pullRequest.baseBranch,
-        head: prStatus.pullRequest.headBranch
-      }
-    }
-    if (prTracked?.baseBranch && prTracked?.headBranch) {
-      return {
-        base: prTracked.baseBranch,
-        head: prTracked.headBranch
-      }
-    }
-    return null
+    return resolveBranchRefs(remotes, prStatus?.pullRequest ?? prTracked)
   }
 
   const loadSummary = async (): Promise<void> => {
