@@ -1381,7 +1381,7 @@
                   <button
                     class="check-link"
                     type="button"
-                    onclick={() => validateAndOpenURL(check.detailsUrl)}
+                    onclick={() => check.detailsUrl && BrowserOpenURL(check.detailsUrl)}
                     title="View on GitHub"
                   >
                     ↗
