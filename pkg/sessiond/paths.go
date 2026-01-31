@@ -7,6 +7,9 @@ import (
 )
 
 func DefaultSocketPath() (string, error) {
+	if socket := strings.TrimSpace(os.Getenv("WORKSET_SESSIOND_SOCKET")); socket != "" {
+		return socket, nil
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err

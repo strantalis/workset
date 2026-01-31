@@ -71,6 +71,8 @@ sequenceDiagram
 - `defaults.terminal_renderer` selects `auto`, `webgl`, or `canvas` for xterm.js rendering.
 - `defaults.terminal_protocol_log` enables OSC/CSI/DSR protocol logging (restart daemon to apply).
 - `defaults.agent` controls the default coding agent for terminal launchers and PR generation.
+- `WORKSET_SESSIOND_SOCKET` overrides the session daemon socket path (default `~/.workset/sessiond.sock`).
+  Wails dev builds use `~/.workset/sessiond-dev.sock` to avoid contention with production.
 
 Protocol logs are written to `~/.workset/terminal_logs/unified_sessiond.log` and
 `~/.workset/terminal_logs/unified_termemu.log` when enabled.
