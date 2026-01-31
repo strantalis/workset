@@ -154,12 +154,16 @@ func TestAddRepoFetchesAndFastForwardsBaseBranch(t *testing.T) {
 	}
 
 	gitDir := filepath.Join(repoRoot, ".git")
+	resolvedGitDir, err := filepath.EvalSymlinks(gitDir)
+	if err != nil {
+		t.Fatalf("EvalSymlinks: %v", err)
+	}
 	fake := newFakeGitClient()
-	fake.remotes[gitDir] = []string{defaults.Remote}
-	fake.remoteExists[key(gitDir, defaults.Remote)] = true
-	fake.refs[key(gitDir, "refs/heads/"+defaults.BaseBranch)] = true
-	fake.refs[key(gitDir, "refs/remotes/"+defaults.Remote+"/"+defaults.BaseBranch)] = true
-	fake.ancestors[key(gitDir, "refs/heads/"+defaults.BaseBranch+"->refs/remotes/"+defaults.Remote+"/"+defaults.BaseBranch)] = true
+	fake.remotes[resolvedGitDir] = []string{defaults.Remote}
+	fake.remoteExists[key(resolvedGitDir, defaults.Remote)] = true
+	fake.refs[key(resolvedGitDir, "refs/heads/"+defaults.BaseBranch)] = true
+	fake.refs[key(resolvedGitDir, "refs/remotes/"+defaults.Remote+"/"+defaults.BaseBranch)] = true
+	fake.ancestors[key(resolvedGitDir, "refs/heads/"+defaults.BaseBranch+"->refs/remotes/"+defaults.Remote+"/"+defaults.BaseBranch)] = true
 
 	_, _, warnings, err := AddRepo(context.Background(), AddRepoInput{
 		WorkspaceRoot: root,
@@ -180,13 +184,13 @@ func TestAddRepoFetchesAndFastForwardsBaseBranch(t *testing.T) {
 	if len(fake.fetchCalls) != 1 {
 		t.Fatalf("expected 1 fetch call, got %d", len(fake.fetchCalls))
 	}
-	if fake.fetchCalls[0].repoPath != gitDir || fake.fetchCalls[0].remote != defaults.Remote {
+	if fake.fetchCalls[0].repoPath != resolvedGitDir || fake.fetchCalls[0].remote != defaults.Remote {
 		t.Fatalf("unexpected fetch call: %+v", fake.fetchCalls[0])
 	}
 	if len(fake.updateCalls) != 1 {
 		t.Fatalf("expected 1 update call, got %d", len(fake.updateCalls))
 	}
-	if fake.updateCalls[0].repoPath != gitDir ||
+	if fake.updateCalls[0].repoPath != resolvedGitDir ||
 		fake.updateCalls[0].branch != defaults.BaseBranch ||
 		fake.updateCalls[0].target != defaults.Remote+"/"+defaults.BaseBranch {
 		t.Fatalf("unexpected update call: %+v", fake.updateCalls[0])
@@ -206,12 +210,16 @@ func TestAddRepoWarnsWhenBaseBranchDiverges(t *testing.T) {
 	}
 
 	gitDir := filepath.Join(repoRoot, ".git")
+	resolvedGitDir, err := filepath.EvalSymlinks(gitDir)
+	if err != nil {
+		t.Fatalf("EvalSymlinks: %v", err)
+	}
 	fake := newFakeGitClient()
-	fake.remotes[gitDir] = []string{defaults.Remote}
-	fake.remoteExists[key(gitDir, defaults.Remote)] = true
-	fake.refs[key(gitDir, "refs/heads/"+defaults.BaseBranch)] = true
-	fake.refs[key(gitDir, "refs/remotes/"+defaults.Remote+"/"+defaults.BaseBranch)] = true
-	fake.ancestors[key(gitDir, "refs/heads/"+defaults.BaseBranch+"->refs/remotes/"+defaults.Remote+"/"+defaults.BaseBranch)] = false
+	fake.remotes[resolvedGitDir] = []string{defaults.Remote}
+	fake.remoteExists[key(resolvedGitDir, defaults.Remote)] = true
+	fake.refs[key(resolvedGitDir, "refs/heads/"+defaults.BaseBranch)] = true
+	fake.refs[key(resolvedGitDir, "refs/remotes/"+defaults.Remote+"/"+defaults.BaseBranch)] = true
+	fake.ancestors[key(resolvedGitDir, "refs/heads/"+defaults.BaseBranch+"->refs/remotes/"+defaults.Remote+"/"+defaults.BaseBranch)] = false
 
 	_, _, warnings, err := AddRepo(context.Background(), AddRepoInput{
 		WorkspaceRoot: root,
@@ -259,12 +267,12 @@ func setupRepo(t *testing.T) string {
 }
 
 type fakeGitClient struct {
-	fetchCalls []fetchCall
-	updateCalls []updateCall
-	refs        map[string]bool
-	remotes     map[string][]string
+	fetchCalls   []fetchCall
+	updateCalls  []updateCall
+	refs         map[string]bool
+	remotes      map[string][]string
 	remoteExists map[string]bool
-	ancestors   map[string]bool
+	ancestors    map[string]bool
 }
 
 type fetchCall struct {

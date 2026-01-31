@@ -60,6 +60,42 @@ func TestIsContentMergedDetectsMissingChanges(t *testing.T) {
 	}
 }
 
+func TestUpdateBranchBareRepo(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	source := initGitRepo(t)
+	ensureBranch(t, source, "main")
+
+	writeFile(t, source, "file.txt", "one\n")
+	runGit(t, source, "add", "file.txt")
+	runGit(t, source, "-c", "commit.gpgsign=false", "commit", "-m", "initial")
+
+	bareRoot := t.TempDir()
+	bare := filepath.Join(bareRoot, "repo.git")
+	runGit(t, bareRoot, "clone", "--bare", source, bare)
+	runGit(t, bare, "config", "--replace-all", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*")
+
+	writeFile(t, source, "file.txt", "two\n")
+	runGit(t, source, "add", "file.txt")
+	runGit(t, source, "-c", "commit.gpgsign=false", "commit", "-m", "second")
+
+	client := NewCLIClient()
+	if err := client.Fetch(context.Background(), bare, "origin"); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if err := client.UpdateBranch(context.Background(), bare, "main", "origin/main"); err != nil {
+		t.Fatalf("UpdateBranch: %v", err)
+	}
+
+	mainRef := gitRevParse(t, bare, "refs/heads/main")
+	originRef := gitRevParse(t, bare, "refs/remotes/origin/main")
+	if mainRef != originRef {
+		t.Fatalf("expected main to match origin/main, got %s vs %s", mainRef, originRef)
+	}
+}
+
 func initGitRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -67,6 +103,14 @@ func initGitRepo(t *testing.T) string {
 	runGit(t, dir, "config", "user.email", "test@example.com")
 	runGit(t, dir, "config", "user.name", "Workset Tests")
 	return dir
+}
+
+func writeFile(t *testing.T, dir, name, contents string) {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
 }
 
 func ensureBranch(t *testing.T, dir, branch string) {
@@ -106,4 +150,18 @@ func runGitAllowError(dir string, args ...string) error {
 		return fmt.Errorf("%w: %s", err, stderr.String())
 	}
 	return nil
+}
+
+func gitRevParse(t *testing.T, dir, ref string) string {
+	t.Helper()
+	cmd := exec.CommandContext(context.Background(), "git", "rev-parse", ref)
+	cmd.Dir = dir
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("git rev-parse %s: %v (%s)", ref, err, stderr.String())
+	}
+	return string(bytes.TrimSpace(stdout.Bytes()))
 }

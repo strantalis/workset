@@ -196,7 +196,16 @@ func AddRepo(ctx context.Context, input AddRepoInput) (config.WorkspaceConfig, s
 				if err != nil {
 					warnings = append(warnings, fmt.Sprintf("check remote base branch %s/%s: %v", startRemote, defaultBranch, err))
 				}
-				if localExists && remoteExists {
+				skipUpdate := false
+				if repo.LocalPath != "" && !looksLikeBareRepo(repo.LocalPath) {
+					if branch, ok, err := input.Git.CurrentBranch(repo.LocalPath); err != nil {
+						warnings = append(warnings, fmt.Sprintf("check current branch for %s: %v", repo.LocalPath, err))
+					} else if ok && branch == defaultBranch {
+						skipUpdate = true
+					}
+				}
+
+				if localExists && remoteExists && !skipUpdate {
 					ancestor, err := input.Git.IsAncestor(gitDirPath, localRef, remoteRef)
 					if err != nil {
 						warnings = append(warnings, fmt.Sprintf("compare base branch %s to %s/%s: %v", defaultBranch, startRemote, defaultBranch, err))

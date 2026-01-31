@@ -172,6 +172,7 @@ func (c CLIClient) Fetch(ctx context.Context, repoPath, remoteName string) error
 	return err
 }
 
+// UpdateBranch force-updates branchName to targetRef. Callers must ensure the update is safe.
 func (c CLIClient) UpdateBranch(ctx context.Context, repoPath, branchName, targetRef string) error {
 	if repoPath == "" {
 		return errors.New("repo path required")
