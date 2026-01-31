@@ -208,6 +208,8 @@ jobs:
         uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version: "24"
+      - name: Install create-dmg
+        run: npm install -g create-dmg@8.0.0
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
       - name: Compute build metadata
@@ -220,7 +222,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "commit=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
       - name: Build Wails app
-        run: wails build -trimpath -ldflags "-s -w -X main.appVersion=${{ steps.build_meta.outputs.version }} -X main.appCommit=${{ steps.build_meta.outputs.commit }}"
+        run: wails build -platform darwin/universal -trimpath -ldflags "-s -w -X main.appVersion=${{ steps.build_meta.outputs.version }} -X main.appCommit=${{ steps.build_meta.outputs.commit }}"
         working-directory: wails-ui/workset
       - name: Signing status
         id: signing
@@ -334,50 +336,80 @@ jobs:
             xcrun stapler staple "$app"
             rm -f "$zip_path"
           done
-      - name: Rename artifacts
+      - name: Build DMG
         shell: bash
+        env:
+          TAG: ${{ needs.prepare-alpha.outputs.alpha_version }}
         run: |
           set -euo pipefail
-          tag="${{ needs.prepare-alpha.outputs.alpha_version }}"
-          os="macos"
-          dir="wails-ui/workset/build/bin"
-          if [ ! -d "$dir" ]; then
-            echo "Missing build output directory: $dir"
+          app="wails-ui/workset/build/bin/workset.app"
+          out="$RUNNER_TEMP/dmg"
+          rm -rf "$out"
+          mkdir -p "$out"
+          create-dmg --overwrite --no-code-sign --no-version-in-filename "$app" "$out"
+          shopt -s nullglob
+          dmgs=("$out"/*.dmg)
+          if [ ${#dmgs[@]} -ne 1 ]; then
+            echo "Expected one DMG in $out, found ${#dmgs[@]}"
+            ls -la "$out"
             exit 1
           fi
-          shopt -s nullglob
-          for path in "$dir"/*; do
-            base="$(basename "$path")"
-            if [[ "$base" == *.app ]]; then
-              new="workset-${tag}-${os}.app"
-            elif [[ "$base" == *.exe ]]; then
-              new="workset-${tag}-${os}.exe"
-            else
-              new="workset-${tag}-${os}-${base}"
-            fi
-            mv "$path" "$dir/$new"
-          done
-      - name: Package macOS app
+          mv "${dmgs[0]}" "wails-ui/workset/build/bin/workset-${TAG}-macos.dmg"
+      - name: Codesign DMG
+        if: steps.signing.outputs.enabled == 'true'
         shell: bash
+        env:
+          TAG: ${{ needs.prepare-alpha.outputs.alpha_version }}
         run: |
           set -euo pipefail
-          dir="wails-ui/workset/build/bin"
-          shopt -s nullglob
-          apps=("$dir"/*.app)
-          if [ ${#apps[@]} -eq 0 ]; then
-            echo "No .app bundles found to package in $dir"
+          dmg="wails-ui/workset/build/bin/workset-${TAG}-macos.dmg"
+          identity=$(security find-identity -v -p codesigning | awk -F\" '/Developer ID Application/ {print $2; exit}')
+          if [ -z "$identity" ]; then
+            echo "Developer ID Application identity not found"
+            security find-identity -v -p codesigning || true
             exit 1
           fi
-          for app in "${apps[@]}"; do
-            zip_path="${app}.zip"
-            ditto -c -k --sequesterRsrc --keepParent "$app" "$zip_path"
-          done
+          /usr/bin/codesign --force --timestamp --sign "$identity" "$dmg"
+      - name: Notarize and staple DMG
+        if: steps.signing.outputs.enabled == 'true'
+        shell: bash
+        env:
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+          KEY_PATH: ${{ runner.temp }}/notary_api_key.p8
+          TAG: ${{ needs.prepare-alpha.outputs.alpha_version }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, os
+          data = os.environ["MACOS_NOTARY_KEY"]
+          with open(os.environ["KEY_PATH"], "wb") as f:
+              f.write(base64.b64decode(data))
+          PY
+          dmg="wails-ui/workset/build/bin/workset-${TAG}-macos.dmg"
+          result=$(xcrun notarytool submit "$dmg" \
+            --key "$RUNNER_TEMP/notary_api_key.p8" \
+            --key-id "$MACOS_NOTARY_KEY_ID" \
+            --issuer "$MACOS_NOTARY_ISSUER_ID" \
+            --wait \
+            --output-format json)
+          id=$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          status=$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
+          if [ "$status" != "Accepted" ]; then
+            xcrun notarytool log "$id" \
+              --key "$RUNNER_TEMP/notary_api_key.p8" \
+              --key-id "$MACOS_NOTARY_KEY_ID" \
+              --issuer "$MACOS_NOTARY_ISSUER_ID"
+            exit 1
+          fi
+          xcrun stapler staple "$dmg"
       - name: Upload release assets
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
         with:
           tag_name: ${{ needs.prepare-alpha.outputs.alpha_version }}
           prerelease: true
-          files: wails-ui/workset/build/bin/*
+          files: wails-ui/workset/build/bin/workset-${{ needs.prepare-alpha.outputs.alpha_version }}-macos.dmg
 
   wails-windows-alpha:
     needs: [prepare-alpha, alpha-release]
@@ -526,6 +558,8 @@ jobs:
         uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version: "24"
+      - name: Install create-dmg
+        run: npm install -g create-dmg@8.0.0
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
       - name: Compute build metadata
@@ -538,7 +572,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "commit=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
       - name: Build Wails app
-        run: wails build -trimpath -ldflags "-s -w -X main.appVersion=${{ steps.build_meta.outputs.version }} -X main.appCommit=${{ steps.build_meta.outputs.commit }}"
+        run: wails build -platform darwin/universal -trimpath -ldflags "-s -w -X main.appVersion=${{ steps.build_meta.outputs.version }} -X main.appCommit=${{ steps.build_meta.outputs.commit }}"
         working-directory: wails-ui/workset
       - name: Signing status
         id: signing
@@ -652,50 +686,80 @@ jobs:
             xcrun stapler staple "$app"
             rm -f "$zip_path"
           done
-      - name: Rename artifacts
+      - name: Build DMG
         shell: bash
+        env:
+          TAG: ${{ needs.stable-release.outputs.tag }}
         run: |
           set -euo pipefail
-          tag="${{ needs.stable-release.outputs.tag }}"
-          os="macos"
-          dir="wails-ui/workset/build/bin"
-          if [ ! -d "$dir" ]; then
-            echo "Missing build output directory: $dir"
+          app="wails-ui/workset/build/bin/workset.app"
+          out="$RUNNER_TEMP/dmg"
+          rm -rf "$out"
+          mkdir -p "$out"
+          create-dmg --overwrite --no-code-sign --no-version-in-filename "$app" "$out"
+          shopt -s nullglob
+          dmgs=("$out"/*.dmg)
+          if [ ${#dmgs[@]} -ne 1 ]; then
+            echo "Expected one DMG in $out, found ${#dmgs[@]}"
+            ls -la "$out"
             exit 1
           fi
-          shopt -s nullglob
-          for path in "$dir"/*; do
-            base="$(basename "$path")"
-            if [[ "$base" == *.app ]]; then
-              new="workset-${tag}-${os}.app"
-            elif [[ "$base" == *.exe ]]; then
-              new="workset-${tag}-${os}.exe"
-            else
-              new="workset-${tag}-${os}-${base}"
-            fi
-            mv "$path" "$dir/$new"
-          done
-      - name: Package macOS app
+          mv "${dmgs[0]}" "wails-ui/workset/build/bin/workset-${TAG}-macos.dmg"
+      - name: Codesign DMG
+        if: steps.signing.outputs.enabled == 'true'
         shell: bash
+        env:
+          TAG: ${{ needs.stable-release.outputs.tag }}
         run: |
           set -euo pipefail
-          dir="wails-ui/workset/build/bin"
-          shopt -s nullglob
-          apps=("$dir"/*.app)
-          if [ ${#apps[@]} -eq 0 ]; then
-            echo "No .app bundles found to package in $dir"
+          dmg="wails-ui/workset/build/bin/workset-${TAG}-macos.dmg"
+          identity=$(security find-identity -v -p codesigning | awk -F\" '/Developer ID Application/ {print $2; exit}')
+          if [ -z "$identity" ]; then
+            echo "Developer ID Application identity not found"
+            security find-identity -v -p codesigning || true
             exit 1
           fi
-          for app in "${apps[@]}"; do
-            zip_path="${app}.zip"
-            ditto -c -k --sequesterRsrc --keepParent "$app" "$zip_path"
-          done
+          /usr/bin/codesign --force --timestamp --sign "$identity" "$dmg"
+      - name: Notarize and staple DMG
+        if: steps.signing.outputs.enabled == 'true'
+        shell: bash
+        env:
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+          KEY_PATH: ${{ runner.temp }}/notary_api_key.p8
+          TAG: ${{ needs.stable-release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, os
+          data = os.environ["MACOS_NOTARY_KEY"]
+          with open(os.environ["KEY_PATH"], "wb") as f:
+              f.write(base64.b64decode(data))
+          PY
+          dmg="wails-ui/workset/build/bin/workset-${TAG}-macos.dmg"
+          result=$(xcrun notarytool submit "$dmg" \
+            --key "$RUNNER_TEMP/notary_api_key.p8" \
+            --key-id "$MACOS_NOTARY_KEY_ID" \
+            --issuer "$MACOS_NOTARY_ISSUER_ID" \
+            --wait \
+            --output-format json)
+          id=$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          status=$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
+          if [ "$status" != "Accepted" ]; then
+            xcrun notarytool log "$id" \
+              --key "$RUNNER_TEMP/notary_api_key.p8" \
+              --key-id "$MACOS_NOTARY_KEY_ID" \
+              --issuer "$MACOS_NOTARY_ISSUER_ID"
+            exit 1
+          fi
+          xcrun stapler staple "$dmg"
       - name: Upload release assets
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
         with:
           tag_name: ${{ needs.stable-release.outputs.tag }}
           prerelease: false
-          files: wails-ui/workset/build/bin/*
+          files: wails-ui/workset/build/bin/workset-${{ needs.stable-release.outputs.tag }}-macos.dmg
 
   wails-windows-stable:
     needs: stable-release
