@@ -7,7 +7,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/strantalis/workset/pkg/sessiond"
@@ -76,10 +78,33 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	server.SetShutdown(cancel)
+	handleShutdownSignals(cancel)
 
 	if err := server.Listen(ctx); err != nil {
 		logFatal(err)
 	}
+}
+
+func handleShutdownSignals(cancel context.CancelFunc) {
+	signalCh := make(chan os.Signal, 1)
+	signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		sig := <-signalCh
+		exe, err := os.Executable()
+		if err != nil || strings.TrimSpace(exe) == "" {
+			exe = "unknown"
+		}
+		_, _ = fmt.Fprintf(
+			os.Stderr,
+			"sessiond: shutdown_signal source=%q reason=%q pid=%d exe=%q signal=%q\n",
+			"sessiond",
+			"signal",
+			os.Getpid(),
+			exe,
+			sig.String(),
+		)
+		cancel()
+	}()
 }
 
 func loadIdleTimeout() string {

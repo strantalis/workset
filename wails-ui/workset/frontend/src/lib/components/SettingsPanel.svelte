@@ -123,7 +123,7 @@
     success = null
     try {
       const status = await Promise.race([
-        restartSessiond(),
+        restartSessiond('settings_panel'),
         new Promise<SessiondStatusResponse>((_, reject) => {
           window.setTimeout(() => {
             reject(new Error('Session daemon restart timed out.'))

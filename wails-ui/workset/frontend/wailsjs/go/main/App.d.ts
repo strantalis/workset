@@ -109,6 +109,8 @@ export function ResolveReviewThread(arg1:main.ResolveReviewThreadRequest):Promis
 
 export function RestartSessiond():Promise<main.SessiondStatus>;
 
+export function RestartSessiondWithReason(arg1:string):Promise<main.SessiondStatus>;
+
 export function SendPullRequestReviewsToTerminal(arg1:main.PullRequestReviewsRequest):Promise<void>;
 
 export function SetAgentCLIPath(arg1:main.AgentCLIPathRequest):Promise<worksetapi.AgentCLIStatusJSON>;
