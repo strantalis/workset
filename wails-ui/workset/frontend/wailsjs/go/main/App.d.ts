@@ -15,8 +15,6 @@ export function ArchiveWorkspace(arg1:string,arg2:string):Promise<worksetapi.Wor
 
 export function CheckAgentStatus(arg1:main.AgentCheckRequest):Promise<worksetapi.AgentCLIStatusJSON>;
 
-export function SetAgentCLIPath(arg1:main.AgentCLIPathRequest):Promise<worksetapi.AgentCLIStatusJSON>;
-
 export function CommitAndPush(arg1:main.CommitAndPushRequest):Promise<worksetapi.CommitAndPushResultJSON>;
 
 export function CreateAlias(arg1:main.AliasUpsertRequest):Promise<worksetapi.AliasMutationResultJSON>;
@@ -112,6 +110,8 @@ export function ResolveReviewThread(arg1:main.ResolveReviewThreadRequest):Promis
 export function RestartSessiond():Promise<main.SessiondStatus>;
 
 export function SendPullRequestReviewsToTerminal(arg1:main.PullRequestReviewsRequest):Promise<void>;
+
+export function SetAgentCLIPath(arg1:main.AgentCLIPathRequest):Promise<worksetapi.AgentCLIStatusJSON>;
 
 export function SetDefaultSetting(arg1:string,arg2:string):Promise<worksetapi.ConfigSetResultJSON>;
 

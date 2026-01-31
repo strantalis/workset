@@ -150,18 +150,6 @@ export namespace kitty {
 
 export namespace main {
 	
-	export class AgentCheckRequest {
-	    agent: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new AgentCheckRequest(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.agent = source["agent"];
-	    }
-	}
 	export class AgentCLIPathRequest {
 	    agent: string;
 	    path: string;
@@ -174,6 +162,18 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.agent = source["agent"];
 	        this.path = source["path"];
+	    }
+	}
+	export class AgentCheckRequest {
+	    agent: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AgentCheckRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.agent = source["agent"];
 	    }
 	}
 	export class AliasUpsertRequest {
@@ -1779,3 +1779,4 @@ export namespace worksetapi {
 	}
 
 }
+

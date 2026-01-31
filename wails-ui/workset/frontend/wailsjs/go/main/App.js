@@ -26,10 +26,6 @@ export function CheckAgentStatus(arg1) {
   return window['go']['main']['App']['CheckAgentStatus'](arg1);
 }
 
-export function SetAgentCLIPath(arg1) {
-  return window['go']['main']['App']['SetAgentCLIPath'](arg1);
-}
-
 export function CommitAndPush(arg1) {
   return window['go']['main']['App']['CommitAndPush'](arg1);
 }
@@ -220,6 +216,10 @@ export function RestartSessiond() {
 
 export function SendPullRequestReviewsToTerminal(arg1) {
   return window['go']['main']['App']['SendPullRequestReviewsToTerminal'](arg1);
+}
+
+export function SetAgentCLIPath(arg1) {
+  return window['go']['main']['App']['SetAgentCLIPath'](arg1);
 }
 
 export function SetDefaultSetting(arg1, arg2) {
