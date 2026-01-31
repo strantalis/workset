@@ -41,6 +41,25 @@
   import type {RepoLocalStatus} from '../api'
   import GitHubLoginModal from './GitHubLoginModal.svelte'
 
+  /**
+   * Validates and opens URL only if it belongs to trusted GitHub domains.
+   */
+  function validateAndOpenURL(url: string | undefined | null): void {
+    if (!url) return
+
+    try {
+      const parsed = new URL(url)
+      const hostname = parsed.hostname.toLowerCase()
+
+      // Allow github.com and subdomains (for GitHub Enterprise)
+      if (hostname === 'github.com' || hostname.endsWith('.github.com')) {
+        BrowserOpenURL(url)
+      }
+    } catch {
+      // Invalid URL - silently ignore
+    }
+  }
+
   // Local type definitions for @pierre/diffs generic types
   // (The library exports these but TypeScript doesn't resolve the generics correctly)
   type AnnotationSide = 'deletions' | 'additions'
@@ -1091,7 +1110,7 @@
           <button
             class="pr-badge"
             type="button"
-            onclick={() => prStatus && BrowserOpenURL(prStatus.pullRequest.url)}
+            onclick={() => validateAndOpenURL(prStatus?.pullRequest?.url)}
             title="Open PR #{prStatus.pullRequest.number} on GitHub"
           >
             <span class="pr-badge-number">PR #{prStatus.pullRequest.number}</span>
@@ -1362,7 +1381,7 @@
                   <button
                     class="check-link"
                     type="button"
-                    onclick={() => BrowserOpenURL(check.detailsUrl!)}
+                    onclick={() => check.detailsUrl && BrowserOpenURL(check.detailsUrl)}
                     title="View on GitHub"
                   >
                     ↗

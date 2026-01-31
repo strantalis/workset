@@ -5,6 +5,7 @@
 dist/
 bin/
 /workset
+go.work.sum
 coverage/
 *.out
 *.test
@@ -19,4 +20,5 @@ coverage/
 .cursor/
 .opencode/
 wails-ui/workset/build/
+wails-ui/workset/frontend/bun.lock
 site/

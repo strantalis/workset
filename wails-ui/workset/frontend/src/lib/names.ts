@@ -36,17 +36,56 @@ export function generateAlternatives(repoName: string, count = 2): string[] {
 
 /**
  * Check if input looks like a Git URL.
+ * Validates hostname against allowed git hosts to prevent SSRF.
  */
 export function looksLikeUrl(input: string): boolean {
   const trimmed = input.trim()
-  return (
-    trimmed.startsWith('git@') ||
-    trimmed.startsWith('https://') ||
-    trimmed.startsWith('http://') ||
-    trimmed.startsWith('ssh://') ||
-    trimmed.includes('github.com') ||
-    trimmed.includes('gitlab.com') ||
-    trimmed.includes('bitbucket.org')
+
+  // SSH URLs: git@host:org/repo
+  if (trimmed.startsWith('git@')) {
+    const match = trimmed.match(/^git@([^:]+):/)
+    if (match) {
+      return isAllowedHost(match[1])
+    }
+    return false
+  }
+
+  // Standard URL schemes
+  if (trimmed.startsWith('https://') ||
+      trimmed.startsWith('http://') ||
+      trimmed.startsWith('ssh://')) {
+    try {
+      const url = new URL(trimmed)
+      return isAllowedHost(url.hostname)
+    } catch {
+      return false
+    }
+  }
+
+  return false
+}
+
+/**
+ * Check if hostname is in the allowed list.
+ * Supports exact matches and subdomains of allowed hosts.
+ */
+function isAllowedHost(hostname: string): boolean {
+  const allowedHosts = [
+    'github.com',
+    'gitlab.com',
+    'bitbucket.org'
+  ]
+
+  const normalized = hostname.toLowerCase()
+
+  // Exact match
+  if (allowedHosts.includes(normalized)) {
+    return true
+  }
+
+  // Subdomain match (e.g., github.company.com)
+  return allowedHosts.some(allowed =>
+    normalized.endsWith('.' + allowed)
   )
 }
 
