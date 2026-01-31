@@ -206,6 +206,14 @@ func (a *App) GetSessiondStatus() SessiondStatus {
 }
 
 func (a *App) RestartSessiond() SessiondStatus {
+	return a.restartSessiond("manual")
+}
+
+func (a *App) RestartSessiondWithReason(reason string) SessiondStatus {
+	return a.restartSessiond(reason)
+}
+
+func (a *App) restartSessiond(reason string) SessiondStatus {
 	defer func() {
 		if r := recover(); r != nil {
 			logRestartf("restart_panic value=%v", r)
@@ -224,9 +232,14 @@ func (a *App) RestartSessiond() SessiondStatus {
 
 	client, err := a.getSessiondClientInternal(false)
 	if err == nil && client != nil {
-		logRestartf("restart_shutdown_send")
+		pid := os.Getpid()
+		exe, exeErr := os.Executable()
+		if exeErr != nil {
+			exe = "unknown"
+		}
+		logRestartf("restart_shutdown_send source=app reason=%s pid=%d exe=%s", reason, pid, exe)
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		shutdownErr := client.Shutdown(ctx)
+		shutdownErr := client.ShutdownWithReason(ctx, "app", reason)
 		cancel()
 		logRestartf("restart_shutdown_done err=%v", shutdownErr)
 		a.clearSessiondClient()
@@ -326,7 +339,7 @@ func (a *App) checkSessiondUpgrade() {
 	if err != nil {
 		if strings.Contains(err.Error(), "unknown method") {
 			logRestartf("upgrade_info_unsupported err=%v", err)
-			status := a.RestartSessiond()
+			status := a.restartSessiond("upgrade")
 			if !status.Available || status.Error != "" {
 				logRestartf("upgrade_restart_failed err=%s warning=%s", status.Error, status.Warning)
 			}
@@ -341,7 +354,7 @@ func (a *App) checkSessiondUpgrade() {
 	}
 	if info.BinaryHash != expectedHash {
 		logRestartf("upgrade_mismatch expected=%s got=%s exe=%s", expectedHash, info.BinaryHash, info.Executable)
-		status := a.RestartSessiond()
+		status := a.restartSessiond("upgrade")
 		if !status.Available || status.Error != "" {
 			logRestartf("upgrade_restart_failed err=%s warning=%s", status.Error, status.Warning)
 		}

@@ -329,7 +329,22 @@ func (s *Server) handleControl(conn net.Conn, line []byte) {
 			},
 		})
 	case "shutdown":
-		logServerf("shutdown_requested")
+		var params ShutdownRequest
+		if len(req.Params) > 0 {
+			if err := json.Unmarshal(req.Params, &params); err != nil {
+				logServerf("shutdown_request_decode_failed err=%v", err)
+			}
+		}
+		source := strings.TrimSpace(params.Source)
+		if source == "" {
+			source = "unknown"
+		}
+		reason := strings.TrimSpace(params.Reason)
+		exe := strings.TrimSpace(params.Executable)
+		if exe == "" {
+			exe = "unknown"
+		}
+		logServerf("shutdown_requested source=%q reason=%q pid=%d exe=%q", source, reason, params.PID, exe)
 		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true})
 		logServerf("shutdown_ack")
 		go func() {

@@ -47,6 +47,7 @@ import {
   GetSettings,
   GetSessiondStatus,
   RestartSessiond,
+  RestartSessiondWithReason,
   ListAliases,
   ListGroups,
   ListRemotes,
@@ -452,7 +453,11 @@ export async function fetchSessiondStatus(): Promise<SessiondStatusResponse> {
   return GetSessiondStatus()
 }
 
-export async function restartSessiond(): Promise<SessiondStatusResponse> {
+export async function restartSessiond(reason?: string): Promise<SessiondStatusResponse> {
+  const trimmed = reason?.trim()
+  if (trimmed) {
+    return RestartSessiondWithReason(trimmed)
+  }
   return RestartSessiond()
 }
 

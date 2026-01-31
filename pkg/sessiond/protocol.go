@@ -61,6 +61,13 @@ type AckRequest struct {
 	Bytes     int64  `json:"bytes"`
 }
 
+type ShutdownRequest struct {
+	Source     string `json:"source,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+	PID        int    `json:"pid,omitempty"`
+	Executable string `json:"executable,omitempty"`
+}
+
 type BacklogResponse struct {
 	SessionID  string `json:"sessionId"`
 	Data       string `json:"data"`

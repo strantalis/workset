@@ -214,6 +214,10 @@ export function RestartSessiond() {
   return window['go']['main']['App']['RestartSessiond']();
 }
 
+export function RestartSessiondWithReason(arg1) {
+  return window['go']['main']['App']['RestartSessiondWithReason'](arg1);
+}
+
 export function SendPullRequestReviewsToTerminal(arg1) {
   return window['go']['main']['App']['SendPullRequestReviewsToTerminal'](arg1);
 }

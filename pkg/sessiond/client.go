@@ -77,7 +77,12 @@ func (c *Client) List(ctx context.Context) (ListResponse, error) {
 }
 
 func (c *Client) Shutdown(ctx context.Context) error {
-	return c.call(ctx, "shutdown", struct{}{}, nil)
+	return c.ShutdownWithReason(ctx, "unknown", "")
+}
+
+func (c *Client) ShutdownWithReason(ctx context.Context, source, reason string) error {
+	req := shutdownRequest(source, reason)
+	return c.call(ctx, "shutdown", req, nil)
 }
 
 func (c *Client) Attach(ctx context.Context, sessionID string, since int64, withBuffer bool, streamID string) (*Stream, StreamMessage, error) {
@@ -320,6 +325,21 @@ func startDaemon(_ context.Context, socketPath string, opts StartOptions) error 
 		_ = logFile.Close()
 	}()
 	return nil
+}
+
+func shutdownRequest(source, reason string) ShutdownRequest {
+	req := ShutdownRequest{
+		Source: strings.TrimSpace(source),
+		Reason: strings.TrimSpace(reason),
+		PID:    os.Getpid(),
+	}
+	if req.Source == "" {
+		req.Source = "unknown"
+	}
+	if exe, err := os.Executable(); err == nil {
+		req.Executable = exe
+	}
+	return req
 }
 
 func FindSessiondBinary() (string, error) {
