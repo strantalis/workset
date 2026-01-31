@@ -19,4 +19,5 @@ coverage/
 .cursor/
 .opencode/
 wails-ui/workset/build/
+wails-ui/workset/frontend/bun.lock
 site/
