@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/strantalis/workset/internal/config"
@@ -221,6 +222,77 @@ func TestDeleteWorkspaceOutsideRootUnsafe(t *testing.T) {
 	_, err := env.svc.DeleteWorkspace(context.Background(), WorkspaceDeleteInput{
 		Selector:    WorkspaceSelector{Value: "outside"},
 		DeleteFiles: true,
+	})
+	_ = requireErrorType[UnsafeOperation](t, err)
+}
+
+func TestDeleteWorkspaceRefusesConfigPath(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+
+	_, err := env.svc.CreateWorkspace(ctx, WorkspaceCreateInput{
+		Name: "config-root",
+		Path: env.root,
+	})
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+
+	_, err = env.svc.DeleteWorkspace(ctx, WorkspaceDeleteInput{
+		Selector:    WorkspaceSelector{Value: "config-root"},
+		DeleteFiles: true,
+		Force:       true,
+		Confirmed:   true,
+	})
+	_ = requireErrorType[UnsafeOperation](t, err)
+}
+
+func TestDeleteWorkspaceMissingConfigDoesNotWriteDefaults(t *testing.T) {
+	env := newTestEnv(t)
+	t.Setenv("HOME", env.root)
+	if err := os.Remove(env.configPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("remove config: %v", err)
+	}
+	target := filepath.Join(env.root, ".workset", "workspaces", "orphan")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatalf("mkdir orphan: %v", err)
+	}
+
+	_, err := env.svc.DeleteWorkspace(context.Background(), WorkspaceDeleteInput{
+		Selector:    WorkspaceSelector{Value: "orphan"},
+		DeleteFiles: false,
+	})
+	if err != nil {
+		t.Fatalf("delete workspace: %v", err)
+	}
+	if _, err := os.Stat(env.configPath); err == nil {
+		t.Fatalf("expected config to remain missing")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("stat config: %v", err)
+	}
+}
+
+func TestDeleteWorkspaceContainingOtherWorkspaceUnsafe(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+	childRoot := env.createWorkspace(ctx, "child")
+
+	_, err := env.svc.CreateWorkspace(ctx, WorkspaceCreateInput{
+		Name: "parent",
+		Path: env.workspaceRoot,
+	})
+	if err != nil {
+		t.Fatalf("create parent workspace: %v", err)
+	}
+	if !strings.HasPrefix(childRoot, env.workspaceRoot+string(os.PathSeparator)) {
+		t.Fatalf("expected child workspace under %s, got %s", env.workspaceRoot, childRoot)
+	}
+
+	_, err = env.svc.DeleteWorkspace(ctx, WorkspaceDeleteInput{
+		Selector:    WorkspaceSelector{Value: "parent"},
+		DeleteFiles: true,
+		Force:       true,
+		Confirmed:   true,
 	})
 	_ = requireErrorType[UnsafeOperation](t, err)
 }

@@ -173,16 +173,41 @@ func (s *Service) DeleteWorkspace(ctx context.Context, input WorkspaceDeleteInpu
 	}
 
 	if input.DeleteFiles {
+		absTarget, err := filepath.Abs(root)
+		if err != nil {
+			return WorkspaceDeleteResult{}, err
+		}
+		absTarget = filepath.Clean(absTarget)
+		if info.Exists && info.Path != "" {
+			absConfig, err := filepath.Abs(info.Path)
+			if err != nil {
+				return WorkspaceDeleteResult{}, err
+			}
+			absConfig = filepath.Clean(absConfig)
+			if absConfig == absTarget || strings.HasPrefix(absConfig, absTarget+string(os.PathSeparator)) {
+				return WorkspaceDeleteResult{}, UnsafeOperation{
+					Message: fmt.Sprintf("refusing to delete %s: contains global config %s", absTarget, absConfig),
+				}
+			}
+		}
 		workspaceRoot := cfg.Defaults.WorkspaceRoot
 		if workspaceRoot != "" {
 			absRoot, err := filepath.Abs(workspaceRoot)
 			if err == nil {
 				absRoot = filepath.Clean(absRoot)
-				absTarget := filepath.Clean(root)
 				inside := absTarget == absRoot || strings.HasPrefix(absTarget, absRoot+string(os.PathSeparator))
 				if !inside && !input.Force {
 					return WorkspaceDeleteResult{}, UnsafeOperation{Message: fmt.Sprintf("refusing to delete outside defaults.workspace_root (%s); use --force to override", absRoot)}
 				}
+			}
+		}
+		contained, err := workspacesWithin(cfg, name, absTarget)
+		if err != nil {
+			return WorkspaceDeleteResult{}, err
+		}
+		if len(contained) > 0 {
+			return WorkspaceDeleteResult{}, UnsafeOperation{
+				Message: fmt.Sprintf("refusing to delete %s: contains other workspaces: %s", absTarget, strings.Join(contained, ", ")),
 			}
 		}
 	}
@@ -244,16 +269,27 @@ func (s *Service) DeleteWorkspace(ctx context.Context, input WorkspaceDeleteInpu
 		}
 	}
 
+	configChanged := false
 	if name != "" {
-		delete(cfg.Workspaces, name)
+		if _, ok := cfg.Workspaces[name]; ok {
+			delete(cfg.Workspaces, name)
+			configChanged = true
+		}
 	} else {
+		before := len(cfg.Workspaces)
 		removeWorkspaceByPath(&cfg, root)
+		if len(cfg.Workspaces) != before {
+			configChanged = true
+		}
 	}
 	if cfg.Defaults.Workspace == name || cfg.Defaults.Workspace == root {
 		cfg.Defaults.Workspace = ""
+		configChanged = true
 	}
-	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
-		return WorkspaceDeleteResult{}, err
+	if configChanged {
+		if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+			return WorkspaceDeleteResult{}, err
+		}
 	}
 
 	payload := WorkspaceDeleteResultJSON{
@@ -389,4 +425,30 @@ func warnOutsideWorkspaceRoot(root, workspaceRoot string) []string {
 		return nil
 	}
 	return []string{fmt.Sprintf("workspace created outside defaults.workspace_root (%s)", absWorkspace)}
+}
+
+func workspacesWithin(cfg config.GlobalConfig, targetName, absTarget string) ([]string, error) {
+	if absTarget == "" {
+		return nil, nil
+	}
+	contained := []string{}
+	for name, ref := range cfg.Workspaces {
+		path := strings.TrimSpace(ref.Path)
+		if path == "" {
+			continue
+		}
+		absOther, err := filepath.Abs(path)
+		if err != nil {
+			return nil, err
+		}
+		absOther = filepath.Clean(absOther)
+		if name == targetName && absOther == absTarget {
+			continue
+		}
+		if absOther == absTarget || strings.HasPrefix(absOther, absTarget+string(os.PathSeparator)) {
+			contained = append(contained, name)
+		}
+	}
+	sort.Strings(contained)
+	return contained, nil
 }

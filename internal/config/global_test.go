@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -61,6 +62,31 @@ func TestSaveLoadGlobal(t *testing.T) {
 	}
 	if loaded.Workspaces["alpha"].ArchivedReason != "paused" {
 		t.Fatalf("expected archived_reason preserved, got %+v", loaded.Workspaces["alpha"])
+	}
+}
+
+func TestSaveGlobalCreatesBackup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	original := "defaults:\n  base_branch: legacy\nrepos:\n  demo:\n    url: https://example.com/demo.git\n"
+	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg := DefaultConfig()
+	cfg.Defaults.BaseBranch = "main"
+	if err := SaveGlobal(path, cfg); err != nil {
+		t.Fatalf("SaveGlobal: %v", err)
+	}
+
+	backup, err := os.ReadFile(path + ".bak")
+	if err != nil {
+		t.Fatalf("read backup: %v", err)
+	}
+	if !strings.Contains(string(backup), "base_branch: legacy") {
+		t.Fatalf("expected backup to contain legacy base_branch, got %q", string(backup))
+	}
+	if !strings.Contains(string(backup), "demo.git") {
+		t.Fatalf("expected backup to contain repo alias, got %q", string(backup))
 	}
 }
 
