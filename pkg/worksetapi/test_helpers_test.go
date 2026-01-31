@@ -192,6 +192,10 @@ func (f *fakeGit) Fetch(_ context.Context, _ string, _ string) error {
 	return nil
 }
 
+func (f *fakeGit) UpdateBranch(_ context.Context, _ string, _ string, _ string) error {
+	return nil
+}
+
 func (f *fakeGit) Status(path string) (git.StatusSummary, error) {
 	if err, ok := f.statusErr[path]; ok {
 		return git.StatusSummary{}, err

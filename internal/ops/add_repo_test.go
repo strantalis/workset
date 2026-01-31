@@ -141,6 +141,114 @@ func TestStatusDirty(t *testing.T) {
 	}
 }
 
+func TestAddRepoFetchesAndFastForwardsBaseBranch(t *testing.T) {
+	repoRoot := filepath.Join(t.TempDir(), "repo")
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+	root := filepath.Join(t.TempDir(), "ws")
+	defaults := config.DefaultConfig().Defaults
+
+	if _, err := workspace.Init(root, "demo", defaults); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	gitDir := filepath.Join(repoRoot, ".git")
+	resolvedGitDir, err := filepath.EvalSymlinks(gitDir)
+	if err != nil {
+		t.Fatalf("EvalSymlinks: %v", err)
+	}
+	fake := newFakeGitClient()
+	fake.remotes[resolvedGitDir] = []string{defaults.Remote}
+	fake.remoteExists[key(resolvedGitDir, defaults.Remote)] = true
+	fake.refs[key(resolvedGitDir, "refs/heads/"+defaults.BaseBranch)] = true
+	fake.refs[key(resolvedGitDir, "refs/remotes/"+defaults.Remote+"/"+defaults.BaseBranch)] = true
+	fake.ancestors[key(resolvedGitDir, "refs/heads/"+defaults.BaseBranch+"->refs/remotes/"+defaults.Remote+"/"+defaults.BaseBranch)] = true
+
+	_, _, warnings, err := AddRepo(context.Background(), AddRepoInput{
+		WorkspaceRoot: root,
+		Name:          "demo-repo",
+		SourcePath:    repoRoot,
+		Defaults:      defaults,
+		Remote:        defaults.Remote,
+		DefaultBranch: defaults.BaseBranch,
+		AllowFallback: false,
+		Git:           fake,
+	})
+	if err != nil {
+		t.Fatalf("AddRepo: %v", err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("expected no warnings, got %v", warnings)
+	}
+	if len(fake.fetchCalls) != 1 {
+		t.Fatalf("expected 1 fetch call, got %d", len(fake.fetchCalls))
+	}
+	if fake.fetchCalls[0].repoPath != resolvedGitDir || fake.fetchCalls[0].remote != defaults.Remote {
+		t.Fatalf("unexpected fetch call: %+v", fake.fetchCalls[0])
+	}
+	if len(fake.updateCalls) != 1 {
+		t.Fatalf("expected 1 update call, got %d", len(fake.updateCalls))
+	}
+	if fake.updateCalls[0].repoPath != resolvedGitDir ||
+		fake.updateCalls[0].branch != defaults.BaseBranch ||
+		fake.updateCalls[0].target != defaults.Remote+"/"+defaults.BaseBranch {
+		t.Fatalf("unexpected update call: %+v", fake.updateCalls[0])
+	}
+}
+
+func TestAddRepoWarnsWhenBaseBranchDiverges(t *testing.T) {
+	repoRoot := filepath.Join(t.TempDir(), "repo")
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+	root := filepath.Join(t.TempDir(), "ws")
+	defaults := config.DefaultConfig().Defaults
+
+	if _, err := workspace.Init(root, "demo", defaults); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	gitDir := filepath.Join(repoRoot, ".git")
+	resolvedGitDir, err := filepath.EvalSymlinks(gitDir)
+	if err != nil {
+		t.Fatalf("EvalSymlinks: %v", err)
+	}
+	fake := newFakeGitClient()
+	fake.remotes[resolvedGitDir] = []string{defaults.Remote}
+	fake.remoteExists[key(resolvedGitDir, defaults.Remote)] = true
+	fake.refs[key(resolvedGitDir, "refs/heads/"+defaults.BaseBranch)] = true
+	fake.refs[key(resolvedGitDir, "refs/remotes/"+defaults.Remote+"/"+defaults.BaseBranch)] = true
+	fake.ancestors[key(resolvedGitDir, "refs/heads/"+defaults.BaseBranch+"->refs/remotes/"+defaults.Remote+"/"+defaults.BaseBranch)] = false
+
+	_, _, warnings, err := AddRepo(context.Background(), AddRepoInput{
+		WorkspaceRoot: root,
+		Name:          "demo-repo",
+		SourcePath:    repoRoot,
+		Defaults:      defaults,
+		Remote:        defaults.Remote,
+		DefaultBranch: defaults.BaseBranch,
+		AllowFallback: false,
+		Git:           fake,
+	})
+	if err != nil {
+		t.Fatalf("AddRepo: %v", err)
+	}
+	if len(fake.updateCalls) != 0 {
+		t.Fatalf("expected no update calls, got %d", len(fake.updateCalls))
+	}
+	found := false
+	for _, warning := range warnings {
+		if strings.Contains(warning, "does not fast-forward") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected fast-forward warning, got %v", warnings)
+	}
+}
+
 func setupRepo(t *testing.T) string {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "source")
@@ -156,6 +264,121 @@ func setupRepo(t *testing.T) string {
 	runGit(t, root, "add", "README.md")
 	runGit(t, root, "commit", "-m", "initial")
 	return root
+}
+
+type fakeGitClient struct {
+	fetchCalls   []fetchCall
+	updateCalls  []updateCall
+	refs         map[string]bool
+	remotes      map[string][]string
+	remoteExists map[string]bool
+	ancestors    map[string]bool
+}
+
+type fetchCall struct {
+	repoPath string
+	remote   string
+}
+
+type updateCall struct {
+	repoPath string
+	branch   string
+	target   string
+}
+
+func newFakeGitClient() *fakeGitClient {
+	return &fakeGitClient{
+		refs:         map[string]bool{},
+		remotes:      map[string][]string{},
+		remoteExists: map[string]bool{},
+		ancestors:    map[string]bool{},
+	}
+}
+
+func (f *fakeGitClient) Clone(_ context.Context, _ string, _ string, _ string) error {
+	return nil
+}
+
+func (f *fakeGitClient) CloneBare(_ context.Context, _ string, _ string, _ string) error {
+	return nil
+}
+
+func (f *fakeGitClient) AddRemote(_ string, _ string, _ string) error {
+	return nil
+}
+
+func (f *fakeGitClient) RemoteNames(repoPath string) ([]string, error) {
+	if remotes, ok := f.remotes[repoPath]; ok {
+		return remotes, nil
+	}
+	return []string{}, nil
+}
+
+func (f *fakeGitClient) RemoteURLs(_ string, _ string) ([]string, error) {
+	return nil, nil
+}
+
+func (f *fakeGitClient) ReferenceExists(repoPath, ref string) (bool, error) {
+	if ok, exists := f.refs[key(repoPath, ref)]; exists {
+		return ok, nil
+	}
+	return false, nil
+}
+
+func (f *fakeGitClient) Fetch(_ context.Context, repoPath, remoteName string) error {
+	f.fetchCalls = append(f.fetchCalls, fetchCall{repoPath: repoPath, remote: remoteName})
+	return nil
+}
+
+func (f *fakeGitClient) UpdateBranch(_ context.Context, repoPath, branchName, targetRef string) error {
+	f.updateCalls = append(f.updateCalls, updateCall{repoPath: repoPath, branch: branchName, target: targetRef})
+	return nil
+}
+
+func (f *fakeGitClient) Status(_ string) (git.StatusSummary, error) {
+	return git.StatusSummary{}, nil
+}
+
+func (f *fakeGitClient) IsRepo(_ string) (bool, error) {
+	return true, nil
+}
+
+func (f *fakeGitClient) IsAncestor(repoPath, ancestorRef, descendantRef string) (bool, error) {
+	if ok, exists := f.ancestors[key(repoPath, ancestorRef+"->"+descendantRef)]; exists {
+		return ok, nil
+	}
+	return false, nil
+}
+
+func (f *fakeGitClient) IsContentMerged(_ string, _ string, _ string) (bool, error) {
+	return false, nil
+}
+
+func (f *fakeGitClient) CurrentBranch(_ string) (string, bool, error) {
+	return "", false, nil
+}
+
+func (f *fakeGitClient) RemoteExists(repoPath, remoteName string) (bool, error) {
+	if ok, exists := f.remoteExists[key(repoPath, remoteName)]; exists {
+		return ok, nil
+	}
+	return false, nil
+}
+
+func (f *fakeGitClient) WorktreeAdd(_ context.Context, _ git.WorktreeAddOptions) error {
+	return nil
+}
+
+func (f *fakeGitClient) WorktreeRemove(_ git.WorktreeRemoveOptions) error {
+	return nil
+}
+
+func (f *fakeGitClient) WorktreeList(_ string) ([]string, error) {
+	return nil, nil
+}
+
+func key(repoPath, ref string) string {
+	return repoPath + "::" + ref
 }
 
 func addRemote(t *testing.T, repoPath, name, url string) {
