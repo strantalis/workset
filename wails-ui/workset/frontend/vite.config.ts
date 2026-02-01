@@ -1,5 +1,6 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
+import { svelteTesting } from '@testing-library/svelte/vite';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
@@ -9,10 +10,11 @@ export default defineConfig(({ mode }) => ({
 				hmr: !mode?.includes('test') && !mode?.includes('production'),
 			},
 		}),
+		svelteTesting(),
 	],
 	resolve: {
-		// Always use browser conditions for client-side app
-		conditions: ['browser'],
+		// Use browser conditions for client-side code in test mode
+		conditions: mode === 'test' ? ['browser', 'svelte'] : ['browser'],
 	},
 	test: {
 		environment: 'jsdom',
