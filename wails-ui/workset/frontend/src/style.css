@@ -1,119 +1,119 @@
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Sora:wght@500;600&display=swap');
 
 :root {
-  color-scheme: dark;
-  --font-body: 'IBM Plex Sans', system-ui, sans-serif;
-  --font-display: 'Sora', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
-  --bg: #0b0f18;
-  --panel: #0f1824;
-  --panel-strong: #141f2e;
-  --panel-soft: #0e1723;
-  --text: #f2f6fb;
-  --muted: #a3b5c9;
-  --border: #243244;
-  --brand-blue: #2d8cff;
-  --brand-green: #86c442;
-  --brand-orange: #f28c28;
-  --accent: var(--brand-blue);
-  --warning: var(--brand-orange);
-  --danger: #ff6b6b;
-  --success: var(--brand-green);
+	color-scheme: dark;
+	--font-body: 'IBM Plex Sans', system-ui, sans-serif;
+	--font-display: 'Sora', system-ui, sans-serif;
+	--font-mono: 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
+	--bg: #0b0f18;
+	--panel: #0f1824;
+	--panel-strong: #141f2e;
+	--panel-soft: #0e1723;
+	--text: #f2f6fb;
+	--muted: #a3b5c9;
+	--border: #243244;
+	--brand-blue: #2d8cff;
+	--brand-green: #86c442;
+	--brand-orange: #f28c28;
+	--accent: var(--brand-blue);
+	--warning: var(--brand-orange);
+	--danger: #ff6b6b;
+	--success: var(--brand-green);
 
-  /* Opacity scale */
-  --opacity-subtle: 0.06;
-  --opacity-soft: 0.12;
-  --opacity-medium: 0.35;
-  --opacity-strong: 0.5;
+	/* Opacity scale */
+	--opacity-subtle: 0.06;
+	--opacity-soft: 0.12;
+	--opacity-medium: 0.35;
+	--opacity-strong: 0.5;
 
-  /* Semantic colors with opacity (using color-mix) */
-  --accent-subtle: color-mix(in srgb, var(--accent) 12%, transparent);
-  --accent-soft: color-mix(in srgb, var(--accent) 35%, transparent);
-  --accent-rgb: 45, 140, 255;
-  --danger-subtle: color-mix(in srgb, var(--danger) 12%, transparent);
-  --danger-soft: color-mix(in srgb, var(--danger) 50%, transparent);
-  --danger-rgb: 255, 107, 107;
-  --warning-subtle: color-mix(in srgb, var(--warning) 8%, transparent);
-  --warning-soft: color-mix(in srgb, var(--warning) 30%, transparent);
-  --warning-rgb: 242, 140, 40;
-  --success-subtle: color-mix(in srgb, var(--success) 8%, transparent);
-  --success-soft: color-mix(in srgb, var(--success) 30%, transparent);
-  --success-rgb: 134, 196, 66;
+	/* Semantic colors with opacity (using color-mix) */
+	--accent-subtle: color-mix(in srgb, var(--accent) 12%, transparent);
+	--accent-soft: color-mix(in srgb, var(--accent) 35%, transparent);
+	--accent-rgb: 45, 140, 255;
+	--danger-subtle: color-mix(in srgb, var(--danger) 12%, transparent);
+	--danger-soft: color-mix(in srgb, var(--danger) 50%, transparent);
+	--danger-rgb: 255, 107, 107;
+	--warning-subtle: color-mix(in srgb, var(--warning) 8%, transparent);
+	--warning-soft: color-mix(in srgb, var(--warning) 30%, transparent);
+	--warning-rgb: 242, 140, 40;
+	--success-subtle: color-mix(in srgb, var(--success) 8%, transparent);
+	--success-soft: color-mix(in srgb, var(--success) 30%, transparent);
+	--success-rgb: 134, 196, 66;
 
-  /* Standardized radii */
-  --radius-sm: 8px;
-  --radius-md: 10px;
-  --radius-lg: 12px;
+	/* Standardized radii */
+	--radius-sm: 8px;
+	--radius-md: 10px;
+	--radius-lg: 12px;
 
-  /* Transition timing */
-  --transition-fast: 120ms ease;
-  --transition-normal: 160ms ease;
+	/* Transition timing */
+	--transition-fast: 120ms ease;
+	--transition-normal: 160ms ease;
 
-  /* Spacing tokens */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
+	/* Spacing tokens */
+	--space-1: 4px;
+	--space-2: 8px;
+	--space-3: 12px;
+	--space-4: 16px;
+	--space-5: 20px;
+	--space-6: 24px;
 
-  /* Vibrancy surfaces */
-  --surface-translucent: rgba(15, 24, 36, 0.65);
-  --surface-translucent-strong: rgba(20, 31, 46, 0.75);
+	/* Vibrancy surfaces */
+	--surface-translucent: rgba(15, 24, 36, 0.65);
+	--surface-translucent-strong: rgba(20, 31, 46, 0.75);
 
-  /* Subtle shadows for depth */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.15);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.2);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.25);
+	/* Subtle shadows for depth */
+	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.15);
+	--shadow-md: 0 4px 12px rgba(0, 0, 0, 0.2);
+	--shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.25);
 
-  /* Inset highlights for glass effect */
-  --inset-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+	/* Inset highlights for glass effect */
+	--inset-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 *,
 *::before,
 *::after {
-  box-sizing: border-box;
+	box-sizing: border-box;
 }
 
 html,
 body {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-  background: var(--bg);
-  color: var(--text);
+	margin: 0;
+	padding: 0;
+	height: 100%;
+	background: var(--bg);
+	color: var(--text);
 }
 
 body {
-  font-size: 14px;
-  font-family: var(--font-body);
+	font-size: 14px;
+	font-family: var(--font-body);
 }
 
 button {
-  font-family: inherit;
+	font-family: inherit;
 }
 
 #app {
-  min-height: 100vh;
+	min-height: 100vh;
 }
 
 /* Focus visibility for accessibility */
 :focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
 }
 
 /* Input focus styling */
 input:focus,
 select:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
+	outline: none;
+	border-color: var(--accent);
+	box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 /* Placeholder styling */
 ::placeholder {
-  color: var(--muted);
-  opacity: 0.6;
+	color: var(--muted);
+	opacity: 0.6;
 }

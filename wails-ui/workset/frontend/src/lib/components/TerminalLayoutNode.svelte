@@ -11,24 +11,44 @@
 
   type DropZone = 'left' | 'right' | 'top' | 'bottom' | 'center' | null
 
+  // Props must use 'let' for Svelte 5 reactivity ($props() pattern)
+  // eslint-disable-next-line prefer-const
   let {
+    // eslint-disable-next-line prefer-const
     node,
+    // eslint-disable-next-line prefer-const
     workspaceId,
+    // eslint-disable-next-line prefer-const
     workspaceName,
+    // eslint-disable-next-line prefer-const
     active = true,
+    // eslint-disable-next-line prefer-const
     focusedPaneId,
+    // eslint-disable-next-line prefer-const
     totalPaneCount,
+    // eslint-disable-next-line prefer-const
     dragState = null,
+    // eslint-disable-next-line prefer-const
     onFocusPane,
+    // eslint-disable-next-line prefer-const
     onSelectTab,
+    // eslint-disable-next-line prefer-const
     onAddTab,
+    // eslint-disable-next-line prefer-const
     onSplitPane,
+    // eslint-disable-next-line prefer-const
     onCloseTab,
+    // eslint-disable-next-line prefer-const
     onClosePane,
+    // eslint-disable-next-line prefer-const
     onResizeSplit,
+    // eslint-disable-next-line prefer-const
     onTabDragStart,
+    // eslint-disable-next-line prefer-const
     onTabDragEnd,
+    // eslint-disable-next-line prefer-const
     onTabDrop,
+    // eslint-disable-next-line prefer-const
     onTabSplitDrop
   }: {
     node: any
@@ -49,7 +69,9 @@
     onTabDragEnd?: () => void
     onTabDrop?: (targetPaneId: string, targetIndex: number) => void
     onTabSplitDrop?: (targetPaneId: string, direction: 'row' | 'column', position: 'before' | 'after') => void
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } = $props()
+  /* eslint-enable prefer-const */
 
   const isPane = (value: any): boolean => value?.kind === 'pane'
   const isSplit = (value: any): boolean => value?.kind === 'split'
@@ -316,7 +338,7 @@
         ondrop={handleHeaderDrop}
       >
         <div class="pane-tabs">
-          {#each node.tabs as tab, index}
+          {#each node.tabs as tab, index (tab.id)}
             <div
               class="pane-tab"
               class:active={tab.id === activeTab.id}

@@ -3,35 +3,77 @@
  * These create memorable, distinguishable workspace names.
  */
 const natureWords = [
-  // Trees
-  'oak', 'maple', 'cedar', 'pine', 'birch', 'willow', 'aspen', 'elm',
-  // Water
-  'river', 'stream', 'lake', 'creek', 'brook', 'delta', 'falls', 'spring',
-  // Sky/Weather
-  'aurora', 'thunder', 'storm', 'cloud', 'dawn', 'dusk', 'mist', 'frost',
-  // Terrain
-  'ridge', 'valley', 'mesa', 'cliff', 'canyon', 'grove', 'meadow', 'peak',
-  // Elements
-  'stone', 'ember', 'flint', 'quartz', 'slate', 'coral', 'amber', 'jade',
-  // Animals
-  'falcon', 'heron', 'wolf', 'bear', 'hawk', 'raven', 'fox', 'elk'
-]
+	// Trees
+	'oak',
+	'maple',
+	'cedar',
+	'pine',
+	'birch',
+	'willow',
+	'aspen',
+	'elm',
+	// Water
+	'river',
+	'stream',
+	'lake',
+	'creek',
+	'brook',
+	'delta',
+	'falls',
+	'spring',
+	// Sky/Weather
+	'aurora',
+	'thunder',
+	'storm',
+	'cloud',
+	'dawn',
+	'dusk',
+	'mist',
+	'frost',
+	// Terrain
+	'ridge',
+	'valley',
+	'mesa',
+	'cliff',
+	'canyon',
+	'grove',
+	'meadow',
+	'peak',
+	// Elements
+	'stone',
+	'ember',
+	'flint',
+	'quartz',
+	'slate',
+	'coral',
+	'amber',
+	'jade',
+	// Animals
+	'falcon',
+	'heron',
+	'wolf',
+	'bear',
+	'hawk',
+	'raven',
+	'fox',
+	'elk',
+];
 
 /**
  * Generate a workspace name from a repo name with a random nature suffix.
  * Example: platform → platform-maple
  */
 export function generateWorkspaceName(repoName: string): string {
-  const word = natureWords[Math.floor(Math.random() * natureWords.length)]
-  return `${repoName}-${word}`
+	const word = natureWords[Math.floor(Math.random() * natureWords.length)];
+	return `${repoName}-${word}`;
 }
 
 /**
  * Generate alternative workspace names for suggestions.
  */
 export function generateAlternatives(repoName: string, count = 2): string[] {
-  const shuffled = [...natureWords].sort(() => Math.random() - 0.5)
-  return shuffled.slice(0, count).map(word => `${repoName}-${word}`)
+	const shuffled = [...natureWords].sort(() => Math.random() - 0.5);
+	return shuffled.slice(0, count).map((word) => `${repoName}-${word}`);
 }
 
 /**
@@ -39,30 +81,32 @@ export function generateAlternatives(repoName: string, count = 2): string[] {
  * Validates hostname against allowed git hosts to prevent SSRF.
  */
 export function looksLikeUrl(input: string): boolean {
-  const trimmed = input.trim()
+	const trimmed = input.trim();
 
-  // SSH URLs: git@host:org/repo
-  if (trimmed.startsWith('git@')) {
-    const match = trimmed.match(/^git@([^:]+):/)
-    if (match) {
-      return isAllowedHost(match[1])
-    }
-    return false
-  }
+	// SSH URLs: git@host:org/repo
+	if (trimmed.startsWith('git@')) {
+		const match = trimmed.match(/^git@([^:]+):/);
+		if (match) {
+			return isAllowedHost(match[1]);
+		}
+		return false;
+	}
 
-  // Standard URL schemes
-  if (trimmed.startsWith('https://') ||
-      trimmed.startsWith('http://') ||
-      trimmed.startsWith('ssh://')) {
-    try {
-      const url = new URL(trimmed)
-      return isAllowedHost(url.hostname)
-    } catch {
-      return false
-    }
-  }
+	// Standard URL schemes
+	if (
+		trimmed.startsWith('https://') ||
+		trimmed.startsWith('http://') ||
+		trimmed.startsWith('ssh://')
+	) {
+		try {
+			const url = new URL(trimmed);
+			return isAllowedHost(url.hostname);
+		} catch {
+			return false;
+		}
+	}
 
-  return false
+	return false;
 }
 
 /**
@@ -70,36 +114,30 @@ export function looksLikeUrl(input: string): boolean {
  * Supports exact matches and subdomains of allowed hosts.
  */
 function isAllowedHost(hostname: string): boolean {
-  const allowedHosts = [
-    'github.com',
-    'gitlab.com',
-    'bitbucket.org'
-  ]
+	const allowedHosts = ['github.com', 'gitlab.com', 'bitbucket.org'];
 
-  const normalized = hostname.toLowerCase()
+	const normalized = hostname.toLowerCase();
 
-  // Exact match
-  if (allowedHosts.includes(normalized)) {
-    return true
-  }
+	// Exact match
+	if (allowedHosts.includes(normalized)) {
+		return true;
+	}
 
-  // Subdomain match (e.g., github.company.com)
-  return allowedHosts.some(allowed =>
-    normalized.endsWith('.' + allowed)
-  )
+	// Subdomain match (e.g., github.company.com)
+	return allowedHosts.some((allowed) => normalized.endsWith('.' + allowed));
 }
 
 /**
  * Check if input looks like a file system path.
  */
 export function looksLikePath(input: string): boolean {
-  const trimmed = input.trim()
-  return (
-    trimmed.startsWith('/') ||
-    trimmed.startsWith('~') ||
-    trimmed.startsWith('./') ||
-    /^[A-Za-z]:[\\/]/.test(trimmed)  // Windows paths
-  )
+	const trimmed = input.trim();
+	return (
+		trimmed.startsWith('/') ||
+		trimmed.startsWith('~') ||
+		trimmed.startsWith('./') ||
+		/^[A-Za-z]:[\\/]/.test(trimmed) // Windows paths
+	);
 }
 
 /**
@@ -112,34 +150,34 @@ export function looksLikePath(input: string): boolean {
  *   /Users/sean/src/worker → worker
  */
 export function deriveRepoName(source: string): string | null {
-  const trimmed = source.trim()
-  if (!trimmed) return null
+	const trimmed = source.trim();
+	if (!trimmed) return null;
 
-  // Handle URLs: git@github.com:org/repo.git → repo
-  // Handle URLs: https://github.com/org/repo → repo
-  let cleaned = trimmed.replace(/\.git$/, '')
-  cleaned = cleaned.replace(/\/+$/, '')
+	// Handle URLs: git@github.com:org/repo.git → repo
+	// Handle URLs: https://github.com/org/repo → repo
+	let cleaned = trimmed.replace(/\.git$/, '');
+	cleaned = cleaned.replace(/\/+$/, '');
 
-  // SSH style: git@host:org/repo
-  const sshMatch = cleaned.match(/:([^\/]+)$/)
-  if (sshMatch && cleaned.includes('@')) {
-    return sshMatch[1]
-  }
+	// SSH style: git@host:org/repo
+	const sshMatch = cleaned.match(/:([^/]+)$/);
+	if (sshMatch && cleaned.includes('@')) {
+		return sshMatch[1];
+	}
 
-  // HTTPS/path style: last segment
-  const parts = cleaned.split('/').filter(Boolean)
-  if (parts.length > 0) {
-    return parts[parts.length - 1]
-  }
+	// HTTPS/path style: last segment
+	const parts = cleaned.split('/').filter(Boolean);
+	if (parts.length > 0) {
+		return parts[parts.length - 1];
+	}
 
-  return null
+	return null;
 }
 
 /**
  * Check if input is a URL or local path (vs a plain name).
  */
 export function isRepoSource(input: string): boolean {
-  return looksLikeUrl(input) || looksLikePath(input)
+	return looksLikeUrl(input) || looksLikePath(input);
 }
 
 /**
@@ -147,27 +185,43 @@ export function isRepoSource(input: string): boolean {
  * These create fun, memorable terminal names that blend nature + tech.
  */
 const techSuffixes = [
-  'byte', 'buffer', 'stack', 'cache', 'thread',
-  'kernel', 'node', 'packet', 'grid', 'core',
-  'flux', 'signal', 'stream', 'pulse', 'spark',
-  'loop', 'wire', 'link', 'seed', 'root'
-]
+	'byte',
+	'buffer',
+	'stack',
+	'cache',
+	'thread',
+	'kernel',
+	'node',
+	'packet',
+	'grid',
+	'core',
+	'flux',
+	'signal',
+	'stream',
+	'pulse',
+	'spark',
+	'loop',
+	'wire',
+	'link',
+	'seed',
+	'root',
+];
 
 /**
  * Extract the nature word from a workspace name.
  * Example: "platform-oak" → "oak"
  */
 function extractNatureWord(workspaceName: string): string | null {
-  const parts = workspaceName.split('-')
-  const lastPart = parts[parts.length - 1]
-  
-  // Check if the last part is a nature word
-  if (natureWords.includes(lastPart.toLowerCase())) {
-    return lastPart.toLowerCase()
-  }
-  
-  // Otherwise, return a random nature word
-  return natureWords[Math.floor(Math.random() * natureWords.length)]
+	const parts = workspaceName.split('-');
+	const lastPart = parts[parts.length - 1];
+
+	// Check if the last part is a nature word
+	if (natureWords.includes(lastPart.toLowerCase())) {
+		return lastPart.toLowerCase();
+	}
+
+	// Otherwise, return a random nature word
+	return natureWords[Math.floor(Math.random() * natureWords.length)];
 }
 
 /**
@@ -176,7 +230,7 @@ function extractNatureWord(workspaceName: string): string | null {
  * Example: "oak-byte", "thunder-kernel", "stream-node"
  */
 export function generateTerminalName(workspaceName: string, index: number = 0): string {
-  const natureWord = extractNatureWord(workspaceName) || 'crystal'
-  const techWord = techSuffixes[index % techSuffixes.length]
-  return `${natureWord}-${techWord}`
+	const natureWord = extractNatureWord(workspaceName) || 'crystal';
+	const techWord = techSuffixes[index % techSuffixes.length];
+	return `${natureWord}-${techWord}`;
 }
