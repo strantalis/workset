@@ -2141,13 +2141,13 @@
 
 	.terminal-body {
 		background: var(--panel);
-		border: 1px solid var(--border);
-		border-radius: 12px;
-		padding: 2px;
+		border: none;
+		border-radius: 0;
+		padding: 0;
 		flex: 1;
 		display: flex;
 		flex-direction: column;
-		gap: 4px;
+		gap: 0;
 		min-height: 0;
 	}
 
@@ -2158,8 +2158,8 @@
 	}
 
 	.terminal.compact .terminal-body {
-		padding: 2px;
-		border-radius: 10px;
+		padding: 0;
+		border-radius: 0;
 	}
 
 	.daemon-status {
@@ -2335,21 +2335,11 @@
 
 	:global(.terminal-instance .xterm-viewport) {
 		background: transparent;
-		scrollbar-width: thin;
-		scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+		scrollbar-width: none;
 	}
 
 	:global(.terminal-instance .xterm-viewport::-webkit-scrollbar) {
-		width: 8px;
-	}
-
-	:global(.terminal-instance .xterm-viewport::-webkit-scrollbar-track) {
-		background: transparent;
-	}
-
-	:global(.terminal-instance .xterm-viewport::-webkit-scrollbar-thumb) {
-		background: rgba(255, 255, 255, 0.18);
-		border-radius: 6px;
+		display: none;
 	}
 
 	:global(.terminal-instance .kitty-overlay) {
