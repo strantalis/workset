@@ -3,9 +3,16 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
-	plugins: [svelte({ hot: !mode?.includes('test') })],
+	plugins: [
+		svelte({
+			compilerOptions: {
+				hmr: !mode?.includes('test') && !mode?.includes('production'),
+			},
+		}),
+	],
 	resolve: {
-		conditions: mode?.includes('test') ? ['browser'] : [],
+		// Always use browser conditions for client-side app
+		conditions: ['browser'],
 	},
 	test: {
 		environment: 'jsdom',
@@ -14,13 +21,7 @@ export default defineConfig(({ mode }) => ({
 		coverage: {
 			provider: 'v8',
 			reporter: ['text', 'html'],
-			exclude: [
-				'node_modules/',
-				'src/test-setup.ts',
-				'**/*.d.ts',
-				'**/*.spec.ts',
-				'**/*.test.ts',
-			],
+			exclude: ['node_modules/', 'src/test-setup.ts', '**/*.d.ts', '**/*.spec.ts', '**/*.test.ts'],
 		},
 	},
 }));
