@@ -2633,7 +2633,7 @@
 
 	.resize-handle {
 		position: absolute;
-		left: calc(var(--sidebar-width, 280px) - 2px);
+		left: calc(var(--sidebar-width, 280px) + 2px);
 		top: 0;
 		bottom: 0;
 		width: 4px;
