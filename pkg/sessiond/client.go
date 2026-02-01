@@ -262,7 +262,13 @@ func EnsureRunningWithOptions(ctx context.Context, opts StartOptions) (*Client, 
 }
 
 func (c *Client) Ping(ctx context.Context) error {
-	return c.call(ctx, "list", struct{}{}, nil)
+	if err := c.call(ctx, "ping", struct{}{}, nil); err == nil {
+		return nil
+	} else if strings.Contains(err.Error(), "unknown method") {
+		return c.call(ctx, "list", struct{}{}, nil)
+	} else {
+		return err
+	}
 }
 
 func (c *Client) Info(ctx context.Context) (InfoResponse, error) {
