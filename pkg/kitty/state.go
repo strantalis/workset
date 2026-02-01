@@ -264,13 +264,6 @@ func itoaU32(v uint32) string {
 	return string(buf[i:])
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 func parseAutoID(id string) uint32 {
 	if !strings.HasPrefix(id, "auto:") {
 		return 0

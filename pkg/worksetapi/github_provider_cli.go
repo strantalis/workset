@@ -76,7 +76,7 @@ type githubCLIClient struct {
 }
 
 func (c *githubCLIClient) CreatePullRequest(ctx context.Context, owner, repo string, pr GitHubNewPullRequest) (GitHubPullRequest, error) {
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"title": pr.Title,
 		"head":  pr.Head,
 		"base":  pr.Base,
@@ -163,7 +163,7 @@ func (c *githubCLIClient) ListReviewComments(ctx context.Context, owner, repo st
 }
 
 func (c *githubCLIClient) CreateReplyComment(ctx context.Context, owner, repo string, number int, commentID int64, body string) (PullRequestReviewCommentJSON, error) {
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"body":        strings.TrimSpace(body),
 		"in_reply_to": commentID,
 	}
@@ -180,7 +180,7 @@ func (c *githubCLIClient) CreateReplyComment(ctx context.Context, owner, repo st
 }
 
 func (c *githubCLIClient) EditReviewComment(ctx context.Context, owner, repo string, commentID int64, body string) (PullRequestReviewCommentJSON, error) {
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"body": strings.TrimSpace(body),
 	}
 	raw, err := json.Marshal(payload)
@@ -300,7 +300,7 @@ func (c *githubCLIClient) ReviewThreadMap(ctx context.Context, owner, repo strin
 				} `json:"pullRequest"`
 			} `json:"repository"`
 		}
-		variables := map[string]interface{}{
+		variables := map[string]any{
 			"owner":  owner,
 			"repo":   repo,
 			"number": number,
@@ -372,7 +372,7 @@ func (c *githubCLIClient) GetReviewThreadID(ctx context.Context, commentNodeID s
 		} `json:"node"`
 	}
 
-	if err := c.graph.DoWithContext(ctx, query, map[string]interface{}{"id": commentNodeID}, &result); err != nil {
+	if err := c.graph.DoWithContext(ctx, query, map[string]any{"id": commentNodeID}, &result); err != nil {
 		return "", wrapAuthError(err)
 	}
 
@@ -413,7 +413,7 @@ func (c *githubCLIClient) ResolveReviewThread(ctx context.Context, threadID stri
 		} `json:"unresolveReviewThread"`
 	}
 
-	if err := c.graph.DoWithContext(ctx, query, map[string]interface{}{"threadId": threadID}, &result); err != nil {
+	if err := c.graph.DoWithContext(ctx, query, map[string]any{"threadId": threadID}, &result); err != nil {
 		return false, wrapAuthError(err)
 	}
 
@@ -534,7 +534,7 @@ func nextPageFromLink(link string) int {
 	if link == "" {
 		return 0
 	}
-	for _, part := range strings.Split(link, ",") {
+	for part := range strings.SplitSeq(link, ",") {
 		section := strings.Split(strings.TrimSpace(part), ";")
 		if len(section) < 2 {
 			continue

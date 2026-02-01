@@ -40,16 +40,16 @@ func (c Context) TokenMap() map[string]string {
 
 func (c Context) Env() []string {
 	env := []string{
-		fmt.Sprintf("WORKSET_ROOT=%s", c.WorkspaceRoot),
-		fmt.Sprintf("WORKSET_CONFIG=%s", c.WorkspaceConfig),
-		fmt.Sprintf("WORKSET_WORKSPACE=%s", c.WorkspaceName),
-		fmt.Sprintf("WORKSET_REPO=%s", c.RepoName),
-		fmt.Sprintf("WORKSET_REPO_DIR=%s", c.RepoDir),
-		fmt.Sprintf("WORKSET_REPO_PATH=%s", c.RepoPath),
-		fmt.Sprintf("WORKSET_WORKTREE=%s", c.WorktreePath),
-		fmt.Sprintf("WORKSET_BRANCH=%s", c.Branch),
+		"WORKSET_ROOT=" + c.WorkspaceRoot,
+		"WORKSET_CONFIG=" + c.WorkspaceConfig,
+		"WORKSET_WORKSPACE=" + c.WorkspaceName,
+		"WORKSET_REPO=" + c.RepoName,
+		"WORKSET_REPO_DIR=" + c.RepoDir,
+		"WORKSET_REPO_PATH=" + c.RepoPath,
+		"WORKSET_WORKTREE=" + c.WorktreePath,
+		"WORKSET_BRANCH=" + c.Branch,
 		fmt.Sprintf("WORKSET_EVENT=%s", c.Event),
-		fmt.Sprintf("WORKSET_REASON=%s", c.Reason),
+		"WORKSET_REASON=" + c.Reason,
 	}
 	return env
 }

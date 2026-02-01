@@ -136,7 +136,7 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 	defaults := DefaultConfig()
 
 	k := koanf.New(".")
-	if err := k.Load(confmap.Provider(map[string]interface{}{
+	if err := k.Load(confmap.Provider(map[string]any{
 		"defaults.remote":                    defaults.Defaults.Remote,
 		"defaults.base_branch":               defaults.Defaults.BaseBranch,
 		"defaults.workspace":                 defaults.Defaults.Workspace,

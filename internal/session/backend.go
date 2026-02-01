@@ -254,7 +254,7 @@ func NormalizeNameForBackend(backend Backend, name string) (string, bool, error)
 }
 
 func ScreenHasSession(output, name string) bool {
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue

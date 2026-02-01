@@ -63,11 +63,11 @@ func (s *Service) StartSession(ctx context.Context, input SessionStartInput) (Se
 	}
 
 	env := append(os.Environ(),
-		fmt.Sprintf("WORKSET_ROOT=%s", root),
-		fmt.Sprintf("WORKSET_CONFIG=%s", workspace.WorksetFile(root)),
+		"WORKSET_ROOT="+root,
+		"WORKSET_CONFIG="+workspace.WorksetFile(root),
 	)
 	if wsName != "" {
-		env = append(env, fmt.Sprintf("WORKSET_WORKSPACE=%s", wsName))
+		env = append(env, "WORKSET_WORKSPACE="+wsName)
 	}
 
 	if input.Interactive && resolvedBackend != session.BackendExec {
@@ -90,7 +90,7 @@ func (s *Service) StartSession(ctx context.Context, input SessionStartInput) (Se
 		AttachCommand: "",
 	}
 	if renamed {
-		notice.NameNotice = fmt.Sprintf("note: tmux session names use '_' for unsupported characters; using %s", sessionName)
+		notice.NameNotice = "note: tmux session names use '_' for unsupported characters; using " + sessionName
 	}
 	if resolvedBackend != session.BackendExec {
 		notice.AttachCommand = fmt.Sprintf("workset session attach %s %s", wsName, sessionName)
@@ -462,7 +462,7 @@ func (s *Service) ShowSession(ctx context.Context, input SessionShowInput) (Sess
 		return SessionRecordJSON{}, info, err
 	}
 	if sessionState == nil {
-		return SessionRecordJSON{}, info, NotFoundError{Message: fmt.Sprintf("session not recorded: %s", sessionName)}
+		return SessionRecordJSON{}, info, NotFoundError{Message: "session not recorded: " + sessionName}
 	}
 
 	backend := session.Backend(strings.ToLower(strings.TrimSpace(sessionState.Backend)))

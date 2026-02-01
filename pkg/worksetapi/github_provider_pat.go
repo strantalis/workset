@@ -343,7 +343,7 @@ func parseGitHubScopes(resp *github.Response) []string {
 	if resp == nil || resp.Response == nil {
 		return nil
 	}
-	header := resp.Header.Get("X-OAuth-Scopes")
+	header := resp.Header.Get("X-Oauth-Scopes")
 	if strings.TrimSpace(header) == "" {
 		return nil
 	}

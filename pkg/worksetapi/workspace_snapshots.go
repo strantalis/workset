@@ -40,7 +40,7 @@ func (s *Service) ListWorkspaceSnapshots(ctx context.Context, opts WorkspaceSnap
 		wsConfig, err := s.workspaces.LoadConfig(ctx, root)
 		if err != nil {
 			if os.IsNotExist(err) {
-				return WorkspaceSnapshotResult{}, NotFoundError{Message: fmt.Sprintf("workset.yaml not found at %s", worksetFilePath(root))}
+				return WorkspaceSnapshotResult{}, NotFoundError{Message: "workset.yaml not found at " + worksetFilePath(root)}
 			}
 			return WorkspaceSnapshotResult{}, err
 		}

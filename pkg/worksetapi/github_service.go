@@ -448,7 +448,7 @@ func graphQLResolveThread(ctx context.Context, token, host, threadID string, res
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return false, ValidationError{Message: fmt.Sprintf("GraphQL request failed: %s", string(respBody))}
+		return false, ValidationError{Message: "GraphQL request failed: " + string(respBody)}
 	}
 
 	var result struct {
@@ -556,7 +556,7 @@ func graphQLReviewThreadMap(ctx context.Context, token, host, owner, repo string
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			return nil, ValidationError{Message: fmt.Sprintf("GraphQL request failed: %s", string(respBody))}
+			return nil, ValidationError{Message: "GraphQL request failed: " + string(respBody)}
 		}
 
 		var result struct {
@@ -666,7 +666,7 @@ func graphQLGetThreadID(ctx context.Context, endpoint, token, commentNodeID stri
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", ValidationError{Message: fmt.Sprintf("GraphQL request failed: %s", string(respBody))}
+		return "", ValidationError{Message: "GraphQL request failed: " + string(respBody)}
 	}
 
 	var result struct {
@@ -1197,7 +1197,7 @@ func (s *Service) runAgentPromptRaw(ctx context.Context, repoPath, agent, prompt
 		}
 		var execErr *exec.Error
 		if errors.As(err, &execErr) {
-			message = fmt.Sprintf("agent command not found: %s", command[0])
+			message = "agent command not found: " + command[0]
 		} else if message == "" {
 			message = "agent command failed"
 		}
@@ -1436,10 +1436,10 @@ func formatGitHubAPIError(err error) string {
 var (
 	prSchemaOnce     sync.Once
 	prSchemaPath     string
-	prSchemaErr      error
+	errPRSchema      error
 	commitSchemaOnce sync.Once
 	commitSchemaPath string
-	commitSchemaErr  error
+	errCommitSchema  error
 )
 
 func prepareAgentCommand(command []string, prompt string, schema string) ([]string, []string, string, error) {
@@ -1461,11 +1461,12 @@ func prepareAgentCommand(command []string, prompt string, schema string) ([]stri
 	}
 
 	args := command[1:]
-	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+	switch {
+	case len(args) == 0 || strings.HasPrefix(args[0], "-"):
 		args = append([]string{"exec"}, args...)
-	} else if args[0] == "exec" || args[0] == "e" {
+	case args[0] == "exec" || args[0] == "e":
 		// ok
-	} else {
+	default:
 		// Any other subcommand should pass through unchanged.
 		return command, env, prompt, nil
 	}
@@ -1485,7 +1486,7 @@ func prepareAgentCommand(command []string, prompt string, schema string) ([]stri
 }
 
 func hasFlag(args []string, name string) bool {
-	for i := 0; i < len(args); i++ {
+	for i := range args {
 		arg := args[i]
 		if arg == name || strings.HasPrefix(arg, name+"=") {
 			return true
@@ -1517,24 +1518,24 @@ func ensurePRSchema() (string, error) {
 	prSchemaOnce.Do(func() {
 		path := filepath.Join(os.TempDir(), "workset-pr-schema.json")
 		payload := `{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"}},"required":["title","body"],"additionalProperties":false}`
-		prSchemaErr = os.WriteFile(path, []byte(payload), 0o644)
-		if prSchemaErr == nil {
+		errPRSchema = os.WriteFile(path, []byte(payload), 0o644)
+		if errPRSchema == nil {
 			prSchemaPath = path
 		}
 	})
-	return prSchemaPath, prSchemaErr
+	return prSchemaPath, errPRSchema
 }
 
 func ensureCommitSchema() (string, error) {
 	commitSchemaOnce.Do(func() {
 		path := filepath.Join(os.TempDir(), "workset-commit-schema.json")
 		payload := `{"type":"object","properties":{"message":{"type":"string"}},"required":["message"],"additionalProperties":false}`
-		commitSchemaErr = os.WriteFile(path, []byte(payload), 0o644)
-		if commitSchemaErr == nil {
+		errCommitSchema = os.WriteFile(path, []byte(payload), 0o644)
+		if errCommitSchema == nil {
 			commitSchemaPath = path
 		}
 	})
-	return commitSchemaPath, commitSchemaErr
+	return commitSchemaPath, errCommitSchema
 }
 
 func gitAddAll(ctx context.Context, repoPath string, runner CommandRunner) error {

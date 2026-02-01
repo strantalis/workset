@@ -18,10 +18,8 @@ func startTestServerWithOptions(t *testing.T, mutate func(*Options)) (*Client, f
 	if runtime.GOOS == "windows" {
 		t.Skip("pty not supported on windows")
 	}
-	tmp, err := os.MkdirTemp("/tmp", "workset-sessiond-")
-	if err != nil {
-		t.Fatalf("create temp dir: %v", err)
-	}
+	t.Setenv("TMPDIR", "/tmp")
+	tmp := t.TempDir()
 	socketPath := filepath.Join(tmp, "sessiond.sock")
 	opts := DefaultOptions()
 	opts.SocketPath = socketPath
@@ -68,7 +66,6 @@ func startTestServerWithOptions(t *testing.T, mutate func(*Options)) (*Client, f
 		case <-errCh:
 		case <-time.After(2 * time.Second):
 		}
-		_ = os.RemoveAll(tmp)
 	}
 	return client, cleanup
 }

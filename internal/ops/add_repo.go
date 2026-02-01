@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -186,13 +187,13 @@ func AddRepo(ctx context.Context, input AddRepoInput) (config.WorkspaceConfig, s
 			if err := input.Git.Fetch(ctx, gitDirPath, startRemote); err != nil {
 				warnings = append(warnings, fmt.Sprintf("fetch %s failed: %v", startRemote, err))
 			} else {
-				localRef := fmt.Sprintf("refs/heads/%s", defaultBranch)
+				localRef := "refs/heads/" + defaultBranch
 				remoteRef := fmt.Sprintf("refs/remotes/%s/%s", startRemote, defaultBranch)
-				localExists, err := input.Git.ReferenceExists(gitDirPath, localRef)
+				localExists, err := input.Git.ReferenceExists(ctx, gitDirPath, localRef)
 				if err != nil {
 					warnings = append(warnings, fmt.Sprintf("check local base branch %s: %v", defaultBranch, err))
 				}
-				remoteExists, err := input.Git.ReferenceExists(gitDirPath, remoteRef)
+				remoteExists, err := input.Git.ReferenceExists(ctx, gitDirPath, remoteRef)
 				if err != nil {
 					warnings = append(warnings, fmt.Sprintf("check remote base branch %s/%s: %v", startRemote, defaultBranch, err))
 				}
@@ -207,13 +208,14 @@ func AddRepo(ctx context.Context, input AddRepoInput) (config.WorkspaceConfig, s
 
 				if localExists && remoteExists && !skipUpdate {
 					ancestor, err := input.Git.IsAncestor(gitDirPath, localRef, remoteRef)
-					if err != nil {
+					switch {
+					case err != nil:
 						warnings = append(warnings, fmt.Sprintf("compare base branch %s to %s/%s: %v", defaultBranch, startRemote, defaultBranch, err))
-					} else if ancestor {
+					case ancestor:
 						if err := input.Git.UpdateBranch(ctx, gitDirPath, defaultBranch, fmt.Sprintf("%s/%s", startRemote, defaultBranch)); err != nil {
 							warnings = append(warnings, fmt.Sprintf("fast-forward %s to %s/%s failed: %v", defaultBranch, startRemote, defaultBranch, err))
 						}
-					} else {
+					default:
 						warnings = append(warnings, fmt.Sprintf("base branch %s does not fast-forward to %s/%s; leaving local branch unchanged", defaultBranch, startRemote, defaultBranch))
 					}
 				}
@@ -261,10 +263,8 @@ func resolveRemoteForLocalRepo(repoPath string, gitClient git.Client, preferred 
 		return "", "", err
 	}
 	if preferred != "" {
-		for _, name := range remotes {
-			if name == preferred {
-				return preferred, "", nil
-			}
+		if slices.Contains(remotes, preferred) {
+			return preferred, "", nil
 		}
 		if !allowFallback {
 			return "", "", fmt.Errorf("remote %q not found in repo; set an alias remote", preferred)

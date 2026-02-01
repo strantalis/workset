@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"strings"
 	"syscall"
@@ -49,8 +50,8 @@ func execCommand() *cli.Command {
 }
 
 func exitWithStatus(err error) error {
-	exitErr, ok := err.(*exec.ExitError)
-	if !ok {
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
 		return err
 	}
 	code := exitErr.ExitCode()

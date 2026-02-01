@@ -80,17 +80,18 @@ func buildNewWorkspaceRepoPlans(cfg config.GlobalConfig, groupNames, repoNames [
 			DefaultBranch: cfg.Defaults.BaseBranch,
 			Remote:        cfg.Defaults.Remote,
 		}
-		if looksLikeURL(repoName) {
+		switch {
+		case looksLikeURL(repoName):
 			plan.Name = ops.DeriveRepoNameFromURL(repoName)
 			plan.URL = repoName
-		} else if looksLikeLocalPath(repoName) {
+		case looksLikeLocalPath(repoName):
 			resolved, err := resolveLocalPathInput(repoName)
 			if err != nil {
 				return nil, err
 			}
 			plan.Name = filepath.Base(resolved)
 			plan.SourcePath = resolved
-		} else {
+		default:
 			return nil, fmt.Errorf("repo %q not found", repoName)
 		}
 		if err := addPlan(plan); err != nil {

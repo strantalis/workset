@@ -2,9 +2,11 @@ package termemu
 
 import (
 	"bytes"
+	"context"
 	"encoding/gob"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -166,13 +168,16 @@ func traceEnabled() bool {
 	return traceLog != nil
 }
 
-func tracef(format string, args ...any) {
+func tracef(ctx context.Context, format string, args ...any) {
 	if !traceEnabled() {
+		return
+	}
+	if ctx == nil {
 		return
 	}
 	message := fmt.Sprintf(format, args...)
 	traceMu.Lock()
-	traceLog.Write(unifiedlog.Entry{
+	traceLog.Write(ctx, unifiedlog.Entry{
 		Category:  "terminal.trace",
 		Direction: "none",
 		Action:    "event",
@@ -297,7 +302,7 @@ func (t *Terminal) Resize(cols, rows int) {
 	}
 }
 
-func (t *Terminal) Write(data []byte) {
+func (t *Terminal) Write(ctx context.Context, data []byte) {
 	if len(data) == 0 {
 		return
 	}
@@ -313,7 +318,7 @@ func (t *Terminal) Write(data []byte) {
 				continue
 			}
 			if b < 0x20 {
-				t.handleControl(b)
+				t.handleControl(ctx, b)
 				continue
 			}
 			if len(t.utf8Buf) == 0 {
@@ -391,7 +396,7 @@ func (t *Terminal) Write(data []byte) {
 			case '>':
 				t.state = stateGround
 			default:
-				tracef("ESC b=0x%02x char=%q", b, b)
+				tracef(ctx, "ESC b=0x%02x char=%q", b, b)
 				t.state = stateGround
 			}
 		case stateEscapeCharset:
@@ -405,7 +410,7 @@ func (t *Terminal) Write(data []byte) {
 		case stateCSI:
 			t.csiBuf = append(t.csiBuf, b)
 			if b >= 0x40 && b <= 0x7e {
-				t.handleCSI(t.csiBuf, &responses)
+				t.handleCSI(ctx, t.csiBuf, &responses)
 				t.csiBuf = t.csiBuf[:0]
 				t.state = stateGround
 			}
@@ -599,7 +604,7 @@ func (t *Terminal) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
-func (t *Terminal) handleControl(b byte) {
+func (t *Terminal) handleControl(ctx context.Context, b byte) {
 	if b != 0x07 {
 		t.wrapNext = false
 	}
@@ -620,11 +625,11 @@ func (t *Terminal) handleControl(b byte) {
 	case 0x0f: // SI
 		t.shifted = false
 	default:
-		tracef("CTRL b=0x%02x", b)
+		tracef(ctx, "CTRL b=0x%02x", b)
 	}
 }
 
-func (t *Terminal) handleCSI(seq []byte, responses *[][]byte) {
+func (t *Terminal) handleCSI(ctx context.Context, seq []byte, responses *[][]byte) {
 	if len(seq) == 0 {
 		return
 	}
@@ -755,7 +760,7 @@ func (t *Terminal) handleCSI(seq []byte, responses *[][]byte) {
 	case 'p':
 		t.handleDECRQM(priv, params, seq, responses)
 	default:
-		tracef("CSI priv=%q params=%v final=%q raw=%x", priv, params, final, seq)
+		tracef(ctx, "CSI priv=%q params=%v final=%q raw=%x", priv, params, final, seq)
 	}
 }
 
@@ -1132,7 +1137,7 @@ func (t *Terminal) advanceTab(n int) {
 	if n <= 0 {
 		return
 	}
-	for i := 0; i < n; i++ {
+	for range n {
 		t.cursor.Col = t.nextTabStop(t.cursor.Col)
 	}
 }
@@ -1141,7 +1146,7 @@ func (t *Terminal) backTab(n int) {
 	if n <= 0 {
 		return
 	}
-	for i := 0; i < n; i++ {
+	for range n {
 		t.cursor.Col = t.prevTabStop(t.cursor.Col)
 	}
 }
@@ -1178,7 +1183,7 @@ func (t *Terminal) eraseChars(n int) {
 		return
 	}
 	row := t.active()[t.cursor.Row]
-	for i := 0; i < n; i++ {
+	for i := range n {
 		col := t.cursor.Col + i
 		if col >= t.cols {
 			break
@@ -1191,7 +1196,7 @@ func (t *Terminal) repeatLast(n int) {
 	if n <= 0 || t.lastRune == 0 {
 		return
 	}
-	for i := 0; i < n; i++ {
+	for range n {
 		t.putRune(t.lastRune)
 	}
 }
@@ -1285,7 +1290,7 @@ func (t *Terminal) insertLines(n int) {
 		return
 	}
 	screen := t.active()
-	for i := 0; i < n; i++ {
+	for range n {
 		for r := t.scrollBottom; r > t.cursor.Row; r-- {
 			screen[r] = screen[r-1]
 		}
@@ -1298,7 +1303,7 @@ func (t *Terminal) deleteLines(n int) {
 		return
 	}
 	screen := t.active()
-	for i := 0; i < n; i++ {
+	for range n {
 		for r := t.cursor.Row; r < t.scrollBottom; r++ {
 			screen[r] = screen[r+1]
 		}
@@ -1347,7 +1352,7 @@ func (t *Terminal) scrollUp(n int) {
 	}
 	screen := t.active()
 	captureHistory := !t.modes.AltScreen && t.historyMax > 0 && t.scrollTop == 0
-	for i := 0; i < n; i++ {
+	for range n {
 		if captureHistory {
 			t.appendHistoryRow(screen[t.scrollTop])
 		}
@@ -1363,7 +1368,7 @@ func (t *Terminal) scrollDown(n int) {
 		return
 	}
 	screen := t.active()
-	for i := 0; i < n; i++ {
+	for range n {
 		for r := t.scrollBottom; r > t.scrollTop; r-- {
 			screen[r] = screen[r-1]
 		}
@@ -1484,7 +1489,7 @@ func blankRows(rows, cols int) []Row {
 
 func resizeRows(rows []Row, newRows, cols int) []Row {
 	out := make([]Row, newRows)
-	for i := 0; i < newRows; i++ {
+	for i := range newRows {
 		if i < len(rows) {
 			row := rows[i]
 			if len(row.Cells) != cols {
@@ -1503,7 +1508,7 @@ func resizeCells(cells []Cell, cols int) []Cell {
 		return cells
 	}
 	out := make([]Cell, cols)
-	for i := 0; i < cols; i++ {
+	for i := range cols {
 		if i < len(cells) {
 			out[i] = cells[i]
 		} else {
@@ -1565,7 +1570,7 @@ var decSpecials = map[rune]rune{
 
 func defaultTabStops(cols int) []bool {
 	stops := make([]bool, cols)
-	for i := 0; i < cols; i++ {
+	for i := range cols {
 		if i > 0 && i%8 == 0 {
 			stops[i] = true
 		}
@@ -1667,9 +1672,9 @@ func colorToSGR(c Color, fg bool) []string {
 			}
 			if c.Index >= 8 {
 				base += 60
-				return []string{fmt.Sprintf("%d", base+int(c.Index-8))}
+				return []string{strconv.Itoa(base + int(c.Index-8))}
 			}
-			return []string{fmt.Sprintf("%d", base+int(c.Index))}
+			return []string{strconv.Itoa(base + int(c.Index))}
 		}
 		if fg {
 			return []string{fmt.Sprintf("38;5;%d", c.Index)}
@@ -1706,11 +1711,4 @@ func clamp(value, minVal, maxVal int) int {
 		return maxVal
 	}
 	return value
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

@@ -3,6 +3,7 @@ package worksetapi
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -88,19 +89,9 @@ func TestParseCommitJSON(t *testing.T) {
 }
 
 func envHas(env []string, key string) bool {
-	for _, entry := range env {
-		if entry == key {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(env, key)
 }
 
 func sliceHasExact(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, target)
 }

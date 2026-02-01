@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/strantalis/workset/internal/output"
@@ -51,7 +52,7 @@ func groupCommand() *cli.Command {
 						if desc == "" {
 							desc = "-"
 						}
-						rows = append(rows, []string{group.Name, desc, fmt.Sprintf("%d", group.RepoCount)})
+						rows = append(rows, []string{group.Name, desc, strconv.Itoa(group.RepoCount)})
 					}
 					rendered := output.RenderTable(styles, []string{"NAME", "DESCRIPTION", "REPOS"}, rows)
 					_, err = fmt.Fprint(commandWriter(cmd), rendered)

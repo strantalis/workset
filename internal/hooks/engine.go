@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -113,12 +114,7 @@ func (e Engine) Run(ctx context.Context, input RunInput) (RunReport, error) {
 }
 
 func hookMatchesEvent(hook Hook, event Event) bool {
-	for _, target := range hook.On {
-		if target == event {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(hook.On, event)
 }
 
 func validateHook(hook Hook) error {

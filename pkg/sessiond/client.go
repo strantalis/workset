@@ -141,7 +141,7 @@ func (c *Client) Ack(ctx context.Context, sessionID, streamID string, bytes int6
 	return c.call(ctx, "ack", AckRequest{SessionID: sessionID, StreamID: streamID, Bytes: bytes}, nil)
 }
 
-func (c *Client) call(ctx context.Context, method string, params interface{}, out interface{}) error {
+func (c *Client) call(ctx context.Context, method string, params any, out any) error {
 	conn, err := c.dial(ctx)
 	if err != nil {
 		return err
@@ -258,7 +258,7 @@ func EnsureRunningWithOptions(ctx context.Context, opts StartOptions) (*Client, 
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	return nil, fmt.Errorf("sessiond did not start")
+	return nil, errors.New("sessiond did not start")
 }
 
 func (c *Client) Ping(ctx context.Context) error {
@@ -287,7 +287,7 @@ func removeStaleSocket(path string) error {
 func startDaemon(_ context.Context, socketPath string, opts StartOptions) error {
 	bin, err := FindSessiondBinary()
 	if err != nil {
-		return fmt.Errorf("workset-sessiond not found in PATH")
+		return errors.New("workset-sessiond not found in PATH")
 	}
 	logPath, err := daemonLogPath()
 	if err != nil {
@@ -310,7 +310,7 @@ func startDaemon(_ context.Context, socketPath string, opts StartOptions) error 
 	cmd := exec.Command(bin, args...)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
-	cmd.Env = append(os.Environ(), fmt.Sprintf("WORKSET_SESSIOND_LOG=%s", logPath))
+	cmd.Env = append(os.Environ(), "WORKSET_SESSIOND_LOG="+logPath)
 	if attr := daemonSysProcAttr(); attr != nil {
 		// Detach from the parent process group so "wails dev" shutdown
 		// doesn't tear down the session daemon.
@@ -370,7 +370,7 @@ func FindSessiondBinary() (string, error) {
 			return candidate, nil
 		}
 	}
-	return "", fmt.Errorf("workset-sessiond not found")
+	return "", errors.New("workset-sessiond not found")
 }
 
 func daemonLogPath() (string, error) {

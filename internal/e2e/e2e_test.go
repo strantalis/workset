@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,11 +15,12 @@ var worksetBin string
 func TestMain(m *testing.M) {
 	tmp, err := os.MkdirTemp("", "workset-e2e-*")
 	if err != nil {
-		panic(err)
+		_, _ = fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
-	defer func() {
+	cleanup := func() {
 		_ = os.RemoveAll(tmp)
-	}()
+	}
 
 	worksetBin = filepath.Join(tmp, "workset")
 	repoRoot, err := findRepoRoot()
@@ -33,10 +35,14 @@ func TestMain(m *testing.M) {
 		"GOSUMDB=off",
 	)
 	if output, err := cmd.CombinedOutput(); err != nil {
-		panic(string(output))
+		_, _ = fmt.Fprintln(os.Stderr, string(output))
+		cleanup()
+		os.Exit(1)
 	}
 
-	os.Exit(m.Run())
+	exitCode := m.Run()
+	cleanup()
+	os.Exit(exitCode)
 }
 
 func TestRepoAddFromRelativePath(t *testing.T) {

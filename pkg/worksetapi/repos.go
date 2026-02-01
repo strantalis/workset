@@ -299,7 +299,7 @@ func (s *Service) RemoveRepo(ctx context.Context, input RepoRemoveInput) (RepoRe
 	}
 
 	if (input.DeleteWorktrees || input.DeleteLocal) && !input.Confirmed {
-		return RepoRemoveResult{}, ConfirmationRequired{Message: fmt.Sprintf("remove repo %s", name)}
+		return RepoRemoveResult{}, ConfirmationRequired{Message: "remove repo " + name}
 	}
 
 	if _, err := ops.RemoveRepo(ctx, ops.RemoveRepoInput{

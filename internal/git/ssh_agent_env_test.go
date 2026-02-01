@@ -72,12 +72,6 @@ func makeSocket(t *testing.T, dir, name string) string {
 
 func tempSocketDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "workset-ssh-")
-	if err != nil {
-		t.Fatalf("mkdir temp: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.RemoveAll(dir)
-	})
-	return dir
+	t.Setenv("TMPDIR", "/tmp")
+	return t.TempDir()
 }

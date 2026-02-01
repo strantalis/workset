@@ -382,7 +382,7 @@ func (s *Service) resolveWorkspace(ctx context.Context, cfg *config.GlobalConfig
 	wsConfig, err := s.workspaces.LoadConfig(ctx, root)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", config.WorkspaceConfig{}, NotFoundError{Message: fmt.Sprintf("workset.yaml not found at %s", worksetFilePath(root))}
+			return "", config.WorkspaceConfig{}, NotFoundError{Message: "workset.yaml not found at " + worksetFilePath(root)}
 		}
 		return "", config.WorkspaceConfig{}, err
 	}

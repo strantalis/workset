@@ -2,6 +2,7 @@ package worksetapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -49,9 +50,9 @@ func resolveSessionTarget(state workspace.State, explicit, format, workspaceName
 		}
 	}
 	if len(state.Sessions) == 0 {
-		return "", nil, fmt.Errorf("no sessions recorded; pass --name to attach or stop")
+		return "", nil, errors.New("no sessions recorded; pass --name to attach or stop")
 	}
-	return "", nil, fmt.Errorf("multiple sessions recorded; pass --name to attach or stop")
+	return "", nil, errors.New("multiple sessions recorded; pass --name to attach or stop")
 }
 
 func detachHint(backend session.Backend) string {

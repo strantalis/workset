@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -113,7 +114,7 @@ func prCreateCommand() *cli.Command {
 				}
 				sort.Strings(names)
 				if len(names) == 0 {
-					return fmt.Errorf("no dirty repos found for workspace")
+					return errors.New("no dirty repos found for workspace")
 				}
 				if !cmd.Bool("yes") {
 					ok, err := confirmPrompt(os.Stdin, commandWriter(cmd), fmt.Sprintf("Create PRs for %d repos? [y/N] ", len(names)))

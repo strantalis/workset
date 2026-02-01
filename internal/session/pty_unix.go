@@ -4,7 +4,7 @@ package session
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"io"
 	"os"
 	"os/exec"
@@ -17,7 +17,7 @@ import (
 
 func RunExecWithPTY(ctx context.Context, dir string, command []string, env []string) error {
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		return fmt.Errorf("interactive exec requires a TTY")
+		return errors.New("interactive exec requires a TTY")
 	}
 	execName, execArgs := ResolveExecCommand(command)
 	cmd := exec.CommandContext(ctx, execName, execArgs...)
