@@ -11,6 +11,7 @@
 ## Build, Test, and Development Commands
 - `make test`: run Go unit and integration tests (`go test ./...`).
 - `make lint`: run `golangci-lint` using `.golangci.yml`.
+- `make lint-fmt`: format Go files with `golangci-lint fmt` (gofumpt).
 - `make fmt`: format Go code with `gofmt -w ./cmd ./internal`.
 - `make check`: `fmt + test + lint` for CI parity.
 - `make docs-serve`: serve MkDocs locally (requires `uv` + `requirements.txt`).
@@ -20,7 +21,7 @@
   - `npm run check`: `svelte-check` type/diagnostic pass.
 
 ## Coding Style & Naming Conventions
-- Go: use `gofmt` and standard Go style (tabs for indentation).
+- Go: format with `gofumpt` via `make lint-fmt`.
 - Keep packages lower-case, exported identifiers `PascalCase`, errors lower-case without trailing punctuation.
 - Public surface lives in `pkg/`; keep internal-only logic under `internal/`.
 

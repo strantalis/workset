@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"maps"
 	"strconv"
 	"strings"
 )
@@ -61,11 +62,11 @@ func (d *Decoder) Process(data []byte, cursor Cursor, state *State) ([]byte, []E
 	cur := cursor
 	appendMove := func(move CursorMove) {
 		if move.Cols > 0 {
-			out = append(out, []byte(fmt.Sprintf("\x1b[%dC", move.Cols))...)
+			out = append(out, fmt.Appendf(nil, "\x1b[%dC", move.Cols)...)
 			cur.Col += move.Cols
 		}
 		if move.Rows > 0 {
-			out = append(out, []byte(fmt.Sprintf("\x1b[%dB", move.Rows))...)
+			out = append(out, fmt.Appendf(nil, "\x1b[%dB", move.Rows)...)
 			cur.Row += move.Rows
 		}
 	}
@@ -212,8 +213,8 @@ func parseParams(control string) map[string]string {
 	if control == "" {
 		return params
 	}
-	parts := strings.Split(control, ",")
-	for _, part := range parts {
+	parts := strings.SplitSeq(control, ",")
+	for part := range parts {
 		if part == "" {
 			continue
 		}
@@ -233,9 +234,7 @@ func mergeParams(dst, src map[string]string) map[string]string {
 	if dst == nil {
 		dst = make(map[string]string, len(src))
 	}
-	for k, v := range src {
-		dst[k] = v
-	}
+	maps.Copy(dst, src)
 	return dst
 }
 

@@ -12,9 +12,9 @@ type ControlRequest struct {
 }
 
 type ControlResponse struct {
-	OK     bool        `json:"ok"`
-	Result interface{} `json:"result,omitempty"`
-	Error  string      `json:"error,omitempty"`
+	OK     bool   `json:"ok"`
+	Result any    `json:"result,omitempty"`
+	Error  string `json:"error,omitempty"`
 }
 
 type CreateRequest struct {

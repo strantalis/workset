@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -216,7 +217,8 @@ func removeWorkspaceCommand() *cli.Command {
 			}
 			result, err := svc.DeleteWorkspace(ctx, input)
 			if err != nil {
-				if confirm, ok := err.(worksetapi.ConfirmationRequired); ok && deleteRequested && !cmd.Bool("yes") {
+				var confirm worksetapi.ConfirmationRequired
+				if errors.As(err, &confirm) && deleteRequested && !cmd.Bool("yes") {
 					ok, promptErr := confirmPrompt(os.Stdin, commandWriter(cmd), confirm.Message+" [y/N] ")
 					if promptErr != nil {
 						return promptErr
@@ -228,8 +230,9 @@ func removeWorkspaceCommand() *cli.Command {
 					result, err = svc.DeleteWorkspace(ctx, input)
 				}
 				if err != nil {
-					if unsafe, ok := err.(worksetapi.UnsafeOperation); ok {
-						for _, warning := range unsafe.Warnings {
+					var unsafeOp worksetapi.UnsafeOperation
+					if errors.As(err, &unsafeOp) {
+						for _, warning := range unsafeOp.Warnings {
 							_, _ = fmt.Fprintln(os.Stderr, "warning:", warning)
 						}
 					}
@@ -260,7 +263,7 @@ func removeWorkspaceCommand() *cli.Command {
 				}
 				return nil
 			}
-			msg := fmt.Sprintf("removed workspace registration for %s", result.Payload.Path)
+			msg := "removed workspace registration for " + result.Payload.Path
 			if styles.Enabled {
 				msg = styles.Render(styles.Success, msg)
 			}

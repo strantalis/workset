@@ -2,6 +2,7 @@ package unifiedlog
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"os"
@@ -63,7 +64,7 @@ func Open(component, dir string) (*Logger, error) {
 	}, nil
 }
 
-func (l *Logger) Write(entry Entry) {
+func (l *Logger) Write(ctx context.Context, entry Entry) {
 	if l == nil || l.handler == nil {
 		return
 	}
@@ -87,21 +88,24 @@ func (l *Logger) Write(entry Entry) {
 		slog.String("hex", entry.Hex),
 		slog.String("ascii", entry.ASCII),
 	)
-	_ = l.handler.Handle(context.Background(), record)
+	if ctx == nil {
+		return
+	}
+	_ = l.handler.Handle(ctx, record)
 }
 
-func (l *Logger) Log(category, direction, action, detail string, seq []byte) {
+func (l *Logger) Log(ctx context.Context, category, direction, action, detail string, seq []byte) {
 	if l == nil {
 		return
 	}
-	l.Write(Entry{
+	l.Write(ctx, Entry{
 		Component: l.component,
 		Category:  category,
 		Direction: direction,
 		Action:    action,
 		Detail:    detail,
 		Len:       len(seq),
-		Hex:       fmt.Sprintf("%x", seq),
+		Hex:       hex.EncodeToString(seq),
 		ASCII:     string(seq),
 	})
 }

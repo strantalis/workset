@@ -2,7 +2,6 @@ package worksetapi
 
 import (
 	"context"
-	"fmt"
 	"path/filepath"
 	"strings"
 )
@@ -37,7 +36,7 @@ func (s *Service) GetAgentCLIStatus(ctx context.Context, agent string) (AgentCLI
 	path := resolveCLIPath(command)
 	if path == "" {
 		if status.Error == "" {
-			status.Error = fmt.Sprintf("agent command not found: %s", command)
+			status.Error = "agent command not found: " + command
 		}
 		return status, nil
 	}

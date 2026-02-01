@@ -23,7 +23,7 @@ func TestTerminalBufferTruncation(t *testing.T) {
 	for i := range payload {
 		payload[i] = 'a'
 	}
-	for i := 0; i < 200; i++ {
+	for range 200 {
 		buf.Append(payload)
 	}
 	data, next, truncated := buf.ReadSince(0)

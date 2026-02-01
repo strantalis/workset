@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -357,7 +358,7 @@ func (s *Session) start(ctx context.Context) error {
 			if s.hasSubscribers() {
 				return
 			}
-			_ = s.write(string(resp))
+			_ = s.write(ctx, string(resp))
 		})
 	}
 
@@ -366,7 +367,7 @@ func (s *Session) start(ctx context.Context) error {
 			s.closeWithReason("idle")
 		})
 	}
-	go s.readLoop()
+	go s.readLoop(ctx)
 	return nil
 }
 
@@ -399,13 +400,16 @@ func (s *Session) kittySnapshot() *kitty.Event {
 	return &kitty.Event{Kind: "snapshot", Snapshot: &snapshot}
 }
 
-func (s *Session) write(data string) error {
+func (s *Session) write(ctx context.Context, data string) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.pty == nil {
-		return fmt.Errorf("terminal not started")
+		return errors.New("terminal not started")
 	}
-	s.logProtocol("in", []byte(data))
+	s.logProtocol(ctx, "in", []byte(data))
 	if _, err := s.pty.Write([]byte(data)); err != nil {
 		return err
 	}
@@ -417,7 +421,7 @@ func (s *Session) resize(cols, rows int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.pty == nil {
-		return fmt.Errorf("terminal not started")
+		return errors.New("terminal not started")
 	}
 	if cols < 2 {
 		cols = 2
@@ -528,7 +532,7 @@ func (s *Session) ack(streamID string, bytes int64) error {
 	sub := s.streams[streamID]
 	s.subscribersMu.Unlock()
 	if sub == nil {
-		return fmt.Errorf("stream not found")
+		return errors.New("stream not found")
 	}
 	sub.addCredit(bytes)
 	return nil
@@ -584,9 +588,13 @@ func (s *Session) broadcastKitty(events []kitty.Event) {
 	}
 }
 
-func (s *Session) readLoop() {
+func (s *Session) readLoop(ctx context.Context) {
 	buf := make([]byte, 4096)
 	for {
+		if ctx.Err() != nil {
+			s.closeWithReason("context_done")
+			return
+		}
 		n, err := s.pty.Read(buf)
 		if n > 0 {
 			raw := buf[:n]
@@ -615,10 +623,10 @@ func (s *Session) readLoop() {
 				continue
 			}
 			if s.emu != nil {
-				s.emu.Write(cleaned)
+				s.emu.Write(ctx, cleaned)
 				s.maybePersistSnapshot()
 			}
-			s.logProtocol("out", cleaned)
+			s.logProtocol(ctx, "out", cleaned)
 			filtered := filterTerminalOutputStreaming(cleaned, &s.escapeFilter)
 			if len(filtered) == 0 {
 				continue
@@ -1660,7 +1668,7 @@ func shouldDropCSI(params []byte, final byte) bool {
 	return false
 }
 
-func (s *Session) logProtocol(direction string, data []byte) {
+func (s *Session) logProtocol(ctx context.Context, direction string, data []byte) {
 	if s.protocolLog == nil || len(data) == 0 {
 		return
 	}
@@ -1685,7 +1693,7 @@ func (s *Session) logProtocol(direction string, data []byte) {
 				payloadEnd = i + 2
 			}
 			payload := data[i+2 : payloadEnd]
-			s.logOSCProtocol(direction, data[i:end], payload)
+			s.logOSCProtocol(ctx, direction, data[i:end], payload)
 			i = end - 1
 		case '[':
 			end, _ := scanCSI(data, i)
@@ -1697,7 +1705,7 @@ func (s *Session) logProtocol(direction string, data []byte) {
 			}
 			final := data[end-1]
 			params := data[i+2 : end-1]
-			s.logCSIProtocol(direction, data[i:end], params, final)
+			s.logCSIProtocol(ctx, direction, data[i:end], params, final)
 			i = end - 1
 		default:
 			continue
@@ -1705,32 +1713,32 @@ func (s *Session) logProtocol(direction string, data []byte) {
 	}
 }
 
-func (s *Session) logOSCProtocol(direction string, seq []byte, payload []byte) {
+func (s *Session) logOSCProtocol(ctx context.Context, direction string, seq []byte, payload []byte) {
 	if s.protocolLog == nil {
 		return
 	}
 	if isOSCColorQueryRequest(payload) {
-		s.protocolLog.Log("terminal.protocol", direction, "event", "osc_color_query_request", seq)
+		s.protocolLog.Log(ctx, "terminal.protocol", direction, "event", "osc_color_query_request", seq)
 	}
 	if shouldDropOSC(payload) {
-		s.protocolLog.Log("terminal.protocol", direction, "drop", "osc_color_query_response", seq)
+		s.protocolLog.Log(ctx, "terminal.protocol", direction, "drop", "osc_color_query_response", seq)
 	}
 }
 
-func (s *Session) logCSIProtocol(direction string, seq []byte, params []byte, final byte) {
+func (s *Session) logCSIProtocol(ctx context.Context, direction string, seq []byte, params []byte, final byte) {
 	if s.protocolLog == nil {
 		return
 	}
 	switch final {
 	case 'n':
-		s.protocolLog.Log("terminal.protocol", direction, "event", "dsr_request", seq)
+		s.protocolLog.Log(ctx, "terminal.protocol", direction, "event", "dsr_request", seq)
 	case 'R':
-		s.protocolLog.Log("terminal.protocol", direction, "drop", "dsr_response", seq)
+		s.protocolLog.Log(ctx, "terminal.protocol", direction, "drop", "dsr_response", seq)
 	case 'c':
 		if hasCSIQueryPrefix(params) {
-			s.protocolLog.Log("terminal.protocol", direction, "drop", "device_attributes_response", seq)
+			s.protocolLog.Log(ctx, "terminal.protocol", direction, "drop", "device_attributes_response", seq)
 		} else {
-			s.protocolLog.Log("terminal.protocol", direction, "event", "device_attributes_request", seq)
+			s.protocolLog.Log(ctx, "terminal.protocol", direction, "event", "device_attributes_request", seq)
 		}
 	}
 }
@@ -2024,7 +2032,7 @@ func lookupUserShell() string {
 	if err != nil {
 		return ""
 	}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}

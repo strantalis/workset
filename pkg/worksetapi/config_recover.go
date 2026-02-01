@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -62,7 +63,7 @@ func (s *Service) RecoverConfig(ctx context.Context, input ConfigRecoverInput) (
 	absRoot = filepath.Clean(absRoot)
 	if _, err := os.Stat(absRoot); err != nil {
 		if os.IsNotExist(err) {
-			return ConfigRecoverResult{}, NotFoundError{Message: fmt.Sprintf("workspace root not found: %s", absRoot)}
+			return ConfigRecoverResult{}, NotFoundError{Message: "workspace root not found: " + absRoot}
 		}
 		return ConfigRecoverResult{}, err
 	}
@@ -78,7 +79,7 @@ func (s *Service) RecoverConfig(ctx context.Context, input ConfigRecoverInput) (
 		return ConfigRecoverResult{}, err
 	}
 	if len(worksetFiles) == 0 {
-		warnings = append(warnings, fmt.Sprintf("no workset.yaml files found under %s", absRoot))
+		warnings = append(warnings, "no workset.yaml files found under "+absRoot)
 	}
 
 	for _, worksetFile := range worksetFiles {
@@ -250,10 +251,8 @@ func recoverRemoteName(repoPath string, gitClient git.Client, preferred string, 
 		return ""
 	}
 	if preferred != "" {
-		for _, name := range remotes {
-			if name == preferred {
-				return preferred
-			}
+		if slices.Contains(remotes, preferred) {
+			return preferred
 		}
 	}
 	if len(remotes) == 1 {

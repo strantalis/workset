@@ -95,7 +95,7 @@ func (s *Server) SetShutdown(fn func()) {
 
 func (s *Server) Listen(ctx context.Context) error {
 	if s.opts.SocketPath == "" {
-		return fmt.Errorf("socket path required")
+		return errors.New("socket path required")
 	}
 	if err := os.MkdirAll(filepath.Dir(s.opts.SocketPath), 0o755); err != nil {
 		logServerf("mkdir_error path=%s err=%v", filepath.Dir(s.opts.SocketPath), err)
@@ -139,11 +139,11 @@ func (s *Server) Listen(ctx context.Context) error {
 			}
 			continue
 		}
-		go s.handleConn(conn)
+		go s.handleConn(ctx, conn)
 	}
 }
 
-func (s *Server) handleConn(conn net.Conn) {
+func (s *Server) handleConn(ctx context.Context, conn net.Conn) {
 	defer func() {
 		_ = conn.Close()
 	}()
@@ -167,10 +167,10 @@ func (s *Server) handleConn(conn net.Conn) {
 		s.handleAttach(conn, line)
 		return
 	}
-	s.handleControl(conn, line)
+	s.handleControl(ctx, conn, line)
 }
 
-func (s *Server) handleControl(conn net.Conn, line []byte) {
+func (s *Server) handleControl(ctx context.Context, conn net.Conn, line []byte) {
 	var req ControlRequest
 	if err := json.Unmarshal(line, &req); err != nil {
 		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: false, Error: err.Error()})
@@ -183,7 +183,7 @@ func (s *Server) handleControl(conn net.Conn, line []byte) {
 			s.writeError(conn, err)
 			return
 		}
-		session, existing, err := s.getOrCreate(params.SessionID, params.Cwd)
+		session, existing, err := s.getOrCreate(ctx, params.SessionID, params.Cwd)
 		if err != nil {
 			s.writeError(conn, err)
 			return
@@ -203,10 +203,10 @@ func (s *Server) handleControl(conn net.Conn, line []byte) {
 		}
 		session := s.get(params.SessionID)
 		if session == nil {
-			s.writeError(conn, fmt.Errorf("session not found"))
+			s.writeError(conn, errors.New("session not found"))
 			return
 		}
-		if err := session.write(params.Data); err != nil {
+		if err := session.write(ctx, params.Data); err != nil {
 			s.writeError(conn, err)
 			return
 		}
@@ -219,7 +219,7 @@ func (s *Server) handleControl(conn net.Conn, line []byte) {
 		}
 		session := s.get(params.SessionID)
 		if session == nil {
-			s.writeError(conn, fmt.Errorf("session not found"))
+			s.writeError(conn, errors.New("session not found"))
 			return
 		}
 		if err := session.resize(params.Cols, params.Rows); err != nil {
@@ -247,7 +247,7 @@ func (s *Server) handleControl(conn net.Conn, line []byte) {
 		}
 		session := s.get(params.SessionID)
 		if session == nil {
-			s.writeError(conn, fmt.Errorf("session not found"))
+			s.writeError(conn, errors.New("session not found"))
 			return
 		}
 		backlog, err := session.backlog(params.Since)
@@ -264,7 +264,7 @@ func (s *Server) handleControl(conn net.Conn, line []byte) {
 		}
 		session := s.get(params.SessionID)
 		if session == nil {
-			s.writeError(conn, fmt.Errorf("session not found"))
+			s.writeError(conn, errors.New("session not found"))
 			return
 		}
 		snapshot := session.snapshot()
@@ -277,7 +277,7 @@ func (s *Server) handleControl(conn net.Conn, line []byte) {
 		}
 		session := s.get(params.SessionID)
 		if session == nil {
-			s.writeError(conn, fmt.Errorf("session not found"))
+			s.writeError(conn, errors.New("session not found"))
 			return
 		}
 		if err := session.ack(params.StreamID, params.Bytes); err != nil {
@@ -293,7 +293,7 @@ func (s *Server) handleControl(conn net.Conn, line []byte) {
 		}
 		session := s.get(params.SessionID)
 		if session == nil {
-			s.writeError(conn, fmt.Errorf("session not found"))
+			s.writeError(conn, errors.New("session not found"))
 			return
 		}
 		bootstrap, err := session.bootstrap()
@@ -458,9 +458,9 @@ func (s *Server) closeAll() {
 	}
 }
 
-func (s *Server) getOrCreate(id, cwd string) (*Session, bool, error) {
+func (s *Server) getOrCreate(ctx context.Context, id, cwd string) (*Session, bool, error) {
 	if id == "" {
-		return nil, false, fmt.Errorf("session id required")
+		return nil, false, errors.New("session id required")
 	}
 	s.mu.Lock()
 	existing := s.sessions[id]
@@ -469,7 +469,7 @@ func (s *Server) getOrCreate(id, cwd string) (*Session, bool, error) {
 		return existing, true, nil
 	}
 	session := newSession(s.opts, id, cwd)
-	if err := session.start(context.Background()); err != nil {
+	if err := session.start(ctx); err != nil {
 		return nil, false, err
 	}
 	s.mu.Lock()

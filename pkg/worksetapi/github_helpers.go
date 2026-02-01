@@ -60,7 +60,7 @@ func (s *Service) resolveRepo(ctx context.Context, input RepoSelectionInput) (re
 			for _, repo := range wsConfig.Repos {
 				names = append(names, repo.Name)
 			}
-			return repoResolution{}, ValidationError{Message: fmt.Sprintf("repo required; available: %s", strings.Join(names, ", "))}
+			return repoResolution{}, ValidationError{Message: "repo required; available: " + strings.Join(names, ", ")}
 		}
 	}
 

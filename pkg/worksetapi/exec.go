@@ -2,7 +2,6 @@ package worksetapi
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,7 +34,7 @@ func (s *Service) Exec(ctx context.Context, input ExecInput) error {
 	wsConfig, err := s.workspaces.LoadConfig(ctx, root)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return NotFoundError{Message: fmt.Sprintf("workset.yaml not found at %s", workspace.WorksetFile(root))}
+			return NotFoundError{Message: "workset.yaml not found at " + workspace.WorksetFile(root)}
 		}
 		return err
 	}
@@ -56,11 +55,11 @@ func (s *Service) Exec(ctx context.Context, input ExecInput) error {
 	}
 
 	env := append(os.Environ(),
-		fmt.Sprintf("WORKSET_ROOT=%s", root),
-		fmt.Sprintf("WORKSET_CONFIG=%s", workspace.WorksetFile(root)),
+		"WORKSET_ROOT="+root,
+		"WORKSET_CONFIG="+workspace.WorksetFile(root),
 	)
 	if wsName != "" {
-		env = append(env, fmt.Sprintf("WORKSET_WORKSPACE=%s", wsName))
+		env = append(env, "WORKSET_WORKSPACE="+wsName)
 	}
 
 	return s.exec(ctx, root, input.Command, env)

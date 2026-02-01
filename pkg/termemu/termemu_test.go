@@ -1,6 +1,7 @@
 package termemu
 
 import (
+	"context"
 	"os"
 	"strconv"
 	"strings"
@@ -9,7 +10,7 @@ import (
 
 func TestTerminalWriteSnapshot(t *testing.T) {
 	term := New(4, 2)
-	term.Write([]byte("hi"))
+	term.Write(context.Background(), []byte("hi"))
 	snap := term.Snapshot()
 	if got := snap.Primary[0].Cells[0].Ch; got != 'h' {
 		t.Fatalf("expected h, got %q", got)
@@ -22,7 +23,7 @@ func TestTerminalWriteSnapshot(t *testing.T) {
 func TestTerminalHistoryCapture(t *testing.T) {
 	emu := New(10, 2)
 	emu.SetHistoryLimit(4)
-	emu.Write([]byte("one\r\ntwo\r\nthree\r\n"))
+	emu.Write(context.Background(), []byte("one\r\ntwo\r\nthree\r\n"))
 
 	history := rowsText(emu.HistoryRows())
 	if history != "one\ntwo" {
@@ -37,11 +38,11 @@ func TestTerminalHistoryCapture(t *testing.T) {
 
 func TestTerminalAltScreen(t *testing.T) {
 	term := New(4, 2)
-	term.Write([]byte("\x1b[?1049h"))
+	term.Write(context.Background(), []byte("\x1b[?1049h"))
 	if !term.IsAltScreen() {
 		t.Fatalf("expected alt screen on")
 	}
-	term.Write([]byte("x"))
+	term.Write(context.Background(), []byte("x"))
 	snap := term.Snapshot()
 	if !snap.AltActive {
 		t.Fatalf("expected alt active in snapshot")
@@ -53,7 +54,7 @@ func TestTerminalAltScreen(t *testing.T) {
 
 func TestTerminalDecLineDrawing(t *testing.T) {
 	term := New(4, 1)
-	term.Write([]byte("\x1b)0\x0eqx\x0f"))
+	term.Write(context.Background(), []byte("\x1b)0\x0eqx\x0f"))
 	snap := term.Snapshot()
 	if got := snap.Primary[0].Cells[0].Ch; got != '─' {
 		t.Fatalf("expected line drawing, got %q", got)
@@ -65,7 +66,7 @@ func TestTerminalDecLineDrawing(t *testing.T) {
 
 func TestTerminalTabStops(t *testing.T) {
 	term := New(16, 1)
-	term.Write([]byte("a\tb"))
+	term.Write(context.Background(), []byte("a\tb"))
 	snap := term.Snapshot()
 	if got := snap.Primary[0].Cells[0].Ch; got != 'a' {
 		t.Fatalf("expected a, got %q", got)
@@ -77,10 +78,10 @@ func TestTerminalTabStops(t *testing.T) {
 
 func TestTerminalOriginMode(t *testing.T) {
 	term := New(5, 5)
-	term.Write([]byte("\x1b[2;4r"))
-	term.Write([]byte("\x1b[?6h"))
-	term.Write([]byte("\x1b[H"))
-	term.Write([]byte("X"))
+	term.Write(context.Background(), []byte("\x1b[2;4r"))
+	term.Write(context.Background(), []byte("\x1b[?6h"))
+	term.Write(context.Background(), []byte("\x1b[H"))
+	term.Write(context.Background(), []byte("X"))
 	snap := term.Snapshot()
 	if got := snap.Primary[1].Cells[0].Ch; got != 'X' {
 		t.Fatalf("expected X at top of scroll region, got %q", got)
@@ -89,8 +90,8 @@ func TestTerminalOriginMode(t *testing.T) {
 
 func TestTerminalEraseChars(t *testing.T) {
 	term := New(5, 1)
-	term.Write([]byte("abcde"))
-	term.Write([]byte("\x1b[1D\x1b[2X"))
+	term.Write(context.Background(), []byte("abcde"))
+	term.Write(context.Background(), []byte("\x1b[1D\x1b[2X"))
 	snap := term.Snapshot()
 	if got := snap.Primary[0].Cells[2].Ch; got != 'c' {
 		t.Fatalf("expected c, got %q", got)
@@ -105,9 +106,9 @@ func TestTerminalEraseChars(t *testing.T) {
 
 func TestTerminalRepeat(t *testing.T) {
 	term := New(4, 1)
-	term.Write([]byte("A\x1b[3b"))
+	term.Write(context.Background(), []byte("A\x1b[3b"))
 	snap := term.Snapshot()
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		if got := snap.Primary[0].Cells[i].Ch; got != 'A' {
 			t.Fatalf("expected A at %d, got %q", i, got)
 		}
@@ -116,9 +117,9 @@ func TestTerminalRepeat(t *testing.T) {
 
 func TestTerminalIgnoreEscapeString(t *testing.T) {
 	term := New(6, 1)
-	term.Write([]byte("hi"))
-	term.Write([]byte("\x1bPqignored\x1b\\"))
-	term.Write([]byte("ok"))
+	term.Write(context.Background(), []byte("hi"))
+	term.Write(context.Background(), []byte("\x1bPqignored\x1b\\"))
+	term.Write(context.Background(), []byte("ok"))
 	snap := term.Snapshot()
 	if got := snap.Primary[0].Cells[0].Ch; got != 'h' {
 		t.Fatalf("expected h, got %q", got)
@@ -136,7 +137,7 @@ func TestTerminalIgnoreEscapeString(t *testing.T) {
 
 func TestTerminalUTF8Continuation(t *testing.T) {
 	term := New(4, 1)
-	term.Write([]byte("☁X"))
+	term.Write(context.Background(), []byte("☁X"))
 	snap := term.Snapshot()
 	if got := snap.Primary[0].Cells[0].Ch; got != '☁' {
 		t.Fatalf("expected cloud rune, got %q", got)
@@ -179,7 +180,7 @@ func TestTerminalReplayGoldens(t *testing.T) {
 				t.Fatalf("read golden: %v", err)
 			}
 			emu := New(200, 24)
-			emu.Write(data)
+			emu.Write(context.Background(), data)
 			got := snapshotText(emu.Snapshot())
 			wantText := strings.TrimRight(string(want), "\n")
 			if got != wantText {
@@ -228,11 +229,11 @@ func rowsText(rows []Row) string {
 func firstDiff(got, want string) string {
 	gotLines := strings.Split(got, "\n")
 	wantLines := strings.Split(want, "\n")
-	max := len(gotLines)
-	if len(wantLines) > max {
-		max = len(wantLines)
+	maxLines := len(gotLines)
+	if len(wantLines) > maxLines {
+		maxLines = len(wantLines)
 	}
-	for i := 0; i < max; i++ {
+	for i := 0; i < maxLines; i++ {
 		var g, w string
 		if i < len(gotLines) {
 			g = gotLines[i]

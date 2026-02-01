@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -28,7 +30,7 @@ func main() {
 	flag.Parse()
 
 	if inputPath == "" {
-		exitErr(fmt.Errorf("input path required"))
+		exitErr(errors.New("input path required"))
 	}
 
 	data, err := os.ReadFile(inputPath)
@@ -47,7 +49,7 @@ func main() {
 	if limit > 0 && limit < len(data) {
 		data = data[:limit]
 	}
-	emu.Write(data)
+	emu.Write(context.Background(), data)
 	snapshot := emu.SnapshotANSI()
 
 	var out io.Writer = os.Stdout

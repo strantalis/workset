@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -247,9 +248,9 @@ func normalizeArgs(root *cli.Command, args []string) []string {
 		rest = append(rest, token)
 	}
 
-	normalized := append(prefix, flags...)
-	normalized = append(normalized, rest...)
-	return normalized
+	prefix = append(prefix, flags...)
+	prefix = append(prefix, rest...)
+	return prefix
 }
 
 func findSubcommand(cmd *cli.Command, name string) *cli.Command {
@@ -260,10 +261,8 @@ func findSubcommand(cmd *cli.Command, name string) *cli.Command {
 		if sub.Name == name {
 			return sub
 		}
-		for _, alias := range sub.Aliases {
-			if alias == name {
-				return sub
-			}
+		if slices.Contains(sub.Aliases, name) {
+			return sub
 		}
 	}
 	return nil
@@ -321,13 +320,13 @@ func interspersedFlag(token string) (flagSpec, bool) {
 
 func boolFromArgs(args []string, name string) (bool, bool) {
 	long := "--" + name
-	for i := 0; i < len(args); i++ {
+	for i := range args {
 		arg := args[i]
 		if arg == long {
 			return true, true
 		}
-		if strings.HasPrefix(arg, long+"=") {
-			value := strings.TrimPrefix(arg, long+"=")
+		if after, ok := strings.CutPrefix(arg, long+"="); ok {
+			value := after
 			if value == "" {
 				return true, true
 			}
@@ -343,7 +342,7 @@ func boolFromArgs(args []string, name string) (bool, bool) {
 
 func workspaceFromArgs(cmd *cli.Command) string {
 	args := cmd.Args().Slice()
-	for i := 0; i < len(args); i++ {
+	for i := range args {
 		arg := args[i]
 		if arg == "-w" || arg == "--workspace" {
 			if i+1 < len(args) {
@@ -351,8 +350,8 @@ func workspaceFromArgs(cmd *cli.Command) string {
 			}
 			return ""
 		}
-		if strings.HasPrefix(arg, "--workspace=") {
-			return strings.TrimSpace(strings.TrimPrefix(arg, "--workspace="))
+		if after, ok := strings.CutPrefix(arg, "--workspace="); ok {
+			return strings.TrimSpace(after)
 		}
 	}
 	return ""
@@ -381,7 +380,7 @@ func resolveWorkspaceTarget(arg string, cfg *config.GlobalConfig) (string, strin
 		target = strings.TrimSpace(cfg.Defaults.Workspace)
 	}
 	if target == "" {
-		return "", "", fmt.Errorf("workspace required: pass -w <name|path> or set defaults.workspace (example: workset rm -w <name> --delete)")
+		return "", "", errors.New("workspace required: pass -w <name|path> or set defaults.workspace (example: workset rm -w <name> --delete)")
 	}
 	if ref, ok := cfg.Workspaces[target]; ok {
 		return target, ref.Path, nil

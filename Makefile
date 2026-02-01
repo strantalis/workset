@@ -5,7 +5,7 @@ GOLANGCI_LINT_CACHE ?= /tmp/golangci-lint-cache
 
 UV := $(shell command -v uv 2>/dev/null)
 
-.PHONY: help docs-venv docs-serve docs-build test lint fmt check
+.PHONY: help docs-venv docs-serve docs-build test lint lint-fmt fmt check
 
 help:
 	@printf "%s\n" "Targets:" \
@@ -14,6 +14,7 @@ help:
 		"  docs-build  Build MkDocs site" \
 		"  test        Run Go tests" \
 		"  lint        Run golangci-lint" \
+		"  lint-fmt    Format Go files with golangci-lint fmt (gofumpt)" \
 		"  fmt         Format Go files" \
 		"  check       fmt + test + lint"
 
@@ -36,6 +37,9 @@ test:
 
 lint:
 	GOLANGCI_LINT_CACHE=$(GOLANGCI_LINT_CACHE) golangci-lint run
+
+lint-fmt:
+	golangci-lint fmt
 
 fmt:
 	gofmt -w ./cmd ./internal

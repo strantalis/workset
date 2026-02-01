@@ -147,11 +147,11 @@ func (c CLIClient) RemoteURLs(repoPath, remoteName string) ([]string, error) {
 	return urls, nil
 }
 
-func (c CLIClient) ReferenceExists(repoPath, ref string) (bool, error) {
+func (c CLIClient) ReferenceExists(ctx context.Context, repoPath, ref string) (bool, error) {
 	if repoPath == "" || ref == "" {
 		return false, errors.New("repo path and ref required")
 	}
-	result, err := c.run(context.Background(), repoPath, "show-ref", "--verify", ref)
+	result, err := c.run(ctx, repoPath, "show-ref", "--verify", ref)
 	if err != nil {
 		if result.exitCode == 1 || isMissingRef(result.stderr) {
 			return false, nil
@@ -328,8 +328,8 @@ func (c CLIClient) WorktreeAdd(ctx context.Context, opts WorktreeAddOptions) err
 
 	startRef := ""
 	if opts.StartBranch != "" {
-		branchRef := fmt.Sprintf("refs/heads/%s", opts.StartBranch)
-		branchExists, err := c.ReferenceExists(opts.RepoPath, branchRef)
+		branchRef := "refs/heads/" + opts.StartBranch
+		branchExists, err := c.ReferenceExists(ctx, opts.RepoPath, branchRef)
 		if err != nil {
 			return err
 		}
@@ -339,7 +339,7 @@ func (c CLIClient) WorktreeAdd(ctx context.Context, opts WorktreeAddOptions) err
 	}
 	if opts.StartRemote != "" && opts.StartBranch != "" {
 		remoteRef := fmt.Sprintf("refs/remotes/%s/%s", opts.StartRemote, opts.StartBranch)
-		remoteExists, err := c.ReferenceExists(opts.RepoPath, remoteRef)
+		remoteExists, err := c.ReferenceExists(ctx, opts.RepoPath, remoteRef)
 		if err != nil {
 			return err
 		}
@@ -348,7 +348,7 @@ func (c CLIClient) WorktreeAdd(ctx context.Context, opts WorktreeAddOptions) err
 		}
 	}
 
-	refExists, err := c.ReferenceExists(opts.RepoPath, fmt.Sprintf("refs/heads/%s", opts.BranchName))
+	refExists, err := c.ReferenceExists(ctx, opts.RepoPath, "refs/heads/"+opts.BranchName)
 	if err != nil {
 		return err
 	}
@@ -419,7 +419,7 @@ func (c CLIClient) WorktreeList(repoPath string) ([]string, error) {
 	if repoPath == "" {
 		return nil, errors.New("repo path required")
 	}
-	worktreesPath, err := c.gitAdminPath(repoPath, filepath.Join("worktrees"))
+	worktreesPath, err := c.gitAdminPath(repoPath, "worktrees")
 	if err != nil {
 		return nil, err
 	}
@@ -539,7 +539,7 @@ func (c CLIClient) treeSeenInHistory(repoPath, baseRef, branchRef string) (bool,
 	if err != nil {
 		return false, err
 	}
-	for _, line := range strings.Split(logRes.stdout, "\n") {
+	for line := range strings.SplitSeq(logRes.stdout, "\n") {
 		if strings.TrimSpace(line) == treeHash {
 			return true, nil
 		}

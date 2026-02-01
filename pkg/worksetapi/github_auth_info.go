@@ -165,9 +165,9 @@ func normalizeCLIPath(path string) string {
 		return ""
 	}
 	path = os.ExpandEnv(path)
-	if strings.HasPrefix(path, "~") {
+	if after, ok := strings.CutPrefix(path, "~"); ok {
 		if home, err := os.UserHomeDir(); err == nil && home != "" {
-			path = filepath.Join(home, strings.TrimPrefix(path, "~"))
+			path = filepath.Join(home, after)
 		}
 	}
 	return filepath.Clean(path)

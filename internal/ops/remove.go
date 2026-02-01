@@ -142,17 +142,18 @@ func CheckRepoSafety(ctx context.Context, input RepoSafetyInput) (RepoSafetyRepo
 	var localBaseErr error
 	baseCheckAvailable := false
 	if defaultBranch != "" {
-		localBaseRef = fmt.Sprintf("refs/heads/%s", defaultBranch)
-		localBaseExists, localBaseErr = input.Git.ReferenceExists(repoPathForRefs, localBaseRef)
+		localBaseRef = "refs/heads/" + defaultBranch
+		localBaseExists, localBaseErr = input.Git.ReferenceExists(ctx, repoPathForRefs, localBaseRef)
 	}
 	if remoteExists && defaultBranch != "" {
 		baseRef = fmt.Sprintf("refs/remotes/%s/%s", remote, defaultBranch)
-		baseRefExists, baseRefErr = input.Git.ReferenceExists(repoPathForRefs, baseRef)
+		baseRefExists, baseRefErr = input.Git.ReferenceExists(ctx, repoPathForRefs, baseRef)
 	}
 	if defaultBranch != "" {
-		if remoteExists && baseRefExists && baseRefErr == nil {
+		switch {
+		case remoteExists && baseRefExists && baseRefErr == nil:
 			baseCheckAvailable = true
-		} else if localBaseExists && localBaseErr == nil {
+		case localBaseExists && localBaseErr == nil:
 			baseCheckAvailable = true
 		}
 	}
@@ -163,9 +164,10 @@ func CheckRepoSafety(ctx context.Context, input RepoSafetyInput) (RepoSafetyRepo
 			continue
 		}
 
-		branchRef := fmt.Sprintf("refs/heads/%s", entry.Branch)
+		branchRef := "refs/heads/" + entry.Branch
 
-		if remoteExists && defaultBranch != "" && baseRefExists && baseRefErr == nil {
+		switch {
+		case remoteExists && defaultBranch != "" && baseRefExists && baseRefErr == nil:
 			merged, err := input.Git.IsAncestor(repoPathForRefs, branchRef, baseRef)
 			if err != nil {
 				entry.UnmergedErr = err.Error()
@@ -194,32 +196,33 @@ func CheckRepoSafety(ctx context.Context, input RepoSafetyInput) (RepoSafetyRepo
 					}
 				}
 			}
-		} else if localBaseExists && localBaseErr == nil && defaultBranch != "" {
+		case localBaseExists && localBaseErr == nil && defaultBranch != "":
 			contentMerged, err := input.Git.IsContentMerged(repoPathForRefs, branchRef, localBaseRef)
 			if err != nil {
 				entry.UnmergedErr = err.Error()
 				entry.Unmerged = true
-				entry.UnmergedReason = fmt.Sprintf("unmerged check failed for local %s", defaultBranch)
+				entry.UnmergedReason = "unmerged check failed for local " + defaultBranch
 			} else if !contentMerged {
 				entry.Unmerged = true
 				entry.UnmergedReason = fmt.Sprintf("branch content not found in local %s history", defaultBranch)
 			}
-		} else if baseRefErr != nil {
+		case baseRefErr != nil:
 			entry.UnmergedErr = baseRefErr.Error()
-		} else if localBaseErr != nil {
+		case localBaseErr != nil:
 			entry.UnmergedErr = localBaseErr.Error()
 		}
 
 		if remoteExists {
 			remoteRef := fmt.Sprintf("refs/remotes/%s/%s", remote, entry.Branch)
-			remoteRefExists, err := input.Git.ReferenceExists(repoPathForRefs, remoteRef)
-			if err != nil {
+			remoteRefExists, err := input.Git.ReferenceExists(ctx, repoPathForRefs, remoteRef)
+			switch {
+			case err != nil:
 				entry.UnpushedErr = err.Error()
-			} else if !remoteRefExists {
+			case !remoteRefExists:
 				if entry.Unmerged || !baseCheckAvailable {
 					entry.Unpushed = true
 				}
-			} else {
+			default:
 				pushed, err := input.Git.IsAncestor(repoPathForRefs, remoteRef, branchRef)
 				if err != nil {
 					entry.UnpushedErr = err.Error()

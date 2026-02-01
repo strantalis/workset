@@ -19,7 +19,7 @@ func apiService(cmd *cli.Command) *worksetapi.Service {
 	return worksetapi.NewService(opts)
 }
 
-func printConfigInfo(cmd *cli.Command, info interface{}) {
+func printConfigInfo(cmd *cli.Command, info any) {
 	if !verboseEnabled(cmd) {
 		return
 	}

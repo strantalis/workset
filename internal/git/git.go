@@ -35,7 +35,7 @@ type Client interface {
 	AddRemote(path, name, url string) error
 	RemoteNames(repoPath string) ([]string, error)
 	RemoteURLs(repoPath, remoteName string) ([]string, error)
-	ReferenceExists(repoPath, ref string) (bool, error)
+	ReferenceExists(ctx context.Context, repoPath, ref string) (bool, error)
 	Fetch(ctx context.Context, repoPath, remoteName string) error
 	// UpdateBranch force-updates branchName to targetRef. Callers must ensure the update is safe.
 	UpdateBranch(ctx context.Context, repoPath, branchName, targetRef string) error

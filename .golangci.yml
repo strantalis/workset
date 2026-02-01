@@ -11,6 +11,50 @@ linters:
     - ineffassign
     - staticcheck
     - unused
+    - canonicalheader
+    - containedctx
+    - contextcheck
+    - copyloopvar
+    - durationcheck
+    - embeddedstructfieldcheck
+    - errname
+    - errorlint
+    - exptostd
+    - fatcontext
+    - forbidigo
+    - gocheckcompilerdirectives
+    - gochecknoinits
+    - gocritic
+    - godoclint
+    - gosec
+    - musttag
+    - perfsprint
+    - predeclared
+    - reassign
+    - sloglint
+    - unconvert
+    - usetesting
+  settings:
+    gosec:
+      severity: "medium"
+      confidence: "high"
+      excludes:
+        - G204
+        - G304
+        - G301
+        - G302
+        - G306
+        - G401
+        - G505
+  exclusions:
+    rules:
+      - path: ".*_test\\.go$"
+        linters:
+          - errcheck
+          - gosec
+      - path: "pkg/worksetapi/types\\.go"
+        linters:
+          - errname
 
 formatters:
   enable:

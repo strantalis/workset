@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -92,7 +93,8 @@ func sessionStartCommand() *cli.Command {
 			}
 			result, err := svc.StartSession(ctx, input)
 			if err != nil {
-				if confirm, ok := err.(worksetapi.ConfirmationRequired); ok && !cmd.Bool("yes") {
+				var confirm worksetapi.ConfirmationRequired
+				if errors.As(err, &confirm) && !cmd.Bool("yes") {
 					ok, promptErr := confirmPrompt(os.Stdin, commandWriter(cmd), confirm.Message+" [y/N] ")
 					if promptErr != nil {
 						return promptErr
@@ -190,7 +192,8 @@ func sessionAttachCommand() *cli.Command {
 			}
 			result, err := svc.AttachSession(ctx, input)
 			if err != nil {
-				if confirm, ok := err.(worksetapi.ConfirmationRequired); ok && !cmd.Bool("yes") {
+				var confirm worksetapi.ConfirmationRequired
+				if errors.As(err, &confirm) && !cmd.Bool("yes") {
 					ok, promptErr := confirmPrompt(os.Stdin, commandWriter(cmd), confirm.Message+" [y/N] ")
 					if promptErr != nil {
 						return promptErr
@@ -282,7 +285,8 @@ func sessionStopCommand() *cli.Command {
 			}
 			result, err := svc.StopSession(ctx, input)
 			if err != nil {
-				if confirm, ok := err.(worksetapi.ConfirmationRequired); ok && !cmd.Bool("yes") {
+				var confirm worksetapi.ConfirmationRequired
+				if errors.As(err, &confirm) && !cmd.Bool("yes") {
 					ok, promptErr := confirmPrompt(os.Stdin, commandWriter(cmd), confirm.Message+" [y/N] ")
 					if promptErr != nil {
 						return promptErr

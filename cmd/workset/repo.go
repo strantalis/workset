@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -153,7 +154,7 @@ func repoCommand() *cli.Command {
 					if _, err := fmt.Fprintln(commandWriter(cmd), msg); err != nil {
 						return err
 					}
-					localLine := fmt.Sprintf("local: %s", result.Payload.LocalPath)
+					localLine := "local: " + result.Payload.LocalPath
 					if styles.Enabled {
 						localLine = styles.Render(styles.Muted, localLine)
 					}
@@ -170,7 +171,7 @@ func repoCommand() *cli.Command {
 						}
 					}
 					if result.WorktreePath != "" {
-						line := fmt.Sprintf("worktree: %s", result.WorktreePath)
+						line := "worktree: " + result.WorktreePath
 						if styles.Enabled {
 							line = styles.Render(styles.Muted, line)
 						}
@@ -179,7 +180,7 @@ func repoCommand() *cli.Command {
 						}
 					}
 					for _, warning := range result.Warnings {
-						line := fmt.Sprintf("warning: %s", warning)
+						line := "warning: " + warning
 						if styles.Enabled {
 							line = styles.Render(styles.Warn, line)
 						}
@@ -238,7 +239,8 @@ func repoCommand() *cli.Command {
 					}
 					result, err := svc.RemoveRepo(ctx, input)
 					if err != nil {
-						if confirm, ok := err.(worksetapi.ConfirmationRequired); ok && (deleteWorktrees || deleteLocal) && !cmd.Bool("yes") {
+						var confirm worksetapi.ConfirmationRequired
+						if errors.As(err, &confirm) && (deleteWorktrees || deleteLocal) && !cmd.Bool("yes") {
 							prompt := confirm.Message
 							if deleteWorktrees {
 								prompt += " and delete worktrees"
@@ -257,8 +259,9 @@ func repoCommand() *cli.Command {
 							result, err = svc.RemoveRepo(ctx, input)
 						}
 						if err != nil {
-							if unsafe, ok := err.(worksetapi.UnsafeOperation); ok {
-								for _, warning := range unsafe.Warnings {
+							var unsafeOp worksetapi.UnsafeOperation
+							if errors.As(err, &unsafeOp) {
+								for _, warning := range unsafeOp.Warnings {
 									_, _ = fmt.Fprintln(os.Stderr, "warning:", warning)
 								}
 							}

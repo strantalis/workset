@@ -318,7 +318,7 @@ func (f *fakeGitClient) RemoteURLs(_ string, _ string) ([]string, error) {
 	return nil, nil
 }
 
-func (f *fakeGitClient) ReferenceExists(repoPath, ref string) (bool, error) {
+func (f *fakeGitClient) ReferenceExists(_ context.Context, repoPath, ref string) (bool, error) {
 	if ok, exists := f.refs[key(repoPath, ref)]; exists {
 		return ok, nil
 	}

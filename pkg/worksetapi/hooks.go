@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -211,10 +212,8 @@ func addTrustedRepo(cfg *config.GlobalConfig, repoName string) bool {
 	if repoName == "" {
 		return false
 	}
-	for _, existing := range cfg.Hooks.RepoHooks.TrustedRepos {
-		if existing == repoName {
-			return false
-		}
+	if slices.Contains(cfg.Hooks.RepoHooks.TrustedRepos, repoName) {
+		return false
 	}
 	cfg.Hooks.RepoHooks.TrustedRepos = append(cfg.Hooks.RepoHooks.TrustedRepos, repoName)
 	sort.Strings(cfg.Hooks.RepoHooks.TrustedRepos)
@@ -225,23 +224,15 @@ func isTrustedRepo(cfg *config.GlobalConfig, repoName string) bool {
 	if cfg == nil || repoName == "" {
 		return false
 	}
-	for _, existing := range cfg.Hooks.RepoHooks.TrustedRepos {
-		if existing == repoName {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(cfg.Hooks.RepoHooks.TrustedRepos, repoName)
 }
 
 func hookIDsForEvent(hooksList []hooks.Hook, event hooks.Event) []string {
 	ids := make([]string, 0, len(hooksList))
 	for _, hook := range hooksList {
-		for _, candidate := range hook.On {
-			if candidate == event {
-				if hook.ID != "" {
-					ids = append(ids, hook.ID)
-				}
-				break
+		if slices.Contains(hook.On, event) {
+			if hook.ID != "" {
+				ids = append(ids, hook.ID)
 			}
 		}
 	}

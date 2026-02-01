@@ -176,12 +176,12 @@ func (f *fakeGit) RemoteURLs(repoPath, remoteName string) ([]string, error) {
 		}
 	}
 	if remoteName == "" {
-		return nil, fmt.Errorf("remote name required")
+		return nil, errors.New("remote name required")
 	}
 	return []string{}, nil
 }
 
-func (f *fakeGit) ReferenceExists(repoPath, ref string) (bool, error) {
+func (f *fakeGit) ReferenceExists(_ context.Context, repoPath, ref string) (bool, error) {
 	if ok, exists := f.refs[refKey(repoPath, ref)]; exists {
 		return ok, nil
 	}
