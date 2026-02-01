@@ -637,8 +637,8 @@
 		flex: 1;
 		min-height: 0;
 		display: flex;
-		border: 1px solid var(--border);
-		border-radius: 10px;
+		border: none;
+		border-radius: 0;
 		background: var(--panel);
 		overflow: hidden;
 	}

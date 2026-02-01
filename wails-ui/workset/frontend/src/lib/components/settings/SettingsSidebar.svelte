@@ -39,6 +39,10 @@
 				{ id: 'groups', label: 'Groups', count: groupCount },
 			],
 		},
+		{
+			title: 'INFO',
+			items: [{ id: 'about', label: 'About' }],
+		},
 	] as SidebarGroup[]);
 </script>
 

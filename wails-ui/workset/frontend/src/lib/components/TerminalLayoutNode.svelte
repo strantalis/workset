@@ -510,13 +510,13 @@
 	.split.row > .split-divider {
 		width: 1px;
 		cursor: col-resize;
-		margin: 0 4px;
+		margin: 0;
 	}
 
 	.split.column > .split-divider {
 		height: 1px;
 		cursor: row-resize;
-		margin: 4px 0;
+		margin: 0;
 	}
 
 	.split-divider:hover,
@@ -537,11 +537,11 @@
 		min-height: 0;
 		min-width: 0;
 		background: var(--panel);
-		border-radius: 12px;
+		border-radius: 0;
 		overflow: hidden;
-		border: 1px solid var(--border);
+		border: none;
 		transition: all 0.2s ease;
-		box-shadow: var(--shadow-sm);
+		box-shadow: none;
 	}
 
 	.pane.focused {
@@ -564,7 +564,7 @@
 	.pane-header {
 		display: flex;
 		align-items: center;
-		padding: 6px 8px 4px;
+		padding: 4px 6px;
 		background: color-mix(in srgb, var(--panel-strong) 80%, var(--panel));
 		transition: background 0.2s ease;
 		border-bottom: 1px solid var(--border);
@@ -692,7 +692,7 @@
 	.pane-body {
 		flex: 1;
 		min-height: 0;
-		padding: 2px;
+		padding: 0;
 		position: relative;
 	}
 
