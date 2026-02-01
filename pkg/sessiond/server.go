@@ -177,6 +177,8 @@ func (s *Server) handleControl(ctx context.Context, conn net.Conn, line []byte) 
 		return
 	}
 	switch req.Method {
+	case "ping":
+		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true})
 	case "create":
 		var params CreateRequest
 		if err := json.Unmarshal(req.Params, &params); err != nil {
@@ -304,11 +306,19 @@ func (s *Server) handleControl(ctx context.Context, conn net.Conn, line []byte) 
 		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true, Result: bootstrap})
 	case "list":
 		s.mu.Lock()
-		sessions := make([]SessionInfo, 0, len(s.sessions))
+		snap := make([]*Session, 0, len(s.sessions))
 		for _, session := range s.sessions {
-			sessions = append(sessions, session.info())
+			snap = append(snap, session)
 		}
 		s.mu.Unlock()
+		start := time.Now()
+		sessions := make([]SessionInfo, 0, len(snap))
+		for _, session := range snap {
+			sessions = append(sessions, session.info())
+		}
+		if elapsed := time.Since(start); elapsed > 250*time.Millisecond {
+			logServerf("list_slow count=%d duration=%s", len(sessions), elapsed)
+		}
 		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true, Result: ListResponse{Sessions: sessions}})
 	case "info":
 		exe, err := os.Executable()
