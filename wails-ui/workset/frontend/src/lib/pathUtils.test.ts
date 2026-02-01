@@ -67,12 +67,10 @@ describe('formatPath - path display formatting', () => {
 			const path = `src/components/${filename}`;
 			const result = formatPath(path);
 			
-			// Should try to show some context since filename is under max
-			expect(result).toContain(filename);
-			// If we have room, we might show ".../filename"
-			if (result !== filename) {
-				expect(result).toContain('.../');
-			}
+			// When filename is 39 chars with maxChars=40, we don't have room
+			// for ".../" (4 chars) plus a directory, so just return filename
+			expect(result).toBe(filename);
+			expect(result.length).toBeLessThanOrEqual(40);
 		});
 	});
 
@@ -103,9 +101,8 @@ describe('formatPath - path display formatting', () => {
 			const result = formatPath(path);
 			expect(result).toContain('file.go');
 			expect(result).toContain('...');
-			// Result may slightly exceed maxChars when filename is short
-			// because we always preserve the full filename
-			expect(result.length).toBeLessThanOrEqual(45);
+			// Result should never exceed maxChars
+			expect(result.length).toBeLessThanOrEqual(40);
 		});
 
 		it('handles paths with special characters', () => {

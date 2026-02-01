@@ -36,12 +36,15 @@ export function formatPath(path: string, maxChars: number = 40): string {
 
 	for (let i = parts.length - 1; i >= 0; i--) {
 		const dir = parts[i];
-		// +4 accounts for "/" and "..." prefix
-		if (currentLength + dir.length + 4 <= maxChars) {
+		// +5 accounts for ".../" (4 chars) + "/" separator (1 char) that will be added
+		if (currentLength + dir.length + 5 <= maxChars) {
 			visible.unshift(dir);
 			currentLength += dir.length + 1;
 		} else {
-			visible.unshift('...');
+			// Only add "..." if we have room for it (4 chars for ".../")
+			if (currentLength + 4 <= maxChars) {
+				visible.unshift('...');
+			}
 			break;
 		}
 	}

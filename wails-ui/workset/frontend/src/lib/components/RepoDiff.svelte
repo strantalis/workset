@@ -174,7 +174,7 @@
 	let isResizing = $state(false);
 
 	// Load persisted sidebar width on mount
-	$effect(() => {
+	onMount(() => {
 		const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
 		if (saved) {
 			const parsed = parseInt(saved, 10);
@@ -597,12 +597,23 @@
 		const handleMouseUp = () => {
 			isResizing = false;
 			localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
+			cleanupListeners();
+		};
+
+		const handleBlur = () => {
+			isResizing = false;
+			cleanupListeners();
+		};
+
+		const cleanupListeners = () => {
 			document.removeEventListener('mousemove', handleMouseMove);
 			document.removeEventListener('mouseup', handleMouseUp);
+			window.removeEventListener('blur', handleBlur);
 		};
 
 		document.addEventListener('mousemove', handleMouseMove);
 		document.addEventListener('mouseup', handleMouseUp);
+		window.addEventListener('blur', handleBlur);
 	};
 
 	const formatError = (err: unknown, fallback: string): string => {
