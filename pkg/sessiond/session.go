@@ -277,6 +277,9 @@ func (s *Session) bootstrap() (BootstrapResponse, error) {
 	resp.NextOffset = backlog.NextOffset
 	resp.BacklogTruncated = backlog.Truncated
 	resp.BacklogSource = backlog.Source
+	if backlog.Truncated {
+		resp.SafeToReplay = false
+	}
 	debugLogf(
 		"session_bootstrap id=%s snapshot_bytes=0 snapshot_source=%s backlog_bytes=%d backlog_source=%s alt_screen=%t truncated=%t",
 		s.id,
