@@ -1267,6 +1267,7 @@
 						</label>
 						<button
 							class="pr-create-btn"
+							class:loading={prCreating}
 							type="button"
 							onclick={handleCreatePR}
 							disabled={prCreating}
@@ -1936,6 +1937,10 @@
 		transition: opacity 0.15s ease;
 	}
 
+	.pr-create-btn.loading {
+		animation: pr-create-pulse 1.6s ease-in-out infinite;
+	}
+
 	.pr-create-btn:hover:not(:disabled) {
 		opacity: 0.9;
 	}
@@ -1949,6 +1954,7 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
+		animation: pr-create-glow 1.6s ease-in-out infinite;
 	}
 
 	.pr-create-spinner-icon {
@@ -1959,15 +1965,41 @@
 
 	.pr-create-progress {
 		font-size: 12px;
-		color: var(--muted);
+		color: var(--text);
+		opacity: 0.75;
 		display: flex;
 		align-items: center;
 		gap: 8px;
+		padding: 6px 10px;
+		background: var(--panel-soft);
+		border-radius: 8px;
+		border: 1px solid var(--border);
+		border-left: 3px solid var(--accent);
 	}
 
 	@keyframes pr-create-spin {
 		to {
 			transform: rotate(360deg);
+		}
+	}
+
+	@keyframes pr-create-glow {
+		0%,
+		100% {
+			opacity: 0.6;
+		}
+		50% {
+			opacity: 1;
+		}
+	}
+
+	@keyframes pr-create-pulse {
+		0%,
+		100% {
+			box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+		}
+		50% {
+			box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.08);
 		}
 	}
 
