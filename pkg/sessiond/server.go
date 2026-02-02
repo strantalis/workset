@@ -502,6 +502,9 @@ func (s *Server) handleAttach(conn net.Conn, line []byte) {
 const bootstrapChunkSize = 64 * 1024
 
 func writeBootstrapChunks(enc *json.Encoder, sessionID, streamID string, bootstrap BootstrapResponse) error {
+	if !bootstrap.SafeToReplay {
+		return nil
+	}
 	data := bootstrap.Snapshot
 	if data == "" {
 		data = bootstrap.Backlog
