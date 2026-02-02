@@ -418,7 +418,7 @@ func resolveSigningKey(ctx context.Context, repoPath string, runner CommandRunne
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return sshPublicKey{}, false, ValidationError{Message: fmt.Sprintf("unable to read signing key file %s", path)}
+		return sshPublicKey{}, false, ValidationError{Message: "unable to read signing key file " + path}
 	}
 	scanner := bufio.NewScanner(strings.NewReader(string(data)))
 	for scanner.Scan() {
@@ -430,7 +430,7 @@ func resolveSigningKey(ctx context.Context, repoPath string, runner CommandRunne
 			return key, true, nil
 		}
 	}
-	return sshPublicKey{}, false, ValidationError{Message: fmt.Sprintf("no valid public key found in %s", path)}
+	return sshPublicKey{}, false, ValidationError{Message: "no valid public key found in " + path}
 }
 
 func sshAddListKeys(ctx context.Context, repoPath string, runner CommandRunner, socket string) (sshAgentCheck, error) {

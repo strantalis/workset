@@ -19,6 +19,7 @@ type fakeGitClient struct {
 func (f fakeGitClient) Clone(_ context.Context, _, _, _ string) error {
 	return errors.New("not implemented")
 }
+
 func (f fakeGitClient) CloneBare(_ context.Context, _, _, _ string) error {
 	return errors.New("not implemented")
 }
@@ -26,18 +27,23 @@ func (f fakeGitClient) AddRemote(_, _, _ string) error { return errors.New("not 
 func (f fakeGitClient) RemoteNames(_ string) ([]string, error) {
 	return nil, errors.New("not implemented")
 }
+
 func (f fakeGitClient) RemoteURLs(_ string, remoteName string) ([]string, error) {
 	return f.remoteURLs[remoteName], nil
 }
+
 func (f fakeGitClient) ReferenceExists(_ context.Context, _, _ string) (bool, error) {
 	return false, errors.New("not implemented")
 }
+
 func (f fakeGitClient) Fetch(_ context.Context, _ string, _ string) error {
 	return errors.New("not implemented")
 }
+
 func (f fakeGitClient) UpdateBranch(_ context.Context, _, _, _ string) error {
 	return errors.New("not implemented")
 }
+
 func (f fakeGitClient) Status(_ string) (git.StatusSummary, error) {
 	return git.StatusSummary{}, errors.New("not implemented")
 }
@@ -45,21 +51,27 @@ func (f fakeGitClient) IsRepo(_ string) (bool, error) { return false, errors.New
 func (f fakeGitClient) IsAncestor(_, _, _ string) (bool, error) {
 	return false, errors.New("not implemented")
 }
+
 func (f fakeGitClient) IsContentMerged(_, _, _ string) (bool, error) {
 	return false, errors.New("not implemented")
 }
+
 func (f fakeGitClient) CurrentBranch(_ string) (string, bool, error) {
 	return "", false, errors.New("not implemented")
 }
+
 func (f fakeGitClient) RemoteExists(_ string, _ string) (bool, error) {
 	return false, errors.New("not implemented")
 }
+
 func (f fakeGitClient) WorktreeAdd(_ context.Context, _ git.WorktreeAddOptions) error {
 	return errors.New("not implemented")
 }
+
 func (f fakeGitClient) WorktreeRemove(_ git.WorktreeRemoveOptions) error {
 	return errors.New("not implemented")
 }
+
 func (f fakeGitClient) WorktreeList(_ string) ([]string, error) {
 	return nil, errors.New("not implemented")
 }
