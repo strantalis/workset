@@ -3,6 +3,7 @@ package worksetapi
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -50,6 +51,36 @@ func TestPrepareAgentCommandCodexKeepsPromptArg(t *testing.T) {
 	}
 	if sliceHasExact(command, "-") {
 		t.Fatalf("unexpected stdin prompt: %v", command)
+	}
+}
+
+func TestPrepareAgentCommandCodexPreservesResolvedPath(t *testing.T) {
+	schemaPath := filepath.Join(t.TempDir(), "schema.json")
+	if err := os.WriteFile(schemaPath, []byte(`{"type":"object"}`), 0o644); err != nil {
+		t.Fatalf("write schema: %v", err)
+	}
+
+	tempDir := t.TempDir()
+	codexPath := filepath.Join(tempDir, "codex")
+	if err := os.WriteFile(codexPath, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("write codex: %v", err)
+	}
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(codexPath, 0o755); err != nil {
+			t.Fatalf("chmod codex: %v", err)
+		}
+	}
+
+	command, _, _, err := prepareAgentCommand([]string{codexPath}, "prompt", schemaPath)
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	if len(command) == 0 {
+		t.Fatalf("unexpected empty command")
+	}
+	want := filepath.Clean(codexPath)
+	if command[0] != want {
+		t.Fatalf("unexpected command path: got %q want %q", command[0], want)
 	}
 }
 
