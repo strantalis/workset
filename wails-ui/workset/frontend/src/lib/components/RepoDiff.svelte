@@ -39,6 +39,7 @@
 	} from '../api';
 	import type { RepoLocalStatus } from '../api';
 	import GitHubLoginModal from './GitHubLoginModal.svelte';
+	import { formatPath } from '../pathUtils';
 
 	/**
 	 * Validates and opens URL only if it belongs to trusted GitHub domains.
@@ -164,6 +165,28 @@
 
 	// Sidebar tab: 'files' or 'checks'
 	let sidebarTab: 'files' | 'checks' = $state('files');
+
+	// Sidebar resize state
+	const SIDEBAR_WIDTH_KEY = 'workset:repoDiff:sidebarWidth';
+	const MIN_SIDEBAR_WIDTH = 200;
+	const DEFAULT_SIDEBAR_WIDTH = 280;
+	let sidebarWidth = $state(DEFAULT_SIDEBAR_WIDTH);
+	let isResizing = $state(false);
+
+	// Load persisted sidebar width on mount
+	onMount(() => {
+		try {
+			const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
+			if (saved) {
+				const parsed = parseInt(saved, 10);
+				if (!isNaN(parsed) && parsed >= MIN_SIDEBAR_WIDTH) {
+					sidebarWidth = parsed;
+				}
+			}
+		} catch {
+			// localStorage unavailable, use default width
+		}
+	});
 
 	let summaryRequest = 0;
 	let fileRequest = 0;
@@ -560,6 +583,45 @@
 			default:
 				return 'modified';
 		}
+	};
+
+	// Sidebar resize handlers
+	const startResize = (e: MouseEvent) => {
+		e.preventDefault();
+		isResizing = true;
+		const startX = e.clientX;
+		const startWidth = sidebarWidth;
+
+		const handleMouseMove = (e: MouseEvent) => {
+			const diff = e.clientX - startX;
+			const newWidth = Math.max(MIN_SIDEBAR_WIDTH, startWidth + diff);
+			sidebarWidth = newWidth;
+		};
+
+		const handleMouseUp = () => {
+			isResizing = false;
+			try {
+				localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
+			} catch {
+				// localStorage unavailable, width won't persist
+			}
+			cleanupListeners();
+		};
+
+		const handleBlur = () => {
+			isResizing = false;
+			cleanupListeners();
+		};
+
+		const cleanupListeners = () => {
+			document.removeEventListener('mousemove', handleMouseMove);
+			document.removeEventListener('mouseup', handleMouseUp);
+			window.removeEventListener('blur', handleBlur);
+		};
+
+		document.addEventListener('mousemove', handleMouseMove);
+		document.addEventListener('mouseup', handleMouseUp);
+		window.addEventListener('blur', handleBlur);
 	};
 
 	const formatError = (err: unknown, fallback: string): string => {
@@ -1262,7 +1324,7 @@
 	{:else if !summary || summary.files.length === 0}
 		<div class="state">No changes detected in this repo.</div>
 	{:else}
-		<div class="diff-body">
+		<div class="diff-body" style="--sidebar-width: {sidebarWidth}px">
 			<aside class="file-list">
 				<!-- Sidebar tabs (only show when in status mode with checks) -->
 				{#if effectiveMode === 'status' && prStatus && prStatus.checks.length > 0}
@@ -1310,14 +1372,14 @@
 								onclick={() => selectFile(file, 'local')}
 								type="button"
 							>
-								<div class="file-meta">
-									<span class="path">{file.path}</span>
-									{#if file.prevPath}
-										<span class="rename">from {file.prevPath}</span>
-									{/if}
-								</div>
-								<div class="stats">
-									<span class="tag local-tag">{statusLabel(file.status)}</span>
+									<div class="file-meta">
+										<span class="path" title={file.path}>{formatPath(file.path)}</span>
+										{#if file.prevPath}
+											<span class="rename">from {file.prevPath}</span>
+										{/if}
+									</div>
+									<div class="stats">
+										<span class="tag local-tag">{statusLabel(file.status)}</span>
 									<span class="diffstat local-diffstat"
 										><span class="add">+{file.added}</span><span class="sep">/</span><span
 											class="del">-{file.removed}</span
@@ -1347,7 +1409,7 @@
 							type="button"
 						>
 							<div class="file-meta">
-								<span class="path">{file.path}</span>
+								<span class="path" title={file.path}>{formatPath(file.path)}</span>
 								{#if file.prevPath}
 									<span class="rename">from {file.prevPath}</span>
 								{/if}
@@ -1404,6 +1466,13 @@
 					</div>
 				{/if}
 			</aside>
+			<div
+				class="resize-handle"
+				class:resizing={isResizing}
+				onmousedown={startResize}
+				role="separator"
+				aria-label="Resize sidebar"
+			></div>
 			<div class="diff-view">
 				<div class="file-header">
 					<div class="file-title">
@@ -2420,6 +2489,7 @@
 		flex-direction: column;
 		gap: 16px;
 		height: 100%;
+		padding: 16px;
 	}
 
 	.diff-header {
@@ -2573,10 +2643,37 @@
 
 	.diff-body {
 		display: grid;
-		grid-template-columns: 280px 1fr;
-		gap: 16px;
+		grid-template-columns: var(--sidebar-width, 280px) 1fr;
+		gap: 8px;
 		flex: 1;
 		min-height: 0;
+		position: relative;
+	}
+
+	.resize-handle {
+		position: absolute;
+		left: calc(var(--sidebar-width, 280px) + 2px);
+		top: 0;
+		bottom: 0;
+		width: 4px;
+		background: transparent;
+		cursor: col-resize;
+		transition: background var(--transition-fast);
+		z-index: 10;
+		border-radius: 2px;
+	}
+
+	.resize-handle:hover,
+	.resize-handle.resizing {
+		background: var(--accent);
+	}
+
+	.resize-handle::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		width: 12px;
+		transform: translateX(-4px);
 	}
 
 	.file-list {
@@ -2589,6 +2686,25 @@
 		gap: 12px;
 		min-height: 0;
 		overflow: auto;
+		scrollbar-width: thin;
+		scrollbar-color: var(--border) transparent;
+	}
+
+	.file-list::-webkit-scrollbar {
+		width: 6px;
+	}
+
+	.file-list::-webkit-scrollbar-track {
+		background: transparent;
+	}
+
+	.file-list::-webkit-scrollbar-thumb {
+		background: var(--border);
+		border-radius: 3px;
+	}
+
+	.file-list::-webkit-scrollbar-thumb:hover {
+		background: var(--accent);
 	}
 
 	.section-title {
@@ -2607,25 +2723,26 @@
 		flex-direction: column;
 		gap: 6px;
 		background: transparent;
-		border: 1px solid transparent;
+		outline: 1px solid transparent;
+		outline-offset: -1px;
 		color: var(--text);
 		text-align: left;
 		padding: 10px;
 		border-radius: var(--radius-md);
 		cursor: pointer;
 		transition:
-			border-color var(--transition-fast),
+			outline-color var(--transition-fast),
 			background var(--transition-fast);
 	}
 
 	.file-row:hover:not(.selected) {
-		border-color: var(--border);
+		outline-color: var(--border);
 		background: rgba(255, 255, 255, 0.02);
 	}
 
 	.file-row.selected {
 		background: var(--accent-subtle);
-		border-color: var(--accent-soft);
+		outline-color: var(--accent);
 	}
 
 	.file-meta {
@@ -2636,6 +2753,9 @@
 
 	.path {
 		font-size: 13px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.rename {
