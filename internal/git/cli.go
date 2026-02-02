@@ -57,11 +57,21 @@ func (c CLIClient) run(ctx context.Context, repoPath string, args ...string) (gi
 			exitCode = -1
 		}
 	}
-	return gitResult{
+	result := gitResult{
 		stdout:   stdout.String(),
 		stderr:   stderr.String(),
 		exitCode: exitCode,
-	}, err
+	}
+	if err != nil {
+		message := strings.TrimSpace(result.stderr)
+		if message == "" {
+			message = strings.TrimSpace(result.stdout)
+		}
+		if message != "" {
+			err = fmt.Errorf("%w: %s", err, message)
+		}
+	}
+	return result, err
 }
 
 func (c CLIClient) Clone(ctx context.Context, url, path, remoteName string) error {
@@ -285,6 +295,9 @@ func (c CLIClient) CurrentBranch(repoPath string) (string, bool, error) {
 	}
 	result, err := c.run(context.Background(), repoPath, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
+		if result.exitCode != 0 && isMissingRef(result.stderr) {
+			return "", false, nil
+		}
 		return "", false, err
 	}
 	name := strings.TrimSpace(result.stdout)
