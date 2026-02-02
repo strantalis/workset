@@ -71,8 +71,11 @@ func (c CLIClient) Clone(ctx context.Context, url, path, remoteName string) erro
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		return err
 	}
-	_, err := c.run(ctx, "", "clone", "--origin", remoteName, url, path)
-	return err
+	result, err := c.run(ctx, "", "clone", "--origin", remoteName, url, path)
+	if err != nil {
+		return annotateGitError(err, result)
+	}
+	return nil
 }
 
 func (c CLIClient) CloneBare(ctx context.Context, url, path, remoteName string) error {
@@ -82,8 +85,11 @@ func (c CLIClient) CloneBare(ctx context.Context, url, path, remoteName string) 
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		return err
 	}
-	_, err := c.run(ctx, "", "clone", "--bare", "--origin", remoteName, url, path)
-	return err
+	result, err := c.run(ctx, "", "clone", "--bare", "--origin", remoteName, url, path)
+	if err != nil {
+		return annotateGitError(err, result)
+	}
+	return nil
 }
 
 func (c CLIClient) AddRemote(path, name, url string) error {
@@ -605,6 +611,17 @@ func (c CLIClient) gitAdminPath(repoPath, path string) (string, error) {
 		return "", ErrWorktreeNotFound
 	}
 	return gitPath, nil
+}
+
+func annotateGitError(err error, result gitResult) error {
+	message := strings.TrimSpace(result.stderr)
+	if message == "" {
+		message = strings.TrimSpace(result.stdout)
+	}
+	if message == "" {
+		return err
+	}
+	return fmt.Errorf("%w: %s", err, message)
 }
 
 func isNotRepo(result gitResult) bool {
