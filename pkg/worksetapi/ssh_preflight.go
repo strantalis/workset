@@ -268,7 +268,9 @@ func isSSHRemoteURL(raw string) bool {
 		scheme := strings.ToLower(parsed.Scheme)
 		return scheme == "ssh" || scheme == "git+ssh"
 	}
-	return strings.Contains(raw, "@") && strings.Contains(raw, ":")
+	at := strings.LastIndex(raw, "@")
+	colon := strings.LastIndex(raw, ":")
+	return at > -1 && colon > at
 }
 
 func sshHostFromURL(raw string) string {
