@@ -36,12 +36,12 @@ describe('formatPath - path display formatting', () => {
 			const path = 'a/b/c/d/e/f/g/h/i/j/file.txt';
 			
 			const shortResult = formatPath(path, 20);
-			// Allow small buffer for ".../" prefix in edge cases
-			expect(shortResult.length).toBeLessThanOrEqual(23);
+			// Result should never exceed maxChars
+			expect(shortResult.length).toBeLessThanOrEqual(20);
 			expect(shortResult).toContain('file.txt');
 			
 			const longResult = formatPath(path, 50);
-			expect(longResult.length).toBeLessThanOrEqual(53);
+			expect(longResult.length).toBeLessThanOrEqual(50);
 			expect(longResult).toContain('file.txt');
 		});
 	});
@@ -102,8 +102,8 @@ describe('formatPath - path display formatting', () => {
 			const result = formatPath(path);
 			expect(result).toContain('file.go');
 			expect(result).toContain('...');
-			// Allow small buffer for ".../" prefix in edge cases
-			expect(result.length).toBeLessThanOrEqual(43);
+			// Result should never exceed maxChars
+			expect(result.length).toBeLessThanOrEqual(40);
 		});
 
 		it('handles paths with special characters', () => {
