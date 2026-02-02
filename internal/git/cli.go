@@ -295,6 +295,9 @@ func (c CLIClient) CurrentBranch(repoPath string) (string, bool, error) {
 	}
 	result, err := c.run(context.Background(), repoPath, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
+		if result.exitCode != 0 && isMissingRef(result.stderr) {
+			return "", false, nil
+		}
 		return "", false, err
 	}
 	name := strings.TrimSpace(result.stdout)
