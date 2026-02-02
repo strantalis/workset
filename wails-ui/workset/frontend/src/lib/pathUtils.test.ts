@@ -114,8 +114,9 @@ describe('formatPath - path display formatting', () => {
 			const path = 'src/main.go';
 			const result = formatPath(path, 10);
 			// With maxChars=10 and filename="main.go" (7 chars), we should 
-			// at least show the filename, possibly with some truncation
-			expect(result).toContain('main.go');
+			// just return the filename since there's no room for prefix
+			expect(result).toBe('main.go');
+			expect(result.length).toBeLessThanOrEqual(10);
 		});
 
 		it('handles paths with spaces', () => {

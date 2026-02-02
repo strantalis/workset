@@ -175,12 +175,16 @@
 
 	// Load persisted sidebar width on mount
 	onMount(() => {
-		const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
-		if (saved) {
-			const parsed = parseInt(saved, 10);
-			if (!isNaN(parsed) && parsed >= MIN_SIDEBAR_WIDTH) {
-				sidebarWidth = parsed;
+		try {
+			const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
+			if (saved) {
+				const parsed = parseInt(saved, 10);
+				if (!isNaN(parsed) && parsed >= MIN_SIDEBAR_WIDTH) {
+					sidebarWidth = parsed;
+				}
 			}
+		} catch {
+			// localStorage unavailable, use default width
 		}
 	});
 
@@ -596,7 +600,11 @@
 
 		const handleMouseUp = () => {
 			isResizing = false;
-			localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
+			try {
+				localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
+			} catch {
+				// localStorage unavailable, width won't persist
+			}
 			cleanupListeners();
 		};
 
