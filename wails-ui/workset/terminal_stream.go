@@ -53,6 +53,7 @@ func (a *App) streamTerminal(session *terminalSession) {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	session.mu.Lock()
 	session.streamCancel = cancel
 	session.mu.Unlock()
@@ -254,6 +255,13 @@ func (a *App) emitBootstrapReplay(session *terminalSession) error {
 				Snapshot: bootstrap.Kitty,
 			},
 		})
+	}
+	if !bootstrap.SafeToReplay {
+		wruntime.EventsEmit(a.ctx, "terminal:bootstrap_done", TerminalBootstrapDonePayload{
+			WorkspaceID: session.workspaceID,
+			TerminalID:  session.terminalID,
+		})
+		return nil
 	}
 	data := bootstrap.Snapshot
 	if data == "" {
