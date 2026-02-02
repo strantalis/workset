@@ -2,8 +2,10 @@ package main
 
 import "runtime/debug"
 
-var appVersion = "dev"
-var appCommit = ""
+var (
+	appVersion = "dev"
+	appCommit  = ""
+)
 
 type AppVersion struct {
 	Version string `json:"version"`

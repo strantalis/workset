@@ -1,6 +1,7 @@
 import { describe, test, expect, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
 import Alert from './Alert.svelte';
+import { asSnippet } from '../../test-utils/snippet';
 
 describe('Alert', () => {
 	afterEach(() => {
@@ -11,7 +12,7 @@ describe('Alert', () => {
 		const { container } = render(Alert, {
 			props: {
 				variant: 'error',
-				children: () => 'Error message',
+				children: asSnippet('Error message'),
 			},
 		});
 		const alert = container.querySelector('.alert');
@@ -23,7 +24,7 @@ describe('Alert', () => {
 		const { container } = render(Alert, {
 			props: {
 				variant: 'success',
-				children: () => 'Success message',
+				children: asSnippet('Success message'),
 			},
 		});
 		const alert = container.querySelector('.alert');
@@ -34,7 +35,7 @@ describe('Alert', () => {
 		const { container } = render(Alert, {
 			props: {
 				variant: 'warning',
-				children: () => 'Warning message',
+				children: asSnippet('Warning message'),
 			},
 		});
 		const alert = container.querySelector('.alert');
@@ -45,7 +46,7 @@ describe('Alert', () => {
 		const { container } = render(Alert, {
 			props: {
 				variant: 'info',
-				children: () => 'Info message',
+				children: asSnippet('Info message'),
 			},
 		});
 		const alert = container.querySelector('.alert');
@@ -56,7 +57,7 @@ describe('Alert', () => {
 		const { container } = render(Alert, {
 			props: {
 				variant: 'info',
-				children: () => 'Custom alert content',
+				children: asSnippet('Custom alert content'),
 			},
 		});
 		const alert = container.querySelector('.alert');

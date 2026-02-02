@@ -1,6 +1,7 @@
 import { describe, test, expect, vi, afterEach } from 'vitest';
 import { render, fireEvent, cleanup } from '@testing-library/svelte';
 import Button from './Button.svelte';
+import { asSnippet } from '../../test-utils/snippet';
 
 describe('Button', () => {
 	afterEach(() => {
@@ -10,7 +11,7 @@ describe('Button', () => {
 	test('renders with default props', () => {
 		const { getByRole } = render(Button, {
 			props: {
-				children: () => 'Click me',
+				children: asSnippet('Click me'),
 			},
 		});
 		const button = getByRole('button');
@@ -21,7 +22,7 @@ describe('Button', () => {
 		const { container } = render(Button, {
 			props: {
 				variant: 'primary',
-				children: () => 'Primary Button',
+				children: asSnippet('Primary Button'),
 			},
 		});
 		const button = container.querySelector('button');
@@ -33,7 +34,7 @@ describe('Button', () => {
 		const { getByRole } = render(Button, {
 			props: {
 				onclick: handleClick,
-				children: () => 'Click me',
+				children: asSnippet('Click me'),
 			},
 		});
 		const button = getByRole('button');
@@ -47,7 +48,7 @@ describe('Button', () => {
 			props: {
 				disabled: true,
 				onclick: handleClick,
-				children: () => 'Disabled Button',
+				children: asSnippet('Disabled Button'),
 			},
 		});
 		const button = getByRole('button');
@@ -58,7 +59,7 @@ describe('Button', () => {
 		const { container } = render(Button, {
 			props: {
 				size: 'sm',
-				children: () => 'Small Button',
+				children: asSnippet('Small Button'),
 			},
 		});
 		const button = container.querySelector('button');
@@ -69,7 +70,7 @@ describe('Button', () => {
 		const { getByRole } = render(Button, {
 			props: {
 				type: 'submit',
-				children: () => 'Submit',
+				children: asSnippet('Submit'),
 			},
 		});
 		const button = getByRole('button');

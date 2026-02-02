@@ -1,6 +1,7 @@
 import { describe, test, expect, vi, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
 import DropdownMenu from './ui/DropdownMenu.svelte';
+import { asSnippet } from '../test-utils/snippet';
 
 describe('DropdownMenu', () => {
 	afterEach(() => {
@@ -12,7 +13,7 @@ describe('DropdownMenu', () => {
 			props: {
 				open: true,
 				onClose: vi.fn(),
-				children: () => 'Menu content',
+				children: asSnippet('Menu content'),
 			},
 		});
 		const menu = container.querySelector('.dropdown-menu');
@@ -24,7 +25,7 @@ describe('DropdownMenu', () => {
 			props: {
 				open: false,
 				onClose: vi.fn(),
-				children: () => 'Menu content',
+				children: asSnippet('Menu content'),
 			},
 		});
 		const menu = container.querySelector('.dropdown-menu');
@@ -36,7 +37,7 @@ describe('DropdownMenu', () => {
 			props: {
 				open: true,
 				onClose: vi.fn(),
-				children: () => 'Dropdown items',
+				children: asSnippet('Dropdown items'),
 			},
 		});
 		const menu = container.querySelector('.dropdown-menu');
@@ -50,7 +51,7 @@ describe('DropdownMenu', () => {
 				open: true,
 				onClose: vi.fn(),
 				position: 'right',
-				children: () => 'Content',
+				children: asSnippet('Content'),
 			},
 		});
 		const menu = container.querySelector('.dropdown-menu');
@@ -63,7 +64,7 @@ describe('DropdownMenu', () => {
 				open: true,
 				onClose: vi.fn(),
 				position: 'left',
-				children: () => 'Content',
+				children: asSnippet('Content'),
 			},
 		});
 		const menu = container.querySelector('.dropdown-menu');
@@ -75,7 +76,7 @@ describe('DropdownMenu', () => {
 			props: {
 				open: true,
 				onClose: vi.fn(),
-				children: () => 'Content',
+				children: asSnippet('Content'),
 			},
 		});
 		const menu = container.querySelector('.dropdown-menu');
@@ -87,7 +88,7 @@ describe('DropdownMenu', () => {
 			props: {
 				open: true,
 				onClose: vi.fn(),
-				children: () => 'Content',
+				children: asSnippet('Content'),
 			},
 		});
 		const menu = container.querySelector('.dropdown-menu');

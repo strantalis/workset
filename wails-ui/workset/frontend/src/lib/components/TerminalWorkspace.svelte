@@ -1,7 +1,6 @@
 <script lang="ts">
 	import TerminalLayoutNode from './TerminalLayoutNode.svelte';
 	import { createWorkspaceTerminal } from '../api';
-	import { StartWorkspaceTerminal } from '../../../wailsjs/go/main/App';
 	import { generateTerminalName } from '../names';
 
 	interface Props {
@@ -263,7 +262,6 @@
 			const stored = loadLayout();
 			if (stored) {
 				updateLayout(stored);
-				await restoreTerminals(stored);
 				return;
 			}
 			const created = await createWorkspaceTerminal(workspaceId);
@@ -275,13 +273,6 @@
 		} finally {
 			loading = false;
 		}
-	};
-
-	const restoreTerminals = async (state: TerminalLayout): Promise<void> => {
-		const terminals = collectTabs(state.root).map((tab) => tab.terminalId);
-		await Promise.allSettled(
-			terminals.map((terminalId) => StartWorkspaceTerminal(workspaceId, terminalId)),
-		);
 	};
 
 	const handleFocusPane = (paneId: string): void => {

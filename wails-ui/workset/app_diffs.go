@@ -603,8 +603,10 @@ func gitDiffNoIndexNumstat(ctx context.Context, repoPath, relativePath string) (
 	return string(output), nil
 }
 
-const maxDiffBytes = 2_000_000
-const maxDiffLines = 20_000
+const (
+	maxDiffBytes = 2_000_000
+	maxDiffLines = 20_000
+)
 
 // GetBranchDiffSummary returns a list of changed files between two refs (for PR view).
 func (a *App) GetBranchDiffSummary(workspaceID, repoID, base, head string) (RepoDiffSummary, error) {

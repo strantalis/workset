@@ -22,6 +22,24 @@ flowchart LR
   D --> State[~/.workset<br/>sessiond.sock<br/>terminal_state<br/>terminal_logs<br/>terminal_records]
 ```
 
+## Terminal 101 (glossary)
+
+- **PTY (pseudo-terminal)**: OS-level device pair that makes a process (the shell) think it is talking to a terminal.
+- **Terminal emulator**: Interprets escape sequences (ANSI, CSI, OSC) and maintains screen state. In Workset, this is in `workset-sessiond` (termemu).
+- **Renderer**: Draws the emulator state. In Workset, that is xterm.js in the UI.
+- **Snapshot**: A serialized screen state produced by the daemon for fast UI boot.
+- **Backlog**: Buffered output used when no recent snapshot is available.
+- **Alt screen**: A separate screen buffer used by full-screen apps (vim, less). It is not safe to replay as normal output.
+- **Kitty graphics**: Image protocol events parsed by the daemon and rendered by the UI overlay.
+
+## Source of truth
+
+The daemon is the only component that parses terminal bytes and owns terminal state.
+
+- `workset-sessiond` parses all escape sequences, updates mode state, and produces snapshots/backlog.
+- The Wails backend forwards structured events and never interprets terminal bytes.
+- The UI renders events and does not parse terminal escape sequences.
+
 ## Session lifecycle
 
 1. The UI asks the Go app to start a terminal (`StartWorkspaceTerminal`).

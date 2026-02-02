@@ -95,11 +95,12 @@ func (c *Client) Attach(ctx context.Context, sessionID string, since int64, with
 	}
 	enc := json.NewEncoder(conn)
 	if err := enc.Encode(AttachRequest{
-		Type:       "attach",
-		SessionID:  sessionID,
-		StreamID:   streamID,
-		Since:      since,
-		WithBuffer: withBuffer,
+		ProtocolVersion: ProtocolVersion,
+		Type:            "attach",
+		SessionID:       sessionID,
+		StreamID:        streamID,
+		Since:           since,
+		WithBuffer:      withBuffer,
 	}); err != nil {
 		_ = conn.Close()
 		return nil, StreamMessage{}, err
@@ -154,7 +155,7 @@ func (c *Client) call(ctx context.Context, method string, params any, out any) e
 		_ = conn.Close()
 	}()
 	enc := json.NewEncoder(conn)
-	req := ControlRequest{Method: method}
+	req := ControlRequest{ProtocolVersion: ProtocolVersion, Method: method}
 	if params != nil {
 		raw, err := json.Marshal(params)
 		if err != nil {

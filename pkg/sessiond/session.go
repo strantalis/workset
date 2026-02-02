@@ -26,6 +26,7 @@ type streamEvent struct {
 	kind  string
 	data  []byte
 	kitty *kitty.Event
+	modes *modeSnapshot
 }
 
 type subscriber struct {
@@ -159,6 +160,7 @@ type Session struct {
 	idleTimer        *time.Timer
 	closed           bool
 	closeReason      string
+	onClose          func(*Session)
 	subscribers      map[*subscriber]struct{}
 	streams          map[string]*subscriber
 	subscribersMu    sync.Mutex
@@ -275,6 +277,9 @@ func (s *Session) bootstrap() (BootstrapResponse, error) {
 	resp.NextOffset = backlog.NextOffset
 	resp.BacklogTruncated = backlog.Truncated
 	resp.BacklogSource = backlog.Source
+	if backlog.Truncated {
+		resp.SafeToReplay = false
+	}
 	debugLogf(
 		"session_bootstrap id=%s snapshot_bytes=0 snapshot_source=%s backlog_bytes=%d backlog_source=%s alt_screen=%t truncated=%t",
 		s.id,
@@ -389,17 +394,6 @@ func (s *Session) info() SessionInfo {
 	}
 }
 
-func (s *Session) kittySnapshot() *kitty.Event {
-	if s.kittyState == nil {
-		return nil
-	}
-	snapshot := s.kittyState.Snapshot()
-	if len(snapshot.Images) == 0 && len(snapshot.Placements) == 0 {
-		return nil
-	}
-	return &kitty.Event{Kind: "snapshot", Snapshot: &snapshot}
-}
-
 func (s *Session) write(ctx context.Context, data string) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -449,29 +443,52 @@ func (s *Session) closeWithReason(reason string) {
 	if reason != "" {
 		s.closeReason = reason
 	}
+	onClose := s.onClose
 	debugLogf("session_close id=%s reason=%s", s.id, s.closeReason)
-	if s.idleTimer != nil {
-		_ = s.idleTimer.Stop()
-		s.idleTimer = nil
+	idleTimer := s.idleTimer
+	s.idleTimer = nil
+	pty := s.pty
+	s.pty = nil
+	transcriptFile := s.transcriptFile
+	s.transcriptFile = nil
+	recordFile := s.recordFile
+	s.recordFile = nil
+	cmd := s.cmd
+	s.mu.Unlock()
+	if idleTimer != nil {
+		_ = idleTimer.Stop()
 	}
-	if s.pty != nil {
-		_ = s.pty.Close()
-		s.pty = nil
+	if pty != nil {
+		_ = pty.Close()
 	}
-	if s.transcriptFile != nil {
-		_ = s.transcriptFile.Close()
-		s.transcriptFile = nil
+	if transcriptFile != nil {
+		_ = transcriptFile.Close()
 	}
-	if s.recordFile != nil {
-		_ = s.recordFile.Close()
-		s.recordFile = nil
+	if recordFile != nil {
+		_ = recordFile.Close()
 	}
 	s.persistSnapshot()
-	if s.cmd != nil && s.cmd.Process != nil {
-		_ = s.cmd.Process.Kill()
+	if cmd != nil && cmd.Process != nil {
+		_ = cmd.Process.Kill()
 	}
-	s.mu.Unlock()
+	if onClose != nil {
+		onClose(s)
+	}
 	s.closeSubscribers()
+}
+
+func (s *Session) isClosed() bool {
+	s.mu.Lock()
+	closed := s.closed
+	s.mu.Unlock()
+	return closed
+}
+
+func (s *Session) isRunning() bool {
+	s.mu.Lock()
+	running := s.cmd != nil && !s.closed
+	s.mu.Unlock()
+	return running
 }
 
 func (s *Session) bumpActivityLocked() {
@@ -486,7 +503,7 @@ func (s *Session) subscribe(streamID string) *subscriber {
 	if streamID == "" {
 		streamID = newStreamID()
 	}
-	sub := newSubscriber(streamID, s.streamInitial)
+	sub := newSubscriber(streamID, 0)
 	s.subscribersMu.Lock()
 	s.subscribers[sub] = struct{}{}
 	s.streams[streamID] = sub
@@ -588,6 +605,23 @@ func (s *Session) broadcastKitty(events []kitty.Event) {
 	}
 }
 
+func (s *Session) broadcastModes(modes modeSnapshot) {
+	var overflow []*subscriber
+	s.subscribersMu.Lock()
+	for sub := range s.subscribers {
+		select {
+		case sub.ch <- streamEvent{kind: "modes", modes: &modes}:
+		default:
+			overflow = append(overflow, sub)
+		}
+	}
+	s.subscribersMu.Unlock()
+	for _, sub := range overflow {
+		s.unsubscribe(sub)
+		debugLogf("session_stream_drop id=%s stream=%s reason=modes_overflow", s.id, sub.streamID)
+	}
+}
+
 func (s *Session) readLoop(ctx context.Context) {
 	buf := make([]byte, 4096)
 	for {
@@ -638,6 +672,10 @@ func (s *Session) readLoop(ctx context.Context) {
 			mouseActive := s.mouseMask != 0
 			mouseSGR := s.mouseSGR
 			mouseEncoding := s.mouseEncoding()
+			var modesSnapshot modeSnapshot
+			if altChanged || mouseChanged {
+				modesSnapshot = s.currentModesLocked()
+			}
 			s.mu.Unlock()
 			if altChanged {
 				debugLogf("session_alt_screen id=%s active=%t", s.id, altActive)
@@ -649,6 +687,9 @@ func (s *Session) readLoop(ctx context.Context) {
 				if s.kittyState != nil {
 					s.broadcastKitty(s.kittyState.ClearAll())
 				}
+			}
+			if altChanged || mouseChanged {
+				s.broadcastModes(modesSnapshot)
 			}
 			s.recordOutput(filtered)
 			s.broadcast(filtered)
@@ -795,6 +836,17 @@ func (s *Session) noteModesLocked(data []byte) (bool, bool) {
 	altChanged := prevAlt != s.altScreen
 	mouseChanged := prevMask != s.mouseMask || prevSGR != s.mouseSGR || prevUTF8 != s.mouseUTF8 || prevURXVT != s.mouseURXVT
 	return altChanged, mouseChanged
+}
+
+func (s *Session) currentModesLocked() modeSnapshot {
+	return modeSnapshot{
+		AltScreen:  s.altScreen,
+		MouseMask:  s.mouseMask,
+		MouseSGR:   s.mouseSGR,
+		MouseUTF8:  s.mouseUTF8,
+		MouseURXVT: s.mouseURXVT,
+		TuiMode:    s.tuiMode,
+	}
 }
 
 func containsAltScreenEnter(data []byte) bool {
@@ -1377,7 +1429,15 @@ func filterTerminalOutputStreaming(data []byte, f *escapeStringFilter) []byte {
 		case ']':
 			end, drop := scanOSC(data, i)
 			if end == i {
-				continue
+				f.active = true
+				f.kind = "OSC"
+				f.appendLog(data[i:])
+				f.appendPending(data[i:])
+				if out == nil {
+					out = make([]byte, 0, len(data))
+					out = append(out, data[:i]...)
+				}
+				return out
 			}
 			if drop {
 				if debug {
