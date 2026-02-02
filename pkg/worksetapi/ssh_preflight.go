@@ -42,22 +42,41 @@ func (s *Service) preflightSSHAuth(ctx context.Context, resolution repoResolutio
 		return nil
 	}
 
-	signingKey, err := gitConfigGet(ctx, resolution.RepoPath, "user.signingKey", s.commands)
-	if err != nil {
-		return err
-	}
-	signingKey = strings.TrimSpace(signingKey)
-	signingParsed, hasSigningKey := parseSSHPublicKey(signingKey)
-
 	currentSock := strings.TrimSpace(os.Getenv("SSH_AUTH_SOCK"))
-	identityAgent, err := sshConfigIdentityAgent(ctx, resolution.RepoPath, s.commands)
+	sshHost := sshHostFromURL(effectiveURL)
+	sshConfig, err := sshConfigInfo(ctx, resolution.RepoPath, s.commands, sshHost)
 	if err != nil {
 		if currentSock == "" {
 			return err
 		}
-		identityAgent = ""
+		sshConfig = sshConfigInfoResult{}
 	}
-	identityAgent = normalizeIdentityAgent(identityAgent)
+	identityAgent := normalizeIdentityAgent(sshConfig.IdentityAgent)
+	identityFiles := normalizeIdentityFiles(sshConfig.IdentityFiles)
+	identityFilesExist := hasIdentityFiles(identityFiles)
+
+	signingRequired, err := gitConfigBool(ctx, resolution.RepoPath, "commit.gpgsign", s.commands)
+	if err != nil {
+		return err
+	}
+	if signingRequired {
+		format, err := gitConfigGet(ctx, resolution.RepoPath, "gpg.format", s.commands)
+		if err != nil {
+			return err
+		}
+		if !strings.EqualFold(strings.TrimSpace(format), "ssh") {
+			signingRequired = false
+		}
+	}
+
+	var signingParsed sshPublicKey
+	var hasSigningKey bool
+	if signingRequired {
+		signingParsed, hasSigningKey, err = resolveSigningKey(ctx, resolution.RepoPath, s.commands)
+		if err != nil {
+			return err
+		}
+	}
 
 	sockets := make([]string, 0, 2)
 	if currentSock != "" {
@@ -67,7 +86,13 @@ func (s *Service) preflightSSHAuth(ctx context.Context, resolution repoResolutio
 		sockets = append(sockets, identityAgent)
 	}
 	if len(sockets) == 0 {
-		return ValidationError{Message: "SSH_AUTH_SOCK is not set and no IdentityAgent is configured for github.com"}
+		if signingRequired {
+			return ValidationError{Message: "ssh-agent required for SSH commit signing; SSH_AUTH_SOCK is not set"}
+		}
+		if identityFilesExist {
+			return nil
+		}
+		return ValidationError{Message: formatSSHAgentFailure("SSH_AUTH_SOCK is not set and no IdentityAgent is configured", currentSock, identityAgent, nil)}
 	}
 
 	checks := make([]sshAgentCheck, 0, len(sockets))
@@ -92,12 +117,18 @@ func (s *Service) preflightSSHAuth(ctx context.Context, resolution repoResolutio
 	}
 
 	if !reachable {
+		if !signingRequired && identityFilesExist {
+			return nil
+		}
 		return ValidationError{Message: formatSSHAgentFailure("ssh agent not available", currentSock, identityAgent, checks)}
 	}
 	if !hasKeys {
+		if !signingRequired && identityFilesExist {
+			return nil
+		}
 		return ValidationError{Message: formatSSHAgentFailure("ssh agent has no identities", currentSock, identityAgent, checks)}
 	}
-	if hasSigningKey && !signingKeyFound {
+	if signingRequired && hasSigningKey && !signingKeyFound {
 		display := formatSSHKeyDisplay(signingParsed)
 		message := fmt.Sprintf("signing key not found in ssh-agent (%s)", display)
 		return ValidationError{Message: formatSSHAgentFailure(message, currentSock, identityAgent, checks)}
@@ -135,6 +166,25 @@ func gitConfigGet(ctx context.Context, repoPath, key string, runner CommandRunne
 		return "", ValidationError{Message: message}
 	}
 	return result.Stdout, nil
+}
+
+func gitConfigBool(ctx context.Context, repoPath, key string, runner CommandRunner) (bool, error) {
+	result, err := runner(ctx, repoPath, []string{"git", "config", "--bool", "--get", key}, os.Environ(), "")
+	if err != nil || result.ExitCode != 0 {
+		if result.ExitCode == 1 {
+			return false, nil
+		}
+		message := strings.TrimSpace(result.Stderr)
+		if message == "" && err != nil {
+			message = err.Error()
+		}
+		if message == "" {
+			message = "git config failed"
+		}
+		return false, ValidationError{Message: message}
+	}
+	value := strings.ToLower(strings.TrimSpace(result.Stdout))
+	return value == "true" || value == "yes" || value == "on" || value == "1", nil
 }
 
 type urlInsteadOfRule struct {
@@ -221,12 +271,45 @@ func isSSHRemoteURL(raw string) bool {
 	return strings.Contains(raw, "@") && strings.Contains(raw, ":")
 }
 
-func sshConfigIdentityAgent(ctx context.Context, repoPath string, runner CommandRunner) (string, error) {
-	result, err := runner(ctx, repoPath, []string{"ssh", "-G", "github.com"}, os.Environ(), "")
+func sshHostFromURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if strings.Contains(raw, "://") {
+		parsed, err := parseURL(raw)
+		if err != nil {
+			return ""
+		}
+		return parsed.Hostname()
+	}
+	if strings.Contains(raw, ":") {
+		before, _, ok := strings.Cut(raw, ":")
+		if !ok {
+			return ""
+		}
+		if at := strings.LastIndex(before, "@"); at != -1 {
+			return before[at+1:]
+		}
+		return before
+	}
+	return ""
+}
+
+type sshConfigInfoResult struct {
+	IdentityAgent string
+	IdentityFiles []string
+}
+
+func sshConfigInfo(ctx context.Context, repoPath string, runner CommandRunner, host string) (sshConfigInfoResult, error) {
+	if strings.TrimSpace(host) == "" {
+		return sshConfigInfoResult{}, nil
+	}
+	result, err := runner(ctx, repoPath, []string{"ssh", "-G", host}, os.Environ(), "")
 	if err != nil || result.ExitCode != 0 {
 		var execErr *exec.Error
 		if errors.As(err, &execErr) {
-			return "", ValidationError{Message: "ssh command not found"}
+			return sshConfigInfoResult{}, ValidationError{Message: "ssh command not found"}
 		}
 		message := strings.TrimSpace(result.Stderr)
 		if message == "" && err != nil {
@@ -235,16 +318,24 @@ func sshConfigIdentityAgent(ctx context.Context, repoPath string, runner Command
 		if message == "" {
 			message = "ssh -G failed"
 		}
-		return "", ValidationError{Message: message}
+		return sshConfigInfoResult{}, ValidationError{Message: message}
 	}
+	info := sshConfigInfoResult{}
 	scanner := bufio.NewScanner(strings.NewReader(result.Stdout))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if strings.HasPrefix(line, "identityagent ") {
-			return strings.TrimSpace(strings.TrimPrefix(line, "identityagent ")), nil
+			info.IdentityAgent = strings.TrimSpace(strings.TrimPrefix(line, "identityagent "))
+			continue
+		}
+		if strings.HasPrefix(line, "identityfile ") {
+			value := strings.TrimSpace(strings.TrimPrefix(line, "identityfile "))
+			if value != "" {
+				info.IdentityFiles = append(info.IdentityFiles, value)
+			}
 		}
 	}
-	return "", nil
+	return info, nil
 }
 
 func normalizeIdentityAgent(agent string) string {
@@ -265,10 +356,81 @@ func expandSSHPath(path string) string {
 	if strings.HasPrefix(expanded, "~") {
 		home, err := os.UserHomeDir()
 		if err == nil && home != "" {
-			expanded = filepath.Join(home, strings.TrimPrefix(expanded, "~"))
+			rest := strings.TrimPrefix(expanded, "~")
+			rest = strings.TrimLeft(rest, "/\\")
+			expanded = filepath.Join(home, rest)
 		}
 	}
 	return expanded
+}
+
+func normalizeIdentityFiles(paths []string) []string {
+	if len(paths) == 0 {
+		return nil
+	}
+	unique := map[string]struct{}{}
+	values := make([]string, 0, len(paths))
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		path = expandSSHPath(path)
+		if path == "" {
+			continue
+		}
+		if _, ok := unique[path]; ok {
+			continue
+		}
+		unique[path] = struct{}{}
+		values = append(values, path)
+	}
+	return values
+}
+
+func hasIdentityFiles(paths []string) bool {
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			return true
+		}
+	}
+	return false
+}
+
+func resolveSigningKey(ctx context.Context, repoPath string, runner CommandRunner) (sshPublicKey, bool, error) {
+	value, err := gitConfigGet(ctx, repoPath, "user.signingKey", runner)
+	if err != nil {
+		return sshPublicKey{}, false, err
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return sshPublicKey{}, false, nil
+	}
+	if key, ok := parseSSHPublicKey(value); ok {
+		return key, true, nil
+	}
+	path := expandSSHPath(value)
+	if path == "" {
+		return sshPublicKey{}, false, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return sshPublicKey{}, false, ValidationError{Message: fmt.Sprintf("unable to read signing key file %s", path)}
+	}
+	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		if key, ok := parseSSHPublicKey(line); ok {
+			return key, true, nil
+		}
+	}
+	return sshPublicKey{}, false, ValidationError{Message: fmt.Sprintf("no valid public key found in %s", path)}
 }
 
 func sshAddListKeys(ctx context.Context, repoPath string, runner CommandRunner, socket string) (sshAgentCheck, error) {
@@ -279,6 +441,10 @@ func sshAddListKeys(ctx context.Context, repoPath string, runner CommandRunner, 
 		if errors.As(err, &execErr) {
 			return sshAgentCheck{}, ValidationError{Message: "ssh-add command not found"}
 		}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return sshAgentCheck{}, err
+		}
+		return sshAgentCheck{}, fmt.Errorf("running ssh-add -L: %w", err)
 	}
 	check := sshAgentCheck{Socket: socket}
 	message := strings.TrimSpace(result.Stderr)
@@ -326,14 +492,32 @@ func parseSSHPublicKey(value string) (sshPublicKey, bool) {
 		return sshPublicKey{}, false
 	}
 	keyType := fields[0]
-	if !strings.HasPrefix(keyType, "ssh-") {
+	keyData := fields[1]
+	if keyType == "" || keyData == "" {
 		return sshPublicKey{}, false
 	}
-	key := sshPublicKey{KeyType: keyType, KeyData: fields[1]}
+	if !isLikelyBase64(keyData) {
+		return sshPublicKey{}, false
+	}
+	key := sshPublicKey{KeyType: keyType, KeyData: keyData}
 	if len(fields) > 2 {
 		key.Comment = strings.Join(fields[2:], " ")
 	}
 	return key, true
+}
+
+func isLikelyBase64(value string) bool {
+	for _, r := range value {
+		switch {
+		case r >= 'A' && r <= 'Z':
+		case r >= 'a' && r <= 'z':
+		case r >= '0' && r <= '9':
+		case r == '+' || r == '/' || r == '=':
+		default:
+			return false
+		}
+	}
+	return value != ""
 }
 
 func sshKeyInList(keys []sshPublicKey, target sshPublicKey) bool {
