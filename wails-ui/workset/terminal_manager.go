@@ -50,7 +50,7 @@ func (a *App) StartWorkspaceTerminal(workspaceID, terminalID string) error {
 			existing.mu.Unlock()
 			if hasSession {
 				if streamActive {
-					return a.emitBootstrapReplay(existing)
+					return nil
 				}
 				go a.streamTerminal(existing)
 				return nil
