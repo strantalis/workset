@@ -868,6 +868,9 @@ func (s *Service) CommitAndPush(ctx context.Context, input CommitAndPushInput) (
 	if !hasUncommitted {
 		return CommitAndPushResult{}, ValidationError{Message: "no changes to commit"}
 	}
+	if err := s.preflightSSHAuth(ctx, resolution); err != nil {
+		return CommitAndPushResult{}, err
+	}
 
 	// Generate commit message if not provided
 	message := strings.TrimSpace(input.Message)
@@ -1347,6 +1350,9 @@ func (s *Service) commitPullRequestChanges(ctx context.Context, resolution repoR
 	if strings.TrimSpace(patch) == "" {
 		return nil
 	}
+	if err := s.preflightSSHAuth(ctx, resolution); err != nil {
+		return err
+	}
 	prompt := formatCommitPrompt(resolution.Repo.Name, branch, patch)
 	schema, err := ensureCommitSchema()
 	if err != nil {
@@ -1482,7 +1488,7 @@ func prepareAgentCommand(command []string, prompt string, schema string) ([]stri
 	if !promptProvided {
 		args = append(args, "-")
 	}
-	return append([]string{"codex"}, args...), env, prompt, nil
+	return append([]string{command[0]}, args...), env, prompt, nil
 }
 
 func hasFlag(args []string, name string) bool {
