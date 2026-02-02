@@ -40,6 +40,8 @@
 	import type { RepoLocalStatus } from '../api';
 	import GitHubLoginModal from './GitHubLoginModal.svelte';
 	import { formatPath } from '../pathUtils';
+	import { getPrCreateStageCopy } from '../prCreateProgress';
+	import type { PrCreateStage } from '../prCreateProgress';
 
 	/**
 	 * Validates and opens URL only if it belongs to trusted GitHub domains.
@@ -128,6 +130,9 @@
 	let prCreateSuccess: PullRequestCreated | null = $state(null);
 	let prTracked: PullRequestCreated | null = $state(null);
 	let prCreating = $state(false);
+	let prCreatingStage: PrCreateStage | null = $state(null);
+
+	const prCreateStageCopy = $derived.by(() => getPrCreateStageCopy(prCreatingStage));
 
 	// Remotes list for base remote dropdown
 	let remotes: RemoteInfo[] = $state([]);
@@ -800,7 +805,9 @@
 
 	const handleCreatePR = async (): Promise<void> => {
 		if (prCreating) return;
+		prPanelExpanded = true;
 		prCreating = true;
+		prCreatingStage = 'generating';
 		prCreateError = null;
 		prCreateSuccess = null;
 		try {
@@ -810,6 +817,7 @@
 					const generated = await generatePullRequestText(workspaceId, repo.id);
 
 					// Create PR with generated content
+					prCreatingStage = 'creating';
 					const created = await createPullRequest(workspaceId, repo.id, {
 						title: generated.title,
 						body: generated.body,
@@ -835,6 +843,7 @@
 			);
 		} finally {
 			prCreating = false;
+			prCreatingStage = null;
 		}
 	};
 
@@ -1262,9 +1271,31 @@
 							onclick={handleCreatePR}
 							disabled={prCreating}
 						>
-							{prCreating ? 'Creating…' : 'Create PR'}
+							{#if prCreating}
+								<span class="pr-create-spinner" aria-hidden="true">
+									<svg
+										class="pr-create-spinner-icon"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+									>
+										<circle cx="12" cy="12" r="9" opacity="0.25" />
+										<path d="M21 12a9 9 0 0 0-9-9" stroke-linecap="round" />
+									</svg>
+								</span>
+							{/if}
+							<span class="pr-create-label"
+								>{prCreating ? prCreateStageCopy?.button ?? 'Creating PR...' : 'Create PR'}</span
+							>
 						</button>
 					</div>
+
+					{#if prCreating && prCreateStageCopy}
+						<div class="pr-create-progress" role="status" aria-live="polite">
+							{prCreateStageCopy.detail}
+						</div>
+					{/if}
 
 					{#if prCreateError}
 						<div class="error">{prCreateError}</div>
@@ -1899,6 +1930,9 @@
 		font-weight: 500;
 		cursor: pointer;
 		white-space: nowrap;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
 		transition: opacity 0.15s ease;
 	}
 
@@ -1909,6 +1943,32 @@
 	.pr-create-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+
+	.pr-create-spinner {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.pr-create-spinner-icon {
+		width: 12px;
+		height: 12px;
+		animation: pr-create-spin 0.8s linear infinite;
+	}
+
+	.pr-create-progress {
+		font-size: 12px;
+		color: var(--muted);
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	@keyframes pr-create-spin {
+		to {
+			transform: rotate(360deg);
+		}
 	}
 
 	.poll-time {
