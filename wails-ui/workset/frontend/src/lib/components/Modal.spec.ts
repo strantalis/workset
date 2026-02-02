@@ -1,6 +1,7 @@
 import { describe, test, expect, vi, afterEach } from 'vitest';
 import { render, fireEvent, cleanup } from '@testing-library/svelte';
 import Modal from './Modal.svelte';
+import { asSnippet } from '../test-utils/snippet';
 
 describe('Modal', () => {
 	afterEach(() => {
@@ -11,7 +12,7 @@ describe('Modal', () => {
 		const { getByText } = render(Modal, {
 			props: {
 				title: 'Test Modal',
-				children: () => 'Modal content',
+				children: asSnippet('Modal content'),
 			},
 		});
 		expect(getByText('Test Modal')).toBeInTheDocument();
@@ -22,7 +23,7 @@ describe('Modal', () => {
 			props: {
 				title: 'Test Modal',
 				subtitle: 'Modal subtitle',
-				children: () => 'Modal content',
+				children: asSnippet('Modal content'),
 			},
 		});
 		expect(getByText('Modal subtitle')).toBeInTheDocument();
@@ -35,7 +36,7 @@ describe('Modal', () => {
 				props: {
 					title: 'Test',
 					size,
-					children: () => 'Content',
+					children: asSnippet('Content'),
 				},
 			});
 			const modal = container.querySelector('.modal');
@@ -50,7 +51,7 @@ describe('Modal', () => {
 			props: {
 				title: 'Test Modal',
 				onClose: handleClose,
-				children: () => 'Content',
+				children: asSnippet('Content'),
 			},
 		});
 		const closeButton = getByRole('button', { name: /close/i });
@@ -63,7 +64,7 @@ describe('Modal', () => {
 			props: {
 				title: 'Test Modal',
 				onClose: handleClose,
-				children: () => 'Content',
+				children: asSnippet('Content'),
 			},
 		});
 		const closeButton = getByRole('button', { name: /close/i });
@@ -75,7 +76,7 @@ describe('Modal', () => {
 		const { container } = render(Modal, {
 			props: {
 				title: 'Test Modal',
-				children: () => 'Content',
+				children: asSnippet('Content'),
 			},
 		});
 		const buttons = container.querySelectorAll('button');
@@ -89,7 +90,7 @@ describe('Modal', () => {
 				title: 'Test Modal',
 				onClose: handleClose,
 				disableClose: true,
-				children: () => 'Content',
+				children: asSnippet('Content'),
 			},
 		});
 		const closeButton = getByRole('button', { name: /close/i });
@@ -103,7 +104,7 @@ describe('Modal', () => {
 				title: 'Test Modal',
 				headerAlign: 'left',
 				onClose: handleClose,
-				children: () => 'Content',
+				children: asSnippet('Content'),
 			},
 		});
 		const header = container.querySelector('.modal-header');
@@ -114,8 +115,8 @@ describe('Modal', () => {
 		const { container } = render(Modal, {
 			props: {
 				title: 'Test Modal',
-				children: () => 'Content',
-				footer: () => 'Footer content',
+				children: asSnippet('Content'),
+				footer: asSnippet('Footer content'),
 			},
 		});
 		const footer = container.querySelector('.modal-footer');

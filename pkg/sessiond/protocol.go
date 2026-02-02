@@ -6,9 +6,12 @@ import (
 	"github.com/strantalis/workset/pkg/kitty"
 )
 
+const ProtocolVersion = 2
+
 type ControlRequest struct {
-	Method string          `json:"method"`
-	Params json.RawMessage `json:"params,omitempty"`
+	ProtocolVersion int             `json:"protocolVersion"`
+	Method          string          `json:"method"`
+	Params          json.RawMessage `json:"params,omitempty"`
 }
 
 type ControlResponse struct {
@@ -120,11 +123,12 @@ type ListResponse struct {
 }
 
 type AttachRequest struct {
-	Type       string `json:"type"`
-	SessionID  string `json:"sessionId"`
-	StreamID   string `json:"streamId,omitempty"`
-	Since      int64  `json:"since"`
-	WithBuffer bool   `json:"withBuffer"`
+	ProtocolVersion int    `json:"protocolVersion"`
+	Type            string `json:"type"`
+	SessionID       string `json:"sessionId"`
+	StreamID        string `json:"streamId,omitempty"`
+	Since           int64  `json:"since"`
+	WithBuffer      bool   `json:"withBuffer"`
 }
 
 type InfoResponse struct {
@@ -133,14 +137,24 @@ type InfoResponse struct {
 }
 
 type StreamMessage struct {
-	Type       string       `json:"type"`
-	SessionID  string       `json:"sessionId,omitempty"`
-	StreamID   string       `json:"streamId,omitempty"`
-	Data       string       `json:"data,omitempty"`
-	Len        int          `json:"len,omitempty"`
-	NextOffset int64        `json:"nextOffset,omitempty"`
-	Truncated  bool         `json:"truncated,omitempty"`
-	Source     string       `json:"source,omitempty"`
-	Kitty      *kitty.Event `json:"kitty,omitempty"`
-	Error      string       `json:"error,omitempty"`
+	Type             string       `json:"type"`
+	SessionID        string       `json:"sessionId,omitempty"`
+	StreamID         string       `json:"streamId,omitempty"`
+	Data             string       `json:"data,omitempty"`
+	Len              int          `json:"len,omitempty"`
+	NextOffset       int64        `json:"nextOffset,omitempty"`
+	Truncated        bool         `json:"truncated,omitempty"`
+	Source           string       `json:"source,omitempty"`
+	SnapshotSource   string       `json:"snapshotSource,omitempty"`
+	BacklogSource    string       `json:"backlogSource,omitempty"`
+	BacklogTruncated bool         `json:"backlogTruncated,omitempty"`
+	AltScreen        bool         `json:"altScreen,omitempty"`
+	MouseMask        uint8        `json:"mouseMask,omitempty"`
+	Mouse            bool         `json:"mouse,omitempty"`
+	MouseSGR         bool         `json:"mouseSGR,omitempty"`
+	MouseEncoding    string       `json:"mouseEncoding,omitempty"`
+	SafeToReplay     bool         `json:"safeToReplay,omitempty"`
+	InitialCredit    int64        `json:"initialCredit,omitempty"`
+	Kitty            *kitty.Event `json:"kitty,omitempty"`
+	Error            string       `json:"error,omitempty"`
 }

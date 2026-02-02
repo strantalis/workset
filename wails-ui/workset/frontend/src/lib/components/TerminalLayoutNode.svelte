@@ -312,7 +312,8 @@
 {:else if node.tabs.length === 0}
 	<div class="pane-empty">No terminals</div>
 {:else}
-	{@const activeTab = node.tabs.find((tab: { id: string }) => tab.id === node.activeTabId) ?? node.tabs[0]}
+	{@const activeTab =
+		node.tabs.find((tab: { id: string }) => tab.id === node.activeTabId) ?? node.tabs[0]}
 	{@const isFocused = focusedPaneId === node.id}
 	{@const isDragTarget = dragState && dragState.sourcePaneId !== node.id}
 	<div

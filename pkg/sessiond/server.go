@@ -13,14 +13,22 @@ import (
 	"sync"
 	"time"
 
+	"github.com/strantalis/workset/pkg/kitty"
 	"github.com/strantalis/workset/pkg/unifiedlog"
 )
 
 type Server struct {
 	opts     Options
 	sessions map[string]*Session
+	creating map[string]*createCall
 	mu       sync.Mutex
 	shutdown func()
+}
+
+type createCall struct {
+	done    chan struct{}
+	session *Session
+	err     error
 }
 
 func NewServer(opts Options) *Server {
@@ -86,6 +94,7 @@ func NewServer(opts Options) *Server {
 	return &Server{
 		opts:     opts,
 		sessions: make(map[string]*Session),
+		creating: make(map[string]*createCall),
 	}
 }
 
@@ -174,6 +183,10 @@ func (s *Server) handleControl(ctx context.Context, conn net.Conn, line []byte) 
 	var req ControlRequest
 	if err := json.Unmarshal(line, &req); err != nil {
 		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: false, Error: err.Error()})
+		return
+	}
+	if req.ProtocolVersion != ProtocolVersion {
+		s.writeError(conn, fmt.Errorf("protocol mismatch: server=%d client=%d", ProtocolVersion, req.ProtocolVersion))
 		return
 	}
 	switch req.Method {
@@ -375,36 +388,59 @@ func (s *Server) handleAttach(conn net.Conn, line []byte) {
 		_ = enc.Encode(StreamMessage{Type: "error", Error: err.Error()})
 		return
 	}
+	if req.ProtocolVersion != ProtocolVersion {
+		_ = enc.Encode(StreamMessage{
+			Type:  "error",
+			Error: fmt.Sprintf("protocol mismatch: server=%d client=%d", ProtocolVersion, req.ProtocolVersion),
+		})
+		return
+	}
 	session := s.get(req.SessionID)
 	if session == nil {
 		_ = enc.Encode(StreamMessage{Type: "error", Error: "session not found"})
+		return
+	}
+	if !session.isRunning() {
+		_ = enc.Encode(StreamMessage{Type: "error", Error: "session not running"})
 		return
 	}
 	streamID := strings.TrimSpace(req.StreamID)
 	if streamID == "" {
 		streamID = newStreamID()
 	}
-	if req.WithBuffer {
-		backlog, err := session.backlog(req.Since)
-		if err != nil {
-			_ = enc.Encode(StreamMessage{Type: "error", Error: err.Error()})
-			return
-		}
-		_ = enc.Encode(StreamMessage{
-			Type:       "backlog",
-			SessionID:  backlog.SessionID,
-			StreamID:   streamID,
-			Data:       backlog.Data,
-			Len:        len(backlog.Data),
-			NextOffset: backlog.NextOffset,
-			Truncated:  backlog.Truncated,
-			Source:     backlog.Source,
-		})
-	} else {
-		_ = enc.Encode(StreamMessage{Type: "backlog", SessionID: req.SessionID, StreamID: streamID})
+	bootstrap, err := session.bootstrap()
+	if err != nil {
+		_ = enc.Encode(StreamMessage{Type: "error", Error: err.Error()})
+		return
 	}
-	if snapshot := session.kittySnapshot(); snapshot != nil {
-		_ = enc.Encode(StreamMessage{Type: "kitty_snapshot", SessionID: req.SessionID, StreamID: streamID, Kitty: snapshot})
+	var kittyEvent *kitty.Event
+	if bootstrap.Kitty != nil {
+		kittyEvent = &kitty.Event{Kind: "snapshot", Snapshot: bootstrap.Kitty}
+	}
+	if err := enc.Encode(StreamMessage{
+		Type:             "bootstrap",
+		SessionID:        req.SessionID,
+		StreamID:         streamID,
+		SnapshotSource:   bootstrap.SnapshotSource,
+		BacklogSource:    bootstrap.BacklogSource,
+		BacklogTruncated: bootstrap.BacklogTruncated,
+		NextOffset:       bootstrap.NextOffset,
+		AltScreen:        bootstrap.AltScreen,
+		MouseMask:        bootstrap.MouseMask,
+		Mouse:            bootstrap.Mouse,
+		MouseSGR:         bootstrap.MouseSGR,
+		MouseEncoding:    bootstrap.MouseEncoding,
+		SafeToReplay:     bootstrap.SafeToReplay,
+		InitialCredit:    bootstrap.InitialCredit,
+		Kitty:            kittyEvent,
+	}); err != nil {
+		return
+	}
+	if err := writeBootstrapChunks(enc, req.SessionID, streamID, bootstrap); err != nil {
+		return
+	}
+	if err := enc.Encode(StreamMessage{Type: "bootstrap_done", SessionID: req.SessionID, StreamID: streamID}); err != nil {
+		return
 	}
 	sub := session.subscribe(streamID)
 	defer session.unsubscribe(sub)
@@ -431,9 +467,67 @@ func (s *Server) handleAttach(conn net.Conn, line []byte) {
 			if err := enc.Encode(StreamMessage{Type: "kitty", SessionID: req.SessionID, StreamID: streamID, Kitty: event.kitty}); err != nil {
 				return
 			}
+		case "modes":
+			if event.modes == nil {
+				continue
+			}
+			if err := enc.Encode(StreamMessage{
+				Type:      "modes",
+				SessionID: req.SessionID,
+				StreamID:  streamID,
+				AltScreen: event.modes.AltScreen,
+				MouseMask: event.modes.MouseMask,
+				Mouse:     event.modes.MouseMask != 0,
+				MouseSGR:  event.modes.MouseSGR,
+				MouseEncoding: func() string {
+					if event.modes.MouseSGR {
+						return "sgr"
+					}
+					if event.modes.MouseURXVT {
+						return "urxvt"
+					}
+					if event.modes.MouseUTF8 {
+						return "utf8"
+					}
+					return "x10"
+				}(),
+			}); err != nil {
+				return
+			}
 		}
 	}
 	_ = enc.Encode(StreamMessage{Type: "closed", SessionID: req.SessionID, StreamID: streamID})
+}
+
+const bootstrapChunkSize = 64 * 1024
+
+func writeBootstrapChunks(enc *json.Encoder, sessionID, streamID string, bootstrap BootstrapResponse) error {
+	data := bootstrap.Snapshot
+	if data == "" {
+		data = bootstrap.Backlog
+	}
+	if data == "" {
+		return nil
+	}
+	buf := []byte(data)
+	for len(buf) > 0 {
+		n := bootstrapChunkSize
+		if len(buf) < n {
+			n = len(buf)
+		}
+		if err := enc.Encode(StreamMessage{
+			Type:      "data",
+			SessionID: sessionID,
+			StreamID:  streamID,
+			Data:      string(buf[:n]),
+			Len:       n,
+			Source:    "bootstrap",
+		}); err != nil {
+			return err
+		}
+		buf = buf[n:]
+	}
+	return nil
 }
 
 func (s *Server) writeError(conn net.Conn, err error) {
@@ -442,8 +536,16 @@ func (s *Server) writeError(conn net.Conn, err error) {
 
 func (s *Server) get(id string) *Session {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.sessions[id]
+	session := s.sessions[id]
+	s.mu.Unlock()
+	if session == nil {
+		return nil
+	}
+	if session.isClosed() {
+		s.remove(id)
+		return nil
+	}
+	return session
 }
 
 func (s *Server) remove(id string) {
@@ -472,20 +574,74 @@ func (s *Server) getOrCreate(ctx context.Context, id, cwd string) (*Session, boo
 	if id == "" {
 		return nil, false, errors.New("session id required")
 	}
-	s.mu.Lock()
-	existing := s.sessions[id]
-	s.mu.Unlock()
-	if existing != nil {
-		return existing, true, nil
+	for {
+		s.mu.Lock()
+		if s.creating == nil {
+			s.creating = make(map[string]*createCall)
+		}
+		existing := s.sessions[id]
+		if existing != nil {
+			s.mu.Unlock()
+			if existing.isClosed() {
+				s.remove(id)
+				continue
+			}
+			if !existing.isRunning() {
+				s.remove(id)
+				continue
+			}
+			return existing, true, nil
+		}
+		if call := s.creating[id]; call != nil {
+			done := call.done
+			s.mu.Unlock()
+			select {
+			case <-done:
+				if call.err != nil {
+					return nil, false, call.err
+				}
+				if call.session == nil || call.session.isClosed() || !call.session.isRunning() {
+					return nil, false, errors.New("session not running")
+				}
+				return call.session, true, nil
+			case <-ctx.Done():
+				return nil, false, ctx.Err()
+			}
+		}
+		call := &createCall{done: make(chan struct{})}
+		s.creating[id] = call
+		s.mu.Unlock()
+
+		session := newSession(s.opts, id, cwd)
+		session.onClose = s.onSessionClosed
+		err := session.start(ctx)
+
+		s.mu.Lock()
+		delete(s.creating, id)
+		if err == nil && !session.isClosed() && session.isRunning() {
+			s.sessions[id] = session
+		}
+		s.mu.Unlock()
+
+		call.session = session
+		call.err = err
+		close(call.done)
+
+		if err != nil {
+			return nil, false, err
+		}
+		if session.isClosed() || !session.isRunning() {
+			return nil, false, errors.New("session not running")
+		}
+		return session, false, nil
 	}
-	session := newSession(s.opts, id, cwd)
-	if err := session.start(ctx); err != nil {
-		return nil, false, err
+}
+
+func (s *Server) onSessionClosed(session *Session) {
+	if session == nil {
+		return
 	}
-	s.mu.Lock()
-	s.sessions[id] = session
-	s.mu.Unlock()
-	return session, false, nil
+	s.remove(session.id)
 }
 
 func bytesTrimSpace(input []byte) []byte {

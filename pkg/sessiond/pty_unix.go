@@ -9,8 +9,10 @@ import (
 	"github.com/creack/pty"
 )
 
+var startPTYFunc = pty.Start
+
 func startPTY(cmd *exec.Cmd) (*os.File, error) {
-	return pty.Start(cmd)
+	return startPTYFunc(cmd)
 }
 
 func resizePTY(file *os.File, cols, rows int) error {

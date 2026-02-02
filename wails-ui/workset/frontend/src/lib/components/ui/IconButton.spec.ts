@@ -1,6 +1,7 @@
 import { describe, test, expect, vi, afterEach } from 'vitest';
 import { render, fireEvent, cleanup } from '@testing-library/svelte';
 import IconButton from './IconButton.svelte';
+import { asSnippet } from '../../test-utils/snippet';
 
 describe('IconButton', () => {
 	afterEach(() => {
@@ -11,7 +12,7 @@ describe('IconButton', () => {
 		const { container } = render(IconButton, {
 			props: {
 				label: 'Settings',
-				children: () => 'Icon',
+				children: asSnippet('Icon'),
 			},
 		});
 		const button = container.querySelector('button');
@@ -27,7 +28,7 @@ describe('IconButton', () => {
 				props: {
 					size,
 					label: `${size} button`,
-					children: () => 'Icon',
+					children: asSnippet('Icon'),
 				},
 			});
 			const button = container.querySelector('button');
@@ -42,7 +43,7 @@ describe('IconButton', () => {
 			props: {
 				label: 'Click me',
 				onclick: handleClick,
-				children: () => 'Icon',
+				children: asSnippet('Icon'),
 			},
 		});
 		const button = container.querySelector('button');
@@ -57,7 +58,7 @@ describe('IconButton', () => {
 				label: 'Disabled',
 				disabled: true,
 				onclick: handleClick,
-				children: () => 'Icon',
+				children: asSnippet('Icon'),
 			},
 		});
 		const button = container.querySelector('button');
@@ -68,7 +69,7 @@ describe('IconButton', () => {
 		const { container } = render(IconButton, {
 			props: {
 				label: 'Action',
-				children: () => 'Icon',
+				children: asSnippet('Icon'),
 			},
 		});
 		const button = container.querySelector('button');
