@@ -1181,17 +1181,19 @@ func (s *Service) runAgentPromptRaw(ctx context.Context, repoPath, agent, prompt
 	if err != nil {
 		return "", err
 	}
-	if !settings.AllowPathGuess && !hasPathSeparator(command[0]) {
-		return "", ValidationError{Message: "strict agent launch requires an absolute path or agent CLI path"}
+	if !settings.AllowPathGuess {
+		if !hasPathSeparator(command[0]) {
+			return "", ValidationError{Message: "strict agent launch requires a path with directory separators or agent CLI path"}
+		}
+		command[0] = normalizeCLIPath(command[0])
 	}
+	command = resolveAgentCommandPath(command, settings.AllowPathGuess)
 	if shouldWrapAgentCommand(settings) {
 		wrapped, wrapErr := wrapAgentCommandForShell(command, settings)
 		if wrapErr != nil {
 			return "", ValidationError{Message: wrapErr.Error()}
 		}
 		command = wrapped
-	} else {
-		command = resolveAgentCommandPath(command, settings.AllowPathGuess)
 	}
 
 	var result CommandResult

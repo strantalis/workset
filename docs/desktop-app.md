@@ -34,6 +34,6 @@ The app defaults to GitHub CLI. Open Settings -> GitHub to connect via CLI or a 
 - `defaults.terminal_renderer` controls the xterm.js renderer (`webgl`).
 - `defaults.terminal_idle_timeout` controls idle shutdown for GUI terminals.
 - `defaults.agent` controls the generator used for PR/commit text and the default coding agent for terminals.
-- `defaults.agent_launch` controls whether agent commands run via a shell (`auto`) or require an absolute agent path (`strict`).
+- `defaults.agent_launch` controls whether agent commands run via a shell (`auto`) or require an agent path with directory separators (`strict`).
 
 For the full terminal architecture, see [Terminal Architecture](architecture/terminal.md).

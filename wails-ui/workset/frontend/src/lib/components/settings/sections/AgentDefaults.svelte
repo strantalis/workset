@@ -43,7 +43,7 @@
 		{
 			id: 'agentLaunch',
 			label: 'Agent launch mode',
-			description: 'Auto uses a shell and PTY fallback. Strict requires an absolute agent path.',
+			description: 'Auto uses a shell and PTY fallback. Strict requires an agent path with directory separators.',
 			type: 'select',
 			options: [
 				{ label: 'Auto', value: 'auto' },

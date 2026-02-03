@@ -37,16 +37,17 @@ func (s *Service) GetAgentCLIStatus(ctx context.Context, agent string) (AgentCLI
 			}
 		}
 		if hasPathSeparator(command) {
-			if isExecutableCandidate(command) {
+			normalizedCommand := normalizeCLIPath(command)
+			if isExecutableCandidate(normalizedCommand) {
 				status.Installed = true
-				status.Path = filepath.Clean(command)
+				status.Path = filepath.Clean(normalizedCommand)
 				return status, nil
 			}
-			status.Error = "agent command is not executable: " + command
+			status.Error = "agent command is not executable: " + normalizedCommand
 			return status, nil
 		}
 		if status.Error == "" {
-			status.Error = "strict agent launch requires an absolute path or agent CLI path"
+			status.Error = "strict agent launch requires a path with directory separators or agent CLI path"
 		}
 		return status, nil
 	}
