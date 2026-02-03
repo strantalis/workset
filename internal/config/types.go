@@ -14,6 +14,7 @@ type Defaults struct {
 	SessionTmuxRight    string `yaml:"session_tmux_status_right" json:"session_tmux_status_right" mapstructure:"session_tmux_status_right"`
 	SessionScreenHard   string `yaml:"session_screen_hardstatus" json:"session_screen_hardstatus" mapstructure:"session_screen_hardstatus"`
 	Agent               string `yaml:"agent" json:"agent" mapstructure:"agent"`
+	AgentLaunch         string `yaml:"agent_launch" json:"agent_launch" mapstructure:"agent_launch"`
 	TerminalRenderer    string `yaml:"terminal_renderer" json:"terminal_renderer" mapstructure:"terminal_renderer"`
 	TerminalIdleTimeout string `yaml:"terminal_idle_timeout" json:"terminal_idle_timeout" mapstructure:"terminal_idle_timeout"`
 	TerminalProtocolLog string `yaml:"terminal_protocol_log" json:"terminal_protocol_log" mapstructure:"terminal_protocol_log"`

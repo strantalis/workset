@@ -20,6 +20,7 @@ type SettingsDefaults struct {
 	SessionTmuxRight    string `json:"sessionTmuxRight"`
 	SessionScreenHard   string `json:"sessionScreenHard"`
 	Agent               string `json:"agent"`
+	AgentLaunch         string `json:"agentLaunch"`
 	TerminalRenderer    string `json:"terminalRenderer"`
 	TerminalIdleTimeout string `json:"terminalIdleTimeout"`
 	TerminalProtocolLog string `json:"terminalProtocolLog"`
@@ -69,6 +70,7 @@ func (a *App) GetSettings() (SettingsSnapshot, error) {
 			SessionTmuxRight:    cfg.Defaults.SessionTmuxRight,
 			SessionScreenHard:   cfg.Defaults.SessionScreenHard,
 			Agent:               cfg.Defaults.Agent,
+			AgentLaunch:         cfg.Defaults.AgentLaunch,
 			TerminalRenderer:    cfg.Defaults.TerminalRenderer,
 			TerminalIdleTimeout: cfg.Defaults.TerminalIdleTimeout,
 			TerminalProtocolLog: cfg.Defaults.TerminalProtocolLog,

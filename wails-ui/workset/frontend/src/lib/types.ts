@@ -143,6 +143,7 @@ export type SettingsDefaults = {
 	sessionTmuxRight: string;
 	sessionScreenHard: string;
 	agent: string;
+	agentLaunch: string;
 	terminalIdleTimeout: string;
 	terminalProtocolLog: string;
 };

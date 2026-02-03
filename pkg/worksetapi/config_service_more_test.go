@@ -23,6 +23,9 @@ func TestGetConfig(t *testing.T) {
 	if cfg.Defaults.Agent != "codex" {
 		t.Fatalf("unexpected agent default: %q", cfg.Defaults.Agent)
 	}
+	if cfg.Defaults.AgentLaunch != "auto" {
+		t.Fatalf("unexpected agent launch default: %q", cfg.Defaults.AgentLaunch)
+	}
 	if cfg.Defaults.TerminalRenderer != "auto" {
 		t.Fatalf("unexpected terminal renderer default: %q", cfg.Defaults.TerminalRenderer)
 	}
@@ -90,6 +93,7 @@ func TestSetDefaultVariousKeys(t *testing.T) {
 		"defaults.session_screen_hardstatus": "hard",
 		"defaults.session_backend":           "exec",
 		"defaults.agent":                     "codex",
+		"defaults.agent_launch":              "strict",
 		"defaults.terminal_renderer":         "webgl",
 		"defaults.terminal_idle_timeout":     "0",
 		"defaults.terminal_protocol_log":     "on",
@@ -108,6 +112,9 @@ func TestSetDefaultVariousKeys(t *testing.T) {
 	}
 	if cfg.Defaults.Agent != "codex" {
 		t.Fatalf("agent default not set")
+	}
+	if cfg.Defaults.AgentLaunch != "strict" {
+		t.Fatalf("agent launch default not set")
 	}
 	if cfg.Defaults.TerminalRenderer != "webgl" {
 		t.Fatalf("terminal renderer default not set")
