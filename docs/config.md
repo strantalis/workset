@@ -42,7 +42,7 @@ Remote names and default branches come from repo aliases (`repos.<name>.remote` 
 | `session_tmux_status_right` | Override tmux `status-right` when a session theme is enabled. |
 | `session_screen_hardstatus` | Override screen `hardstatus` when a session theme is enabled. |
 | `agent` | Default agent for PR text generation, commit messages, and the GUI terminal launcher. |
-| `terminal_renderer` | Default GUI terminal renderer (`auto`, `webgl`, `canvas`). |
+| `terminal_renderer` | Default GUI terminal renderer (`webgl`). |
 | `terminal_idle_timeout` | Idle timeout for GUI terminals/sessiond (duration like `30m`; use `0` to disable). Default is `0`. |
 
 ### `hooks`
@@ -90,7 +90,7 @@ defaults:
   workspace_root: ~/.workset/workspaces
   repo_store_root: ~/.workset/repos
   agent: codex
-  terminal_renderer: auto
+  terminal_renderer: webgl
   terminal_idle_timeout: "0"
   session_backend: auto
   session_name_format: workset-{workspace}

@@ -156,11 +156,13 @@
 			{:else}
 				<div class="view-stack">
 					<div class="view-pane" class:active={!hasRepo} aria-hidden={hasRepo}>
-						<TerminalWorkspace
-							workspaceId={$activeWorkspace?.id ?? ''}
-							workspaceName={$activeWorkspace?.name ?? 'Workspace'}
-							active={!hasRepo}
-						/>
+						{#key $activeWorkspaceId}
+							<TerminalWorkspace
+								workspaceId={$activeWorkspace?.id ?? ''}
+								workspaceName={$activeWorkspace?.name ?? 'Workspace'}
+								active={!hasRepo}
+							/>
+						{/key}
 					</div>
 					{#if hasRepo}
 						<div class="view-pane active" aria-hidden={!hasRepo}>
@@ -480,5 +482,4 @@
 			padding: 0;
 		}
 	}
-
 </style>

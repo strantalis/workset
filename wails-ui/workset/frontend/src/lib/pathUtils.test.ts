@@ -34,12 +34,12 @@ describe('formatPath - path display formatting', () => {
 
 		it('handles different max lengths', () => {
 			const path = 'a/b/c/d/e/f/g/h/i/j/file.txt';
-			
+
 			const shortResult = formatPath(path, 20);
 			// Result should never exceed maxChars
 			expect(shortResult.length).toBeLessThanOrEqual(20);
 			expect(shortResult).toContain('file.txt');
-			
+
 			const longResult = formatPath(path, 50);
 			expect(longResult.length).toBeLessThanOrEqual(50);
 			expect(longResult).toContain('file.txt');
@@ -51,7 +51,7 @@ describe('formatPath - path display formatting', () => {
 			const filename = 'very-long-component-name-that-is-excessive-and-needs-truncation.tsx';
 			const path = `src/components/${filename}`;
 			const result = formatPath(path, 40);
-			
+
 			expect(result).toBe(filename);
 		});
 
@@ -59,7 +59,7 @@ describe('formatPath - path display formatting', () => {
 			const filename = 'a'.repeat(40);
 			const path = `src/${filename}`;
 			const result = formatPath(path);
-			
+
 			expect(result).toBe(filename);
 		});
 
@@ -67,7 +67,7 @@ describe('formatPath - path display formatting', () => {
 			const filename = 'a'.repeat(39);
 			const path = `src/components/${filename}`;
 			const result = formatPath(path);
-			
+
 			// When filename is 39 chars with maxChars=40, we don't have room
 			// for ".../" (4 chars) plus a directory, so just return filename
 			expect(result).toBe(filename);
@@ -114,7 +114,7 @@ describe('formatPath - path display formatting', () => {
 		it('handles very short maxChars', () => {
 			const path = 'src/main.go';
 			const result = formatPath(path, 10);
-			// With maxChars=10 and filename="main.go" (7 chars), we should 
+			// With maxChars=10 and filename="main.go" (7 chars), we should
 			// just return the filename since there's no room for prefix
 			expect(result).toBe('main.go');
 			expect(result.length).toBeLessThanOrEqual(10);
@@ -152,7 +152,7 @@ describe('formatPath - path display formatting', () => {
 				'wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte',
 			];
 
-			paths.forEach(path => {
+			paths.forEach((path) => {
 				const result = formatPath(path);
 				const filename = path.split('/').pop() || '';
 				expect(result).toContain(filename);

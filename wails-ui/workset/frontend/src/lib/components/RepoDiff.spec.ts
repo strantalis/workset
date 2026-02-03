@@ -38,7 +38,7 @@ const repo: Repo = {
 
 const mockSummary = { files: [], totalAdded: 0, totalRemoved: 0 };
 
-const createDeferred = <T,>() => {
+const createDeferred = <T>() => {
 	let resolve: (value: T) => void;
 	let reject: (reason?: unknown) => void;
 	const promise = new Promise<T>((res, rej) => {
@@ -59,7 +59,21 @@ beforeEach(async () => {
 	vi.mocked(api.fetchTrackedPullRequest).mockResolvedValue(null);
 	vi.mocked(api.listRemotes).mockResolvedValue([]);
 	vi.mocked(api.fetchPullRequestReviews).mockResolvedValue([]);
-	vi.mocked(api.fetchPullRequestStatus).mockResolvedValue(null);
+	vi.mocked(api.fetchPullRequestStatus).mockResolvedValue({
+		pullRequest: {
+			repo: 'origin',
+			number: 0,
+			url: '',
+			title: 'Draft',
+			state: 'open',
+			draft: false,
+			baseRepo: 'origin',
+			baseBranch: 'main',
+			headRepo: 'origin',
+			headBranch: 'feature',
+		},
+		checks: [],
+	});
 	vi.mocked(api.fetchRepoLocalStatus).mockResolvedValue({
 		hasUncommitted: false,
 		ahead: 0,

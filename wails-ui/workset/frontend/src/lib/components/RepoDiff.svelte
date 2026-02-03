@@ -1287,7 +1287,7 @@
 								</span>
 							{/if}
 							<span class="pr-create-label"
-								>{prCreating ? prCreateStageCopy?.button ?? 'Creating PR...' : 'Create PR'}</span
+								>{prCreating ? (prCreateStageCopy?.button ?? 'Creating PR...') : 'Create PR'}</span
 							>
 						</button>
 					</div>
@@ -1404,14 +1404,14 @@
 								onclick={() => selectFile(file, 'local')}
 								type="button"
 							>
-									<div class="file-meta">
-										<span class="path" title={file.path}>{formatPath(file.path)}</span>
-										{#if file.prevPath}
-											<span class="rename">from {file.prevPath}</span>
-										{/if}
-									</div>
-									<div class="stats">
-										<span class="tag local-tag">{statusLabel(file.status)}</span>
+								<div class="file-meta">
+									<span class="path" title={file.path}>{formatPath(file.path)}</span>
+									{#if file.prevPath}
+										<span class="rename">from {file.prevPath}</span>
+									{/if}
+								</div>
+								<div class="stats">
+									<span class="tag local-tag">{statusLabel(file.status)}</span>
 									<span class="diffstat local-diffstat"
 										><span class="add">+{file.added}</span><span class="sep">/</span><span
 											class="del">-{file.removed}</span
@@ -1498,13 +1498,13 @@
 					</div>
 				{/if}
 			</aside>
-			<div
+			<button
 				class="resize-handle"
 				class:resizing={isResizing}
 				onmousedown={startResize}
-				role="separator"
 				aria-label="Resize sidebar"
-			></div>
+				type="button"
+			></button>
 			<div class="diff-view">
 				<div class="file-header">
 					<div class="file-title">
@@ -2749,6 +2749,8 @@
 		bottom: 0;
 		width: 4px;
 		background: transparent;
+		border: none;
+		padding: 0;
 		cursor: col-resize;
 		transition: background var(--transition-fast);
 		z-index: 10;
