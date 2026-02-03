@@ -2257,14 +2257,4 @@
 		color: var(--muted);
 	}
 
-	.create-btn {
-		padding: 10px 28px;
-		min-width: 100px;
-		white-space: nowrap;
-	}
-
-	:global(.create-btn) {
-		margin-top: 0;
-		width: auto;
-	}
 </style>
