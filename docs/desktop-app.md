@@ -31,7 +31,7 @@ The app defaults to GitHub CLI. Open Settings -> GitHub to connect via CLI or a 
 
 ## Terminal settings
 
-- `defaults.terminal_renderer` controls the xterm.js renderer (`auto`, `webgl`, `canvas`).
+- `defaults.terminal_renderer` controls the xterm.js renderer (`webgl`).
 - `defaults.terminal_idle_timeout` controls idle shutdown for GUI terminals.
 - `defaults.agent` controls the generator used for PR/commit text and the default coding agent for terminals.
 

@@ -18,15 +18,18 @@
 	}: Props = $props();
 
 	let terminalContainer: HTMLDivElement | null = $state(null);
-	let controller: { restart?: () => Promise<void>; retryHealthCheck?: () => void } | null =
-		$state(null);
+	let controller: {
+		restart?: () => Promise<void>;
+		retryHealthCheck?: () => void;
+		focus?: () => void;
+	} | null = $state(null);
 	let controllerState = $state({
 		status: '',
 		message: '',
 		health: 'unknown' as 'unknown' | 'checking' | 'ok' | 'stale',
 		healthMessage: '',
-		renderer: 'unknown' as 'unknown' | 'webgl' | 'canvas',
-		rendererMode: 'auto' as 'auto' | 'webgl' | 'canvas',
+		renderer: 'unknown' as 'unknown' | 'webgl',
+		rendererMode: 'webgl' as const,
 		sessiondAvailable: null as boolean | null,
 		sessiondChecked: false,
 		debugEnabled: false,
@@ -51,12 +54,16 @@
 		controller?.retryHealthCheck?.();
 	};
 
+	$effect(() => {
+		if (!active) return;
+		controller?.focus?.();
+	});
+
 	const activeStatus = $derived(controllerState.status);
 	const activeMessage = $derived(controllerState.message);
 	const activeHealth = $derived(controllerState.health);
 	const activeHealthMessage = $derived(controllerState.healthMessage);
 	const activeRenderer = $derived(controllerState.renderer);
-	const activeRendererMode = $derived(controllerState.rendererMode);
 	const sessiondAvailable = $derived(controllerState.sessiondAvailable);
 	const debugEnabled = $derived(controllerState.debugEnabled);
 	const debugStats = $derived(controllerState.debugStats);
@@ -106,16 +113,9 @@
 							checking
 						{/if}
 					</div>
-					<div
-						class="renderer-status"
-						class:fallback={activeRenderer === 'canvas' && activeRendererMode !== 'canvas'}
-						class:forced={activeRenderer === 'canvas' && activeRendererMode === 'canvas'}
-						title="Terminal renderer"
-					>
+					<div class="renderer-status" title="Terminal renderer">
 						{#if activeRenderer === 'webgl'}
 							WebGL
-						{:else if activeRenderer === 'canvas'}
-							Canvas
 						{:else}
 							?
 						{/if}
@@ -256,18 +256,6 @@
 		padding: 2px 8px;
 		background: rgba(255, 255, 255, 0.02);
 		letter-spacing: 0.02em;
-	}
-
-	.renderer-status.fallback {
-		color: var(--warning);
-		border-color: color-mix(in srgb, var(--warning) 50%, var(--border));
-		background: color-mix(in srgb, var(--warning) 12%, transparent);
-	}
-
-	.renderer-status.forced {
-		color: var(--muted);
-		border-color: var(--border);
-		background: rgba(255, 255, 255, 0.02);
 	}
 
 	@keyframes pulse {

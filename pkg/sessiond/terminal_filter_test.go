@@ -13,9 +13,23 @@ func enableTerminalFilter(t *testing.T) {
 	t.Helper()
 	t.Setenv("WORKSET_TERMINAL_FILTER", "1")
 	t.Setenv("WORKSET_TERMINAL_FILTER_DEBUG", "0")
+	t.Setenv("WORKSET_TERMINAL_FILTER_DROP_COLORS", "0")
 	terminalFilterOnce = sync.Once{}
 	terminalFilterEnabled = false
 	terminalFilterDebug = false
+	terminalFilterDropOSC = false
+	terminalFilterLog = nil
+}
+
+func enableTerminalFilterDropColors(t *testing.T) {
+	t.Helper()
+	t.Setenv("WORKSET_TERMINAL_FILTER", "1")
+	t.Setenv("WORKSET_TERMINAL_FILTER_DEBUG", "0")
+	t.Setenv("WORKSET_TERMINAL_FILTER_DROP_COLORS", "1")
+	terminalFilterOnce = sync.Once{}
+	terminalFilterEnabled = false
+	terminalFilterDebug = false
+	terminalFilterDropOSC = false
 	terminalFilterLog = nil
 }
 
@@ -52,7 +66,7 @@ func TestFilterTerminalOutputStreamingLeavesRequestsAndSGR(t *testing.T) {
 }
 
 func TestFilterTerminalOutputStreamingDropsOSCColorResponsesAcrossChunks(t *testing.T) {
-	enableTerminalFilter(t)
+	enableTerminalFilterDropColors(t)
 
 	seq := []byte("\x1b]10;rgb:aa/bb/cc\x07")
 	part1 := seq[:len(seq)-1]

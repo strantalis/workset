@@ -33,6 +33,35 @@ export type Workspace = {
 	repos: Repo[];
 };
 
+export type TerminalLayoutTab = {
+	id: string;
+	terminalId: string;
+	title: string;
+};
+
+export type TerminalLayoutNode = {
+	id: string;
+	kind: 'pane' | 'split';
+	tabs?: TerminalLayoutTab[];
+	activeTabId?: string;
+	direction?: 'row' | 'column';
+	ratio?: number;
+	first?: TerminalLayoutNode;
+	second?: TerminalLayoutNode;
+};
+
+export type TerminalLayout = {
+	version: number;
+	root: TerminalLayoutNode;
+	focusedPaneId?: string;
+};
+
+export type TerminalLayoutPayload = {
+	workspaceId: string;
+	workspacePath: string;
+	layout?: TerminalLayout;
+};
+
 export type WorkspaceCreateResponse = {
 	workspace: {
 		name: string;
@@ -114,7 +143,6 @@ export type SettingsDefaults = {
 	sessionTmuxRight: string;
 	sessionScreenHard: string;
 	agent: string;
-	terminalRenderer: string;
 	terminalIdleTimeout: string;
 	terminalProtocolLog: string;
 };

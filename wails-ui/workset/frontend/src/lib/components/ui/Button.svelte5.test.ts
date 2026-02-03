@@ -4,6 +4,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, unmount } from 'svelte';
 import Button from './Button.svelte';
+import { asSnippet } from '../../test-utils/snippet';
 
 describe('Button - Svelte 5 mount API', () => {
 	let container: HTMLDivElement;
@@ -21,7 +22,7 @@ describe('Button - Svelte 5 mount API', () => {
 		const component = mount(Button, {
 			target: container,
 			props: {
-				children: () => 'Click me',
+				children: asSnippet('Click me'),
 			},
 		});
 
@@ -36,7 +37,7 @@ describe('Button - Svelte 5 mount API', () => {
 			target: container,
 			props: {
 				variant: 'primary',
-				children: () => 'Primary Button',
+				children: asSnippet('Primary Button'),
 			},
 		});
 
@@ -52,7 +53,7 @@ describe('Button - Svelte 5 mount API', () => {
 			target: container,
 			props: {
 				onclick: handleClick,
-				children: () => 'Click me',
+				children: asSnippet('Click me'),
 			},
 		});
 
@@ -69,7 +70,7 @@ describe('Button - Svelte 5 mount API', () => {
 			target: container,
 			props: {
 				disabled: true,
-				children: () => 'Disabled Button',
+				children: asSnippet('Disabled Button'),
 			},
 		});
 
@@ -84,7 +85,7 @@ describe('Button - Svelte 5 mount API', () => {
 			target: container,
 			props: {
 				size: 'sm',
-				children: () => 'Small Button',
+				children: asSnippet('Small Button'),
 			},
 		});
 
@@ -99,7 +100,7 @@ describe('Button - Svelte 5 mount API', () => {
 			target: container,
 			props: {
 				type: 'submit',
-				children: () => 'Submit',
+				children: asSnippet('Submit'),
 			},
 		});
 

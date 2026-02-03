@@ -2,19 +2,19 @@
  * Format a file path for display in the sidebar, truncating from the left
  * while preserving the filename and last 2-3 directories.
  * Always shows the full filename, even if it's very long.
- * 
+ *
  * @param path - The full file path to format
  * @param maxChars - Maximum character length for the formatted path (default: 40)
  * @returns The formatted path string
- * 
+ *
  * @example
- * formatPath('pkg/sessiond/client.go') 
+ * formatPath('pkg/sessiond/client.go')
  * // returns: 'pkg/sessiond/client.go' (fits entirely)
- * 
+ *
  * @example
  * formatPath('wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte')
  * // returns: '.../src/lib/components/RepoDiff.svelte'
- * 
+ *
  * @example
  * formatPath('very-long-component-name-that-is-excessive.tsx')
  * // returns: 'very-long-component-name-that-is-excessive.tsx' (full filename)

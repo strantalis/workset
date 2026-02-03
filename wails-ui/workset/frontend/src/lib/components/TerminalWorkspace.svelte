@@ -1,7 +1,19 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import TerminalLayoutNode from './TerminalLayoutNode.svelte';
-	import { createWorkspaceTerminal } from '../api';
+	import {
+		createWorkspaceTerminal,
+		fetchWorkspaceTerminalStatus,
+		fetchWorkspaceTerminalLayout,
+		persistWorkspaceTerminalLayout,
+	} from '../api';
 	import { generateTerminalName } from '../names';
+	import type {
+		TerminalLayout as TerminalLayoutType,
+		TerminalLayoutNode as TerminalLayoutNodeType,
+		TerminalLayoutTab as TerminalLayoutTabType,
+	} from '../types';
+	import { closeTerminal } from '../terminal/terminalService';
 
 	interface Props {
 		workspaceId: string;
@@ -11,42 +23,130 @@
 
 	const { workspaceId, workspaceName, active = true }: Props = $props();
 
-	type TerminalTab = {
-		id: string;
-		terminalId: string;
-		title: string;
-	};
-
-	type PaneNode = {
-		id: string;
+	type TerminalTab = TerminalLayoutTabType;
+	type PaneNode = Omit<TerminalLayoutNodeType, 'kind' | 'tabs' | 'activeTabId'> & {
 		kind: 'pane';
 		tabs: TerminalTab[];
 		activeTabId: string;
 	};
-
-	type SplitNode = {
-		id: string;
+	type SplitNode = Omit<
+		TerminalLayoutNodeType,
+		'kind' | 'first' | 'second' | 'direction' | 'ratio'
+	> & {
 		kind: 'split';
-		direction: 'row' | 'column';
-		ratio: number;
 		first: LayoutNode;
 		second: LayoutNode;
+		direction: 'row' | 'column';
+		ratio: number;
 	};
-
 	type LayoutNode = PaneNode | SplitNode;
-
-	type TerminalLayout = {
-		version: number;
+	type TerminalLayout = Omit<TerminalLayoutType, 'root'> & {
 		root: LayoutNode;
 		focusedPaneId?: string;
 	};
-
-	const STORAGE_VERSION = 1;
-	const STORAGE_PREFIX = 'workset:terminal-layout:';
+	const LAYOUT_VERSION = 1;
+	const MIGRATION_VERSION = 1;
+	const SAVE_DEBOUNCE_MS = 300;
+	const LEGACY_STORAGE_PREFIX = 'workset:terminal-layout:';
+	const MIGRATION_PREFIX = 'workset:terminal-layout:migrated:v';
 
 	let layout = $state<TerminalLayout | null>(null);
 	let initError = $state('');
 	let loading = $state(false);
+	let saveTimer: number | null = null;
+	let pendingLayout: TerminalLayout | null = null;
+	let pendingWorkspaceId = '';
+
+	const migrationKey = (id: string): string => `${MIGRATION_PREFIX}${MIGRATION_VERSION}:${id}`;
+
+	const shouldRunMigration = (id: string): boolean => {
+		if (!id || typeof localStorage === 'undefined') return false;
+		try {
+			return localStorage.getItem(migrationKey(id)) !== '1';
+		} catch {
+			return false;
+		}
+	};
+
+	const markMigrationComplete = (id: string): void => {
+		if (!id || typeof localStorage === 'undefined') return;
+		try {
+			localStorage.setItem(migrationKey(id), '1');
+		} catch {
+			// Ignore storage failures.
+		}
+	};
+
+	const coerceId = (value: unknown): string => {
+		if (typeof value === 'string' && value.trim()) return value;
+		return newId();
+	};
+
+	const normalizeTab = (tab: TerminalTab | undefined | null): TerminalTab | null => {
+		if (!tab) return null;
+		if (typeof tab.id !== 'string' || typeof tab.terminalId !== 'string') return null;
+		const title =
+			typeof tab.title === 'string' && tab.title.trim().length > 0 ? tab.title : 'Terminal';
+		return { id: tab.id, terminalId: tab.terminalId, title };
+	};
+
+	const normalizeNode = (node: TerminalLayoutNodeType | null | undefined): LayoutNode | null => {
+		if (!node || typeof node !== 'object') return null;
+		if (node.kind === 'pane') {
+			const tabs = Array.isArray(node.tabs)
+				? node.tabs.map(normalizeTab).filter((tab): tab is TerminalTab => tab !== null)
+				: [];
+			if (tabs.length === 0) return null;
+			const activeTabId =
+				typeof node.activeTabId === 'string' && tabs.some((tab) => tab.id === node.activeTabId)
+					? node.activeTabId
+					: tabs[0].id;
+			return {
+				id: coerceId(node.id),
+				kind: 'pane',
+				tabs,
+				activeTabId,
+			};
+		}
+		if (node.kind === 'split') {
+			const first = normalizeNode(node.first);
+			const second = normalizeNode(node.second);
+			if (!first && !second) return null;
+			if (!first) return second;
+			if (!second) return first;
+			const direction =
+				node.direction === 'row' || node.direction === 'column' ? node.direction : 'row';
+			const ratio =
+				typeof node.ratio === 'number' &&
+				Number.isFinite(node.ratio) &&
+				node.ratio > 0 &&
+				node.ratio < 1
+					? node.ratio
+					: 0.5;
+			return {
+				id: coerceId(node.id),
+				kind: 'split',
+				direction,
+				ratio,
+				first,
+				second,
+			};
+		}
+		return null;
+	};
+
+	const normalizeLayout = (
+		candidate: TerminalLayoutType | null | undefined,
+	): TerminalLayout | null => {
+		if (!candidate || candidate.version !== LAYOUT_VERSION) return null;
+		const root = normalizeNode(candidate.root);
+		if (!root) return null;
+		return {
+			version: LAYOUT_VERSION,
+			root,
+			focusedPaneId: candidate.focusedPaneId,
+		};
+	};
 
 	const newId = (): string => {
 		if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -55,27 +155,52 @@
 		return `term-${Math.random().toString(36).slice(2)}`;
 	};
 
-	const storageKey = (id: string): string => `${STORAGE_PREFIX}${id}`;
+	const scheduleSaveLayout = (next: TerminalLayout): void => {
+		if (!workspaceId) return;
+		pendingLayout = next;
+		pendingWorkspaceId = workspaceId;
+		if (saveTimer) {
+			window.clearTimeout(saveTimer);
+		}
+		saveTimer = window.setTimeout(() => {
+			saveTimer = null;
+			const target = pendingWorkspaceId;
+			const toSave = pendingLayout;
+			pendingWorkspaceId = '';
+			pendingLayout = null;
+			if (!target || !toSave) return;
+			void persistWorkspaceTerminalLayout(target, toSave).catch(() => {});
+		}, SAVE_DEBOUNCE_MS);
+	};
 
-	const saveLayout = (next: TerminalLayout): void => {
-		if (typeof localStorage === 'undefined') return;
+	const legacyStorageKey = (id: string): string => `${LEGACY_STORAGE_PREFIX}${id}`;
+
+	const clearLegacyLayout = (id: string): void => {
+		if (!id || typeof localStorage === 'undefined') return;
 		try {
-			localStorage.setItem(storageKey(workspaceId), JSON.stringify(next));
+			localStorage.removeItem(legacyStorageKey(id));
 		} catch {
 			// Ignore storage failures.
 		}
 	};
 
-	const loadLayout = (): TerminalLayout | null => {
-		if (typeof localStorage === 'undefined') return null;
+	const loadLegacyLayout = (id: string): TerminalLayout | null => {
+		if (!id || typeof localStorage === 'undefined') return null;
 		try {
-			const raw = localStorage.getItem(storageKey(workspaceId));
+			const raw = localStorage.getItem(legacyStorageKey(id));
 			if (!raw) return null;
 			const parsed = JSON.parse(raw) as TerminalLayout;
-			if (!parsed || parsed.version !== STORAGE_VERSION || !parsed.root) {
-				return null;
-			}
-			return parsed;
+			return normalizeLayout(parsed);
+		} catch {
+			return null;
+		}
+	};
+
+	const loadLayout = async (id: string): Promise<TerminalLayout | null> => {
+		if (!id) return null;
+		try {
+			const payload = await fetchWorkspaceTerminalLayout(id);
+			return normalizeLayout(payload?.layout);
 		} catch {
 			return null;
 		}
@@ -248,30 +373,163 @@
 		return { ...next, focusedPaneId: firstPaneId(next.root) };
 	};
 
+	const applyTabFixes = (
+		node: LayoutNode,
+		fixes: Map<string, { terminalId?: string; drop?: boolean }>,
+	): LayoutNode | null => {
+		if (node.kind === 'pane') {
+			const tabs = node.tabs
+				.map((tab) => {
+					const fix = fixes.get(tab.id);
+					if (fix?.drop) return null;
+					if (fix?.terminalId) {
+						return { ...tab, terminalId: fix.terminalId };
+					}
+					return tab;
+				})
+				.filter((tab): tab is TerminalTab => tab !== null);
+			if (tabs.length === 0) return null;
+			const activeTabId = tabs.some((tab) => tab.id === node.activeTabId)
+				? node.activeTabId
+				: tabs[0].id;
+			return { ...node, tabs, activeTabId };
+		}
+		const first = applyTabFixes(node.first, fixes);
+		const second = applyTabFixes(node.second, fixes);
+		if (!first && !second) return null;
+		if (!first) return second;
+		if (!second) return first;
+		return { ...node, first, second };
+	};
+
+	const migrateLayoutOnce = async (
+		id: string,
+		layoutToMigrate: TerminalLayout,
+	): Promise<{ layout: TerminalLayout; changed: boolean }> => {
+		if (!shouldRunMigration(id)) {
+			return { layout: layoutToMigrate, changed: false };
+		}
+		markMigrationComplete(id);
+		const tabs = collectTabs(layoutToMigrate.root);
+		if (tabs.length === 0) {
+			return { layout: layoutToMigrate, changed: false };
+		}
+		let changed = false;
+		const fixes = new Map<string, { terminalId?: string; drop?: boolean }>();
+		for (const tab of tabs) {
+			if (!tab.terminalId) {
+				fixes.set(tab.id, { drop: true });
+				changed = true;
+				continue;
+			}
+			let shouldReplace = false;
+			try {
+				const status = await fetchWorkspaceTerminalStatus(id, tab.terminalId);
+				if (!status) {
+					continue;
+				}
+				if (status.active) {
+					continue;
+				}
+				if (status.error) {
+					continue;
+				}
+				shouldReplace = true;
+			} catch {
+				continue;
+			}
+			if (!shouldReplace) continue;
+			try {
+				const created = await createWorkspaceTerminal(id);
+				if (created?.terminalId) {
+					fixes.set(tab.id, { terminalId: created.terminalId });
+				} else {
+					fixes.set(tab.id, { drop: true });
+				}
+				changed = true;
+			} catch {
+				fixes.set(tab.id, { drop: true });
+				changed = true;
+			}
+		}
+		if (!changed) {
+			return { layout: layoutToMigrate, changed: false };
+		}
+		const nextRoot = applyTabFixes(layoutToMigrate.root, fixes);
+		if (!nextRoot) {
+			const created = await createWorkspaceTerminal(id);
+			const tab = buildTab(created.terminalId, generateTerminalName(workspaceName, 0));
+			const pane = buildPane(tab);
+			const fresh = ensureFocusedPane({
+				version: LAYOUT_VERSION,
+				root: pane,
+				focusedPaneId: pane.id,
+			});
+			return { layout: fresh, changed: true };
+		}
+		const updated = ensureFocusedPane({ ...layoutToMigrate, root: nextRoot });
+		return { layout: updated, changed: true };
+	};
+
+	const setLayout = (next: TerminalLayout): void => {
+		layout = ensureFocusedPane(next);
+	};
+
 	const updateLayout = (next: TerminalLayout): void => {
 		const normalized = ensureFocusedPane(next);
 		layout = normalized;
-		saveLayout(normalized);
+		scheduleSaveLayout(normalized);
 	};
+
+	let initToken = 0;
 
 	const initWorkspace = async (): Promise<void> => {
 		if (!workspaceId) return;
+		const token = (initToken += 1);
+		const targetWorkspaceId = workspaceId;
+		const targetWorkspaceName = workspaceName;
 		loading = true;
 		initError = '';
+		layout = null;
 		try {
-			const stored = loadLayout();
+			const stored = await loadLayout(targetWorkspaceId);
+			if (token !== initToken || workspaceId !== targetWorkspaceId) return;
 			if (stored) {
-				updateLayout(stored);
+				const migrated = await migrateLayoutOnce(targetWorkspaceId, stored);
+				if (token !== initToken || workspaceId !== targetWorkspaceId) return;
+				if (migrated.changed) {
+					setLayout(migrated.layout);
+					void persistWorkspaceTerminalLayout(targetWorkspaceId, migrated.layout).catch(() => {});
+				} else {
+					setLayout(migrated.layout);
+				}
 				return;
 			}
-			const created = await createWorkspaceTerminal(workspaceId);
-			const tab = buildTab(created.terminalId, generateTerminalName(workspaceName, 0));
+			const legacy = loadLegacyLayout(targetWorkspaceId);
+			if (token !== initToken || workspaceId !== targetWorkspaceId) return;
+			if (legacy) {
+				const migrated = await migrateLayoutOnce(targetWorkspaceId, legacy);
+				if (token !== initToken || workspaceId !== targetWorkspaceId) return;
+				setLayout(migrated.layout);
+				void persistWorkspaceTerminalLayout(targetWorkspaceId, migrated.layout)
+					.then(() => {
+						clearLegacyLayout(targetWorkspaceId);
+					})
+					.catch(() => {});
+				return;
+			}
+			const created = await createWorkspaceTerminal(targetWorkspaceId);
+			if (token !== initToken || workspaceId !== targetWorkspaceId) return;
+			const tab = buildTab(created.terminalId, generateTerminalName(targetWorkspaceName, 0));
 			const pane = buildPane(tab);
-			updateLayout({ version: STORAGE_VERSION, root: pane, focusedPaneId: pane.id });
+			updateLayout({ version: LAYOUT_VERSION, root: pane, focusedPaneId: pane.id });
 		} catch (error) {
+			if (token !== initToken || workspaceId !== targetWorkspaceId) return;
 			initError = String(error);
 		} finally {
-			loading = false;
+			if (token === initToken && workspaceId === targetWorkspaceId) {
+				loading = false;
+			}
 		}
 	};
 
@@ -325,6 +583,10 @@
 		if (!layout) return;
 		const pane = findPane(layout.root, paneId);
 		if (!pane) return;
+		const closing = pane.tabs.find((tab) => tab.id === tabId);
+		if (closing) {
+			void closeTerminal(workspaceId, closing.terminalId);
+		}
 		const remaining = pane.tabs.filter((tab) => tab.id !== tabId);
 		if (remaining.length === 0) {
 			handleClosePane(paneId);
@@ -341,9 +603,24 @@
 
 	const handleClosePane = (paneId: string): void => {
 		if (!layout) return;
+		const pane = findPane(layout.root, paneId);
+		if (pane) {
+			for (const tab of pane.tabs) {
+				void closeTerminal(workspaceId, tab.terminalId);
+			}
+		}
 		const nextRoot = removePane(layout.root, paneId);
 		if (!nextRoot) {
-			void initWorkspace();
+			void (async () => {
+				try {
+					const created = await createWorkspaceTerminal(workspaceId);
+					const tab = buildTab(created.terminalId, generateTerminalName(workspaceName, 0));
+					const pane = buildPane(tab);
+					updateLayout({ version: LAYOUT_VERSION, root: pane, focusedPaneId: pane.id });
+				} catch (error) {
+					initError = String(error);
+				}
+			})();
 			return;
 		}
 		updateLayout({ ...layout, root: nextRoot });
@@ -566,9 +843,28 @@
 		}
 	};
 
+	onDestroy(() => {
+		if (saveTimer) {
+			window.clearTimeout(saveTimer);
+		}
+	});
+
 	$effect(() => {
 		if (!workspaceId) return;
 		void initWorkspace();
+	});
+
+	$effect(() => {
+		if (!workspaceId || typeof window === 'undefined') return;
+		const handler = (event: Event): void => {
+			const detail = (event as CustomEvent<{ workspaceId?: string }>).detail;
+			if (!detail?.workspaceId || detail.workspaceId !== workspaceId) return;
+			void initWorkspace();
+		};
+		window.addEventListener('workset:terminal-layout-reset', handler);
+		return () => {
+			window.removeEventListener('workset:terminal-layout-reset', handler);
+		};
 	});
 </script>
 

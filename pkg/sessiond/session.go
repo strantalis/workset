@@ -338,6 +338,7 @@ func (s *Session) start(ctx context.Context) error {
 		"WORKSET_WORKSPACE="+s.id,
 		"WORKSET_ROOT="+s.cwd,
 	)
+	cmd.Env = setEnv(cmd.Env, "COLORTERM", "truecolor")
 	cmd.Env = setEnv(cmd.Env, "SHELL", execName)
 
 	ptmx, err := startPTY(cmd)
@@ -958,6 +959,7 @@ var (
 	terminalFilterOnce    sync.Once
 	terminalFilterEnabled bool
 	terminalFilterDebug   bool
+	terminalFilterDropOSC bool
 	terminalFilterLog     *os.File
 	terminalFilterMu      sync.Mutex
 )
@@ -966,6 +968,7 @@ func terminalFilterConfig() (bool, bool) {
 	terminalFilterOnce.Do(func() {
 		terminalFilterEnabled = envTruthy(os.Getenv("WORKSET_TERMINAL_FILTER"))
 		terminalFilterDebug = envTruthy(os.Getenv("WORKSET_TERMINAL_FILTER_DEBUG"))
+		terminalFilterDropOSC = envTruthy(os.Getenv("WORKSET_TERMINAL_FILTER_DROP_COLORS"))
 		if terminalFilterDebug {
 			logPath, err := terminalFilterLogPath()
 			if err != nil {
@@ -1677,6 +1680,9 @@ func scanEscapeStringTerminator(data []byte, start int) int {
 }
 
 func shouldDropOSC(payload []byte) bool {
+	if !terminalFilterDropOSC {
+		return false
+	}
 	if len(payload) == 0 {
 		return false
 	}

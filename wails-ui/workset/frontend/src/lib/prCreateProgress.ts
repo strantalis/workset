@@ -16,9 +16,7 @@ const stageCopy: Record<PrCreateStage, PrCreateStageCopy> = {
 	},
 };
 
-export const getPrCreateStageCopy = (
-	stage: PrCreateStage | null,
-): PrCreateStageCopy | null => {
+export const getPrCreateStageCopy = (stage: PrCreateStage | null): PrCreateStageCopy | null => {
 	if (!stage) return null;
 	return stageCopy[stage];
 };

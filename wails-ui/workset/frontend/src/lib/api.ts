@@ -18,7 +18,10 @@ import type {
 	AppVersion,
 	Workspace,
 	WorkspaceCreateResponse,
+	TerminalLayout,
+	TerminalLayoutPayload,
 } from './types';
+import type { main } from '../../wailsjs/go/models';
 import {
 	AddGroupMember,
 	AddRepo,
@@ -72,6 +75,9 @@ import {
 	LogTerminalDebug,
 	GetWorkspaceTerminalStatus,
 	CreateWorkspaceTerminal,
+	StopWorkspaceTerminal,
+	GetWorkspaceTerminalLayout,
+	SetWorkspaceTerminalLayout,
 	GetAppVersion,
 	GetGitHubAuthInfo,
 	GetGitHubAuthStatus,
@@ -449,6 +455,13 @@ export async function createWorkspaceTerminal(
 	return CreateWorkspaceTerminal(workspaceId);
 }
 
+export async function stopWorkspaceTerminal(
+	workspaceId: string,
+	terminalId: string,
+): Promise<void> {
+	await StopWorkspaceTerminal(workspaceId, terminalId);
+}
+
 export async function fetchSessiondStatus(): Promise<SessiondStatusResponse> {
 	return GetSessiondStatus();
 }
@@ -527,6 +540,22 @@ export async function applyGroup(workspaceId: string, groupName: string): Promis
 
 export async function fetchSettings(): Promise<SettingsSnapshot> {
 	return (await GetSettings()) as unknown as SettingsSnapshot;
+}
+
+export async function fetchWorkspaceTerminalLayout(
+	workspaceId: string,
+): Promise<TerminalLayoutPayload> {
+	return (await GetWorkspaceTerminalLayout(workspaceId)) as TerminalLayoutPayload;
+}
+
+export async function persistWorkspaceTerminalLayout(
+	workspaceId: string,
+	layout: TerminalLayout,
+): Promise<void> {
+	await SetWorkspaceTerminalLayout({
+		workspaceId,
+		layout: layout as unknown as main.TerminalLayout,
+	} as unknown as main.TerminalLayoutRequest);
 }
 
 export async function setDefaultSetting(key: string, value: string): Promise<void> {

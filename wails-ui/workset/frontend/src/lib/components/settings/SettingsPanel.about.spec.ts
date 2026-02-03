@@ -2,24 +2,53 @@ import { describe, test, expect, vi, afterEach } from 'vitest';
 import { render, fireEvent, cleanup, waitFor } from '@testing-library/svelte';
 import SettingsPanel from '../SettingsPanel.svelte';
 import * as api from '../../api';
+import type { SettingsDefaults } from '../../types';
 
 // Mock the API module
 vi.mock('../../api', () => ({
 	fetchSettings: vi.fn(),
 	fetchAppVersion: vi.fn(),
+	fetchWorkspaceTerminalLayout: vi.fn(),
 	setDefaultSetting: vi.fn(),
 	restartSessiond: vi.fn(),
+	createWorkspaceTerminal: vi.fn(),
+	persistWorkspaceTerminalLayout: vi.fn(),
+	stopWorkspaceTerminal: vi.fn(),
 }));
 
 describe('SettingsPanel About Section', () => {
 	const mockOnClose = vi.fn();
+	const baseDefaults: SettingsDefaults = {
+		remote: 'origin',
+		baseBranch: 'main',
+		workspace: 'test',
+		workspaceRoot: '/workspaces',
+		repoStoreRoot: '/repos',
+		sessionBackend: 'local',
+		sessionNameFormat: '{workspace}',
+		sessionTheme: 'default',
+		sessionTmuxStyle: '',
+		sessionTmuxLeft: '',
+		sessionTmuxRight: '',
+		sessionScreenHard: '',
+		agent: 'default',
+		terminalIdleTimeout: '0',
+		terminalProtocolLog: 'off',
+	};
+	const buildDefaults = (overrides: Partial<SettingsDefaults> = {}): SettingsDefaults => ({
+		...baseDefaults,
+		...overrides,
+	});
 
 	afterEach(() => {
 		cleanup();
 		vi.clearAllMocks();
 	});
 
-	const waitForLoadingAndClickAbout = async (getByText: any, queryByText: any) => {
+	const waitForLoadingAndClickAbout = async (
+		getByText: (text: string) => HTMLElement,
+		queryByText: (text: string) => HTMLElement | null,
+	) => {
 		// Wait for loading to finish
 		await waitFor(() => {
 			expect(queryByText('Loading settings...')).not.toBeInTheDocument();
@@ -43,11 +72,7 @@ describe('SettingsPanel About Section', () => {
 	test('renders About section when about is selected', async () => {
 		vi.mocked(api.fetchSettings).mockResolvedValue({
 			configPath: '/test/config.yaml',
-			defaults: {
-				workspace: 'test',
-				agent: 'default',
-				terminalRenderer: 'auto',
-			},
+			defaults: buildDefaults(),
 		});
 
 		vi.mocked(api.fetchAppVersion).mockResolvedValue({
@@ -74,11 +99,7 @@ describe('SettingsPanel About Section', () => {
 	test('displays version information correctly', async () => {
 		vi.mocked(api.fetchSettings).mockResolvedValue({
 			configPath: '/test/config.yaml',
-			defaults: {
-				workspace: 'test',
-				agent: 'default',
-				terminalRenderer: 'auto',
-			},
+			defaults: buildDefaults(),
 		});
 
 		vi.mocked(api.fetchAppVersion).mockResolvedValue({
@@ -103,11 +124,7 @@ describe('SettingsPanel About Section', () => {
 	test('displays version as dev when version is dev', async () => {
 		vi.mocked(api.fetchSettings).mockResolvedValue({
 			configPath: '/test/config.yaml',
-			defaults: {
-				workspace: 'test',
-				agent: 'default',
-				terminalRenderer: 'auto',
-			},
+			defaults: buildDefaults(),
 		});
 
 		vi.mocked(api.fetchAppVersion).mockResolvedValue({
@@ -131,11 +148,7 @@ describe('SettingsPanel About Section', () => {
 	test('renders About section even when version fetch fails', async () => {
 		vi.mocked(api.fetchSettings).mockResolvedValue({
 			configPath: '/test/config.yaml',
-			defaults: {
-				workspace: 'test',
-				agent: 'default',
-				terminalRenderer: 'auto',
-			},
+			defaults: buildDefaults(),
 		});
 
 		vi.mocked(api.fetchAppVersion).mockRejectedValue(new Error('Failed to fetch'));
@@ -165,7 +178,7 @@ describe('SettingsPanel About Section', () => {
 		await waitFor(() => {
 			expect(getByText('Built With')).toBeInTheDocument();
 		});
-		
+
 		// Version section should NOT be present when appVersion is null
 		expect(queryByText('Version')).not.toBeInTheDocument();
 	});
@@ -173,11 +186,7 @@ describe('SettingsPanel About Section', () => {
 	test('displays tech stack badges', async () => {
 		vi.mocked(api.fetchSettings).mockResolvedValue({
 			configPath: '/test/config.yaml',
-			defaults: {
-				workspace: 'test',
-				agent: 'default',
-				terminalRenderer: 'auto',
-			},
+			defaults: buildDefaults(),
 		});
 
 		vi.mocked(api.fetchAppVersion).mockResolvedValue({
@@ -204,11 +213,7 @@ describe('SettingsPanel About Section', () => {
 	test('displays GitHub links', async () => {
 		vi.mocked(api.fetchSettings).mockResolvedValue({
 			configPath: '/test/config.yaml',
-			defaults: {
-				workspace: 'test',
-				agent: 'default',
-				terminalRenderer: 'auto',
-			},
+			defaults: buildDefaults(),
 		});
 
 		vi.mocked(api.fetchAppVersion).mockResolvedValue({
@@ -240,11 +245,7 @@ describe('SettingsPanel About Section', () => {
 
 		vi.mocked(api.fetchSettings).mockResolvedValue({
 			configPath: '/test/config.yaml',
-			defaults: {
-				workspace: 'test',
-				agent: 'default',
-				terminalRenderer: 'auto',
-			},
+			defaults: buildDefaults(),
 		});
 
 		vi.mocked(api.fetchAppVersion).mockResolvedValue({
@@ -271,11 +272,7 @@ describe('SettingsPanel About Section', () => {
 	test('displays copyright with current year', async () => {
 		vi.mocked(api.fetchSettings).mockResolvedValue({
 			configPath: '/test/config.yaml',
-			defaults: {
-				workspace: 'test',
-				agent: 'default',
-				terminalRenderer: 'auto',
-			},
+			defaults: buildDefaults(),
 		});
 
 		vi.mocked(api.fetchAppVersion).mockResolvedValue({
@@ -294,6 +291,8 @@ describe('SettingsPanel About Section', () => {
 
 		// Check copyright with current year
 		const currentYear = new Date().getFullYear();
-		expect(getByText(`© ${currentYear} Sean Trantalis. Open source under MIT License.`)).toBeInTheDocument();
+		expect(
+			getByText(`© ${currentYear} Sean Trantalis. Open source under MIT License.`),
+		).toBeInTheDocument();
 	});
 });
