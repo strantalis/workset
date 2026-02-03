@@ -62,6 +62,12 @@ func setGlobalDefault(cfg *config.GlobalConfig, key, value string) error {
 		cfg.Defaults.SessionScreenHard = value
 	case "defaults.agent":
 		cfg.Defaults.Agent = value
+	case "defaults.agent_launch":
+		mode, ok := parseAgentLaunchMode(value)
+		if !ok {
+			return fmt.Errorf("unsupported agent launch mode %q", value)
+		}
+		cfg.Defaults.AgentLaunch = mode
 	case "defaults.terminal_renderer":
 		renderer := strings.ToLower(strings.TrimSpace(value))
 		switch renderer {

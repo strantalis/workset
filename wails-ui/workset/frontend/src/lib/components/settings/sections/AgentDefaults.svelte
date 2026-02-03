@@ -40,6 +40,16 @@
 				{ label: 'Cursor Agent', value: 'cursor' },
 			],
 		},
+		{
+			id: 'agentLaunch',
+			label: 'Agent launch mode',
+			description: 'Auto uses a shell and PTY fallback. Strict requires an absolute agent path.',
+			type: 'select',
+			options: [
+				{ label: 'Auto', value: 'auto' },
+				{ label: 'Strict', value: 'strict' },
+			],
+		},
 	];
 
 	const getValue = (id: FieldId): string => draft[id] ?? '';

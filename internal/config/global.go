@@ -150,6 +150,7 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 		"defaults.session_tmux_status_right": defaults.Defaults.SessionTmuxRight,
 		"defaults.session_screen_hardstatus": defaults.Defaults.SessionScreenHard,
 		"defaults.agent":                     defaults.Defaults.Agent,
+		"defaults.agent_launch":              defaults.Defaults.AgentLaunch,
 		"defaults.terminal_renderer":         defaults.Defaults.TerminalRenderer,
 		"defaults.terminal_idle_timeout":     defaults.Defaults.TerminalIdleTimeout,
 		"defaults.terminal_protocol_log":     defaults.Defaults.TerminalProtocolLog,
@@ -213,6 +214,9 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 	}
 	if cfg.Defaults.Agent == "" {
 		cfg.Defaults.Agent = defaults.Defaults.Agent
+	}
+	if cfg.Defaults.AgentLaunch == "" {
+		cfg.Defaults.AgentLaunch = defaults.Defaults.AgentLaunch
 	}
 	if cfg.Defaults.TerminalRenderer == "" {
 		cfg.Defaults.TerminalRenderer = defaults.Defaults.TerminalRenderer

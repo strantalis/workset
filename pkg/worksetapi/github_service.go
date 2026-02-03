@@ -1166,34 +1166,56 @@ func (s *Service) runAgentPromptRaw(ctx context.Context, repoPath, agent, prompt
 	if len(command) == 0 {
 		return "", ValidationError{Message: "agent command required"}
 	}
-	if configuredPath, err := s.agentCLIPathFromConfig(ctx); err != nil {
+	cfg, _, err := s.loadGlobal(ctx)
+	if err != nil {
 		return "", err
-	} else if configuredPath != "" && isExecutableCandidate(configuredPath) {
+	}
+	configuredPath := normalizeCLIPath(cfg.Agent.CLIPath)
+	if configuredPath != "" && isExecutableCandidate(configuredPath) {
 		if filepath.Base(configuredPath) == filepath.Base(command[0]) {
 			command[0] = configuredPath
 		}
 	}
+	settings := resolveAgentExecSettings(cfg.Defaults)
 	command, env, stdin, err := prepareAgentCommand(command, prompt, schema)
 	if err != nil {
 		return "", err
 	}
-	if wrapped, ok := wrapAgentCommandForShell(command); ok {
-		command = wrapped
+	if !settings.AllowPathGuess && !hasPathSeparator(command[0]) {
+		return "", ValidationError{Message: "strict agent launch requires an absolute path or agent CLI path"}
 	}
-	result, err := s.commands(ctx, repoPath, command, env, stdin)
-	if err != nil || result.ExitCode != 0 {
-		if shouldRetryWithPTY(err, result) {
-			ptyResult, ptyErr := runCommandWithPTY(ctx, repoPath, command, env, stdin)
-			if ptyErr == nil && ptyResult.ExitCode == 0 {
-				return ptyResult.Stdout, nil
-			}
-			if ptyErr != nil && err == nil {
-				err = ptyErr
-			}
-			if ptyResult.ExitCode != 0 && ptyResult.Stdout != "" {
-				result = ptyResult
+	if shouldWrapAgentCommand(settings) {
+		wrapped, wrapErr := wrapAgentCommandForShell(command, settings)
+		if wrapErr != nil {
+			return "", ValidationError{Message: wrapErr.Error()}
+		}
+		command = wrapped
+	} else {
+		command = resolveAgentCommandPath(command, settings.AllowPathGuess)
+	}
+
+	var result CommandResult
+	switch settings.PTYMode {
+	case agentPTYAlways:
+		result, err = runCommandWithPTY(ctx, repoPath, command, env, stdin)
+	default:
+		result, err = s.commands(ctx, repoPath, command, env, stdin)
+		if err != nil || result.ExitCode != 0 {
+			if settings.PTYMode == agentPTYAuto && shouldRetryWithPTY(err, result) {
+				ptyResult, ptyErr := runCommandWithPTY(ctx, repoPath, command, env, stdin)
+				if ptyErr == nil && ptyResult.ExitCode == 0 {
+					return ptyResult.Stdout, nil
+				}
+				if ptyErr != nil && err == nil {
+					err = ptyErr
+				}
+				if ptyResult.ExitCode != 0 && ptyResult.Stdout != "" {
+					result = ptyResult
+				}
 			}
 		}
+	}
+	if err != nil || result.ExitCode != 0 {
 		message := strings.TrimSpace(result.Stderr)
 		if message == "" {
 			message = strings.TrimSpace(result.Stdout)
@@ -1209,25 +1231,38 @@ func (s *Service) runAgentPromptRaw(ctx context.Context, repoPath, agent, prompt
 	return result.Stdout, nil
 }
 
-func wrapAgentCommandForShell(command []string) ([]string, bool) {
+func wrapAgentCommandForShell(command []string, settings agentExecSettings) ([]string, error) {
 	if runtime.GOOS == "windows" || len(command) == 0 {
-		return command, false
+		return command, nil
 	}
-	shell := strings.TrimSpace(os.Getenv("SHELL"))
-	if shell == "" {
-		shell = "/bin/sh"
+	shell, err := resolveAgentShellPath(settings)
+	if err != nil {
+		return nil, err
 	}
 	shellBase := strings.ToLower(filepath.Base(shell))
 	commandLine := shellJoinArgs(command)
-	args := shellArgsFor(shellBase, commandLine)
-	return append([]string{shell}, args...), true
+	args := shellArgsForMode(shellBase, commandLine, settings.ShellMode)
+	return append([]string{shell}, args...), nil
 }
 
-func shellArgsFor(shellBase, command string) []string {
-	switch shellBase {
-	case "fish", "csh", "tcsh":
-		return []string{"-l", "-c", command}
+func shellArgsForMode(shellBase, command, mode string) []string {
+	switch mode {
+	case agentShellModeInteractive:
+		if shellBase == "fish" || shellBase == "csh" || shellBase == "tcsh" {
+			return []string{"-i", "-c", command}
+		}
+		return []string{"-ic", command}
+	case agentShellModePlain:
+		return []string{"-c", command}
+	case agentShellModeLoginAndI:
+		if shellBase == "fish" || shellBase == "csh" || shellBase == "tcsh" {
+			return []string{"-l", "-i", "-c", command}
+		}
+		return []string{"-lic", command}
 	default:
+		if shellBase == "fish" || shellBase == "csh" || shellBase == "tcsh" {
+			return []string{"-l", "-c", command}
+		}
 		return []string{"-lc", command}
 	}
 }
@@ -1455,9 +1490,6 @@ func prepareAgentCommand(command []string, prompt string, schema string) ([]stri
 	)
 	if len(command) == 0 {
 		return nil, nil, "", errors.New("agent command required")
-	}
-	if resolved := resolveCLIPath(command[0]); resolved != "" {
-		command[0] = resolved
 	}
 	if filepath.Base(command[0]) != "codex" {
 		return command, env, prompt, nil

@@ -21,6 +21,7 @@ func DefaultConfig() GlobalConfig {
 			SessionTmuxRight:    "",
 			SessionScreenHard:   "",
 			Agent:               "codex",
+			AgentLaunch:         "auto",
 			TerminalRenderer:    "auto",
 			TerminalIdleTimeout: "0",
 			TerminalProtocolLog: "off",
