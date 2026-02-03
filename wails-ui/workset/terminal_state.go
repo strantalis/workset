@@ -14,7 +14,7 @@ import (
 
 func (a *App) ensureIdleWatcher(session *terminalSession) {
 	session.mu.Lock()
-	if session.client != nil {
+	if session.client == nil {
 		session.mu.Unlock()
 		return
 	}
@@ -151,6 +151,11 @@ func (a *App) restoreTerminalSessions(ctx context.Context) {
 				}
 				a.terminalMu.Unlock()
 			}
+		}
+	}
+	if store, layoutErr := a.loadTerminalLayoutStore(); layoutErr == nil {
+		if a.startSessionsFromLayouts(ctx, store) {
+			return
 		}
 	}
 	if client, err := a.getSessiondClient(); err == nil {

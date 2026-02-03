@@ -1,8 +1,24 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { fetchSettings, setDefaultSetting, restartSessiond, fetchAppVersion } from '../api';
+	import {
+		createWorkspaceTerminal,
+		fetchAppVersion,
+		fetchSettings,
+		fetchWorkspaceTerminalLayout,
+		persistWorkspaceTerminalLayout,
+		restartSessiond,
+		setDefaultSetting,
+		stopWorkspaceTerminal,
+	} from '../api';
 	import type { SessiondStatusResponse } from '../api';
-	import type { SettingsDefaults, SettingsSnapshot } from '../types';
+	import type {
+		SettingsDefaults,
+		SettingsSnapshot,
+		TerminalLayout,
+		TerminalLayoutNode,
+	} from '../types';
+	import { activeWorkspace } from '../state';
+	import { generateTerminalName } from '../names';
 	import SettingsSidebar from './settings/SettingsSidebar.svelte';
 	import WorkspaceDefaults from './settings/sections/WorkspaceDefaults.svelte';
 	import AgentDefaults from './settings/sections/AgentDefaults.svelte';
@@ -32,7 +48,6 @@
 		{ id: 'workspaceRoot', key: 'defaults.workspace_root' },
 		{ id: 'repoStoreRoot', key: 'defaults.repo_store_root' },
 		{ id: 'agent', key: 'defaults.agent' },
-		{ id: 'terminalRenderer', key: 'defaults.terminal_renderer' },
 		{ id: 'terminalIdleTimeout', key: 'defaults.terminal_idle_timeout' },
 		{ id: 'terminalProtocolLog', key: 'defaults.terminal_protocol_log' },
 	];
@@ -41,6 +56,7 @@
 	let loading = $state(true);
 	let saving = $state(false);
 	let restartingSessiond = $state(false);
+	let resettingTerminalLayout = $state(false);
 	let error: string | null = $state(null);
 	let success: string | null = $state(null);
 	let baseline: Record<FieldId, string> = $state({} as Record<FieldId, string>);
@@ -50,6 +66,10 @@
 	let aliasCount = $state(0);
 	let groupCount = $state(0);
 	let appVersion = $state<AppVersion | null>(null);
+	const LAYOUT_VERSION = 1;
+	const LEGACY_STORAGE_PREFIX = 'workset:terminal-layout:';
+	const MIGRATION_PREFIX = 'workset:terminal-layout:migrated:v';
+	const MIGRATION_VERSION = 1;
 
 	const formatError = (err: unknown): string => {
 		if (err instanceof Error) {
@@ -149,6 +169,117 @@
 		}
 	};
 
+	const newId = (): string => {
+		if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+			return crypto.randomUUID();
+		}
+		return `term-${Math.random().toString(36).slice(2)}`;
+	};
+
+	const clearLegacyLayout = (workspaceId: string): void => {
+		if (!workspaceId || typeof localStorage === 'undefined') return;
+		try {
+			localStorage.removeItem(`${LEGACY_STORAGE_PREFIX}${workspaceId}`);
+			localStorage.setItem(`${MIGRATION_PREFIX}${MIGRATION_VERSION}:${workspaceId}`, '1');
+		} catch {
+			// Ignore storage failures.
+		}
+	};
+
+	const loadLegacyLayout = (workspaceId: string): TerminalLayout | null => {
+		if (!workspaceId || typeof localStorage === 'undefined') return null;
+		try {
+			const raw = localStorage.getItem(`${LEGACY_STORAGE_PREFIX}${workspaceId}`);
+			if (!raw) return null;
+			const parsed = JSON.parse(raw) as TerminalLayout;
+			if (!parsed?.root) return null;
+			return parsed;
+		} catch {
+			return null;
+		}
+	};
+
+	const collectTerminalIds = (node: TerminalLayoutNode | null | undefined): string[] => {
+		if (!node) return [];
+		if (node.kind === 'pane') {
+			return (node.tabs ?? []).map((tab) => tab.terminalId).filter(Boolean);
+		}
+		return [...collectTerminalIds(node.first), ...collectTerminalIds(node.second)];
+	};
+
+	const stopSessionsForLayout = async (
+		workspaceId: string,
+		layout: TerminalLayout | null,
+	): Promise<void> => {
+		if (!layout) return;
+		const ids = Array.from(new Set(collectTerminalIds(layout.root)));
+		if (ids.length === 0) return;
+		await Promise.allSettled(
+			ids.map((terminalId) => stopWorkspaceTerminal(workspaceId, terminalId)),
+		);
+	};
+
+	const buildFreshLayout = (workspaceName: string, terminalId: string): TerminalLayout => {
+		const tabId = newId();
+		const paneId = newId();
+		return {
+			version: LAYOUT_VERSION,
+			root: {
+				id: paneId,
+				kind: 'pane',
+				tabs: [
+					{
+						id: tabId,
+						terminalId,
+						title: generateTerminalName(workspaceName, 0),
+					},
+				],
+				activeTabId: tabId,
+			},
+			focusedPaneId: paneId,
+		};
+	};
+
+	const handleResetTerminalLayout = async (): Promise<void> => {
+		if (saving || restartingSessiond || resettingTerminalLayout) return;
+		const workspace = $activeWorkspace;
+		if (!workspace) {
+			error = 'Select a workspace before resetting terminal layout.';
+			return;
+		}
+		const confirmed = window.confirm(
+			`Reset the terminal layout for "${workspace.name}"? This will close existing panes and stop running terminal sessions.`,
+		);
+		if (!confirmed) return;
+		resettingTerminalLayout = true;
+		error = null;
+		success = null;
+		try {
+			let layoutToStop: TerminalLayout | null = null;
+			try {
+				const payload = await fetchWorkspaceTerminalLayout(workspace.id);
+				layoutToStop = payload?.layout ?? loadLegacyLayout(workspace.id);
+			} catch {
+				layoutToStop = loadLegacyLayout(workspace.id);
+			}
+			await stopSessionsForLayout(workspace.id, layoutToStop);
+			const created = await createWorkspaceTerminal(workspace.id);
+			const layout = buildFreshLayout(workspace.name, created.terminalId);
+			await persistWorkspaceTerminalLayout(workspace.id, layout);
+			clearLegacyLayout(workspace.id);
+			window.dispatchEvent(
+				new CustomEvent('workset:terminal-layout-reset', {
+					detail: { workspaceId: workspace.id },
+				}),
+			);
+			success = `Terminal layout reset for ${workspace.name}.`;
+		} catch (err) {
+			error = `Failed to reset terminal layout: ${formatError(err)}`;
+		} finally {
+			resettingTerminalLayout = false;
+		}
+	};
+
 	const resetChanges = (): void => {
 		draft = { ...baseline };
 		success = null;
@@ -204,7 +335,9 @@
 						{baseline}
 						onUpdate={updateField}
 						onRestartSessiond={handleRestartSessiond}
+						onResetTerminalLayout={handleResetTerminalLayout}
 						{restartingSessiond}
+						{resettingTerminalLayout}
 					/>
 				{:else if activeSection === 'github'}
 					<GitHubAuth />
@@ -219,13 +352,13 @@
 							<h3>Workset</h3>
 							<p class="tagline">Workspace management for multi-repo development</p>
 						</div>
-						
+
 						{#if appVersion}
 							<div class="info-block">
 								<div class="version-header">
 									<h4>Version</h4>
-									<button 
-										type="button" 
+									<button
+										type="button"
 										class="copy-btn"
 										title="Copy version info"
 										onclick={async () => {
@@ -239,16 +372,24 @@
 											}
 										}}
 									>
-										<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-											<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-											<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+										<svg
+											width="14"
+											height="14"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+										>
+											<rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+											<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
 										</svg>
 									</button>
 								</div>
 								<div class="version-info">
 									<div class="version-row">
 										<span class="label">Version:</span>
-										<span class="value">{appVersion.version}{appVersion.dirty ? '+dirty' : ''}</span>
+										<span class="value">{appVersion.version}{appVersion.dirty ? '+dirty' : ''}</span
+										>
 									</div>
 									{#if appVersion.commit}
 										<div class="version-row">
@@ -258,17 +399,24 @@
 									{/if}
 								</div>
 								<button type="button" class="update-btn" disabled>
-									<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-										<path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-										<path d="M21 3v6h-6"/>
-										<path d="M21 3l-9 9"/>
+									<svg
+										width="16"
+										height="16"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+									>
+										<path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+										<path d="M21 3v6h-6" />
+										<path d="M21 3l-9 9" />
 									</svg>
 									Check for Updates
 									<span class="coming-soon">Coming soon</span>
 								</button>
 							</div>
 						{/if}
-						
+
 						<div class="info-block">
 							<h4>Built With</h4>
 							<div class="tech-stack">
@@ -278,25 +426,46 @@
 								<span class="tech-badge">TypeScript</span>
 							</div>
 						</div>
-						
+
 						<div class="info-block">
 							<h4>Links</h4>
 							<div class="links">
-								<a href="https://github.com/anomalyco/workset" target="_blank" rel="noopener noreferrer" class="link">
+								<a
+									href="https://github.com/anomalyco/workset"
+									target="_blank"
+									rel="noopener noreferrer"
+									class="link"
+								>
 									<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-										<path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-								</svg>
+										<path
+											d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"
+										/>
+									</svg>
 									GitHub Repository
 								</a>
-								<a href="https://github.com/anomalyco/workset/issues" target="_blank" rel="noopener noreferrer" class="link">
-									<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-										<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
-								</svg>
+								<a
+									href="https://github.com/anomalyco/workset/issues"
+									target="_blank"
+									rel="noopener noreferrer"
+									class="link"
+								>
+									<svg
+										width="16"
+										height="16"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+									>
+										<path
+											d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"
+										/>
+									</svg>
 									Report an Issue
 								</a>
 							</div>
 						</div>
-						
+
 						<div class="copyright">
 							© {new Date().getFullYear()} Sean Trantalis. Open source under MIT License.
 						</div>

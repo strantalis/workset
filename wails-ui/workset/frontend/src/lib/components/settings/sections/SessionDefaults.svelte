@@ -10,7 +10,9 @@
 		baseline: Record<FieldId, string>;
 		onUpdate: (id: FieldId, value: string) => void;
 		onRestartSessiond: () => void;
+		onResetTerminalLayout: () => void;
 		restartingSessiond?: boolean;
+		resettingTerminalLayout?: boolean;
 	}
 
 	const {
@@ -18,11 +20,15 @@
 		baseline,
 		onUpdate,
 		onRestartSessiond,
+		onResetTerminalLayout,
 		restartingSessiond = false,
+		resettingTerminalLayout = false,
 	}: Props = $props();
 
 	let restartCompleted = $state(false);
 	let previousRestarting = $state(false);
+	let resetCompleted = $state(false);
+	let previousResetting = $state(false);
 
 	$effect(() => {
 		const isRestarting = restartingSessiond;
@@ -35,6 +41,17 @@
 		previousRestarting = isRestarting;
 	});
 
+	$effect(() => {
+		const isResetting = resettingTerminalLayout;
+		if (previousResetting && !isResetting) {
+			resetCompleted = true;
+			setTimeout(() => {
+				resetCompleted = false;
+			}, 1500);
+		}
+		previousResetting = isResetting;
+	});
+
 	type Field = {
 		id: FieldId;
 		label: string;
@@ -45,17 +62,6 @@
 	};
 
 	const fields: Field[] = [
-		{
-			id: 'terminalRenderer',
-			label: 'Terminal renderer',
-			description: 'Auto picks WebGL when healthy, otherwise Canvas.',
-			type: 'select',
-			options: [
-				{ label: 'Auto', value: 'auto' },
-				{ label: 'WebGL', value: 'webgl' },
-				{ label: 'Canvas', value: 'canvas' },
-			],
-		},
 		{
 			id: 'terminalProtocolLog',
 			label: 'Protocol logging',
@@ -128,6 +134,30 @@
 				<span class="spin-icon">⟳</span> Restarting…
 			{:else}
 				Restart daemon
+			{/if}
+		</button>
+	</div>
+
+	<div class="sessiond-actions reset-layout" class:reset-completed={resetCompleted}>
+		<span class="hint">
+			{#if resetCompleted}
+				Terminal layout and sessions reset.
+			{:else}
+				Reset the terminal layout for the current workspace and stop running sessions.
+			{/if}
+		</span>
+		<button
+			class="restart"
+			type="button"
+			onclick={onResetTerminalLayout}
+			disabled={resettingTerminalLayout}
+			class:restarting={resettingTerminalLayout}
+			title="Resets layout and stops running terminal sessions."
+		>
+			{#if resettingTerminalLayout}
+				Resetting…
+			{:else}
+				Reset terminal layout
 			{/if}
 		</button>
 	</div>
@@ -256,7 +286,8 @@
 		}
 	}
 
-	.sessiond-actions.restart-completed {
+	.sessiond-actions.restart-completed,
+	.sessiond-actions.reset-completed {
 		animation: containerPulse 1.2s ease-out;
 		border-color: var(--success-soft);
 		border-style: solid;
