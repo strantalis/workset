@@ -5,7 +5,7 @@
 	interface Props {
 		title: string;
 		subtitle?: string;
-		size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
+		size?: 'sm' | 'md' | 'lg' | 'xl' | 'wide' | 'full';
 		headerAlign?: 'center' | 'left';
 		onClose?: () => void;
 		disableClose?: boolean;
@@ -29,6 +29,7 @@
 		md: '420px',
 		lg: '500px',
 		xl: '480px',
+		wide: '780px',
 		full: '1120px',
 	};
 </script>

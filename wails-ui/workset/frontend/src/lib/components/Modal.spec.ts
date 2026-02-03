@@ -30,7 +30,7 @@ describe('Modal', () => {
 	});
 
 	test('renders different sizes', () => {
-		const sizes = ['sm', 'md', 'lg', 'xl', 'full'] as const;
+		const sizes = ['sm', 'md', 'lg', 'xl', 'wide', 'full'] as const;
 		sizes.forEach((size) => {
 			const { container } = render(Modal, {
 				props: {
