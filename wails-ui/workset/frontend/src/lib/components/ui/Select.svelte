@@ -173,7 +173,7 @@
 		role="listbox"
 		tabindex="-1"
 		aria-activedescendant={highlightedIndex >= 0 ? `option-${highlightedIndex}` : undefined}
-		use:clickOutside={close}
+		use:clickOutside={{ callback: close, exclude: triggerRef }}
 	>
 		{#each options as option, index (option.value)}
 			<button
