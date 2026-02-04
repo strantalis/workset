@@ -76,6 +76,25 @@ func TestCreateWorkspaceDefaultPath(t *testing.T) {
 	}
 }
 
+func TestCreateWorkspaceDefaultPathSanitizesName(t *testing.T) {
+	env := newTestEnv(t)
+	result, err := env.svc.CreateWorkspace(context.Background(), WorkspaceCreateInput{Name: "fix/ws-test"})
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if result.Workspace.Name != "fix/ws-test" {
+		t.Fatalf("unexpected name: %s", result.Workspace.Name)
+	}
+	expected := filepath.Join(env.workspaceRoot, workspace.WorkspaceDirName("fix/ws-test"))
+	if result.Workspace.Path != expected {
+		t.Fatalf("unexpected path: got %s want %s", result.Workspace.Path, expected)
+	}
+	cfg := env.loadConfig()
+	if _, ok := cfg.Workspaces["fix/ws-test"]; !ok {
+		t.Fatalf("workspace not registered")
+	}
+}
+
 func TestCreateWorkspaceValidation(t *testing.T) {
 	env := newTestEnv(t)
 	_, err := env.svc.CreateWorkspace(context.Background(), WorkspaceCreateInput{})

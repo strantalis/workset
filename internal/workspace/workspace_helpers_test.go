@@ -21,6 +21,14 @@ func TestWorktreeDirNameAndBranchNameRoundTrip(t *testing.T) {
 	}
 }
 
+func TestWorkspaceDirName(t *testing.T) {
+	name := "fix/ws-test"
+	dir := WorkspaceDirName(name)
+	if dir != "fix__ws-test" {
+		t.Fatalf("unexpected workspace dir name: %q", dir)
+	}
+}
+
 func TestWorktreeName(t *testing.T) {
 	name := WorktreeName("feature/one")
 	if !strings.HasPrefix(name, "feature-one-") {
