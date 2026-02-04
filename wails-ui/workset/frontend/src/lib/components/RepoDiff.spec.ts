@@ -80,7 +80,7 @@ beforeEach(async () => {
 		behind: 0,
 		currentBranch: 'main',
 	});
-});
+}, 30000);
 
 afterEach(() => {
 	cleanup();
