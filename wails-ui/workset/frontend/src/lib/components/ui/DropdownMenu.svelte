@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { clickOutside } from '../../actions/clickOutside';
+	import { portal } from '../../actions/portal';
 	import { tick } from 'svelte';
 
 	interface Props {
@@ -68,7 +69,8 @@
 		bind:this={menuElement}
 		class="dropdown-menu {position}"
 		style="top: {menuPosition.top}px; left: {menuPosition.left}px;"
-		use:clickOutside={onClose}
+		use:portal
+		use:clickOutside={{ callback: onClose, exclude: trigger }}
 		role="menu"
 	>
 		{@render children()}
@@ -84,7 +86,7 @@
 		padding: 6px;
 		display: grid;
 		gap: 4px;
-		z-index: 1000;
+		z-index: 9999;
 		min-width: 140px;
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 	}

@@ -360,7 +360,7 @@
 		background: var(--panel);
 		transition: padding 160ms ease;
 		overflow-y: auto;
-		overflow-x: visible;
+		overflow-x: hidden;
 		min-height: 0;
 		height: 100%;
 		display: flex;
@@ -420,6 +420,8 @@
 		flex-direction: column;
 		height: 100%;
 		min-height: 0;
+		position: relative;
+		z-index: 1;
 	}
 
 	.main {

@@ -59,13 +59,21 @@
 	});
 
 	const openWorkspaceMenu = (workspaceId: string, trigger: HTMLElement): void => {
-		workspaceMenu = workspaceId;
-		workspaceTrigger = trigger;
+		if (workspaceMenu === workspaceId) {
+			closeMenus();
+		} else {
+			workspaceMenu = workspaceId;
+			workspaceTrigger = trigger;
+		}
 	};
 
 	const openRepoMenu = (repoId: string, trigger: HTMLElement): void => {
-		repoMenu = repoId;
-		repoTrigger = trigger;
+		if (repoMenu === repoId) {
+			closeMenus();
+		} else {
+			repoMenu = repoId;
+			repoTrigger = trigger;
+		}
 	};
 
 	const closeMenus = (): void => {
@@ -523,7 +531,7 @@
 		display: flex;
 		flex-direction: column;
 		overflow-y: auto;
-		overflow-x: visible;
+		overflow-x: hidden;
 		padding: 0 var(--space-1) var(--space-2);
 		flex: 1;
 		min-height: 0;
