@@ -47,9 +47,7 @@ func (a *App) GetSettings() (SettingsSnapshot, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 
 	cfg, info, err := a.service.GetConfig(ctx)
 	if err != nil {
@@ -87,9 +85,7 @@ func (a *App) SetDefaultSetting(key, value string) (worksetapi.ConfigSetResultJS
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 	result, _, err := a.service.SetDefault(ctx, key, value)
 	return result, err
 }
@@ -99,9 +95,7 @@ func (a *App) CheckAgentStatus(input AgentCheckRequest) (worksetapi.AgentCLIStat
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 	return a.service.GetAgentCLIStatus(ctx, input.Agent)
 }
 
@@ -110,9 +104,7 @@ func (a *App) SetAgentCLIPath(input AgentCLIPathRequest) (worksetapi.AgentCLISta
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 	return a.service.SetAgentCLIPath(ctx, input.Agent, input.Path)
 }
 
@@ -121,8 +113,6 @@ func (a *App) ReloadLoginEnv() (worksetapi.EnvSnapshotResultJSON, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 	return a.service.ReloadLoginEnv(ctx)
 }

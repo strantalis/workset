@@ -8,8 +8,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/strantalis/workset/pkg/worksetapi"
 )
 
 func (a *App) ensureIdleWatcher(session *terminalSession) {
@@ -40,9 +38,7 @@ func (a *App) terminalIdleTimeout() time.Duration {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 	cfg, _, err := a.service.GetConfig(ctx)
 	if err != nil {
 		return 30 * time.Minute
@@ -123,11 +119,11 @@ func (a *App) snapshotTerminalState() terminalState {
 }
 
 func (a *App) terminalStatePath() (string, error) {
-	home, err := os.UserHomeDir()
+	dir, err := worksetAppDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".workset", "ui_sessions.json"), nil
+	return filepath.Join(dir, "ui_sessions.json"), nil
 }
 
 func (a *App) restoreTerminalSessions(ctx context.Context) {

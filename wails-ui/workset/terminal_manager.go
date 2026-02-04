@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/strantalis/workset/pkg/sessiond"
-	"github.com/strantalis/workset/pkg/worksetapi"
 )
 
 func (a *App) StartWorkspaceTerminal(workspaceID, terminalID string) error {
@@ -461,9 +460,7 @@ func (a *App) invalidateTerminalSessions(reason string) {
 }
 
 func (a *App) resolveWorkspaceRoot(ctx context.Context, workspaceID string) (string, error) {
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 	result, err := a.service.ListWorkspaces(ctx)
 	if err != nil {
 		return "", err
