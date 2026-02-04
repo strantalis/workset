@@ -23,6 +23,9 @@ func TestGetConfig(t *testing.T) {
 	if cfg.Defaults.Agent != "codex" {
 		t.Fatalf("unexpected agent default: %q", cfg.Defaults.Agent)
 	}
+	if cfg.Defaults.AgentModel != "" {
+		t.Fatalf("unexpected agent model default: %q", cfg.Defaults.AgentModel)
+	}
 	if cfg.Defaults.AgentLaunch != "auto" {
 		t.Fatalf("unexpected agent launch default: %q", cfg.Defaults.AgentLaunch)
 	}
@@ -96,6 +99,7 @@ func TestSetDefaultVariousKeys(t *testing.T) {
 		"defaults.session_screen_hardstatus": "hard",
 		"defaults.session_backend":           "exec",
 		"defaults.agent":                     "codex",
+		"defaults.agent_model":               "gpt-4o-mini",
 		"defaults.agent_launch":              "strict",
 		"defaults.terminal_renderer":         "webgl",
 		"defaults.terminal_idle_timeout":     "0",
@@ -116,6 +120,9 @@ func TestSetDefaultVariousKeys(t *testing.T) {
 	}
 	if cfg.Defaults.Agent != "codex" {
 		t.Fatalf("agent default not set")
+	}
+	if cfg.Defaults.AgentModel != "gpt-4o-mini" {
+		t.Fatalf("agent model default not set")
 	}
 	if cfg.Defaults.AgentLaunch != "strict" {
 		t.Fatalf("agent launch default not set")

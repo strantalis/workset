@@ -1,6 +1,7 @@
 package worksetapi
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/google/go-github/v75/github"
+	"github.com/strantalis/workset/internal/config"
 )
 
 func TestPrepareAgentCommandCodexAddsExecAndPrompt(t *testing.T) {
@@ -84,6 +86,74 @@ func TestPrepareAgentCommandCodexPreservesResolvedPath(t *testing.T) {
 	}
 }
 
+func TestApplyAgentModelCodexInsertsBeforePrompt(t *testing.T) {
+	command := []string{"codex", "exec", "--output-schema", "schema.json", "-"}
+	updated := applyAgentModel(command, "gpt-4o-mini")
+	if !sliceHasExact(updated, "-m") {
+		t.Fatalf("expected model flag in command: %v", updated)
+	}
+	promptIdx := slices.Index(updated, "-")
+	modelIdx := slices.Index(updated, "-m")
+	if modelIdx == -1 || promptIdx == -1 || modelIdx > promptIdx {
+		t.Fatalf("expected model flag before prompt: %v", updated)
+	}
+}
+
+func TestApplyAgentModelSkipsExistingCodexModelFlag(t *testing.T) {
+	command := []string{"codex", "exec", "-m", "gpt-4o", "-"}
+	updated := applyAgentModel(command, "gpt-4o-mini")
+	if countExact(updated, "-m") != 1 {
+		t.Fatalf("expected single model flag: %v", updated)
+	}
+}
+
+func TestApplyAgentModelClaudeAddsModelFlag(t *testing.T) {
+	command := []string{"claude", "--output-format", "json"}
+	updated := applyAgentModel(command, "haiku")
+	if !sliceHasExact(updated, "--model") || !sliceHasExact(updated, "haiku") {
+		t.Fatalf("expected claude model flag: %v", updated)
+	}
+}
+
+func TestRunAgentPromptWithModelFallbacksOnInvalidJSON(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+	cfg := config.GlobalConfig{
+		Defaults: config.Defaults{
+			Remote:      "origin",
+			BaseBranch:  "main",
+			Agent:       "codex",
+			AgentLaunch: "strict",
+		},
+	}
+	if err := config.SaveGlobal(cfgPath, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	var calls []string
+	runner := func(_ context.Context, _ string, command []string, _ []string, _ string) (CommandResult, error) {
+		calls = append(calls, strings.Join(command, " "))
+		if sliceHasExact(command, "-m") {
+			return CommandResult{ExitCode: 0, Stdout: "not-json"}, nil
+		}
+		return CommandResult{ExitCode: 0, Stdout: `{"title":"t","body":"b"}`}, nil
+	}
+	svc := NewService(Options{
+		ConfigPath:    cfgPath,
+		CommandRunner: runner,
+		Logf:          func(string, ...any) {},
+	})
+	agentPath := filepath.Join(t.TempDir(), "codex")
+	result, err := svc.runAgentPrompt(context.Background(), t.TempDir(), agentPath, "prompt", "gpt-4o-mini")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Title != "t" || result.Body != "b" {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+	if len(calls) != 2 {
+		t.Fatalf("expected fallback call, got %d", len(calls))
+	}
+}
+
 func TestIsInvalidHeadError(t *testing.T) {
 	err := &github.ErrorResponse{
 		Message: "Validation Failed",
@@ -125,4 +195,14 @@ func envHas(env []string, key string) bool {
 
 func sliceHasExact(values []string, target string) bool {
 	return slices.Contains(values, target)
+}
+
+func countExact(values []string, target string) int {
+	count := 0
+	for _, value := range values {
+		if value == target {
+			count++
+		}
+	}
+	return count
 }
