@@ -30,7 +30,7 @@ type AgentConfig struct {
 	CLIPath string `yaml:"cli_path,omitempty" json:"cli_path,omitempty" mapstructure:"cli_path"`
 }
 
-type RepoAlias struct {
+type RegisteredRepo struct {
 	URL           string `yaml:"url,omitempty" json:"url,omitempty" mapstructure:"url"`
 	Path          string `yaml:"path,omitempty" json:"path,omitempty" mapstructure:"path"`
 	Remote        string `yaml:"remote,omitempty" json:"remote,omitempty" mapstructure:"remote"`
@@ -56,13 +56,13 @@ type WorkspaceRef struct {
 }
 
 type GlobalConfig struct {
-	Defaults   Defaults                `yaml:"defaults" json:"defaults" mapstructure:"defaults"`
-	GitHub     GitHubConfig            `yaml:"github,omitempty" json:"github,omitempty" mapstructure:"github"`
-	Agent      AgentConfig             `yaml:"agent,omitempty" json:"agent,omitempty" mapstructure:"agent"`
-	Hooks      HooksConfig             `yaml:"hooks,omitempty" json:"hooks,omitempty" mapstructure:"hooks"`
-	Repos      map[string]RepoAlias    `yaml:"repos" json:"repos" mapstructure:"repos"`
-	Groups     map[string]Group        `yaml:"groups" json:"groups" mapstructure:"groups"`
-	Workspaces map[string]WorkspaceRef `yaml:"workspaces" json:"workspaces" mapstructure:"workspaces"`
+	Defaults   Defaults                  `yaml:"defaults" json:"defaults" mapstructure:"defaults"`
+	GitHub     GitHubConfig              `yaml:"github,omitempty" json:"github,omitempty" mapstructure:"github"`
+	Agent      AgentConfig               `yaml:"agent,omitempty" json:"agent,omitempty" mapstructure:"agent"`
+	Hooks      HooksConfig               `yaml:"hooks,omitempty" json:"hooks,omitempty" mapstructure:"hooks"`
+	Repos      map[string]RegisteredRepo `yaml:"repos" json:"repos" mapstructure:"repos"`
+	Groups     map[string]Group          `yaml:"groups" json:"groups" mapstructure:"groups"`
+	Workspaces map[string]WorkspaceRef   `yaml:"workspaces" json:"workspaces" mapstructure:"workspaces"`
 }
 
 type WorkspaceConfig struct {

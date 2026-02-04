@@ -223,8 +223,8 @@ type WorkspaceStatusResult struct {
 	Config   config.GlobalConfigLoadInfo
 }
 
-// AliasJSON is the JSON-friendly view of an alias entry.
-type AliasJSON struct {
+// RegisteredRepoJSON is the JSON-friendly view of a registered repo entry.
+type RegisteredRepoJSON struct {
 	Name          string `json:"name"`
 	URL           string `json:"url,omitempty"`
 	Path          string `json:"path,omitempty"`
@@ -232,14 +232,14 @@ type AliasJSON struct {
 	DefaultBranch string `json:"default_branch,omitempty"`
 }
 
-// AliasListResult returns aliases with config metadata.
-type AliasListResult struct {
-	Aliases []AliasJSON
-	Config  config.GlobalConfigLoadInfo
+// RegisteredRepoListResult returns registered repos with config metadata.
+type RegisteredRepoListResult struct {
+	Repos  []RegisteredRepoJSON
+	Config config.GlobalConfigLoadInfo
 }
 
-// AliasMutationResultJSON is the JSON payload for alias create/update/delete.
-type AliasMutationResultJSON struct {
+// RegisteredRepoMutationResultJSON is the JSON payload for repo registry create/update/delete.
+type RegisteredRepoMutationResultJSON struct {
 	Status string `json:"status"`
 	Name   string `json:"name"`
 }

@@ -177,11 +177,11 @@ func applyLegacyAliasDefaults(cfg *config.GlobalConfig, name, localPath, remote,
 		return false, nil
 	}
 	if cfg.Repos == nil {
-		cfg.Repos = map[string]config.RepoAlias{}
+		cfg.Repos = map[string]config.RegisteredRepo{}
 	}
 	alias, ok := cfg.Repos[name]
 	if !ok {
-		alias = config.RepoAlias{}
+		alias = config.RegisteredRepo{}
 	}
 	updated := false
 	var warnings []string

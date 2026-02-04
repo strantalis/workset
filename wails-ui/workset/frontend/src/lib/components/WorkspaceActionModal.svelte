@@ -10,6 +10,7 @@
 		listAliases,
 		listGroups,
 		openDirectoryDialog,
+		registerRepo,
 		removeRepo,
 		removeWorkspace,
 		renameWorkspace,
@@ -58,11 +59,13 @@
 
 	// Create mode: smart single input
 	let primaryInput = $state(''); // URL, path, or workspace name
+	type DirectRepo = { url: string; register: boolean };
+	let directRepos: DirectRepo[] = $state([]); // Multiple direct URLs/paths
 	let customizeName = $state(''); // Override for generated name
 	let alternatives: string[] = $state([]); // Alternative name suggestions
 
 	// Tabbed interface state
-	type CreateTab = 'direct' | 'aliases' | 'groups';
+	type CreateTab = 'direct' | 'repos' | 'groups';
 	let activeTab = $state<CreateTab>('direct');
 	let searchQuery = $state('');
 	let expandedGroups = $state<Set<string>>(new Set());
@@ -82,6 +85,11 @@
 	const detectedRepoName = $derived(deriveRepoName(primaryInput));
 	const inputIsSource = $derived(isRepoSource(primaryInput));
 
+	// Get the first direct repo name for auto-generation
+	const firstDirectRepoName = $derived(
+		directRepos.length > 0 ? deriveRepoName(directRepos[0].url) : null,
+	);
+
 	// Get the first selected alias or group name for auto-generation
 	const firstSelectedAlias = $derived(
 		selectedAliases.size > 0 ? Array.from(selectedAliases)[0] : null,
@@ -90,8 +98,8 @@
 		selectedGroups.size > 0 ? Array.from(selectedGroups)[0] : null,
 	);
 
-	// Source for name generation: URL/path repo name, first alias, or first group
-	const nameSource = $derived(detectedRepoName || firstSelectedAlias || firstSelectedGroup);
+	// Source for name generation: first direct repo, first alias, or first group
+	const nameSource = $derived(firstDirectRepoName || firstSelectedAlias || firstSelectedGroup);
 
 	const generatedName = $derived(nameSource ? generateWorkspaceName(nameSource) : null);
 
@@ -121,7 +129,7 @@
 
 	// Total repos for preview
 	const totalRepos = $derived(
-		(inputIsSource ? 1 : 0) +
+		directRepos.length +
 			selectedAliases.size +
 			Array.from(selectedGroups).reduce(
 				(sum, g) => sum + (groupItems.find((i) => i.name === g)?.repo_count || 0),
@@ -131,9 +139,9 @@
 
 	// Get selected items for preview
 	const selectedItems = $derived([
-		...(inputIsSource ? [{ type: 'repo', name: detectedRepoName || primaryInput.trim() }] : []),
-		...Array.from(selectedAliases).map((name) => ({ type: 'alias', name })),
-		...Array.from(selectedGroups).map((name) => ({ type: 'group', name })),
+		...directRepos.map((r) => ({ type: 'repo', name: deriveRepoName(r.url) || r.url, url: r.url })),
+		...Array.from(selectedAliases).map((name) => ({ type: 'alias', name, url: undefined })),
+		...Array.from(selectedGroups).map((name) => ({ type: 'group', name, url: undefined })),
 	]);
 
 	// Add-repo mode: derived state for selected items
@@ -164,7 +172,7 @@
 	// Initialize tab based on available items
 	$effect(() => {
 		if (mode === 'create' && aliasItems.length > 0) {
-			activeTab = 'aliases';
+			activeTab = 'repos';
 		} else if (mode === 'create') {
 			activeTab = 'direct';
 		}
@@ -215,8 +223,22 @@
 		selectedGroups = new Set(selectedGroups);
 	}
 
-	function removeRepoFromPreview(): void {
-		primaryInput = '';
+	function addDirectRepo(): void {
+		const source = primaryInput.trim();
+		if (source && isRepoSource(source) && !directRepos.some((r) => r.url === source)) {
+			directRepos = [...directRepos, { url: source, register: true }];
+			primaryInput = '';
+		}
+	}
+
+	function removeDirectRepo(url: string): void {
+		directRepos = directRepos.filter((r) => r.url !== url);
+	}
+
+	function toggleDirectRepoRegister(url: string): void {
+		directRepos = directRepos.map((r) =>
+			r.url === url ? { ...r, register: !r.register } : r,
+		);
 	}
 
 	let archiveReason = $state('');
@@ -338,9 +360,15 @@
 		try {
 			const repos: string[] = [];
 
-			// If primary input is URL/path, add it as first repo
-			if (inputIsSource) {
-				repos.push(primaryInput.trim());
+			// Register direct repos that have register=true, then add by name
+			for (const r of directRepos) {
+				const repoName = deriveRepoName(r.url) || r.url;
+				if (r.register) {
+					// Register the repo in global config
+					await registerRepo(repoName, r.url, '', '');
+				}
+				// Use the derived name (or URL if can't derive) - will resolve to registered repo or direct URL
+				repos.push(r.register ? repoName : r.url);
 			}
 
 			// Add any selected aliases
@@ -563,14 +591,14 @@
 						{#if aliasItems.length > 0}
 							<button
 								class="tab"
-								class:active={activeTab === 'aliases'}
+								class:active={activeTab === 'repos'}
 								type="button"
 								onclick={() => {
-									activeTab = 'aliases';
+									activeTab = 'repos';
 									searchQuery = '';
 								}}
 							>
-								Aliases ({aliasItems.length})
+								Repos ({aliasItems.length})
 							</button>
 						{/if}
 						{#if groupItems.length > 0}
@@ -601,6 +629,12 @@
 									autocapitalize="off"
 									autocorrect="off"
 									spellcheck="false"
+									onkeydown={(e) => {
+										if (e.key === 'Enter') {
+											e.preventDefault();
+											addDirectRepo();
+										}
+									}}
 								/>
 								<Button
 									variant="ghost"
@@ -617,14 +651,47 @@
 										}
 									}}>Browse</Button
 								>
+								<Button
+									variant="primary"
+									size="sm"
+									onclick={addDirectRepo}
+									disabled={!primaryInput.trim() || !isRepoSource(primaryInput)}>Add</Button
+								>
 							</div>
 						</label>
-					{:else if activeTab === 'aliases'}
+						{#if directRepos.length > 0}
+							<div class="direct-repos-list">
+								{#each directRepos as repo (repo.url)}
+									<div class="direct-repo-item">
+										<div class="direct-repo-info">
+											<span class="direct-repo-name">{deriveRepoName(repo.url) || repo.url}</span>
+											<span class="direct-repo-url">{repo.url}</span>
+										</div>
+										<label class="direct-repo-register" title="Save to Repo Registry for future use">
+											<input
+												type="checkbox"
+												checked={repo.register}
+												onchange={() => toggleDirectRepoRegister(repo.url)}
+											/>
+											<span>Register</span>
+										</label>
+										<button
+											type="button"
+											class="direct-repo-remove"
+											onclick={() => removeDirectRepo(repo.url)}
+										>
+											×
+										</button>
+									</div>
+								{/each}
+							</div>
+						{/if}
+					{:else if activeTab === 'repos'}
 						<div class="field">
 							<div class="inline">
 								<input
 									bind:value={searchQuery}
-									placeholder="Search aliases..."
+									placeholder="Search repos..."
 									class="search-input"
 									autocapitalize="off"
 									autocorrect="off"
@@ -638,7 +705,7 @@
 							</div>
 							<div class="checkbox-list">
 								{#if filteredAliases.length === 0}
-									<div class="empty-search">No aliases match "{searchQuery}"</div>
+									<div class="empty-search">No repos match "{searchQuery}"</div>
 								{:else}
 									{#each filteredAliases as alias (alias)}
 										<label class="checkbox-item" class:selected={selectedAliases.has(alias.name)}>
@@ -721,7 +788,7 @@
 				</div>
 
 				{#if aliasItems.length === 0 && groupItems.length === 0}
-					<div class="hint">No aliases or groups configured. Add them in Settings.</div>
+					<div class="hint">No registered repos or groups configured. Add them in Settings.</div>
 				{/if}
 			</div>
 
@@ -741,7 +808,7 @@
 										type="button"
 										class="selected-remove"
 										onclick={() => {
-											if (item.type === 'repo') removeRepoFromPreview();
+											if (item.type === 'repo' && item.url) removeDirectRepo(item.url);
 											else if (item.type === 'alias') removeAlias(item.name);
 											else if (item.type === 'group') removeGroup(item.name);
 										}}
@@ -823,14 +890,14 @@
 						{#if aliasItems.length > 0}
 							<button
 								class="tab"
-								class:active={activeTab === 'aliases'}
+								class:active={activeTab === 'repos'}
 								type="button"
 								onclick={() => {
-									activeTab = 'aliases';
+									activeTab = 'repos';
 									searchQuery = '';
 								}}
 							>
-								Aliases ({aliasItems.length})
+								Repos ({aliasItems.length})
 							</button>
 						{/if}
 						{#if groupItems.length > 0}
@@ -865,12 +932,12 @@
 								<Button variant="ghost" size="sm" onclick={handleBrowse}>Browse</Button>
 							</div>
 						</label>
-					{:else if activeTab === 'aliases'}
+					{:else if activeTab === 'repos'}
 						<div class="field">
 							<div class="inline">
 								<input
 									bind:value={searchQuery}
-									placeholder="Search aliases..."
+									placeholder="Search repos..."
 									class="search-input"
 									autocapitalize="off"
 									autocorrect="off"
@@ -884,7 +951,7 @@
 							</div>
 							<div class="checkbox-list">
 								{#if filteredAliases.length === 0}
-									<div class="empty-search">No aliases match "{searchQuery}"</div>
+									<div class="empty-search">No repos match "{searchQuery}"</div>
 								{:else}
 									{#each filteredAliases as alias (alias)}
 										<label class="checkbox-item" class:selected={selectedAliases.has(alias.name)}>
@@ -967,7 +1034,7 @@
 				</div>
 
 				{#if aliasItems.length === 0 && groupItems.length === 0}
-					<div class="hint">No aliases or groups configured. Add them in Settings.</div>
+					<div class="hint">No registered repos or groups configured. Add them in Settings.</div>
 				{/if}
 			</div>
 
@@ -1275,6 +1342,82 @@
 	.hint {
 		font-size: 12px;
 		color: var(--muted);
+	}
+
+	/* Direct repos list */
+	.direct-repos-list {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		margin-top: 8px;
+		max-height: 180px;
+		overflow-y: auto;
+	}
+
+	.direct-repo-item {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 10px;
+		background: var(--panel);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		font-size: 13px;
+	}
+
+	.direct-repo-info {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.direct-repo-name {
+		font-weight: 500;
+		color: var(--text);
+	}
+
+	.direct-repo-url {
+		font-size: 11px;
+		color: var(--muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.direct-repo-register {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		font-size: 11px;
+		color: var(--muted);
+		cursor: pointer;
+		flex-shrink: 0;
+	}
+
+	.direct-repo-register input {
+		accent-color: var(--accent);
+	}
+
+	.direct-repo-register:hover {
+		color: var(--text);
+	}
+
+	.direct-repo-remove {
+		background: transparent;
+		border: none;
+		color: var(--muted);
+		cursor: pointer;
+		padding: 0 4px;
+		font-size: 18px;
+		line-height: 1;
+		transition: color var(--transition-fast);
+		flex-shrink: 0;
+	}
+
+	.direct-repo-remove:hover {
+		color: var(--danger, #ef4444);
 	}
 
 	/* Suggestions */

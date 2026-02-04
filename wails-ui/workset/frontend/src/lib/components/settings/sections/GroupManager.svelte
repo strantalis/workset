@@ -307,18 +307,18 @@
 							<div class="add-member-form">
 								<div class="form-row">
 									<label class="field">
-										<span>Repo name (or alias)</span>
+										<span>Repo name (registered repo)</span>
 										<input
 											type="text"
 											value={memberRepo}
 											oninput={handleRepoInput}
 											placeholder="auth-api"
-											list="alias-options"
+											list="repo-options"
 											autocapitalize="off"
 											autocorrect="off"
 											spellcheck="false"
 										/>
-										<datalist id="alias-options">
+										<datalist id="repo-options">
 											{#each aliases as alias (alias)}
 												<option value={alias.name}></option>
 											{/each}

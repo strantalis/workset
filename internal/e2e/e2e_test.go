@@ -165,40 +165,40 @@ func TestRepoAddFromURLUsesRepoStore(t *testing.T) {
 	}
 }
 
-func TestRepoAliasLocalAndURLFlow(t *testing.T) {
+func TestRepoRegistryLocalAndURLFlow(t *testing.T) {
 	runner := newRunner(t)
-	localRepo := setupRepo(t, filepath.Join(runner.root, "src", "alias-local"))
-	urlRepo := setupRepo(t, filepath.Join(runner.root, "src", "alias-url"))
+	localRepo := setupRepo(t, filepath.Join(runner.root, "src", "registry-local"))
+	urlRepo := setupRepo(t, filepath.Join(runner.root, "src", "registry-url"))
 	store := filepath.Join(runner.root, "repo-store")
 
 	if _, err := runner.run("config", "set", "defaults.repo_store_root", store); err != nil {
 		t.Fatalf("config set repo_store_root: %v", err)
 	}
-	if _, err := runner.run("repo", "alias", "add", "local-alias", localRepo); err != nil {
-		t.Fatalf("alias add local: %v", err)
+	if _, err := runner.run("repo", "registry", "add", "local-reg", localRepo); err != nil {
+		t.Fatalf("registry add local: %v", err)
 	}
-	if _, err := runner.run("repo", "alias", "add", "url-alias", fileURL(urlRepo)); err != nil {
-		t.Fatalf("alias add url: %v", err)
+	if _, err := runner.run("repo", "registry", "add", "url-reg", fileURL(urlRepo)); err != nil {
+		t.Fatalf("registry add url: %v", err)
 	}
-	out, err := runner.run("repo", "alias", "ls", "--json")
+	out, err := runner.run("repo", "registry", "ls", "--json")
 	if err != nil {
-		t.Fatalf("alias ls: %v", err)
+		t.Fatalf("registry ls: %v", err)
 	}
-	if !strings.Contains(out, "\"name\": \"local-alias\"") || !strings.Contains(out, "\"name\": \"url-alias\"") {
-		t.Fatalf("alias ls missing entries: %s", out)
+	if !strings.Contains(out, "\"name\": \"local-reg\"") || !strings.Contains(out, "\"name\": \"url-reg\"") {
+		t.Fatalf("registry ls missing entries: %s", out)
 	}
 	if !strings.Contains(out, "\"default_branch\": \"main\"") {
-		t.Fatalf("alias ls missing default_branch: %s", out)
+		t.Fatalf("registry ls missing default_branch: %s", out)
 	}
 
 	if _, err := runner.run("new", "demo"); err != nil {
 		t.Fatalf("workset new: %v", err)
 	}
-	if _, err := runner.run("repo", "add", "-w", "demo", "local-alias"); err != nil {
-		t.Fatalf("repo add local alias: %v", err)
+	if _, err := runner.run("repo", "add", "-w", "demo", "local-reg"); err != nil {
+		t.Fatalf("repo add local registered repo: %v", err)
 	}
-	if _, err := runner.run("repo", "add", "-w", "demo", "url-alias"); err != nil {
-		t.Fatalf("repo add url alias: %v", err)
+	if _, err := runner.run("repo", "add", "-w", "demo", "url-reg"); err != nil {
+		t.Fatalf("repo add url registered repo: %v", err)
 	}
 
 	out, err = runner.run("repo", "ls", "-w", "demo", "--json")
@@ -208,18 +208,18 @@ func TestRepoAliasLocalAndURLFlow(t *testing.T) {
 	if !strings.Contains(out, localRepo) {
 		t.Fatalf("repo ls missing local path: %s", out)
 	}
-	if !strings.Contains(out, filepath.Join(store, "url-alias")) {
+	if !strings.Contains(out, filepath.Join(store, "url-reg")) {
 		t.Fatalf("repo ls missing repo store path: %s", out)
 	}
 
-	if _, err := runner.run("repo", "alias", "set", "--default-branch", "main", "url-alias", fileURL(urlRepo)); err != nil {
-		t.Fatalf("alias set default branch: %v", err)
+	if _, err := runner.run("repo", "registry", "set", "--default-branch", "main", "url-reg", fileURL(urlRepo)); err != nil {
+		t.Fatalf("registry set default branch: %v", err)
 	}
-	if _, err := runner.run("repo", "alias", "rm", "local-alias"); err != nil {
-		t.Fatalf("alias rm local: %v", err)
+	if _, err := runner.run("repo", "registry", "rm", "local-reg"); err != nil {
+		t.Fatalf("registry rm local: %v", err)
 	}
-	if _, err := runner.run("repo", "alias", "rm", "url-alias"); err != nil {
-		t.Fatalf("alias rm url: %v", err)
+	if _, err := runner.run("repo", "registry", "rm", "url-reg"); err != nil {
+		t.Fatalf("registry rm url: %v", err)
 	}
 }
 
@@ -240,15 +240,15 @@ func TestRepoAddWithRepoDirCreatesWorktree(t *testing.T) {
 	}
 }
 
-func TestRepoAliasDefaults(t *testing.T) {
+func TestRepoRegistryDefaults(t *testing.T) {
 	runner := newRunner(t)
 	source := setupRepo(t, filepath.Join(runner.root, "src", "remotes-repo"))
 
 	if _, err := runner.run("new", "demo"); err != nil {
 		t.Fatalf("workset new: %v", err)
 	}
-	if _, err := runner.run("repo", "alias", "add", "remotes-repo", source, "--remote", "origin", "--default-branch", "trunk"); err != nil {
-		t.Fatalf("repo alias add: %v", err)
+	if _, err := runner.run("repo", "registry", "add", "remotes-repo", source, "--remote", "origin", "--default-branch", "trunk"); err != nil {
+		t.Fatalf("repo registry add: %v", err)
 	}
 	if _, err := runner.run("repo", "add", "-w", "demo", "remotes-repo"); err != nil {
 		t.Fatalf("repo add: %v", err)
@@ -370,21 +370,21 @@ func TestTemplateFlowWithMultipleWorkspaces(t *testing.T) {
 	repoA := setupRepo(t, filepath.Join(runner.root, "src", "repo-a"))
 	repoB := setupRepo(t, filepath.Join(runner.root, "src", "repo-b"))
 
-	if _, err := runner.run("repo", "alias", "add", "repo-a", repoA); err != nil {
-		t.Fatalf("alias add repo-a: %v", err)
+	if _, err := runner.run("repo", "registry", "add", "repo-a", repoA); err != nil {
+		t.Fatalf("registry add repo-a: %v", err)
 	}
-	if _, err := runner.run("repo", "alias", "add", "repo-b", repoB); err != nil {
-		t.Fatalf("alias add repo-b: %v", err)
+	if _, err := runner.run("repo", "registry", "add", "repo-b", repoB); err != nil {
+		t.Fatalf("registry add repo-b: %v", err)
 	}
-	if _, err := runner.run("repo", "alias", "set", "--default-branch", "main", "repo-a", repoA); err != nil {
-		t.Fatalf("alias set default branch: %v", err)
+	if _, err := runner.run("repo", "registry", "set", "--default-branch", "main", "repo-a", repoA); err != nil {
+		t.Fatalf("registry set default branch: %v", err)
 	}
-	out, err := runner.run("repo", "alias", "ls", "--json")
+	out, err := runner.run("repo", "registry", "ls", "--json")
 	if err != nil {
-		t.Fatalf("alias ls: %v", err)
+		t.Fatalf("registry ls: %v", err)
 	}
 	if !strings.Contains(out, "\"name\": \"repo-a\"") {
-		t.Fatalf("alias ls missing repo-a: %s", out)
+		t.Fatalf("registry ls missing repo-a: %s", out)
 	}
 
 	if _, err := runner.run("template", "create", "stack", "--description", "demo template"); err != nil {
@@ -444,17 +444,17 @@ func TestTemplateFlowWithMultipleWorkspaces(t *testing.T) {
 	if _, err := runner.run("template", "rm", "stack"); err != nil {
 		t.Fatalf("template rm: %v", err)
 	}
-	if _, err := runner.run("repo", "alias", "rm", "repo-b"); err != nil {
-		t.Fatalf("alias rm repo-b: %v", err)
+	if _, err := runner.run("repo", "registry", "rm", "repo-b"); err != nil {
+		t.Fatalf("registry rm repo-b: %v", err)
 	}
 }
 
-func TestGroupAliasCommands(t *testing.T) {
+func TestGroupRegistryCommands(t *testing.T) {
 	runner := newRunner(t)
 	repoA := setupRepo(t, filepath.Join(runner.root, "src", "group-repo-a"))
 
-	if _, err := runner.run("repo", "alias", "add", "group-repo-a", repoA); err != nil {
-		t.Fatalf("alias add: %v", err)
+	if _, err := runner.run("repo", "registry", "add", "group-repo-a", repoA); err != nil {
+		t.Fatalf("registry add: %v", err)
 	}
 	if _, err := runner.run("group", "create", "group-stack", "--description", "group demo"); err != nil {
 		t.Fatalf("group create: %v", err)
@@ -486,8 +486,8 @@ func TestGroupAliasCommands(t *testing.T) {
 	if _, err := runner.run("group", "rm", "group-stack"); err != nil {
 		t.Fatalf("group rm: %v", err)
 	}
-	if _, err := runner.run("repo", "alias", "rm", "group-repo-a"); err != nil {
-		t.Fatalf("alias rm: %v", err)
+	if _, err := runner.run("repo", "registry", "rm", "group-repo-a"); err != nil {
+		t.Fatalf("registry rm: %v", err)
 	}
 }
 
@@ -496,11 +496,11 @@ func TestWorkspaceNewWithGroupAndRepo(t *testing.T) {
 	repoA := setupRepo(t, filepath.Join(runner.root, "src", "new-group-repo-a"))
 	repoB := setupRepo(t, filepath.Join(runner.root, "src", "new-group-repo-b"))
 
-	if _, err := runner.run("repo", "alias", "add", "new-repo-a", repoA); err != nil {
-		t.Fatalf("alias add repo-a: %v", err)
+	if _, err := runner.run("repo", "registry", "add", "new-repo-a", repoA); err != nil {
+		t.Fatalf("registry add repo-a: %v", err)
 	}
-	if _, err := runner.run("repo", "alias", "add", "new-repo-b", repoB); err != nil {
-		t.Fatalf("alias add repo-b: %v", err)
+	if _, err := runner.run("repo", "registry", "add", "new-repo-b", repoB); err != nil {
+		t.Fatalf("registry add repo-b: %v", err)
 	}
 	if _, err := runner.run("group", "create", "new-group"); err != nil {
 		t.Fatalf("group create: %v", err)
@@ -525,8 +525,8 @@ func TestWorkspaceNewDuplicateRepoAcrossGroupAndRepo(t *testing.T) {
 	runner := newRunner(t)
 	repoA := setupRepo(t, filepath.Join(runner.root, "src", "conflict-repo-a"))
 
-	if _, err := runner.run("repo", "alias", "add", "conflict-repo-a", repoA); err != nil {
-		t.Fatalf("alias add repo-a: %v", err)
+	if _, err := runner.run("repo", "registry", "add", "conflict-repo-a", repoA); err != nil {
+		t.Fatalf("registry add repo-a: %v", err)
 	}
 	if _, err := runner.run("group", "create", "conflict-group"); err != nil {
 		t.Fatalf("group create: %v", err)

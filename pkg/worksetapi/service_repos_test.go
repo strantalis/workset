@@ -120,7 +120,7 @@ func TestAddRepoFromAliasURL(t *testing.T) {
 	root := env.createWorkspace(context.Background(), "demo")
 
 	cfg := env.loadConfig()
-	cfg.Repos = map[string]config.RepoAlias{
+	cfg.Repos = map[string]config.RegisteredRepo{
 		"repo-b": {URL: "https://example.com/repo-b.git", DefaultBranch: "dev"},
 	}
 	env.saveConfig(cfg)
@@ -221,7 +221,7 @@ func TestAddRepoUpdatesAliasFromLocalPath(t *testing.T) {
 	local := env.createLocalRepo("repo-a")
 
 	cfg := env.loadConfig()
-	cfg.Repos = map[string]config.RepoAlias{
+	cfg.Repos = map[string]config.RegisteredRepo{
 		"repo-a": {URL: local},
 	}
 	env.saveConfig(cfg)

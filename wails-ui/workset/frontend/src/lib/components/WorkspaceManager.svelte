@@ -521,7 +521,7 @@
 								<label class="field span-2">
 									<span>Source</span>
 									<input
-										placeholder="alias, URL, or local path"
+										placeholder="registered repo, URL, or local path"
 										bind:this={addSourceInput}
 										bind:value={addSource}
 										autocapitalize="off"

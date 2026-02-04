@@ -28,7 +28,7 @@ func newCommand() *cli.Command {
 		},
 		&cli.StringSliceFlag{
 			Name:  "repo",
-			Usage: "Repo alias to add (repeatable)",
+			Usage: "Registered repo or URL/path to add (repeatable)",
 			Config: cli.StringConfig{
 				TrimSpace: true,
 			},

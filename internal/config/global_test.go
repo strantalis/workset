@@ -143,7 +143,7 @@ func TestUpdateGlobalPreservesConcurrentUpdates(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			_, err := UpdateGlobal(path, func(cfg *GlobalConfig, info GlobalConfigLoadInfo) error {
-				cfg.Repos[repoName] = RepoAlias{
+				cfg.Repos[repoName] = RegisteredRepo{
 					URL: fmt.Sprintf("https://example.com/%s.git", repoName),
 				}
 				return nil

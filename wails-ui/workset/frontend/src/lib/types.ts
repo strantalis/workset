@@ -105,13 +105,16 @@ export type RepoAddResponse = {
 	}[];
 };
 
-export type Alias = {
+export type RegisteredRepo = {
 	name: string;
 	url?: string;
 	path?: string;
 	remote?: string;
 	default_branch?: string;
 };
+
+/** @deprecated Use RegisteredRepo instead */
+export type Alias = RegisteredRepo;
 
 export type GroupSummary = {
 	name: string;

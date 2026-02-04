@@ -19,7 +19,7 @@ func repoCommand() *cli.Command {
 		Name:  "repo",
 		Usage: "Manage repos in a workspace (requires -w)",
 		Commands: []*cli.Command{
-			repoAliasCommand(),
+			repoRegistryCommand(),
 			{
 				Name:      "ls",
 				Aliases:   []string{"list"},
@@ -85,7 +85,7 @@ func repoCommand() *cli.Command {
 				}),
 				ShellComplete: func(ctx context.Context, cmd *cli.Command) {
 					if cmd.NArg() == 0 {
-						completeRepoAliases(cmd)
+						completeRegisteredRepos(cmd)
 					}
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
@@ -305,29 +305,29 @@ func repoCommand() *cli.Command {
 	}
 }
 
-func repoAliasCommand() *cli.Command {
+func repoRegistryCommand() *cli.Command {
 	return &cli.Command{
-		Name:  "alias",
-		Usage: "Manage repo aliases in config",
+		Name:  "registry",
+		Usage: "Manage registered repos",
 		Commands: []*cli.Command{
 			{
 				Name:  "ls",
-				Usage: "List repo aliases",
+				Usage: "List registered repos",
 				Flags: outputFlags(),
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					svc := apiService(ctx, cmd)
-					result, err := svc.ListAliases(ctx)
+					result, err := svc.ListRegisteredRepos(ctx)
 					if err != nil {
 						return err
 					}
 					printConfigInfo(cmd, result)
 					mode := outputModeFromContext(cmd)
 					styles := output.NewStyles(commandWriter(cmd), mode.Plain)
-					if len(result.Aliases) == 0 {
+					if len(result.Repos) == 0 {
 						if mode.JSON {
 							return output.WriteJSON(commandWriter(cmd), []any{})
 						}
-						msg := "no repo aliases defined"
+						msg := "no repos registered"
 						if styles.Enabled {
 							msg = styles.Render(styles.Muted, msg)
 						}
@@ -337,19 +337,19 @@ func repoAliasCommand() *cli.Command {
 						return nil
 					}
 					if mode.JSON {
-						return output.WriteJSON(commandWriter(cmd), result.Aliases)
+						return output.WriteJSON(commandWriter(cmd), result.Repos)
 					}
 
-					rows := make([][]string, 0, len(result.Aliases))
-					for _, alias := range result.Aliases {
-						source := alias.URL
-						if alias.Path != "" {
-							source = alias.Path
+					rows := make([][]string, 0, len(result.Repos))
+					for _, repo := range result.Repos {
+						source := repo.URL
+						if repo.Path != "" {
+							source = repo.Path
 						}
 						if source == "" {
 							source = "-"
 						}
-						rows = append(rows, []string{alias.Name, source, alias.Remote, alias.DefaultBranch})
+						rows = append(rows, []string{repo.Name, source, repo.Remote, repo.DefaultBranch})
 					}
 					rendered := output.RenderTable(styles, []string{"NAME", "SOURCE", "REMOTE", "DEFAULT_BRANCH"}, rows)
 					_, err = fmt.Fprint(commandWriter(cmd), rendered)
@@ -358,10 +358,10 @@ func repoAliasCommand() *cli.Command {
 			},
 			{
 				Name:        "add",
-				Usage:       "Create a repo alias",
+				Usage:       "Register a repo",
 				ArgsUsage:   "<name> <source>",
-				UsageText:   "workset repo alias add <name> <source> [--remote <name>] [--default-branch <branch>]",
-				Description: "Create a new alias for a repo path or URL. Use `workset repo alias set` to update an existing alias.",
+				UsageText:   "workset repo registry add <name> <source> [--remote <name>] [--default-branch <branch>]",
+				Description: "Register a repo path or URL. Use `workset repo registry set` to update an existing entry.",
 				Flags: appendOutputFlags([]cli.Flag{
 					&cli.StringFlag{
 						Name:  "remote",
@@ -376,13 +376,13 @@ func repoAliasCommand() *cli.Command {
 					name := strings.TrimSpace(cmd.Args().Get(0))
 					source := strings.TrimSpace(cmd.Args().Get(1))
 					if name == "" {
-						return usageError(ctx, cmd, "alias name required (example: workset repo alias add ask-gill git@github.com:org/repo.git)")
+						return usageError(ctx, cmd, "repo name required (example: workset repo registry add ask-gill git@github.com:org/repo.git)")
 					}
 					if source == "" {
-						return usageError(ctx, cmd, fmt.Sprintf("source required to create alias %q (path or URL). Example: workset repo alias add --default-branch staging %s git@github.com:org/repo.git", name, name))
+						return usageError(ctx, cmd, fmt.Sprintf("source required to register repo %q (path or URL). Example: workset repo registry add --default-branch staging %s git@github.com:org/repo.git", name, name))
 					}
 					svc := apiService(ctx, cmd)
-					result, info, err := svc.CreateAlias(ctx, worksetapi.AliasUpsertInput{
+					result, info, err := svc.RegisterRepo(ctx, worksetapi.RepoRegistryInput{
 						Name:          name,
 						Source:        source,
 						Remote:        strings.TrimSpace(cmd.String("remote")),
@@ -399,7 +399,7 @@ func repoAliasCommand() *cli.Command {
 						return output.WriteJSON(commandWriter(cmd), result)
 					}
 					styles := output.NewStyles(commandWriter(cmd), mode.Plain)
-					msg := fmt.Sprintf("alias %s saved", name)
+					msg := fmt.Sprintf("repo %s registered", name)
 					if styles.Enabled {
 						msg = styles.Render(styles.Success, msg)
 					}
@@ -411,10 +411,10 @@ func repoAliasCommand() *cli.Command {
 			},
 			{
 				Name:        "set",
-				Usage:       "Update a repo alias",
+				Usage:       "Update a registered repo",
 				ArgsUsage:   "<name> [source]",
-				UsageText:   "workset repo alias set <name> [source] [--remote <name>] [--default-branch <branch>]",
-				Description: "Update an existing alias. Omit source to keep the current path/URL.",
+				UsageText:   "workset repo registry set <name> [source] [--remote <name>] [--default-branch <branch>]",
+				Description: "Update an existing registered repo. Omit source to keep the current path/URL.",
 				Flags: appendOutputFlags([]cli.Flag{
 					&cli.StringFlag{
 						Name:  "remote",
@@ -427,17 +427,17 @@ func repoAliasCommand() *cli.Command {
 				}),
 				ShellComplete: func(ctx context.Context, cmd *cli.Command) {
 					if cmd.NArg() == 0 {
-						completeRepoAliases(cmd)
+						completeRegisteredRepos(cmd)
 					}
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					name := strings.TrimSpace(cmd.Args().Get(0))
 					if name == "" {
-						return usageError(ctx, cmd, "alias name required (example: workset repo alias set ask-gill --default-branch staging)")
+						return usageError(ctx, cmd, "repo name required (example: workset repo registry set ask-gill --default-branch staging)")
 					}
 					source := strings.TrimSpace(cmd.Args().Get(1))
 					svc := apiService(ctx, cmd)
-					result, info, err := svc.UpdateAlias(ctx, worksetapi.AliasUpsertInput{
+					result, info, err := svc.UpdateRegisteredRepo(ctx, worksetapi.RepoRegistryInput{
 						Name:             name,
 						Source:           source,
 						SourceSet:        source != "",
@@ -457,7 +457,7 @@ func repoAliasCommand() *cli.Command {
 						return output.WriteJSON(commandWriter(cmd), result)
 					}
 					styles := output.NewStyles(commandWriter(cmd), mode.Plain)
-					msg := fmt.Sprintf("alias %s updated", name)
+					msg := fmt.Sprintf("repo %s updated", name)
 					if styles.Enabled {
 						msg = styles.Render(styles.Success, msg)
 					}
@@ -469,21 +469,21 @@ func repoAliasCommand() *cli.Command {
 			},
 			{
 				Name:      "rm",
-				Usage:     "Remove a repo alias",
+				Usage:     "Unregister a repo",
 				ArgsUsage: "<name>",
 				Flags:     outputFlags(),
 				ShellComplete: func(ctx context.Context, cmd *cli.Command) {
 					if cmd.NArg() == 0 {
-						completeRepoAliases(cmd)
+						completeRegisteredRepos(cmd)
 					}
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					name := strings.TrimSpace(cmd.Args().Get(0))
 					if name == "" {
-						return usageError(ctx, cmd, "usage: workset repo alias rm <name>")
+						return usageError(ctx, cmd, "usage: workset repo registry rm <name>")
 					}
 					svc := apiService(ctx, cmd)
-					result, info, err := svc.DeleteAlias(ctx, name)
+					result, info, err := svc.UnregisterRepo(ctx, name)
 					if err != nil {
 						return err
 					}
@@ -495,7 +495,7 @@ func repoAliasCommand() *cli.Command {
 						return output.WriteJSON(commandWriter(cmd), result)
 					}
 					styles := output.NewStyles(commandWriter(cmd), mode.Plain)
-					msg := fmt.Sprintf("alias %s removed", name)
+					msg := fmt.Sprintf("repo %s unregistered", name)
 					if styles.Enabled {
 						msg = styles.Render(styles.Success, msg)
 					}
