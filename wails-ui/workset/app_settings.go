@@ -111,3 +111,14 @@ func (a *App) SetAgentCLIPath(input AgentCLIPathRequest) (worksetapi.AgentCLISta
 	}
 	return a.service.SetAgentCLIPath(ctx, input.Agent, input.Path)
 }
+
+func (a *App) ReloadLoginEnv() (worksetapi.EnvSnapshotResultJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.service == nil {
+		a.service = worksetapi.NewService(worksetapi.Options{})
+	}
+	return a.service.ReloadLoginEnv(ctx)
+}
