@@ -233,6 +233,7 @@ func (c *githubPATClient) ListCheckRuns(ctx context.Context, owner, repo, ref st
 			DetailsURL:  run.GetDetailsURL(),
 			StartedAt:   formatGitHubTimestamp(run.StartedAt),
 			CompletedAt: formatGitHubTimestamp(run.CompletedAt),
+			CheckRunID:  run.GetID(),
 		})
 	}
 	next := 0
@@ -240,6 +241,25 @@ func (c *githubPATClient) ListCheckRuns(ctx context.Context, owner, repo, ref st
 		next = resp.NextPage
 	}
 	return checks, next, nil
+}
+
+func (c *githubPATClient) GetCheckRunAnnotations(ctx context.Context, owner, repo string, checkRunID int64) ([]CheckAnnotationJSON, error) {
+	result, _, err := c.client.Checks.ListCheckRunAnnotations(ctx, owner, repo, checkRunID, nil)
+	if err != nil {
+		return nil, err
+	}
+	annotations := make([]CheckAnnotationJSON, 0, len(result))
+	for _, ann := range result {
+		annotations = append(annotations, CheckAnnotationJSON{
+			Path:      ann.GetPath(),
+			StartLine: ann.GetStartLine(),
+			EndLine:   ann.GetEndLine(),
+			Level:     ann.GetAnnotationLevel(),
+			Message:   ann.GetMessage(),
+			Title:     ann.GetTitle(),
+		})
+	}
+	return annotations, nil
 }
 
 func (c *githubPATClient) GetRepoDefaultBranch(ctx context.Context, owner, repo string) (string, error) {

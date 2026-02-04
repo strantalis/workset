@@ -228,9 +228,35 @@ func (c *githubCLIClient) ListCheckRuns(ctx context.Context, owner, repo, ref st
 			DetailsURL:  run.DetailsURL,
 			StartedAt:   formatTime(run.StartedAt),
 			CompletedAt: formatTime(run.CompletedAt),
+			CheckRunID:  run.ID,
 		})
 	}
 	return checks, next, nil
+}
+
+func (c *githubCLIClient) GetCheckRunAnnotations(ctx context.Context, owner, repo string, checkRunID int64) ([]CheckAnnotationJSON, error) {
+	path := fmt.Sprintf("repos/%s/%s/check-runs/%d/annotations", owner, repo, checkRunID)
+	resp, err := c.rest.RequestWithContext(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, wrapAuthError(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var response checkAnnotationsREST
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, err
+	}
+	annotations := make([]CheckAnnotationJSON, 0, len(response.Annotations))
+	for _, ann := range response.Annotations {
+		annotations = append(annotations, CheckAnnotationJSON{
+			Path:      ann.Path,
+			StartLine: ann.StartLine,
+			EndLine:   ann.EndLine,
+			Level:     ann.AnnotationLevel,
+			Message:   ann.Message,
+			Title:     ann.Title,
+		})
+	}
+	return annotations, nil
 }
 
 func (c *githubCLIClient) GetRepoDefaultBranch(ctx context.Context, owner, repo string) (string, error) {
@@ -449,6 +475,7 @@ type ghUserResponse struct {
 
 type checkRunsREST struct {
 	CheckRuns []struct {
+		ID          int64      `json:"id"`
 		Name        string     `json:"name"`
 		Status      string     `json:"status"`
 		Conclusion  string     `json:"conclusion"`
@@ -456,6 +483,17 @@ type checkRunsREST struct {
 		StartedAt   *time.Time `json:"started_at"`
 		CompletedAt *time.Time `json:"completed_at"`
 	} `json:"check_runs"`
+}
+
+type checkAnnotationsREST struct {
+	Annotations []struct {
+		Path            string `json:"path"`
+		StartLine       int    `json:"start_line"`
+		EndLine         int    `json:"end_line"`
+		AnnotationLevel string `json:"annotation_level"`
+		Message         string `json:"message"`
+		Title           string `json:"title"`
+	} `json:"check_annotations"`
 }
 
 type reviewCommentREST struct {

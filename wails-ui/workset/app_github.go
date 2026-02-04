@@ -39,6 +39,12 @@ type PullRequestStatusPayload struct {
 	Checks      []worksetapi.PullRequestCheckJSON `json:"checks"`
 }
 
+type GetCheckAnnotationsRequest struct {
+	Owner      string `json:"owner"`
+	Repo       string `json:"repo"`
+	CheckRunID int64  `json:"checkRunId"`
+}
+
 type PullRequestTrackedRequest struct {
 	WorkspaceID string `json:"workspaceId"`
 	RepoID      string `json:"repoId"`
@@ -134,6 +140,21 @@ func (a *App) GetPullRequestStatus(input PullRequestStatusRequest) (PullRequestS
 		PullRequest: result.PullRequest,
 		Checks:      result.Checks,
 	}, nil
+}
+
+func (a *App) GetCheckAnnotations(input GetCheckAnnotationsRequest) (worksetapi.CheckAnnotationsResult, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.service == nil {
+		a.service = worksetapi.NewService(worksetapi.Options{})
+	}
+	return a.service.GetCheckAnnotations(ctx, worksetapi.GetCheckAnnotationsInput{
+		Owner:      input.Owner,
+		Repo:       input.Repo,
+		CheckRunID: input.CheckRunID,
+	})
 }
 
 func (a *App) GetTrackedPullRequest(input PullRequestTrackedRequest) (worksetapi.PullRequestTrackedJSON, error) {

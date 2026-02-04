@@ -160,6 +160,19 @@ func (s *Service) GetPullRequestStatus(ctx context.Context, input PullRequestSta
 	}, nil
 }
 
+// GetCheckAnnotations returns annotations for a specific check run.
+func (s *Service) GetCheckAnnotations(ctx context.Context, input GetCheckAnnotationsInput) (CheckAnnotationsResult, error) {
+	client, err := s.githubClient(ctx, "")
+	if err != nil {
+		return CheckAnnotationsResult{}, err
+	}
+	annotations, err := client.GetCheckRunAnnotations(ctx, input.Owner, input.Repo, input.CheckRunID)
+	if err != nil {
+		return CheckAnnotationsResult{}, err
+	}
+	return CheckAnnotationsResult{Annotations: annotations}, nil
+}
+
 // GetTrackedPullRequest returns the last recorded PR for a repo.
 func (s *Service) GetTrackedPullRequest(ctx context.Context, input PullRequestTrackedInput) (PullRequestTrackedResult, error) {
 	resolution, err := s.resolveRepo(ctx, RepoSelectionInput(input))
