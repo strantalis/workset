@@ -22,6 +22,26 @@ func (s *Service) loadGlobal(ctx context.Context) (config.GlobalConfig, config.G
 	return cfg, info, err
 }
 
+func (s *Service) updateGlobal(ctx context.Context, fn func(cfg *config.GlobalConfig, info config.GlobalConfigLoadInfo) error) (config.GlobalConfigLoadInfo, error) {
+	if updater, ok := s.configs.(ConfigUpdater); ok {
+		return updater.Update(ctx, s.configPath, func(cfg *config.GlobalConfig, info config.GlobalConfigLoadInfo) error {
+			s.applyLegacyGroupRemotes(cfg)
+			return fn(cfg, info)
+		})
+	}
+	cfg, info, err := s.loadGlobal(ctx)
+	if err != nil {
+		return info, err
+	}
+	if err := fn(&cfg, info); err != nil {
+		return info, err
+	}
+	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+		return info, err
+	}
+	return info, nil
+}
+
 func registerWorkspace(cfg *config.GlobalConfig, name, path string, now time.Time) {
 	if cfg.Workspaces == nil {
 		cfg.Workspaces = map[string]config.WorkspaceRef{}

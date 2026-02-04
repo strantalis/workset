@@ -13,6 +13,11 @@ type ConfigStore interface {
 	Save(ctx context.Context, path string, cfg config.GlobalConfig) error
 }
 
+// ConfigUpdater optionally provides atomic update support for global config.
+type ConfigUpdater interface {
+	Update(ctx context.Context, path string, fn func(cfg *config.GlobalConfig, info config.GlobalConfigLoadInfo) error) (config.GlobalConfigLoadInfo, error)
+}
+
 // WorkspaceStore abstracts workspace config/state persistence for the Service.
 type WorkspaceStore interface {
 	Init(ctx context.Context, root, name string, defaults config.Defaults) (workspace.Workspace, error)
@@ -36,6 +41,10 @@ func (FileConfigStore) Load(_ context.Context, path string) (config.GlobalConfig
 
 func (FileConfigStore) Save(_ context.Context, path string, cfg config.GlobalConfig) error {
 	return config.SaveGlobal(path, cfg)
+}
+
+func (FileConfigStore) Update(_ context.Context, path string, fn func(cfg *config.GlobalConfig, info config.GlobalConfigLoadInfo) error) (config.GlobalConfigLoadInfo, error) {
+	return config.UpdateGlobal(path, fn)
 }
 
 func (FileWorkspaceStore) Init(_ context.Context, root, name string, defaults config.Defaults) (workspace.Workspace, error) {

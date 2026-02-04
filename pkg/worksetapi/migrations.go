@@ -9,6 +9,26 @@ import (
 )
 
 func (s *Service) migrateLegacyGroupRemotes(ctx context.Context, cfg *config.GlobalConfig, configPath string) error {
+	if changed := s.applyLegacyGroupRemotesWithWarnings(cfg, true); changed {
+		if updater, ok := s.configs.(ConfigUpdater); ok {
+			_, err := updater.Update(ctx, configPath, func(target *config.GlobalConfig, info config.GlobalConfigLoadInfo) error {
+				s.applyLegacyGroupRemotesWithWarnings(target, false)
+				return nil
+			})
+			return err
+		}
+		if err := s.configs.Save(ctx, configPath, *cfg); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) applyLegacyGroupRemotes(cfg *config.GlobalConfig) bool {
+	return s.applyLegacyGroupRemotesWithWarnings(cfg, true)
+}
+
+func (s *Service) applyLegacyGroupRemotesWithWarnings(cfg *config.GlobalConfig, logWarnings bool) bool {
 	changed := false
 	for groupName, group := range cfg.Groups {
 		if len(group.Members) == 0 {
@@ -21,15 +41,19 @@ func (s *Service) migrateLegacyGroupRemotes(ctx context.Context, cfg *config.Glo
 				continue
 			}
 			remote, branch, warnings := resolveLegacyRemoteDefaults(cfg.Defaults, member.LegacyRemotes)
-			for _, warning := range warnings {
-				if s.logf != nil {
-					s.logf("warning: group %s repo %s: %s", groupName, member.Repo, warning)
+			if logWarnings {
+				for _, warning := range warnings {
+					if s.logf != nil {
+						s.logf("warning: group %s repo %s: %s", groupName, member.Repo, warning)
+					}
 				}
 			}
 			aliasUpdated, aliasWarnings := applyLegacyAliasDefaults(cfg, member.Repo, "", remote, branch)
-			for _, warning := range aliasWarnings {
-				if s.logf != nil {
-					s.logf("warning: group %s repo %s: %s", groupName, member.Repo, warning)
+			if logWarnings {
+				for _, warning := range aliasWarnings {
+					if s.logf != nil {
+						s.logf("warning: group %s repo %s: %s", groupName, member.Repo, warning)
+					}
 				}
 			}
 			if aliasUpdated {
@@ -43,43 +67,74 @@ func (s *Service) migrateLegacyGroupRemotes(ctx context.Context, cfg *config.Glo
 			changed = true
 		}
 	}
-	if changed {
-		if err := s.configs.Save(ctx, configPath, *cfg); err != nil {
-			return err
-		}
-	}
-	return nil
+	return changed
 }
 
 func (s *Service) migrateLegacyWorkspaceRemotes(ctx context.Context, cfg *config.GlobalConfig, configPath, wsRoot string, wsConfig *config.WorkspaceConfig) error {
+	type legacyWorkspaceRepo struct {
+		name      string
+		localPath string
+		remotes   *config.Remotes
+	}
+
+	legacyRepos := []legacyWorkspaceRepo{}
 	workspaceChanged := false
-	configChanged := false
 	for i := range wsConfig.Repos {
 		repo := wsConfig.Repos[i]
 		if repo.LegacyRemotes == nil {
 			continue
 		}
-		remote, branch, warnings := resolveLegacyRemoteDefaults(cfg.Defaults, repo.LegacyRemotes)
-		for _, warning := range warnings {
-			if s.logf != nil {
-				s.logf("warning: workspace repo %s: %s", repo.Name, warning)
-			}
-		}
-		aliasUpdated, aliasWarnings := applyLegacyAliasDefaults(cfg, repo.Name, repo.LocalPath, remote, branch)
-		for _, warning := range aliasWarnings {
-			if s.logf != nil {
-				s.logf("warning: workspace repo %s: %s", repo.Name, warning)
-			}
-		}
-		if aliasUpdated {
-			configChanged = true
-		}
+		legacyRepos = append(legacyRepos, legacyWorkspaceRepo{
+			name:      repo.Name,
+			localPath: repo.LocalPath,
+			remotes:   repo.LegacyRemotes,
+		})
 		wsConfig.Repos[i].LegacyRemotes = nil
 		workspaceChanged = true
 	}
-	if configChanged {
-		if err := s.configs.Save(ctx, configPath, *cfg); err != nil {
-			return err
+
+	applyToConfig := func(target *config.GlobalConfig, logWarnings bool) bool {
+		configChanged := false
+		for _, repo := range legacyRepos {
+			remote, branch, warnings := resolveLegacyRemoteDefaults(target.Defaults, repo.remotes)
+			if logWarnings {
+				for _, warning := range warnings {
+					if s.logf != nil {
+						s.logf("warning: workspace repo %s: %s", repo.name, warning)
+					}
+				}
+			}
+			aliasUpdated, aliasWarnings := applyLegacyAliasDefaults(target, repo.name, repo.localPath, remote, branch)
+			if logWarnings {
+				for _, warning := range aliasWarnings {
+					if s.logf != nil {
+						s.logf("warning: workspace repo %s: %s", repo.name, warning)
+					}
+				}
+			}
+			if aliasUpdated {
+				configChanged = true
+			}
+		}
+		return configChanged
+	}
+
+	if len(legacyRepos) > 0 {
+		configChanged := applyToConfig(cfg, true)
+		if configChanged {
+			if updater, ok := s.configs.(ConfigUpdater); ok {
+				_, err := updater.Update(ctx, configPath, func(target *config.GlobalConfig, info config.GlobalConfigLoadInfo) error {
+					applyToConfig(target, false)
+					return nil
+				})
+				if err != nil {
+					return err
+				}
+			} else {
+				if err := s.configs.Save(ctx, configPath, *cfg); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	if workspaceChanged {

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	koanfyaml "github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/providers/rawbytes"
 	"github.com/knadh/koanf/v2"
 	"gopkg.in/yaml.v3"
 )
@@ -136,7 +138,101 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 	defaults := DefaultConfig()
 
 	k := koanf.New(".")
-	if err := k.Load(confmap.Provider(map[string]any{
+	if err := k.Load(confmap.Provider(defaultConfigMap(defaults), "."), nil); err != nil {
+		return GlobalConfig{}, info, err
+	}
+
+	if _, err := os.Stat(path); err == nil {
+		info.Exists = true
+		if err := k.Load(file.Provider(path), koanfyaml.Parser()); err != nil {
+			return GlobalConfig{}, info, err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return GlobalConfig{}, info, err
+	}
+
+	var cfg GlobalConfig
+	if err := k.UnmarshalWithConf("", &cfg, koanf.UnmarshalConf{Tag: "yaml"}); err != nil {
+		return GlobalConfig{}, info, err
+	}
+	finalizeGlobal(&cfg, defaults)
+	return cfg, info, nil
+}
+
+func loadGlobalFromBytes(data []byte) (GlobalConfig, error) {
+	defaults := DefaultConfig()
+	k := koanf.New(".")
+	if err := k.Load(confmap.Provider(defaultConfigMap(defaults), "."), nil); err != nil {
+		return GlobalConfig{}, err
+	}
+	if len(bytes.TrimSpace(data)) > 0 {
+		if err := k.Load(rawbytes.Provider(data), koanfyaml.Parser()); err != nil {
+			return GlobalConfig{}, err
+		}
+	}
+	var cfg GlobalConfig
+	if err := k.UnmarshalWithConf("", &cfg, koanf.UnmarshalConf{Tag: "yaml"}); err != nil {
+		return GlobalConfig{}, err
+	}
+	finalizeGlobal(&cfg, defaults)
+	return cfg, nil
+}
+
+func SaveGlobal(path string, cfg GlobalConfig) error {
+	if path == "" {
+		var err error
+		path, err = GlobalConfigPath()
+		if err != nil {
+			return err
+		}
+	}
+	cfg.EnsureMaps()
+	cfg = stripLegacyGroupRemotes(cfg)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	if info, err := os.Stat(path); err == nil {
+		existing, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(path+".bak", existing, info.Mode().Perm()); err != nil {
+			return err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
+}
+
+func stripLegacyGroupRemotes(cfg GlobalConfig) GlobalConfig {
+	if cfg.Groups == nil {
+		return cfg
+	}
+	for name, group := range cfg.Groups {
+		if len(group.Members) == 0 {
+			continue
+		}
+		updated := false
+		for i := range group.Members {
+			if group.Members[i].LegacyRemotes != nil {
+				group.Members[i].LegacyRemotes = nil
+				updated = true
+			}
+		}
+		if updated {
+			cfg.Groups[name] = group
+		}
+	}
+	return cfg
+}
+
+func defaultConfigMap(defaults GlobalConfig) map[string]any {
+	return map[string]any{
 		"defaults.remote":                    defaults.Defaults.Remote,
 		"defaults.base_branch":               defaults.Defaults.BaseBranch,
 		"defaults.workspace":                 defaults.Defaults.Workspace,
@@ -160,23 +256,10 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 		"hooks.enabled":                      defaults.Hooks.Enabled,
 		"hooks.on_error":                     defaults.Hooks.OnError,
 		"hooks.repo_hooks.trusted_repos":     defaults.Hooks.RepoHooks.TrustedRepos,
-	}, "."), nil); err != nil {
-		return GlobalConfig{}, info, err
 	}
+}
 
-	if _, err := os.Stat(path); err == nil {
-		info.Exists = true
-		if err := k.Load(file.Provider(path), koanfyaml.Parser()); err != nil {
-			return GlobalConfig{}, info, err
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return GlobalConfig{}, info, err
-	}
-
-	var cfg GlobalConfig
-	if err := k.UnmarshalWithConf("", &cfg, koanf.UnmarshalConf{Tag: "yaml"}); err != nil {
-		return GlobalConfig{}, info, err
-	}
+func finalizeGlobal(cfg *GlobalConfig, defaults GlobalConfig) {
 	cfg.EnsureMaps()
 	if cfg.Defaults.Remote == "" {
 		cfg.Defaults.Remote = defaults.Defaults.Remote
@@ -241,58 +324,4 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 	if cfg.Hooks.Items == nil {
 		cfg.Hooks.Items = defaults.Hooks.Items
 	}
-	return cfg, info, nil
-}
-
-func SaveGlobal(path string, cfg GlobalConfig) error {
-	if path == "" {
-		var err error
-		path, err = GlobalConfigPath()
-		if err != nil {
-			return err
-		}
-	}
-	cfg.EnsureMaps()
-	cfg = stripLegacyGroupRemotes(cfg)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	if info, err := os.Stat(path); err == nil {
-		existing, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		if err := os.WriteFile(path+".bak", existing, info.Mode().Perm()); err != nil {
-			return err
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	data, err := yaml.Marshal(cfg)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o644)
-}
-
-func stripLegacyGroupRemotes(cfg GlobalConfig) GlobalConfig {
-	if cfg.Groups == nil {
-		return cfg
-	}
-	for name, group := range cfg.Groups {
-		if len(group.Members) == 0 {
-			continue
-		}
-		updated := false
-		for i := range group.Members {
-			if group.Members[i].LegacyRemotes != nil {
-				group.Members[i].LegacyRemotes = nil
-				updated = true
-			}
-		}
-		if updated {
-			cfg.Groups[name] = group
-		}
-	}
-	return cfg
 }

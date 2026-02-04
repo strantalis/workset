@@ -144,8 +144,11 @@ func (s *Service) StartSession(ctx context.Context, input SessionStartInput) (Se
 		}
 	}
 
-	registerWorkspace(&cfg, wsName, root, s.clock())
-	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
+		info = loadInfo
+		registerWorkspace(cfg, wsName, root, s.clock())
+		return nil
+	}); err != nil {
 		return SessionStartResult{}, err
 	}
 	return SessionStartResult{Notice: notice, Attached: attached, Config: info}, nil
@@ -244,8 +247,11 @@ func (s *Service) AttachSession(ctx context.Context, input SessionAttachInput) (
 		}
 	}
 
-	registerWorkspace(&cfg, wsName, root, s.clock())
-	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
+		info = loadInfo
+		registerWorkspace(cfg, wsName, root, s.clock())
+		return nil
+	}); err != nil {
 		return SessionActionResult{}, err
 	}
 
@@ -341,8 +347,11 @@ func (s *Service) StopSession(ctx context.Context, input SessionStopInput) (Sess
 		}
 	}
 
-	registerWorkspace(&cfg, wsName, root, s.clock())
-	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
+		info = loadInfo
+		registerWorkspace(cfg, wsName, root, s.clock())
+		return nil
+	}); err != nil {
 		return SessionActionResult{}, err
 	}
 
@@ -377,8 +386,11 @@ func (s *Service) ListSessions(ctx context.Context, selector WorkspaceSelector) 
 
 	workspace.EnsureSessionState(&ws.State)
 	if len(ws.State.Sessions) == 0 {
-		registerWorkspace(&cfg, wsName, root, s.clock())
-		if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+		if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
+			info = loadInfo
+			registerWorkspace(cfg, wsName, root, s.clock())
+			return nil
+		}); err != nil {
 			return SessionListResult{}, err
 		}
 		return SessionListResult{Sessions: []SessionRecordJSON{}, Config: info}, nil
@@ -423,8 +435,11 @@ func (s *Service) ListSessions(ctx context.Context, selector WorkspaceSelector) 
 		})
 	}
 
-	registerWorkspace(&cfg, wsName, root, s.clock())
-	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
+		info = loadInfo
+		registerWorkspace(cfg, wsName, root, s.clock())
+		return nil
+	}); err != nil {
 		return SessionListResult{}, err
 	}
 
@@ -501,8 +516,11 @@ func (s *Service) ShowSession(ctx context.Context, input SessionShowInput) (Sess
 		Running:      running,
 	}
 
-	registerWorkspace(&cfg, wsName, root, s.clock())
-	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
+		info = loadInfo
+		registerWorkspace(cfg, wsName, root, s.clock())
+		return nil
+	}); err != nil {
 		return SessionRecordJSON{}, info, err
 	}
 

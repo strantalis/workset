@@ -4,6 +4,8 @@ import (
 	"context"
 	"path/filepath"
 	"strings"
+
+	"github.com/strantalis/workset/internal/config"
 )
 
 // GetAgentCLIStatus reports whether the configured agent command is available.
@@ -81,16 +83,16 @@ func (s *Service) SetAgentCLIPath(ctx context.Context, agent, path string) (Agen
 	if path != "" && !isExecutableCandidate(path) {
 		return AgentCLIStatusJSON{}, ValidationError{Message: "Agent CLI path is not executable"}
 	}
-	cfg, info, err := s.loadGlobal(ctx)
-	if err != nil {
-		return AgentCLIStatusJSON{}, err
-	}
-	cfg.Agent.CLIPath = path
-	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+	var defaultsAgent string
+	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, _ config.GlobalConfigLoadInfo) error {
+		cfg.Agent.CLIPath = path
+		defaultsAgent = cfg.Defaults.Agent
+		return nil
+	}); err != nil {
 		return AgentCLIStatusJSON{}, err
 	}
 	if strings.TrimSpace(agent) == "" {
-		agent = cfg.Defaults.Agent
+		agent = defaultsAgent
 	}
 	return s.GetAgentCLIStatus(ctx, agent)
 }

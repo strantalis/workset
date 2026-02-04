@@ -1,9 +1,12 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -93,6 +96,94 @@ func TestSaveGlobalCreatesBackup(t *testing.T) {
 	}
 	if !strings.Contains(string(backup), "demo.git") {
 		t.Fatalf("expected backup to contain repo alias, got %q", string(backup))
+	}
+}
+
+func TestUpdateGlobalPreservesFilePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file permissions not reliable on windows")
+	}
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("defaults:\n  base_branch: main\n"), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	if _, err := UpdateGlobal(path, func(cfg *GlobalConfig, info GlobalConfigLoadInfo) error {
+		cfg.Defaults.BaseBranch = "dev"
+		return nil
+	}); err != nil {
+		t.Fatalf("UpdateGlobal: %v", err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat config: %v", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("expected mode 0600, got %04o", info.Mode().Perm())
+	}
+}
+
+func TestUpdateGlobalPreservesConcurrentUpdates(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := SaveGlobal(path, DefaultConfig()); err != nil {
+		t.Fatalf("SaveGlobal: %v", err)
+	}
+
+	const iterations = 25
+	for i := 0; i < iterations; i++ {
+		repoName := fmt.Sprintf("repo-%d", i)
+		workspaceName := fmt.Sprintf("ws-%d", i)
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		errCh := make(chan error, 2)
+
+		go func() {
+			defer wg.Done()
+			_, err := UpdateGlobal(path, func(cfg *GlobalConfig, info GlobalConfigLoadInfo) error {
+				cfg.Repos[repoName] = RepoAlias{
+					URL: fmt.Sprintf("https://example.com/%s.git", repoName),
+				}
+				return nil
+			})
+			errCh <- err
+		}()
+
+		go func() {
+			defer wg.Done()
+			_, err := UpdateGlobal(path, func(cfg *GlobalConfig, info GlobalConfigLoadInfo) error {
+				cfg.Workspaces[workspaceName] = WorkspaceRef{
+					Path: filepath.Join("/tmp", workspaceName),
+				}
+				return nil
+			})
+			errCh <- err
+		}()
+
+		wg.Wait()
+		close(errCh)
+		for err := range errCh {
+			if err != nil {
+				t.Fatalf("UpdateGlobal: %v", err)
+			}
+		}
+	}
+
+	loaded, err := LoadGlobal(path)
+	if err != nil {
+		t.Fatalf("LoadGlobal: %v", err)
+	}
+	for i := 0; i < iterations; i++ {
+		repoName := fmt.Sprintf("repo-%d", i)
+		if _, ok := loaded.Repos[repoName]; !ok {
+			t.Fatalf("expected repo %s present", repoName)
+		}
+		workspaceName := fmt.Sprintf("ws-%d", i)
+		if _, ok := loaded.Workspaces[workspaceName]; !ok {
+			t.Fatalf("expected workspace %s present", workspaceName)
+		}
 	}
 }
 

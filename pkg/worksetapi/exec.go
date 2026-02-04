@@ -7,13 +7,14 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/strantalis/workset/internal/config"
 	"github.com/strantalis/workset/internal/session"
 	"github.com/strantalis/workset/internal/workspace"
 )
 
 // Exec runs a command inside the workspace root with standard env variables set.
 func (s *Service) Exec(ctx context.Context, input ExecInput) error {
-	cfg, info, err := s.loadGlobal(ctx)
+	cfg, _, err := s.loadGlobal(ctx)
 	if err != nil {
 		return err
 	}
@@ -48,8 +49,10 @@ func (s *Service) Exec(ctx context.Context, input ExecInput) error {
 	}
 
 	if wsName != "" {
-		registerWorkspace(&cfg, wsName, root, s.clock())
-		if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+		if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, _ config.GlobalConfigLoadInfo) error {
+			registerWorkspace(cfg, wsName, root, s.clock())
+			return nil
+		}); err != nil {
 			return err
 		}
 	}
