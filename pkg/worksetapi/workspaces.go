@@ -313,9 +313,7 @@ func (s *Service) DeleteWorkspace(ctx context.Context, input WorkspaceDeleteInpu
 		if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
 			info = loadInfo
 			if name != "" {
-				if _, ok := cfg.Workspaces[name]; ok {
-					delete(cfg.Workspaces, name)
-				}
+				delete(cfg.Workspaces, name)
 			} else {
 				removeWorkspaceByPath(cfg, root)
 			}

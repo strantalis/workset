@@ -133,7 +133,8 @@ func (s *Service) RecoverConfig(ctx context.Context, input ConfigRecoverInput) (
 	recovered := applyResult.recovered
 	reposRecovered := applyResult.reposRecovered
 	conflicts := applyResult.conflicts
-	warnings := append(preWarnings, applyResult.warnings...)
+	warnings := append([]string{}, preWarnings...)
+	warnings = append(warnings, applyResult.warnings...)
 
 	sort.Strings(recovered)
 	recoveredRepos := make([]string, 0, len(reposRecovered))
