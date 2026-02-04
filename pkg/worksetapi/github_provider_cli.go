@@ -241,12 +241,12 @@ func (c *githubCLIClient) GetCheckRunAnnotations(ctx context.Context, owner, rep
 		return nil, wrapAuthError(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	var response checkAnnotationsREST
+	var response []checkAnnotationREST
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		return nil, err
 	}
-	annotations := make([]CheckAnnotationJSON, 0, len(response.Annotations))
-	for _, ann := range response.Annotations {
+	annotations := make([]CheckAnnotationJSON, 0, len(response))
+	for _, ann := range response {
 		annotations = append(annotations, CheckAnnotationJSON{
 			Path:      ann.Path,
 			StartLine: ann.StartLine,
@@ -485,15 +485,14 @@ type checkRunsREST struct {
 	} `json:"check_runs"`
 }
 
-type checkAnnotationsREST struct {
-	Annotations []struct {
-		Path            string `json:"path"`
-		StartLine       int    `json:"start_line"`
-		EndLine         int    `json:"end_line"`
-		AnnotationLevel string `json:"annotation_level"`
-		Message         string `json:"message"`
-		Title           string `json:"title"`
-	} `json:"check_annotations"`
+// checkAnnotationREST represents a single check annotation from GitHub API
+type checkAnnotationREST struct {
+	Path            string `json:"path"`
+	StartLine       int    `json:"start_line"`
+	EndLine         int    `json:"end_line"`
+	AnnotationLevel string `json:"annotation_level"`
+	Message         string `json:"message"`
+	Title           string `json:"title"`
 }
 
 type reviewCommentREST struct {

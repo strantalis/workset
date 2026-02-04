@@ -1,6 +1,16 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime';
+	import {
+		CheckCircle2,
+		XCircle,
+		Loader2,
+		Ban,
+		MinusCircle,
+		ChevronDown,
+		ChevronRight,
+		ExternalLink,
+	} from '@lucide/svelte';
 	import type {
 		FileDiff as FileDiffBase,
 		FileDiffMetadata,
@@ -173,6 +183,9 @@
 
 	// Sidebar tab: 'files' or 'checks'
 	let sidebarTab: 'files' | 'checks' = $state('files');
+
+	// Pending scroll line for annotation navigation
+	let pendingScrollLine: number | null = $state(null);
 
 	// Check annotations state
 	let expandedCheck: string | null = $state(null);
@@ -1022,14 +1035,24 @@
 			}
 		}
 
-		if (!owner || !repoName) return;
+		if (!owner || !repoName) {
+			console.error('Cannot load annotations: missing owner/repo', {
+				checkName,
+				checkRunId,
+				baseRepo: prStatus?.pullRequest?.baseRepo,
+				remotes,
+			});
+			checkAnnotations = { ...checkAnnotations, [checkName]: [] };
+			return;
+		}
 
 		checkAnnotationsLoading = { ...checkAnnotationsLoading, [checkName]: true };
 		try {
 			const result = await fetchCheckAnnotations(owner, repoName, checkRunId);
+			console.log(`Loaded ${result.length} annotations for ${checkName}:`, result);
 			checkAnnotations = { ...checkAnnotations, [checkName]: result };
 		} catch (err) {
-			// Silently fail - annotations are optional
+			console.error('Failed to load annotations:', err);
 			checkAnnotations = { ...checkAnnotations, [checkName]: [] };
 		} finally {
 			checkAnnotationsLoading = { ...checkAnnotationsLoading, [checkName]: false };
@@ -1050,12 +1073,26 @@
 	};
 
 	// Navigate to file from annotation
-	const navigateToAnnotationFile = (path: string): void => {
+	const navigateToAnnotationFile = (path: string, line: number): void => {
 		// Find the file in summary
 		const file = summary?.files.find((f) => f.path === path);
 		if (file) {
+			pendingScrollLine = line;
 			selectFile(file, 'pr');
 		}
+	};
+
+	// Filter annotations to only show ones for files in the PR diff
+	const getFilteredAnnotations = (
+		checkName: string,
+	): { annotations: CheckAnnotation[]; filteredCount: number } => {
+		const allAnnotations = checkAnnotations[checkName] ?? [];
+		const filesInDiff = new Set(summary?.files.map((f) => f.path) ?? []);
+		const filtered = allAnnotations.filter((a) => filesInDiff.has(a.path));
+		return {
+			annotations: filtered,
+			filteredCount: allAnnotations.length - filtered.length,
+		};
 	};
 
 	const ensureRenderer = async (): Promise<void> => {
@@ -1103,6 +1140,28 @@
 			forceRender: true,
 			lineAnnotations: annotations,
 		});
+
+		// Handle pending scroll to line after render
+		if (pendingScrollLine !== null) {
+			const lineToScroll = pendingScrollLine;
+			pendingScrollLine = null;
+			// Use requestAnimationFrame to ensure DOM is updated
+			requestAnimationFrame(() => {
+				// Try to find the line element - look for data-line attribute or line number cell
+				const lineEl = diffContainer?.querySelector(
+					`[data-line-number="${lineToScroll}"], td.line-num[data-content="${lineToScroll}"], .line-num[data-content="${lineToScroll}"]`,
+				);
+				if (lineEl) {
+					lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+					// Add highlight effect to the line
+					const row = lineEl.closest('tr');
+					if (row) {
+						row.classList.add('highlight-line');
+						setTimeout(() => row.classList.remove('highlight-line'), 2000);
+					}
+				}
+			});
+		}
 	};
 
 	const selectFile = (file: RepoDiffFileSummary, source: 'pr' | 'local' = 'pr'): void => {
@@ -1328,14 +1387,41 @@
 						{#if checkStats.total === 0}
 							<span class="pr-badge-checks muted">No checks</span>
 						{:else if checkStats.failed > 0}
-							<span class="pr-badge-checks failed"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg> {checkStats.failed}</span>
+							<span class="pr-badge-checks failed"
+								><svg
+									class="icon"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									><circle cx="12" cy="12" r="10" /><path d="m15 9-6 6" /><path d="m9 9 6 6" /></svg
+								>
+								{checkStats.failed}</span
+							>
 						{:else if checkStats.pending > 0}
 							<span class="pr-badge-checks pending"
-								><svg class="icon spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> {checkStats.pending}</span
+								><svg
+									class="icon spin"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg
+								>
+								{checkStats.pending}</span
 							>
 						{:else}
 							<span class="pr-badge-checks passed"
-								><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg> {checkStats.passed}</span
+								><svg
+									class="icon"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><path
+										d="M22 4 12 14.01l-3-3"
+									/></svg
+								>
+								{checkStats.passed}</span
 							>
 						{/if}
 						{#if prStatusLoading || prReviewsLoading}
@@ -1534,11 +1620,13 @@
 						>
 							Checks
 							{#if checkStats.failed > 0}
-								<span class="tab-count failed"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg> {checkStats.failed}</span>
+								<span class="tab-count failed"><XCircle size={12} /> {checkStats.failed}</span>
 							{:else if checkStats.pending > 0}
-								<span class="tab-count pending"><svg class="icon spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> {checkStats.pending}</span>
+								<span class="tab-count pending"
+									><Loader2 size={12} class="spin" /> {checkStats.pending}</span
+								>
 							{:else}
-								<span class="tab-count passed"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg> {checkStats.passed}</span>
+								<span class="tab-count passed"><CheckCircle2 size={12} /> {checkStats.passed}</span>
 							{/if}
 						</button>
 					</div>
@@ -1546,36 +1634,6 @@
 
 				<!-- Files tab content -->
 				{#if sidebarTab === 'files'}
-					<!-- Local uncommitted changes section (yellow) -->
-					{#if localSummary && localSummary.files.length > 0}
-						<div class="section-title local-section-title">Uncommitted changes</div>
-						{#each localSummary.files as file (file.path)}
-							<button
-								class:selected={file.path === selected?.path &&
-									file.prevPath === selected?.prevPath &&
-									selectedSource === 'local'}
-								class="file-row local-file"
-								onclick={() => selectFile(file, 'local')}
-								type="button"
-							>
-								<div class="file-meta">
-									<span class="path" title={file.path}>{formatPath(file.path)}</span>
-									{#if file.prevPath}
-										<span class="rename">from {file.prevPath}</span>
-									{/if}
-								</div>
-								<div class="stats">
-									<span class="tag local-tag">{statusLabel(file.status)}</span>
-									<span class="diffstat local-diffstat"
-										><span class="add">+{file.added}</span><span class="sep">/</span><span
-											class="del">-{file.removed}</span
-										></span
-									>
-								</div>
-							</button>
-						{/each}
-					{/if}
-
 					<!-- PR changed files section -->
 					{#if !(effectiveMode === 'status' && prStatus && prStatus.checks.length > 0)}
 						<div class="section-title">
@@ -1626,16 +1684,16 @@
 						<!-- Checks Summary Header -->
 						<div class="checks-summary">
 							<div class="checks-summary-item passed">
-								<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg>
+								<CheckCircle2 size={16} />
 								<span>{checkStats.passed}</span>
 							</div>
 							<div class="checks-summary-item failed">
-								<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+								<XCircle size={16} />
 								<span>{checkStats.failed}</span>
 							</div>
 							{#if checkStats.pending > 0}
 								<div class="checks-summary-item pending">
-									<svg class="icon spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+									<Loader2 size={16} class="spin" />
 									<span>{checkStats.pending}</span>
 								</div>
 							{/if}
@@ -1647,7 +1705,8 @@
 								{@const statusClass = getCheckStatusClass(check.conclusion, check.status)}
 								{@const isFailed = check.conclusion === 'failure'}
 								{@const isExpanded = expandedCheck === check.name}
-								{@const hasAnnotations = checkAnnotations[check.name]?.length > 0}
+								{@const filteredResult = getFilteredAnnotations(check.name)}
+								{@const hasAnnotations = filteredResult.annotations.length > 0}
 								{@const isLoadingAnnotations = checkAnnotationsLoading[check.name]}
 								<div class="check-item-container">
 									<!-- Use div for non-failed checks, button for failed checks -->
@@ -1659,19 +1718,19 @@
 										>
 											<span class="check-indicator {statusClass}">
 												{#if check.conclusion === 'success'}
-													<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg>
+													<CheckCircle2 size={16} />
 												{:else if check.conclusion === 'failure'}
-													<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+													<XCircle size={16} />
 												{:else if check.conclusion === 'skipped'}
-													<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 9.06 12 12l7-2.94V17a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"/><path d="m12 12 7-2.94-7-2.94-7 2.94z"/><path d="M4 22V5.06"/></svg>
+													<Ban size={16} />
 												{:else if check.conclusion === 'cancelled'}
-													<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>
+													<Ban size={16} />
 												{:else if check.conclusion === 'neutral'}
-													<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>
+													<MinusCircle size={16} />
 												{:else if check.status === 'in_progress' || check.status === 'queued'}
-													<svg class="icon spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+													<Loader2 size={16} class="spin" />
 												{:else}
-													<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>
+													<MinusCircle size={16} />
 												{/if}
 											</span>
 											<span class="check-name">{check.name}</span>
@@ -1683,46 +1742,46 @@
 													{formatDuration(duration)}
 												</span>
 											{/if}
-										<span class="check-expand-icon">
-											{#if isExpanded}
-												<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-											{:else}
-												<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+											<span class="check-expand-icon">
+												{#if isExpanded}
+													<ChevronDown size={16} />
+												{:else}
+													<ChevronRight size={16} />
+												{/if}
+											</span>
+											{#if check.detailsUrl}
+												<a
+													class="check-link"
+													href={check.detailsUrl}
+													target="_blank"
+													rel="noopener noreferrer"
+													onclick={(e) => {
+														e.stopPropagation();
+														check.detailsUrl && BrowserOpenURL(check.detailsUrl);
+													}}
+													title="View on GitHub"
+												>
+													<ExternalLink size={14} />
+												</a>
 											{/if}
-										</span>
-										{#if check.detailsUrl}
-											<a
-												class="check-link"
-												href={check.detailsUrl}
-												target="_blank"
-												rel="noopener noreferrer"
-												onclick={(e) => {
-													e.stopPropagation();
-													check.detailsUrl && BrowserOpenURL(check.detailsUrl);
-												}}
-												title="View on GitHub"
-											>
-												<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
-											</a>
-										{/if}
 										</button>
 									{:else}
 										<div class="check-row {statusClass}">
 											<span class="check-indicator {statusClass}">
 												{#if check.conclusion === 'success'}
-													<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg>
+													<CheckCircle2 size={16} />
 												{:else if check.conclusion === 'failure'}
-													<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+													<XCircle size={16} />
 												{:else if check.conclusion === 'skipped'}
-													<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 9.06 12 12l7-2.94V17a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"/><path d="m12 12 7-2.94-7-2.94-7 2.94z"/><path d="M4 22V5.06"/></svg>
+													<Ban size={16} />
 												{:else if check.conclusion === 'cancelled'}
-													<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>
+													<Ban size={16} />
 												{:else if check.conclusion === 'neutral'}
-													<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>
+													<MinusCircle size={16} />
 												{:else if check.status === 'in_progress' || check.status === 'queued'}
-													<svg class="icon spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+													<Loader2 size={16} class="spin" />
 												{:else}
-													<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>
+													<MinusCircle size={16} />
 												{/if}
 											</span>
 											<span class="check-name">{check.name}</span>
@@ -1743,7 +1802,7 @@
 													onclick={() => check.detailsUrl && BrowserOpenURL(check.detailsUrl)}
 													title="View on GitHub"
 												>
-													<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+													<ExternalLink size={14} />
 												</a>
 											{/if}
 										</div>
@@ -1752,18 +1811,19 @@
 									<!-- Expanded Annotations Section -->
 									{#if isFailed && isExpanded}
 										<div class="check-annotations">
-										{#if isLoadingAnnotations}
-											<div class="check-annotations-loading">
-												<svg class="icon spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-												<span>Loading annotations...</span>
-											</div>
-										{:else if hasAnnotations}
-												{#each checkAnnotations[check.name] as annotation (annotation.path + annotation.startLine)}
+											{#if isLoadingAnnotations}
+												<div class="check-annotations-loading">
+													<Loader2 size={16} class="spin" />
+													<span>Loading annotations...</span>
+												</div>
+											{:else if hasAnnotations}
+												{#each filteredResult.annotations as annotation (annotation.path + annotation.startLine)}
 													<div class="check-annotation-item level-{annotation.level}">
 														<button
 															class="check-annotation-path"
 															type="button"
-															onclick={() => navigateToAnnotationFile(annotation.path)}
+															onclick={() =>
+																navigateToAnnotationFile(annotation.path, annotation.startLine)}
 														>
 															<span class="path-text">{annotation.path}:{annotation.startLine}</span
 															>
@@ -1777,9 +1837,18 @@
 														<div class="check-annotation-message">{annotation.message}</div>
 													</div>
 												{/each}
+												{#if filteredResult.filteredCount > 0}
+													<div class="check-annotations-more">
+														+{filteredResult.filteredCount} more in other files
+													</div>
+												{/if}
 											{:else}
 												<div class="check-annotations-empty">
-													<span>No detailed annotations available</span>
+													{#if !check.checkRunId}
+														<span>Check run ID not available</span>
+													{:else}
+														<span>No annotations for this check</span>
+													{/if}
 												</div>
 											{/if}
 										</div>
@@ -2088,17 +2157,17 @@
 
 	/* Check Annotations Section */
 	.check-annotations {
-		padding: 0 12px 12px 48px;
+		padding: 0 16px 16px 56px;
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
+		gap: 12px;
 	}
 
 	.check-annotations-loading {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		padding: 12px;
+		padding: 16px;
 		color: var(--muted);
 		font-size: 12px;
 	}
@@ -2108,47 +2177,65 @@
 	}
 
 	.check-annotations-empty {
-		padding: 12px;
+		padding: 16px;
 		color: var(--muted);
 		font-size: 12px;
 		font-style: italic;
 	}
 
+	.check-annotations-more {
+		padding: 12px 16px;
+		color: var(--muted);
+		font-size: 11px;
+		font-style: italic;
+		text-align: center;
+		border-top: 1px solid var(--panel-border, rgba(255, 255, 255, 0.05));
+	}
+
 	.check-annotation-item {
-		padding: 10px 12px;
-		border-radius: 8px;
+		padding: 14px 16px;
+		border-radius: 10px;
 		background: rgba(255, 255, 255, 0.03);
-		border-left: 2px solid transparent;
+		border-left: 3px solid transparent;
+		transition:
+			background 0.15s ease,
+			transform 0.1s ease;
+	}
+
+	.check-annotation-item:hover {
+		background: rgba(255, 255, 255, 0.06);
+		transform: translateX(2px);
 	}
 
 	.check-annotation-item.level-notice {
 		border-left-color: #58a6ff;
-		background: rgba(88, 166, 255, 0.05);
+		background: rgba(88, 166, 255, 0.08);
 	}
 
 	.check-annotation-item.level-warning {
 		border-left-color: #d29922;
-		background: rgba(210, 153, 34, 0.05);
+		background: rgba(210, 153, 34, 0.08);
 	}
 
 	.check-annotation-item.level-failure {
 		border-left-color: #f85149;
-		background: rgba(248, 81, 73, 0.05);
+		background: rgba(248, 81, 73, 0.08);
 	}
 
 	.check-annotation-path {
 		display: flex;
 		align-items: center;
-		gap: 4px;
+		gap: 6px;
 		font-size: 12px;
 		font-family: var(--font-mono);
 		color: var(--accent);
 		background: none;
 		border: none;
-		padding: 0;
+		padding: 4px 0;
 		cursor: pointer;
 		text-align: left;
-		margin-bottom: 4px;
+		margin-bottom: 8px;
+		font-weight: 500;
 	}
 
 	.check-annotation-path:hover {
@@ -2161,16 +2248,16 @@
 	}
 
 	.check-annotation-title {
-		font-size: 12px;
+		font-size: 13px;
 		font-weight: 600;
 		color: var(--text);
-		margin-bottom: 4px;
+		margin-bottom: 6px;
 	}
 
 	.check-annotation-message {
 		font-size: 12px;
 		color: var(--muted);
-		line-height: 1.5;
+		line-height: 1.6;
 		white-space: pre-wrap;
 	}
 
@@ -2588,6 +2675,12 @@
 
 	.pr-badge-checks .spin {
 		animation: spin 1s linear infinite;
+	}
+
+	.pr-badge-checks svg {
+		width: 14px;
+		height: 14px;
+		flex-shrink: 0;
 	}
 
 	.pr-badge-sync {
@@ -3818,6 +3911,24 @@
 	@media (max-width: 720px) {
 		.overlay {
 			padding: 0;
+		}
+	}
+
+	/* Line highlight animation for annotation navigation */
+	:global(.highlight-line) {
+		animation: line-highlight 2s ease-out;
+	}
+
+	:global(.highlight-line td) {
+		background: rgba(210, 153, 34, 0.2) !important;
+	}
+
+	@keyframes line-highlight {
+		0% {
+			background: rgba(210, 153, 34, 0.4);
+		}
+		100% {
+			background: transparent;
 		}
 	}
 </style>
