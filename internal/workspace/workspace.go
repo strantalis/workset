@@ -249,6 +249,17 @@ func WorktreeDirName(branch string) string {
 	return strings.ReplaceAll(branch, "/", "__")
 }
 
+func WorkspaceDirName(name string) string {
+	if name == "" {
+		return ""
+	}
+	dir := strings.ReplaceAll(name, "/", "__")
+	if sep := string(os.PathSeparator); sep != "/" {
+		dir = strings.ReplaceAll(dir, sep, "__")
+	}
+	return dir
+}
+
 func BranchNameFromDir(name string) string {
 	if name == "" {
 		return ""

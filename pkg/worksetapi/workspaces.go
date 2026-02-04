@@ -66,7 +66,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 			}
 			base = cwd
 		}
-		root = filepath.Join(base, name)
+		root = filepath.Join(base, workspace.WorkspaceDirName(name))
 	}
 	root, err = filepath.Abs(root)
 	if err != nil {
@@ -366,9 +366,15 @@ func (s *Service) resolveWorkspace(ctx context.Context, cfg *config.GlobalConfig
 	if ref, ok := cfg.Workspaces[arg]; ok {
 		root = ref.Path
 	} else if cfg.Defaults.WorkspaceRoot != "" {
-		candidate := filepath.Join(cfg.Defaults.WorkspaceRoot, arg)
-		if _, err := os.Stat(candidate); err == nil {
-			root = candidate
+		candidates := []string{filepath.Join(cfg.Defaults.WorkspaceRoot, arg)}
+		if sanitized := workspace.WorkspaceDirName(arg); sanitized != "" && sanitized != arg {
+			candidates = append(candidates, filepath.Join(cfg.Defaults.WorkspaceRoot, sanitized))
+		}
+		for _, candidate := range candidates {
+			if _, err := os.Stat(candidate); err == nil {
+				root = candidate
+				break
+			}
 		}
 	}
 	if root == "" {
