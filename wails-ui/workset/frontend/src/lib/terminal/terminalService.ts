@@ -357,7 +357,11 @@ const encodeClipboardText = (value: string): string => {
 			}
 			return btoa(binary);
 		}
-		return btoa(value);
+		try {
+			return btoa(value);
+		} catch {
+			return '';
+		}
 	}
 	return '';
 };
