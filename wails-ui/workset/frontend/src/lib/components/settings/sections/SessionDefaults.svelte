@@ -73,6 +73,16 @@
 			],
 		},
 		{
+			id: 'terminalDebugOverlay',
+			label: 'Debug overlay',
+			description: 'Shows terminal debug stats like bytes in/out and backlog.',
+			type: 'select',
+			options: [
+				{ label: 'Off', value: 'off' },
+				{ label: 'On', value: 'on' },
+			],
+		},
+		{
 			id: 'terminalIdleTimeout',
 			label: 'Terminal idle timeout',
 			description: 'Idle terminals are closed after this duration. Use 0 to disable.',

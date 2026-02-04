@@ -35,6 +35,9 @@ func TestGetConfig(t *testing.T) {
 	if cfg.Defaults.TerminalProtocolLog == "" {
 		t.Fatalf("unexpected terminal protocol log default: %q", cfg.Defaults.TerminalProtocolLog)
 	}
+	if cfg.Defaults.TerminalDebugOverlay == "" {
+		t.Fatalf("unexpected terminal debug overlay default: %q", cfg.Defaults.TerminalDebugOverlay)
+	}
 }
 
 func TestSetDefaultUpdatesConfig(t *testing.T) {
@@ -97,6 +100,7 @@ func TestSetDefaultVariousKeys(t *testing.T) {
 		"defaults.terminal_renderer":         "webgl",
 		"defaults.terminal_idle_timeout":     "0",
 		"defaults.terminal_protocol_log":     "on",
+		"defaults.terminal_debug_overlay":    "off",
 	}
 	for key, value := range cases {
 		if _, _, err := env.svc.SetDefault(context.Background(), key, value); err != nil {
@@ -124,5 +128,8 @@ func TestSetDefaultVariousKeys(t *testing.T) {
 	}
 	if cfg.Defaults.TerminalProtocolLog != "on" {
 		t.Fatalf("terminal protocol log default not set")
+	}
+	if cfg.Defaults.TerminalDebugOverlay != "off" {
+		t.Fatalf("terminal debug overlay default not set")
 	}
 }

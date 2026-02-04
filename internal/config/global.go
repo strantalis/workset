@@ -154,6 +154,7 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 		"defaults.terminal_renderer":         defaults.Defaults.TerminalRenderer,
 		"defaults.terminal_idle_timeout":     defaults.Defaults.TerminalIdleTimeout,
 		"defaults.terminal_protocol_log":     defaults.Defaults.TerminalProtocolLog,
+		"defaults.terminal_debug_overlay":    defaults.Defaults.TerminalDebugOverlay,
 		"github.cli_path":                    defaults.GitHub.CLIPath,
 		"hooks.enabled":                      defaults.Hooks.Enabled,
 		"hooks.on_error":                     defaults.Hooks.OnError,
@@ -226,6 +227,9 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 	}
 	if cfg.Defaults.TerminalProtocolLog == "" {
 		cfg.Defaults.TerminalProtocolLog = defaults.Defaults.TerminalProtocolLog
+	}
+	if cfg.Defaults.TerminalDebugOverlay == "" {
+		cfg.Defaults.TerminalDebugOverlay = defaults.Defaults.TerminalDebugOverlay
 	}
 	if cfg.Hooks.OnError == "" {
 		cfg.Hooks.OnError = defaults.Hooks.OnError
