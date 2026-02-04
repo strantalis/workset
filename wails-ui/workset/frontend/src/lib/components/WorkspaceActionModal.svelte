@@ -231,11 +231,11 @@
 	let removeRepoStatusRefreshing = $state(false);
 
 	const removeConfirmValid = $derived(
-		!removeDeleteFiles || removeConfirmText.trim().toUpperCase() === 'DELETE',
+		!removeDeleteFiles || removeConfirmText === 'DELETE',
 	);
 	const removeRepoConfirmRequired = $derived(removeDeleteWorktree);
 	const removeRepoConfirmValid = $derived(
-		!removeRepoConfirmRequired || removeRepoConfirmText.trim().toUpperCase() === 'DELETE',
+		!removeRepoConfirmRequired || removeRepoConfirmText === 'DELETE',
 	);
 	const removeRepoStatus = $derived(
 		workspaceId && repoName
@@ -285,6 +285,10 @@
 							: mode === 'remove-repo'
 								? 'Remove repo'
 								: 'Workspace action',
+	);
+
+	const modalSize = $derived(
+		mode === 'create' || mode === 'add-repo' ? 'wide' : 'md',
 	);
 
 	const formatError = (err: unknown, fallback: string): string => {
@@ -528,7 +532,7 @@
 <Modal
 	title={modeTitle}
 	subtitle={mode === 'create' ? '' : (workspace?.name ?? '')}
-	size="wide"
+	size={modalSize}
 	headerAlign="left"
 	{onClose}
 	disableClose={removing}
