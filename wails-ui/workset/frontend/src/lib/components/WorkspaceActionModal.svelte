@@ -33,7 +33,6 @@
 	import Alert from './ui/Alert.svelte';
 	import Button from './ui/Button.svelte';
 	import Modal from './Modal.svelte';
-	import Tooltip from './Tooltip.svelte';
 
 	interface Props {
 		onClose: () => void;
@@ -99,14 +98,6 @@
 	// Final name: custom override > generated > plain text input
 	const finalName = $derived(customizeName || generatedName || primaryInput.trim());
 
-	// Check if anything is selected
-	const hasAnySelection = $derived(
-		primaryInput.trim() || selectedAliases.size > 0 || selectedGroups.size > 0,
-	);
-
-	// Show name customization when anything is selected
-	const showNameCustomization = $derived(hasAnySelection);
-
 	// Tab filtering logic
 	const filteredAliases = $derived(
 		searchQuery
@@ -156,7 +147,9 @@
 
 	// Existing repos in workspace (read-only context for add-repo mode)
 	const existingRepos = $derived(
-		mode === 'add-repo' && workspace ? (workspace as Workspace).repos.map((r: Repo) => ({ name: r.name })) : []
+		mode === 'add-repo' && workspace
+			? (workspace as Workspace).repos.map((r: Repo) => ({ name: r.name }))
+			: [],
 	);
 
 	// Regenerate alternatives when name source changes
@@ -176,12 +169,6 @@
 			activeTab = 'direct';
 		}
 	});
-
-	function regenerateName(): void {
-		if (nameSource) {
-			customizeName = generateWorkspaceName(nameSource);
-		}
-	}
 
 	function selectAlternative(name: string): void {
 		customizeName = name;
@@ -775,7 +762,9 @@
 						{#if alternatives.length > 0}
 							<div class="alt-chips">
 								{#each alternatives as alt, i (i)}
-									<button type="button" class="alt-chip" onclick={() => selectAlternative(alt)}>{alt}</button>
+									<button type="button" class="alt-chip" onclick={() => selectAlternative(alt)}
+										>{alt}</button
+									>
 								{/each}
 							</div>
 						{/if}
@@ -2256,5 +2245,4 @@
 		background: rgba(255, 255, 255, 0.1);
 		color: var(--muted);
 	}
-
 </style>

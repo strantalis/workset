@@ -81,7 +81,7 @@ func sessionStartCommand() *cli.Command {
 				return usageError(ctx, cmd, "workspace required: pass -w <name|path> or set defaults.workspace (example: workset session start -w demo -- zsh)")
 			}
 
-			svc := apiService(cmd)
+			svc := apiService(ctx, cmd)
 			input := worksetapi.SessionStartInput{
 				Workspace:   worksetapi.WorkspaceSelector{Value: workspaceArg},
 				Backend:     cmd.String("backend"),
@@ -183,7 +183,7 @@ func sessionAttachCommand() *cli.Command {
 				return usageError(ctx, cmd, "workspace required: pass -w <name|path> or set defaults.workspace")
 			}
 
-			svc := apiService(cmd)
+			svc := apiService(ctx, cmd)
 			input := worksetapi.SessionAttachInput{
 				Workspace: worksetapi.WorkspaceSelector{Value: workspaceArg},
 				Backend:   cmd.String("backend"),
@@ -276,7 +276,7 @@ func sessionStopCommand() *cli.Command {
 				return usageError(ctx, cmd, "workspace required: pass -w <name|path> or set defaults.workspace")
 			}
 
-			svc := apiService(cmd)
+			svc := apiService(ctx, cmd)
 			input := worksetapi.SessionStopInput{
 				Workspace: worksetapi.WorkspaceSelector{Value: workspaceArg},
 				Backend:   cmd.String("backend"),
@@ -322,7 +322,7 @@ func sessionListCommand() *cli.Command {
 			if workspaceArg == "" {
 				workspaceArg = strings.TrimSpace(cmd.String("workspace"))
 			}
-			svc := apiService(cmd)
+			svc := apiService(ctx, cmd)
 			result, err := svc.ListSessions(ctx, worksetapi.WorkspaceSelector{Value: workspaceArg})
 			if err != nil {
 				return err
@@ -410,7 +410,7 @@ func sessionShowCommand() *cli.Command {
 			if workspaceArg == "" {
 				workspaceArg = strings.TrimSpace(cmd.String("workspace"))
 			}
-			svc := apiService(cmd)
+			svc := apiService(ctx, cmd)
 			record, info, err := svc.ShowSession(ctx, worksetapi.SessionShowInput{
 				Workspace: worksetapi.WorkspaceSelector{Value: workspaceArg},
 				Name:      firstNonEmpty(strings.TrimSpace(cmd.String("name")), strings.TrimSpace(cmd.Args().Get(1))),

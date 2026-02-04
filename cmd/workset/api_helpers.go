@@ -1,13 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/strantalis/workset/pkg/worksetapi"
 	"github.com/urfave/cli/v3"
 )
 
-func apiService(cmd *cli.Command) *worksetapi.Service {
+func apiService(ctx context.Context, cmd *cli.Command) *worksetapi.Service {
+	_, _ = worksetapi.EnsureLoginEnv(ctx)
 	opts := worksetapi.Options{
 		ConfigPath: cmd.String("config"),
 	}

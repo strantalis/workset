@@ -43,7 +43,8 @@
 		{
 			id: 'agentLaunch',
 			label: 'Agent launch mode',
-			description: 'Auto uses a shell and PTY fallback. Strict requires an agent path with directory separators.',
+			description:
+				'Auto uses a shell and PTY fallback. Strict requires an agent path with directory separators.',
 			type: 'select',
 			options: [
 				{ label: 'Auto', value: 'auto' },
@@ -225,7 +226,8 @@
 								</Button>
 							</div>
 							<div class="agent-note">
-								Refresh PATH and SSH agent variables from your login shell.
+								Reloads PATH and SSH agent variables from your login shell without restarting the
+								app.
 							</div>
 							{#if envMessage}
 								<div class="agent-note ok">{envMessage}</div>

@@ -40,7 +40,7 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	logRestartf("app_startup build_marker=restart-logging-v2")
-	ensureDefaultPath()
+	_, _ = worksetapi.EnsureLoginEnv(ctx)
 	ensureDevSessiondSocket()
 	setSessiondPathFromCwd()
 	ensureSessiondUpToDate(a)

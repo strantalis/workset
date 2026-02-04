@@ -45,7 +45,7 @@ func newCommand() *cli.Command {
 			if name == "" {
 				return usageError(ctx, cmd, "workspace name required")
 			}
-			svc := apiService(cmd)
+			svc := apiService(ctx, cmd)
 			result, err := svc.CreateWorkspace(ctx, worksetapi.WorkspaceCreateInput{
 				Name:   name,
 				Path:   cmd.String("path"),
@@ -141,7 +141,7 @@ func listCommand() *cli.Command {
 		Usage: "List registered workspaces",
 		Flags: flags,
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			svc := apiService(cmd)
+			svc := apiService(ctx, cmd)
 			result, err := svc.ListWorkspaces(ctx)
 			if err != nil {
 				return err
@@ -207,7 +207,7 @@ func removeWorkspaceCommand() *cli.Command {
 				arg = strings.TrimSpace(cmd.String("workspace"))
 			}
 			deleteRequested := cmd.Bool("delete")
-			svc := apiService(cmd)
+			svc := apiService(ctx, cmd)
 			input := worksetapi.WorkspaceDeleteInput{
 				Selector:     worksetapi.WorkspaceSelector{Value: arg},
 				DeleteFiles:  deleteRequested,
@@ -291,7 +291,7 @@ func statusCommand() *cli.Command {
 			workspaceFlag(true),
 		}),
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			svc := apiService(cmd)
+			svc := apiService(ctx, cmd)
 			result, err := svc.StatusWorkspace(ctx, worksetapi.WorkspaceSelector{Value: cmd.String("workspace")})
 			if err != nil {
 				return err

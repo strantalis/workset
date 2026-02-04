@@ -46,7 +46,7 @@ func hooksCommand() *cli.Command {
 					if repo == "" {
 						return usageError(ctx, cmd, "usage: workset hooks run -w <workspace> <repo>")
 					}
-					svc := apiService(cmd)
+					svc := apiService(ctx, cmd)
 					result, err := svc.RunHooks(ctx, worksetapi.HooksRunInput{
 						Workspace: worksetapi.WorkspaceSelector{Value: cmd.String("workspace")},
 						Repo:      repo,

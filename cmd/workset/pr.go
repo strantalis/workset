@@ -90,7 +90,7 @@ func prCreateCommand() *cli.Command {
 			}
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			svc := apiService(cmd)
+			svc := apiService(ctx, cmd)
 			mode := outputModeFromContext(cmd)
 			workspace := cmd.String("workspace")
 			repo := cmd.String("repo")
@@ -240,7 +240,7 @@ func prStatusCommand() *cli.Command {
 			}
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			svc := apiService(cmd)
+			svc := apiService(ctx, cmd)
 			result, err := svc.GetPullRequestStatus(ctx, worksetapi.PullRequestStatusInput{
 				Workspace: worksetapi.WorkspaceSelector{Value: cmd.String("workspace")},
 				Repo:      cmd.String("repo"),
@@ -290,7 +290,7 @@ func prTrackedCommand() *cli.Command {
 			}
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			svc := apiService(cmd)
+			svc := apiService(ctx, cmd)
 			result, err := svc.GetTrackedPullRequest(ctx, worksetapi.PullRequestTrackedInput{
 				Workspace: worksetapi.WorkspaceSelector{Value: cmd.String("workspace")},
 				Repo:      cmd.String("repo"),
@@ -340,7 +340,7 @@ func prChecksCommand() *cli.Command {
 			}
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			svc := apiService(cmd)
+			svc := apiService(ctx, cmd)
 			result, err := svc.GetPullRequestStatus(ctx, worksetapi.PullRequestStatusInput{
 				Workspace: worksetapi.WorkspaceSelector{Value: cmd.String("workspace")},
 				Repo:      cmd.String("repo"),
@@ -397,7 +397,7 @@ func prReviewsCommand() *cli.Command {
 			}
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			svc := apiService(cmd)
+			svc := apiService(ctx, cmd)
 			result, err := svc.ListPullRequestReviewComments(ctx, worksetapi.PullRequestReviewsInput{
 				Workspace: worksetapi.WorkspaceSelector{Value: cmd.String("workspace")},
 				Repo:      cmd.String("repo"),
@@ -444,7 +444,7 @@ func prGenerateCommand() *cli.Command {
 			}
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			svc := apiService(cmd)
+			svc := apiService(ctx, cmd)
 			result, err := svc.GeneratePullRequestText(ctx, worksetapi.PullRequestGenerateInput{
 				Workspace: worksetapi.WorkspaceSelector{Value: cmd.String("workspace")},
 				Repo:      cmd.String("repo"),
@@ -501,7 +501,7 @@ func prReplyCommand() *cli.Command {
 			}
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			svc := apiService(cmd)
+			svc := apiService(ctx, cmd)
 			result, err := svc.ReplyToReviewComment(ctx, worksetapi.ReplyToReviewCommentInput{
 				Workspace: worksetapi.WorkspaceSelector{Value: cmd.String("workspace")},
 				Repo:      cmd.String("repo"),
@@ -552,7 +552,7 @@ func prEditCommand() *cli.Command {
 			}
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			svc := apiService(cmd)
+			svc := apiService(ctx, cmd)
 			result, err := svc.EditReviewComment(ctx, worksetapi.EditReviewCommentInput{
 				Workspace: worksetapi.WorkspaceSelector{Value: cmd.String("workspace")},
 				Repo:      cmd.String("repo"),
@@ -604,7 +604,7 @@ func prDeleteCommand() *cli.Command {
 				_, err := fmt.Fprintln(commandWriter(cmd), "Use --confirm to delete the comment")
 				return err
 			}
-			svc := apiService(cmd)
+			svc := apiService(ctx, cmd)
 			result, err := svc.DeleteReviewComment(ctx, worksetapi.DeleteReviewCommentInput{
 				Workspace: worksetapi.WorkspaceSelector{Value: cmd.String("workspace")},
 				Repo:      cmd.String("repo"),
@@ -651,7 +651,7 @@ func prResolveCommand() *cli.Command {
 			}
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			svc := apiService(cmd)
+			svc := apiService(ctx, cmd)
 			resolve := !cmd.Bool("unresolve")
 			result, err := svc.ResolveReviewThread(ctx, worksetapi.ResolveReviewThreadInput{
 				Workspace: worksetapi.WorkspaceSelector{Value: cmd.String("workspace")},
