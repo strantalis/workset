@@ -506,6 +506,7 @@
 			opacity 0.15s ease,
 			background 0.15s ease;
 		touch-action: none;
+		position: relative;
 	}
 
 	.split.row > .split-divider {
@@ -520,11 +521,48 @@
 		margin: 0;
 	}
 
+	/* Expanded hit area (12px) for easier grabbing */
+	.split-divider::before {
+		content: '';
+		position: absolute;
+	}
+
+	.split.row > .split-divider::before {
+		top: 0;
+		bottom: 0;
+		width: 12px;
+		left: 50%;
+		transform: translateX(-50%);
+	}
+
+	.split.column > .split-divider::before {
+		left: 0;
+		right: 0;
+		height: 12px;
+		top: 50%;
+		transform: translateY(-50%);
+	}
+
 	.split-divider:hover,
 	.split-divider:focus,
 	.split-divider.active {
 		opacity: 1;
 		background: var(--accent);
+	}
+
+	/* Make divider thicker on hover for better visibility */
+	.split.row > .split-divider:hover,
+	.split.row > .split-divider:focus,
+	.split.row > .split-divider.active {
+		width: 3px;
+		margin: 0 -1px;
+	}
+
+	.split.column > .split-divider:hover,
+	.split.column > .split-divider:focus,
+	.split.column > .split-divider.active {
+		height: 3px;
+		margin: -1px 0;
 	}
 
 	.split-divider:focus {

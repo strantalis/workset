@@ -22,11 +22,18 @@
 	import WorkspaceTree from './lib/components/WorkspaceTree.svelte';
 	import { fetchGitHubAuthInfo } from './lib/api';
 
+	// Sidebar resize constraints
+	const MIN_SIDEBAR_WIDTH = 200;
+	const MAX_SIDEBAR_WIDTH = 480;
+	const DEFAULT_SIDEBAR_WIDTH = 280;
+
 	const hasWorkspace = $derived($activeWorkspace !== null);
 	const hasRepo = $derived($activeRepo !== null);
 	const hasWorkspaces = $derived($workspaces.length > 0);
 	let settingsOpen = $state(false);
 	let sidebarCollapsed = $state(false);
+	let sidebarWidth = $state(DEFAULT_SIDEBAR_WIDTH);
+	let isResizingSidebar = $state(false);
 	let actionOpen = $state(false);
 	let authModalOpen = $state(false);
 	let authModalDismissed = $state(false);
@@ -73,14 +80,56 @@
 		authModalDismissed = true;
 	};
 
+	// Sidebar resize handlers
+	const handleSidebarResizeStart = (event: PointerEvent): void => {
+		if (sidebarCollapsed) return;
+		event.preventDefault();
+		isResizingSidebar = true;
+		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+	};
+
+	const handleSidebarResizeMove = (event: PointerEvent): void => {
+		if (!isResizingSidebar) return;
+		const newWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, event.clientX));
+		sidebarWidth = newWidth;
+	};
+
+	const handleSidebarResizeEnd = (event: PointerEvent): void => {
+		if (!isResizingSidebar) return;
+		isResizingSidebar = false;
+		(event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+	};
+
 	onMount(() => {
 		void loadWorkspaces();
 		void checkGitHubAuth();
 	});
 </script>
 
-<div class:collapsed={sidebarCollapsed} class="app">
+<div
+	class:collapsed={sidebarCollapsed}
+	class:resizing={isResizingSidebar}
+	class="app"
+	style={sidebarCollapsed ? '' : `--sidebar-width: ${sidebarWidth}px`}
+>
 	<aside class:collapsed={sidebarCollapsed} class:repo-view={hasRepo} class="sidebar">
+		{#if !sidebarCollapsed}
+			<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+			<div
+				class="sidebar-resize-handle"
+				class:active={isResizingSidebar}
+				role="separator"
+				tabindex="0"
+				aria-orientation="vertical"
+				aria-valuenow={sidebarWidth}
+				aria-valuemin={MIN_SIDEBAR_WIDTH}
+				aria-valuemax={MAX_SIDEBAR_WIDTH}
+				onpointerdown={handleSidebarResizeStart}
+				onpointermove={handleSidebarResizeMove}
+				onpointerup={handleSidebarResizeEnd}
+				onpointercancel={handleSidebarResizeEnd}
+			></div>
+		{/if}
 		<WorkspaceTree
 			workspaces={$workspaces}
 			activeWorkspaceId={$activeWorkspaceId}
@@ -247,13 +296,18 @@
 	.app {
 		height: 100vh;
 		display: grid;
-		grid-template-columns: 280px 1fr;
+		grid-template-columns: var(--sidebar-width, 280px) 1fr;
 		transition: grid-template-columns 160ms ease;
 		overflow: hidden;
 	}
 
 	.app.collapsed {
 		grid-template-columns: 72px 1fr;
+	}
+
+	.app.resizing {
+		transition: none;
+		user-select: none;
 	}
 
 	.topbar {
@@ -322,6 +376,43 @@
 
 	.sidebar.repo-view {
 		background: var(--panel-soft);
+	}
+
+	.sidebar-resize-handle {
+		position: absolute;
+		right: -2px;
+		top: 0;
+		bottom: 0;
+		width: 4px;
+		cursor: col-resize;
+		background: transparent;
+		z-index: 101;
+		transition:
+			background 0.15s ease,
+			width 0.15s ease;
+		touch-action: none;
+	}
+
+	/* Expanded hit area (12px total) for easier grabbing */
+	.sidebar-resize-handle::after {
+		content: '';
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		width: 12px;
+		left: 50%;
+		transform: translateX(-50%);
+	}
+
+	.sidebar-resize-handle:hover,
+	.sidebar-resize-handle:focus,
+	.sidebar-resize-handle.active {
+		background: var(--accent);
+		width: 4px;
+	}
+
+	.sidebar-resize-handle:focus {
+		outline: none;
 	}
 
 	.main-area {
