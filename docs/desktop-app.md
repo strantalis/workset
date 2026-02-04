@@ -36,6 +36,7 @@ The app defaults to GitHub CLI. Open Settings -> GitHub to connect via CLI or a 
 - `defaults.terminal_protocol_log` enables sessiond protocol logging (restart daemon to apply).
 - `defaults.terminal_debug_overlay` shows the terminal debug overlay.
 - `defaults.agent` controls the generator used for PR/commit text and the default coding agent for terminals.
+- `defaults.agent_model` optionally overrides the model used for PR/commit text generation (terminal launcher is unaffected).
 - `defaults.agent_launch` controls whether agent commands run via a shell (`auto`) or require an agent path with directory separators (`strict`).
 
 For the full terminal architecture, see [Terminal Architecture](architecture/terminal.md).

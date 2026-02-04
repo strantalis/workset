@@ -783,9 +783,10 @@ func (s *Service) GeneratePullRequestText(ctx context.Context, input PullRequest
 	if agent == "" {
 		return PullRequestGenerateResult{}, ValidationError{Message: "defaults.agent is not configured"}
 	}
+	model := strings.TrimSpace(resolution.Defaults.AgentModel)
 
 	prompt := formatPRPrompt(resolution.Repo.Name, headBranch, patch)
-	result, err := s.runAgentPrompt(ctx, resolution.RepoPath, agent, prompt)
+	result, err := s.runAgentPrompt(ctx, resolution.RepoPath, agent, prompt, model)
 	if err != nil {
 		return PullRequestGenerateResult{}, err
 	}
@@ -897,15 +898,7 @@ func (s *Service) CommitAndPush(ctx context.Context, input CommitAndPushInput) (
 			return CommitAndPushResult{}, err
 		}
 		prompt := formatCommitPrompt(resolution.Repo.Name, branch, patch)
-		schema, err := ensureCommitSchema()
-		if err != nil {
-			return CommitAndPushResult{}, err
-		}
-		output, err := s.runAgentPromptRaw(ctx, resolution.RepoPath, agent, prompt, schema)
-		if err != nil {
-			return CommitAndPushResult{}, err
-		}
-		message, err = parseCommitJSON(output)
+		message, err = s.runCommitMessageWithModel(ctx, resolution.RepoPath, agent, prompt, resolution.Defaults.AgentModel)
 		if err != nil {
 			return CommitAndPushResult{}, err
 		}
@@ -1162,19 +1155,34 @@ func formatCommitPrompt(repoName, branch, patch string) string {
 	return builder.String()
 }
 
-func (s *Service) runAgentPrompt(ctx context.Context, repoPath, agent, prompt string) (PullRequestGeneratedJSON, error) {
+func (s *Service) runAgentPrompt(ctx context.Context, repoPath, agent, prompt, model string) (PullRequestGeneratedJSON, error) {
 	schema, err := ensurePRSchema()
 	if err != nil {
 		return PullRequestGeneratedJSON{}, err
 	}
-	output, err := s.runAgentPromptRaw(ctx, repoPath, agent, prompt, schema)
+	model = strings.TrimSpace(model)
+	output, err := s.runAgentPromptRaw(ctx, repoPath, agent, prompt, schema, model)
+	if err != nil {
+		if model == "" {
+			return PullRequestGeneratedJSON{}, err
+		}
+		output, err = s.runAgentPromptRaw(ctx, repoPath, agent, prompt, schema, "")
+		if err != nil {
+			return PullRequestGeneratedJSON{}, err
+		}
+	}
+	result, err := parseAgentJSON(output)
+	if err == nil || model == "" {
+		return result, err
+	}
+	output, err = s.runAgentPromptRaw(ctx, repoPath, agent, prompt, schema, "")
 	if err != nil {
 		return PullRequestGeneratedJSON{}, err
 	}
 	return parseAgentJSON(output)
 }
 
-func (s *Service) runAgentPromptRaw(ctx context.Context, repoPath, agent, prompt, schema string) (string, error) {
+func (s *Service) runAgentPromptRaw(ctx context.Context, repoPath, agent, prompt, schema, model string) (string, error) {
 	command := strings.Fields(agent)
 	if len(command) == 0 {
 		return "", ValidationError{Message: "agent command required"}
@@ -1194,6 +1202,7 @@ func (s *Service) runAgentPromptRaw(ctx context.Context, repoPath, agent, prompt
 	if err != nil {
 		return "", err
 	}
+	command = applyAgentModel(command, model)
 	if !settings.AllowPathGuess {
 		if !hasPathSeparator(command[0]) {
 			return "", ValidationError{Message: "strict agent launch requires a path with directory separators or agent CLI path"}
@@ -1244,6 +1253,33 @@ func (s *Service) runAgentPromptRaw(ctx context.Context, repoPath, agent, prompt
 		return "", ValidationError{Message: message}
 	}
 	return result.Stdout, nil
+}
+
+func (s *Service) runCommitMessageWithModel(ctx context.Context, repoPath, agent, prompt, model string) (string, error) {
+	schema, err := ensureCommitSchema()
+	if err != nil {
+		return "", err
+	}
+	model = strings.TrimSpace(model)
+	output, err := s.runAgentPromptRaw(ctx, repoPath, agent, prompt, schema, model)
+	if err != nil {
+		if model == "" {
+			return "", err
+		}
+		output, err = s.runAgentPromptRaw(ctx, repoPath, agent, prompt, schema, "")
+		if err != nil {
+			return "", err
+		}
+	}
+	message, err := parseCommitJSON(output)
+	if err == nil || model == "" {
+		return message, err
+	}
+	output, err = s.runAgentPromptRaw(ctx, repoPath, agent, prompt, schema, "")
+	if err != nil {
+		return "", err
+	}
+	return parseCommitJSON(output)
 }
 
 func wrapAgentCommandForShell(command []string, settings agentExecSettings) ([]string, error) {
@@ -1392,6 +1428,7 @@ func (s *Service) commitPullRequestChanges(ctx context.Context, resolution repoR
 	if agent == "" {
 		return ValidationError{Message: "defaults.agent is not configured"}
 	}
+	model := strings.TrimSpace(resolution.Defaults.AgentModel)
 	diffLimit := defaultDiffLimit
 	patch, err := buildRepoPatch(ctx, resolution.RepoPath, diffLimit, s.commands)
 	if err != nil {
@@ -1404,15 +1441,7 @@ func (s *Service) commitPullRequestChanges(ctx context.Context, resolution repoR
 		return err
 	}
 	prompt := formatCommitPrompt(resolution.Repo.Name, branch, patch)
-	schema, err := ensureCommitSchema()
-	if err != nil {
-		return err
-	}
-	output, err := s.runAgentPromptRaw(ctx, resolution.RepoPath, agent, prompt, schema)
-	if err != nil {
-		return err
-	}
-	message, err := parseCommitJSON(output)
+	message, err := s.runCommitMessageWithModel(ctx, resolution.RepoPath, agent, prompt, model)
 	if err != nil {
 		return err
 	}
@@ -1565,6 +1594,105 @@ func hasPromptArg(args []string) bool {
 		return true
 	}
 	return false
+}
+
+func applyAgentModel(command []string, model string) []string {
+	model = strings.TrimSpace(model)
+	if model == "" || len(command) == 0 {
+		return command
+	}
+	base := strings.ToLower(filepath.Base(command[0]))
+	if hasExplicitModelFlag(base, command[1:]) {
+		return command
+	}
+	switch base {
+	case "codex":
+		return insertModelArg(command, "-m", model)
+	case "claude":
+		return insertModelArg(command, "--model", model)
+	default:
+		return command
+	}
+}
+
+func hasExplicitModelFlag(command string, args []string) bool {
+	switch command {
+	case "codex":
+		return hasCodexModelFlag(args)
+	case "claude":
+		return hasClaudeModelFlag(args)
+	default:
+		return false
+	}
+}
+
+func hasCodexModelFlag(args []string) bool {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "-m" || arg == "--model":
+			return true
+		case strings.HasPrefix(arg, "-m=") || strings.HasPrefix(arg, "--model="):
+			return true
+		case arg == "-c" || arg == "--config":
+			if i+1 < len(args) && strings.HasPrefix(args[i+1], "model=") {
+				return true
+			}
+		case strings.HasPrefix(arg, "-c=") || strings.HasPrefix(arg, "--config="):
+			if strings.Contains(arg, "model=") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func hasClaudeModelFlag(args []string) bool {
+	for _, arg := range args {
+		switch {
+		case arg == "-m" || arg == "--model":
+			return true
+		case strings.HasPrefix(arg, "-m=") || strings.HasPrefix(arg, "--model="):
+			return true
+		}
+	}
+	return false
+}
+
+func insertModelArg(command []string, flag string, model string) []string {
+	if len(command) == 0 {
+		return command
+	}
+	args := command[1:]
+	idx := findPromptIndex(args)
+	if idx == -1 {
+		return append(command, flag, model)
+	}
+	out := make([]string, 0, len(command)+2)
+	out = append(out, command[0])
+	out = append(out, args[:idx]...)
+	out = append(out, flag, model)
+	out = append(out, args[idx:]...)
+	return out
+}
+
+func findPromptIndex(args []string) int {
+	for i := len(args) - 1; i >= 0; i-- {
+		if args[i] == "-" {
+			return i
+		}
+	}
+	for i := len(args) - 1; i >= 0; i-- {
+		arg := args[i]
+		if strings.HasPrefix(arg, "-") {
+			continue
+		}
+		if arg == "exec" || arg == "e" {
+			continue
+		}
+		return i
+	}
+	return -1
 }
 
 func ensurePRSchema() (string, error) {

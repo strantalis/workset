@@ -62,6 +62,8 @@ func setGlobalDefault(cfg *config.GlobalConfig, key, value string) error {
 		cfg.Defaults.SessionScreenHard = value
 	case "defaults.agent":
 		cfg.Defaults.Agent = value
+	case "defaults.agent_model":
+		cfg.Defaults.AgentModel = value
 	case "defaults.agent_launch":
 		mode, ok := parseAgentLaunchMode(value)
 		if !ok {

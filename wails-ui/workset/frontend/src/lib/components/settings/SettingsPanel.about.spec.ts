@@ -32,6 +32,7 @@ describe('SettingsPanel About Section', () => {
 		sessionTmuxRight: '',
 		sessionScreenHard: '',
 		agent: 'default',
+		agentModel: '',
 		agentLaunch: 'auto',
 		terminalIdleTimeout: '0',
 		terminalProtocolLog: 'off',

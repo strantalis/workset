@@ -41,6 +41,13 @@
 			],
 		},
 		{
+			id: 'agentModel',
+			label: 'Agent model override',
+			description:
+				'Optional model for PR and commit message generation only. Leave blank to use the agent default.',
+			type: 'text',
+		},
+		{
 			id: 'agentLaunch',
 			label: 'Agent launch mode',
 			description:
@@ -176,6 +183,20 @@
 						value={getValue(field.id)}
 						options={field.options ?? []}
 						onchange={(val) => onUpdate(field.id, val)}
+					/>
+				{:else if field.type === 'text'}
+					<input
+						id={field.id}
+						class="agent-input"
+						type="text"
+						value={getValue(field.id)}
+						placeholder="gpt-5.1-codex-mini"
+						spellcheck="false"
+						autocomplete="off"
+						oninput={(event) => {
+							const target = event.currentTarget as HTMLInputElement;
+							onUpdate(field.id, target.value);
+						}}
 					/>
 				{/if}
 				{#if field.id === 'agent'}
