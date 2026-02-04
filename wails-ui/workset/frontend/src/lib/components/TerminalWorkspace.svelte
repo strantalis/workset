@@ -13,7 +13,12 @@
 		TerminalLayoutNode as TerminalLayoutNodeType,
 		TerminalLayoutTab as TerminalLayoutTabType,
 	} from '../types';
-	import { closeTerminal } from '../terminal/terminalService';
+	import {
+	closeTerminal,
+	increaseFontSize,
+	decreaseFontSize,
+	resetFontSize,
+} from '../terminal/terminalService';
 
 	interface Props {
 		workspaceId: string;
@@ -812,6 +817,8 @@
 	const handleWorkspaceKeydown = (event: KeyboardEvent): void => {
 		if (!layout) return;
 
+		const isMod = event.metaKey || event.ctrlKey;
+
 		// Alt+Arrow: Navigate between panes
 		if (event.altKey && !event.ctrlKey && !event.metaKey) {
 			let direction: 'up' | 'down' | 'left' | 'right' | null = null;
@@ -840,6 +847,66 @@
 			const delta = event.shiftKey ? -1 : 1;
 			const nextIndex = (currentIndex + delta + pane.tabs.length) % pane.tabs.length;
 			handleSelectTab(layout.focusedPaneId, pane.tabs[nextIndex].id);
+		}
+
+		// Cmd/Ctrl+W: Close current tab
+		if (isMod && event.key === 'w' && !event.shiftKey && layout.focusedPaneId) {
+			event.preventDefault();
+			const pane = findPane(layout.root, layout.focusedPaneId);
+			if (pane && pane.activeTabId) {
+				handleCloseTab(layout.focusedPaneId, pane.activeTabId);
+			}
+		}
+
+		// Cmd/Ctrl+T: New tab in current pane
+		if (isMod && event.key === 't' && !event.shiftKey && layout.focusedPaneId) {
+			event.preventDefault();
+			void handleAddTab(layout.focusedPaneId);
+		}
+
+		// Cmd/Ctrl+\: Split vertically
+		if (isMod && event.key === '\\' && !event.shiftKey && layout.focusedPaneId) {
+			event.preventDefault();
+			void handleSplitPane(layout.focusedPaneId, 'row');
+		}
+
+		// Cmd/Ctrl+Shift+\: Split horizontally
+		if (isMod && event.key === '\\' && event.shiftKey && layout.focusedPaneId) {
+			event.preventDefault();
+			void handleSplitPane(layout.focusedPaneId, 'column');
+		}
+
+		// Cmd/Ctrl+1-9: Switch to tab by index
+		if (isMod && !event.shiftKey && !event.altKey && layout.focusedPaneId) {
+			const num = parseInt(event.key, 10);
+			if (num >= 1 && num <= 9) {
+				event.preventDefault();
+				const pane = findPane(layout.root, layout.focusedPaneId);
+				if (pane) {
+					const tabIndex = num - 1;
+					if (tabIndex < pane.tabs.length) {
+						handleSelectTab(layout.focusedPaneId, pane.tabs[tabIndex].id);
+					}
+				}
+			}
+		}
+
+		// Cmd/Ctrl+=: Increase font size (also handles Cmd/Ctrl++ on some keyboards)
+		if (isMod && (event.key === '=' || event.key === '+') && !event.altKey) {
+			event.preventDefault();
+			increaseFontSize();
+		}
+
+		// Cmd/Ctrl+-: Decrease font size
+		if (isMod && event.key === '-' && !event.altKey) {
+			event.preventDefault();
+			decreaseFontSize();
+		}
+
+		// Cmd/Ctrl+0: Reset font size
+		if (isMod && event.key === '0' && !event.shiftKey && !event.altKey) {
+			event.preventDefault();
+			resetFontSize();
 		}
 	};
 

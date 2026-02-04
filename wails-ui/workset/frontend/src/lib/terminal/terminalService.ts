@@ -218,6 +218,13 @@ const attachedTerminals = new Set<string>();
 const disposeTimers = new Map<string, number>();
 const DISPOSE_TTL_MS = 10 * 60 * 1000;
 
+// Font size configuration
+const DEFAULT_FONT_SIZE = 13;
+const MIN_FONT_SIZE = 8;
+const MAX_FONT_SIZE = 28;
+const FONT_SIZE_STEP = 1;
+let currentFontSize = DEFAULT_FONT_SIZE;
+
 const outputQueues = new Map<
 	string,
 	{ chunks: OutputChunk[]; bytes: number; scheduled: boolean }
@@ -1084,7 +1091,7 @@ const createTerminal = (): Terminal => {
 
 	const options: ITerminalOptions & ITerminalInitOnlyOptions & { rendererType?: string } = {
 		fontFamily: fontMono,
-		fontSize: 13,
+		fontSize: currentFontSize,
 		lineHeight: 1.4,
 		cursorBlink: true,
 		scrollback: 4000,
@@ -2418,3 +2425,39 @@ export const focusTerminalInstance = (workspaceId: string, terminalId: string): 
 export const shutdownTerminalService = (): void => {
 	cleanupListeners();
 };
+
+// Font size controls (VS Code style Cmd/Ctrl +/-)
+const applyFontSizeToAllTerminals = (): void => {
+	for (const handle of terminalHandles.values()) {
+		handle.terminal.options.fontSize = currentFontSize;
+		// Refit terminal to recalculate dimensions with new font size
+		try {
+			handle.fitAddon.fit();
+		} catch {
+			// Ignore fit errors for terminals not attached to DOM
+		}
+	}
+};
+
+export const increaseFontSize = (): void => {
+	if (currentFontSize < MAX_FONT_SIZE) {
+		currentFontSize = Math.min(currentFontSize + FONT_SIZE_STEP, MAX_FONT_SIZE);
+		applyFontSizeToAllTerminals();
+	}
+};
+
+export const decreaseFontSize = (): void => {
+	if (currentFontSize > MIN_FONT_SIZE) {
+		currentFontSize = Math.max(currentFontSize - FONT_SIZE_STEP, MIN_FONT_SIZE);
+		applyFontSizeToAllTerminals();
+	}
+};
+
+export const resetFontSize = (): void => {
+	if (currentFontSize !== DEFAULT_FONT_SIZE) {
+		currentFontSize = DEFAULT_FONT_SIZE;
+		applyFontSizeToAllTerminals();
+	}
+};
+
+export const getCurrentFontSize = (): number => currentFontSize;
