@@ -22,7 +22,7 @@ func configCommand() *cli.Command {
 				Usage: "Print the global config",
 				Flags: outputFlags(),
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					svc := apiService(cmd)
+					svc := apiService(ctx, cmd)
 					cfg, info, err := svc.GetConfig(ctx)
 					if err != nil {
 						return err
@@ -67,7 +67,7 @@ func configCommand() *cli.Command {
 					},
 				}),
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					svc := apiService(cmd)
+					svc := apiService(ctx, cmd)
 					result, err := svc.RecoverConfig(ctx, worksetapi.ConfigRecoverInput{
 						WorkspaceRoot: cmd.String("workspace-root"),
 						RebuildRepos:  cmd.Bool("rebuild-repos"),
@@ -122,7 +122,7 @@ func configCommand() *cli.Command {
 					if key == "" || value == "" {
 						return cli.Exit("usage: workset config set <key> <value>", 1)
 					}
-					svc := apiService(cmd)
+					svc := apiService(ctx, cmd)
 					result, info, err := svc.SetDefault(ctx, key, value)
 					if err != nil {
 						return err

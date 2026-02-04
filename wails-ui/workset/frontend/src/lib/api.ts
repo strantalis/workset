@@ -14,6 +14,7 @@ import type {
 	RepoDiffSummary,
 	RepoFileDiff,
 	AgentCLIStatus,
+	EnvSnapshotResult,
 	SettingsSnapshot,
 	AppVersion,
 	Workspace,
@@ -87,6 +88,7 @@ import {
 	SetGitHubToken,
 	CheckAgentStatus,
 	SetAgentCLIPath,
+	ReloadLoginEnv,
 } from '../../wailsjs/go/main/App';
 
 type WorkspaceSnapshot = {
@@ -116,6 +118,10 @@ type RepoDiffSnapshot = {
 
 export async function fetchAppVersion(): Promise<AppVersion> {
 	return (await GetAppVersion()) as AppVersion;
+}
+
+export async function reloadLoginEnv(): Promise<EnvSnapshotResult> {
+	return (await ReloadLoginEnv()) as EnvSnapshotResult;
 }
 
 export async function fetchGitHubAuthStatus(): Promise<GitHubAuthStatus> {

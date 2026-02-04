@@ -22,7 +22,7 @@ func groupCommand() *cli.Command {
 				Usage: "List groups",
 				Flags: outputFlags(),
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					svc := apiService(cmd)
+					svc := apiService(ctx, cmd)
 					result, err := svc.ListGroups(ctx)
 					if err != nil {
 						return err
@@ -74,7 +74,7 @@ func groupCommand() *cli.Command {
 					if name == "" {
 						return usageError(ctx, cmd, "group name required")
 					}
-					svc := apiService(cmd)
+					svc := apiService(ctx, cmd)
 					group, info, err := svc.GetGroup(ctx, name)
 					if err != nil {
 						return err
@@ -142,7 +142,7 @@ func groupCommand() *cli.Command {
 					if name == "" {
 						return usageError(ctx, cmd, "group name required")
 					}
-					svc := apiService(cmd)
+					svc := apiService(ctx, cmd)
 					result, info, err := svc.CreateGroup(ctx, worksetapi.GroupUpsertInput{
 						Name:        name,
 						Description: cmd.String("description"),
@@ -186,7 +186,7 @@ func groupCommand() *cli.Command {
 					if name == "" {
 						return usageError(ctx, cmd, "group name required")
 					}
-					svc := apiService(cmd)
+					svc := apiService(ctx, cmd)
 					result, info, err := svc.DeleteGroup(ctx, name)
 					if err != nil {
 						return err
@@ -228,7 +228,7 @@ func groupCommand() *cli.Command {
 					if groupName == "" || repoName == "" {
 						return usageError(ctx, cmd, "group and repo name required")
 					}
-					svc := apiService(cmd)
+					svc := apiService(ctx, cmd)
 					result, info, err := svc.AddGroupMember(ctx, worksetapi.GroupMemberInput{
 						GroupName: groupName,
 						RepoName:  repoName,
@@ -277,7 +277,7 @@ func groupCommand() *cli.Command {
 					if groupName == "" || repoName == "" {
 						return usageError(ctx, cmd, "group and repo name required")
 					}
-					svc := apiService(cmd)
+					svc := apiService(ctx, cmd)
 					result, info, err := svc.RemoveGroupMember(ctx, worksetapi.GroupMemberInput{
 						GroupName: groupName,
 						RepoName:  repoName,
@@ -322,7 +322,7 @@ func groupCommand() *cli.Command {
 					if groupName == "" {
 						return usageError(ctx, cmd, "group name required")
 					}
-					svc := apiService(cmd)
+					svc := apiService(ctx, cmd)
 					payload, info, err := svc.ApplyGroup(ctx, worksetapi.GroupApplyInput{
 						Workspace: worksetapi.WorkspaceSelector{Value: cmd.String("workspace")},
 						Name:      groupName,

@@ -27,7 +27,7 @@ func repoCommand() *cli.Command {
 				ArgsUsage: "-w <workspace>",
 				Flags:     appendOutputFlags([]cli.Flag{workspaceFlag(true)}),
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					svc := apiService(cmd)
+					svc := apiService(ctx, cmd)
 					result, err := svc.ListRepos(ctx, worksetapi.WorkspaceSelector{Value: cmd.String("workspace")})
 					if err != nil {
 						return err
@@ -93,7 +93,7 @@ func repoCommand() *cli.Command {
 					if raw == "" {
 						return usageError(ctx, cmd, "repo alias or source required")
 					}
-					svc := apiService(cmd)
+					svc := apiService(ctx, cmd)
 					workspaceValue := cmd.String("workspace")
 					result, err := svc.AddRepo(ctx, worksetapi.RepoAddInput{
 						Workspace: worksetapi.WorkspaceSelector{Value: cmd.String("workspace")},
@@ -227,7 +227,7 @@ func repoCommand() *cli.Command {
 					}
 					deleteWorktrees := cmd.Bool("delete-worktrees")
 					deleteLocal := cmd.Bool("delete-local")
-					svc := apiService(cmd)
+					svc := apiService(ctx, cmd)
 					input := worksetapi.RepoRemoveInput{
 						Workspace:       worksetapi.WorkspaceSelector{Value: cmd.String("workspace")},
 						Name:            name,
@@ -315,7 +315,7 @@ func repoAliasCommand() *cli.Command {
 				Usage: "List repo aliases",
 				Flags: outputFlags(),
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					svc := apiService(cmd)
+					svc := apiService(ctx, cmd)
 					result, err := svc.ListAliases(ctx)
 					if err != nil {
 						return err
@@ -381,7 +381,7 @@ func repoAliasCommand() *cli.Command {
 					if source == "" {
 						return usageError(ctx, cmd, fmt.Sprintf("source required to create alias %q (path or URL). Example: workset repo alias add --default-branch staging %s git@github.com:org/repo.git", name, name))
 					}
-					svc := apiService(cmd)
+					svc := apiService(ctx, cmd)
 					result, info, err := svc.CreateAlias(ctx, worksetapi.AliasUpsertInput{
 						Name:          name,
 						Source:        source,
@@ -436,7 +436,7 @@ func repoAliasCommand() *cli.Command {
 						return usageError(ctx, cmd, "alias name required (example: workset repo alias set ask-gill --default-branch staging)")
 					}
 					source := strings.TrimSpace(cmd.Args().Get(1))
-					svc := apiService(cmd)
+					svc := apiService(ctx, cmd)
 					result, info, err := svc.UpdateAlias(ctx, worksetapi.AliasUpsertInput{
 						Name:             name,
 						Source:           source,
@@ -482,7 +482,7 @@ func repoAliasCommand() *cli.Command {
 					if name == "" {
 						return usageError(ctx, cmd, "usage: workset repo alias rm <name>")
 					}
-					svc := apiService(cmd)
+					svc := apiService(ctx, cmd)
 					result, info, err := svc.DeleteAlias(ctx, name)
 					if err != nil {
 						return err

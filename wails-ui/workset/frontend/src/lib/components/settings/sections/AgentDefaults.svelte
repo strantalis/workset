@@ -5,7 +5,7 @@
 	import SettingsSection from '../SettingsSection.svelte';
 	import Select from '../../ui/Select.svelte';
 	import Button from '../../ui/Button.svelte';
-	import { checkAgentStatus, openFileDialog, setAgentCLIPath } from '../../../api';
+	import { checkAgentStatus, openFileDialog, reloadLoginEnv, setAgentCLIPath } from '../../../api';
 
 	type FieldId = keyof SettingsDefaults;
 
@@ -43,7 +43,8 @@
 		{
 			id: 'agentLaunch',
 			label: 'Agent launch mode',
-			description: 'Auto uses a shell and PTY fallback. Strict requires an agent path with directory separators.',
+			description:
+				'Auto uses a shell and PTY fallback. Strict requires an agent path with directory separators.',
 			type: 'select',
 			options: [
 				{ label: 'Auto', value: 'auto' },
@@ -61,6 +62,9 @@
 	let status = $state<AgentCLIStatus | null>(null);
 	let statusError = $state<string | null>(null);
 	let cliPath = $state('');
+	let envReloading = $state(false);
+	let envMessage = $state<string | null>(null);
+	let envError = $state<string | null>(null);
 
 	const formatError = (err: unknown, fallback: string): string => {
 		if (err instanceof Error) return err.message;
@@ -101,11 +105,16 @@
 			statusError = 'Agent CLI path required.';
 			return;
 		}
+		const agent = getValue('agent').trim();
+		if (!agent) {
+			statusError = 'Agent command required.';
+			return;
+		}
 		savingPath = true;
 		statusError = null;
 		status = null;
 		try {
-			status = await setAgentCLIPath(getValue('agent'), path);
+			status = await setAgentCLIPath(agent, path);
 			cliPath = status?.configuredPath ?? path;
 		} catch (err) {
 			statusError = formatError(err, 'Failed to save agent CLI path.');
@@ -124,6 +133,27 @@
 			await saveCLIPath();
 		} catch (err) {
 			statusError = formatError(err, 'Failed to open file dialog.');
+		}
+	};
+
+	const reloadEnv = async (): Promise<void> => {
+		if (envReloading) return;
+		envReloading = true;
+		envMessage = null;
+		envError = null;
+		try {
+			const result = await reloadLoginEnv();
+			if (result.appliedKeys && result.appliedKeys.length > 0) {
+				envMessage = `Reloaded environment (${result.appliedKeys.join(', ')}).`;
+			} else if (result.updated) {
+				envMessage = 'Reloaded environment.';
+			} else {
+				envMessage = 'Environment already up to date.';
+			}
+		} catch (err) {
+			envError = formatError(err, 'Failed to reload environment.');
+		} finally {
+			envReloading = false;
 		}
 	};
 
@@ -194,6 +224,23 @@
 						{#if statusError}
 							<div class="agent-note error">{statusError}</div>
 						{/if}
+						<div class="agent-env">
+							<div class="agent-actions">
+								<Button variant="ghost" size="sm" onclick={reloadEnv} disabled={envReloading}>
+									{envReloading ? 'Reloading…' : 'Reload environment'}
+								</Button>
+							</div>
+							<div class="agent-note">
+								Reloads PATH and SSH agent variables from your login shell without restarting the
+								app.
+							</div>
+							{#if envMessage}
+								<div class="agent-note ok">{envMessage}</div>
+							{/if}
+							{#if envError}
+								<div class="agent-note error">{envError}</div>
+							{/if}
+						</div>
 					</div>
 				{/if}
 				<p>{field.description}</p>
@@ -272,6 +319,12 @@
 		gap: 8px;
 	}
 
+	.agent-env {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
 	.agent-status {
 		font-size: 12px;
 		color: var(--muted);
@@ -293,6 +346,10 @@
 
 	.agent-note.warning {
 		color: rgba(255, 200, 122, 0.9);
+	}
+
+	.agent-note.ok {
+		color: rgba(131, 206, 164, 0.9);
 	}
 
 	.agent-note.error {

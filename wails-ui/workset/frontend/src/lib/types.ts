@@ -161,6 +161,11 @@ export type AgentCLIStatus = {
 	error?: string;
 };
 
+export type EnvSnapshotResult = {
+	updated: boolean;
+	appliedKeys?: string[];
+};
+
 export type AppVersion = {
 	version: string;
 	commit: string;

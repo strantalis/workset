@@ -37,7 +37,7 @@ func execCommand() *cli.Command {
 				return usageError(ctx, cmd, "workspace required: pass -w <name|path> or set defaults.workspace (example: workset exec -w demo -- ls)")
 			}
 
-			svc := apiService(cmd)
+			svc := apiService(ctx, cmd)
 			if err := svc.Exec(ctx, worksetapi.ExecInput{
 				Workspace: worksetapi.WorkspaceSelector{Value: workspaceArg},
 				Command:   commandArgs,
