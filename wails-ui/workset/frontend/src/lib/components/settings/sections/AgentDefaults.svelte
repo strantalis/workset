@@ -105,11 +105,16 @@
 			statusError = 'Agent CLI path required.';
 			return;
 		}
+		const agent = getValue('agent').trim();
+		if (!agent) {
+			statusError = 'Agent command required.';
+			return;
+		}
 		savingPath = true;
 		statusError = null;
 		status = null;
 		try {
-			status = await setAgentCLIPath(getValue('agent'), path);
+			status = await setAgentCLIPath(agent, path);
 			cliPath = status?.configuredPath ?? path;
 		} catch (err) {
 			statusError = formatError(err, 'Failed to save agent CLI path.');

@@ -15,8 +15,11 @@ import (
 )
 
 var (
-	loginEnvMu     sync.Mutex
-	loginEnvLoaded bool
+	loginEnvMu        sync.Mutex
+	loginEnvCond      = sync.NewCond(&loginEnvMu)
+	loginEnvAttempted bool
+	loginEnvRunning   bool
+	errLoginEnvLast   error
 )
 
 // EnsureLoginEnv loads the login-shell environment once per process.
@@ -51,6 +54,10 @@ func applyEnvSnapshot(snapshot map[string]string) []string {
 	changed := make([]string, 0, len(snapshot))
 	for key, value := range snapshot {
 		if value == "" {
+			if shouldClearEnvKey(key) && current[key] != "" {
+				_ = os.Unsetenv(key)
+				changed = append(changed, key)
+			}
 			continue
 		}
 		if shouldOverrideEnvKey(key) || current[key] == "" {
@@ -58,6 +65,15 @@ func applyEnvSnapshot(snapshot map[string]string) []string {
 				continue
 			}
 			_ = os.Setenv(key, value)
+			changed = append(changed, key)
+		}
+	}
+	for _, key := range clearableEnvKeys {
+		if _, ok := snapshot[key]; ok {
+			continue
+		}
+		if current[key] != "" {
+			_ = os.Unsetenv(key)
 			changed = append(changed, key)
 		}
 	}
@@ -76,6 +92,8 @@ func envMap(env []string) map[string]string {
 	return out
 }
 
+var clearableEnvKeys = []string{"SSH_AUTH_SOCK", "SSH_AGENT_PID", "SSH_ASKPASS", "GIT_SSH_COMMAND"}
+
 func shouldOverrideEnvKey(key string) bool {
 	switch key {
 	case "PATH", "SSH_AUTH_SOCK", "SSH_AGENT_PID", "SSH_ASKPASS", "GIT_SSH_COMMAND", "LANG", "LC_ALL", "LC_CTYPE":
@@ -85,8 +103,20 @@ func shouldOverrideEnvKey(key string) bool {
 	}
 }
 
+func shouldClearEnvKey(key string) bool {
+	for _, candidate := range clearableEnvKeys {
+		if key == candidate {
+			return true
+		}
+	}
+	return false
+}
+
 func loadLoginEnv(ctx context.Context, force bool) (EnvSnapshotResultJSON, error) {
 	if runtime.GOOS == "windows" {
+		if force {
+			return EnvSnapshotResultJSON{}, ValidationError{Message: "environment snapshot not supported on Windows"}
+		}
 		return EnvSnapshotResultJSON{}, nil
 	}
 	if ctx == nil {
@@ -99,12 +129,25 @@ func loadLoginEnv(ctx context.Context, force bool) (EnvSnapshotResultJSON, error
 		return EnvSnapshotResultJSON{}, nil
 	}
 	loginEnvMu.Lock()
-	defer loginEnvMu.Unlock()
-	if loginEnvLoaded && !force {
-		return EnvSnapshotResultJSON{}, nil
+	for loginEnvRunning {
+		loginEnvCond.Wait()
 	}
+	if loginEnvAttempted && !force {
+		err := errLoginEnvLast
+		loginEnvMu.Unlock()
+		return EnvSnapshotResultJSON{}, err
+	}
+	loginEnvRunning = true
+	loginEnvMu.Unlock()
+
 	shell, err := resolveLoginShellPath()
 	if err != nil {
+		loginEnvMu.Lock()
+		loginEnvRunning = false
+		loginEnvAttempted = true
+		errLoginEnvLast = err
+		loginEnvCond.Broadcast()
+		loginEnvMu.Unlock()
 		return EnvSnapshotResultJSON{}, err
 	}
 	shellBase := strings.ToLower(filepath.Base(shell))
@@ -116,6 +159,12 @@ func loadLoginEnv(ctx context.Context, force bool) (EnvSnapshotResultJSON, error
 	cmd.Env = os.Environ()
 	output, err := cmd.Output()
 	if err != nil {
+		loginEnvMu.Lock()
+		loginEnvRunning = false
+		loginEnvAttempted = true
+		errLoginEnvLast = err
+		loginEnvCond.Broadcast()
+		loginEnvMu.Unlock()
 		return EnvSnapshotResultJSON{}, err
 	}
 	snapshot := parseEnvSnapshot(string(output))
@@ -123,7 +172,12 @@ func loadLoginEnv(ctx context.Context, force bool) (EnvSnapshotResultJSON, error
 		snapshot = applyDefaultPathSnapshot(snapshot)
 	}
 	changed := applyEnvSnapshot(snapshot)
-	loginEnvLoaded = true
+	loginEnvMu.Lock()
+	loginEnvRunning = false
+	loginEnvAttempted = true
+	errLoginEnvLast = nil
+	loginEnvCond.Broadcast()
+	loginEnvMu.Unlock()
 	return EnvSnapshotResultJSON{
 		Updated:     len(changed) > 0,
 		AppliedKeys: changed,

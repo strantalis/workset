@@ -32,6 +32,28 @@ func TestApplyEnvSnapshotOverridesSSHAuthSock(t *testing.T) {
 	}
 }
 
+func TestApplyEnvSnapshotClearsSSHAuthSockWhenEmpty(t *testing.T) {
+	t.Setenv("SSH_AUTH_SOCK", "old")
+	changed := applyEnvSnapshot(map[string]string{"SSH_AUTH_SOCK": ""})
+	if got := os.Getenv("SSH_AUTH_SOCK"); got != "" {
+		t.Fatalf("expected SSH_AUTH_SOCK cleared, got %q", got)
+	}
+	if !containsKey(changed, "SSH_AUTH_SOCK") {
+		t.Fatalf("expected SSH_AUTH_SOCK in changed keys, got %v", changed)
+	}
+}
+
+func TestApplyEnvSnapshotClearsSSHAuthSockWhenMissing(t *testing.T) {
+	t.Setenv("SSH_AUTH_SOCK", "old")
+	changed := applyEnvSnapshot(map[string]string{"PATH": "/usr/bin"})
+	if got := os.Getenv("SSH_AUTH_SOCK"); got != "" {
+		t.Fatalf("expected SSH_AUTH_SOCK cleared, got %q", got)
+	}
+	if !containsKey(changed, "SSH_AUTH_SOCK") {
+		t.Fatalf("expected SSH_AUTH_SOCK in changed keys, got %v", changed)
+	}
+}
+
 func TestApplyEnvSnapshotKeepsExistingNonOverride(t *testing.T) {
 	t.Setenv("WORKSET_TEST_FOO", "bar")
 	changed := applyEnvSnapshot(map[string]string{"WORKSET_TEST_FOO": "baz"})
@@ -40,6 +62,21 @@ func TestApplyEnvSnapshotKeepsExistingNonOverride(t *testing.T) {
 	}
 	if containsKey(changed, "WORKSET_TEST_FOO") {
 		t.Fatalf("did not expect WORKSET_TEST_FOO in changed keys, got %v", changed)
+	}
+}
+
+func TestEnvSnapshotDisabledParsing(t *testing.T) {
+	t.Setenv("WORKSET_ENV_SNAPSHOT", "0")
+	if !envSnapshotDisabled() {
+		t.Fatalf("expected snapshot disabled when WORKSET_ENV_SNAPSHOT=0")
+	}
+	t.Setenv("WORKSET_ENV_SNAPSHOT", "false")
+	if !envSnapshotDisabled() {
+		t.Fatalf("expected snapshot disabled when WORKSET_ENV_SNAPSHOT=false")
+	}
+	t.Setenv("WORKSET_ENV_SNAPSHOT", "1")
+	if envSnapshotDisabled() {
+		t.Fatalf("expected snapshot enabled when WORKSET_ENV_SNAPSHOT=1")
 	}
 }
 
