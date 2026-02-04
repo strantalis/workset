@@ -924,47 +924,6 @@
 		return { total: checks.length, passed, failed, pending };
 	});
 
-	// Toggle check expansion and load annotations
-	const toggleCheckExpand = async (check: PullRequestCheck) => {
-		if (expandedCheck === check.name) {
-			expandedCheck = null;
-		} else {
-			expandedCheck = check.name;
-			// Load annotations if not already loaded and check has an ID
-			if (
-				check.checkRunId &&
-				!checkAnnotations[check.name] &&
-				!checkAnnotationsLoading[check.name]
-			) {
-				checkAnnotationsLoading[check.name] = true;
-				try {
-					// Parse owner/repo from PR status
-					const parts = prStatus?.pullRequest.repo?.split('/') ?? [];
-					if (parts.length === 2) {
-						const [owner, repo] = parts;
-						const annotations = await fetchCheckAnnotations(owner, repo, check.checkRunId);
-						checkAnnotations[check.name] = annotations;
-					}
-				} catch (err) {
-					console.error('Failed to load annotations:', err);
-				} finally {
-					checkAnnotationsLoading[check.name] = false;
-				}
-			}
-		}
-	};
-
-	// Navigate to annotation in diff
-	const navigateToAnnotation = (annotation: CheckAnnotation) => {
-		// Find file in PR files or local files
-		const allFiles = [...(summary?.files ?? []), ...(localSummary?.files ?? [])];
-		const file = allFiles.find((f) => f.path === annotation.path);
-		if (file) {
-			selected = file;
-			// Scroll to line will be handled by the diff renderer
-		}
-	};
-
 	// Count reviews for a specific file path
 	const reviewCountForFile = (path: string): number => {
 		return prReviews.filter((comment) => comment.path === path).length;
@@ -977,23 +936,6 @@
 		const minutes = Math.floor(ms / 60000);
 		const seconds = Math.round((ms % 60000) / 1000);
 		return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
-	};
-
-	// Format relative time from ISO string
-	const relativeTime = (dateStr: string): string => {
-		const date = new Date(dateStr);
-		const now = new Date();
-		const diffMs = now.getTime() - date.getTime();
-		const diffSecs = Math.round(diffMs / 1000);
-		const diffMins = Math.round(diffSecs / 60);
-		const diffHours = Math.round(diffMins / 60);
-		const diffDays = Math.round(diffHours / 24);
-
-		if (diffSecs < 60) return 'just now';
-		if (diffMins < 60) return `${diffMins}m ago`;
-		if (diffHours < 24) return `${diffHours}h ago`;
-		if (diffDays < 30) return `${diffDays}d ago`;
-		return date.toLocaleDateString();
 	};
 
 	// Get check status color class
@@ -1036,6 +978,7 @@
 		}
 
 		if (!owner || !repoName) {
+			// eslint-disable-next-line no-console
 			console.error('Cannot load annotations: missing owner/repo', {
 				checkName,
 				checkRunId,
@@ -1049,9 +992,9 @@
 		checkAnnotationsLoading = { ...checkAnnotationsLoading, [checkName]: true };
 		try {
 			const result = await fetchCheckAnnotations(owner, repoName, checkRunId);
-			console.log(`Loaded ${result.length} annotations for ${checkName}:`, result);
 			checkAnnotations = { ...checkAnnotations, [checkName]: result };
 		} catch (err) {
+			// eslint-disable-next-line no-console
 			console.error('Failed to load annotations:', err);
 			checkAnnotations = { ...checkAnnotations, [checkName]: [] };
 		} finally {
@@ -1757,7 +1700,7 @@
 													rel="noopener noreferrer"
 													onclick={(e) => {
 														e.stopPropagation();
-														check.detailsUrl && BrowserOpenURL(check.detailsUrl);
+														if (check.detailsUrl) BrowserOpenURL(check.detailsUrl);
 													}}
 													title="View on GitHub"
 												>

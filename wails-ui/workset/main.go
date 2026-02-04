@@ -28,7 +28,7 @@ func main() {
 		OnStartup:        app.startup,
 		OnShutdown:       app.shutdown,
 		Mac: &mac.Options{
-			TitleBar:   mac.TitleBarHiddenInset(),
+			TitleBar:   mac.TitleBarHidden(),
 			Appearance: mac.NSAppearanceNameDarkAqua,
 		},
 		Bind: []interface{}{

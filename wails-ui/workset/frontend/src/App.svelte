@@ -79,19 +79,37 @@
 	});
 </script>
 
-<div class="app">
-	<header class="topbar">
-		<div class="brand">
-			<img src="images/logo.png" alt="Workset" class="logo-img" />
-			{#if hasWorkspace}
-				<div class="context">Workspace: {$activeWorkspace?.name}</div>
-			{:else}
-				<div class="context">Select a workspace to begin</div>
-			{/if}
-		</div>
-		<div class="actions">
+<div class:collapsed={sidebarCollapsed} class="app">
+	<aside class:collapsed={sidebarCollapsed} class:repo-view={hasRepo} class="sidebar">
+		<WorkspaceTree
+			workspaces={$workspaces}
+			activeWorkspaceId={$activeWorkspaceId}
+			activeRepoId={$activeRepoId}
+			onSelectWorkspace={selectWorkspace}
+			onSelectRepo={selectRepo}
+			{sidebarCollapsed}
+			onToggleSidebar={() => (sidebarCollapsed = !sidebarCollapsed)}
+			onCreateWorkspace={() => openAction('create', null, null)}
+			onAddRepo={(workspaceId) => openAction('add-repo', workspaceId, null)}
+			onManageWorkspace={(workspaceId, action) => {
+				if (action === 'rename') {
+					openAction('rename', workspaceId, null);
+				} else if (action === 'archive') {
+					openAction('archive', workspaceId, null);
+				} else {
+					openAction('remove-workspace', workspaceId, null);
+				}
+			}}
+			onManageRepo={(workspaceId, repoName, _action) => {
+				openAction('remove-repo', workspaceId, repoName);
+			}}
+		/>
+	</aside>
+
+	<div class="main-area">
+		<header class:repo-view={hasRepo} class:no-workspace={!hasWorkspace} class="topbar">
 			<button
-				class="icon-button"
+				class="icon-button settings-btn"
 				type="button"
 				onclick={() => (settingsOpen = true)}
 				aria-label="Settings"
@@ -103,35 +121,7 @@
 					/>
 				</svg>
 			</button>
-		</div>
-	</header>
-
-	<div class:collapsed={sidebarCollapsed} class="layout">
-		<aside class:collapsed={sidebarCollapsed} class="sidebar">
-			<WorkspaceTree
-				workspaces={$workspaces}
-				activeWorkspaceId={$activeWorkspaceId}
-				activeRepoId={$activeRepoId}
-				onSelectWorkspace={selectWorkspace}
-				onSelectRepo={selectRepo}
-				{sidebarCollapsed}
-				onToggleSidebar={() => (sidebarCollapsed = !sidebarCollapsed)}
-				onCreateWorkspace={() => openAction('create', null, null)}
-				onAddRepo={(workspaceId) => openAction('add-repo', workspaceId, null)}
-				onManageWorkspace={(workspaceId, action) => {
-					if (action === 'rename') {
-						openAction('rename', workspaceId, null);
-					} else if (action === 'archive') {
-						openAction('archive', workspaceId, null);
-					} else {
-						openAction('remove-workspace', workspaceId, null);
-					}
-				}}
-				onManageRepo={(workspaceId, repoName, _action) => {
-					openAction('remove-repo', workspaceId, repoName);
-				}}
-			/>
-		</aside>
+		</header>
 
 		<main class="main">
 			{#if $loadingWorkspaces}
@@ -257,94 +247,64 @@
 	.app {
 		height: 100vh;
 		display: grid;
-		grid-template-rows: auto 1fr;
+		grid-template-columns: 280px 1fr;
+		transition: grid-template-columns 160ms ease;
 		overflow: hidden;
+	}
+
+	.app.collapsed {
+		grid-template-columns: 72px 1fr;
 	}
 
 	.topbar {
 		display: flex;
-		justify-content: space-between;
+		justify-content: flex-end;
 		align-items: center;
-		padding: 20px 24px;
-		padding-left: 88px; /* Space for traffic lights */
-		border-bottom: 1px solid var(--border);
-		background: var(--panel-strong);
+		padding: 4px 12px;
+		background: color-mix(in srgb, var(--panel-strong) 80%, var(--panel));
 		--wails-draggable: drag;
 	}
 
-	.brand {
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		gap: 12px;
-	}
-
-	.logo-img {
-		height: 40px;
-		width: auto;
-		display: block;
-		object-fit: contain;
-	}
-
-	.context {
-		font-size: 16px;
-		color: var(--muted);
-		font-weight: 500;
-	}
-
-	.actions {
-		display: flex;
-		gap: 10px;
-		--wails-draggable: no-drag;
+	.topbar.no-workspace,
+	.topbar.repo-view {
+		background: var(--bg);
 	}
 
 	.icon-button {
-		width: 36px;
-		height: 36px;
+		width: 28px;
+		height: 28px;
 		border-radius: var(--radius-sm);
-		border: 1px solid var(--border);
-		background: rgba(255, 255, 255, 0.02);
-		color: var(--text);
+		border: none;
+		background: transparent;
+		color: var(--muted);
 		cursor: pointer;
 		display: grid;
 		place-items: center;
 		transition:
-			border-color var(--transition-fast),
+			color var(--transition-fast),
 			background var(--transition-fast);
+		--wails-draggable: no-drag;
 	}
 
 	.icon-button:hover {
-		border-color: var(--accent);
-		background: rgba(255, 255, 255, 0.04);
+		color: var(--text);
+		background: rgba(255, 255, 255, 0.06);
 	}
 
 	.icon-button svg {
-		width: 18px;
-		height: 18px;
+		width: 16px;
+		height: 16px;
 		stroke: currentColor;
 		stroke-width: 1.6;
 		fill: none;
 	}
 
-	.layout {
-		display: grid;
-		grid-template-columns: 280px 1fr;
-		height: 100%;
-		min-height: 0;
-		position: relative;
-	}
-
-	.layout.collapsed {
-		grid-template-columns: 72px 1fr;
-	}
-
 	.sidebar {
 		border-right: 1px solid rgba(255, 255, 255, 0.06);
 		padding: 20px 12px;
+		padding-top: 36px; /* Space for traffic lights */
 		background: var(--panel);
-		transition:
-			width 160ms ease,
-			padding 160ms ease;
+		transition: padding 160ms ease;
 		overflow-y: auto;
 		overflow-x: visible;
 		min-height: 0;
@@ -355,9 +315,20 @@
 		z-index: 100;
 	}
 
-	.sidebar.collapsed {
-		width: 72px;
+	.app.collapsed .sidebar {
 		padding: 20px 8px;
+		padding-top: 36px;
+	}
+
+	.sidebar.repo-view {
+		background: var(--panel-soft);
+	}
+
+	.main-area {
+		display: flex;
+		flex-direction: column;
+		height: 100%;
+		min-height: 0;
 	}
 
 	.main {
@@ -367,6 +338,8 @@
 		background: transparent; /* Let vibrancy show through */
 		display: flex;
 		flex-direction: column;
+		flex: 1;
+		min-height: 0;
 	}
 
 	.view-stack {
