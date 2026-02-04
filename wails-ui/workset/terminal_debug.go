@@ -17,11 +17,11 @@ var (
 )
 
 func terminalDebugLogPath() (string, error) {
-	home, err := os.UserHomeDir()
+	dir, err := worksetAppDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".workset", "terminal_debug.log"), nil
+	return filepath.Join(dir, "terminal_debug.log"), nil
 }
 
 func envTruthy(value string) bool {

@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/strantalis/workset/pkg/worksetapi"
 )
 
 const terminalLayoutStoreVersion = 1
@@ -124,11 +122,11 @@ func (a *App) SetWorkspaceTerminalLayout(input TerminalLayoutRequest) error {
 }
 
 func (a *App) terminalLayoutStorePath() (string, error) {
-	home, err := os.UserHomeDir()
+	dir, err := worksetAppDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".workset", "ui_layouts.json"), nil
+	return filepath.Join(dir, "ui_layouts.json"), nil
 }
 
 func (a *App) loadTerminalLayoutStore() (terminalLayoutStore, error) {
@@ -217,9 +215,7 @@ func (a *App) startSessionsFromLayouts(ctx context.Context, store terminalLayout
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 	list, err := a.service.ListWorkspaces(ctx)
 	if err != nil {
 		return false

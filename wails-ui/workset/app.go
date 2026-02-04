@@ -27,7 +27,7 @@ type App struct {
 // NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{
-		service:         worksetapi.NewService(worksetapi.Options{}),
+		service:         newWorksetService(),
 		terminals:       map[string]*terminalSession{},
 		restoredModes:   map[string]terminalModeState{},
 		sessiondStart:   &sessiondStartState{},
@@ -40,6 +40,7 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	logRestartf("app_startup build_marker=restart-logging-v2")
+	ensureDevConfig()
 	_, _ = worksetapi.EnsureLoginEnv(ctx)
 	ensureDevSessiondSocket()
 	setSessiondPathFromCwd()

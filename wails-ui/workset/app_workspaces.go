@@ -38,9 +38,7 @@ func (a *App) ListWorkspaceSnapshots(input WorkspaceSnapshotRequest) ([]Workspac
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 
 	result, err := a.service.ListWorkspaceSnapshots(ctx, worksetapi.WorkspaceSnapshotOptions{
 		IncludeArchived: input.IncludeArchived,

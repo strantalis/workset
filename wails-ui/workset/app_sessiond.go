@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/strantalis/workset/pkg/sessiond"
-	"github.com/strantalis/workset/pkg/worksetapi"
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -51,10 +50,8 @@ func (a *App) getSessiondClientInternal(waitForRestart bool) (*sessiond.Client, 
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 	startOpts := sessiond.StartOptions{}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
-	if cfg, _, cfgErr := a.service.GetConfig(ctx); cfgErr == nil {
+	svc := a.ensureService()
+	if cfg, _, cfgErr := svc.GetConfig(ctx); cfgErr == nil {
 		if envTruthy(cfg.Defaults.TerminalProtocolLog) {
 			startOpts.ProtocolLogEnabled = true
 		}
@@ -168,11 +165,11 @@ func (s *sessiondRestartState) wait() {
 var restartLogMu sync.Mutex
 
 func logRestartf(format string, args ...any) {
-	home, err := os.UserHomeDir()
+	dir, err := worksetAppDir()
 	if err != nil {
 		return
 	}
-	logPath := filepath.Join(home, ".workset", "sessiond_restart.log")
+	logPath := filepath.Join(dir, "sessiond_restart.log")
 	restartLogMu.Lock()
 	defer restartLogMu.Unlock()
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {

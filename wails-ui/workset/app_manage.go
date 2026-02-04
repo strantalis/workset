@@ -69,9 +69,7 @@ func (a *App) CreateWorkspace(input WorkspaceCreateRequest) (WorkspaceCreateResp
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 
 	result, err := a.service.CreateWorkspace(ctx, worksetapi.WorkspaceCreateInput{
 		Name:   input.Name,
@@ -101,9 +99,7 @@ func (a *App) ArchiveWorkspace(workspaceID, reason string) (worksetapi.Workspace
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 
 	result, _, err := a.service.ArchiveWorkspace(ctx, worksetapi.WorkspaceSelector{Value: workspaceID}, reason)
 	return result, err
@@ -114,9 +110,7 @@ func (a *App) UnarchiveWorkspace(workspaceID string) (worksetapi.WorkspaceRefJSO
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 
 	result, _, err := a.service.UnarchiveWorkspace(ctx, worksetapi.WorkspaceSelector{Value: workspaceID})
 	return result, err
@@ -127,9 +121,7 @@ func (a *App) RemoveWorkspace(input WorkspaceRemoveRequest) (worksetapi.Workspac
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 
 	result, err := a.service.DeleteWorkspace(ctx, worksetapi.WorkspaceDeleteInput{
 		Selector:     worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
@@ -149,9 +141,7 @@ func (a *App) RenameWorkspace(workspaceID, newName string) (worksetapi.Workspace
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 
 	result, err := a.service.RenameWorkspace(ctx, worksetapi.WorkspaceRenameInput{
 		Selector: worksetapi.WorkspaceSelector{Value: workspaceID},
@@ -165,9 +155,7 @@ func (a *App) AddRepo(input RepoAddRequest) (RepoAddResponse, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 
 	name := input.Name
 	nameSet := false
@@ -204,9 +192,7 @@ func (a *App) RemoveRepo(input RepoRemoveRequest) (worksetapi.RepoRemoveResultJS
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 
 	result, err := a.service.RemoveRepo(ctx, worksetapi.RepoRemoveInput{
 		Workspace:       worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
@@ -226,9 +212,7 @@ func (a *App) ListAliases() ([]worksetapi.AliasJSON, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 	result, err := a.service.ListAliases(ctx)
 	if err != nil {
 		return nil, err
@@ -241,9 +225,7 @@ func (a *App) CreateAlias(input AliasUpsertRequest) (worksetapi.AliasMutationRes
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 	result, _, err := a.service.CreateAlias(ctx, worksetapi.AliasUpsertInput{
 		Name:             input.Name,
 		Source:           input.Source,
@@ -261,9 +243,7 @@ func (a *App) UpdateAlias(input AliasUpsertRequest) (worksetapi.AliasMutationRes
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 	result, _, err := a.service.UpdateAlias(ctx, worksetapi.AliasUpsertInput{
 		Name:             input.Name,
 		Source:           input.Source,
@@ -281,9 +261,7 @@ func (a *App) DeleteAlias(name string) (worksetapi.AliasMutationResultJSON, erro
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 	result, _, err := a.service.DeleteAlias(ctx, name)
 	return result, err
 }
@@ -293,9 +271,7 @@ func (a *App) ListGroups() ([]worksetapi.GroupSummaryJSON, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 	result, err := a.service.ListGroups(ctx)
 	if err != nil {
 		return nil, err
@@ -308,9 +284,7 @@ func (a *App) GetGroup(name string) (worksetapi.GroupJSON, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 	result, _, err := a.service.GetGroup(ctx, name)
 	return result, err
 }
@@ -320,9 +294,7 @@ func (a *App) CreateGroup(input GroupUpsertRequest) (worksetapi.GroupJSON, error
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 	result, _, err := a.service.CreateGroup(ctx, worksetapi.GroupUpsertInput{
 		Name:        input.Name,
 		Description: input.Description,
@@ -335,9 +307,7 @@ func (a *App) UpdateGroup(input GroupUpsertRequest) (worksetapi.GroupJSON, error
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 	result, _, err := a.service.UpdateGroup(ctx, worksetapi.GroupUpsertInput{
 		Name:        input.Name,
 		Description: input.Description,
@@ -350,9 +320,7 @@ func (a *App) DeleteGroup(name string) (worksetapi.AliasMutationResultJSON, erro
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 	result, _, err := a.service.DeleteGroup(ctx, name)
 	return result, err
 }
@@ -362,9 +330,7 @@ func (a *App) AddGroupMember(input GroupMemberRequest) (worksetapi.GroupJSON, er
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 	result, _, err := a.service.AddGroupMember(ctx, worksetapi.GroupMemberInput{
 		GroupName: input.GroupName,
 		RepoName:  input.RepoName,
@@ -377,9 +343,7 @@ func (a *App) RemoveGroupMember(input GroupMemberRequest) (worksetapi.GroupJSON,
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 	result, _, err := a.service.RemoveGroupMember(ctx, worksetapi.GroupMemberInput{
 		GroupName: input.GroupName,
 		RepoName:  input.RepoName,
@@ -392,9 +356,7 @@ func (a *App) ApplyGroup(workspaceID, groupName string) (worksetapi.GroupApplyRe
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 	result, _, err := a.service.ApplyGroup(ctx, worksetapi.GroupApplyInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: workspaceID},
 		Name:      groupName,

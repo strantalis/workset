@@ -46,9 +46,7 @@ func (a *App) GetRepoDiff(workspaceID, repoID string) (RepoDiffSnapshot, error) 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 
 	repoPath, err := a.resolveRepoPath(ctx, workspaceID, repoID)
 	if err != nil {
@@ -67,9 +65,7 @@ func (a *App) GetRepoDiffSummary(workspaceID, repoID string) (RepoDiffSummary, e
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 
 	repoPath, err := a.resolveRepoPath(ctx, workspaceID, repoID)
 	if err != nil {
@@ -95,9 +91,7 @@ func (a *App) GetRepoFileDiff(workspaceID, repoID, path, prevPath, status string
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 
 	repoPath, err := a.resolveRepoPath(ctx, workspaceID, repoID)
 	if err != nil {
@@ -614,9 +608,7 @@ func (a *App) GetBranchDiffSummary(workspaceID, repoID, base, head string) (Repo
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 
 	repoPath, err := a.resolveRepoPath(ctx, workspaceID, repoID)
 	if err != nil {
@@ -649,9 +641,7 @@ func (a *App) GetBranchFileDiff(workspaceID, repoID, base, head, path, prevPath 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.service == nil {
-		a.service = worksetapi.NewService(worksetapi.Options{})
-	}
+	a.ensureService()
 
 	repoPath, err := a.resolveRepoPath(ctx, workspaceID, repoID)
 	if err != nil {
