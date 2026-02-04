@@ -92,6 +92,29 @@ type PullRequestCheckJSON struct {
 	DetailsURL  string `json:"details_url,omitempty"`
 	StartedAt   string `json:"started_at,omitempty"`
 	CompletedAt string `json:"completed_at,omitempty"`
+	CheckRunID  int64  `json:"check_run_id,omitempty"`
+}
+
+// CheckAnnotationJSON describes a single check annotation.
+type CheckAnnotationJSON struct {
+	Path      string `json:"path"`
+	StartLine int    `json:"start_line"`
+	EndLine   int    `json:"end_line"`
+	Level     string `json:"level"`
+	Message   string `json:"message"`
+	Title     string `json:"title,omitempty"`
+}
+
+// CheckAnnotationsResult wraps check annotations payload.
+type CheckAnnotationsResult struct {
+	Annotations []CheckAnnotationJSON `json:"annotations"`
+}
+
+// GetCheckAnnotationsInput describes inputs for fetching check annotations.
+type GetCheckAnnotationsInput struct {
+	Owner      string `json:"owner"`
+	Repo       string `json:"repo"`
+	CheckRunID int64  `json:"check_run_id"`
 }
 
 // PullRequestStatusResult wraps status payload with check runs.

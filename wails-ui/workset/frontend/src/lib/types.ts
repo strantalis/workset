@@ -153,6 +153,17 @@ export type SettingsSnapshot = {
 	configPath: string;
 };
 
+export type CheckAnnotationsResponse = {
+	annotations: {
+		path: string;
+		start_line: number;
+		end_line: number;
+		level: string;
+		message: string;
+		title?: string;
+	}[];
+};
+
 export type AgentCLIStatus = {
 	installed: boolean;
 	path?: string;
@@ -210,6 +221,15 @@ export type PullRequestSummary = {
 	mergeable?: string;
 };
 
+export type CheckAnnotation = {
+	path: string;
+	startLine: number;
+	endLine: number;
+	level: 'notice' | 'warning' | 'failure';
+	message: string;
+	title?: string;
+};
+
 export type PullRequestCheck = {
 	name: string;
 	status: string;
@@ -217,6 +237,7 @@ export type PullRequestCheck = {
 	detailsUrl?: string;
 	startedAt?: string;
 	completedAt?: string;
+	checkRunId?: number;
 };
 
 export type PullRequestStatusResult = {

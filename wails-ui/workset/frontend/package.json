@@ -38,6 +38,7 @@
 		"vitest": "^4.0.18"
 	},
 	"dependencies": {
+		"@lucide/svelte": "^0.563.1",
 		"@pierre/diffs": "^1.0.8",
 		"@xterm/addon-fit": "^0.10.0",
 		"@xterm/addon-webgl": "^0.17.0",

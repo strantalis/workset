@@ -1,5 +1,7 @@
 import type {
 	Alias,
+	CheckAnnotation,
+	CheckAnnotationsResponse,
 	Group,
 	GroupSummary,
 	GitHubAuthInfo,
@@ -70,6 +72,7 @@ import {
 	UnarchiveWorkspace,
 	SetDefaultSetting,
 	CreatePullRequest,
+	GetCheckAnnotations,
 	GetTerminalBacklog,
 	GetTerminalBootstrap,
 	GetTerminalSnapshot,
@@ -181,6 +184,7 @@ type PullRequestStatusResponse = {
 		details_url?: string;
 		started_at?: string;
 		completed_at?: string;
+		check_run_id?: number;
 	}>;
 };
 
@@ -692,6 +696,7 @@ export async function fetchPullRequestStatus(
 		detailsUrl: check.details_url,
 		startedAt: check.started_at,
 		completedAt: check.completed_at,
+		checkRunId: check.check_run_id,
 	}));
 	return {
 		pullRequest: {
@@ -709,6 +714,26 @@ export async function fetchPullRequestStatus(
 		},
 		checks,
 	};
+}
+
+export async function fetchCheckAnnotations(
+	owner: string,
+	repo: string,
+	checkRunId: number,
+): Promise<CheckAnnotation[]> {
+	const result = (await GetCheckAnnotations({
+		owner,
+		repo,
+		checkRunId,
+	})) as unknown as CheckAnnotationsResponse;
+	return (result.annotations ?? []).map((ann) => ({
+		path: ann.path,
+		startLine: ann.start_line,
+		endLine: ann.end_line,
+		level: ann.level as 'notice' | 'warning' | 'failure',
+		message: ann.message,
+		title: ann.title,
+	}));
 }
 
 function mapPullRequest(result: PullRequestCreateResponse): PullRequestCreated {

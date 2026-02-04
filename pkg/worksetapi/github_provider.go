@@ -42,6 +42,7 @@ type GitHubClient interface {
 	EditReviewComment(ctx context.Context, owner, repo string, commentID int64, body string) (PullRequestReviewCommentJSON, error)
 	DeleteReviewComment(ctx context.Context, owner, repo string, commentID int64) error
 	ListCheckRuns(ctx context.Context, owner, repo, ref string, page, perPage int) ([]PullRequestCheckJSON, int, error)
+	GetCheckRunAnnotations(ctx context.Context, owner, repo string, checkRunID int64) ([]CheckAnnotationJSON, error)
 	GetRepoDefaultBranch(ctx context.Context, owner, repo string) (string, error)
 	GetCurrentUser(ctx context.Context) (GitHubUserJSON, []string, error)
 	ReviewThreadMap(ctx context.Context, owner, repo string, number int) (map[string]threadInfo, error)
