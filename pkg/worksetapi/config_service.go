@@ -80,6 +80,8 @@ func setGlobalDefault(cfg *config.GlobalConfig, key, value string) error {
 		cfg.Defaults.TerminalIdleTimeout = value
 	case "defaults.terminal_protocol_log":
 		cfg.Defaults.TerminalProtocolLog = value
+	case "defaults.terminal_debug_overlay":
+		cfg.Defaults.TerminalDebugOverlay = value
 	case "defaults.remotes.base", "defaults.remotes.write":
 		return fmt.Errorf("%s was removed; set defaults.remote or alias remote instead", key)
 	case "defaults.parallelism":

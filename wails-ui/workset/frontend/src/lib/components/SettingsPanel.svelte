@@ -51,6 +51,7 @@
 		{ id: 'agentLaunch', key: 'defaults.agent_launch' },
 		{ id: 'terminalIdleTimeout', key: 'defaults.terminal_idle_timeout' },
 		{ id: 'terminalProtocolLog', key: 'defaults.terminal_protocol_log' },
+		{ id: 'terminalDebugOverlay', key: 'defaults.terminal_debug_overlay' },
 	];
 
 	let snapshot: SettingsSnapshot | null = $state(null);
@@ -117,6 +118,9 @@
 			return;
 		}
 		const updates = changedFields();
+		const shouldRefreshTerminalDefaults = updates.some(
+			(field) => field.id === 'terminalDebugOverlay',
+		);
 		if (updates.length === 0) {
 			success = 'No changes to save.';
 			return;
@@ -135,6 +139,10 @@
 		if (!error) {
 			baseline = { ...draft };
 			success = `Saved ${updates.length} change${updates.length === 1 ? '' : 's'}.`;
+			if (shouldRefreshTerminalDefaults) {
+				const { refreshTerminalDefaults } = await import('../terminal/terminalService');
+				await refreshTerminalDefaults();
+			}
 		}
 		saving = false;
 	};

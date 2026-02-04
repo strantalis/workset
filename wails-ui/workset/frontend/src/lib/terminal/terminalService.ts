@@ -16,6 +16,7 @@ import {
 } from '../../../wailsjs/go/main/App';
 import {
 	fetchSessiondStatus,
+	fetchSettings,
 	fetchTerminalBootstrap,
 	fetchWorkspaceTerminalStatus,
 	logTerminalDebug,
@@ -257,6 +258,7 @@ let rendererPreference = 'webgl' as const;
 let sessiondAvailable: boolean | null = null;
 let sessiondChecked = false;
 let debugEnabled = false;
+let debugOverlayPreference: 'on' | 'off' | '' = '';
 
 let statusMap: Record<string, string> = {};
 let messageMap: Record<string, string> = {};
@@ -299,6 +301,22 @@ const defaultStats = () => ({
 	lastOutputAt: 0,
 	lastCprAt: 0,
 });
+
+const resolveDebugEnabled = (): boolean => {
+	if (debugOverlayPreference === 'on') return true;
+	if (debugOverlayPreference === 'off') return false;
+	if (typeof localStorage !== 'undefined') {
+		return localStorage.getItem('worksetTerminalDebug') === '1';
+	}
+	return false;
+};
+
+const syncDebugEnabled = (): void => {
+	const next = resolveDebugEnabled();
+	if (next === debugEnabled) return;
+	debugEnabled = next;
+	emitAllStates();
+};
 
 const buildState = (id: string): TerminalViewState => {
 	const stats = statsMap.get(id) ?? defaultStats();
@@ -1368,13 +1386,7 @@ const clearStartupTimeout = (id: string): void => {
 };
 
 const logDebug = (id: string, event: string, details: Record<string, unknown>): void => {
-	if (typeof localStorage !== 'undefined') {
-		const flag = localStorage.getItem('worksetTerminalDebug') === '1';
-		if (flag !== debugEnabled) {
-			debugEnabled = flag;
-			emitAllStates();
-		}
-	}
+	syncDebugEnabled();
 	if (!debugEnabled) return;
 	const workspaceId = getWorkspaceId(id);
 	const terminalId = getTerminalId(id);
@@ -1844,6 +1856,26 @@ const ensureStream = async (id: string): Promise<void> => {
 
 const loadTerminalDefaults = async (): Promise<void> => {
 	rendererPreference = 'webgl';
+	let nextDebugPreference = debugOverlayPreference;
+	try {
+		const settings = await fetchSettings();
+		const rawPreference = settings?.defaults?.terminalDebugOverlay ?? '';
+		const normalizedPreference = rawPreference.toLowerCase().trim();
+		if (normalizedPreference === 'on' || normalizedPreference === 'off') {
+			nextDebugPreference = normalizedPreference;
+		}
+	} catch {
+		// Keep existing preference on load failure.
+	}
+	debugOverlayPreference = nextDebugPreference;
+	if (debugOverlayPreference === 'off' && typeof localStorage !== 'undefined') {
+		try {
+			localStorage.removeItem('worksetTerminalDebug');
+		} catch {
+			// Ignore storage failures.
+		}
+	}
+	syncDebugEnabled();
 };
 
 const refreshSessiondStatus = async (): Promise<void> => {
@@ -2161,8 +2193,6 @@ const initTerminal = async (id: string): Promise<void> => {
 const ensureGlobals = (): void => {
 	if (globalsInitialized) return;
 	globalsInitialized = true;
-	debugEnabled =
-		typeof localStorage !== 'undefined' && localStorage.getItem('worksetTerminalDebug') === '1';
 	void loadTerminalDefaults();
 	void refreshSessiondStatus();
 	window.addEventListener('focus', () => {
@@ -2170,6 +2200,10 @@ const ensureGlobals = (): void => {
 			void ensureSessionActive(id);
 		}
 	});
+};
+
+export const refreshTerminalDefaults = async (): Promise<void> => {
+	await loadTerminalDefaults();
 };
 
 export const getTerminalStore = (

@@ -36,6 +36,9 @@ func TestLoadGlobalDefaults(t *testing.T) {
 	if cfg.Defaults.TerminalProtocolLog == "" {
 		t.Fatalf("expected default terminal_protocol_log set")
 	}
+	if cfg.Defaults.TerminalDebugOverlay == "" {
+		t.Fatalf("expected default terminal_debug_overlay set")
+	}
 }
 
 func TestSaveLoadGlobal(t *testing.T) {

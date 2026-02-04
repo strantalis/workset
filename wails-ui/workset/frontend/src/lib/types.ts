@@ -146,6 +146,7 @@ export type SettingsDefaults = {
 	agentLaunch: string;
 	terminalIdleTimeout: string;
 	terminalProtocolLog: string;
+	terminalDebugOverlay: string;
 };
 
 export type SettingsSnapshot = {

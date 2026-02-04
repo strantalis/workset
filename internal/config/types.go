@@ -1,23 +1,24 @@
 package config
 
 type Defaults struct {
-	Remote              string `yaml:"remote" json:"remote" mapstructure:"remote"`
-	BaseBranch          string `yaml:"base_branch" json:"base_branch" mapstructure:"base_branch"`
-	Workspace           string `yaml:"workspace" json:"workspace" mapstructure:"workspace"`
-	WorkspaceRoot       string `yaml:"workspace_root" json:"workspace_root" mapstructure:"workspace_root"`
-	RepoStoreRoot       string `yaml:"repo_store_root" json:"repo_store_root" mapstructure:"repo_store_root"`
-	SessionBackend      string `yaml:"session_backend" json:"session_backend" mapstructure:"session_backend"`
-	SessionNameFormat   string `yaml:"session_name_format" json:"session_name_format" mapstructure:"session_name_format"`
-	SessionTheme        string `yaml:"session_theme" json:"session_theme" mapstructure:"session_theme"`
-	SessionTmuxStyle    string `yaml:"session_tmux_status_style" json:"session_tmux_status_style" mapstructure:"session_tmux_status_style"`
-	SessionTmuxLeft     string `yaml:"session_tmux_status_left" json:"session_tmux_status_left" mapstructure:"session_tmux_status_left"`
-	SessionTmuxRight    string `yaml:"session_tmux_status_right" json:"session_tmux_status_right" mapstructure:"session_tmux_status_right"`
-	SessionScreenHard   string `yaml:"session_screen_hardstatus" json:"session_screen_hardstatus" mapstructure:"session_screen_hardstatus"`
-	Agent               string `yaml:"agent" json:"agent" mapstructure:"agent"`
-	AgentLaunch         string `yaml:"agent_launch" json:"agent_launch" mapstructure:"agent_launch"`
-	TerminalRenderer    string `yaml:"terminal_renderer" json:"terminal_renderer" mapstructure:"terminal_renderer"`
-	TerminalIdleTimeout string `yaml:"terminal_idle_timeout" json:"terminal_idle_timeout" mapstructure:"terminal_idle_timeout"`
-	TerminalProtocolLog string `yaml:"terminal_protocol_log" json:"terminal_protocol_log" mapstructure:"terminal_protocol_log"`
+	Remote               string `yaml:"remote" json:"remote" mapstructure:"remote"`
+	BaseBranch           string `yaml:"base_branch" json:"base_branch" mapstructure:"base_branch"`
+	Workspace            string `yaml:"workspace" json:"workspace" mapstructure:"workspace"`
+	WorkspaceRoot        string `yaml:"workspace_root" json:"workspace_root" mapstructure:"workspace_root"`
+	RepoStoreRoot        string `yaml:"repo_store_root" json:"repo_store_root" mapstructure:"repo_store_root"`
+	SessionBackend       string `yaml:"session_backend" json:"session_backend" mapstructure:"session_backend"`
+	SessionNameFormat    string `yaml:"session_name_format" json:"session_name_format" mapstructure:"session_name_format"`
+	SessionTheme         string `yaml:"session_theme" json:"session_theme" mapstructure:"session_theme"`
+	SessionTmuxStyle     string `yaml:"session_tmux_status_style" json:"session_tmux_status_style" mapstructure:"session_tmux_status_style"`
+	SessionTmuxLeft      string `yaml:"session_tmux_status_left" json:"session_tmux_status_left" mapstructure:"session_tmux_status_left"`
+	SessionTmuxRight     string `yaml:"session_tmux_status_right" json:"session_tmux_status_right" mapstructure:"session_tmux_status_right"`
+	SessionScreenHard    string `yaml:"session_screen_hardstatus" json:"session_screen_hardstatus" mapstructure:"session_screen_hardstatus"`
+	Agent                string `yaml:"agent" json:"agent" mapstructure:"agent"`
+	AgentLaunch          string `yaml:"agent_launch" json:"agent_launch" mapstructure:"agent_launch"`
+	TerminalRenderer     string `yaml:"terminal_renderer" json:"terminal_renderer" mapstructure:"terminal_renderer"`
+	TerminalIdleTimeout  string `yaml:"terminal_idle_timeout" json:"terminal_idle_timeout" mapstructure:"terminal_idle_timeout"`
+	TerminalProtocolLog  string `yaml:"terminal_protocol_log" json:"terminal_protocol_log" mapstructure:"terminal_protocol_log"`
+	TerminalDebugOverlay string `yaml:"terminal_debug_overlay" json:"terminal_debug_overlay" mapstructure:"terminal_debug_overlay"`
 }
 
 type GitHubConfig struct {

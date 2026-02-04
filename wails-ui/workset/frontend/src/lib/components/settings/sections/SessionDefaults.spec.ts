@@ -20,9 +20,10 @@ const buildDefaults = (): SettingsDefaults => ({
 	workspaceRoot: '/workspaces',
 	repoStoreRoot: '/repos',
 	agent: 'default',
-	agentLaunch: '',
+	agentLaunch: 'auto',
 	terminalIdleTimeout: '0',
 	terminalProtocolLog: 'off',
+	terminalDebugOverlay: 'off',
 });
 
 describe('SessionDefaults', () => {

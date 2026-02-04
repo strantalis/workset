@@ -32,9 +32,10 @@ describe('SettingsPanel About Section', () => {
 		sessionTmuxRight: '',
 		sessionScreenHard: '',
 		agent: 'default',
-		agentLaunch: '',
+		agentLaunch: 'auto',
 		terminalIdleTimeout: '0',
 		terminalProtocolLog: 'off',
+		terminalDebugOverlay: 'off',
 	};
 	const buildDefaults = (overrides: Partial<SettingsDefaults> = {}): SettingsDefaults => ({
 		...baseDefaults,

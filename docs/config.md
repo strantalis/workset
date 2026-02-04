@@ -45,6 +45,8 @@ Remote names and default branches come from repo aliases (`repos.<name>.remote` 
 | `agent_launch` | Agent launch strategy: `auto` (shell + PTY fallback) or `strict` (requires a path with directory separators in `defaults.agent` or `agent.cli_path`). |
 | `terminal_renderer` | Default GUI terminal renderer (`auto`, `webgl`, `canvas`). |
 | `terminal_idle_timeout` | Idle timeout for GUI terminals/sessiond (duration like `30m`; use `0` to disable). Default is `0`. |
+| `terminal_protocol_log` | Enable sessiond protocol logging (`on`/`off`). Requires daemon restart. |
+| `terminal_debug_overlay` | Show the terminal debug overlay (`on`/`off`). |
 
 ### `hooks`
 
@@ -94,6 +96,8 @@ defaults:
   agent_launch: auto
   terminal_renderer: auto
   terminal_idle_timeout: "0"
+  terminal_protocol_log: off
+  terminal_debug_overlay: off
   session_backend: auto
   session_name_format: workset-{workspace}
   # optional: enable built-in session theme for tmux/screen
