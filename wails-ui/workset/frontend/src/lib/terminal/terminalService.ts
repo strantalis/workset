@@ -4,10 +4,13 @@ import {
 	type ITerminalOptions,
 	type ITheme,
 } from '@xterm/xterm';
+import { ClipboardAddon } from '@xterm/addon-clipboard';
 import { FitAddon } from '@xterm/addon-fit';
+import { Unicode11Addon } from '@xterm/addon-unicode11';
+import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { writable, type Readable, type Writable } from 'svelte/store';
-import { EventsOff, EventsOn } from '../../../wailsjs/runtime/runtime';
+import { BrowserOpenURL, EventsOff, EventsOn } from '../../../wailsjs/runtime/runtime';
 import {
 	AckWorkspaceTerminal,
 	ResizeWorkspaceTerminal,
@@ -23,7 +26,6 @@ import {
 	stopWorkspaceTerminal,
 } from '../api';
 import { stripMouseReports } from './inputFilter';
-import { encodeWheel, type MouseEncoding } from './mouse';
 
 export type TerminalViewState = {
 	status: string;
@@ -55,7 +57,7 @@ type TerminalContext = {
 };
 
 type TerminalKey = string;
-
+type ClipboardSelection = string;
 type EventHandler<T> = (payload: T) => void;
 type EventRegistryEntry = {
 	handlers: Set<EventHandler<unknown>>;
@@ -77,6 +79,9 @@ type TerminalHandle = {
 	kittyOverlay?: KittyOverlay;
 	kittyDisposables?: { dispose: () => void }[];
 	oscDisposables?: { dispose: () => void }[];
+	clipboardAddon?: ClipboardAddon;
+	unicode11Addon?: Unicode11Addon;
+	webLinksAddon?: WebLinksAddon;
 	webglAddon?: WebglAddon;
 };
 
@@ -284,7 +289,9 @@ const HEALTH_TIMEOUT_MS = 1200;
 const STARTUP_OUTPUT_TIMEOUT_MS = 2000;
 const RENDER_CHECK_DELAY_MS = 350;
 const RENDER_RECOVERY_DELAY_MS = 150;
+const MAX_CLIPBOARD_BYTES = 1024 * 1024;
 const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
+const textDecoder = typeof TextDecoder !== 'undefined' ? new TextDecoder() : null;
 let globalsInitialized = false;
 
 const buildTerminalKey = (workspaceId: string, terminalId: string): TerminalKey => {
@@ -317,6 +324,134 @@ const syncDebugEnabled = (): void => {
 	debugEnabled = next;
 	emitAllStates();
 };
+
+const openHttpsLink = (event: MouseEvent, uri: string): void => {
+	if (!uri) return;
+	if (!event?.ctrlKey && !event?.metaKey) return;
+	try {
+		const parsed = new URL(uri);
+		if (parsed.protocol !== 'https:') return;
+		BrowserOpenURL(parsed.toString());
+		event.preventDefault();
+	} catch {
+		// Ignore invalid URLs.
+	}
+};
+
+const getClipboardPayloadBytes = (value: string): number => {
+	if (!value) return 0;
+	if (textEncoder) {
+		return textEncoder.encode(value).length;
+	}
+	return value.length;
+};
+
+const encodeClipboardText = (value: string): string => {
+	if (!value) return '';
+	if (typeof btoa === 'function') {
+		if (textEncoder) {
+			const bytes = textEncoder.encode(value);
+			let binary = '';
+			for (const byte of bytes) {
+				binary += String.fromCharCode(byte);
+			}
+			return btoa(binary);
+		}
+		try {
+			return btoa(value);
+		} catch {
+			return '';
+		}
+	}
+	return '';
+};
+
+const decodeClipboardText = (value: string): string => {
+	if (!value) return '';
+	const sanitized = value.replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
+	const padding = sanitized.length % 4;
+	const normalized = padding ? sanitized.padEnd(sanitized.length + (4 - padding), '=') : sanitized;
+	try {
+		if (typeof atob === 'function') {
+			const binary = atob(normalized);
+			if (textDecoder) {
+				const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+				return textDecoder.decode(bytes);
+			}
+			return binary;
+		}
+	} catch {
+		// Ignore invalid base64.
+	}
+	return '';
+};
+
+const createClipboardBase64 = (): {
+	encodeText: (data: string) => string;
+	decodeText: (data: string) => string;
+} => ({
+	encodeText: encodeClipboardText,
+	decodeText: decodeClipboardText,
+});
+
+const createWebLinksAddon = (): WebLinksAddon =>
+	new WebLinksAddon((event, uri) => {
+		openHttpsLink(event, uri);
+	});
+
+const syncWebLinksForMode = (id: string): void => {
+	const handle = terminalHandles.get(id);
+	if (!handle) return;
+	const mouseActive = modeMap[id]?.mouse ?? false;
+	if (mouseActive) {
+		if (handle.webLinksAddon) {
+			handle.webLinksAddon.dispose();
+			handle.webLinksAddon = undefined;
+		}
+		return;
+	}
+	if (!handle.webLinksAddon) {
+		handle.webLinksAddon = createWebLinksAddon();
+		handle.terminal.loadAddon(handle.webLinksAddon);
+	}
+};
+
+const getRuntimeClipboard = (): ((text: string) => Promise<boolean>) | null => {
+	if (typeof window === 'undefined') return null;
+	const runtime = (
+		window as Window & {
+			runtime?: { ClipboardSetText?: (text: string) => Promise<boolean> };
+		}
+	).runtime;
+	if (!runtime?.ClipboardSetText) return null;
+	return runtime.ClipboardSetText.bind(runtime);
+};
+
+const createClipboardProvider = (): {
+	readText: (selection: ClipboardSelection) => Promise<string>;
+	writeText: (selection: ClipboardSelection, text: string) => Promise<void>;
+} => ({
+	readText: async (_selection) => '',
+	writeText: async (_selection, text) => {
+		if (!text) return;
+		if (getClipboardPayloadBytes(text) > MAX_CLIPBOARD_BYTES) return;
+		const runtimeClipboard = getRuntimeClipboard();
+		if (runtimeClipboard) {
+			try {
+				const ok = await runtimeClipboard(text);
+				if (ok) return;
+			} catch {
+				// Fall back to browser clipboard.
+			}
+		}
+		if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) return;
+		try {
+			await navigator.clipboard.writeText(text);
+		} catch {
+			// Ignore clipboard failures (permissions or missing API).
+		}
+	},
+});
 
 const buildState = (id: string): TerminalViewState => {
 	const stats = statsMap.get(id) ?? defaultStats();
@@ -496,6 +631,9 @@ const disposeTerminalResources = (id: string): void => {
 				disposable.dispose();
 			}
 		}
+		handle.clipboardAddon?.dispose();
+		handle.webLinksAddon?.dispose();
+		handle.unicode11Addon?.dispose();
 		handle.webglAddon?.dispose();
 		handle.terminal.dispose();
 	}
@@ -557,54 +695,6 @@ const countBytes = (data: string): number => {
 		return textEncoder.encode(data).length;
 	}
 	return data.length;
-};
-
-const clamp = (value: number, min: number, max: number): number => {
-	if (value < min) return min;
-	if (value > max) return max;
-	return value;
-};
-
-const resolveCellSize = (
-	handle: TerminalHandle,
-	terminal: Terminal,
-): { width: number; height: number } => {
-	if (handle.kittyOverlay?.cellWidth && handle.kittyOverlay?.cellHeight) {
-		return { width: handle.kittyOverlay.cellWidth, height: handle.kittyOverlay.cellHeight };
-	}
-	if (!handle.container) {
-		return { width: 0, height: 0 };
-	}
-	const rect = handle.container.getBoundingClientRect();
-	const cols = Math.max(terminal.cols, 1);
-	const rows = Math.max(terminal.rows, 1);
-	return { width: rect.width / cols, height: rect.height / rows };
-};
-
-const handleWheel = (id: string, terminal: Terminal, event: WheelEvent): boolean => {
-	const modes = modeMap[id];
-	if (statusMap[id] !== 'ready' || startInFlight.has(id) || !startedSessions.has(id)) {
-		return true;
-	}
-	if (!modes?.mouse) {
-		return true;
-	}
-	const handle = terminalHandles.get(id);
-	if (!handle?.container) {
-		return true;
-	}
-	const rect = handle.container.getBoundingClientRect();
-	const { width, height } = resolveCellSize(handle, terminal);
-	if (width <= 0 || height <= 0) {
-		return true;
-	}
-	const col = clamp(Math.floor((event.clientX - rect.left) / width) + 1, 1, terminal.cols);
-	const row = clamp(Math.floor((event.clientY - rect.top) / height) + 1, 1, terminal.rows);
-	const button = event.deltaY < 0 ? 64 : 65;
-	const encoding = (modes.mouseEncoding || (modes.mouseSGR ? 'sgr' : 'x10')) as MouseEncoding;
-	sendInput(id, encodeWheel({ button, col, row, encoding }));
-	event.preventDefault();
-	return false;
 };
 
 const normalizeHex = (value: string | undefined | null): string | null => {
@@ -1019,6 +1109,11 @@ const attachTerminal = (
 		const terminal = createTerminal();
 		const fitAddon = new FitAddon();
 		terminal.loadAddon(fitAddon);
+		const unicode11Addon = new Unicode11Addon();
+		terminal.loadAddon(unicode11Addon);
+		terminal.unicode.activeVersion = '11';
+		const clipboardAddon = new ClipboardAddon(createClipboardBase64(), createClipboardProvider());
+		terminal.loadAddon(clipboardAddon);
 		terminal.attachCustomKeyEventHandler((event) => {
 			if (event.key === 'Enter' && event.shiftKey) {
 				inputMap = { ...inputMap, [id]: true };
@@ -1028,7 +1123,6 @@ const attachTerminal = (
 			}
 			return true;
 		});
-		terminal.attachCustomWheelEventHandler((event) => handleWheel(id, terminal, event));
 		const dataDisposable = terminal.onData((data) => {
 			inputMap = { ...inputMap, [id]: true };
 			void beginTerminal(id);
@@ -1053,9 +1147,12 @@ const attachTerminal = (
 			binaryDisposable,
 			container: host,
 			kittyState: createKittyState(),
+			clipboardAddon,
+			unicode11Addon,
 		};
-		handle.oscDisposables = registerOscHandlers(id, terminal);
 		terminalHandles.set(id, handle);
+		syncWebLinksForMode(id);
+		handle.oscDisposables = registerOscHandlers(id, terminal);
 		if (!modeMap[id]) {
 			modeMap = {
 				...modeMap,
@@ -2082,6 +2179,7 @@ const ensureListener = (): void => {
 					mouseEncoding: payload.mouseEncoding ?? 'x10',
 				},
 			};
+			syncWebLinksForMode(id);
 		};
 		unsubscribeHandlers.push(subscribeEvent('terminal:modes', handler));
 		listeners.add('terminal:modes');
