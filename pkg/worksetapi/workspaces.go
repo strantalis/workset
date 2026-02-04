@@ -78,8 +78,11 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 		return WorkspaceCreateResult{}, err
 	}
 
-	registerWorkspace(&cfg, name, root, s.clock())
-	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
+		info = loadInfo
+		registerWorkspace(cfg, name, root, s.clock())
+		return nil
+	}); err != nil {
 		return WorkspaceCreateResult{}, err
 	}
 
@@ -87,6 +90,11 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 	if err != nil {
 		return WorkspaceCreateResult{}, err
 	}
+	type aliasUpdate struct {
+		remote string
+		branch string
+	}
+	aliasUpdates := map[string]aliasUpdate{}
 	warnings := []string{}
 	pendingHooks := []HookPending{}
 	for _, plan := range repoPlans {
@@ -109,16 +117,17 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 		}
 		if alias, ok := cfg.Repos[plan.Name]; ok {
 			aliasUpdated := false
+			update := aliasUpdates[plan.Name]
 			if alias.Remote == "" && resolvedRemote != "" {
-				alias.Remote = resolvedRemote
+				update.remote = resolvedRemote
 				aliasUpdated = true
 			}
 			if alias.DefaultBranch == "" && plan.DefaultBranch != "" {
-				alias.DefaultBranch = plan.DefaultBranch
+				update.branch = plan.DefaultBranch
 				aliasUpdated = true
 			}
 			if aliasUpdated {
-				cfg.Repos[plan.Name] = alias
+				aliasUpdates[plan.Name] = update
 			}
 		}
 		repoDir := plan.Name
@@ -148,8 +157,24 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 		Next:    fmt.Sprintf("workset repo add -w %s <alias|url>", name),
 	}
 
-	registerWorkspace(&cfg, name, root, s.clock())
-	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
+		info = loadInfo
+		for aliasName, update := range aliasUpdates {
+			alias, ok := cfg.Repos[aliasName]
+			if !ok {
+				continue
+			}
+			if alias.Remote == "" && update.remote != "" {
+				alias.Remote = update.remote
+			}
+			if alias.DefaultBranch == "" && update.branch != "" {
+				alias.DefaultBranch = update.branch
+			}
+			cfg.Repos[aliasName] = alias
+		}
+		registerWorkspace(cfg, name, root, s.clock())
+		return nil
+	}); err != nil {
 		return WorkspaceCreateResult{}, err
 	}
 	return WorkspaceCreateResult{Workspace: infoPayload, Warnings: warnings, PendingHooks: pendingHooks, Config: info}, nil
@@ -272,7 +297,6 @@ func (s *Service) DeleteWorkspace(ctx context.Context, input WorkspaceDeleteInpu
 	configChanged := false
 	if name != "" {
 		if _, ok := cfg.Workspaces[name]; ok {
-			delete(cfg.Workspaces, name)
 			configChanged = true
 		}
 	} else {
@@ -283,11 +307,23 @@ func (s *Service) DeleteWorkspace(ctx context.Context, input WorkspaceDeleteInpu
 		}
 	}
 	if cfg.Defaults.Workspace == name || cfg.Defaults.Workspace == root {
-		cfg.Defaults.Workspace = ""
 		configChanged = true
 	}
 	if configChanged {
-		if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+		if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
+			info = loadInfo
+			if name != "" {
+				if _, ok := cfg.Workspaces[name]; ok {
+					delete(cfg.Workspaces, name)
+				}
+			} else {
+				removeWorkspaceByPath(cfg, root)
+			}
+			if cfg.Defaults.Workspace == name || cfg.Defaults.Workspace == root {
+				cfg.Defaults.Workspace = ""
+			}
+			return nil
+		}); err != nil {
 			return WorkspaceDeleteResult{}, err
 		}
 	}
@@ -345,8 +381,11 @@ func (s *Service) StatusWorkspace(ctx context.Context, selector WorkspaceSelecto
 		payload = append(payload, entry)
 	}
 
-	registerWorkspace(&cfg, wsConfig.Name, wsRoot, s.clock())
-	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
+		info = loadInfo
+		registerWorkspace(cfg, wsConfig.Name, wsRoot, s.clock())
+		return nil
+	}); err != nil {
 		return WorkspaceStatusResult{}, err
 	}
 
@@ -398,8 +437,13 @@ func (s *Service) resolveWorkspace(ctx context.Context, cfg *config.GlobalConfig
 		return "", config.WorkspaceConfig{}, ConflictError{Message: "workspace name already registered to a different path"}
 	}
 	if !exists {
-		registerWorkspace(cfg, wsConfig.Name, root, s.clock())
-		if err := s.configs.Save(ctx, configPath, *cfg); err != nil {
+		if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, _ config.GlobalConfigLoadInfo) error {
+			if existing, ok := cfg.Workspaces[wsConfig.Name]; ok && existing.Path != "" && existing.Path != root {
+				return ConflictError{Message: "workspace name already registered to a different path"}
+			}
+			registerWorkspace(cfg, wsConfig.Name, root, s.clock())
+			return nil
+		}); err != nil {
 			return "", config.WorkspaceConfig{}, err
 		}
 	}

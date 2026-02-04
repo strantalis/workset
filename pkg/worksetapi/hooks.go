@@ -93,10 +93,11 @@ func (s *Service) RunHooks(ctx context.Context, input HooksRunInput) (HooksRunRe
 	}
 
 	if input.TrustRepo {
-		if addTrustedRepo(&cfg, repo.Name) {
-			if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
-				return HooksRunResult{}, err
-			}
+		if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, _ config.GlobalConfigLoadInfo) error {
+			addTrustedRepo(cfg, repo.Name)
+			return nil
+		}); err != nil {
+			return HooksRunResult{}, err
 		}
 	}
 
@@ -122,18 +123,17 @@ func (s *Service) RunHooks(ctx context.Context, input HooksRunInput) (HooksRunRe
 }
 
 func (s *Service) TrustRepoHooks(ctx context.Context, repoName string) (config.GlobalConfigLoadInfo, error) {
-	cfg, info, err := s.loadGlobal(ctx)
-	if err != nil {
-		return info, err
-	}
-	repoName = strings.TrimSpace(repoName)
-	if repoName == "" {
-		return info, ValidationError{Message: "repo name required"}
-	}
-	if addTrustedRepo(&cfg, repoName) {
-		if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
-			return info, err
+	var info config.GlobalConfigLoadInfo
+	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
+		info = loadInfo
+		repoName = strings.TrimSpace(repoName)
+		if repoName == "" {
+			return ValidationError{Message: "repo name required"}
 		}
+		addTrustedRepo(cfg, repoName)
+		return nil
+	}); err != nil {
+		return info, err
 	}
 	return info, nil
 }

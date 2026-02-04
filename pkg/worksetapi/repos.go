@@ -36,8 +36,11 @@ func (s *Service) ListRepos(ctx context.Context, selector WorkspaceSelector) (Re
 		})
 	}
 
-	registerWorkspace(&cfg, wsConfig.Name, wsRoot, s.clock())
-	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
+		info = loadInfo
+		registerWorkspace(cfg, wsConfig.Name, wsRoot, s.clock())
+		return nil
+	}); err != nil {
 		return RepoListResult{}, err
 	}
 
@@ -72,9 +75,6 @@ func (s *Service) AddRepo(ctx context.Context, input RepoAddInput) (RepoAddResul
 			if sourcePath == "" && looksLikeLocalPath(url) {
 				sourcePath = url
 				url = ""
-				alias.Path = sourcePath
-				alias.URL = ""
-				cfg.Repos[source] = alias
 			}
 		} else if looksLikeURL(source) {
 			url = source
@@ -95,13 +95,6 @@ func (s *Service) AddRepo(ctx context.Context, input RepoAddInput) (RepoAddResul
 		sourcePath = resolved
 		if !nameProvided && name == "" {
 			name = filepath.Base(sourcePath)
-		}
-		if alias, ok := cfg.Repos[name]; ok {
-			if alias.Path != sourcePath {
-				alias.Path = sourcePath
-				alias.URL = ""
-				cfg.Repos[name] = alias
-			}
 		}
 	}
 	if name == "" {
@@ -142,39 +135,35 @@ func (s *Service) AddRepo(ctx context.Context, input RepoAddInput) (RepoAddResul
 		warnings = append(warnings, repoWarnings...)
 	}
 
-	aliasUpdated := false
-	if !aliasExists {
-		alias = config.RepoAlias{}
-		aliasUpdated = true
-	}
-	if alias.Path == "" && alias.URL == "" {
-		if sourcePath != "" {
+	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
+		info = loadInfo
+		alias, aliasExists := cfg.Repos[name]
+		if sourcePath != "" && aliasExists && alias.Path != sourcePath {
 			alias.Path = sourcePath
 			alias.URL = ""
-			aliasUpdated = true
-		} else if url != "" {
-			alias.URL = url
-			alias.Path = ""
-			aliasUpdated = true
 		}
-	}
-	if alias.DefaultBranch == "" && defaultBranch != "" {
-		alias.DefaultBranch = defaultBranch
-		aliasUpdated = true
-	}
-	if alias.Remote == "" && resolvedRemote != "" {
-		alias.Remote = resolvedRemote
-		aliasUpdated = true
-	}
-	if aliasUpdated {
+		if alias.Path == "" && alias.URL == "" {
+			if sourcePath != "" {
+				alias.Path = sourcePath
+				alias.URL = ""
+			} else if url != "" {
+				alias.URL = url
+				alias.Path = ""
+			}
+		}
+		if alias.DefaultBranch == "" && defaultBranch != "" {
+			alias.DefaultBranch = defaultBranch
+		}
+		if alias.Remote == "" && resolvedRemote != "" {
+			alias.Remote = resolvedRemote
+		}
 		if cfg.Repos == nil {
 			cfg.Repos = map[string]config.RepoAlias{}
 		}
 		cfg.Repos[name] = alias
-	}
-
-	registerWorkspace(&cfg, wsConfig.Name, wsRoot, s.clock())
-	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+		registerWorkspace(cfg, wsConfig.Name, wsRoot, s.clock())
+		return nil
+	}); err != nil {
 		return RepoAddResult{}, err
 	}
 
@@ -315,8 +304,11 @@ func (s *Service) RemoveRepo(ctx context.Context, input RepoRemoveInput) (RepoRe
 		return RepoRemoveResult{}, err
 	}
 
-	registerWorkspace(&cfg, wsConfig.Name, wsRoot, s.clock())
-	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
+		info = loadInfo
+		registerWorkspace(cfg, wsConfig.Name, wsRoot, s.clock())
+		return nil
+	}); err != nil {
 		return RepoRemoveResult{}, err
 	}
 

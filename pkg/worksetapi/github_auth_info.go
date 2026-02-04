@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/strantalis/workset/internal/config"
 )
 
 // GetGitHubAuthInfo reports auth mode, status, and local CLI availability.
@@ -137,12 +139,10 @@ func (s *Service) SetGitHubCLIPath(ctx context.Context, path string) (GitHubAuth
 	if path != "" && !isExecutableFile(path) {
 		return GitHubAuthInfoJSON{}, ValidationError{Message: "GitHub CLI path is not executable"}
 	}
-	cfg, info, err := s.loadGlobal(ctx)
-	if err != nil {
-		return GitHubAuthInfoJSON{}, err
-	}
-	cfg.GitHub.CLIPath = path
-	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, _ config.GlobalConfigLoadInfo) error {
+		cfg.GitHub.CLIPath = path
+		return nil
+	}); err != nil {
 		return GitHubAuthInfoJSON{}, err
 	}
 	if path != "" {

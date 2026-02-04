@@ -61,52 +61,55 @@ func (s *Service) GetAlias(ctx context.Context, name string) (AliasJSON, config.
 
 // CreateAlias adds a new repo alias.
 func (s *Service) CreateAlias(ctx context.Context, input AliasUpsertInput) (AliasMutationResultJSON, config.GlobalConfigLoadInfo, error) {
-	cfg, info, err := s.loadGlobal(ctx)
-	if err != nil {
-		return AliasMutationResultJSON{}, info, err
-	}
-	name := strings.TrimSpace(input.Name)
-	if name == "" {
-		return AliasMutationResultJSON{}, info, ValidationError{Message: "alias name required"}
-	}
-	if cfg.Repos != nil {
-		if _, ok := cfg.Repos[name]; ok {
-			return AliasMutationResultJSON{}, info, ConflictError{Message: "repo alias already exists"}
+	var (
+		info config.GlobalConfigLoadInfo
+		name string
+	)
+	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
+		info = loadInfo
+		name = strings.TrimSpace(input.Name)
+		if name == "" {
+			return ValidationError{Message: "alias name required"}
 		}
-	}
-	if strings.TrimSpace(input.Source) == "" {
-		return AliasMutationResultJSON{}, info, ValidationError{Message: "source required to create alias"}
-	}
+		if cfg.Repos != nil {
+			if _, ok := cfg.Repos[name]; ok {
+				return ConflictError{Message: "repo alias already exists"}
+			}
+		}
+		if strings.TrimSpace(input.Source) == "" {
+			return ValidationError{Message: "source required to create alias"}
+		}
 
-	url := ""
-	path := ""
-	if looksLikeURL(input.Source) {
-		url = strings.TrimSpace(input.Source)
-	} else {
-		resolved, err := resolveLocalPathInput(input.Source)
-		if err != nil {
-			return AliasMutationResultJSON{}, info, err
+		url := ""
+		path := ""
+		if looksLikeURL(input.Source) {
+			url = strings.TrimSpace(input.Source)
+		} else {
+			resolved, err := resolveLocalPathInput(input.Source)
+			if err != nil {
+				return err
+			}
+			path = resolved
 		}
-		path = resolved
-	}
-	if cfg.Repos == nil {
-		cfg.Repos = map[string]config.RepoAlias{}
-	}
-	defaultBranch := strings.TrimSpace(input.DefaultBranch)
-	if defaultBranch == "" {
-		defaultBranch = cfg.Defaults.BaseBranch
-	}
-	remote := strings.TrimSpace(input.Remote)
-	if remote == "" {
-		remote = cfg.Defaults.Remote
-	}
-	cfg.Repos[name] = config.RepoAlias{
-		URL:           url,
-		Path:          path,
-		Remote:        remote,
-		DefaultBranch: defaultBranch,
-	}
-	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+		if cfg.Repos == nil {
+			cfg.Repos = map[string]config.RepoAlias{}
+		}
+		defaultBranch := strings.TrimSpace(input.DefaultBranch)
+		if defaultBranch == "" {
+			defaultBranch = cfg.Defaults.BaseBranch
+		}
+		remote := strings.TrimSpace(input.Remote)
+		if remote == "" {
+			remote = cfg.Defaults.Remote
+		}
+		cfg.Repos[name] = config.RepoAlias{
+			URL:           url,
+			Path:          path,
+			Remote:        remote,
+			DefaultBranch: defaultBranch,
+		}
+		return nil
+	}); err != nil {
 		return AliasMutationResultJSON{}, info, err
 	}
 	return AliasMutationResultJSON{Status: "ok", Name: name}, info, nil
@@ -114,57 +117,60 @@ func (s *Service) CreateAlias(ctx context.Context, input AliasUpsertInput) (Alia
 
 // UpdateAlias updates an existing repo alias.
 func (s *Service) UpdateAlias(ctx context.Context, input AliasUpsertInput) (AliasMutationResultJSON, config.GlobalConfigLoadInfo, error) {
-	cfg, info, err := s.loadGlobal(ctx)
-	if err != nil {
-		return AliasMutationResultJSON{}, info, err
-	}
-	name := strings.TrimSpace(input.Name)
-	if name == "" {
-		return AliasMutationResultJSON{}, info, ValidationError{Message: "alias name required"}
-	}
-	alias, ok := cfg.Repos[name]
-	if !ok {
-		return AliasMutationResultJSON{}, info, NotFoundError{Message: "repo alias not found"}
-	}
-	updated := false
-	if input.SourceSet {
-		source := strings.TrimSpace(input.Source)
-		if source != "" {
-			if looksLikeURL(source) {
-				alias.URL = source
-				alias.Path = ""
-			} else {
-				resolved, err := resolveLocalPathInput(source)
-				if err != nil {
-					return AliasMutationResultJSON{}, info, err
+	var (
+		info config.GlobalConfigLoadInfo
+		name string
+	)
+	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
+		info = loadInfo
+		name = strings.TrimSpace(input.Name)
+		if name == "" {
+			return ValidationError{Message: "alias name required"}
+		}
+		alias, ok := cfg.Repos[name]
+		if !ok {
+			return NotFoundError{Message: "repo alias not found"}
+		}
+		updated := false
+		if input.SourceSet {
+			source := strings.TrimSpace(input.Source)
+			if source != "" {
+				if looksLikeURL(source) {
+					alias.URL = source
+					alias.Path = ""
+				} else {
+					resolved, err := resolveLocalPathInput(source)
+					if err != nil {
+						return err
+					}
+					alias.Path = resolved
+					alias.URL = ""
 				}
-				alias.Path = resolved
-				alias.URL = ""
+				updated = true
 			}
+		}
+		if input.DefaultBranchSet {
+			defaultBranch := strings.TrimSpace(input.DefaultBranch)
+			if defaultBranch == "" {
+				return ValidationError{Message: "default branch cannot be empty"}
+			}
+			alias.DefaultBranch = defaultBranch
 			updated = true
 		}
-	}
-	if input.DefaultBranchSet {
-		defaultBranch := strings.TrimSpace(input.DefaultBranch)
-		if defaultBranch == "" {
-			return AliasMutationResultJSON{}, info, ValidationError{Message: "default branch cannot be empty"}
+		if input.RemoteSet {
+			remote := strings.TrimSpace(input.Remote)
+			if remote == "" {
+				return ValidationError{Message: "remote cannot be empty"}
+			}
+			alias.Remote = remote
+			updated = true
 		}
-		alias.DefaultBranch = defaultBranch
-		updated = true
-	}
-	if input.RemoteSet {
-		remote := strings.TrimSpace(input.Remote)
-		if remote == "" {
-			return AliasMutationResultJSON{}, info, ValidationError{Message: "remote cannot be empty"}
+		if !updated {
+			return ValidationError{Message: "no updates specified"}
 		}
-		alias.Remote = remote
-		updated = true
-	}
-	if !updated {
-		return AliasMutationResultJSON{}, info, ValidationError{Message: "no updates specified"}
-	}
-	cfg.Repos[name] = alias
-	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+		cfg.Repos[name] = alias
+		return nil
+	}); err != nil {
 		return AliasMutationResultJSON{}, info, err
 	}
 	return AliasMutationResultJSON{Status: "ok", Name: name}, info, nil
@@ -172,19 +178,19 @@ func (s *Service) UpdateAlias(ctx context.Context, input AliasUpsertInput) (Alia
 
 // DeleteAlias removes a repo alias by name.
 func (s *Service) DeleteAlias(ctx context.Context, name string) (AliasMutationResultJSON, config.GlobalConfigLoadInfo, error) {
-	cfg, info, err := s.loadGlobal(ctx)
-	if err != nil {
-		return AliasMutationResultJSON{}, info, err
-	}
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return AliasMutationResultJSON{}, info, ValidationError{Message: "alias name required"}
-	}
-	if _, ok := cfg.Repos[name]; !ok {
-		return AliasMutationResultJSON{}, info, NotFoundError{Message: "repo alias not found"}
-	}
-	delete(cfg.Repos, name)
-	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+	var info config.GlobalConfigLoadInfo
+	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
+		info = loadInfo
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return ValidationError{Message: "alias name required"}
+		}
+		if _, ok := cfg.Repos[name]; !ok {
+			return NotFoundError{Message: "repo alias not found"}
+		}
+		delete(cfg.Repos, name)
+		return nil
+	}); err != nil {
 		return AliasMutationResultJSON{}, info, err
 	}
 	return AliasMutationResultJSON{Status: "ok", Name: name}, info, nil

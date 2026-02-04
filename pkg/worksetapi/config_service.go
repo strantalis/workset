@@ -17,14 +17,11 @@ func (s *Service) GetConfig(ctx context.Context) (config.GlobalConfig, config.Gl
 
 // SetDefault updates a defaults.* key in the global config.
 func (s *Service) SetDefault(ctx context.Context, key, value string) (ConfigSetResultJSON, config.GlobalConfigLoadInfo, error) {
-	cfg, info, err := s.loadGlobal(ctx)
-	if err != nil {
-		return ConfigSetResultJSON{}, info, err
-	}
-	if err := setGlobalDefault(&cfg, key, value); err != nil {
-		return ConfigSetResultJSON{}, info, err
-	}
-	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+	var info config.GlobalConfigLoadInfo
+	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
+		info = loadInfo
+		return setGlobalDefault(cfg, key, value)
+	}); err != nil {
 		return ConfigSetResultJSON{}, info, err
 	}
 	return ConfigSetResultJSON{Status: "ok", Key: key, Value: value}, info, nil

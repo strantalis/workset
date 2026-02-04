@@ -9,6 +9,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/strantalis/workset/internal/config"
 	"github.com/strantalis/workset/internal/git"
@@ -36,6 +37,20 @@ type ConfigRecoverResultJSON struct {
 type ConfigRecoverResult struct {
 	Payload ConfigRecoverResultJSON
 	Config  config.GlobalConfigLoadInfo
+}
+
+type recoverCandidate struct {
+	name   string
+	root   string
+	config config.WorkspaceConfig
+}
+
+type recoverApplyResult struct {
+	recovered      []string
+	reposRecovered map[string]struct{}
+	conflicts      []string
+	warnings       []string
+	configChanged  bool
 }
 
 // RecoverConfig rebuilds workspace registrations (and optionally repo aliases) from workset.yaml files.
@@ -68,25 +83,22 @@ func (s *Service) RecoverConfig(ctx context.Context, input ConfigRecoverInput) (
 		return ConfigRecoverResult{}, err
 	}
 
-	configChanged := false
-	warnings := []string{}
-	conflicts := []string{}
-	recovered := []string{}
-	reposRecovered := map[string]struct{}{}
+	preWarnings := []string{}
 
 	worksetFiles, err := findWorksetFiles(absRoot)
 	if err != nil {
 		return ConfigRecoverResult{}, err
 	}
 	if len(worksetFiles) == 0 {
-		warnings = append(warnings, "no workset.yaml files found under "+absRoot)
+		preWarnings = append(preWarnings, "no workset.yaml files found under "+absRoot)
 	}
 
+	candidates := []recoverCandidate{}
 	for _, worksetFile := range worksetFiles {
 		wsRoot := filepath.Dir(worksetFile)
 		wsConfig, err := config.LoadWorkspace(worksetFile)
 		if err != nil {
-			warnings = append(warnings, fmt.Sprintf("failed to load %s: %v", worksetFile, err))
+			preWarnings = append(preWarnings, fmt.Sprintf("failed to load %s: %v", worksetFile, err))
 			continue
 		}
 		name := strings.TrimSpace(wsConfig.Name)
@@ -94,47 +106,34 @@ func (s *Service) RecoverConfig(ctx context.Context, input ConfigRecoverInput) (
 			name = filepath.Base(wsRoot)
 		}
 		if name == "" {
-			warnings = append(warnings, fmt.Sprintf("skipping %s: workspace name missing", wsRoot))
+			preWarnings = append(preWarnings, fmt.Sprintf("skipping %s: workspace name missing", wsRoot))
 			continue
 		}
-		if ref, ok := cfg.Workspaces[name]; ok {
-			existingPath := strings.TrimSpace(ref.Path)
-			existing := ""
-			if existingPath != "" {
-				existing = filepath.Clean(existingPath)
-			}
-			if existing != "" && existing != filepath.Clean(wsRoot) {
-				conflicts = append(conflicts, fmt.Sprintf("%s (existing %s, found %s)", name, existing, wsRoot))
-				continue
-			}
-			if existing == filepath.Clean(wsRoot) {
-				if input.RebuildRepos {
-					for _, repo := range recoverRepoAliases(&cfg, wsConfig, s.git, cfg.Defaults, &warnings) {
-						reposRecovered[repo] = struct{}{}
-					}
-				}
-				continue
-			}
-		}
-		registerWorkspace(&cfg, name, wsRoot, s.clock())
-		recovered = append(recovered, name)
-		configChanged = true
-		if input.RebuildRepos {
-			for _, repo := range recoverRepoAliases(&cfg, wsConfig, s.git, cfg.Defaults, &warnings) {
-				reposRecovered[repo] = struct{}{}
+		candidates = append(candidates, recoverCandidate{
+			name:   name,
+			root:   wsRoot,
+			config: wsConfig,
+		})
+	}
+
+	now := s.clock()
+	applyResult := s.applyRecoverCandidates(&cfg, candidates, input.RebuildRepos, now)
+	if !input.DryRun {
+		if applyResult.configChanged {
+			_, err := s.updateGlobal(ctx, func(target *config.GlobalConfig, info config.GlobalConfigLoadInfo) error {
+				applyResult = s.applyRecoverCandidates(target, candidates, input.RebuildRepos, now)
+				return nil
+			})
+			if err != nil {
+				return ConfigRecoverResult{}, err
 			}
 		}
 	}
 
-	if len(reposRecovered) > 0 {
-		configChanged = true
-	}
-
-	if configChanged && !input.DryRun {
-		if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
-			return ConfigRecoverResult{}, err
-		}
-	}
+	recovered := applyResult.recovered
+	reposRecovered := applyResult.reposRecovered
+	conflicts := applyResult.conflicts
+	warnings := append(preWarnings, applyResult.warnings...)
 
 	sort.Strings(recovered)
 	recoveredRepos := make([]string, 0, len(reposRecovered))
@@ -155,6 +154,49 @@ func (s *Service) RecoverConfig(ctx context.Context, input ConfigRecoverInput) (
 		DryRun:              input.DryRun,
 	}
 	return ConfigRecoverResult{Payload: payload, Config: info}, nil
+}
+
+func (s *Service) applyRecoverCandidates(cfg *config.GlobalConfig, candidates []recoverCandidate, rebuildRepos bool, now time.Time) recoverApplyResult {
+	cfg.EnsureMaps()
+	result := recoverApplyResult{
+		reposRecovered: map[string]struct{}{},
+	}
+	for _, candidate := range candidates {
+		ref, ok := cfg.Workspaces[candidate.name]
+		existingPath := strings.TrimSpace(ref.Path)
+		existing := ""
+		if existingPath != "" {
+			existing = filepath.Clean(existingPath)
+		}
+		target := filepath.Clean(candidate.root)
+		if ok && existing != "" && existing != target {
+			result.conflicts = append(result.conflicts, fmt.Sprintf("%s (existing %s, found %s)", candidate.name, existing, candidate.root))
+			continue
+		}
+		if ok && existing == target {
+			if rebuildRepos {
+				if repos := recoverRepoAliases(cfg, candidate.config, s.git, cfg.Defaults, &result.warnings); len(repos) > 0 {
+					for _, repo := range repos {
+						result.reposRecovered[repo] = struct{}{}
+					}
+					result.configChanged = true
+				}
+			}
+			continue
+		}
+		registerWorkspace(cfg, candidate.name, candidate.root, now)
+		result.recovered = append(result.recovered, candidate.name)
+		result.configChanged = true
+		if rebuildRepos {
+			if repos := recoverRepoAliases(cfg, candidate.config, s.git, cfg.Defaults, &result.warnings); len(repos) > 0 {
+				for _, repo := range repos {
+					result.reposRecovered[repo] = struct{}{}
+				}
+				result.configChanged = true
+			}
+		}
+	}
+	return result
 }
 
 func findWorksetFiles(root string) ([]string, error) {

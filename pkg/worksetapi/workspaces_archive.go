@@ -10,24 +10,28 @@ import (
 
 // ArchiveWorkspace marks a workspace as archived in the global config.
 func (s *Service) ArchiveWorkspace(ctx context.Context, selector WorkspaceSelector, reason string) (WorkspaceRefJSON, config.GlobalConfigLoadInfo, error) {
-	cfg, info, err := s.loadGlobal(ctx)
-	if err != nil {
-		return WorkspaceRefJSON{}, info, err
-	}
-	name, _, err := resolveWorkspaceSelector(&cfg, selector)
-	if err != nil {
-		return WorkspaceRefJSON{}, info, err
-	}
-	ref, ok := cfg.Workspaces[name]
-	if !ok {
-		return WorkspaceRefJSON{}, info, NotFoundError{Message: "workspace not found"}
-	}
-
-	ref.ArchivedAt = s.clock().Format(time.RFC3339)
-	ref.ArchivedReason = strings.TrimSpace(reason)
-	cfg.Workspaces[name] = ref
-
-	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+	var (
+		info config.GlobalConfigLoadInfo
+		name string
+		ref  config.WorkspaceRef
+	)
+	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
+		info = loadInfo
+		var err error
+		name, _, err = resolveWorkspaceSelector(cfg, selector)
+		if err != nil {
+			return err
+		}
+		var ok bool
+		ref, ok = cfg.Workspaces[name]
+		if !ok {
+			return NotFoundError{Message: "workspace not found"}
+		}
+		ref.ArchivedAt = s.clock().Format(time.RFC3339)
+		ref.ArchivedReason = strings.TrimSpace(reason)
+		cfg.Workspaces[name] = ref
+		return nil
+	}); err != nil {
 		return WorkspaceRefJSON{}, info, err
 	}
 	return workspaceRefJSON(name, ref), info, nil
@@ -35,25 +39,29 @@ func (s *Service) ArchiveWorkspace(ctx context.Context, selector WorkspaceSelect
 
 // UnarchiveWorkspace removes archived flags for a workspace.
 func (s *Service) UnarchiveWorkspace(ctx context.Context, selector WorkspaceSelector) (WorkspaceRefJSON, config.GlobalConfigLoadInfo, error) {
-	cfg, info, err := s.loadGlobal(ctx)
-	if err != nil {
-		return WorkspaceRefJSON{}, info, err
-	}
-	name, _, err := resolveWorkspaceSelector(&cfg, selector)
-	if err != nil {
-		return WorkspaceRefJSON{}, info, err
-	}
-	ref, ok := cfg.Workspaces[name]
-	if !ok {
-		return WorkspaceRefJSON{}, info, NotFoundError{Message: "workspace not found"}
-	}
-
-	ref.ArchivedAt = ""
-	ref.ArchivedReason = ""
-	ref.LastUsed = s.clock().Format(time.RFC3339)
-	cfg.Workspaces[name] = ref
-
-	if err := s.configs.Save(ctx, info.Path, cfg); err != nil {
+	var (
+		info config.GlobalConfigLoadInfo
+		name string
+		ref  config.WorkspaceRef
+	)
+	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
+		info = loadInfo
+		var err error
+		name, _, err = resolveWorkspaceSelector(cfg, selector)
+		if err != nil {
+			return err
+		}
+		var ok bool
+		ref, ok = cfg.Workspaces[name]
+		if !ok {
+			return NotFoundError{Message: "workspace not found"}
+		}
+		ref.ArchivedAt = ""
+		ref.ArchivedReason = ""
+		ref.LastUsed = s.clock().Format(time.RFC3339)
+		cfg.Workspaces[name] = ref
+		return nil
+	}); err != nil {
 		return WorkspaceRefJSON{}, info, err
 	}
 	return workspaceRefJSON(name, ref), info, nil
