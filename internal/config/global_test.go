@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -92,6 +93,32 @@ func TestSaveGlobalCreatesBackup(t *testing.T) {
 	}
 	if !strings.Contains(string(backup), "demo.git") {
 		t.Fatalf("expected backup to contain repo alias, got %q", string(backup))
+	}
+}
+
+func TestUpdateGlobalPreservesFilePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file permissions not reliable on windows")
+	}
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("defaults:\n  base_branch: main\n"), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	if _, err := UpdateGlobal(path, func(cfg *GlobalConfig, info GlobalConfigLoadInfo) error {
+		cfg.Defaults.BaseBranch = "dev"
+		return nil
+	}); err != nil {
+		t.Fatalf("UpdateGlobal: %v", err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat config: %v", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("expected mode 0600, got %04o", info.Mode().Perm())
 	}
 }
 

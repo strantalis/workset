@@ -21,8 +21,10 @@ func UpdateGlobal(path string, fn func(cfg *GlobalConfig, info GlobalConfigLoadI
 	if err := os.MkdirAll(filepath.Dir(info.Path), 0o755); err != nil {
 		return info, err
 	}
-	if _, err := os.Stat(info.Path); err == nil {
+	perm := os.FileMode(0o644)
+	if stat, err := os.Stat(info.Path); err == nil {
 		info.Exists = true
+		perm = stat.Mode().Perm()
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return info, err
 	}
@@ -56,6 +58,6 @@ func UpdateGlobal(path string, fn func(cfg *GlobalConfig, info GlobalConfigLoadI
 	if err != nil {
 		return info, err
 	}
-	_ = os.Chmod(info.Path, 0o644)
+	_ = os.Chmod(info.Path, perm)
 	return info, nil
 }
