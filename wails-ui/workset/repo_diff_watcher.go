@@ -24,6 +24,15 @@ const (
 )
 
 var repoDiffEmit = wruntime.EventsEmit
+var repoDiffResolveRepoPath = func(ctx context.Context, app *App, workspaceID, repoID string) (string, error) {
+	return app.resolveRepoPath(ctx, workspaceID, repoID)
+}
+var repoDiffResolveRepoAlias = func(workspaceID, repoID string) (string, error) {
+	return resolveRepoAlias(workspaceID, repoID)
+}
+var repoDiffRunWatch = func(w *repoDiffWatch) {
+	w.run()
+}
 
 type repoDiffPrStatusResult struct {
 	pullRequest worksetapi.PullRequestStatusJSON
@@ -186,11 +195,11 @@ func (m *repoDiffWatchManager) start(ctx context.Context, app *App, input RepoDi
 	}
 	m.mu.Unlock()
 
-	repoPath, err := app.resolveRepoPath(ctx, input.WorkspaceID, input.RepoID)
+	repoPath, err := repoDiffResolveRepoPath(ctx, app, input.WorkspaceID, input.RepoID)
 	if err != nil {
 		return false, err
 	}
-	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
+	repoName, err := repoDiffResolveRepoAlias(input.WorkspaceID, input.RepoID)
 	if err != nil {
 		return false, err
 	}
@@ -202,10 +211,20 @@ func (m *repoDiffWatchManager) start(ctx context.Context, app *App, input RepoDi
 	}
 
 	m.mu.Lock()
+	existing = m.watches[key]
+	if existing != nil {
+		existing.increment(input.LocalOnly)
+		if !input.LocalOnly {
+			existing.updatePrInfo(input.PrNumber, input.PrBranch)
+		}
+		m.mu.Unlock()
+		watch.stop()
+		return false, nil
+	}
 	m.watches[key] = watch
 	m.mu.Unlock()
 
-	go watch.run()
+	go repoDiffRunWatch(watch)
 
 	return true, nil
 }

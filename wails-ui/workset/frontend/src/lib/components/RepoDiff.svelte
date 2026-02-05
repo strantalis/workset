@@ -293,6 +293,7 @@
 	let fileRequest = 0;
 
 	let watchActive = $state(false);
+	let watchStarting = $state(false);
 	let renderQueued = false;
 	let repoDiffUnsubscribers: Array<() => void> = [];
 
@@ -1337,9 +1338,6 @@
 	};
 
 	onMount(() => {
-		if (repoId) {
-			lastRepoId = repoId;
-		}
 		repoDiffUnsubscribers = [
 			subscribeRepoDiffEvent<RepoDiffSummaryEvent>('repodiff:summary', (payload) => {
 				if (payload.workspaceId !== workspaceId || payload.repoId !== repoId) return;
@@ -1379,20 +1377,6 @@
 		void loadTrackedPR();
 		void loadRemotes();
 		void loadLocalStatus().then(() => loadLocalSummary());
-		if (repoId) {
-			void startRepoDiffWatch(
-				workspaceId,
-				repoId,
-				parseNumber(prNumberInput),
-				prBranchInput.trim() || undefined,
-			)
-				.then(() => {
-					watchActive = true;
-				})
-				.catch(() => {
-					watchActive = false;
-				});
-		}
 	});
 
 	onDestroy(() => {
@@ -1404,9 +1388,45 @@
 	});
 
 	$effect(() => {
-		if (repoId) {
-			lastRepoId = repoId;
+		if (!repoId) {
+			if (lastRepoId) {
+				void stopRepoDiffWatch(workspaceId, lastRepoId);
+				watchActive = false;
+				watchStarting = false;
+				lastRepoId = '';
+			}
+			return;
 		}
+
+		const repoChanged = lastRepoId !== '' && lastRepoId !== repoId;
+		if (repoChanged) {
+			void stopRepoDiffWatch(workspaceId, lastRepoId);
+			watchActive = false;
+			watchStarting = false;
+		}
+
+		if ((!watchActive || repoChanged) && !watchStarting) {
+			const startRepoId = repoId;
+			const prNumber = parseNumber(prNumberInput);
+			const prBranch = prBranchInput.trim() || undefined;
+			watchStarting = true;
+			void startRepoDiffWatch(workspaceId, startRepoId, prNumber, prBranch)
+				.then(() => {
+					if (repoId === startRepoId) {
+						watchActive = true;
+					}
+				})
+				.catch(() => {
+					if (repoId === startRepoId) {
+						watchActive = false;
+					}
+				})
+				.finally(() => {
+					watchStarting = false;
+				});
+		}
+
+		lastRepoId = repoId;
 	});
 
 	$effect(() => {

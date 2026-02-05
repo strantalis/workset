@@ -1,10 +1,11 @@
-import { EventsOff, EventsOn } from '../../wailsjs/runtime/runtime';
+import { EventsOn } from '../../wailsjs/runtime/runtime';
 
 type EventHandler<T> = (payload: T) => void;
 
 type EventRegistryEntry = {
 	handlers: Set<EventHandler<unknown>>;
 	bound: boolean;
+	unsubscribe?: () => void;
 };
 
 const eventRegistry = new Map<string, EventRegistryEntry>();
@@ -20,13 +21,14 @@ export const subscribeRepoDiffEvent = <T>(
 	}
 	entry.handlers.add(handler as EventHandler<unknown>);
 	if (!entry.bound) {
-		EventsOn(event, (payload: T) => {
+		const unsubscribe = EventsOn(event, (payload: T) => {
 			const current = eventRegistry.get(event);
 			if (!current) return;
 			for (const registered of current.handlers) {
 				registered(payload as unknown);
 			}
 		});
+		entry.unsubscribe = unsubscribe;
 		entry.bound = true;
 	}
 	return () => {
@@ -37,7 +39,7 @@ export const subscribeRepoDiffEvent = <T>(
 			return;
 		}
 		if (current.bound) {
-			EventsOff(event);
+			current.unsubscribe?.();
 		}
 		eventRegistry.delete(event);
 	};

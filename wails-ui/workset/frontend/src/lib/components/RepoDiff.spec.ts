@@ -143,3 +143,50 @@ describe('RepoDiff create PR feedback', () => {
 		expect(await findByText('Failed to create pull request.')).toBeInTheDocument();
 	});
 });
+
+describe('RepoDiff watcher lifecycle', () => {
+	it('restarts watcher when repo changes', async () => {
+		const onClose = vi.fn();
+		const repoA: Repo = {
+			id: 'repo-1',
+			name: 'alpha',
+			path: '/repo/a',
+			dirty: false,
+			missing: false,
+			diff: { added: 0, removed: 0 },
+			files: [],
+		};
+		const repoB: Repo = {
+			id: 'repo-2',
+			name: 'beta',
+			path: '/repo/b',
+			dirty: false,
+			missing: false,
+			diff: { added: 0, removed: 0 },
+			files: [],
+		};
+
+		const { rerender } = render(RepoDiff, {
+			props: {
+				repo: repoA,
+				workspaceId: 'ws-1',
+				onClose,
+			},
+		});
+
+		await waitFor(() => {
+			expect(api.startRepoDiffWatch).toHaveBeenCalledWith('ws-1', 'repo-1', undefined, undefined);
+		});
+
+		await rerender({
+			repo: repoB,
+			workspaceId: 'ws-1',
+			onClose,
+		});
+
+		await waitFor(() => {
+			expect(api.stopRepoDiffWatch).toHaveBeenCalledWith('ws-1', 'repo-1');
+			expect(api.startRepoDiffWatch).toHaveBeenCalledWith('ws-1', 'repo-2', undefined, undefined);
+		});
+	});
+});

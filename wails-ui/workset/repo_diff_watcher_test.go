@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/strantalis/workset/pkg/worksetapi"
 )
@@ -291,4 +294,56 @@ func TestLocalOnlySkipsSummaryAndPr(t *testing.T) {
 	if len(events) != 1 {
 		t.Fatalf("expected no pr events, got %v", events)
 	}
+}
+
+func TestRepoDiffWatchManagerStartDedupesConcurrentStarts(t *testing.T) {
+	origRun := repoDiffRunWatch
+	origResolvePath := repoDiffResolveRepoPath
+	origResolveAlias := repoDiffResolveRepoAlias
+	defer func() {
+		repoDiffRunWatch = origRun
+		repoDiffResolveRepoPath = origResolvePath
+		repoDiffResolveRepoAlias = origResolveAlias
+	}()
+
+	repoDiffResolveRepoPath = func(_ context.Context, _ *App, _ string, _ string) (string, error) {
+		return t.TempDir(), nil
+	}
+	repoDiffResolveRepoAlias = func(_ string, _ string) (string, error) {
+		return "repo", nil
+	}
+
+	var runCount int32
+	repoDiffRunWatch = func(_ *repoDiffWatch) {
+		atomic.AddInt32(&runCount, 1)
+	}
+
+	manager := newRepoDiffWatchManager()
+	app := &App{ctx: context.Background()}
+	input := RepoDiffWatchRequest{
+		WorkspaceID: "ws-1",
+		RepoID:      "ws-1::repo",
+		LocalOnly:   true,
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = manager.start(context.Background(), app, input)
+		}()
+	}
+	wg.Wait()
+
+	for i := 0; i < 10 && atomic.LoadInt32(&runCount) == 0; i++ {
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	if got := atomic.LoadInt32(&runCount); got != 1 {
+		t.Fatalf("expected 1 watcher run, got %d", got)
+	}
+
+	manager.stop(input)
+	manager.stop(input)
 }
