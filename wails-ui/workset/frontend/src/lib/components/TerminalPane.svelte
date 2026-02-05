@@ -22,7 +22,38 @@
 		restart?: () => Promise<void>;
 		retryHealthCheck?: () => void;
 		focus?: () => void;
+		scrollToBottom?: () => void;
+		checkAtBottom?: () => boolean;
 	} | null = $state(null);
+
+	let hoveringBottomRight = $state(false);
+	let notAtBottom = $state(false);
+	let scrollCheckInterval: ReturnType<typeof setInterval> | null = null;
+
+	$effect(() => {
+		if (hoveringBottomRight) {
+			notAtBottom = !(controller?.checkAtBottom?.() ?? true);
+			scrollCheckInterval = setInterval(() => {
+				notAtBottom = !(controller?.checkAtBottom?.() ?? true);
+			}, 300);
+		} else {
+			if (scrollCheckInterval) {
+				clearInterval(scrollCheckInterval);
+				scrollCheckInterval = null;
+			}
+		}
+		return () => {
+			if (scrollCheckInterval) {
+				clearInterval(scrollCheckInterval);
+				scrollCheckInterval = null;
+			}
+		};
+	});
+
+	const handleScrollToBottom = (): void => {
+		controller?.scrollToBottom?.();
+		notAtBottom = false;
+	};
 	let controllerState = $state({
 		status: '',
 		message: '',
@@ -173,6 +204,25 @@
 		{/if}
 		<div class="terminal-surface">
 			<div class="terminal-mount" bind:this={terminalContainer}></div>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div
+				class="scroll-hover-zone"
+				onmouseenter={() => (hoveringBottomRight = true)}
+				onmouseleave={() => (hoveringBottomRight = false)}
+			>
+				{#if hoveringBottomRight && notAtBottom}
+					<button
+						class="scroll-to-bottom"
+						type="button"
+						onclick={handleScrollToBottom}
+						aria-label="Scroll to bottom"
+					>
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+							<polyline points="6 9 12 15 18 9"></polyline>
+						</svg>
+					</button>
+				{/if}
+			</div>
 		</div>
 	</div>
 </section>
@@ -358,6 +408,43 @@
 		position: absolute;
 		inset: 8px;
 		z-index: 1;
+	}
+
+	.scroll-hover-zone {
+		position: absolute;
+		bottom: 0;
+		right: 0;
+		width: 64px;
+		height: 64px;
+		z-index: 10;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.scroll-to-bottom {
+		width: 34px;
+		height: 34px;
+		border-radius: 50%;
+		border: 1px solid var(--border);
+		background: var(--panel-strong);
+		color: var(--muted);
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		opacity: 0.8;
+		transition:
+			opacity var(--transition-fast),
+			background var(--transition-fast),
+			color var(--transition-fast);
+	}
+
+	.scroll-to-bottom:hover {
+		opacity: 1;
+		background: var(--accent);
+		color: #081018;
+		border-color: var(--accent);
 	}
 
 	:global(.terminal-instance) {

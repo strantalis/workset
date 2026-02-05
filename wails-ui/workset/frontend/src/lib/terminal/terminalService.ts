@@ -2449,6 +2449,23 @@ export const focusTerminalInstance = (workspaceId: string, terminalId: string): 
 	focusTerminal(terminalKey);
 };
 
+export const scrollTerminalToBottom = (workspaceId: string, terminalId: string): void => {
+	const terminalKey = buildTerminalKey(workspaceId, terminalId);
+	if (!terminalKey) return;
+	const handle = terminalHandles.get(terminalKey);
+	if (!handle) return;
+	handle.terminal.scrollToBottom();
+};
+
+export const isTerminalAtBottom = (workspaceId: string, terminalId: string): boolean => {
+	const terminalKey = buildTerminalKey(workspaceId, terminalId);
+	if (!terminalKey) return true;
+	const handle = terminalHandles.get(terminalKey);
+	if (!handle) return true;
+	const buffer = handle.terminal.buffer.active;
+	return buffer.baseY === buffer.viewportY;
+};
+
 export const shutdownTerminalService = (): void => {
 	cleanupListeners();
 };

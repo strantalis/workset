@@ -27,6 +27,7 @@
 	import GitHubAuth from './settings/sections/GitHubAuth.svelte';
 	import AliasManager from './settings/sections/AliasManager.svelte';
 	import GroupManager from './settings/sections/GroupManager.svelte';
+	import SkillManager from './settings/sections/SkillManager.svelte';
 	import Button from './ui/Button.svelte';
 	import type { AppVersion } from '../types';
 
@@ -69,6 +70,7 @@
 	let activeSection = $state('workspace');
 	let aliasCount = $state(0);
 	let groupCount = $state(0);
+	let skillCount = $state(0);
 	let appVersion = $state<AppVersion | null>(null);
 	const LAYOUT_VERSION = 1;
 	const LEGACY_STORAGE_PREFIX = 'workset:terminal-layout:';
@@ -333,7 +335,7 @@
 		</div>
 	{:else if snapshot}
 		<div class="body">
-			<SettingsSidebar {activeSection} onSelectSection={selectSection} {aliasCount} {groupCount} />
+			<SettingsSidebar {activeSection} onSelectSection={selectSection} {aliasCount} {groupCount} {skillCount} />
 
 			<div class="content">
 				{#if activeSection === 'workspace'}
@@ -356,6 +358,8 @@
 					<AliasManager onAliasCountChange={(count) => (aliasCount = count)} />
 				{:else if activeSection === 'groups'}
 					<GroupManager onGroupCountChange={(count) => (groupCount = count)} />
+				{:else if activeSection === 'skills'}
+					<SkillManager onSkillCountChange={(count) => (skillCount = count)} />
 				{:else if activeSection === 'about'}
 					<div class="about-section">
 						<div class="about-header">
