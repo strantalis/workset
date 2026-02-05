@@ -873,8 +873,6 @@
 	}
 
 	.workspace-select {
-		display: flex;
-		align-items: center;
 		font-size: 11px;
 		max-width: 120px;
 		height: 28px;
@@ -889,9 +887,6 @@
 		box-shadow: var(--shadow-sm);
 		box-sizing: border-box;
 		margin: 0;
-		-webkit-appearance: none;
-		appearance: none;
-		line-height: 28px;
 	}
 
 	.workspace-select:hover,
