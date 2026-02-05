@@ -4,9 +4,10 @@
 		onSelectSection: (section: string) => void;
 		aliasCount?: number;
 		groupCount?: number;
+		skillCount?: number;
 	}
 
-	const { activeSection, onSelectSection, aliasCount = 0, groupCount = 0 }: Props = $props();
+	const { activeSection, onSelectSection, aliasCount = 0, groupCount = 0, skillCount = 0 }: Props = $props();
 
 	type SidebarItem = {
 		id: string;
@@ -37,6 +38,7 @@
 			items: [
 				{ id: 'aliases', label: 'Repo Registry', count: aliasCount },
 				{ id: 'groups', label: 'Groups', count: groupCount },
+				{ id: 'skills', label: 'Skills', count: skillCount },
 			],
 		},
 		{
