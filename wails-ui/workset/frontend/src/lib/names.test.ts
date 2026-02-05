@@ -1,5 +1,37 @@
 import { describe, expect, it } from 'vitest';
-import { looksLikeUrl } from './names';
+import { deriveSidebarLabelLimits, ellipsisMiddle, looksLikeUrl } from './names';
+
+describe('ellipsisMiddle', () => {
+	it('returns original value when shorter than max length', () => {
+		expect(ellipsisMiddle('thunder-byte', 24)).toBe('thunder-byte');
+	});
+
+	it('keeps both prefix and suffix for long values', () => {
+		expect(ellipsisMiddle('data-security-platform-thunder', 18)).toBe('data-secu…-thunder');
+	});
+
+	it('handles very small max lengths safely', () => {
+		expect(ellipsisMiddle('workspace-name', 1)).toBe('…');
+		expect(ellipsisMiddle('workspace-name', 0)).toBe('');
+	});
+});
+
+describe('deriveSidebarLabelLimits', () => {
+	it('increases limits as sidebar width grows', () => {
+		const narrow = deriveSidebarLabelLimits(220);
+		const wide = deriveSidebarLabelLimits(420);
+		expect(wide.workspace).toBeGreaterThan(narrow.workspace);
+		expect(wide.repo).toBeGreaterThan(narrow.repo);
+		expect(wide.ref).toBeGreaterThanOrEqual(narrow.ref);
+	});
+
+	it('clamps values to safe minimum and maximum bounds', () => {
+		const tiny = deriveSidebarLabelLimits(10);
+		const huge = deriveSidebarLabelLimits(2000);
+		expect(tiny).toEqual({ workspace: 12, repo: 12, ref: 12 });
+		expect(huge).toEqual({ workspace: 72, repo: 64, ref: 48 });
+	});
+});
 
 describe('looksLikeUrl - security validation', () => {
 	describe('valid URLs that should pass', () => {
