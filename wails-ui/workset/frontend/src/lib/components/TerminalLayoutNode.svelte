@@ -885,6 +885,8 @@
 		outline: none;
 		transition: all 0.15s ease;
 		box-shadow: var(--shadow-sm);
+		box-sizing: border-box;
+		margin: 0;
 	}
 
 	.workspace-select:hover,
