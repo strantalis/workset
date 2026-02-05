@@ -204,6 +204,7 @@ type RepoPatch = {
 	diff?: { added: number; removed: number };
 	ahead?: number;
 	behind?: number;
+	currentBranch?: string;
 };
 
 const applyRepoPatch = (workspaceId: string, repoId: string, patch: RepoPatch): void => {
@@ -246,6 +247,10 @@ const applyRepoPatch = (workspaceId: string, repoId: string, patch: RepoPatch): 
 					updated = { ...updated, behind: patch.behind };
 					repoChanged = true;
 				}
+				if (patch.currentBranch !== undefined && updated.currentBranch !== patch.currentBranch) {
+					updated = { ...updated, currentBranch: patch.currentBranch };
+					repoChanged = true;
+				}
 				return repoChanged ? updated : repo;
 			});
 			if (!repoChanged) {
@@ -278,6 +283,7 @@ export const applyRepoLocalStatus = (
 		statusKnown: true,
 		ahead: status.ahead,
 		behind: status.behind,
+		currentBranch: status.currentBranch,
 	};
 	if (!status.hasUncommitted) {
 		patch.diff = { added: 0, removed: 0 };
