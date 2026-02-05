@@ -249,6 +249,109 @@ func TestAddRepoWarnsWhenBaseBranchDiverges(t *testing.T) {
 	}
 }
 
+func TestAddRepoFastForwardsExistingWorkspaceBranchFromRemoteBase(t *testing.T) {
+	repoRoot := filepath.Join(t.TempDir(), "repo")
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+	root := filepath.Join(t.TempDir(), "ws")
+	defaults := config.DefaultConfig().Defaults
+
+	if _, err := workspace.Init(root, "demo", defaults); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	gitDir := filepath.Join(repoRoot, ".git")
+	resolvedGitDir, err := filepath.EvalSymlinks(gitDir)
+	if err != nil {
+		t.Fatalf("EvalSymlinks: %v", err)
+	}
+	fake := newFakeGitClient()
+	fake.remotes[resolvedGitDir] = []string{defaults.Remote}
+	fake.remoteExists[key(resolvedGitDir, defaults.Remote)] = true
+	fake.refs[key(resolvedGitDir, "refs/heads/"+defaults.BaseBranch)] = true
+	fake.refs[key(resolvedGitDir, "refs/remotes/"+defaults.Remote+"/"+defaults.BaseBranch)] = true
+	fake.refs[key(resolvedGitDir, "refs/heads/demo")] = true
+	fake.ancestors[key(resolvedGitDir, "refs/heads/"+defaults.BaseBranch+"->refs/remotes/"+defaults.Remote+"/"+defaults.BaseBranch)] = true
+	fake.ancestors[key(resolvedGitDir, "refs/heads/demo->refs/remotes/"+defaults.Remote+"/"+defaults.BaseBranch)] = true
+
+	_, _, warnings, err := AddRepo(context.Background(), AddRepoInput{
+		WorkspaceRoot: root,
+		Name:          "demo-repo",
+		SourcePath:    repoRoot,
+		Defaults:      defaults,
+		Remote:        defaults.Remote,
+		DefaultBranch: defaults.BaseBranch,
+		AllowFallback: false,
+		Git:           fake,
+	})
+	if err != nil {
+		t.Fatalf("AddRepo: %v", err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("expected no warnings, got %v", warnings)
+	}
+	if len(fake.updateCalls) != 2 {
+		t.Fatalf("expected 2 update calls, got %d", len(fake.updateCalls))
+	}
+	if fake.updateCalls[0].branch != defaults.BaseBranch || fake.updateCalls[0].target != defaults.Remote+"/"+defaults.BaseBranch {
+		t.Fatalf("unexpected base update call: %+v", fake.updateCalls[0])
+	}
+	if fake.updateCalls[1].branch != "demo" || fake.updateCalls[1].target != defaults.Remote+"/"+defaults.BaseBranch {
+		t.Fatalf("unexpected workspace update call: %+v", fake.updateCalls[1])
+	}
+}
+
+func TestAddRepoKeepsExistingWorkspaceBranchWhenNotFastForwardable(t *testing.T) {
+	repoRoot := filepath.Join(t.TempDir(), "repo")
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+	root := filepath.Join(t.TempDir(), "ws")
+	defaults := config.DefaultConfig().Defaults
+
+	if _, err := workspace.Init(root, "demo", defaults); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	gitDir := filepath.Join(repoRoot, ".git")
+	resolvedGitDir, err := filepath.EvalSymlinks(gitDir)
+	if err != nil {
+		t.Fatalf("EvalSymlinks: %v", err)
+	}
+	fake := newFakeGitClient()
+	fake.remotes[resolvedGitDir] = []string{defaults.Remote}
+	fake.remoteExists[key(resolvedGitDir, defaults.Remote)] = true
+	fake.refs[key(resolvedGitDir, "refs/heads/"+defaults.BaseBranch)] = true
+	fake.refs[key(resolvedGitDir, "refs/remotes/"+defaults.Remote+"/"+defaults.BaseBranch)] = true
+	fake.refs[key(resolvedGitDir, "refs/heads/demo")] = true
+	fake.ancestors[key(resolvedGitDir, "refs/heads/"+defaults.BaseBranch+"->refs/remotes/"+defaults.Remote+"/"+defaults.BaseBranch)] = true
+	fake.ancestors[key(resolvedGitDir, "refs/heads/demo->refs/remotes/"+defaults.Remote+"/"+defaults.BaseBranch)] = false
+
+	_, _, warnings, err := AddRepo(context.Background(), AddRepoInput{
+		WorkspaceRoot: root,
+		Name:          "demo-repo",
+		SourcePath:    repoRoot,
+		Defaults:      defaults,
+		Remote:        defaults.Remote,
+		DefaultBranch: defaults.BaseBranch,
+		AllowFallback: false,
+		Git:           fake,
+	})
+	if err != nil {
+		t.Fatalf("AddRepo: %v", err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("expected no warnings, got %v", warnings)
+	}
+	if len(fake.updateCalls) != 1 {
+		t.Fatalf("expected 1 update call, got %d", len(fake.updateCalls))
+	}
+	if fake.updateCalls[0].branch != defaults.BaseBranch || fake.updateCalls[0].target != defaults.Remote+"/"+defaults.BaseBranch {
+		t.Fatalf("unexpected base update call: %+v", fake.updateCalls[0])
+	}
+}
+
 func setupRepo(t *testing.T) string {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "source")
