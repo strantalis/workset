@@ -98,8 +98,13 @@
 		selectedGroups.size > 0 ? Array.from(selectedGroups)[0] : null,
 	);
 
-	// Source for name generation: first direct repo, first alias, or first group
-	const nameSource = $derived(firstDirectRepoName || firstSelectedAlias || firstSelectedGroup);
+	// Source for name generation: first direct repo, pending input, first alias, or first group
+	const nameSource = $derived(
+		firstDirectRepoName ||
+			(inputIsSource ? detectedRepoName : null) ||
+			firstSelectedAlias ||
+			firstSelectedGroup,
+	);
 
 	const generatedName = $derived(nameSource ? generateWorkspaceName(nameSource) : null);
 
@@ -127,9 +132,15 @@
 			: groupItems,
 	);
 
-	// Total repos for preview
+	// Check if pending input would be auto-added (not already in directRepos)
+	const pendingInputWillBeAdded = $derived(
+		inputIsSource && !directRepos.some((r) => r.url === primaryInput.trim()),
+	);
+
+	// Total repos for preview (include pending input if it will be auto-added)
 	const totalRepos = $derived(
 		directRepos.length +
+			(pendingInputWillBeAdded ? 1 : 0) +
 			selectedAliases.size +
 			Array.from(selectedGroups).reduce(
 				(sum, g) => sum + (groupItems.find((i) => i.name === g)?.repo_count || 0),
@@ -137,11 +148,36 @@
 			),
 	);
 
-	// Get selected items for preview
+	// Get selected items for preview (include pending input if it will be auto-added)
 	const selectedItems = $derived([
-		...directRepos.map((r) => ({ type: 'repo', name: deriveRepoName(r.url) || r.url, url: r.url })),
-		...Array.from(selectedAliases).map((name) => ({ type: 'alias', name, url: undefined })),
-		...Array.from(selectedGroups).map((name) => ({ type: 'group', name, url: undefined })),
+		...directRepos.map((r) => ({
+			type: 'repo',
+			name: deriveRepoName(r.url) || r.url,
+			url: r.url,
+			pending: false,
+		})),
+		...(pendingInputWillBeAdded
+			? [
+					{
+						type: 'repo',
+						name: detectedRepoName || primaryInput.trim(),
+						url: primaryInput.trim(),
+						pending: true,
+					},
+				]
+			: []),
+		...Array.from(selectedAliases).map((name) => ({
+			type: 'alias',
+			name,
+			url: undefined,
+			pending: false,
+		})),
+		...Array.from(selectedGroups).map((name) => ({
+			type: 'group',
+			name,
+			url: undefined,
+			pending: false,
+		})),
 	]);
 
 	// Add-repo mode: derived state for selected items
@@ -236,9 +272,7 @@
 	}
 
 	function toggleDirectRepoRegister(url: string): void {
-		directRepos = directRepos.map((r) =>
-			r.url === url ? { ...r, register: !r.register } : r,
-		);
+		directRepos = directRepos.map((r) => (r.url === url ? { ...r, register: !r.register } : r));
 	}
 
 	let archiveReason = $state('');
@@ -252,9 +286,7 @@
 	let removeRepoStatusRequested = $state(false);
 	let removeRepoStatusRefreshing = $state(false);
 
-	const removeConfirmValid = $derived(
-		!removeDeleteFiles || removeConfirmText === 'DELETE',
-	);
+	const removeConfirmValid = $derived(!removeDeleteFiles || removeConfirmText === 'DELETE');
 	const removeRepoConfirmRequired = $derived(removeDeleteWorktree);
 	const removeRepoConfirmValid = $derived(
 		!removeRepoConfirmRequired || removeRepoConfirmText === 'DELETE',
@@ -309,9 +341,7 @@
 								: 'Workspace action',
 	);
 
-	const modalSize = $derived(
-		mode === 'create' || mode === 'add-repo' ? 'wide' : 'md',
-	);
+	const modalSize = $derived(mode === 'create' || mode === 'add-repo' ? 'wide' : 'md');
 
 	const formatError = (err: unknown, fallback: string): string => {
 		if (err instanceof Error) return err.message;
@@ -358,10 +388,21 @@
 		loading = true;
 		error = null;
 		try {
+			// Auto-add primaryInput if it's a repo source and not already added
+			const reposToProcess = [...directRepos];
+			const pendingSource = primaryInput.trim();
+			if (
+				pendingSource &&
+				isRepoSource(pendingSource) &&
+				!reposToProcess.some((r) => r.url === pendingSource)
+			) {
+				reposToProcess.push({ url: pendingSource, register: true });
+			}
+
 			const repos: string[] = [];
 
 			// Register direct repos that have register=true, then add by name
-			for (const r of directRepos) {
+			for (const r of reposToProcess) {
 				const repoName = deriveRepoName(r.url) || r.url;
 				if (r.register) {
 					// Register the repo in global config
@@ -667,7 +708,10 @@
 											<span class="direct-repo-name">{deriveRepoName(repo.url) || repo.url}</span>
 											<span class="direct-repo-url">{repo.url}</span>
 										</div>
-										<label class="direct-repo-register" title="Save to Repo Registry for future use">
+										<label
+											class="direct-repo-register"
+											title="Save to Repo Registry for future use"
+										>
 											<input
 												type="checkbox"
 												checked={repo.register}
@@ -801,20 +845,24 @@
 							<div class="empty-selection">No repos selected</div>
 						{:else}
 							{#each selectedItems as item (item.name)}
-								<div class="selected-item">
+								<div class="selected-item" class:pending={item.pending}>
 									<span class="selected-badge {item.type}">{item.type}</span>
 									<span class="selected-name">{item.name}</span>
-									<button
-										type="button"
-										class="selected-remove"
-										onclick={() => {
-											if (item.type === 'repo' && item.url) removeDirectRepo(item.url);
-											else if (item.type === 'alias') removeAlias(item.name);
-											else if (item.type === 'group') removeGroup(item.name);
-										}}
-									>
-										×
-									</button>
+									{#if item.pending}
+										<span class="pending-label">pending</span>
+									{:else}
+										<button
+											type="button"
+											class="selected-remove"
+											onclick={() => {
+												if (item.type === 'repo' && item.url) removeDirectRepo(item.url);
+												else if (item.type === 'alias') removeAlias(item.name);
+												else if (item.type === 'group') removeGroup(item.name);
+											}}
+										>
+											×
+										</button>
+									{/if}
 								</div>
 							{/each}
 						{/if}
@@ -2097,6 +2145,17 @@
 		background: rgba(255, 255, 255, 0.03);
 		border-radius: var(--radius-sm);
 		font-size: 13px;
+	}
+
+	.selected-item.pending {
+		background: rgba(255, 255, 255, 0.01);
+		border: 1px dashed rgba(255, 255, 255, 0.15);
+	}
+
+	.pending-label {
+		font-size: 10px;
+		color: var(--muted);
+		font-style: italic;
 	}
 
 	.selected-badge {
