@@ -2455,11 +2455,11 @@ export const shutdownTerminalService = (): void => {
 
 // Font size controls (VS Code style Cmd/Ctrl +/-)
 const applyFontSizeToAllTerminals = (): void => {
-	for (const handle of terminalHandles.values()) {
+	for (const [id, handle] of terminalHandles.entries()) {
 		handle.terminal.options.fontSize = currentFontSize;
 		// Refit terminal to recalculate dimensions with new font size.
 		try {
-			handle.fitAddon.fit();
+			fitTerminal(id, startedSessions.has(id));
 		} catch {
 			// Ignore fit errors for terminals not attached to DOM.
 		}
