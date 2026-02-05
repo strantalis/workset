@@ -79,7 +79,7 @@ func (s *Service) UpdateGroup(ctx context.Context, input GroupUpsertInput) (Grou
 }
 
 // DeleteGroup removes a group by name.
-func (s *Service) DeleteGroup(ctx context.Context, name string) (AliasMutationResultJSON, config.GlobalConfigLoadInfo, error) {
+func (s *Service) DeleteGroup(ctx context.Context, name string) (RegisteredRepoMutationResultJSON, config.GlobalConfigLoadInfo, error) {
 	var info config.GlobalConfigLoadInfo
 	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
 		info = loadInfo
@@ -89,9 +89,9 @@ func (s *Service) DeleteGroup(ctx context.Context, name string) (AliasMutationRe
 		}
 		return groups.Delete(cfg, name)
 	}); err != nil {
-		return AliasMutationResultJSON{}, info, err
+		return RegisteredRepoMutationResultJSON{}, info, err
 	}
-	return AliasMutationResultJSON{Status: "ok", Name: name}, info, nil
+	return RegisteredRepoMutationResultJSON{Status: "ok", Name: name}, info, nil
 }
 
 // AddGroupMember adds a repo to a group.

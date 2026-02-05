@@ -484,11 +484,11 @@ export async function restartSessiond(reason?: string): Promise<SessiondStatusRe
 	return RestartSessiond();
 }
 
-export async function listAliases(): Promise<Alias[]> {
+export async function listRegisteredRepos(): Promise<Alias[]> {
 	return ListAliases();
 }
 
-export async function createAlias(
+export async function registerRepo(
 	name: string,
 	source: string,
 	remote: string,
@@ -497,7 +497,7 @@ export async function createAlias(
 	await CreateAlias({ name, source, remote, defaultBranch });
 }
 
-export async function updateAlias(
+export async function updateRegisteredRepo(
 	name: string,
 	source: string,
 	remote: string,
@@ -506,9 +506,21 @@ export async function updateAlias(
 	await UpdateAlias({ name, source, remote, defaultBranch });
 }
 
-export async function deleteAlias(name: string): Promise<void> {
+export async function unregisterRepo(name: string): Promise<void> {
 	await DeleteAlias(name);
 }
+
+/** @deprecated Use listRegisteredRepos instead */
+export const listAliases = listRegisteredRepos;
+
+/** @deprecated Use registerRepo instead */
+export const createAlias = registerRepo;
+
+/** @deprecated Use updateRegisteredRepo instead */
+export const updateAlias = updateRegisteredRepo;
+
+/** @deprecated Use unregisterRepo instead */
+export const deleteAlias = unregisterRepo;
 
 export async function listGroups(): Promise<GroupSummary[]> {
 	return ListGroups();

@@ -35,7 +35,7 @@
 		{
 			title: 'LIBRARY',
 			items: [
-				{ id: 'aliases', label: 'Aliases', count: aliasCount },
+				{ id: 'aliases', label: 'Repo Registry', count: aliasCount },
 				{ id: 'groups', label: 'Groups', count: groupCount },
 			],
 		},

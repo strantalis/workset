@@ -36,7 +36,7 @@ func completeGroupNames(cmd *cli.Command) {
 	writeCompletion(cmd, names)
 }
 
-func completeRepoAliases(cmd *cli.Command) {
+func completeRegisteredRepos(cmd *cli.Command) {
 	cfg, _, err := loadGlobal(cmd)
 	if err != nil {
 		return

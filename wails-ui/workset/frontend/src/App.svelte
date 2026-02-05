@@ -186,10 +186,10 @@
 					title={hasWorkspaces ? 'Select a workspace' : 'Create your first workspace'}
 					body={hasWorkspaces
 						? 'Choose a workspace from the sidebar, or create a new one with the repos you need.'
-						: 'Workspaces are collections of Git repositories you work on together. Add repos by URL or local path, use saved shortcuts (aliases), or apply entire team bundles (groups).'}
+						: 'Workspaces are collections of Git repositories you work on together. Add repos by URL or local path, use registered repos, or apply entire team bundles (groups).'}
 					actionLabel="Create workspace with repos"
 					onAction={() => openAction('create', null, null)}
-					hint={hasWorkspaces ? undefined : 'Add by URL · Use aliases · Apply groups'}
+					hint={hasWorkspaces ? undefined : 'Add by URL · Use registered repos · Apply groups'}
 					variant="centered"
 				/>
 			{:else}

@@ -219,7 +219,7 @@ func groupCommand() *cli.Command {
 					case 0:
 						completeGroupNames(cmd)
 					case 1:
-						completeRepoAliases(cmd)
+						completeRegisteredRepos(cmd)
 					}
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
@@ -268,7 +268,7 @@ func groupCommand() *cli.Command {
 					case 0:
 						completeGroupNames(cmd)
 					case 1:
-						completeRepoAliases(cmd)
+						completeRegisteredRepos(cmd)
 					}
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {

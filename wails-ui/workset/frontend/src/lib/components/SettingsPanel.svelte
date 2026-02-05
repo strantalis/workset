@@ -318,7 +318,7 @@
 	<header class="header">
 		<div>
 			<div class="title">Settings</div>
-			<div class="subtitle">Configure defaults, aliases, and groups.</div>
+			<div class="subtitle">Configure defaults, repo registry, and groups.</div>
 		</div>
 		<Button variant="ghost" onclick={onClose}>Close</Button>
 	</header>

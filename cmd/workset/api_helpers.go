@@ -44,7 +44,7 @@ func printConfigInfo(cmd *cli.Command, info any) {
 		printConfigLoadInfo(cmd, cmd.String("config"), value.Config)
 	case worksetapi.SessionListResult:
 		printConfigLoadInfo(cmd, cmd.String("config"), value.Config)
-	case worksetapi.AliasListResult:
+	case worksetapi.RegisteredRepoListResult:
 		printConfigLoadInfo(cmd, cmd.String("config"), value.Config)
 	case worksetapi.SessionStartResult:
 		printConfigLoadInfo(cmd, cmd.String("config"), value.Config)

@@ -42,7 +42,7 @@ func DefaultConfig() GlobalConfig {
 			},
 			Items: []HookSpec{},
 		},
-		Repos:      map[string]RepoAlias{},
+		Repos:      map[string]RegisteredRepo{},
 		Groups:     map[string]Group{},
 		Workspaces: map[string]WorkspaceRef{},
 	}
@@ -50,7 +50,7 @@ func DefaultConfig() GlobalConfig {
 
 func (cfg *GlobalConfig) EnsureMaps() {
 	if cfg.Repos == nil {
-		cfg.Repos = map[string]RepoAlias{}
+		cfg.Repos = map[string]RegisteredRepo{}
 	}
 	if cfg.Groups == nil {
 		cfg.Groups = map[string]Group{}

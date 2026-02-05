@@ -105,7 +105,7 @@ func TestCreateWorkspaceWithGroupRepos(t *testing.T) {
 	env := newTestEnv(t)
 	local := env.createLocalRepo("repo-a")
 	cfg := env.loadConfig()
-	cfg.Repos = map[string]config.RepoAlias{
+	cfg.Repos = map[string]config.RegisteredRepo{
 		"repo-a": {Path: local},
 	}
 	cfg.Groups = map[string]config.Group{
@@ -164,7 +164,7 @@ func TestCreateWorkspacePendingHooks(t *testing.T) {
 	}
 
 	cfg := env.loadConfig()
-	cfg.Repos = map[string]config.RepoAlias{
+	cfg.Repos = map[string]config.RegisteredRepo{
 		"repo-a": {Path: local},
 	}
 	env.saveConfig(cfg)
@@ -195,7 +195,7 @@ func TestCreateWorkspaceRegistersOnRepoFailure(t *testing.T) {
 	}
 
 	cfg := env.loadConfig()
-	cfg.Repos = map[string]config.RepoAlias{
+	cfg.Repos = map[string]config.RegisteredRepo{
 		"repo-a": {Path: local},
 	}
 	env.saveConfig(cfg)

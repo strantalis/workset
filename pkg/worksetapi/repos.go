@@ -158,7 +158,7 @@ func (s *Service) AddRepo(ctx context.Context, input RepoAddInput) (RepoAddResul
 			alias.Remote = resolvedRemote
 		}
 		if cfg.Repos == nil {
-			cfg.Repos = map[string]config.RepoAlias{}
+			cfg.Repos = map[string]config.RegisteredRepo{}
 		}
 		cfg.Repos[name] = alias
 		registerWorkspace(cfg, wsConfig.Name, wsRoot, s.clock())

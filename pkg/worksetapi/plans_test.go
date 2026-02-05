@@ -9,7 +9,7 @@ import (
 func TestBuildNewWorkspaceRepoPlans(t *testing.T) {
 	cfg := config.GlobalConfig{
 		Defaults: config.Defaults{BaseBranch: "main", Remote: "origin"},
-		Repos: map[string]config.RepoAlias{
+		Repos: map[string]config.RegisteredRepo{
 			"app": {URL: "https://example.com/app.git", DefaultBranch: "dev"},
 		},
 		Groups: map[string]config.Group{
@@ -38,7 +38,7 @@ func TestBuildNewWorkspaceRepoPlans(t *testing.T) {
 func TestBuildNewWorkspaceRepoPlansNoConflict(t *testing.T) {
 	cfg := config.GlobalConfig{
 		Defaults: config.Defaults{BaseBranch: "main", Remote: "origin"},
-		Repos: map[string]config.RepoAlias{
+		Repos: map[string]config.RegisteredRepo{
 			"app": {URL: "https://example.com/app.git"},
 		},
 		Groups: map[string]config.Group{
@@ -68,7 +68,7 @@ func TestResolveAliasPlanErrors(t *testing.T) {
 		t.Fatalf("expected missing alias error")
 	}
 
-	cfg.Repos = map[string]config.RepoAlias{
+	cfg.Repos = map[string]config.RegisteredRepo{
 		"empty": {},
 	}
 	_, err = resolveAliasPlan(cfg, "empty")
@@ -84,7 +84,7 @@ func TestResolveGroupMemberPlanErrors(t *testing.T) {
 		t.Fatalf("expected missing alias error")
 	}
 
-	cfg.Repos = map[string]config.RepoAlias{"empty": {}}
+	cfg.Repos = map[string]config.RegisteredRepo{"empty": {}}
 	_, err = resolveGroupMemberPlan(cfg, config.GroupMember{Repo: "empty"})
 	if err == nil {
 		t.Fatalf("expected missing source error")

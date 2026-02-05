@@ -228,7 +228,7 @@ func findWorksetFiles(root string) ([]string, error) {
 
 func recoverRepoAliases(cfg *config.GlobalConfig, wsConfig config.WorkspaceConfig, gitClient git.Client, defaults config.Defaults, warnings *[]string) []string {
 	if cfg.Repos == nil {
-		cfg.Repos = map[string]config.RepoAlias{}
+		cfg.Repos = map[string]config.RegisteredRepo{}
 	}
 	recovered := []string{}
 	for _, repo := range wsConfig.Repos {

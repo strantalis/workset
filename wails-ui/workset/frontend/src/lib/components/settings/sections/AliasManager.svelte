@@ -83,7 +83,7 @@
 		const branch = formBranch.trim();
 
 		if (!name) {
-			error = 'Alias name is required.';
+			error = 'Repo name is required.';
 			return;
 		}
 		if (!source) {
@@ -165,12 +165,12 @@
 </script>
 
 <SettingsSection
-	title="Aliases"
-	description="Shorthand names for repository sources. Use aliases when adding repos to workspaces."
+	title="Repo Registry"
+	description="Registered repos can be quickly added to workspaces by name."
 >
 	<div class="manager">
 		<div class="list-header">
-			<span class="list-count">{aliases.length} alias{aliases.length === 1 ? '' : 'es'}</span>
+			<span class="list-count">{aliases.length} repo{aliases.length === 1 ? '' : 's'}</span>
 			<Button variant="ghost" size="sm" onclick={startNew}>+ New</Button>
 		</div>
 
@@ -189,14 +189,14 @@
 				{/each}
 				{#if isNew}
 					<button class="list-item active" type="button">
-						<span class="item-name new">New alias</span>
+						<span class="item-name new">New repo</span>
 					</button>
 				{/if}
 			</div>
 		{:else if !isNew}
 			<div class="empty">
-				<p>No aliases defined yet.</p>
-				<Button variant="ghost" onclick={startNew}>Create your first alias</Button>
+				<p>No registered repos yet.</p>
+				<Button variant="ghost" onclick={startNew}>Register your first repo</Button>
 			</div>
 		{/if}
 
@@ -210,7 +210,7 @@
 			<div class="detail">
 				<div class="detail-header">
 					{#if isNew}
-						New alias
+						New repo
 					{:else if selectedAlias}
 						Editing: {selectedAlias.name}
 					{/if}
@@ -221,7 +221,7 @@
 						<input
 							type="text"
 							bind:value={formName}
-							placeholder="repo-alias"
+							placeholder="my-repo"
 							disabled={!isNew && !!selectedAlias}
 							autocapitalize="off"
 							autocorrect="off"
@@ -272,12 +272,12 @@
 					<div class="spacer"></div>
 					<Button variant="ghost" onclick={cancelEdit} disabled={loading}>Cancel</Button>
 					<Button variant="primary" onclick={handleSave} disabled={loading}>
-						{loading ? 'Saving...' : isNew ? 'Create alias' : 'Save alias'}
+						{loading ? 'Saving...' : isNew ? 'Register' : 'Save'}
 					</Button>
 				</div>
 			</div>
 		{:else if aliases.length > 0}
-			<div class="hint">Select an alias to edit, or click "+ New" to create one.</div>
+			<div class="hint">Select a repo to edit, or click "+ New" to register one.</div>
 		{/if}
 	</div>
 </SettingsSection>

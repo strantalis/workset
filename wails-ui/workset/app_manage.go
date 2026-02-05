@@ -207,26 +207,26 @@ func (a *App) RemoveRepo(input RepoRemoveRequest) (worksetapi.RepoRemoveResultJS
 	return result.Payload, nil
 }
 
-func (a *App) ListAliases() ([]worksetapi.AliasJSON, error) {
+func (a *App) ListAliases() ([]worksetapi.RegisteredRepoJSON, error) {
 	ctx := a.ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	a.ensureService()
-	result, err := a.service.ListAliases(ctx)
+	result, err := a.service.ListRegisteredRepos(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return result.Aliases, nil
+	return result.Repos, nil
 }
 
-func (a *App) CreateAlias(input AliasUpsertRequest) (worksetapi.AliasMutationResultJSON, error) {
+func (a *App) CreateAlias(input AliasUpsertRequest) (worksetapi.RegisteredRepoMutationResultJSON, error) {
 	ctx := a.ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	a.ensureService()
-	result, _, err := a.service.CreateAlias(ctx, worksetapi.AliasUpsertInput{
+	result, _, err := a.service.RegisterRepo(ctx, worksetapi.RepoRegistryInput{
 		Name:             input.Name,
 		Source:           input.Source,
 		Remote:           input.Remote,
@@ -238,13 +238,13 @@ func (a *App) CreateAlias(input AliasUpsertRequest) (worksetapi.AliasMutationRes
 	return result, err
 }
 
-func (a *App) UpdateAlias(input AliasUpsertRequest) (worksetapi.AliasMutationResultJSON, error) {
+func (a *App) UpdateAlias(input AliasUpsertRequest) (worksetapi.RegisteredRepoMutationResultJSON, error) {
 	ctx := a.ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	a.ensureService()
-	result, _, err := a.service.UpdateAlias(ctx, worksetapi.AliasUpsertInput{
+	result, _, err := a.service.UpdateRegisteredRepo(ctx, worksetapi.RepoRegistryInput{
 		Name:             input.Name,
 		Source:           input.Source,
 		Remote:           input.Remote,
@@ -256,13 +256,13 @@ func (a *App) UpdateAlias(input AliasUpsertRequest) (worksetapi.AliasMutationRes
 	return result, err
 }
 
-func (a *App) DeleteAlias(name string) (worksetapi.AliasMutationResultJSON, error) {
+func (a *App) DeleteAlias(name string) (worksetapi.RegisteredRepoMutationResultJSON, error) {
 	ctx := a.ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	a.ensureService()
-	result, _, err := a.service.DeleteAlias(ctx, name)
+	result, _, err := a.service.UnregisterRepo(ctx, name)
 	return result, err
 }
 
@@ -315,7 +315,7 @@ func (a *App) UpdateGroup(input GroupUpsertRequest) (worksetapi.GroupJSON, error
 	return result, err
 }
 
-func (a *App) DeleteGroup(name string) (worksetapi.AliasMutationResultJSON, error) {
+func (a *App) DeleteGroup(name string) (worksetapi.RegisteredRepoMutationResultJSON, error) {
 	ctx := a.ctx
 	if ctx == nil {
 		ctx = context.Background()

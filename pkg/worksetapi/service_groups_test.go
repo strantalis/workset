@@ -100,7 +100,7 @@ func TestApplyGroup(t *testing.T) {
 	local := env.createLocalRepo("repo-a")
 
 	cfg := env.loadConfig()
-	cfg.Repos = map[string]config.RepoAlias{
+	cfg.Repos = map[string]config.RegisteredRepo{
 		"repo-a": {Path: local, DefaultBranch: "main"},
 	}
 	cfg.Groups = map[string]config.Group{

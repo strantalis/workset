@@ -45,8 +45,8 @@ type RepoRemoveInput struct {
 	FetchRemotes    bool
 }
 
-// AliasUpsertInput describes inputs for CreateAlias and UpdateAlias.
-type AliasUpsertInput struct {
+// RepoRegistryInput describes inputs for RegisterRepo and UpdateRegisteredRepo.
+type RepoRegistryInput struct {
 	Name             string
 	Source           string
 	DefaultBranch    string
