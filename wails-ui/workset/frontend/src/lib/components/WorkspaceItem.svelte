@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { deriveSidebarLabelLimits, ellipsisMiddle } from '../names';
 	import type { Workspace, Repo } from '../types';
 	import DropdownMenu from './ui/DropdownMenu.svelte';
 	import { Pin, ChevronRight, MoreHorizontal, Plus, Pencil, Archive, Trash2 } from '@lucide/svelte';
@@ -44,6 +45,8 @@
 	let workspaceTrigger: HTMLElement | null = $state(null);
 	let repoTrigger: HTMLElement | null = $state(null);
 	let isDragOver: boolean = $state(false);
+	let itemElement: HTMLDivElement | null = $state(null);
+	let labelLimits = $state(deriveSidebarLabelLimits(280));
 
 	const isSingleRepo = $derived(workspace.repos.length === 1);
 	const isMultiRepo = $derived(workspace.repos.length > 1);
@@ -107,6 +110,12 @@
 		repoMenu = null;
 	}
 
+	function formatRepoRef(repo: Repo): string {
+		if (!repo.remote && !repo.defaultBranch) return '';
+		if (repo.remote && repo.defaultBranch) return `${repo.remote}/${repo.defaultBranch}`;
+		return repo.defaultBranch ?? repo.remote ?? '';
+	}
+
 	function getRepoStatusDot(repo: Repo): { className: string; label: string; title: string } {
 		if (repo.statusKnown === false) {
 			return { className: 'unknown', label: 'Status pending', title: 'Status pending' };
@@ -124,9 +133,20 @@
 			return { className: 'clean', label: 'Clean', title: 'Clean' };
 		}
 	}
+
+	$effect(() => {
+		if (!itemElement || typeof ResizeObserver === 'undefined') return;
+		const observer = new ResizeObserver((entries) => {
+			const width = entries[0]?.contentRect.width ?? 0;
+			labelLimits = deriveSidebarLabelLimits(width);
+		});
+		observer.observe(itemElement);
+		return () => observer.disconnect();
+	});
 </script>
 
 <div
+	bind:this={itemElement}
 	class="workspace-item"
 	class:active={isActive}
 	class:drag-over={isDragOver}
@@ -156,9 +176,9 @@
 			<div class="toggle-placeholder"></div>
 		{/if}
 
-		<button class="workspace-info" onclick={onSelectWorkspace} type="button">
+		<button class="workspace-info" onclick={onSelectWorkspace} type="button" title={workspace.name}>
 			<span class="workspace-title">
-				<span class="name">{workspace.name}</span>
+				<span class="name">{ellipsisMiddle(workspace.name, labelLimits.workspace)}</span>
 				{#if isMultiRepo}
 					<span class="count">{workspace.repos.length}</span>
 				{/if}
@@ -261,14 +281,18 @@
 	{#if isSingleRepo && workspace.repos[0]}
 		{@const repo = workspace.repos[0]}
 		{@const status = getRepoStatusDot(repo)}
+		{@const repoRef = formatRepoRef(repo)}
 		<div class="repo-item">
-			<button class="repo-info-single" onclick={() => onSelectRepo(repo.id)} type="button">
-				<span class="repo-name">{repo.name}</span>
-				{#if repo.remote || repo.defaultBranch}
-					<span class="branch">
-						{repo.remote && repo.defaultBranch
-							? `${repo.remote}/${repo.defaultBranch}`
-							: (repo.defaultBranch ?? repo.remote)}
+			<button
+				class="repo-info-single"
+				onclick={() => onSelectRepo(repo.id)}
+				type="button"
+				title={repo.name}
+			>
+				<span class="repo-name">{ellipsisMiddle(repo.name, labelLimits.repo)}</span>
+				{#if repoRef}
+					<span class="branch" title={repoRef}>
+						{ellipsisMiddle(repoRef, labelLimits.ref)}
 					</span>
 				{/if}
 				<svg
@@ -326,15 +350,19 @@
 		<div class="repo-list">
 			{#each workspace.repos as repo (repo.id)}
 				{@const status = getRepoStatusDot(repo)}
+				{@const repoRef = formatRepoRef(repo)}
 				<div class="repo-item">
-					<button class="repo-button" onclick={() => onSelectRepo(repo.id)} type="button">
-						<span class="repo-name">{repo.name}</span>
+					<button
+						class="repo-button"
+						onclick={() => onSelectRepo(repo.id)}
+						type="button"
+						title={repo.name}
+					>
+						<span class="repo-name">{ellipsisMiddle(repo.name, labelLimits.repo)}</span>
 						<span class="repo-meta">
-							{#if repo.remote || repo.defaultBranch}
-								<span class="branch">
-									{repo.remote && repo.defaultBranch
-										? `${repo.remote}/${repo.defaultBranch}`
-										: (repo.defaultBranch ?? repo.remote)}
+							{#if repoRef}
+								<span class="branch" title={repoRef}>
+									{ellipsisMiddle(repoRef, labelLimits.ref)}
 								</span>
 							{/if}
 							<svg
@@ -395,6 +423,7 @@
 
 <style>
 	.workspace-item {
+		--workspace-actions-width: 60px;
 		display: flex;
 		flex-direction: column;
 		margin-bottom: var(--space-1);
@@ -421,7 +450,7 @@
 		grid-template-columns: 20px minmax(0, 1fr) auto;
 		align-items: center;
 		gap: var(--space-1);
-		padding: var(--space-2) var(--space-2);
+		padding: var(--space-2) var(--space-3) var(--space-2) var(--space-2);
 		position: relative;
 	}
 
@@ -468,13 +497,21 @@
 		text-align: left;
 		padding: 4px;
 		border-radius: var(--radius-sm);
-		transition: background 0.15s ease;
+		transition:
+			background 0.15s ease,
+			padding-right 0.15s ease;
 		min-width: 0;
 		width: 100%;
 	}
 
 	.workspace-info:hover {
 		background: rgba(255, 255, 255, 0.02);
+	}
+
+	.workspace-item.single-repo:hover .workspace-info,
+	.workspace-item.single-repo.active .workspace-info,
+	.workspace-item.single-repo:focus-within .workspace-info {
+		padding-right: calc(var(--workspace-actions-width) + var(--space-1));
 	}
 
 	.workspace-title {
@@ -541,10 +578,12 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-1);
+		justify-content: flex-end;
+		width: var(--workspace-actions-width);
 		opacity: 0;
 		transition: opacity 0.15s ease;
 		position: absolute;
-		right: var(--space-2);
+		right: var(--space-3);
 		top: 50%;
 		transform: translateY(-50%);
 		pointer-events: none;
@@ -623,7 +662,7 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-2);
-		padding: 0 var(--space-2) var(--space-1) 44px;
+		padding: 0 var(--space-3) var(--space-1) 44px;
 		font-size: 12px;
 		background: none;
 		border: none;
@@ -633,6 +672,7 @@
 		text-align: left;
 		transition: background 0.15s ease;
 		flex-wrap: nowrap;
+		min-width: 0;
 	}
 
 	.repo-info-single:hover {
@@ -642,6 +682,10 @@
 	.repo-name {
 		color: var(--text);
 		font-weight: 500;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		min-width: 0;
 	}
 
 	.branch {
@@ -649,6 +693,18 @@
 		font-size: 10px;
 		color: var(--muted);
 		opacity: 0.7;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		min-width: 0;
+	}
+
+	.repo-info-single .repo-name {
+		flex: 1;
+	}
+
+	.repo-info-single .branch {
+		max-width: 40%;
 	}
 
 	.repo-list {
@@ -661,7 +717,7 @@
 
 	.repo-item {
 		display: grid;
-		grid-template-columns: 1fr auto;
+		grid-template-columns: minmax(0, 1fr) auto;
 		align-items: center;
 		gap: var(--space-1);
 		border-radius: var(--radius-sm);
@@ -680,12 +736,13 @@
 		background: none;
 		border: none;
 		color: var(--text);
-		padding: 5px var(--space-2);
+		padding: 5px var(--space-3) 5px var(--space-2);
 		border-radius: var(--radius-sm);
 		cursor: pointer;
 		text-align: left;
 		transition: all 0.15s ease;
 		min-width: 0;
+		width: 100%;
 	}
 
 	.repo-button:hover {
@@ -694,9 +751,6 @@
 
 	.repo-button .repo-name {
 		font-size: 12px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
 		flex: 1;
 	}
 
@@ -705,11 +759,14 @@
 		align-items: center;
 		gap: var(--space-1);
 		flex-shrink: 0;
+		min-width: 0;
+		max-width: 45%;
 	}
 
 	.repo-actions {
 		opacity: 0;
 		transition: opacity 0.15s ease;
+		padding-right: var(--space-2);
 	}
 
 	.repo-item:hover .repo-actions {

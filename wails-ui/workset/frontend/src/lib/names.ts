@@ -181,6 +181,44 @@ export function isRepoSource(input: string): boolean {
 }
 
 /**
+ * Truncate a long label by preserving both the start and end segments.
+ * Example: data-security-platform-thunder -> data-security…platform-thunder
+ */
+export function ellipsisMiddle(value: string, maxLength = 28): string {
+	if (maxLength <= 0) return '';
+	if (value.length <= maxLength) return value;
+	if (maxLength === 1) return '…';
+
+	const visible = maxLength - 1;
+	const left = Math.ceil(visible / 2);
+	const right = Math.floor(visible / 2);
+	return `${value.slice(0, left)}…${value.slice(-right)}`;
+}
+
+export type SidebarLabelLimits = {
+	workspace: number;
+	repo: number;
+	ref: number;
+};
+
+const clamp = (value: number, min: number, max: number): number =>
+	Math.min(max, Math.max(min, value));
+
+/**
+ * Derive dynamic truncation limits from current sidebar width.
+ * Keeps middle truncation responsive as users resize the workspace sidebar.
+ */
+export function deriveSidebarLabelLimits(sidebarWidthPx: number): SidebarLabelLimits {
+	const width = Number.isFinite(sidebarWidthPx) ? sidebarWidthPx : 0;
+
+	return {
+		workspace: clamp(Math.floor((width - 86) / 6.6), 12, 72),
+		repo: clamp(Math.floor((width - 110) / 6.5), 12, 64),
+		ref: clamp(Math.floor((width - 170) / 6.2), 12, 48),
+	};
+}
+
+/**
  * Tech-themed suffixes for terminal name generation.
  * These create fun, memorable terminal names that blend nature + tech.
  */
