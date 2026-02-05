@@ -49,12 +49,19 @@
 		listRemotes,
 		replyToReviewComment,
 		resolveReviewThread,
+		startRepoDiffWatch,
+		updateRepoDiffWatch,
+		stopRepoDiffWatch,
 	} from '../api';
 	import type { RepoLocalStatus } from '../api';
 	import GitHubLoginModal from './GitHubLoginModal.svelte';
 	import { formatPath } from '../pathUtils';
 	import { getPrCreateStageCopy } from '../prCreateProgress';
 	import type { PrCreateStage } from '../prCreateProgress';
+	import { subscribeRepoDiffEvent } from '../repoDiffService';
+	import { applyRepoDiffSummary, applyRepoLocalStatus } from '../state';
+	import type { DiffLineAnnotation, ReviewAnnotation } from './repo-diff/annotations';
+	import { buildLineAnnotations } from './repo-diff/annotations';
 
 	/**
 	 * Validates and opens URL only if it belongs to trusted GitHub domains.
@@ -74,15 +81,6 @@
 			// Invalid URL - silently ignore
 		}
 	}
-
-	// Local type definitions for @pierre/diffs generic types
-	// (The library exports these but TypeScript doesn't resolve the generics correctly)
-	type AnnotationSide = 'deletions' | 'additions';
-
-	type DiffLineAnnotation<T = undefined> = {
-		side: AnnotationSide;
-		lineNumber: number;
-	} & (T extends undefined ? { metadata?: undefined } : { metadata: T });
 
 	type FileDiffOptions<T = undefined> = FileDiffOptionsBase & {
 		renderAnnotation?: (annotation: DiffLineAnnotation<T>) => HTMLElement | undefined;
@@ -105,17 +103,94 @@
 	};
 
 	interface Props {
-		repo: Repo;
+		repo: Repo | null;
 		workspaceId: string;
 		onClose: () => void;
 	}
 
 	const { repo, workspaceId, onClose }: Props = $props();
 
+	const repoId = $derived(repo?.id ?? '');
+	const repoName = $derived(repo?.name ?? '');
+	const repoDefaultBranch = $derived(repo?.defaultBranch ?? '');
+	const repoStatusKnown = $derived(repo?.statusKnown ?? true);
+	const repoMissing = $derived(repo?.missing ?? false);
+	const repoDirty = $derived(repo?.dirty ?? false);
+	let lastRepoId = $state('');
+
 	type DiffsModule = {
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		FileDiff: new (options?: FileDiffOptionsBase) => any;
 		parsePatchFiles: (patch: string) => ParsedPatch[];
+	};
+
+	type RepoDiffSummaryEvent = {
+		workspaceId: string;
+		repoId: string;
+		summary: RepoDiffSummary;
+	};
+
+	type RepoDiffLocalStatusEvent = {
+		workspaceId: string;
+		repoId: string;
+		status: RepoLocalStatus;
+	};
+
+	type RepoDiffPrStatusEvent = {
+		workspaceId: string;
+		repoId: string;
+		status: {
+			pullRequest: {
+				repo: string;
+				number: number;
+				url: string;
+				title: string;
+				state: string;
+				draft: boolean;
+				base_repo: string;
+				base_branch: string;
+				head_repo: string;
+				head_branch: string;
+				mergeable?: string;
+			};
+			checks: Array<{
+				name: string;
+				status: string;
+				conclusion?: string;
+				details_url?: string;
+				started_at?: string;
+				completed_at?: string;
+				check_run_id?: number;
+			}>;
+		};
+	};
+
+	type RepoDiffPrReviewsEvent = {
+		workspaceId: string;
+		repoId: string;
+		comments: Array<{
+			id: number;
+			node_id?: string;
+			thread_id?: string;
+			review_id?: number;
+			author?: string;
+			author_id?: number;
+			body: string;
+			path: string;
+			line?: number;
+			side?: string;
+			commit_id?: string;
+			original_commit_id?: string;
+			original_line?: number;
+			original_start_line?: number;
+			outdated: boolean;
+			url?: string;
+			created_at?: string;
+			updated_at?: string;
+			in_reply_to?: number;
+			reply?: boolean;
+			resolved?: boolean;
+		}>;
 	};
 
 	let summary: RepoDiffSummary | null = $state(null);
@@ -131,7 +206,7 @@
 	let diffMode: 'split' | 'unified' = $state('split');
 	let diffContainer: HTMLElement | null = $state(null);
 	let diffInstance: FileDiffType<ReviewAnnotation> | null = null;
-	let diffModule: DiffsModule | null = null;
+	let diffModule = $state<DiffsModule | null>(null);
 	let rendererLoading = $state(false);
 	let rendererError: string | null = $state(null);
 
@@ -217,29 +292,12 @@
 	let summaryRequest = 0;
 	let fileRequest = 0;
 
-	// Auto-polling constants
-	const POLL_INTERVAL = 30_000;
+	let watchActive = $state(false);
+	let renderQueued = false;
+	let repoDiffUnsubscribers: Array<() => void> = [];
 
 	// Derived mode: status when PR exists, create otherwise
 	const effectiveMode = $derived(forceMode ?? (prTracked ? 'status' : 'create'));
-
-	// Annotation metadata type for review comment threads
-	type ReviewCommentItem = {
-		id: number;
-		nodeId?: string;
-		threadId?: string;
-		author: string;
-		authorId?: number;
-		body: string;
-		url?: string;
-		isReply: boolean;
-		resolved?: boolean;
-	};
-
-	type ReviewAnnotation = {
-		thread: ReviewCommentItem[];
-		resolved: boolean;
-	};
 
 	const buildOptions = (): FileDiffOptions<ReviewAnnotation> => ({
 		theme: 'pierre-dark',
@@ -451,7 +509,7 @@
 		try {
 			const newComment = await replyToReviewComment(
 				workspaceId,
-				repo.id,
+				repoId,
 				commentId,
 				textarea.value.trim(),
 				parseNumber(prNumberInput),
@@ -459,8 +517,6 @@
 			);
 			prReviews = [...prReviews, newComment];
 			removeInlineForm(threadEl);
-			// Re-render the diff to show the new comment
-			renderDiff();
 		} catch (err) {
 			// Re-enable form on error
 			textarea.disabled = false;
@@ -490,7 +546,7 @@
 		try {
 			const updated = await editReviewComment(
 				workspaceId,
-				repo.id,
+				repoId,
 				commentId,
 				textarea.value.trim(),
 			);
@@ -498,8 +554,6 @@
 				c.id === updated.id ? { ...c, ...updated, threadId: updated.threadId ?? c.threadId } : c,
 			);
 			removeInlineForm(threadEl);
-			// Re-render the diff to show the updated comment
-			renderDiff();
 		} catch (err) {
 			// Re-enable form on error
 			textarea.disabled = false;
@@ -516,82 +570,6 @@
 		const div = document.createElement('div');
 		div.textContent = text;
 		return div.innerHTML;
-	};
-
-	// Group comments into threads and convert to diff annotations
-	// AnnotationSide in @pierre/diffs is 'deletions' | 'additions'
-	const buildLineAnnotations = (): DiffLineAnnotation<ReviewAnnotation>[] => {
-		const withLine = filteredReviews.filter((r) => r.line != null);
-		if (withLine.length === 0) return [];
-
-		// Build map of comment ID to comment for quick lookup
-		const byId = new Map(withLine.map((r) => [r.id, r]));
-
-		// Find root comments (not replies, or reply target not in our filtered set)
-		const roots = withLine.filter((r) => !r.inReplyTo || !byId.has(r.inReplyTo));
-
-		// Build threads: for each root, gather all replies
-		const threads: Array<{
-			root: PullRequestReviewComment;
-			replies: PullRequestReviewComment[];
-		}> = [];
-
-		const usedIds = new Set<number>();
-
-		for (const root of roots) {
-			if (usedIds.has(root.id)) continue;
-			usedIds.add(root.id);
-
-			// Find all comments that reply to this root (direct or chained)
-			const replies: PullRequestReviewComment[] = [];
-			const findReplies = (parentId: number) => {
-				for (const r of withLine) {
-					if (r.inReplyTo === parentId && !usedIds.has(r.id)) {
-						usedIds.add(r.id);
-						replies.push(r);
-						findReplies(r.id); // Find nested replies
-					}
-				}
-			};
-			findReplies(root.id);
-
-			threads.push({ root, replies });
-		}
-
-		// Convert threads to annotations
-		return threads.map(({ root, replies }) => ({
-			side: (root.side?.toLowerCase() === 'left' ? 'deletions' : 'additions') as
-				| 'deletions'
-				| 'additions',
-			lineNumber: root.line!,
-			metadata: {
-				resolved: root.resolved ?? false,
-				thread: [
-					{
-						id: root.id,
-						nodeId: root.nodeId,
-						threadId: root.threadId,
-						author: root.author ?? 'Reviewer',
-						authorId: root.authorId,
-						body: root.body,
-						url: root.url,
-						isReply: false,
-						resolved: root.resolved,
-					},
-					...replies.map((r) => ({
-						id: r.id,
-						nodeId: r.nodeId,
-						threadId: r.threadId ?? root.threadId,
-						author: r.author ?? 'Reviewer',
-						authorId: r.authorId,
-						body: r.body,
-						url: r.url,
-						isReply: true,
-						resolved: root.resolved,
-					})),
-				],
-			},
-		}));
 	};
 
 	const statusLabel = (status: string): string => {
@@ -660,6 +638,63 @@
 		return fallback;
 	};
 
+	const mapPullRequestStatus = (
+		status: RepoDiffPrStatusEvent['status'],
+	): PullRequestStatusResult => {
+		const checks = (status.checks ?? []).map((check) => ({
+			name: check.name,
+			status: check.status,
+			conclusion: check.conclusion,
+			detailsUrl: check.details_url,
+			startedAt: check.started_at,
+			completedAt: check.completed_at,
+			checkRunId: check.check_run_id,
+		}));
+		return {
+			pullRequest: {
+				repo: status.pullRequest.repo,
+				number: status.pullRequest.number,
+				url: status.pullRequest.url,
+				title: status.pullRequest.title,
+				state: status.pullRequest.state,
+				draft: status.pullRequest.draft,
+				baseRepo: status.pullRequest.base_repo,
+				baseBranch: status.pullRequest.base_branch,
+				headRepo: status.pullRequest.head_repo,
+				headBranch: status.pullRequest.head_branch,
+				mergeable: status.pullRequest.mergeable,
+			},
+			checks,
+		};
+	};
+
+	const mapPullRequestReviews = (
+		comments: RepoDiffPrReviewsEvent['comments'],
+	): PullRequestReviewComment[] =>
+		comments.map((comment) => ({
+			id: comment.id,
+			nodeId: comment.node_id,
+			threadId: comment.thread_id,
+			reviewId: comment.review_id,
+			author: comment.author,
+			authorId: comment.author_id,
+			body: comment.body,
+			path: comment.path,
+			line: comment.line,
+			side: comment.side,
+			commitId: comment.commit_id,
+			originalCommit: comment.original_commit_id,
+			originalLine: comment.original_line,
+			originalStart: comment.original_start_line,
+			outdated: comment.outdated,
+			url: comment.url,
+			createdAt: comment.created_at,
+			updatedAt: comment.updated_at,
+			inReplyTo: comment.in_reply_to,
+			reply: comment.reply,
+			resolved: comment.resolved,
+		}));
+
 	const authRequiredPrefix = 'AUTH_REQUIRED:';
 
 	const isAuthRequiredMessage = (message: string): boolean =>
@@ -712,6 +747,7 @@
 	};
 
 	const loadPrStatus = async (): Promise<void> => {
+		if (!repoId) return;
 		prStatusLoading = true;
 		prStatusError = null;
 		try {
@@ -719,7 +755,7 @@
 				async () => {
 					prStatus = await fetchPullRequestStatus(
 						workspaceId,
-						repo.id,
+						repoId,
 						parseNumber(prNumberInput),
 						prBranchInput.trim() || undefined,
 					);
@@ -736,6 +772,7 @@
 	};
 
 	const loadPrReviews = async (): Promise<void> => {
+		if (!repoId) return;
 		prReviewsLoading = true;
 		// Error handling is done via prReviewsLoading and prReviews state
 		prReviewsSent = false;
@@ -744,7 +781,7 @@
 				async () => {
 					prReviews = await fetchPullRequestReviews(
 						workspaceId,
-						repo.id,
+						repoId,
 						parseNumber(prNumberInput),
 						prBranchInput.trim() || undefined,
 					);
@@ -765,8 +802,9 @@
 	};
 
 	const loadCurrentUser = async (): Promise<void> => {
+		if (!repoId) return;
 		try {
-			const user = await fetchCurrentGitHubUser(workspaceId, repo.id);
+			const user = await fetchCurrentGitHubUser(workspaceId, repoId);
 			currentUserId = user.id;
 		} catch {
 			// Non-fatal: if we can't get user, edit/delete buttons won't show
@@ -775,8 +813,12 @@
 	};
 
 	const loadLocalStatus = async (): Promise<void> => {
+		if (!repoId) return;
 		try {
-			localStatus = await fetchRepoLocalStatus(workspaceId, repo.id);
+			localStatus = await fetchRepoLocalStatus(workspaceId, repoId);
+			if (localStatus) {
+				applyRepoLocalStatus(workspaceId, repoId, localStatus);
+			}
 		} catch {
 			// Non-fatal: local status is optional
 			localStatus = null;
@@ -784,9 +826,10 @@
 	};
 
 	const loadRemotes = async (): Promise<void> => {
+		if (!repoId) return;
 		remotesLoading = true;
 		try {
-			remotes = await listRemotes(workspaceId, repo.id);
+			remotes = await listRemotes(workspaceId, repoId);
 		} catch {
 			// Non-fatal: remotes loading is optional
 			remotes = [];
@@ -796,12 +839,13 @@
 	};
 
 	const handleCommitAndPush = async (): Promise<void> => {
+		if (!repoId) return;
 		if (commitPushLoading) return;
 		commitPushLoading = true;
 		commitPushError = null;
 		commitPushSuccess = false;
 		try {
-			await commitAndPush(workspaceId, repo.id);
+			await commitAndPush(workspaceId, repoId);
 			commitPushSuccess = true;
 			// Refresh everything
 			await handleRefresh();
@@ -825,6 +869,7 @@
 	};
 
 	const handleCreatePR = async (): Promise<void> => {
+		if (!repoId) return;
 		if (prCreating) return;
 		prPanelExpanded = true;
 		prCreating = true;
@@ -835,11 +880,11 @@
 			await runGitHubAction(
 				async () => {
 					// Auto-generate title/body
-					const generated = await generatePullRequestText(workspaceId, repo.id);
+					const generated = await generatePullRequestText(workspaceId, repoId);
 
 					// Create PR with generated content
 					prCreatingStage = 'creating';
-					const created = await createPullRequest(workspaceId, repo.id, {
+					const created = await createPullRequest(workspaceId, repoId, {
 						title: generated.title,
 						body: generated.body,
 						base: prBase.trim() || undefined,
@@ -869,13 +914,13 @@
 	};
 
 	const handleDeleteComment = async (commentId: number): Promise<void> => {
+		if (!repoId) return;
 		// Note: native confirm() doesn't work in Wails WebView on macOS
 		// The delete button click is explicit enough user intent
 		await runGitHubAction(
 			async () => {
-				await deleteReviewComment(workspaceId, repo.id, commentId);
+				await deleteReviewComment(workspaceId, repoId, commentId);
 				await loadPrReviews();
-				renderDiff();
 			},
 			(message) => {
 				alert(message);
@@ -887,6 +932,7 @@
 	let resolvingThread = $state(false);
 
 	const handleResolveThread = async (threadId: string, resolve: boolean): Promise<void> => {
+		if (!repoId) return;
 		if (!threadId) {
 			alert('No thread ID found for this comment');
 			return;
@@ -895,11 +941,9 @@
 		resolvingThread = true;
 		await runGitHubAction(
 			async () => {
-				await resolveReviewThread(workspaceId, repo.id, threadId, resolve);
+				await resolveReviewThread(workspaceId, repoId, threadId, resolve);
 				// Refresh reviews to get updated state
 				await loadPrReviews();
-				// Re-render diff with updated data
-				renderDiff();
 			},
 			(message) => {
 				alert(message);
@@ -924,9 +968,17 @@
 		return { total: checks.length, passed, failed, pending };
 	});
 
+	const reviewCountsByPath = $derived.by(() => {
+		const counts = new Map<string, number>();
+		for (const comment of prReviews) {
+			counts.set(comment.path, (counts.get(comment.path) ?? 0) + 1);
+		}
+		return counts;
+	});
+
 	// Count reviews for a specific file path
 	const reviewCountForFile = (path: string): number => {
-		return prReviews.filter((comment) => comment.path === path).length;
+		return reviewCountsByPath.get(path) ?? 0;
 	};
 
 	// Format duration from milliseconds to human readable string
@@ -1052,8 +1104,9 @@
 	};
 
 	const loadTrackedPR = async (): Promise<void> => {
+		if (!repoId) return;
 		try {
-			const tracked = await fetchTrackedPullRequest(workspaceId, repo.id);
+			const tracked = await fetchTrackedPullRequest(workspaceId, repoId);
 			if (!tracked) {
 				return;
 			}
@@ -1064,6 +1117,9 @@
 			if (!prBranchInput && tracked.headBranch) {
 				prBranchInput = tracked.headBranch;
 			}
+			void loadPrStatus();
+			void loadPrReviews();
+			void loadLocalStatus().then(() => loadLocalSummary());
 		} catch {
 			// ignore tracking failures
 		}
@@ -1076,7 +1132,7 @@
 		} else {
 			diffInstance.setOptions(buildOptions());
 		}
-		const annotations = buildLineAnnotations();
+		const annotations = buildLineAnnotations(filteredReviews);
 		diffInstance.render({
 			fileDiff: selectedDiff,
 			fileContainer: diffContainer,
@@ -1107,6 +1163,15 @@
 		}
 	};
 
+	const queueRenderDiff = (): void => {
+		if (renderQueued) return;
+		renderQueued = true;
+		requestAnimationFrame(() => {
+			renderQueued = false;
+			renderDiff();
+		});
+	};
+
 	const selectFile = (file: RepoDiffFileSummary, source: 'pr' | 'local' = 'pr'): void => {
 		selected = file;
 		selectedSource = source;
@@ -1114,12 +1179,18 @@
 	};
 
 	const loadLocalSummary = async (): Promise<void> => {
+		if (!repoId) {
+			localSummary = null;
+			return;
+		}
 		if (!localStatus?.hasUncommitted) {
 			localSummary = null;
 			return;
 		}
 		try {
-			localSummary = await fetchRepoDiffSummary(workspaceId, repo.id);
+			const data = await fetchRepoDiffSummary(workspaceId, repoId);
+			applySummaryUpdate(data, 'local');
+			applyRepoDiffSummary(workspaceId, repoId, data);
 		} catch {
 			localSummary = null;
 		}
@@ -1131,6 +1202,11 @@
 	};
 
 	const loadSummary = async (): Promise<void> => {
+		if (!repoId) {
+			summary = null;
+			summaryLoading = false;
+			return;
+		}
 		summaryLoading = true;
 		summaryError = null;
 		summary = null;
@@ -1138,7 +1214,7 @@
 		selectedDiff = null;
 		fileMeta = null;
 		fileError = null;
-		if (repo.statusKnown !== false && repo.missing) {
+		if (repoStatusKnown !== false && repoMissing) {
 			summaryError = 'Repo is missing on disk. Restore it to view the diff.';
 			summaryLoading = false;
 			return;
@@ -1147,8 +1223,8 @@
 		try {
 			const branchRefs = useBranchDiff();
 			const data = branchRefs
-				? await fetchBranchDiffSummary(workspaceId, repo.id, branchRefs.base, branchRefs.head)
-				: await fetchRepoDiffSummary(workspaceId, repo.id);
+				? await fetchBranchDiffSummary(workspaceId, repoId, branchRefs.base, branchRefs.head)
+				: await fetchRepoDiffSummary(workspaceId, repoId);
 			if (requestId !== summaryRequest) return;
 			summary = data;
 			if (summary.files.length > 0) {
@@ -1162,6 +1238,44 @@
 				summaryLoading = false;
 			}
 		}
+	};
+
+	const findSummaryMatch = (
+		data: RepoDiffSummary,
+		current: RepoDiffFileSummary | null,
+	): RepoDiffFileSummary | null => {
+		if (!current) return null;
+		return (
+			data.files.find((file) => file.path === current.path && file.prevPath === current.prevPath) ??
+			null
+		);
+	};
+
+	const applySummaryUpdate = (data: RepoDiffSummary, source: 'pr' | 'local'): void => {
+		if (source === 'pr') {
+			summary = data;
+			summaryLoading = false;
+			summaryError = null;
+		} else {
+			localSummary = data;
+		}
+		if (selectedSource !== source) {
+			return;
+		}
+		if (data.files.length === 0) {
+			selected = null;
+			selectedDiff = null;
+			fileMeta = null;
+			fileError = null;
+			return;
+		}
+		const match = findSummaryMatch(data, selected);
+		if (match) {
+			selected = match;
+			void loadFileDiff(match);
+			return;
+		}
+		selectFile(data.files[0], source);
 	};
 
 	const loadFileDiff = async (file: RepoDiffFileSummary): Promise<void> => {
@@ -1182,19 +1296,13 @@
 			const response = branchRefs
 				? await fetchBranchFileDiff(
 						workspaceId,
-						repo.id,
+						repoId,
 						branchRefs.base,
 						branchRefs.head,
 						file.path,
 						file.prevPath ?? '',
 					)
-				: await fetchRepoFileDiff(
-						workspaceId,
-						repo.id,
-						file.path,
-						file.prevPath ?? '',
-						file.status,
-					);
+				: await fetchRepoFileDiff(workspaceId, repoId, file.path, file.prevPath ?? '', file.status);
 			if (requestId !== fileRequest) return;
 			fileMeta = response;
 			if (response.truncated) {
@@ -1218,7 +1326,6 @@
 				return;
 			}
 			selectedDiff = fileDiff;
-			renderDiff();
 		} catch (err) {
 			if (requestId !== fileRequest) return;
 			fileError = formatError(err, 'Failed to load file diff.');
@@ -1230,19 +1337,85 @@
 	};
 
 	onMount(() => {
+		if (repoId) {
+			lastRepoId = repoId;
+		}
+		repoDiffUnsubscribers = [
+			subscribeRepoDiffEvent<RepoDiffSummaryEvent>('repodiff:summary', (payload) => {
+				if (payload.workspaceId !== workspaceId || payload.repoId !== repoId) return;
+				applySummaryUpdate(payload.summary, 'pr');
+			}),
+			subscribeRepoDiffEvent<RepoDiffSummaryEvent>('repodiff:local-summary', (payload) => {
+				if (payload.workspaceId !== workspaceId || payload.repoId !== repoId) return;
+				applySummaryUpdate(payload.summary, 'local');
+				applyRepoDiffSummary(payload.workspaceId, payload.repoId, payload.summary);
+			}),
+			subscribeRepoDiffEvent<RepoDiffLocalStatusEvent>('repodiff:local-status', (payload) => {
+				if (payload.workspaceId !== workspaceId || payload.repoId !== repoId) return;
+				localStatus = payload.status;
+				if (!payload.status.hasUncommitted) {
+					localSummary = null;
+				}
+				applyRepoLocalStatus(payload.workspaceId, payload.repoId, payload.status);
+			}),
+			subscribeRepoDiffEvent<RepoDiffPrStatusEvent>('repodiff:pr-status', (payload) => {
+				if (payload.workspaceId !== workspaceId || payload.repoId !== repoId) return;
+				prStatus = mapPullRequestStatus(payload.status);
+				prStatusError = null;
+				prStatusLoading = false;
+			}),
+			subscribeRepoDiffEvent<RepoDiffPrReviewsEvent>('repodiff:pr-reviews', (payload) => {
+				if (payload.workspaceId !== workspaceId || payload.repoId !== repoId) return;
+				prReviews = mapPullRequestReviews(payload.comments);
+				prReviewsLoading = false;
+				prReviewsSent = false;
+				if (currentUserId === null) {
+					void loadCurrentUser();
+				}
+			}),
+		];
+
 		void loadSummary();
 		void loadTrackedPR();
 		void loadRemotes();
+		void loadLocalStatus().then(() => loadLocalSummary());
+		if (repoId) {
+			void startRepoDiffWatch(
+				workspaceId,
+				repoId,
+				parseNumber(prNumberInput),
+				prBranchInput.trim() || undefined,
+			)
+				.then(() => {
+					watchActive = true;
+				})
+				.catch(() => {
+					watchActive = false;
+				});
+		}
 	});
 
 	onDestroy(() => {
 		diffInstance?.cleanUp();
+		repoDiffUnsubscribers.forEach((unsubscribe) => unsubscribe());
+		if (lastRepoId) {
+			void stopRepoDiffWatch(workspaceId, lastRepoId);
+		}
 	});
 
 	$effect(() => {
-		if (selectedDiff && diffContainer) {
-			renderDiff();
+		if (repoId) {
+			lastRepoId = repoId;
 		}
+	});
+
+	$effect(() => {
+		const reviewCount = filteredReviews.length;
+		if (!selectedDiff || !diffContainer) return;
+		void reviewCount;
+		void diffMode;
+		void diffModule;
+		queueRenderDiff();
 	});
 
 	// Reload diff when PR branch info becomes available (switch from local to branch diff)
@@ -1257,590 +1430,578 @@
 		}
 	});
 
-	// Re-render diff with updated annotations when reviews change
 	$effect(() => {
-		// Track filteredReviews to trigger re-render when they change
-		const reviewCount = filteredReviews.length;
-		if (diffContainer && selectedDiff && reviewCount >= 0) {
-			// Re-render to update annotations
-			renderDiff();
-		}
-	});
-
-	// Auto-poll PR status, reviews, local status, and local summary when in status mode
-	$effect(() => {
-		if (effectiveMode !== 'status') return;
-
-		// Initial load
-		void loadPrStatus();
-		void loadPrReviews();
-		void loadLocalStatus().then(() => loadLocalSummary());
-
-		// Set up polling
-		const interval = setInterval(async () => {
-			await loadPrStatus();
-			await loadPrReviews();
-			await loadLocalStatus();
-			await loadLocalSummary();
-		}, POLL_INTERVAL);
-
-		// Cleanup on mode change
-		return () => clearInterval(interval);
+		if (!watchActive || !repoId) return;
+		void updateRepoDiffWatch(
+			workspaceId,
+			repoId,
+			parseNumber(prNumberInput),
+			prBranchInput.trim() || undefined,
+		);
 	});
 </script>
 
-<section class="diff">
-	<header class="diff-header">
-		<div class="title">
-			<div class="repo-name">{repo.name}</div>
-			<div class="meta">
-				{#if repo.defaultBranch}
-					<span>Default branch: {repo.defaultBranch}</span>
-				{/if}
-				{#if repo.statusKnown === false}
-					<span class="status unknown">unknown</span>
-				{:else if repo.missing}
-					<span class="status missing">missing</span>
-				{:else if repo.dirty}
-					<span class="status dirty">dirty</span>
-				{:else}
-					<span class="status clean">clean</span>
-				{/if}
-				{#if summary}
-					<span>Files: {summary.files.length}</span>
-					<span class="diffstat"
-						><span class="add">+{summary.totalAdded}</span><span class="sep">/</span><span
-							class="del">-{summary.totalRemoved}</span
-						></span
-					>
-				{/if}
-				<!-- PR status badge (inline in header when in status mode) -->
-				{#if effectiveMode === 'status' && prStatus}
-					<button
-						class="pr-badge"
-						type="button"
-						onclick={() => validateAndOpenURL(prStatus?.pullRequest?.url)}
-						title="Open PR #{prStatus.pullRequest.number} on GitHub"
-					>
-						<span class="pr-badge-number">PR #{prStatus.pullRequest.number}</span>
-						<span class="pr-badge-state pr-badge-state-{prStatus.pullRequest.state.toLowerCase()}"
-							>{prStatus.pullRequest.state}</span
+{#if repo}
+	<section class="diff">
+		<header class="diff-header">
+			<div class="title">
+				<div class="repo-name">{repoName}</div>
+				<div class="meta">
+					{#if repoDefaultBranch}
+						<span>Default branch: {repoDefaultBranch}</span>
+					{/if}
+					{#if repoStatusKnown === false}
+						<span class="status unknown">unknown</span>
+					{:else if repoMissing}
+						<span class="status missing">missing</span>
+					{:else if repoDirty}
+						<span class="status dirty">dirty</span>
+					{:else}
+						<span class="status clean">clean</span>
+					{/if}
+					{#if summary}
+						<span>Files: {summary.files.length}</span>
+						<span class="diffstat"
+							><span class="add">+{summary.totalAdded}</span><span class="sep">/</span><span
+								class="del">-{summary.totalRemoved}</span
+							></span
 						>
-						<span class="pr-badge-divider">·</span>
-						{#if checkStats.total === 0}
-							<span class="pr-badge-checks muted">No checks</span>
-						{:else if checkStats.failed > 0}
-							<span class="pr-badge-checks failed"
-								><svg
-									class="icon"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									><circle cx="12" cy="12" r="10" /><path d="m15 9-6 6" /><path d="m9 9 6 6" /></svg
-								>
-								{checkStats.failed}</span
-							>
-						{:else if checkStats.pending > 0}
-							<span class="pr-badge-checks pending"
-								><svg
-									class="icon spin"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg
-								>
-								{checkStats.pending}</span
-							>
-						{:else}
-							<span class="pr-badge-checks passed"
-								><svg
-									class="icon"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><path
-										d="M22 4 12 14.01l-3-3"
-									/></svg
-								>
-								{checkStats.passed}</span
-							>
-						{/if}
-						{#if prStatusLoading || prReviewsLoading}
-							<span class="pr-badge-sync"></span>
-						{/if}
-					</button>
-				{:else if effectiveMode === 'status' && prStatusLoading}
-					<span class="pr-badge-loading">PR...</span>
-				{/if}
-			</div>
-		</div>
-		<div class="controls">
-			<div class="toggle">
-				<button
-					class:active={diffMode === 'split'}
-					onclick={() => {
-						diffMode = 'split';
-						renderDiff();
-					}}
-					type="button"
-				>
-					Split
-				</button>
-				<button
-					class:active={diffMode === 'unified'}
-					onclick={() => {
-						diffMode = 'unified';
-						renderDiff();
-					}}
-					type="button"
-				>
-					Unified
-				</button>
-			</div>
-			<button class="ghost" type="button" onclick={handleRefresh}>Refresh</button>
-			<button class="close" onclick={onClose} type="button">Back to terminal</button>
-		</div>
-	</header>
-
-	<!-- PR Create form (only shown in create mode) -->
-	{#if effectiveMode === 'create'}
-		<section class="pr-panel">
-			<button
-				class="pr-panel-toggle"
-				type="button"
-				onclick={() => (prPanelExpanded = !prPanelExpanded)}
-			>
-				<span class="pr-panel-toggle-icon">{prPanelExpanded ? '▾' : '▸'}</span>
-				<span class="pr-title">Create Pull Request</span>
-			</button>
-
-			<div class="pr-panel-content" class:expanded={prPanelExpanded}>
-				<div class="pr-panel-inner">
-					<div class="pr-form-row">
-						<label class="field-inline">
-							<span>Target</span>
-							<select
-								bind:value={prBaseRemote}
-								disabled={remotesLoading}
-								title="Base remote (defaults to upstream if available)"
-							>
-								<option value="">Auto</option>
-								{#each remotes as remote (remote.name)}
-									<option value={remote.name}>{remote.name}</option>
-								{/each}
-							</select>
-						</label>
-						<span class="field-separator">/</span>
-						<label class="field-inline">
-							<input
-								class="branch-input"
-								type="text"
-								bind:value={prBase}
-								placeholder="main"
-								autocapitalize="off"
-								autocorrect="off"
-								spellcheck="false"
-							/>
-						</label>
-						<label class="checkbox-inline">
-							<input type="checkbox" bind:checked={prDraft} />
-							Draft
-						</label>
+					{/if}
+					<!-- PR status badge (inline in header when in status mode) -->
+					{#if effectiveMode === 'status' && prStatus}
 						<button
-							class="pr-create-btn"
-							class:loading={prCreating}
+							class="pr-badge"
 							type="button"
-							onclick={handleCreatePR}
-							disabled={prCreating}
+							onclick={() => validateAndOpenURL(prStatus?.pullRequest?.url)}
+							title="Open PR #{prStatus.pullRequest.number} on GitHub"
 						>
-							{#if prCreating}
-								<span class="pr-create-spinner" aria-hidden="true">
-									<svg
-										class="pr-create-spinner-icon"
+							<span class="pr-badge-number">PR #{prStatus.pullRequest.number}</span>
+							<span class="pr-badge-state pr-badge-state-{prStatus.pullRequest.state.toLowerCase()}"
+								>{prStatus.pullRequest.state}</span
+							>
+							<span class="pr-badge-divider">·</span>
+							{#if checkStats.total === 0}
+								<span class="pr-badge-checks muted">No checks</span>
+							{:else if checkStats.failed > 0}
+								<span class="pr-badge-checks failed"
+									><svg
+										class="icon"
 										viewBox="0 0 24 24"
 										fill="none"
 										stroke="currentColor"
 										stroke-width="2"
+										><circle cx="12" cy="12" r="10" /><path d="m15 9-6 6" /><path
+											d="m9 9 6 6"
+										/></svg
 									>
-										<circle cx="12" cy="12" r="9" opacity="0.25" />
-										<path d="M21 12a9 9 0 0 0-9-9" stroke-linecap="round" />
-									</svg>
-								</span>
+									{checkStats.failed}</span
+								>
+							{:else if checkStats.pending > 0}
+								<span class="pr-badge-checks pending"
+									><svg
+										class="icon spin"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg
+									>
+									{checkStats.pending}</span
+								>
+							{:else}
+								<span class="pr-badge-checks passed"
+									><svg
+										class="icon"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><path
+											d="M22 4 12 14.01l-3-3"
+										/></svg
+									>
+									{checkStats.passed}</span
+								>
 							{/if}
-							<span class="pr-create-label"
-								>{prCreating ? (prCreateStageCopy?.button ?? 'Creating PR...') : 'Create PR'}</span
-							>
+							{#if prStatusLoading || prReviewsLoading}
+								<span class="pr-badge-sync"></span>
+							{/if}
 						</button>
-					</div>
+					{:else if effectiveMode === 'status' && prStatusLoading}
+						<span class="pr-badge-loading">PR...</span>
+					{/if}
+				</div>
+			</div>
+			<div class="controls">
+				<div class="toggle">
+					<button
+						class:active={diffMode === 'split'}
+						onclick={() => {
+							diffMode = 'split';
+						}}
+						type="button"
+					>
+						Split
+					</button>
+					<button
+						class:active={diffMode === 'unified'}
+						onclick={() => {
+							diffMode = 'unified';
+						}}
+						type="button"
+					>
+						Unified
+					</button>
+				</div>
+				<button class="ghost" type="button" onclick={handleRefresh}>Refresh</button>
+				<button class="close" onclick={onClose} type="button">Back to terminal</button>
+			</div>
+		</header>
 
-					{#if prCreating && prCreateStageCopy}
-						<div class="pr-create-progress" role="status" aria-live="polite">
-							{prCreateStageCopy.detail}
+		<!-- PR Create form (only shown in create mode) -->
+		{#if effectiveMode === 'create'}
+			<section class="pr-panel">
+				<button
+					class="pr-panel-toggle"
+					type="button"
+					onclick={() => (prPanelExpanded = !prPanelExpanded)}
+				>
+					<span class="pr-panel-toggle-icon">{prPanelExpanded ? '▾' : '▸'}</span>
+					<span class="pr-title">Create Pull Request</span>
+				</button>
+
+				<div class="pr-panel-content" class:expanded={prPanelExpanded}>
+					<div class="pr-panel-inner">
+						<div class="pr-form-row">
+							<label class="field-inline">
+								<span>Target</span>
+								<select
+									bind:value={prBaseRemote}
+									disabled={remotesLoading}
+									title="Base remote (defaults to upstream if available)"
+								>
+									<option value="">Auto</option>
+									{#each remotes as remote (remote.name)}
+										<option value={remote.name}>{remote.name}</option>
+									{/each}
+								</select>
+							</label>
+							<span class="field-separator">/</span>
+							<label class="field-inline">
+								<input
+									class="branch-input"
+									type="text"
+									bind:value={prBase}
+									placeholder="main"
+									autocapitalize="off"
+									autocorrect="off"
+									spellcheck="false"
+								/>
+							</label>
+							<label class="checkbox-inline">
+								<input type="checkbox" bind:checked={prDraft} />
+								Draft
+							</label>
+							<button
+								class="pr-create-btn"
+								class:loading={prCreating}
+								type="button"
+								onclick={handleCreatePR}
+								disabled={prCreating}
+							>
+								{#if prCreating}
+									<span class="pr-create-spinner" aria-hidden="true">
+										<svg
+											class="pr-create-spinner-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+										>
+											<circle cx="12" cy="12" r="9" opacity="0.25" />
+											<path d="M21 12a9 9 0 0 0-9-9" stroke-linecap="round" />
+										</svg>
+									</span>
+								{/if}
+								<span class="pr-create-label"
+									>{prCreating
+										? (prCreateStageCopy?.button ?? 'Creating PR...')
+										: 'Create PR'}</span
+								>
+							</button>
 						</div>
-					{/if}
 
-					{#if prCreateError}
-						<div class="error">{prCreateError}</div>
-					{/if}
+						{#if prCreating && prCreateStageCopy}
+							<div class="pr-create-progress" role="status" aria-live="polite">
+								{prCreateStageCopy.detail}
+							</div>
+						{/if}
 
-					{#if prTracked && !prCreateSuccess}
-						<div class="info-banner">
-							Existing PR #{prTracked.number} found.
-							<button class="mode-link" type="button" onclick={() => (forceMode = 'status')}>
-								View status →
+						{#if prCreateError}
+							<div class="error">{prCreateError}</div>
+						{/if}
+
+						{#if prTracked && !prCreateSuccess}
+							<div class="info-banner">
+								Existing PR #{prTracked.number} found.
+								<button class="mode-link" type="button" onclick={() => (forceMode = 'status')}>
+									View status →
+								</button>
+							</div>
+						{/if}
+					</div>
+				</div>
+			</section>
+		{/if}
+
+		<!-- Status errors/success banners (only in status mode) -->
+		{#if effectiveMode === 'status'}
+			{#if prStatusError}
+				<div class="error-banner compact">{prStatusError}</div>
+			{/if}
+			{#if prReviewsSent}
+				<div class="success-banner compact">Sent to terminal</div>
+			{/if}
+		{/if}
+
+		<!-- Local uncommitted changes banner (in status mode when PR exists) -->
+		{#if effectiveMode === 'status' && localStatus?.hasUncommitted}
+			<section class="local-changes-banner">
+				<span class="local-changes-text">You have uncommitted local changes</span>
+				<button
+					class="commit-push-btn"
+					type="button"
+					onclick={handleCommitAndPush}
+					disabled={commitPushLoading}
+				>
+					{commitPushLoading ? 'Committing...' : 'Commit & Push'}
+				</button>
+			</section>
+			{#if commitPushError}
+				<div class="error-banner compact">{commitPushError}</div>
+			{/if}
+			{#if commitPushSuccess}
+				<div class="success-banner compact">Changes committed and pushed</div>
+			{/if}
+		{/if}
+
+		{#if summaryLoading}
+			<div class="state">Loading diff summary...</div>
+		{:else if summaryError}
+			<div class="state error">
+				<div class="message">{summaryError}</div>
+				<button class="ghost" type="button" onclick={loadSummary}>Retry</button>
+			</div>
+		{:else if !summary || summary.files.length === 0}
+			<div class="state">No changes detected in this repo.</div>
+		{:else}
+			<div class="diff-body" style="--sidebar-width: {sidebarWidth}px">
+				<aside class="file-list">
+					<!-- Sidebar tabs (only show when in status mode with checks) -->
+					{#if effectiveMode === 'status' && prStatus && prStatus.checks.length > 0}
+						<div class="sidebar-tabs">
+							<button
+								class="sidebar-tab"
+								class:active={sidebarTab === 'files'}
+								type="button"
+								onclick={() => (sidebarTab = 'files')}
+							>
+								Files
+								<span class="tab-count"
+									>{summary.files.length + (localSummary?.files.length ?? 0)}</span
+								>
+							</button>
+							<button
+								class="sidebar-tab"
+								class:active={sidebarTab === 'checks'}
+								type="button"
+								onclick={() => (sidebarTab = 'checks')}
+							>
+								Checks
+								{#if checkStats.failed > 0}
+									<span class="tab-count failed"><XCircle size={12} /> {checkStats.failed}</span>
+								{:else if checkStats.pending > 0}
+									<span class="tab-count pending"
+										><Loader2 size={12} class="spin" /> {checkStats.pending}</span
+									>
+								{:else}
+									<span class="tab-count passed"
+										><CheckCircle2 size={12} /> {checkStats.passed}</span
+									>
+								{/if}
 							</button>
 						</div>
 					{/if}
-				</div>
-			</div>
-		</section>
-	{/if}
 
-	<!-- Status errors/success banners (only in status mode) -->
-	{#if effectiveMode === 'status'}
-		{#if prStatusError}
-			<div class="error-banner compact">{prStatusError}</div>
-		{/if}
-		{#if prReviewsSent}
-			<div class="success-banner compact">Sent to terminal</div>
-		{/if}
-	{/if}
-
-	<!-- Local uncommitted changes banner (in status mode when PR exists) -->
-	{#if effectiveMode === 'status' && localStatus?.hasUncommitted}
-		<section class="local-changes-banner">
-			<span class="local-changes-text">You have uncommitted local changes</span>
-			<button
-				class="commit-push-btn"
-				type="button"
-				onclick={handleCommitAndPush}
-				disabled={commitPushLoading}
-			>
-				{commitPushLoading ? 'Committing...' : 'Commit & Push'}
-			</button>
-		</section>
-		{#if commitPushError}
-			<div class="error-banner compact">{commitPushError}</div>
-		{/if}
-		{#if commitPushSuccess}
-			<div class="success-banner compact">Changes committed and pushed</div>
-		{/if}
-	{/if}
-
-	{#if summaryLoading}
-		<div class="state">Loading diff summary...</div>
-	{:else if summaryError}
-		<div class="state error">
-			<div class="message">{summaryError}</div>
-			<button class="ghost" type="button" onclick={loadSummary}>Retry</button>
-		</div>
-	{:else if !summary || summary.files.length === 0}
-		<div class="state">No changes detected in this repo.</div>
-	{:else}
-		<div class="diff-body" style="--sidebar-width: {sidebarWidth}px">
-			<aside class="file-list">
-				<!-- Sidebar tabs (only show when in status mode with checks) -->
-				{#if effectiveMode === 'status' && prStatus && prStatus.checks.length > 0}
-					<div class="sidebar-tabs">
-						<button
-							class="sidebar-tab"
-							class:active={sidebarTab === 'files'}
-							type="button"
-							onclick={() => (sidebarTab = 'files')}
-						>
-							Files
-							<span class="tab-count"
-								>{summary.files.length + (localSummary?.files.length ?? 0)}</span
+					<!-- Files tab content -->
+					{#if sidebarTab === 'files'}
+						<!-- PR changed files section -->
+						{#if !(effectiveMode === 'status' && prStatus && prStatus.checks.length > 0)}
+							<div class="section-title">
+								{localSummary && localSummary.files.length > 0 ? 'PR files' : 'Changed files'}
+							</div>
+						{:else if localSummary && localSummary.files.length > 0}
+							<div class="section-title">PR files</div>
+						{/if}
+						{#each summary.files as file (file.path)}
+							{@const reviewCount = reviewCountForFile(file.path)}
+							<button
+								class:selected={file.path === selected?.path &&
+									file.prevPath === selected?.prevPath &&
+									selectedSource === 'pr'}
+								class="file-row"
+								onclick={() => selectFile(file, 'pr')}
+								type="button"
 							>
-						</button>
-						<button
-							class="sidebar-tab"
-							class:active={sidebarTab === 'checks'}
-							type="button"
-							onclick={() => (sidebarTab = 'checks')}
-						>
-							Checks
-							{#if checkStats.failed > 0}
-								<span class="tab-count failed"><XCircle size={12} /> {checkStats.failed}</span>
-							{:else if checkStats.pending > 0}
-								<span class="tab-count pending"
-									><Loader2 size={12} class="spin" /> {checkStats.pending}</span
-								>
-							{:else}
-								<span class="tab-count passed"><CheckCircle2 size={12} /> {checkStats.passed}</span>
-							{/if}
-						</button>
-					</div>
-				{/if}
-
-				<!-- Files tab content -->
-				{#if sidebarTab === 'files'}
-					<!-- PR changed files section -->
-					{#if !(effectiveMode === 'status' && prStatus && prStatus.checks.length > 0)}
-						<div class="section-title">
-							{localSummary && localSummary.files.length > 0 ? 'PR files' : 'Changed files'}
-						</div>
-					{:else if localSummary && localSummary.files.length > 0}
-						<div class="section-title">PR files</div>
-					{/if}
-					{#each summary.files as file (file.path)}
-						{@const reviewCount = reviewCountForFile(file.path)}
-						<button
-							class:selected={file.path === selected?.path &&
-								file.prevPath === selected?.prevPath &&
-								selectedSource === 'pr'}
-							class="file-row"
-							onclick={() => selectFile(file, 'pr')}
-							type="button"
-						>
-							<div class="file-meta">
-								<span class="path" title={file.path}>{formatPath(file.path)}</span>
-								{#if file.prevPath}
-									<span class="rename">from {file.prevPath}</span>
-								{/if}
-							</div>
-							<div class="stats">
-								{#if reviewCount > 0}
-									<span
-										class="review-badge"
-										title="{reviewCount} review comment{reviewCount > 1 ? 's' : ''}"
-									>
-										💬 {reviewCount}
-									</span>
-								{/if}
-								<span class="tag {file.status}">{statusLabel(file.status)}</span>
-								<span class="diffstat"
-									><span class="add">+{file.added}</span><span class="sep">/</span><span class="del"
-										>-{file.removed}</span
-									></span
-								>
-							</div>
-						</button>
-					{/each}
-				{/if}
-
-				<!-- Checks tab content -->
-				{#if sidebarTab === 'checks' && prStatus}
-					<div class="checks-tab-content">
-						<!-- Checks Summary Header -->
-						<div class="checks-summary">
-							<div class="checks-summary-item passed">
-								<CheckCircle2 size={16} />
-								<span>{checkStats.passed}</span>
-							</div>
-							<div class="checks-summary-item failed">
-								<XCircle size={16} />
-								<span>{checkStats.failed}</span>
-							</div>
-							{#if checkStats.pending > 0}
-								<div class="checks-summary-item pending">
-									<Loader2 size={16} class="spin" />
-									<span>{checkStats.pending}</span>
+								<div class="file-meta">
+									<span class="path" title={file.path}>{formatPath(file.path)}</span>
+									{#if file.prevPath}
+										<span class="rename">from {file.prevPath}</span>
+									{/if}
 								</div>
-							{/if}
-						</div>
-
-						<!-- Check List -->
-						<div class="checks-list">
-							{#each prStatus.checks as check (check.name)}
-								{@const statusClass = getCheckStatusClass(check.conclusion, check.status)}
-								{@const isFailed = check.conclusion === 'failure'}
-								{@const isExpanded = expandedCheck === check.name}
-								{@const filteredResult = getFilteredAnnotations(check.name)}
-								{@const hasAnnotations = filteredResult.annotations.length > 0}
-								{@const isLoadingAnnotations = checkAnnotationsLoading[check.name]}
-								<div class="check-item-container">
-									<!-- Use div for non-failed checks, button for failed checks -->
-									{#if isFailed}
-										<button
-											class="check-row {statusClass} expandable"
-											type="button"
-											onclick={() => toggleCheckExpansion(check)}
+								<div class="stats">
+									{#if reviewCount > 0}
+										<span
+											class="review-badge"
+											title="{reviewCount} review comment{reviewCount > 1 ? 's' : ''}"
 										>
-											<span class="check-indicator {statusClass}">
-												{#if check.conclusion === 'success'}
-													<CheckCircle2 size={16} />
-												{:else if check.conclusion === 'failure'}
-													<XCircle size={16} />
-												{:else if check.conclusion === 'skipped'}
-													<Ban size={16} />
-												{:else if check.conclusion === 'cancelled'}
-													<Ban size={16} />
-												{:else if check.conclusion === 'neutral'}
-													<MinusCircle size={16} />
-												{:else if check.status === 'in_progress' || check.status === 'queued'}
-													<Loader2 size={16} class="spin" />
-												{:else}
-													<MinusCircle size={16} />
-												{/if}
-											</span>
-											<span class="check-name">{check.name}</span>
-											{#if check.startedAt && check.completedAt}
-												{@const duration =
-													new Date(check.completedAt).getTime() -
-													new Date(check.startedAt).getTime()}
-												<span class="check-duration" title="Duration">
-													{formatDuration(duration)}
-												</span>
-											{/if}
-											<span class="check-expand-icon">
-												{#if isExpanded}
-													<ChevronDown size={16} />
-												{:else}
-													<ChevronRight size={16} />
-												{/if}
-											</span>
-											{#if check.detailsUrl}
-												<a
-													class="check-link"
-													href={check.detailsUrl}
-													target="_blank"
-													rel="noopener noreferrer"
-													onclick={(e) => {
-														e.stopPropagation();
-														if (check.detailsUrl) BrowserOpenURL(check.detailsUrl);
-													}}
-													title="View on GitHub"
-												>
-													<ExternalLink size={14} />
-												</a>
-											{/if}
-										</button>
-									{:else}
-										<div class="check-row {statusClass}">
-											<span class="check-indicator {statusClass}">
-												{#if check.conclusion === 'success'}
-													<CheckCircle2 size={16} />
-												{:else if check.conclusion === 'failure'}
-													<XCircle size={16} />
-												{:else if check.conclusion === 'skipped'}
-													<Ban size={16} />
-												{:else if check.conclusion === 'cancelled'}
-													<Ban size={16} />
-												{:else if check.conclusion === 'neutral'}
-													<MinusCircle size={16} />
-												{:else if check.status === 'in_progress' || check.status === 'queued'}
-													<Loader2 size={16} class="spin" />
-												{:else}
-													<MinusCircle size={16} />
-												{/if}
-											</span>
-											<span class="check-name">{check.name}</span>
-											{#if check.startedAt && check.completedAt}
-												{@const duration =
-													new Date(check.completedAt).getTime() -
-													new Date(check.startedAt).getTime()}
-												<span class="check-duration" title="Duration">
-													{formatDuration(duration)}
-												</span>
-											{/if}
-											{#if check.detailsUrl}
-												<a
-													class="check-link"
-													href={check.detailsUrl}
-													target="_blank"
-													rel="noopener noreferrer"
-													onclick={() => check.detailsUrl && BrowserOpenURL(check.detailsUrl)}
-													title="View on GitHub"
-												>
-													<ExternalLink size={14} />
-												</a>
-											{/if}
-										</div>
+											💬 {reviewCount}
+										</span>
 									{/if}
-
-									<!-- Expanded Annotations Section -->
-									{#if isFailed && isExpanded}
-										<div class="check-annotations">
-											{#if isLoadingAnnotations}
-												<div class="check-annotations-loading">
-													<Loader2 size={16} class="spin" />
-													<span>Loading annotations...</span>
-												</div>
-											{:else if hasAnnotations}
-												{#each filteredResult.annotations as annotation (annotation.path + annotation.startLine)}
-													<div class="check-annotation-item level-{annotation.level}">
-														<button
-															class="check-annotation-path"
-															type="button"
-															onclick={() =>
-																navigateToAnnotationFile(annotation.path, annotation.startLine)}
-														>
-															<span class="path-text">{annotation.path}:{annotation.startLine}</span
-															>
-															{#if annotation.startLine !== annotation.endLine}
-																<span class="line-range">-{annotation.endLine}</span>
-															{/if}
-														</button>
-														{#if annotation.title}
-															<div class="check-annotation-title">{annotation.title}</div>
-														{/if}
-														<div class="check-annotation-message">{annotation.message}</div>
-													</div>
-												{/each}
-												{#if filteredResult.filteredCount > 0}
-													<div class="check-annotations-more">
-														+{filteredResult.filteredCount} more in other files
-													</div>
-												{/if}
-											{:else}
-												<div class="check-annotations-empty">
-													{#if !check.checkRunId}
-														<span>Check run ID not available</span>
-													{:else}
-														<span>No annotations for this check</span>
-													{/if}
-												</div>
-											{/if}
-										</div>
-									{/if}
+									<span class="tag {file.status}">{statusLabel(file.status)}</span>
+									<span class="diffstat"
+										><span class="add">+{file.added}</span><span class="sep">/</span><span
+											class="del">-{file.removed}</span
+										></span
+									>
 								</div>
-							{/each}
+							</button>
+						{/each}
+					{/if}
+
+					<!-- Checks tab content -->
+					{#if sidebarTab === 'checks' && prStatus}
+						<div class="checks-tab-content">
+							<!-- Checks Summary Header -->
+							<div class="checks-summary">
+								<div class="checks-summary-item passed">
+									<CheckCircle2 size={16} />
+									<span>{checkStats.passed}</span>
+								</div>
+								<div class="checks-summary-item failed">
+									<XCircle size={16} />
+									<span>{checkStats.failed}</span>
+								</div>
+								{#if checkStats.pending > 0}
+									<div class="checks-summary-item pending">
+										<Loader2 size={16} class="spin" />
+										<span>{checkStats.pending}</span>
+									</div>
+								{/if}
+							</div>
+
+							<!-- Check List -->
+							<div class="checks-list">
+								{#each prStatus.checks as check (check.name)}
+									{@const statusClass = getCheckStatusClass(check.conclusion, check.status)}
+									{@const isFailed = check.conclusion === 'failure'}
+									{@const isExpanded = expandedCheck === check.name}
+									{@const filteredResult = getFilteredAnnotations(check.name)}
+									{@const hasAnnotations = filteredResult.annotations.length > 0}
+									{@const isLoadingAnnotations = checkAnnotationsLoading[check.name]}
+									<div class="check-item-container">
+										<!-- Use div for non-failed checks, button for failed checks -->
+										{#if isFailed}
+											<button
+												class="check-row {statusClass} expandable"
+												type="button"
+												onclick={() => toggleCheckExpansion(check)}
+											>
+												<span class="check-indicator {statusClass}">
+													{#if check.conclusion === 'success'}
+														<CheckCircle2 size={16} />
+													{:else if check.conclusion === 'failure'}
+														<XCircle size={16} />
+													{:else if check.conclusion === 'skipped'}
+														<Ban size={16} />
+													{:else if check.conclusion === 'cancelled'}
+														<Ban size={16} />
+													{:else if check.conclusion === 'neutral'}
+														<MinusCircle size={16} />
+													{:else if check.status === 'in_progress' || check.status === 'queued'}
+														<Loader2 size={16} class="spin" />
+													{:else}
+														<MinusCircle size={16} />
+													{/if}
+												</span>
+												<span class="check-name">{check.name}</span>
+												{#if check.startedAt && check.completedAt}
+													{@const duration =
+														new Date(check.completedAt).getTime() -
+														new Date(check.startedAt).getTime()}
+													<span class="check-duration" title="Duration">
+														{formatDuration(duration)}
+													</span>
+												{/if}
+												<span class="check-expand-icon">
+													{#if isExpanded}
+														<ChevronDown size={16} />
+													{:else}
+														<ChevronRight size={16} />
+													{/if}
+												</span>
+												{#if check.detailsUrl}
+													<a
+														class="check-link"
+														href={check.detailsUrl}
+														target="_blank"
+														rel="noopener noreferrer"
+														onclick={(e) => {
+															e.stopPropagation();
+															if (check.detailsUrl) BrowserOpenURL(check.detailsUrl);
+														}}
+														title="View on GitHub"
+													>
+														<ExternalLink size={14} />
+													</a>
+												{/if}
+											</button>
+										{:else}
+											<div class="check-row {statusClass}">
+												<span class="check-indicator {statusClass}">
+													{#if check.conclusion === 'success'}
+														<CheckCircle2 size={16} />
+													{:else if check.conclusion === 'failure'}
+														<XCircle size={16} />
+													{:else if check.conclusion === 'skipped'}
+														<Ban size={16} />
+													{:else if check.conclusion === 'cancelled'}
+														<Ban size={16} />
+													{:else if check.conclusion === 'neutral'}
+														<MinusCircle size={16} />
+													{:else if check.status === 'in_progress' || check.status === 'queued'}
+														<Loader2 size={16} class="spin" />
+													{:else}
+														<MinusCircle size={16} />
+													{/if}
+												</span>
+												<span class="check-name">{check.name}</span>
+												{#if check.startedAt && check.completedAt}
+													{@const duration =
+														new Date(check.completedAt).getTime() -
+														new Date(check.startedAt).getTime()}
+													<span class="check-duration" title="Duration">
+														{formatDuration(duration)}
+													</span>
+												{/if}
+												{#if check.detailsUrl}
+													<a
+														class="check-link"
+														href={check.detailsUrl}
+														target="_blank"
+														rel="noopener noreferrer"
+														onclick={() => check.detailsUrl && BrowserOpenURL(check.detailsUrl)}
+														title="View on GitHub"
+													>
+														<ExternalLink size={14} />
+													</a>
+												{/if}
+											</div>
+										{/if}
+
+										<!-- Expanded Annotations Section -->
+										{#if isFailed && isExpanded}
+											<div class="check-annotations">
+												{#if isLoadingAnnotations}
+													<div class="check-annotations-loading">
+														<Loader2 size={16} class="spin" />
+														<span>Loading annotations...</span>
+													</div>
+												{:else if hasAnnotations}
+													{#each filteredResult.annotations as annotation (annotation.path + annotation.startLine)}
+														<div class="check-annotation-item level-{annotation.level}">
+															<button
+																class="check-annotation-path"
+																type="button"
+																onclick={() =>
+																	navigateToAnnotationFile(annotation.path, annotation.startLine)}
+															>
+																<span class="path-text"
+																	>{annotation.path}:{annotation.startLine}</span
+																>
+																{#if annotation.startLine !== annotation.endLine}
+																	<span class="line-range">-{annotation.endLine}</span>
+																{/if}
+															</button>
+															{#if annotation.title}
+																<div class="check-annotation-title">{annotation.title}</div>
+															{/if}
+															<div class="check-annotation-message">{annotation.message}</div>
+														</div>
+													{/each}
+													{#if filteredResult.filteredCount > 0}
+														<div class="check-annotations-more">
+															+{filteredResult.filteredCount} more in other files
+														</div>
+													{/if}
+												{:else}
+													<div class="check-annotations-empty">
+														{#if !check.checkRunId}
+															<span>Check run ID not available</span>
+														{:else}
+															<span>No annotations for this check</span>
+														{/if}
+													</div>
+												{/if}
+											</div>
+										{/if}
+									</div>
+								{/each}
+							</div>
 						</div>
+					{/if}
+				</aside>
+				<button
+					class="resize-handle"
+					class:resizing={isResizing}
+					onmousedown={startResize}
+					aria-label="Resize sidebar"
+					type="button"
+				></button>
+				<div class="diff-view">
+					<div class="file-header">
+						<div class="file-title">
+							<span>{selected?.path}</span>
+							{#if selected?.prevPath}
+								<span class="rename">from {selected.prevPath}</span>
+							{/if}
+						</div>
+						<span class="diffstat">
+							<span class="add">+{selected?.added ?? 0}</span><span class="sep">/</span><span
+								class="del">-{selected?.removed ?? 0}</span
+							>
+							{#if fileMeta && !fileMeta.truncated && fileMeta.totalLines > 0}
+								<span class="line-count">{fileMeta.totalLines} lines</span>
+							{/if}
+						</span>
 					</div>
-				{/if}
-			</aside>
-			<button
-				class="resize-handle"
-				class:resizing={isResizing}
-				onmousedown={startResize}
-				aria-label="Resize sidebar"
-				type="button"
-			></button>
-			<div class="diff-view">
-				<div class="file-header">
-					<div class="file-title">
-						<span>{selected?.path}</span>
-						{#if selected?.prevPath}
-							<span class="rename">from {selected.prevPath}</span>
-						{/if}
-					</div>
-					<span class="diffstat">
-						<span class="add">+{selected?.added ?? 0}</span><span class="sep">/</span><span
-							class="del">-{selected?.removed ?? 0}</span
-						>
-						{#if fileMeta && !fileMeta.truncated && fileMeta.totalLines > 0}
-							<span class="line-count">{fileMeta.totalLines} lines</span>
-						{/if}
-					</span>
+					{#if fileLoading || rendererLoading}
+						<div class="state compact">Loading file diff...</div>
+					{:else if fileError}
+						<div class="state compact">{fileError}</div>
+					{:else if rendererError}
+						<div class="state compact">{rendererError}</div>
+					{:else}
+						<div class="diff-renderer">
+							<diffs-container bind:this={diffContainer}></diffs-container>
+						</div>
+					{/if}
 				</div>
-				{#if fileLoading || rendererLoading}
-					<div class="state compact">Loading file diff...</div>
-				{:else if fileError}
-					<div class="state compact">{fileError}</div>
-				{:else if rendererError}
-					<div class="state compact">{rendererError}</div>
-				{:else}
-					<div class="diff-renderer">
-						<diffs-container bind:this={diffContainer}></diffs-container>
-					</div>
-				{/if}
 			</div>
-		</div>
-	{/if}
-</section>
+		{/if}
+	</section>
+{:else}
+	<div class="state">Select a repo to view diffs.</div>
+{/if}
 
 {#if authModalOpen}
 	<div

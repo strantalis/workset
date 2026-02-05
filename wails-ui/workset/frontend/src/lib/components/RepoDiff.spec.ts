@@ -20,10 +20,17 @@ vi.mock('../api', () => ({
 	listRemotes: vi.fn(),
 	replyToReviewComment: vi.fn(),
 	resolveReviewThread: vi.fn(),
+	startRepoDiffWatch: vi.fn(),
+	updateRepoDiffWatch: vi.fn(),
+	stopRepoDiffWatch: vi.fn(),
 }));
 
 vi.mock('../../../wailsjs/runtime/runtime', () => ({
 	BrowserOpenURL: vi.fn(),
+}));
+
+vi.mock('../repoDiffService', () => ({
+	subscribeRepoDiffEvent: vi.fn(() => () => {}),
 }));
 
 const repo: Repo = {
@@ -80,6 +87,9 @@ beforeEach(async () => {
 		behind: 0,
 		currentBranch: 'main',
 	});
+	vi.mocked(api.startRepoDiffWatch).mockResolvedValue(true);
+	vi.mocked(api.updateRepoDiffWatch).mockResolvedValue(true);
+	vi.mocked(api.stopRepoDiffWatch).mockResolvedValue(true);
 }, 30000);
 
 afterEach(() => {

@@ -230,9 +230,7 @@
 	let removeRepoStatusRequested = $state(false);
 	let removeRepoStatusRefreshing = $state(false);
 
-	const removeConfirmValid = $derived(
-		!removeDeleteFiles || removeConfirmText === 'DELETE',
-	);
+	const removeConfirmValid = $derived(!removeDeleteFiles || removeConfirmText === 'DELETE');
 	const removeRepoConfirmRequired = $derived(removeDeleteWorktree);
 	const removeRepoConfirmValid = $derived(
 		!removeRepoConfirmRequired || removeRepoConfirmText === 'DELETE',
@@ -287,9 +285,7 @@
 								: 'Workspace action',
 	);
 
-	const modalSize = $derived(
-		mode === 'create' || mode === 'add-repo' ? 'wide' : 'md',
-	);
+	const modalSize = $derived(mode === 'create' || mode === 'add-repo' ? 'wide' : 'md');
 
 	const formatError = (err: unknown, fallback: string): string => {
 		if (err instanceof Error) return err.message;
