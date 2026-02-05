@@ -13,25 +13,27 @@ import (
 
 // App struct
 type App struct {
-	ctx             context.Context
-	service         *worksetapi.Service
-	terminalMu      sync.Mutex
-	terminals       map[string]*terminalSession
-	restoredModes   map[string]terminalModeState
-	sessiondMu      sync.Mutex
-	sessiondClient  *sessiond.Client
-	sessiondStart   *sessiondStartState
-	sessiondRestart *sessiondRestartState
+	ctx              context.Context
+	service          *worksetapi.Service
+	terminalMu       sync.Mutex
+	terminals        map[string]*terminalSession
+	restoredModes    map[string]terminalModeState
+	sessiondMu       sync.Mutex
+	sessiondClient   *sessiond.Client
+	sessiondStart    *sessiondStartState
+	sessiondRestart  *sessiondRestartState
+	repoDiffWatchers *repoDiffWatchManager
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{
-		service:         newWorksetService(),
-		terminals:       map[string]*terminalSession{},
-		restoredModes:   map[string]terminalModeState{},
-		sessiondStart:   &sessiondStartState{},
-		sessiondRestart: &sessiondRestartState{},
+		service:          newWorksetService(),
+		terminals:        map[string]*terminalSession{},
+		restoredModes:    map[string]terminalModeState{},
+		sessiondStart:    &sessiondStartState{},
+		sessiondRestart:  &sessiondRestartState{},
+		repoDiffWatchers: newRepoDiffWatchManager(),
 	}
 }
 
@@ -51,6 +53,9 @@ func (a *App) startup(ctx context.Context) {
 
 func (a *App) shutdown(_ context.Context) {
 	_ = a.persistTerminalState()
+	if a.repoDiffWatchers != nil {
+		a.repoDiffWatchers.shutdown()
+	}
 	a.terminalMu.Lock()
 	defer a.terminalMu.Unlock()
 	for _, session := range a.terminals {

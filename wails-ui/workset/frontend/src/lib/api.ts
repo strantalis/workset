@@ -92,6 +92,9 @@ import {
 	CheckAgentStatus,
 	SetAgentCLIPath,
 	ReloadLoginEnv,
+	StartRepoDiffWatch,
+	UpdateRepoDiffWatch,
+	StopRepoDiffWatch,
 } from '../../wailsjs/go/main/App';
 
 type WorkspaceSnapshot = {
@@ -157,6 +160,50 @@ export async function checkAgentStatus(agent: string): Promise<AgentCLIStatus> {
 
 export async function setAgentCLIPath(agent: string, path: string): Promise<AgentCLIStatus> {
 	return (await SetAgentCLIPath({ agent, path })) as AgentCLIStatus;
+}
+
+export async function startRepoDiffWatch(
+	workspaceId: string,
+	repoId: string,
+	prNumber?: number,
+	prBranch?: string,
+): Promise<boolean> {
+	return (await StartRepoDiffWatch({
+		workspaceId,
+		repoId,
+		prNumber,
+		prBranch,
+	})) as boolean;
+}
+
+export async function startRepoStatusWatch(workspaceId: string, repoId: string): Promise<boolean> {
+	return (await StartRepoDiffWatch({
+		workspaceId,
+		repoId,
+		localOnly: true,
+	})) as boolean;
+}
+
+export async function updateRepoDiffWatch(
+	workspaceId: string,
+	repoId: string,
+	prNumber?: number,
+	prBranch?: string,
+): Promise<boolean> {
+	return (await UpdateRepoDiffWatch({
+		workspaceId,
+		repoId,
+		prNumber,
+		prBranch,
+	})) as boolean;
+}
+
+export async function stopRepoDiffWatch(workspaceId: string, repoId: string): Promise<boolean> {
+	return (await StopRepoDiffWatch({ workspaceId, repoId })) as boolean;
+}
+
+export async function stopRepoStatusWatch(workspaceId: string, repoId: string): Promise<boolean> {
+	return (await StopRepoDiffWatch({ workspaceId, repoId, localOnly: true })) as boolean;
 }
 
 export async function openFileDialog(title: string, defaultDirectory: string): Promise<string> {

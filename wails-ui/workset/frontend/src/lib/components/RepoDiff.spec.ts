@@ -20,10 +20,17 @@ vi.mock('../api', () => ({
 	listRemotes: vi.fn(),
 	replyToReviewComment: vi.fn(),
 	resolveReviewThread: vi.fn(),
+	startRepoDiffWatch: vi.fn(),
+	updateRepoDiffWatch: vi.fn(),
+	stopRepoDiffWatch: vi.fn(),
 }));
 
 vi.mock('../../../wailsjs/runtime/runtime', () => ({
 	BrowserOpenURL: vi.fn(),
+}));
+
+vi.mock('../repoDiffService', () => ({
+	subscribeRepoDiffEvent: vi.fn(() => () => {}),
 }));
 
 const repo: Repo = {
@@ -80,6 +87,9 @@ beforeEach(async () => {
 		behind: 0,
 		currentBranch: 'main',
 	});
+	vi.mocked(api.startRepoDiffWatch).mockResolvedValue(true);
+	vi.mocked(api.updateRepoDiffWatch).mockResolvedValue(true);
+	vi.mocked(api.stopRepoDiffWatch).mockResolvedValue(true);
 }, 30000);
 
 afterEach(() => {
@@ -131,5 +141,52 @@ describe('RepoDiff create PR feedback', () => {
 		expect(queryByText('Step 1/2: Generating title...')).not.toBeInTheDocument();
 		expect(queryByText('Step 2/2: Creating PR...')).not.toBeInTheDocument();
 		expect(await findByText('Failed to create pull request.')).toBeInTheDocument();
+	});
+});
+
+describe('RepoDiff watcher lifecycle', () => {
+	it('restarts watcher when repo changes', async () => {
+		const onClose = vi.fn();
+		const repoA: Repo = {
+			id: 'repo-1',
+			name: 'alpha',
+			path: '/repo/a',
+			dirty: false,
+			missing: false,
+			diff: { added: 0, removed: 0 },
+			files: [],
+		};
+		const repoB: Repo = {
+			id: 'repo-2',
+			name: 'beta',
+			path: '/repo/b',
+			dirty: false,
+			missing: false,
+			diff: { added: 0, removed: 0 },
+			files: [],
+		};
+
+		const { rerender } = render(RepoDiff, {
+			props: {
+				repo: repoA,
+				workspaceId: 'ws-1',
+				onClose,
+			},
+		});
+
+		await waitFor(() => {
+			expect(api.startRepoDiffWatch).toHaveBeenCalledWith('ws-1', 'repo-1', undefined, undefined);
+		});
+
+		await rerender({
+			repo: repoB,
+			workspaceId: 'ws-1',
+			onClose,
+		});
+
+		await waitFor(() => {
+			expect(api.stopRepoDiffWatch).toHaveBeenCalledWith('ws-1', 'repo-1');
+			expect(api.startRepoDiffWatch).toHaveBeenCalledWith('ws-1', 'repo-2', undefined, undefined);
+		});
 	});
 });

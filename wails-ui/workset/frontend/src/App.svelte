@@ -1,10 +1,11 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import {
 		activeRepo,
 		activeRepoId,
 		activeWorkspace,
 		activeWorkspaceId,
+		applyRepoLocalStatus,
 		clearRepo,
 		loadWorkspaces,
 		loadingWorkspaces,
@@ -20,7 +21,10 @@
 	import TerminalWorkspace from './lib/components/TerminalWorkspace.svelte';
 	import WorkspaceActionModal from './lib/components/WorkspaceActionModal.svelte';
 	import WorkspaceTree from './lib/components/WorkspaceTree.svelte';
-	import { fetchGitHubAuthInfo } from './lib/api';
+	import type { Workspace } from './lib/types';
+	import type { RepoLocalStatus } from './lib/api';
+	import { fetchGitHubAuthInfo, startRepoStatusWatch, stopRepoStatusWatch } from './lib/api';
+	import { subscribeRepoDiffEvent } from './lib/repoDiffService';
 
 	// Sidebar resize constraints
 	const MIN_SIDEBAR_WIDTH = 200;
@@ -37,6 +41,13 @@
 	let actionOpen = $state(false);
 	let authModalOpen = $state(false);
 	let authModalDismissed = $state(false);
+	const repoStatusWatchers = new Map<string, { workspaceId: string; repoId: string }>();
+
+	type RepoDiffLocalStatusEvent = {
+		workspaceId: string;
+		repoId: string;
+		status: RepoLocalStatus;
+	};
 
 	let actionContext: {
 		mode: 'create' | 'rename' | 'add-repo' | 'archive' | 'remove-workspace' | 'remove-repo' | null;
@@ -100,9 +111,61 @@
 		(event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
 	};
 
+	const updateRepoStatusWatchers = (data: Workspace[]): void => {
+		const nextKeys = new Set<string>();
+		for (const workspace of data) {
+			if (workspace.archived) continue;
+			for (const repo of workspace.repos) {
+				const key = `${workspace.id}:${repo.id}`;
+				nextKeys.add(key);
+				if (repoStatusWatchers.has(key)) continue;
+				const entry = { workspaceId: workspace.id, repoId: repo.id };
+				repoStatusWatchers.set(key, entry);
+				void startRepoStatusWatch(workspace.id, repo.id).catch(() => {
+					repoStatusWatchers.delete(key);
+				});
+			}
+		}
+
+		for (const [key, entry] of repoStatusWatchers) {
+			if (nextKeys.has(key)) continue;
+			repoStatusWatchers.delete(key);
+			void stopRepoStatusWatch(entry.workspaceId, entry.repoId).catch(() => {});
+		}
+	};
+
+	const stopAllRepoStatusWatchers = (): void => {
+		for (const entry of repoStatusWatchers.values()) {
+			void stopRepoStatusWatch(entry.workspaceId, entry.repoId).catch(() => {});
+		}
+		repoStatusWatchers.clear();
+	};
+
+	const onUnmount = (): void => {
+		stopAllRepoStatusWatchers();
+		repoStatusUnsubscribe?.();
+		repoStatusUnsubscribe = null;
+	};
+
+	let repoStatusUnsubscribe: (() => void) | null = null;
+
 	onMount(() => {
 		void loadWorkspaces();
 		void checkGitHubAuth();
+		repoStatusUnsubscribe = subscribeRepoDiffEvent<RepoDiffLocalStatusEvent>(
+			'repodiff:local-status',
+			(payload) => {
+				applyRepoLocalStatus(payload.workspaceId, payload.repoId, payload.status);
+			},
+		);
+	});
+
+	onDestroy(() => {
+		onUnmount();
+	});
+
+	$effect(() => {
+		updateRepoStatusWatchers($workspaces);
 	});
 </script>
 
