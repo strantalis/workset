@@ -39,6 +39,8 @@
 		kind: 'pane';
 		tabs: TerminalTab[];
 		activeTabId: string;
+		workspaceId?: string;
+		workspaceName?: string;
 	};
 	type SplitNode = Omit<
 		TerminalLayoutNodeType,
@@ -113,12 +115,19 @@
 				typeof node.activeTabId === 'string' && tabs.some((tab) => tab.id === node.activeTabId)
 					? node.activeTabId
 					: tabs[0].id;
-			return {
+			const paneResult: PaneNode = {
 				id: coerceId(node.id),
 				kind: 'pane',
 				tabs,
 				activeTabId,
 			};
+			if (typeof node.workspaceId === 'string' && node.workspaceId) {
+				paneResult.workspaceId = node.workspaceId;
+			}
+			if (typeof node.workspaceName === 'string' && node.workspaceName) {
+				paneResult.workspaceName = node.workspaceName;
+			}
+			return paneResult;
 		}
 		if (node.kind === 'split') {
 			const first = normalizeNode(node.first);
@@ -368,12 +377,19 @@
 		title,
 	});
 
-	const buildPane = (tab: TerminalTab): PaneNode => ({
-		id: newId(),
-		kind: 'pane',
-		tabs: [tab],
-		activeTabId: tab.id,
-	});
+	const buildPane = (tab: TerminalTab, overrideWorkspaceId?: string, overrideWorkspaceName?: string): PaneNode => {
+		const pane: PaneNode = {
+			id: newId(),
+			kind: 'pane',
+			tabs: [tab],
+			activeTabId: tab.id,
+		};
+		if (overrideWorkspaceId) {
+			pane.workspaceId = overrideWorkspaceId;
+			pane.workspaceName = overrideWorkspaceName;
+		}
+		return pane;
+	};
 
 	const ensureFocusedPane = (next: TerminalLayout): TerminalLayout => {
 		if (!next.focusedPaneId) {
@@ -563,12 +579,14 @@
 	const handleAddTab = async (paneId: string): Promise<void> => {
 		if (!layout) return;
 		try {
-			const created = await createWorkspaceTerminal(workspaceId);
+			const pane = findPane(layout.root, paneId);
+			const effectiveWsId = pane?.workspaceId || workspaceId;
+			const created = await createWorkspaceTerminal(effectiveWsId);
 			const title = nextTitle(layout.root);
 			const tab = buildTab(created.terminalId, title);
-			const nextRoot = updatePane(layout.root, paneId, (pane) => ({
-				...pane,
-				tabs: [...pane.tabs, tab],
+			const nextRoot = updatePane(layout.root, paneId, (p) => ({
+				...p,
+				tabs: [...p.tabs, tab],
 				activeTabId: tab.id,
 			}));
 			updateLayout({ ...layout, root: nextRoot, focusedPaneId: paneId });
@@ -580,11 +598,13 @@
 	const handleSplitPane = async (paneId: string, direction: 'row' | 'column'): Promise<void> => {
 		if (!layout) return;
 		try {
-			const created = await createWorkspaceTerminal(workspaceId);
+			const sourcePane = findPane(layout.root, paneId);
+			const effectiveWsId = sourcePane?.workspaceId || workspaceId;
+			const created = await createWorkspaceTerminal(effectiveWsId);
 			const title = nextTitle(layout.root);
 			const tab = buildTab(created.terminalId, title);
-			const pane = buildPane(tab);
-			const nextRoot = splitPane(layout.root, paneId, direction, pane);
+			const newPane = buildPane(tab, sourcePane?.workspaceId, sourcePane?.workspaceName);
+			const nextRoot = splitPane(layout.root, paneId, direction, newPane);
 			updateLayout({ ...layout, root: nextRoot, focusedPaneId: paneId });
 		} catch (error) {
 			initError = String(error);
@@ -595,9 +615,10 @@
 		if (!layout) return;
 		const pane = findPane(layout.root, paneId);
 		if (!pane) return;
+		const effectiveWsId = pane.workspaceId || workspaceId;
 		const closing = pane.tabs.find((tab) => tab.id === tabId);
 		if (closing) {
-			void closeTerminal(workspaceId, closing.terminalId);
+			void closeTerminal(effectiveWsId, closing.terminalId);
 		}
 		const remaining = pane.tabs.filter((tab) => tab.id !== tabId);
 		if (remaining.length === 0) {
@@ -617,8 +638,9 @@
 		if (!layout) return;
 		const pane = findPane(layout.root, paneId);
 		if (pane) {
+			const effectiveWsId = pane.workspaceId || workspaceId;
 			for (const tab of pane.tabs) {
-				void closeTerminal(workspaceId, tab.terminalId);
+				void closeTerminal(effectiveWsId, tab.terminalId);
 			}
 		}
 		const nextRoot = removePane(layout.root, paneId);
@@ -636,6 +658,37 @@
 			return;
 		}
 		updateLayout({ ...layout, root: nextRoot });
+	};
+
+	const handleChangePaneWorkspace = async (paneId: string, newWsId: string, newWsName: string): Promise<void> => {
+		if (!layout) return;
+		const pane = findPane(layout.root, paneId);
+		if (!pane) return;
+		// Close all terminals in the old workspace
+		const oldWsId = pane.workspaceId || workspaceId;
+		for (const tab of pane.tabs) {
+			void closeTerminal(oldWsId, tab.terminalId);
+		}
+		try {
+			// Create a new terminal in the new workspace
+			const created = await createWorkspaceTerminal(newWsId);
+			const title = generateTerminalName(newWsName, 0);
+			const tab = buildTab(created.terminalId, title);
+			// If new workspace matches global workspace, clear the override
+			const overrideWsId = newWsId === workspaceId ? undefined : newWsId;
+			const overrideWsName = newWsId === workspaceId ? undefined : newWsName;
+			const nextRoot = updatePane(layout.root, paneId, () => ({
+				id: paneId,
+				kind: 'pane' as const,
+				tabs: [tab],
+				activeTabId: tab.id,
+				workspaceId: overrideWsId,
+				workspaceName: overrideWsName,
+			}));
+			updateLayout({ ...layout, root: nextRoot, focusedPaneId: paneId });
+		} catch (error) {
+			initError = String(error);
+		}
 	};
 
 	const MIN_RATIO = 0.15;
@@ -669,6 +722,18 @@
 		if (!layout || !dragState) return;
 		const { tabId, sourcePaneId } = dragState;
 
+		// Prevent cross-workspace tab drags
+		if (sourcePaneId !== targetPaneId) {
+			const srcPane = findPane(layout.root, sourcePaneId);
+			const tgtPane = findPane(layout.root, targetPaneId);
+			const srcWs = srcPane?.workspaceId || workspaceId;
+			const tgtWs = tgtPane?.workspaceId || workspaceId;
+			if (srcWs !== tgtWs) {
+				dragState = null;
+				return;
+			}
+		}
+
 		// Move the tab
 		let nextRoot = moveTab(layout.root, sourcePaneId, targetPaneId, tabId, targetIndex);
 
@@ -693,8 +758,18 @@
 		if (!layout || !dragState) return;
 		const { tabId, sourcePaneId } = dragState;
 
+		// Prevent cross-workspace tab drags
+		const srcPane = findPane(layout.root, sourcePaneId);
+		const tgtPane = findPane(layout.root, targetPaneId);
+		const srcWs = srcPane?.workspaceId || workspaceId;
+		const tgtWs = tgtPane?.workspaceId || workspaceId;
+		if (srcWs !== tgtWs) {
+			dragState = null;
+			return;
+		}
+
 		// Find the tab in source pane
-		const sourcePane = findPane(layout.root, sourcePaneId);
+		const sourcePane = srcPane;
 		if (!sourcePane) return;
 		const tab = sourcePane.tabs.find((t) => t.id === tabId);
 		if (!tab) return;
@@ -999,6 +1074,7 @@
 				onTabDragEnd={handleTabDragEnd}
 				onTabDrop={handleTabDrop}
 				onTabSplitDrop={handleTabSplitDrop}
+				onChangePaneWorkspace={handleChangePaneWorkspace}
 			/>
 		{/if}
 	</div>
