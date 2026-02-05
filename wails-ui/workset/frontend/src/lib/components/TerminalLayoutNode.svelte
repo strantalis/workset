@@ -875,14 +875,16 @@
 	.workspace-select {
 		font-size: 11px;
 		max-width: 120px;
-		padding: 2px 4px;
+		height: 28px;
+		padding: 0 6px;
 		border: 1px solid var(--border);
-		border-radius: 4px;
+		border-radius: 6px;
 		background: var(--panel);
 		color: var(--muted);
 		cursor: pointer;
 		outline: none;
 		transition: all 0.15s ease;
+		box-shadow: var(--shadow-sm);
 	}
 
 	.workspace-select:hover,
