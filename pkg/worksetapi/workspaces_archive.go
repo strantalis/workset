@@ -76,5 +76,9 @@ func workspaceRefJSON(name string, ref config.WorkspaceRef) WorkspaceRefJSON {
 		ArchivedAt:     ref.ArchivedAt,
 		ArchivedReason: ref.ArchivedReason,
 		Archived:       ref.ArchivedAt != "",
+		Pinned:         ref.Pinned,
+		PinOrder:       ref.PinOrder,
+		Color:          ref.Color,
+		Expanded:       ref.Expanded,
 	}
 }

@@ -1,7 +1,14 @@
 import { derived, get, writable } from 'svelte/store';
 import type { RepoDiffSummary, Workspace } from './types';
 import type { RepoLocalStatus } from './api';
-import { fetchWorkspaces } from './api';
+import {
+	fetchWorkspaces,
+	pinWorkspace as apiPinWorkspace,
+	setWorkspaceColor as apiSetWorkspaceColor,
+	setWorkspaceExpanded as apiSetWorkspaceExpanded,
+	reorderWorkspaces as apiReorderWorkspaces,
+	updateWorkspaceLastUsed as apiUpdateWorkspaceLastUsed,
+} from './api';
 
 export const workspaces = writable<Workspace[]>([]);
 export const activeWorkspaceId = writable<string | null>(null);
@@ -22,9 +29,100 @@ export const activeRepo = derived(
 		$activeWorkspace?.repos.find((repo) => repo.id === $activeRepoId) ?? null,
 );
 
+// Derived stores for pinned and unpinned workspaces
+export const pinnedWorkspaces = derived(workspaces, ($workspaces) =>
+	$workspaces.filter((w) => w.pinned && !w.archived).sort((a, b) => a.pinOrder - b.pinOrder),
+);
+
+export const unpinnedWorkspaces = derived(workspaces, ($workspaces) =>
+	$workspaces
+		.filter((w) => !w.pinned && !w.archived)
+		.sort((a, b) => new Date(b.lastUsed).getTime() - new Date(a.lastUsed).getTime()),
+);
+
 export function selectWorkspace(workspaceId: string): void {
 	activeWorkspaceId.set(workspaceId);
 	activeRepoId.set(null);
+	// Update last used timestamp in background
+	void apiUpdateWorkspaceLastUsed(workspaceId).then(() => {
+		// Refresh workspace list to get updated lastUsed
+		void refreshWorkspacesStatus();
+	});
+}
+
+// Update workspace pin status
+export async function toggleWorkspacePin(workspaceId: string, pin: boolean): Promise<void> {
+	// Optimistically update local state first
+	workspaces.update((list) => {
+		const workspace = list.find((w) => w.id === workspaceId);
+		if (!workspace) return list;
+
+		// Calculate new pin order if pinning
+		let newPinOrder = workspace.pinOrder;
+		if (pin && !workspace.pinned) {
+			const maxOrder = Math.max(...list.filter((w) => w.pinned).map((w) => w.pinOrder), -1);
+			newPinOrder = maxOrder + 1;
+		} else if (!pin) {
+			newPinOrder = 0;
+		}
+
+		return list.map((w) =>
+			w.id === workspaceId ? { ...w, pinned: pin, pinOrder: newPinOrder } : w,
+		);
+	});
+
+	// Then try to sync with backend
+	try {
+		await apiPinWorkspace(workspaceId, pin);
+	} catch (error) {
+		// eslint-disable-next-line no-console
+		console.error('Failed to sync pin status:', error);
+		// Could revert here if needed, but optimistic UI is fine for now
+	}
+}
+
+// Update workspace color
+export async function setWorkspaceColor(workspaceId: string, color: string): Promise<void> {
+	// Optimistically update local state first
+	workspaces.update((list) => list.map((w) => (w.id === workspaceId ? { ...w, color } : w)));
+
+	// Then try to sync with backend
+	try {
+		await apiSetWorkspaceColor(workspaceId, color);
+	} catch (error) {
+		// eslint-disable-next-line no-console
+		console.error('Failed to sync workspace color:', error);
+	}
+}
+
+// Update workspace expanded state
+export async function setWorkspaceExpanded(workspaceId: string, expanded: boolean): Promise<void> {
+	// Optimistically update local state first
+	workspaces.update((list) => list.map((w) => (w.id === workspaceId ? { ...w, expanded } : w)));
+
+	// Then try to sync with backend
+	try {
+		await apiSetWorkspaceExpanded(workspaceId, expanded);
+	} catch (error) {
+		// eslint-disable-next-line no-console
+		console.error('Failed to sync workspace expanded state:', error);
+	}
+}
+
+// Reorder workspaces after drag and drop
+export async function reorderWorkspaces(orders: Record<string, number>): Promise<void> {
+	// Optimistically update local state first
+	workspaces.update((list) =>
+		list.map((w) => (orders[w.id] !== undefined ? { ...w, pinOrder: orders[w.id] } : w)),
+	);
+
+	// Then try to sync with backend
+	try {
+		await apiReorderWorkspaces(orders);
+	} catch (error) {
+		// eslint-disable-next-line no-console
+		console.error('Failed to sync workspace reorder:', error);
+	}
 }
 
 export function selectRepo(repoId: string): void {

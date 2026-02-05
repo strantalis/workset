@@ -24,7 +24,7 @@ import type {
 	TerminalLayout,
 	TerminalLayoutPayload,
 } from './types';
-import type { main } from '../../wailsjs/go/models';
+import type { main, worksetapi } from '../../wailsjs/go/models';
 import {
 	AddGroupMember,
 	AddRepo,
@@ -95,16 +95,27 @@ import {
 	StartRepoDiffWatch,
 	UpdateRepoDiffWatch,
 	StopRepoDiffWatch,
+	PinWorkspace,
+	SetWorkspaceColor,
+	SetWorkspaceExpanded,
+	ReorderWorkspaces,
+	UpdateWorkspaceLastUsed,
 } from '../../wailsjs/go/main/App';
 
 type WorkspaceSnapshot = {
 	id: string;
 	name: string;
 	path: string;
+	createdAt?: string;
+	lastUsed?: string;
 	archived: boolean;
 	archivedAt?: string;
 	archivedReason?: string;
 	repos: RepoSnapshot[];
+	pinned?: boolean;
+	pinOrder?: number;
+	color?: string;
+	expanded?: boolean;
 };
 
 type RepoSnapshot = {
@@ -400,6 +411,11 @@ export async function fetchWorkspaces(
 			diff: { added: 0, removed: 0 },
 			files: [],
 		})),
+		pinned: workspace.pinned ?? false,
+		pinOrder: workspace.pinOrder ?? 0,
+		color: workspace.color,
+		expanded: workspace.expanded ?? false,
+		lastUsed: workspace.lastUsed ?? workspace.createdAt ?? new Date().toISOString(),
 	}));
 }
 
@@ -1001,4 +1017,50 @@ export async function fetchCurrentGitHubUser(
 		repoId,
 	})) as GitHubUser;
 	return result;
+}
+
+// Workspace UI management functions
+export async function pinWorkspace(workspaceId: string, pin: boolean): Promise<Workspace> {
+	const result = await PinWorkspace(workspaceId, pin);
+	return mapWorkspaceRefToWorkspace(result);
+}
+
+export async function setWorkspaceColor(workspaceId: string, color: string): Promise<Workspace> {
+	const result = await SetWorkspaceColor(workspaceId, color);
+	return mapWorkspaceRefToWorkspace(result);
+}
+
+export async function setWorkspaceExpanded(
+	workspaceId: string,
+	expanded: boolean,
+): Promise<Workspace> {
+	const result = await SetWorkspaceExpanded(workspaceId, expanded);
+	return mapWorkspaceRefToWorkspace(result);
+}
+
+export async function reorderWorkspaces(orders: Record<string, number>): Promise<Workspace[]> {
+	const result = await ReorderWorkspaces({ orders });
+	return result.map(mapWorkspaceRefToWorkspace);
+}
+
+export async function updateWorkspaceLastUsed(workspaceId: string): Promise<void> {
+	await UpdateWorkspaceLastUsed(workspaceId);
+}
+
+// Helper to map WorkspaceRefJSON to Workspace type
+function mapWorkspaceRefToWorkspace(ref: worksetapi.WorkspaceRefJSON): Workspace {
+	return {
+		id: ref.name,
+		name: ref.name,
+		path: ref.path,
+		archived: ref.archived,
+		archivedAt: ref.archived_at,
+		archivedReason: ref.archived_reason,
+		repos: [], // Will be populated by fetchWorkspaces
+		pinned: ref.pinned,
+		pinOrder: ref.pin_order,
+		color: ref.color,
+		expanded: ref.expanded,
+		lastUsed: ref.last_used ?? ref.created_at ?? new Date().toISOString(),
+	};
 }

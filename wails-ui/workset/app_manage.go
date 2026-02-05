@@ -363,3 +363,57 @@ func (a *App) ApplyGroup(workspaceID, groupName string) (worksetapi.GroupApplyRe
 	})
 	return result, err
 }
+
+func (a *App) PinWorkspace(workspaceID string, pin bool) (worksetapi.WorkspaceRefJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	a.ensureService()
+	result, _, err := a.service.PinWorkspace(ctx, worksetapi.WorkspaceSelector{Value: workspaceID}, pin)
+	return result, err
+}
+
+func (a *App) SetWorkspaceColor(workspaceID, color string) (worksetapi.WorkspaceRefJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	a.ensureService()
+	result, _, err := a.service.SetWorkspaceColor(ctx, worksetapi.WorkspaceSelector{Value: workspaceID}, color)
+	return result, err
+}
+
+func (a *App) SetWorkspaceExpanded(workspaceID string, expanded bool) (worksetapi.WorkspaceRefJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	a.ensureService()
+	result, _, err := a.service.SetWorkspaceExpanded(ctx, worksetapi.WorkspaceSelector{Value: workspaceID}, expanded)
+	return result, err
+}
+
+func (a *App) UpdateWorkspaceLastUsed(workspaceID string) (worksetapi.WorkspaceRefJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	a.ensureService()
+	result, _, err := a.service.UpdateWorkspaceLastUsed(ctx, worksetapi.WorkspaceSelector{Value: workspaceID})
+	return result, err
+}
+
+type ReorderWorkspacesRequest struct {
+	Orders map[string]int `json:"orders"`
+}
+
+func (a *App) ReorderWorkspaces(input ReorderWorkspacesRequest) ([]worksetapi.WorkspaceRefJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	a.ensureService()
+	result, _, err := a.service.ReorderWorkspaces(ctx, input.Orders)
+	return result, err
+}

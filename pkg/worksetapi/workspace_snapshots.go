@@ -93,9 +93,15 @@ func (s *Service) ListWorkspaceSnapshots(ctx context.Context, opts WorkspaceSnap
 		snapshots = append(snapshots, WorkspaceSnapshotJSON{
 			Name:           name,
 			Path:           ref.Path,
+			CreatedAt:      ref.CreatedAt,
+			LastUsed:       ref.LastUsed,
 			ArchivedAt:     ref.ArchivedAt,
 			ArchivedReason: ref.ArchivedReason,
 			Archived:       ref.ArchivedAt != "",
+			Pinned:         ref.Pinned,
+			PinOrder:       ref.PinOrder,
+			Color:          ref.Color,
+			Expanded:       ref.Expanded,
 			Repos:          repos,
 		})
 	}

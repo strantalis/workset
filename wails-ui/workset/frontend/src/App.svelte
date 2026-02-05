@@ -9,8 +9,6 @@
 		clearRepo,
 		loadWorkspaces,
 		loadingWorkspaces,
-		selectRepo,
-		selectWorkspace,
 		workspaceError,
 		workspaces,
 	} from './lib/state';
@@ -194,11 +192,6 @@
 			></div>
 		{/if}
 		<WorkspaceTree
-			workspaces={$workspaces}
-			activeWorkspaceId={$activeWorkspaceId}
-			activeRepoId={$activeRepoId}
-			onSelectWorkspace={selectWorkspace}
-			onSelectRepo={selectRepo}
 			{sidebarCollapsed}
 			onToggleSidebar={() => (sidebarCollapsed = !sidebarCollapsed)}
 			onCreateWorkspace={() => openAction('create', null, null)}
