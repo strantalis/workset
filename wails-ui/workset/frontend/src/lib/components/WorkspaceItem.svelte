@@ -111,9 +111,10 @@
 	}
 
 	function formatRepoRef(repo: Repo): string {
-		if (!repo.remote && !repo.defaultBranch) return '';
-		if (repo.remote && repo.defaultBranch) return `${repo.remote}/${repo.defaultBranch}`;
-		return repo.defaultBranch ?? repo.remote ?? '';
+		const branch = repo.currentBranch ?? repo.defaultBranch;
+		if (!repo.remote && !branch) return '';
+		if (repo.remote && branch) return `${repo.remote}/${branch}`;
+		return branch ?? repo.remote ?? '';
 	}
 
 	function getRepoStatusDot(repo: Repo): { className: string; label: string; title: string } {

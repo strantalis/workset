@@ -11,6 +11,7 @@ export type Repo = {
 	path: string;
 	remote?: string;
 	defaultBranch?: string;
+	currentBranch?: string;
 	ahead?: number;
 	behind?: number;
 	dirty: boolean;
