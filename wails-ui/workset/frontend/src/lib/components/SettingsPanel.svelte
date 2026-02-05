@@ -12,6 +12,7 @@
 	} from '../api';
 	import type { SessiondStatusResponse } from '../api';
 	import type {
+		SettingsDefaultField,
 		SettingsDefaults,
 		SettingsSnapshot,
 		TerminalLayout,
@@ -35,7 +36,7 @@
 
 	const { onClose }: Props = $props();
 
-	type FieldId = keyof SettingsDefaults;
+	type FieldId = SettingsDefaultField;
 	type Field = {
 		id: FieldId;
 		key: string;

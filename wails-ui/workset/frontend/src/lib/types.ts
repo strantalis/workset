@@ -151,7 +151,10 @@ export type SettingsDefaults = {
 	terminalIdleTimeout: string;
 	terminalProtocolLog: string;
 	terminalDebugOverlay: string;
+	terminalKeybindings?: Record<string, string[]>;
 };
+
+export type SettingsDefaultField = Exclude<keyof SettingsDefaults, 'terminalKeybindings'>;
 
 export type SettingsSnapshot = {
 	defaults: SettingsDefaults;

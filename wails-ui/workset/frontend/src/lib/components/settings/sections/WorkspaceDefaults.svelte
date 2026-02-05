@@ -1,8 +1,8 @@
 <script lang="ts">
-	import type { SettingsDefaults } from '../../../types';
+	import type { SettingsDefaultField } from '../../../types';
 	import SettingsSection from '../SettingsSection.svelte';
 
-	type FieldId = keyof SettingsDefaults;
+	type FieldId = SettingsDefaultField;
 
 	interface Props {
 		draft: Record<FieldId, string>;

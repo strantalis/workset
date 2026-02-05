@@ -7,25 +7,26 @@ import (
 )
 
 type SettingsDefaults struct {
-	Remote               string `json:"remote"`
-	BaseBranch           string `json:"baseBranch"`
-	Workspace            string `json:"workspace"`
-	WorkspaceRoot        string `json:"workspaceRoot"`
-	RepoStoreRoot        string `json:"repoStoreRoot"`
-	SessionBackend       string `json:"sessionBackend"`
-	SessionNameFormat    string `json:"sessionNameFormat"`
-	SessionTheme         string `json:"sessionTheme"`
-	SessionTmuxStyle     string `json:"sessionTmuxStyle"`
-	SessionTmuxLeft      string `json:"sessionTmuxLeft"`
-	SessionTmuxRight     string `json:"sessionTmuxRight"`
-	SessionScreenHard    string `json:"sessionScreenHard"`
-	Agent                string `json:"agent"`
-	AgentModel           string `json:"agentModel"`
-	AgentLaunch          string `json:"agentLaunch"`
-	TerminalRenderer     string `json:"terminalRenderer"`
-	TerminalIdleTimeout  string `json:"terminalIdleTimeout"`
-	TerminalProtocolLog  string `json:"terminalProtocolLog"`
-	TerminalDebugOverlay string `json:"terminalDebugOverlay"`
+	Remote               string              `json:"remote"`
+	BaseBranch           string              `json:"baseBranch"`
+	Workspace            string              `json:"workspace"`
+	WorkspaceRoot        string              `json:"workspaceRoot"`
+	RepoStoreRoot        string              `json:"repoStoreRoot"`
+	SessionBackend       string              `json:"sessionBackend"`
+	SessionNameFormat    string              `json:"sessionNameFormat"`
+	SessionTheme         string              `json:"sessionTheme"`
+	SessionTmuxStyle     string              `json:"sessionTmuxStyle"`
+	SessionTmuxLeft      string              `json:"sessionTmuxLeft"`
+	SessionTmuxRight     string              `json:"sessionTmuxRight"`
+	SessionScreenHard    string              `json:"sessionScreenHard"`
+	Agent                string              `json:"agent"`
+	AgentModel           string              `json:"agentModel"`
+	AgentLaunch          string              `json:"agentLaunch"`
+	TerminalRenderer     string              `json:"terminalRenderer"`
+	TerminalIdleTimeout  string              `json:"terminalIdleTimeout"`
+	TerminalProtocolLog  string              `json:"terminalProtocolLog"`
+	TerminalDebugOverlay string              `json:"terminalDebugOverlay"`
+	TerminalKeybindings  map[string][]string `json:"terminalKeybindings"`
 }
 
 type SettingsSnapshot struct {
@@ -76,6 +77,7 @@ func (a *App) GetSettings() (SettingsSnapshot, error) {
 			TerminalIdleTimeout:  cfg.Defaults.TerminalIdleTimeout,
 			TerminalProtocolLog:  cfg.Defaults.TerminalProtocolLog,
 			TerminalDebugOverlay: cfg.Defaults.TerminalDebugOverlay,
+			TerminalKeybindings:  cfg.Defaults.TerminalKeybindings,
 		},
 	}, nil
 }

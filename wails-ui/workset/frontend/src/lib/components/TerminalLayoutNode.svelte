@@ -362,6 +362,13 @@
 							e.stopPropagation();
 						}}
 						onclick={() => onSelectTab(node.id, tab.id)}
+						onauxclick={(event) => {
+							// Middle-click to close tab (VS Code style)
+							if (event.button === 1) {
+								event.preventDefault();
+								onCloseTab(node.id, tab.id);
+							}
+						}}
 						onkeydown={(event) => {
 							if (event.key === 'Enter' || event.key === ' ') {
 								event.preventDefault();

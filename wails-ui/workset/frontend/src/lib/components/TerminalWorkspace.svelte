@@ -5,6 +5,7 @@
 		createWorkspaceTerminal,
 		fetchWorkspaceTerminalStatus,
 		fetchWorkspaceTerminalLayout,
+		fetchSettings,
 		persistWorkspaceTerminalLayout,
 	} from '../api';
 	import { generateTerminalName } from '../names';
@@ -13,7 +14,17 @@
 		TerminalLayoutNode as TerminalLayoutNodeType,
 		TerminalLayoutTab as TerminalLayoutTabType,
 	} from '../types';
-	import { closeTerminal } from '../terminal/terminalService';
+	import {
+		closeTerminal,
+		decreaseFontSize,
+		increaseFontSize,
+		resetFontSize,
+	} from '../terminal/terminalService';
+	import {
+		matchTerminalKeybinding,
+		resolveTerminalKeybindings,
+		type ResolvedTerminalKeybindings,
+	} from '../terminal/terminalKeybindings';
 
 	interface Props {
 		workspaceId: string;
@@ -56,6 +67,7 @@
 	let saveTimer: number | null = null;
 	let pendingLayout: TerminalLayout | null = null;
 	let pendingWorkspaceId = '';
+	let resolvedKeybindings: ResolvedTerminalKeybindings = resolveTerminalKeybindings();
 
 	const migrationKey = (id: string): string => `${MIGRATION_PREFIX}${MIGRATION_VERSION}:${id}`;
 
@@ -811,35 +823,97 @@
 
 	const handleWorkspaceKeydown = (event: KeyboardEvent): void => {
 		if (!layout) return;
+		const action = matchTerminalKeybinding(event, resolvedKeybindings);
+		if (!action) return;
 
-		// Alt+Arrow: Navigate between panes
-		if (event.altKey && !event.ctrlKey && !event.metaKey) {
-			let direction: 'up' | 'down' | 'left' | 'right' | null = null;
-			if (event.key === 'ArrowUp') direction = 'up';
-			else if (event.key === 'ArrowDown') direction = 'down';
-			else if (event.key === 'ArrowLeft') direction = 'left';
-			else if (event.key === 'ArrowRight') direction = 'right';
-
-			if (direction && layout.focusedPaneId) {
+		switch (action) {
+			case 'terminal.focus_pane_up':
+			case 'terminal.focus_pane_down':
+			case 'terminal.focus_pane_left':
+			case 'terminal.focus_pane_right': {
+				if (!layout.focusedPaneId) return;
+				const direction = action.replace('terminal.focus_pane_', '') as
+					| 'up'
+					| 'down'
+					| 'left'
+					| 'right';
 				event.preventDefault();
 				const positions = buildPanePositions(layout.root);
 				const nextPaneId = findAdjacentPane(layout.focusedPaneId, direction, positions);
 				if (nextPaneId) {
 					handleFocusPane(nextPaneId);
 				}
+				return;
 			}
-		}
-
-		// Ctrl+Tab: Cycle tabs in current pane
-		if (event.ctrlKey && event.key === 'Tab' && layout.focusedPaneId) {
-			event.preventDefault();
-			const pane = findPane(layout.root, layout.focusedPaneId);
-			if (!pane || pane.tabs.length <= 1) return;
-
-			const currentIndex = pane.tabs.findIndex((t) => t.id === pane.activeTabId);
-			const delta = event.shiftKey ? -1 : 1;
-			const nextIndex = (currentIndex + delta + pane.tabs.length) % pane.tabs.length;
-			handleSelectTab(layout.focusedPaneId, pane.tabs[nextIndex].id);
+			case 'terminal.next_tab':
+			case 'terminal.prev_tab': {
+				if (!layout.focusedPaneId) return;
+				const pane = findPane(layout.root, layout.focusedPaneId);
+				if (!pane || pane.tabs.length <= 1) return;
+				event.preventDefault();
+				const currentIndex = pane.tabs.findIndex((t) => t.id === pane.activeTabId);
+				const delta = action === 'terminal.prev_tab' ? -1 : 1;
+				const nextIndex = (currentIndex + delta + pane.tabs.length) % pane.tabs.length;
+				handleSelectTab(layout.focusedPaneId, pane.tabs[nextIndex].id);
+				return;
+			}
+			case 'terminal.close_tab': {
+				if (!layout.focusedPaneId) return;
+				const pane = findPane(layout.root, layout.focusedPaneId);
+				if (pane && pane.activeTabId) {
+					event.preventDefault();
+					handleCloseTab(layout.focusedPaneId, pane.activeTabId);
+				}
+				return;
+			}
+			case 'terminal.new_tab': {
+				if (!layout.focusedPaneId) return;
+				event.preventDefault();
+				void handleAddTab(layout.focusedPaneId);
+				return;
+			}
+			case 'terminal.split_vertical': {
+				if (!layout.focusedPaneId) return;
+				event.preventDefault();
+				void handleSplitPane(layout.focusedPaneId, 'row');
+				return;
+			}
+			case 'terminal.split_horizontal': {
+				if (!layout.focusedPaneId) return;
+				event.preventDefault();
+				void handleSplitPane(layout.focusedPaneId, 'column');
+				return;
+			}
+			case 'terminal.font_increase': {
+				event.preventDefault();
+				increaseFontSize();
+				return;
+			}
+			case 'terminal.font_decrease': {
+				event.preventDefault();
+				decreaseFontSize();
+				return;
+			}
+			case 'terminal.font_reset': {
+				event.preventDefault();
+				resetFontSize();
+				return;
+			}
+			default: {
+				if (action.startsWith('terminal.focus_tab_')) {
+					if (!layout.focusedPaneId) return;
+					const index = Number.parseInt(action.replace('terminal.focus_tab_', ''), 10);
+					if (!Number.isFinite(index) || index < 1 || index > 9) return;
+					const pane = findPane(layout.root, layout.focusedPaneId);
+					if (!pane) return;
+					const tabIndex = index - 1;
+					if (tabIndex < pane.tabs.length) {
+						event.preventDefault();
+						handleSelectTab(layout.focusedPaneId, pane.tabs[tabIndex].id);
+					}
+				}
+				return;
+			}
 		}
 	};
 
@@ -852,6 +926,25 @@
 	$effect(() => {
 		if (!workspaceId) return;
 		void initWorkspace();
+	});
+
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		let cancelled = false;
+		const loadKeybindings = async (): Promise<void> => {
+			try {
+				const settings = await fetchSettings();
+				if (cancelled) return;
+				resolvedKeybindings = resolveTerminalKeybindings(settings?.defaults?.terminalKeybindings);
+			} catch {
+				if (cancelled) return;
+				resolvedKeybindings = resolveTerminalKeybindings();
+			}
+		};
+		void loadKeybindings();
+		return () => {
+			cancelled = true;
+		};
 	});
 
 	$effect(() => {
