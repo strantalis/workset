@@ -524,13 +524,16 @@
 
 	.workspace-item:hover .last-used-header,
 	.workspace-item.active .last-used-header,
+	.workspace-item:focus-within .last-used-header,
 	.workspace-item:hover .last-used-inline,
-	.workspace-item.active .last-used-inline {
+	.workspace-item.active .last-used-inline,
+	.workspace-item:focus-within .last-used-inline {
 		opacity: 0;
 	}
 
 	.workspace-item:hover .count,
-	.workspace-item.active .count {
+	.workspace-item.active .count,
+	.workspace-item:focus-within .count {
 		opacity: 0;
 	}
 
@@ -548,7 +551,8 @@
 	}
 
 	.workspace-item:hover .actions,
-	.workspace-item.active .actions {
+	.workspace-item.active .actions,
+	.workspace-item:focus-within .actions {
 		opacity: 1;
 		pointer-events: auto;
 	}

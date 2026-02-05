@@ -9,6 +9,10 @@ const baseWorkspaces: Workspace[] = [
 		name: 'Alpha',
 		path: '/tmp/alpha',
 		archived: false,
+		pinned: false,
+		pinOrder: 0,
+		expanded: false,
+		lastUsed: '2024-01-01T00:00:00Z',
 		repos: [
 			{
 				id: 'repo-1',
@@ -41,6 +45,10 @@ const baseWorkspaces: Workspace[] = [
 		name: 'Beta',
 		path: '/tmp/beta',
 		archived: false,
+		pinned: false,
+		pinOrder: 0,
+		expanded: false,
+		lastUsed: '2024-01-02T00:00:00Z',
 		repos: [
 			{
 				id: 'repo-3',
