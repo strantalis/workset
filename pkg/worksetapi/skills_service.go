@@ -177,9 +177,6 @@ func (s *Service) SaveSkillWithRoot(_ context.Context, scope, dirName, tool, con
 }
 
 func saveSkillToPath(scope, dirName, tool, content, projectRoot string) error {
-	if err := validateDirName(dirName); err != nil {
-		return err
-	}
 	path, err := resolveSkillPathWithRoot(scope, dirName, tool, projectRoot)
 	if err != nil {
 		return err
@@ -205,9 +202,6 @@ func (s *Service) DeleteSkillWithRoot(_ context.Context, scope, dirName, tool, p
 }
 
 func deleteSkillAtPath(scope, dirName, tool, projectRoot string) error {
-	if err := validateDirName(dirName); err != nil {
-		return err
-	}
 	path, err := resolveSkillPathWithRoot(scope, dirName, tool, projectRoot)
 	if err != nil {
 		return err
@@ -252,6 +246,9 @@ func syncSkillAtPath(scope, dirName, fromTool string, toTools []string, projectR
 // resolveSkillPathWithRoot resolves a skill path using an explicit project root.
 // If projectRoot is empty for project scope, CWD is used as fallback.
 func resolveSkillPathWithRoot(scope, dirName, tool, projectRoot string) (string, error) {
+	if err := validateDirName(dirName); err != nil {
+		return "", err
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("cannot determine home directory: %w", err)
@@ -341,7 +338,9 @@ func copyDir(src, dst string) error {
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(dstPath, data, srcInfo.Mode()); err != nil {
+		// Preserve read/write/execute bits but strip setuid/setgid/sticky.
+		mode := srcInfo.Mode() & 0o777
+		if err := os.WriteFile(dstPath, data, mode); err != nil {
 			return err
 		}
 	}
