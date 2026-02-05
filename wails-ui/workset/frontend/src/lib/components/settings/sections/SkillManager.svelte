@@ -19,6 +19,12 @@
 	const { onSkillCountChange }: Props = $props();
 
 	const ALL_TOOLS = ['claude', 'codex', 'copilot', 'agents'] as const;
+	const TOOL_LABELS: Record<string, string> = {
+		claude: 'Claude Code',
+		codex: 'Codex',
+		copilot: 'Copilot',
+		agents: 'Agents',
+	};
 
 	let skills: SkillInfo[] = $state([]);
 	let selectedSkill: SkillInfo | null = $state(null);
@@ -98,6 +104,14 @@
 		formScope = 'global';
 		formTool = 'claude';
 		syncTargets = { claude: true, codex: false, copilot: false, agents: false };
+		error = null;
+		success = null;
+	};
+
+	const closeDetail = (): void => {
+		selectedSkill = null;
+		isNew = false;
+		editing = false;
 		error = null;
 		success = null;
 	};
@@ -364,7 +378,7 @@
 									<span
 										class="tool-badge"
 										class:active={skill.tools.includes(tool)}
-										title={tool}
+										title={TOOL_LABELS[tool] ?? tool}
 									>
 										{tool.charAt(0).toUpperCase()}
 									</span>
@@ -395,7 +409,7 @@
 									<span
 										class="tool-badge"
 										class:active={skill.tools.includes(tool)}
-										title={tool}
+										title={TOOL_LABELS[tool] ?? tool}
 									>
 										{tool.charAt(0).toUpperCase()}
 									</span>
@@ -425,7 +439,14 @@
 
 		{#if isNew}
 			<div class="detail">
-				<div class="detail-header">New Skill</div>
+				<div class="detail-header">
+					<span>New Skill</span>
+					<button class="close-btn" type="button" onclick={closeDetail} title="Close">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<path d="M18 6L6 18M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
 				<div class="form">
 					<label class="field">
 						<span>Directory name</span>
@@ -478,10 +499,17 @@
 		{:else if selectedSkill}
 			<div class="detail">
 				<div class="detail-header">
-					{selectedSkill.name}
-					{#if selectedSkill.description}
-						<span class="detail-desc">{selectedSkill.description}</span>
-					{/if}
+					<div class="detail-title">
+						<span>{selectedSkill.name}</span>
+						{#if selectedSkill.description}
+							<span class="detail-desc">{selectedSkill.description}</span>
+						{/if}
+					</div>
+					<button class="close-btn" type="button" onclick={closeDetail} title="Close">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<path d="M18 6L6 18M6 6l12 12" />
+						</svg>
+					</button>
 				</div>
 
 				<div class="sync-section">
@@ -702,6 +730,13 @@
 		font-weight: 600;
 		color: var(--text);
 		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: var(--space-2);
+	}
+
+	.detail-title {
+		display: flex;
 		flex-direction: column;
 		gap: 2px;
 	}
@@ -710,6 +745,28 @@
 		font-size: 12px;
 		font-weight: 400;
 		color: var(--muted);
+	}
+
+	.close-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 24px;
+		height: 24px;
+		border: none;
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--muted);
+		cursor: pointer;
+		flex-shrink: 0;
+		transition:
+			background var(--transition-fast),
+			color var(--transition-fast);
+	}
+
+	.close-btn:hover {
+		background: rgba(255, 255, 255, 0.08);
+		color: var(--text);
 	}
 
 	.sync-section {
