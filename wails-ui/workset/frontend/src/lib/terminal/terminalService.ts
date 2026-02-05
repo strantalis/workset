@@ -218,6 +218,40 @@ const attachedTerminals = new Set<string>();
 const disposeTimers = new Map<string, number>();
 const DISPOSE_TTL_MS = 10 * 60 * 1000;
 
+// Font size configuration
+const DEFAULT_FONT_SIZE = 13;
+const MIN_FONT_SIZE = 8;
+const MAX_FONT_SIZE = 28;
+const FONT_SIZE_STEP = 1;
+const FONT_SIZE_STORAGE_KEY = 'worksetTerminalFontSize';
+
+const clampFontSize = (value: number): number =>
+	Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, value));
+
+const loadInitialFontSize = (): number => {
+	if (typeof localStorage === 'undefined') return DEFAULT_FONT_SIZE;
+	try {
+		const stored = localStorage.getItem(FONT_SIZE_STORAGE_KEY);
+		if (!stored) return DEFAULT_FONT_SIZE;
+		const parsed = Number.parseInt(stored, 10);
+		if (Number.isNaN(parsed)) return DEFAULT_FONT_SIZE;
+		return clampFontSize(parsed);
+	} catch {
+		return DEFAULT_FONT_SIZE;
+	}
+};
+
+const persistFontSize = (): void => {
+	if (typeof localStorage === 'undefined') return;
+	try {
+		localStorage.setItem(FONT_SIZE_STORAGE_KEY, String(currentFontSize));
+	} catch {
+		// Ignore storage failures.
+	}
+};
+
+let currentFontSize = loadInitialFontSize();
+
 const outputQueues = new Map<
 	string,
 	{ chunks: OutputChunk[]; bytes: number; scheduled: boolean }
@@ -1084,7 +1118,7 @@ const createTerminal = (): Terminal => {
 
 	const options: ITerminalOptions & ITerminalInitOnlyOptions & { rendererType?: string } = {
 		fontFamily: fontMono,
-		fontSize: 13,
+		fontSize: currentFontSize,
 		lineHeight: 1.4,
 		cursorBlink: true,
 		scrollback: 4000,
@@ -2418,3 +2452,42 @@ export const focusTerminalInstance = (workspaceId: string, terminalId: string): 
 export const shutdownTerminalService = (): void => {
 	cleanupListeners();
 };
+
+// Font size controls (VS Code style Cmd/Ctrl +/-)
+const applyFontSizeToAllTerminals = (): void => {
+	for (const [id, handle] of terminalHandles.entries()) {
+		handle.terminal.options.fontSize = currentFontSize;
+		// Refit terminal to recalculate dimensions with new font size.
+		try {
+			fitTerminal(id, startedSessions.has(id));
+		} catch {
+			// Ignore fit errors for terminals not attached to DOM.
+		}
+	}
+};
+
+export const increaseFontSize = (): void => {
+	if (currentFontSize < MAX_FONT_SIZE) {
+		currentFontSize = Math.min(currentFontSize + FONT_SIZE_STEP, MAX_FONT_SIZE);
+		persistFontSize();
+		applyFontSizeToAllTerminals();
+	}
+};
+
+export const decreaseFontSize = (): void => {
+	if (currentFontSize > MIN_FONT_SIZE) {
+		currentFontSize = Math.max(currentFontSize - FONT_SIZE_STEP, MIN_FONT_SIZE);
+		persistFontSize();
+		applyFontSizeToAllTerminals();
+	}
+};
+
+export const resetFontSize = (): void => {
+	if (currentFontSize !== DEFAULT_FONT_SIZE) {
+		currentFontSize = DEFAULT_FONT_SIZE;
+		persistFontSize();
+		applyFontSizeToAllTerminals();
+	}
+};
+
+export const getCurrentFontSize = (): number => currentFontSize;

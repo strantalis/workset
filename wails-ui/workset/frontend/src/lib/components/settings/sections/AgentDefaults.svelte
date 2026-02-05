@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import type { SettingsDefaults } from '../../../types';
+	import type { SettingsDefaultField } from '../../../types';
 	import type { AgentCLIStatus } from '../../../types';
 	import SettingsSection from '../SettingsSection.svelte';
 	import Select from '../../ui/Select.svelte';
 	import Button from '../../ui/Button.svelte';
 	import { checkAgentStatus, openFileDialog, reloadLoginEnv, setAgentCLIPath } from '../../../api';
 
-	type FieldId = keyof SettingsDefaults;
+	type FieldId = SettingsDefaultField;
 
 	interface Props {
 		draft: Record<FieldId, string>;
