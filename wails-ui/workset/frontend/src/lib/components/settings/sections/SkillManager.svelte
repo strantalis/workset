@@ -378,7 +378,7 @@
 									<span
 										class="tool-badge"
 										class:active={skill.tools.includes(tool)}
-										title={TOOL_LABELS[tool] ?? tool}
+										data-tooltip={TOOL_LABELS[tool] ?? tool}
 									>
 										{tool.charAt(0).toUpperCase()}
 									</span>
@@ -409,7 +409,7 @@
 									<span
 										class="tool-badge"
 										class:active={skill.tools.includes(tool)}
-										title={TOOL_LABELS[tool] ?? tool}
+										data-tooltip={TOOL_LABELS[tool] ?? tool}
 									>
 										{tool.charAt(0).toUpperCase()}
 									</span>
@@ -696,6 +696,7 @@
 	}
 
 	.tool-badge {
+		position: relative;
 		width: 20px;
 		height: 20px;
 		display: flex;
@@ -713,6 +714,30 @@
 		background: var(--accent-soft);
 		color: var(--accent);
 		border-color: var(--accent);
+	}
+
+	.tool-badge::after {
+		content: attr(data-tooltip);
+		position: absolute;
+		bottom: calc(100% + 4px);
+		left: 50%;
+		transform: translateX(-50%);
+		padding: 3px 8px;
+		background: var(--panel-strong);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		font-size: 11px;
+		font-weight: 400;
+		color: var(--text);
+		white-space: nowrap;
+		pointer-events: none;
+		opacity: 0;
+		transition: opacity 0.15s ease;
+		z-index: 10;
+	}
+
+	.tool-badge:hover::after {
+		opacity: 1;
 	}
 
 	.detail {
