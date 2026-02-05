@@ -2,6 +2,7 @@ package worksetapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,6 +23,7 @@ type SkillInfo struct {
 // SkillContent is a SkillInfo plus the raw SKILL.md content.
 type SkillContent struct {
 	SkillInfo
+
 	Content string `json:"content"`
 }
 
@@ -271,7 +273,7 @@ func resolveSkillPathWithRoot(scope, dirName, tool, projectRoot string) (string,
 				root, _ = os.Getwd()
 			}
 			if root == "" {
-				return "", fmt.Errorf("project root required for project-scoped skills")
+				return "", errors.New("project root required for project-scoped skills")
 			}
 			return filepath.Join(root, td.localDir, dirName, "SKILL.md"), nil
 		default:
@@ -285,7 +287,7 @@ func resolveSkillPathWithRoot(scope, dirName, tool, projectRoot string) (string,
 // separators or traversal sequences.
 func validateDirName(dirName string) error {
 	if strings.Contains(dirName, "..") || strings.Contains(dirName, "/") || strings.Contains(dirName, "\\") {
-		return fmt.Errorf("invalid dirName: must not contain path separators or ..")
+		return errors.New("invalid dirName: must not contain path separators or ..")
 	}
 	return nil
 }
