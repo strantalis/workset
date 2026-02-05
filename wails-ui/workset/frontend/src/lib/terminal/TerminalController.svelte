@@ -7,6 +7,8 @@
 		getTerminalStore,
 		restartTerminal as restartServiceTerminal,
 		retryHealthCheck as retryServiceHealthCheck,
+		scrollTerminalToBottom,
+		isTerminalAtBottom,
 		syncTerminal,
 		type TerminalViewState,
 	} from './terminalService';
@@ -91,5 +93,15 @@
 	export function focus(): void {
 		if (!terminalId || !workspaceId) return;
 		focusTerminalInstance(workspaceId, terminalId);
+	}
+
+	export function scrollToBottom(): void {
+		if (!terminalId || !workspaceId) return;
+		scrollTerminalToBottom(workspaceId, terminalId);
+	}
+
+	export function checkAtBottom(): boolean {
+		if (!terminalId || !workspaceId) return true;
+		return isTerminalAtBottom(workspaceId, terminalId);
 	}
 </script>
