@@ -265,14 +265,10 @@ func resolveSkillPathWithRoot(scope, dirName, tool, projectRoot string) (string,
 			}
 			return filepath.Join(home, td.globalDir, dirName, "SKILL.md"), nil
 		case "project":
-			root := projectRoot
-			if root == "" {
-				root, _ = os.Getwd()
-			}
-			if root == "" {
+			if projectRoot == "" {
 				return "", errors.New("project root required for project-scoped skills")
 			}
-			return filepath.Join(root, td.localDir, dirName, "SKILL.md"), nil
+			return filepath.Join(projectRoot, td.localDir, dirName, "SKILL.md"), nil
 		default:
 			return "", fmt.Errorf("invalid scope %q", scope)
 		}
