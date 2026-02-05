@@ -287,7 +287,7 @@ func resolveSkillPathWithRoot(scope, dirName, tool, projectRoot string) (string,
 // separators or traversal sequences.
 func validateDirName(dirName string) error {
 	if strings.Contains(dirName, "..") || strings.Contains(dirName, "/") || strings.Contains(dirName, "\\") {
-		return errors.New("invalid dirName: must not contain path separators or ..")
+		return errors.New("invalid dirName: must not contain path separators or parent references")
 	}
 	return nil
 }
