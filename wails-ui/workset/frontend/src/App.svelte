@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import {
 		activeRepo,
 		activeRepoId,
@@ -141,19 +141,27 @@
 		repoStatusWatchers.clear();
 	};
 
+	const onUnmount = (): void => {
+		stopAllRepoStatusWatchers();
+		repoStatusUnsubscribe?.();
+		repoStatusUnsubscribe = null;
+	};
+
+	let repoStatusUnsubscribe: (() => void) | null = null;
+
 	onMount(() => {
 		void loadWorkspaces();
 		void checkGitHubAuth();
-		const unsubscribe = subscribeRepoDiffEvent<RepoDiffLocalStatusEvent>(
+		repoStatusUnsubscribe = subscribeRepoDiffEvent<RepoDiffLocalStatusEvent>(
 			'repodiff:local-status',
 			(payload) => {
 				applyRepoLocalStatus(payload.workspaceId, payload.repoId, payload.status);
 			},
 		);
-		return () => {
-			unsubscribe();
-			stopAllRepoStatusWatchers();
-		};
+	});
+
+	onDestroy(() => {
+		onUnmount();
 	});
 
 	$effect(() => {

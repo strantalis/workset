@@ -1280,6 +1280,7 @@
 	};
 
 	const loadFileDiff = async (file: RepoDiffFileSummary): Promise<void> => {
+		if (!repoId) return;
 		fileLoading = true;
 		fileError = null;
 		fileMeta = null;
