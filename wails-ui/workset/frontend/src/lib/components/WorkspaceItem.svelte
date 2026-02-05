@@ -423,6 +423,7 @@
 
 <style>
 	.workspace-item {
+		--workspace-actions-width: 60px;
 		display: flex;
 		flex-direction: column;
 		margin-bottom: var(--space-1);
@@ -449,7 +450,7 @@
 		grid-template-columns: 20px minmax(0, 1fr) auto;
 		align-items: center;
 		gap: var(--space-1);
-		padding: var(--space-2) var(--space-2);
+		padding: var(--space-2) var(--space-3) var(--space-2) var(--space-2);
 		position: relative;
 	}
 
@@ -496,13 +497,21 @@
 		text-align: left;
 		padding: 4px;
 		border-radius: var(--radius-sm);
-		transition: background 0.15s ease;
+		transition:
+			background 0.15s ease,
+			padding-right 0.15s ease;
 		min-width: 0;
 		width: 100%;
 	}
 
 	.workspace-info:hover {
 		background: rgba(255, 255, 255, 0.02);
+	}
+
+	.workspace-item.single-repo:hover .workspace-info,
+	.workspace-item.single-repo.active .workspace-info,
+	.workspace-item.single-repo:focus-within .workspace-info {
+		padding-right: calc(var(--workspace-actions-width) + var(--space-1));
 	}
 
 	.workspace-title {
@@ -569,10 +578,12 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-1);
+		justify-content: flex-end;
+		width: var(--workspace-actions-width);
 		opacity: 0;
 		transition: opacity 0.15s ease;
 		position: absolute;
-		right: var(--space-2);
+		right: var(--space-3);
 		top: 50%;
 		transform: translateY(-50%);
 		pointer-events: none;
@@ -651,7 +662,7 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-2);
-		padding: 0 var(--space-2) var(--space-1) 44px;
+		padding: 0 var(--space-3) var(--space-1) 44px;
 		font-size: 12px;
 		background: none;
 		border: none;
@@ -725,7 +736,7 @@
 		background: none;
 		border: none;
 		color: var(--text);
-		padding: 5px var(--space-2);
+		padding: 5px var(--space-3) 5px var(--space-2);
 		border-radius: var(--radius-sm);
 		cursor: pointer;
 		text-align: left;
@@ -755,6 +766,7 @@
 	.repo-actions {
 		opacity: 0;
 		transition: opacity 0.15s ease;
+		padding-right: var(--space-2);
 	}
 
 	.repo-item:hover .repo-actions {
