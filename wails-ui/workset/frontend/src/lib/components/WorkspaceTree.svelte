@@ -1,13 +1,20 @@
 <script lang="ts">
-	import type { Workspace } from '../types';
-	import DropdownMenu from './ui/DropdownMenu.svelte';
+	import WorkspaceItem from './WorkspaceItem.svelte';
+	import { Pin } from '@lucide/svelte';
+	import {
+		workspaces,
+		pinnedWorkspaces,
+		unpinnedWorkspaces,
+		activeWorkspaceId,
+		selectWorkspace,
+		selectRepo,
+		toggleWorkspacePin,
+		setWorkspaceColor,
+		setWorkspaceExpanded,
+		reorderWorkspaces,
+	} from '../state';
 
 	interface Props {
-		workspaces?: Workspace[];
-		activeWorkspaceId?: string | null;
-		activeRepoId?: string | null;
-		onSelectWorkspace: (workspaceId: string) => void;
-		onSelectRepo: (repoId: string) => void;
 		onCreateWorkspace: () => void;
 		onAddRepo: (workspaceId: string) => void;
 		onManageWorkspace: (workspaceId: string, action: 'rename' | 'archive' | 'remove') => void;
@@ -17,11 +24,6 @@
 	}
 
 	const {
-		workspaces = [],
-		activeWorkspaceId = null,
-		activeRepoId = null,
-		onSelectWorkspace,
-		onSelectRepo,
 		onCreateWorkspace,
 		onAddRepo,
 		onManageWorkspace,
@@ -30,58 +32,151 @@
 		onToggleSidebar,
 	}: Props = $props();
 
-	let collapsed: Record<string, boolean> = $state({});
-	let workspaceMenu: string | null = $state(null);
-	let repoMenu: string | null = $state(null);
-	let workspaceTrigger: HTMLElement | null = $state(null);
-	let repoTrigger: HTMLElement | null = $state(null);
-
-	const isCollapsed = (workspaceId: string): boolean => collapsed[workspaceId] ?? false;
-
-	const toggleWorkspace = (workspaceId: string): void => {
-		collapsed = { ...collapsed, [workspaceId]: !isCollapsed(workspaceId) };
-	};
-
-	const visibleWorkspaces = $derived(workspaces.filter((workspace) => !workspace.archived));
-
 	let searchQuery = $state('');
+	let draggedWorkspaceId: string | null = $state(null);
+	let dragOverSection: 'pinned' | 'unpinned' | null = $state(null);
 
-	const filteredWorkspaces = $derived.by(() => {
+	function resetDragState() {
+		draggedWorkspaceId = null;
+		dragOverSection = null;
+	}
+
+	const filteredPinnedWorkspaces = $derived.by(() => {
 		const query = searchQuery.toLowerCase().trim();
-		if (!query) return visibleWorkspaces;
-
-		return visibleWorkspaces
-			.map((ws) => ({
-				...ws,
-				repos: ws.repos.filter((r) => r.name.toLowerCase().includes(query)),
-			}))
-			.filter((ws) => ws.name.toLowerCase().includes(query) || ws.repos.length > 0);
+		if (!query) return $pinnedWorkspaces;
+		return $pinnedWorkspaces.filter(
+			(w) =>
+				w.name.toLowerCase().includes(query) ||
+				w.repos.some((r) => r.name.toLowerCase().includes(query)),
+		);
 	});
 
-	const openWorkspaceMenu = (workspaceId: string, trigger: HTMLElement): void => {
-		if (workspaceMenu === workspaceId) {
-			closeMenus();
-		} else {
-			workspaceMenu = workspaceId;
-			workspaceTrigger = trigger;
-		}
-	};
+	const filteredUnpinnedWorkspaces = $derived.by(() => {
+		const query = searchQuery.toLowerCase().trim();
+		if (!query) return $unpinnedWorkspaces;
+		return $unpinnedWorkspaces.filter(
+			(w) =>
+				w.name.toLowerCase().includes(query) ||
+				w.repos.some((r) => r.name.toLowerCase().includes(query)),
+		);
+	});
 
-	const openRepoMenu = (repoId: string, trigger: HTMLElement): void => {
-		if (repoMenu === repoId) {
-			closeMenus();
-		} else {
-			repoMenu = repoId;
-			repoTrigger = trigger;
-		}
-	};
+	function handleDragStart(workspaceId: string) {
+		draggedWorkspaceId = workspaceId;
+	}
 
-	const closeMenus = (): void => {
-		workspaceMenu = null;
-		repoMenu = null;
-		workspaceTrigger = null;
-		repoTrigger = null;
-	};
+	function handleDragEnd() {
+		resetDragState();
+	}
+
+	async function handleDrop(targetWorkspaceId: string, targetSection: 'pinned' | 'unpinned') {
+		if (!draggedWorkspaceId || draggedWorkspaceId === targetWorkspaceId) {
+			resetDragState();
+			return;
+		}
+
+		const draggedWorkspace = $workspaces.find((w) => w.id === draggedWorkspaceId);
+		const targetWorkspace = $workspaces.find((w) => w.id === targetWorkspaceId);
+
+		if (!draggedWorkspace || !targetWorkspace) {
+			resetDragState();
+			return;
+		}
+
+		// Determine what section the dragged workspace is coming from
+		const sourceSection = draggedWorkspace.pinned ? 'pinned' : 'unpinned';
+
+		if (targetSection === 'unpinned') {
+			if (sourceSection === 'pinned') {
+				await toggleWorkspacePin(draggedWorkspaceId, false);
+			}
+			resetDragState();
+			return;
+		}
+
+		if (sourceSection !== 'pinned') {
+			await toggleWorkspacePin(draggedWorkspaceId, true);
+		}
+
+		let sectionWorkspaces = $pinnedWorkspaces;
+		let draggedIndex = sectionWorkspaces.findIndex((w) => w.id === draggedWorkspaceId);
+		const targetIndex = sectionWorkspaces.findIndex((w) => w.id === targetWorkspaceId);
+
+		if (draggedIndex === -1) {
+			sectionWorkspaces = [...sectionWorkspaces, draggedWorkspace];
+			draggedIndex = sectionWorkspaces.length - 1;
+		}
+
+		if (draggedIndex !== -1 && targetIndex !== -1 && draggedIndex !== targetIndex) {
+			const orders: Record<string, number> = {};
+			const reordered = [...sectionWorkspaces];
+			const [removed] = reordered.splice(draggedIndex, 1);
+			reordered.splice(targetIndex, 0, removed);
+
+			reordered.forEach((w, index) => {
+				orders[w.id] = index;
+			});
+
+			await reorderWorkspaces(orders);
+		}
+
+		resetDragState();
+	}
+
+	function handleSectionDragOver(section: 'pinned' | 'unpinned', e: DragEvent) {
+		e.preventDefault();
+		dragOverSection = section;
+	}
+
+	function handleSectionDragLeave() {
+		dragOverSection = null;
+	}
+
+	async function handleSectionDrop(section: 'pinned' | 'unpinned', e: DragEvent) {
+		e.preventDefault();
+		if (!draggedWorkspaceId) {
+			resetDragState();
+			return;
+		}
+
+		const draggedWorkspace = $workspaces.find((w) => w.id === draggedWorkspaceId);
+		if (!draggedWorkspace) {
+			resetDragState();
+			return;
+		}
+
+		// Handle pin/unpin based on drop section
+		if (section === 'pinned' && !draggedWorkspace.pinned) {
+			await toggleWorkspacePin(draggedWorkspaceId, true);
+		} else if (section === 'unpinned' && draggedWorkspace.pinned) {
+			await toggleWorkspacePin(draggedWorkspaceId, false);
+		}
+
+		resetDragState();
+	}
+
+	function handleTogglePin(workspaceId: string) {
+		const workspace = $workspaces.find((w) => w.id === workspaceId);
+		if (workspace) {
+			void toggleWorkspacePin(workspaceId, !workspace.pinned);
+		}
+	}
+
+	function handleSetColor(workspaceId: string, color: string) {
+		void setWorkspaceColor(workspaceId, color);
+	}
+
+	function handleToggleExpanded(workspaceId: string) {
+		const workspace = $workspaces.find((w) => w.id === workspaceId);
+		if (workspace) {
+			void setWorkspaceExpanded(workspaceId, !workspace.expanded);
+		}
+	}
+
+	function handleSelectRepo(workspaceId: string, repoId: string) {
+		selectWorkspace(workspaceId);
+		selectRepo(repoId);
+	}
 </script>
 
 <div class:collapsed={sidebarCollapsed} class="tree">
@@ -105,6 +200,7 @@
 		<span class="title" class:collapsed={sidebarCollapsed}>Workspaces</span>
 		<div class="header-spacer"></div>
 	</div>
+
 	{#if !sidebarCollapsed}
 		<div class="search-bar">
 			<svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -130,228 +226,73 @@
 				</button>
 			{/if}
 		</div>
-	{/if}
 
-	<div class="workspace-list">
-		{#each filteredWorkspaces as workspace, index (workspace.id)}
-			<div class="workspace-item" class:first={index === 0}>
-				<div class="workspace-header" class:active={workspace.id === activeWorkspaceId}>
-					<button
-						class="toggle"
-						class:expanded={!collapsed[workspace.id]}
-						aria-label="Toggle workspace"
-						onclick={(event) => {
-							event.stopPropagation();
-							toggleWorkspace(workspace.id);
-						}}
-						type="button"
-					>
-						<svg viewBox="0 0 24 24" aria-hidden="true">
-							<path d="M9 18l6-6-6-6" />
-						</svg>
-					</button>
-
-					<button
-						class="workspace-name"
-						onclick={() => onSelectWorkspace(workspace.id)}
-						type="button"
-					>
-						<span class="initial">{workspace.name.slice(0, 2).toUpperCase()}</span>
-						<span class="name-text">{workspace.name}</span>
-						<span class="count">{workspace.repos.length}</span>
-					</button>
-
-					<div class="workspace-actions">
-						<button
-							class="menu-trigger"
-							type="button"
-							aria-label="Workspace actions"
-							onclick={(event) => openWorkspaceMenu(workspace.id, event.currentTarget)}
-						>
-							<svg viewBox="0 0 24 24" aria-hidden="true">
-								<circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none" />
-								<circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
-								<circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none" />
-							</svg>
-						</button>
-						<DropdownMenu
-							open={workspaceMenu === workspace.id}
-							onClose={closeMenus}
-							position="left"
-							trigger={workspaceTrigger}
-						>
-							<button
-								type="button"
-								onclick={() => {
-									closeMenus();
-									onAddRepo(workspace.id);
-								}}
-							>
-								<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-7-7h14" /></svg>
-								Add repo
-							</button>
-							<button
-								type="button"
-								onclick={() => {
-									closeMenus();
-									onManageWorkspace(workspace.id, 'rename');
-								}}
-							>
-								<svg viewBox="0 0 24 24" aria-hidden="true"
-									><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path
-										d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"
-									/></svg
-								>
-								Rename
-							</button>
-							<button
-								type="button"
-								onclick={() => {
-									closeMenus();
-									onManageWorkspace(workspace.id, 'archive');
-								}}
-							>
-								<svg viewBox="0 0 24 24" aria-hidden="true"
-									><rect x="2" y="4" width="20" height="5" rx="1" /><path
-										d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"
-									/><path d="M10 13h4" /></svg
-								>
-								Archive
-							</button>
-							<button
-								class="danger"
-								type="button"
-								onclick={() => {
-									closeMenus();
-									onManageWorkspace(workspace.id, 'remove');
-								}}
-							>
-								<svg viewBox="0 0 24 24" aria-hidden="true"
-									><path
-										d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
-									/></svg
-								>
-								Remove
-							</button>
-						</DropdownMenu>
+		<div class="workspace-list">
+			<div
+				class="section"
+				class:drag-over={dragOverSection === 'pinned'}
+				role="group"
+				ondragover={(e) => handleSectionDragOver('pinned', e)}
+				ondragleave={handleSectionDragLeave}
+				ondrop={(e) => handleSectionDrop('pinned', e)}
+			>
+				<div class="section-header pinned"><Pin size={12} /> Pinned</div>
+				{#if filteredPinnedWorkspaces.length === 0}
+					<div class="section-empty">
+						{searchQuery ? 'No pinned matches' : 'Drop here to pin'}
 					</div>
-				</div>
-
-				{#if !collapsed[workspace.id]}
-					<div class="repo-list">
-						{#each workspace.repos as repo (repo.id)}
-							<div class="repo-item">
-								<button
-									class="repo-button"
-									class:active={workspace.id === activeWorkspaceId && repo.id === activeRepoId}
-									onclick={() => {
-										onSelectWorkspace(workspace.id);
-										onSelectRepo(repo.id);
-									}}
-									type="button"
-								>
-									<span class="repo-name">{repo.name}</span>
-									<span class="repo-meta">
-										{#if repo.remote || repo.defaultBranch}
-											<span class="branch">
-												{repo.remote && repo.defaultBranch
-													? `${repo.remote}/${repo.defaultBranch}`
-													: (repo.defaultBranch ?? repo.remote)}
-											</span>
-										{/if}
-										{#if repo.statusKnown === false}
-											<svg
-												class="status-dot unknown"
-												viewBox="0 0 6 6"
-												role="img"
-												aria-label="Status pending"
-											>
-												<title>Status pending</title>
-												<circle cx="3" cy="3" r="3" />
-											</svg>
-										{:else if repo.missing}
-											<svg
-												class="status-dot missing"
-												viewBox="0 0 6 6"
-												role="img"
-												aria-label="Missing"
-											>
-												<title>Missing</title>
-												<circle cx="3" cy="3" r="3" />
-											</svg>
-										{:else if repo.diff.added + repo.diff.removed > 0}
-											<svg
-												class="status-dot changes"
-												viewBox="0 0 6 6"
-												role="img"
-												aria-label="+{repo.diff.added}/-{repo.diff.removed}"
-											>
-												<title>+{repo.diff.added}/-{repo.diff.removed}</title>
-												<circle cx="3" cy="3" r="3" />
-											</svg>
-										{:else if repo.dirty}
-											<svg
-												class="status-dot modified"
-												viewBox="0 0 6 6"
-												role="img"
-												aria-label="Modified"
-											>
-												<title>Modified</title>
-												<circle cx="3" cy="3" r="3" />
-											</svg>
-										{:else}
-											<svg class="status-dot clean" viewBox="0 0 6 6" role="img" aria-label="Clean">
-												<title>Clean</title>
-												<circle cx="3" cy="3" r="3" />
-											</svg>
-										{/if}
-									</span>
-								</button>
-
-								<div class="repo-actions">
-									<button
-										class="menu-trigger"
-										type="button"
-										aria-label="Repo actions"
-										onclick={(event) => openRepoMenu(repo.id, event.currentTarget)}
-									>
-										<svg viewBox="0 0 24 24" aria-hidden="true">
-											<circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none" />
-											<circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
-											<circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none" />
-										</svg>
-									</button>
-									<DropdownMenu
-										open={repoMenu === repo.id}
-										onClose={closeMenus}
-										position="left"
-										trigger={repoTrigger}
-									>
-										<button
-											class="danger"
-											type="button"
-											onclick={() => {
-												closeMenus();
-												onManageRepo(workspace.id, repo.name, 'remove');
-											}}
-										>
-											<svg viewBox="0 0 24 24" aria-hidden="true"
-												><path
-													d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
-												/></svg
-											>
-											Remove
-										</button>
-									</DropdownMenu>
-								</div>
-							</div>
-						{/each}
-					</div>
+				{:else}
+					{#each filteredPinnedWorkspaces as workspace (workspace.id)}
+						<WorkspaceItem
+							{workspace}
+							isActive={$activeWorkspaceId === workspace.id}
+							isPinned={true}
+							onSelectWorkspace={() => selectWorkspace(workspace.id)}
+							onSelectRepo={(repoId) => handleSelectRepo(workspace.id, repoId)}
+							onAddRepo={() => onAddRepo(workspace.id)}
+							onManageWorkspace={(action) => onManageWorkspace(workspace.id, action)}
+							onManageRepo={(repoId, action) => onManageRepo(workspace.id, repoId, action)}
+							onTogglePin={() => handleTogglePin(workspace.id)}
+							onSetColor={(color) => handleSetColor(workspace.id, color)}
+							onDragStart={handleDragStart}
+							onDragEnd={handleDragEnd}
+							onDrop={(targetId) => handleDrop(targetId, 'pinned')}
+							onToggleExpanded={() => handleToggleExpanded(workspace.id)}
+						/>
+					{/each}
 				{/if}
 			</div>
-		{/each}
-	</div>
-	{#if !sidebarCollapsed}
+
+			<div
+				class="section"
+				class:drag-over={dragOverSection === 'unpinned'}
+				role="group"
+				ondragover={(e) => handleSectionDragOver('unpinned', e)}
+				ondragleave={handleSectionDragLeave}
+				ondrop={(e) => handleSectionDrop('unpinned', e)}
+			>
+				<div class="section-header">Recent</div>
+				{#each filteredUnpinnedWorkspaces as workspace (workspace.id)}
+					<WorkspaceItem
+						{workspace}
+						isActive={$activeWorkspaceId === workspace.id}
+						isPinned={false}
+						onSelectWorkspace={() => selectWorkspace(workspace.id)}
+						onSelectRepo={(repoId) => handleSelectRepo(workspace.id, repoId)}
+						onAddRepo={() => onAddRepo(workspace.id)}
+						onManageWorkspace={(action) => onManageWorkspace(workspace.id, action)}
+						onManageRepo={(repoId, action) => onManageRepo(workspace.id, repoId, action)}
+						onTogglePin={() => handleTogglePin(workspace.id)}
+						onSetColor={(color) => handleSetColor(workspace.id, color)}
+						onDragStart={handleDragStart}
+						onDragEnd={handleDragEnd}
+						onDrop={(targetId) => handleDrop(targetId, 'unpinned')}
+						onToggleExpanded={() => handleToggleExpanded(workspace.id)}
+					/>
+				{/each}
+			</div>
+		</div>
+
 		<button class="new-workspace-btn" type="button" onclick={onCreateWorkspace}>
 			<svg viewBox="0 0 24 24" aria-hidden="true">
 				<path d="M12 5v14m-7-7h14" />
@@ -535,285 +476,47 @@
 		padding: 0 var(--space-1) var(--space-2);
 		flex: 1;
 		min-height: 0;
+		gap: var(--space-2);
 	}
 
-	.workspace-item {
+	.section {
 		display: flex;
 		flex-direction: column;
-		margin-bottom: var(--space-1);
-	}
-
-	.workspace-item.first {
-		margin-top: var(--space-1);
-	}
-
-	.workspace-header {
-		display: grid;
-		grid-template-columns: 20px 1fr auto;
-		align-items: center;
-		gap: var(--space-1);
-		padding: var(--space-2) var(--space-2);
-		transition: all 0.15s ease;
-		position: relative;
+		transition: all 0.2s ease;
 		border-radius: var(--radius-md);
+		padding: var(--space-1);
 	}
 
-	.workspace-header:hover {
+	.section.drag-over {
 		background: rgba(255, 255, 255, 0.04);
+		box-shadow: inset 0 0 0 2px var(--accent);
 	}
 
-	.workspace-header.active {
-		background: var(--accent-subtle);
-	}
-
-	.workspace-header.active::before {
-		content: '';
-		position: absolute;
-		left: 0;
-		top: 6px;
-		bottom: 6px;
-		width: 2px;
-		background: var(--accent);
-		border-radius: 0 1px 1px 0;
-	}
-
-	.toggle {
-		background: none;
-		border: none;
-		color: var(--muted);
-		cursor: pointer;
-		padding: 2px;
-		display: grid;
-		place-items: center;
-		transition: color 0.15s ease;
-	}
-
-	.toggle:hover {
-		color: var(--text);
-	}
-
-	.toggle svg {
-		width: 14px;
-		height: 14px;
-		stroke: currentColor;
-		stroke-width: 2;
-		fill: none;
-		transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-	}
-
-	.toggle.expanded svg {
-		transform: rotate(90deg);
-	}
-
-	.workspace-name {
+	.section-header {
 		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		background: none;
-		border: none;
-		color: var(--text);
-		cursor: pointer;
-		text-align: left;
-		padding: 4px;
-		border-radius: var(--radius-sm);
-		transition: background 0.15s ease;
-		min-width: 0;
-	}
-
-	.workspace-name:hover {
-		background: rgba(255, 255, 255, 0.02);
-	}
-
-	.workspace-header.active .workspace-name:hover {
-		background: rgba(255, 255, 255, 0.04);
-	}
-
-	.name-text {
-		font-size: 13px;
-		font-weight: 600;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		flex: 1;
-	}
-
-	.count {
-		color: var(--muted);
-		font-size: 11px;
-		font-weight: 500;
-		font-variant-numeric: tabular-nums;
-		flex-shrink: 0;
-	}
-
-	.workspace-actions {
-		position: relative;
-		display: grid;
-		place-items: center;
-		width: 26px;
-		opacity: 0;
-		transition: opacity 0.15s ease;
-		pointer-events: none;
-	}
-
-	.workspace-header:hover .workspace-actions {
-		opacity: 1;
-		pointer-events: auto;
-	}
-
-	.menu-trigger {
-		width: 24px;
-		height: 24px;
-		border-radius: var(--radius-sm);
-		border: 1px solid var(--border);
-		background: rgba(255, 255, 255, 0.02);
-		color: var(--text);
-		cursor: pointer;
-		display: grid;
-		place-items: center;
-		padding: 0;
-		transition: all 0.15s ease;
-	}
-
-	.menu-trigger:hover {
-		border-color: var(--accent);
-		background: rgba(255, 255, 255, 0.04);
-	}
-
-	.menu-trigger:active {
-		transform: scale(0.95);
-	}
-
-	.menu-trigger svg {
-		width: 14px;
-		height: 14px;
-		stroke: currentColor;
-		stroke-width: 1.6;
-		fill: none;
-	}
-
-	.repo-list {
-		display: flex;
-		flex-direction: column;
-		padding-left: 24px;
-		padding-top: var(--space-1);
-		padding-bottom: var(--space-2);
-		gap: 2px;
-	}
-
-	.repo-item {
-		display: grid;
-		grid-template-columns: 1fr auto;
 		align-items: center;
 		gap: var(--space-1);
-		border-radius: var(--radius-sm);
-		transition: background 0.15s ease;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--muted);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		padding: var(--space-1) var(--space-2);
+		opacity: 0.7;
 	}
 
-	.repo-item:hover {
-		background: rgba(255, 255, 255, 0.03);
+	.section-header.pinned :global(svg) {
+		color: var(--success);
 	}
 
-	.repo-button {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: var(--space-2);
-		background: none;
-		border: none;
-		color: var(--text);
-		padding: 5px var(--space-2);
-		border-radius: var(--radius-sm);
-		cursor: pointer;
-		text-align: left;
-		transition: all 0.15s ease;
-		min-width: 0;
-	}
-
-	.repo-button.active {
-		background: var(--accent-subtle);
-	}
-
-	.repo-name {
+	.section-empty {
 		font-size: 12px;
-		font-weight: 500;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		flex: 1;
-	}
-
-	.repo-meta {
-		display: flex;
-		align-items: center;
-		gap: var(--space-1);
-		flex-shrink: 0;
-	}
-
-	.branch {
-		font-family: var(--font-mono);
-		font-size: 9px;
 		color: var(--muted);
-		opacity: 0.6;
-		letter-spacing: 0.02em;
-	}
-
-	.status-dot {
-		width: 4px;
-		height: 4px;
-		flex-shrink: 0;
-		opacity: 0.8;
-	}
-
-	.status-dot.missing {
-		fill: var(--danger);
-	}
-
-	.status-dot.unknown {
-		fill: var(--muted);
-	}
-
-	.status-dot.modified {
-		fill: var(--warning);
-	}
-
-	.status-dot.changes {
-		fill: var(--accent);
-	}
-
-	.status-dot.clean {
-		fill: var(--success);
-	}
-
-	.repo-actions {
-		position: relative;
-		display: grid;
-		place-items: center;
-		width: 24px;
-		padding-right: var(--space-1);
-		opacity: 0;
-		transition: opacity 0.15s ease;
-		pointer-events: none;
-	}
-
-	.repo-item:hover .repo-actions {
-		opacity: 1;
-		pointer-events: auto;
-	}
-
-	.initial {
-		display: none;
-		min-width: 28px;
-		width: auto;
-		height: 28px;
-		padding: 0 4px;
+		padding: var(--space-2);
+		border: 1px dashed rgba(255, 255, 255, 0.12);
 		border-radius: var(--radius-md);
-		background: var(--accent-subtle);
-		color: var(--accent);
-		font-weight: 600;
-		font-size: 11px;
-		place-items: center;
-		flex-shrink: 0;
-		letter-spacing: -0.02em;
+		text-align: center;
+		opacity: 0.7;
 	}
 
 	/* Collapsed state */
@@ -821,45 +524,22 @@
 		padding: 0 var(--space-1);
 	}
 
-	.tree.collapsed .workspace-item {
-		border: none;
-		border-bottom: 1px solid var(--border);
-	}
-
-	.tree.collapsed .workspace-item.first {
-		border-top: 1px solid var(--border);
-	}
-
-	.tree.collapsed .toggle,
-	.tree.collapsed .name-text,
-	.tree.collapsed .count,
-	.tree.collapsed .repo-list,
-	.tree.collapsed .workspace-actions {
+	.tree.collapsed .section,
+	.tree.collapsed .section-header {
 		display: none;
 	}
 
-	.tree.collapsed .workspace-header {
-		grid-template-columns: 1fr;
-		justify-items: center;
-		padding: var(--space-2);
+	.tree.collapsed .search-bar {
+		display: none;
 	}
 
-	.tree.collapsed .workspace-name {
+	.tree.collapsed .new-workspace-btn span {
+		display: none;
+	}
+
+	.tree.collapsed .new-workspace-btn {
 		justify-content: center;
-		padding: var(--space-1);
-		width: 100%;
-	}
-
-	.tree.collapsed .initial {
-		display: grid;
-	}
-
-	.tree.collapsed .initial:hover {
-		transform: scale(1.05);
-	}
-
-	.tree.collapsed .workspace-header.active::before {
-		left: 2px;
+		padding: var(--space-2);
 	}
 
 	.tree.collapsed .tree-header {
@@ -870,10 +550,6 @@
 
 	.tree.collapsed .tree-header .title,
 	.tree.collapsed .tree-header > :global(*:last-child) {
-		display: none;
-	}
-
-	.tree.collapsed .search-bar {
 		display: none;
 	}
 </style>

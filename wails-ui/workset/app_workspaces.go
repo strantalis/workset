@@ -10,9 +10,15 @@ type WorkspaceSnapshot struct {
 	ID             string         `json:"id"`
 	Name           string         `json:"name"`
 	Path           string         `json:"path"`
+	CreatedAt      string         `json:"createdAt,omitempty"`
+	LastUsed       string         `json:"lastUsed,omitempty"`
 	ArchivedAt     string         `json:"archivedAt,omitempty"`
 	ArchivedReason string         `json:"archivedReason,omitempty"`
 	Archived       bool           `json:"archived"`
+	Pinned         bool           `json:"pinned"`
+	PinOrder       int            `json:"pinOrder"`
+	Color          string         `json:"color,omitempty"`
+	Expanded       bool           `json:"expanded"`
 	Repos          []RepoSnapshot `json:"repos"`
 }
 
@@ -69,9 +75,15 @@ func (a *App) ListWorkspaceSnapshots(input WorkspaceSnapshotRequest) ([]Workspac
 			ID:             workspace.Name,
 			Name:           workspace.Name,
 			Path:           workspace.Path,
+			CreatedAt:      workspace.CreatedAt,
+			LastUsed:       workspace.LastUsed,
 			ArchivedAt:     workspace.ArchivedAt,
 			ArchivedReason: workspace.ArchivedReason,
 			Archived:       workspace.Archived,
+			Pinned:         workspace.Pinned,
+			PinOrder:       workspace.PinOrder,
+			Color:          workspace.Color,
+			Expanded:       workspace.Expanded,
 			Repos:          repos,
 		})
 	}

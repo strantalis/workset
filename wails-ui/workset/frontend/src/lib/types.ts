@@ -31,6 +31,11 @@ export type Workspace = {
 	archivedAt?: string;
 	archivedReason?: string;
 	repos: Repo[];
+	pinned: boolean;
+	pinOrder: number;
+	color?: string;
+	expanded: boolean;
+	lastUsed: string;
 };
 
 export type TerminalLayoutTab = {

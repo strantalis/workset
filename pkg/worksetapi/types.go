@@ -25,6 +25,10 @@ type WorkspaceRefJSON struct {
 	ArchivedAt     string `json:"archived_at,omitempty"`
 	ArchivedReason string `json:"archived_reason,omitempty"`
 	Archived       bool   `json:"archived"`
+	Pinned         bool   `json:"pinned"`
+	PinOrder       int    `json:"pin_order"`
+	Color          string `json:"color,omitempty"`
+	Expanded       bool   `json:"expanded"`
 }
 
 // WorkspaceListResult returns registered workspaces with config load metadata.
@@ -54,9 +58,15 @@ type WorkspaceSnapshotResult struct {
 type WorkspaceSnapshotJSON struct {
 	Name           string             `json:"name"`
 	Path           string             `json:"path"`
+	CreatedAt      string             `json:"created_at,omitempty"`
+	LastUsed       string             `json:"last_used,omitempty"`
 	ArchivedAt     string             `json:"archived_at,omitempty"`
 	ArchivedReason string             `json:"archived_reason,omitempty"`
 	Archived       bool               `json:"archived"`
+	Pinned         bool               `json:"pinned"`
+	PinOrder       int                `json:"pin_order"`
+	Color          string             `json:"color,omitempty"`
+	Expanded       bool               `json:"expanded"`
 	Repos          []RepoSnapshotJSON `json:"repos"`
 }
 

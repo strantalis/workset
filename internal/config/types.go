@@ -54,6 +54,10 @@ type WorkspaceRef struct {
 	LastUsed       string `yaml:"last_used,omitempty" json:"last_used,omitempty" mapstructure:"last_used"`
 	ArchivedAt     string `yaml:"archived_at,omitempty" json:"archived_at,omitempty" mapstructure:"archived_at"`
 	ArchivedReason string `yaml:"archived_reason,omitempty" json:"archived_reason,omitempty" mapstructure:"archived_reason"`
+	Pinned         bool   `yaml:"pinned,omitempty" json:"pinned,omitempty" mapstructure:"pinned"`
+	PinOrder       int    `yaml:"pin_order,omitempty" json:"pin_order,omitempty" mapstructure:"pin_order"`
+	Color          string `yaml:"color,omitempty" json:"color,omitempty" mapstructure:"color"`
+	Expanded       bool   `yaml:"expanded,omitempty" json:"expanded,omitempty" mapstructure:"expanded"`
 }
 
 type GlobalConfig struct {

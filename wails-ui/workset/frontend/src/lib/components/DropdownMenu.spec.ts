@@ -9,44 +9,44 @@ describe('DropdownMenu', () => {
 	});
 
 	test('renders when open is true', () => {
-		const { container } = render(DropdownMenu, {
+		render(DropdownMenu, {
 			props: {
 				open: true,
 				onClose: vi.fn(),
 				children: asSnippet('Menu content'),
 			},
 		});
-		const menu = container.querySelector('.dropdown-menu');
+		const menu = document.body.querySelector('.dropdown-menu');
 		expect(menu).toBeInTheDocument();
 	});
 
 	test('does not render when open is false', () => {
-		const { container } = render(DropdownMenu, {
+		render(DropdownMenu, {
 			props: {
 				open: false,
 				onClose: vi.fn(),
 				children: asSnippet('Menu content'),
 			},
 		});
-		const menu = container.querySelector('.dropdown-menu');
+		const menu = document.body.querySelector('.dropdown-menu');
 		expect(menu).not.toBeInTheDocument();
 	});
 
 	test('renders children content', () => {
-		const { container } = render(DropdownMenu, {
+		render(DropdownMenu, {
 			props: {
 				open: true,
 				onClose: vi.fn(),
 				children: asSnippet('Dropdown items'),
 			},
 		});
-		const menu = container.querySelector('.dropdown-menu');
+		const menu = document.body.querySelector('.dropdown-menu');
 		expect(menu).toBeInTheDocument();
 		// Note: Snippet content rendering validated by menu presence
 	});
 
 	test('renders with right position class', () => {
-		const { container } = render(DropdownMenu, {
+		render(DropdownMenu, {
 			props: {
 				open: true,
 				onClose: vi.fn(),
@@ -54,12 +54,12 @@ describe('DropdownMenu', () => {
 				children: asSnippet('Content'),
 			},
 		});
-		const menu = container.querySelector('.dropdown-menu');
+		const menu = document.body.querySelector('.dropdown-menu');
 		expect(menu).toHaveClass('right');
 	});
 
 	test('renders with left position class', () => {
-		const { container } = render(DropdownMenu, {
+		render(DropdownMenu, {
 			props: {
 				open: true,
 				onClose: vi.fn(),
@@ -67,31 +67,31 @@ describe('DropdownMenu', () => {
 				children: asSnippet('Content'),
 			},
 		});
-		const menu = container.querySelector('.dropdown-menu');
+		const menu = document.body.querySelector('.dropdown-menu');
 		expect(menu).toHaveClass('left');
 	});
 
 	test('has correct role attribute', () => {
-		const { container } = render(DropdownMenu, {
+		render(DropdownMenu, {
 			props: {
 				open: true,
 				onClose: vi.fn(),
 				children: asSnippet('Content'),
 			},
 		});
-		const menu = container.querySelector('.dropdown-menu');
+		const menu = document.body.querySelector('.dropdown-menu');
 		expect(menu).toHaveAttribute('role', 'menu');
 	});
 
 	test('applies positioning styles', () => {
-		const { container } = render(DropdownMenu, {
+		render(DropdownMenu, {
 			props: {
 				open: true,
 				onClose: vi.fn(),
 				children: asSnippet('Content'),
 			},
 		});
-		const menu = container.querySelector('.dropdown-menu');
+		const menu = document.body.querySelector('.dropdown-menu');
 		// Verify style attribute exists (JSDOM doesn't fully support inline styles)
 		expect(menu?.getAttribute('style')).toContain('top');
 		expect(menu?.getAttribute('style')).toContain('left');
