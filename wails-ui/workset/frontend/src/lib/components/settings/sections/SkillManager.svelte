@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import {
 		listSkills,
 		getSkill,
@@ -135,7 +134,7 @@
 				error = 'Skill directory name is required.';
 				return;
 			}
-			if (!/^[a-z0-9][a-z0-9_-]*$/.test(dirName)) {
+			if (!/^[a-z0-9_-]+$/.test(dirName)) {
 				error = 'Directory name must be lowercase alphanumeric with hyphens/underscores.';
 				return;
 			}
@@ -330,7 +329,10 @@
 		return desc;
 	};
 
-	onMount(() => {
+	// Reload skills when workspace changes
+	$effect(() => {
+		// Access $activeWorkspace to create dependency
+		void $activeWorkspace;
 		void loadSkills();
 	});
 </script>

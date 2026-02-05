@@ -175,6 +175,9 @@ func (s *Service) SaveSkillWithRoot(_ context.Context, scope, dirName, tool, con
 }
 
 func saveSkillToPath(scope, dirName, tool, content, projectRoot string) error {
+	if err := validateDirName(dirName); err != nil {
+		return err
+	}
 	path, err := resolveSkillPathWithRoot(scope, dirName, tool, projectRoot)
 	if err != nil {
 		return err
@@ -200,6 +203,9 @@ func (s *Service) DeleteSkillWithRoot(_ context.Context, scope, dirName, tool, p
 }
 
 func deleteSkillAtPath(scope, dirName, tool, projectRoot string) error {
+	if err := validateDirName(dirName); err != nil {
+		return err
+	}
 	path, err := resolveSkillPathWithRoot(scope, dirName, tool, projectRoot)
 	if err != nil {
 		return err
@@ -275,6 +281,15 @@ func resolveSkillPathWithRoot(scope, dirName, tool, projectRoot string) (string,
 	return "", fmt.Errorf("unknown tool %q", tool)
 }
 
+// validateDirName checks that the skill directory name does not contain path
+// separators or traversal sequences.
+func validateDirName(dirName string) error {
+	if strings.Contains(dirName, "..") || strings.Contains(dirName, "/") || strings.Contains(dirName, "\\") {
+		return fmt.Errorf("invalid dirName: must not contain path separators or ..")
+	}
+	return nil
+}
+
 // parseSkillFrontmatter extracts name and description from YAML frontmatter.
 func parseSkillFrontmatter(content string) (name, description string) {
 	if !strings.HasPrefix(content, "---") {
@@ -316,11 +331,15 @@ func copyDir(src, dst string) error {
 			}
 			continue
 		}
+		srcInfo, err := os.Stat(srcPath)
+		if err != nil {
+			return err
+		}
 		data, err := os.ReadFile(srcPath)
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(dstPath, data, 0o644); err != nil {
+		if err := os.WriteFile(dstPath, data, srcInfo.Mode()); err != nil {
 			return err
 		}
 	}
