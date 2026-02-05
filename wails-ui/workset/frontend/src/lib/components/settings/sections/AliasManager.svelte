@@ -242,28 +242,33 @@
 							<Button variant="ghost" size="sm" onclick={handleBrowseSource}>Browse</Button>
 						</div>
 					</label>
-					<label class="field">
-						<span>Remote (optional)</span>
-						<input
-							type="text"
-							bind:value={formRemote}
-							placeholder="origin"
-							autocapitalize="off"
-							autocorrect="off"
-							spellcheck="false"
-						/>
-					</label>
-					<label class="field">
-						<span>Default branch</span>
-						<input
-							type="text"
-							bind:value={formBranch}
-							placeholder="main"
-							autocapitalize="off"
-							autocorrect="off"
-							spellcheck="false"
-						/>
-					</label>
+					<details class="advanced-section">
+						<summary>Advanced</summary>
+						<div class="advanced-fields">
+							<label class="field">
+								<span>Remote (optional)</span>
+								<input
+									type="text"
+									bind:value={formRemote}
+									placeholder="origin"
+									autocapitalize="off"
+									autocorrect="off"
+									spellcheck="false"
+								/>
+							</label>
+							<label class="field">
+								<span>Default branch</span>
+								<input
+									type="text"
+									bind:value={formBranch}
+									placeholder="main"
+									autocapitalize="off"
+									autocorrect="off"
+									spellcheck="false"
+								/>
+							</label>
+						</div>
+					</details>
 				</div>
 				<div class="actions">
 					{#if !isNew && selectedAlias}
@@ -475,5 +480,45 @@
 		background: var(--panel-soft);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-md);
+	}
+
+	.advanced-section {
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		background: var(--panel);
+	}
+
+	.advanced-section summary {
+		padding: var(--space-3);
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--muted);
+		cursor: pointer;
+		user-select: none;
+		list-style: none;
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.advanced-section summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.advanced-section summary::before {
+		content: '▸';
+		font-size: 10px;
+		transition: transform var(--transition-fast);
+	}
+
+	.advanced-section[open] summary::before {
+		transform: rotate(90deg);
+	}
+
+	.advanced-fields {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-3);
+		padding: 0 var(--space-3) var(--space-3);
 	}
 </style>
