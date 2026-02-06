@@ -20,6 +20,9 @@ vi.mock('../api', () => ({
 	listRemotes: vi.fn(),
 	replyToReviewComment: vi.fn(),
 	resolveReviewThread: vi.fn(),
+	startCommitAndPushAsync: vi.fn(),
+	startCreatePullRequestAsync: vi.fn(),
+	fetchGitHubOperationStatus: vi.fn(),
 	startRepoDiffWatch: vi.fn(),
 	updateRepoDiffWatch: vi.fn(),
 	stopRepoDiffWatch: vi.fn(),
@@ -33,6 +36,20 @@ vi.mock('../repoDiffService', () => ({
 	subscribeRepoDiffEvent: vi.fn(() => () => {}),
 }));
 
+const githubOperationHandlers = new Set<(payload: unknown) => void>();
+vi.mock('../githubOperationService', () => ({
+	subscribeGitHubOperationEvent: vi.fn((handler: (payload: unknown) => void) => {
+		githubOperationHandlers.add(handler);
+		return () => githubOperationHandlers.delete(handler);
+	}),
+}));
+
+const emitGitHubOperation = (payload: unknown): void => {
+	for (const handler of [...githubOperationHandlers]) {
+		handler(payload);
+	}
+};
+
 const repo: Repo = {
 	id: 'repo-1',
 	name: 'workset',
@@ -44,16 +61,6 @@ const repo: Repo = {
 };
 
 const mockSummary = { files: [], totalAdded: 0, totalRemoved: 0 };
-
-const createDeferred = <T>() => {
-	let resolve: (value: T) => void;
-	let reject: (reason?: unknown) => void;
-	const promise = new Promise<T>((res, rej) => {
-		resolve = res;
-		reject = rej;
-	});
-	return { promise, resolve: resolve!, reject: reject! };
-};
 
 let api: typeof import('../api');
 let RepoDiff: typeof import('./RepoDiff.svelte').default;
@@ -90,6 +97,8 @@ beforeEach(async () => {
 	vi.mocked(api.startRepoDiffWatch).mockResolvedValue(true);
 	vi.mocked(api.updateRepoDiffWatch).mockResolvedValue(true);
 	vi.mocked(api.stopRepoDiffWatch).mockResolvedValue(true);
+	vi.mocked(api.fetchGitHubOperationStatus).mockResolvedValue(null);
+	githubOperationHandlers.clear();
 }, 30000);
 
 afterEach(() => {
@@ -99,22 +108,15 @@ afterEach(() => {
 
 describe('RepoDiff create PR feedback', () => {
 	it('shows progress stages and clears on error', async () => {
-		const generateDeferred = createDeferred<{ title: string; body: string }>();
-		const createDeferredResult = createDeferred<{
-			repo: string;
-			number: number;
-			url: string;
-			title: string;
-			state: string;
-			draft: boolean;
-			baseRepo: string;
-			baseBranch: string;
-			headRepo: string;
-			headBranch: string;
-		}>();
-
-		vi.mocked(api.generatePullRequestText).mockReturnValueOnce(generateDeferred.promise);
-		vi.mocked(api.createPullRequest).mockReturnValueOnce(createDeferredResult.promise);
+		vi.mocked(api.startCreatePullRequestAsync).mockResolvedValue({
+			operationId: 'op-1',
+			workspaceId: 'ws-1',
+			repoId: 'repo-1',
+			type: 'create_pr',
+			stage: 'queued',
+			state: 'running',
+			startedAt: new Date().toISOString(),
+		});
 
 		const { getByRole, queryByText, container, findByText } = render(RepoDiff, {
 			props: {
@@ -132,11 +134,29 @@ describe('RepoDiff create PR feedback', () => {
 		expect(queryByText('Step 1/2: Generating title...')).toBeInTheDocument();
 		expect(container.querySelector('.pr-panel-content')).toHaveClass('expanded');
 
-		generateDeferred.resolve({ title: 'Title', body: 'Body' });
+		emitGitHubOperation({
+			operationId: 'op-1',
+			workspaceId: 'ws-1',
+			repoId: 'repo-1',
+			type: 'create_pr',
+			stage: 'creating',
+			state: 'running',
+			startedAt: new Date().toISOString(),
+		});
 		await waitFor(() => expect(createButton).toHaveTextContent('Creating PR...'));
 		expect(queryByText('Step 2/2: Creating PR...')).toBeInTheDocument();
 
-		createDeferredResult.reject(new Error('Failed to create pull request.'));
+		emitGitHubOperation({
+			operationId: 'op-1',
+			workspaceId: 'ws-1',
+			repoId: 'repo-1',
+			type: 'create_pr',
+			stage: 'failed',
+			state: 'failed',
+			startedAt: new Date().toISOString(),
+			finishedAt: new Date().toISOString(),
+			error: 'Failed to create pull request.',
+		});
 		await waitFor(() => expect(createButton).toHaveTextContent('Create PR'));
 		expect(queryByText('Step 1/2: Generating title...')).not.toBeInTheDocument();
 		expect(queryByText('Step 2/2: Creating PR...')).not.toBeInTheDocument();
