@@ -40,6 +40,7 @@ func main() {
 	var parentPID int
 	var stagedApp string
 	var targetApp string
+	var stageRoot string
 	var stateFile string
 	var channel string
 	var currentVersion string
@@ -48,13 +49,14 @@ func main() {
 	flag.IntVar(&parentPID, "parent-pid", 0, "PID of app process to wait for")
 	flag.StringVar(&stagedApp, "staged-app", "", "Path to staged .app bundle")
 	flag.StringVar(&targetApp, "target-app", "", "Path to target .app bundle")
+	flag.StringVar(&stageRoot, "stage-root", "", "Path to downloaded/extracted update staging directory")
 	flag.StringVar(&stateFile, "state-file", "", "Path to write update status JSON")
 	flag.StringVar(&channel, "channel", "stable", "Update channel")
 	flag.StringVar(&currentVersion, "current-version", "", "Current app version")
 	flag.StringVar(&latestVersion, "latest-version", "", "Target app version")
 	flag.Parse()
 
-	if err := run(parentPID, stagedApp, targetApp, stateFile, channel, currentVersion, latestVersion); err != nil {
+	if err := run(parentPID, stagedApp, targetApp, stageRoot, stateFile, channel, currentVersion, latestVersion); err != nil {
 		_ = writeState(stateFile, updateState{
 			Phase:          statePhaseFailed,
 			Channel:        channel,
@@ -69,10 +71,12 @@ func main() {
 	}
 }
 
-func run(parentPID int, stagedApp, targetApp, stateFile, channel, currentVersion, latestVersion string) error {
+func run(parentPID int, stagedApp, targetApp, stageRoot, stateFile, channel, currentVersion, latestVersion string) error {
 	stagedApp = strings.TrimSpace(stagedApp)
 	targetApp = strings.TrimSpace(targetApp)
+	stageRoot = strings.TrimSpace(stageRoot)
 	stateFile = strings.TrimSpace(stateFile)
+	defer cleanupStageRoot(stageRoot)
 	if parentPID <= 0 {
 		return errors.New("parent-pid is required")
 	}
@@ -202,4 +206,34 @@ func writeState(path string, state updateState) error {
 		return err
 	}
 	return nil
+}
+
+func cleanupStageRoot(path string) {
+	if !isSafeStageRoot(path) {
+		return
+	}
+	_ = os.RemoveAll(path)
+}
+
+func isSafeStageRoot(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	tempRoot, err := filepath.Abs(os.TempDir())
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(tempRoot, absPath)
+	if err != nil {
+		return false
+	}
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+	return strings.HasPrefix(filepath.Base(absPath), "workset-update-")
 }

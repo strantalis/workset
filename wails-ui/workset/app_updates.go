@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -332,6 +333,12 @@ func (a *App) StartUpdate(input UpdateStartRequest) (UpdateStartResult, error) {
 		_ = a.persistUpdateState(state)
 		return UpdateStartResult{}, err
 	}
+	cleanupStageRoot := stageRoot
+	defer func() {
+		if cleanupStageRoot != "" {
+			_ = os.RemoveAll(cleanupStageRoot)
+		}
+	}()
 
 	_ = a.persistUpdateState(UpdateState{
 		Phase:          updateStatePhaseValidate,
@@ -428,6 +435,7 @@ func (a *App) StartUpdate(input UpdateStartRequest) (UpdateStartResult, error) {
 		"--parent-pid", strconv.Itoa(os.Getpid()),
 		"--staged-app", appBundlePath,
 		"--target-app", targetApp,
+		"--stage-root", stageRoot,
 		"--state-file", statePath,
 		"--channel", channel,
 		"--current-version", currentVersion,
@@ -448,6 +456,8 @@ func (a *App) StartUpdate(input UpdateStartRequest) (UpdateStartResult, error) {
 		_ = a.persistUpdateState(state)
 		return UpdateStartResult{}, err
 	}
+
+	cleanupStageRoot = ""
 
 	state := UpdateState{
 		Phase:          updateStatePhaseApply,
@@ -717,7 +727,11 @@ func (a *App) updatesBaseURL() string {
 
 func (a *App) fetchUpdateManifest(channel UpdateChannel) (UpdateManifest, error) {
 	manifestURL := fmt.Sprintf("%s/%s.json", a.updatesBaseURL(), channel)
-	req, err := http.NewRequest(http.MethodGet, manifestURL, nil)
+	validManifestURL, err := validateUpdateURL(manifestURL)
+	if err != nil {
+		return UpdateManifest{}, err
+	}
+	req, err := http.NewRequest(http.MethodGet, validManifestURL.String(), nil)
 	if err != nil {
 		return UpdateManifest{}, err
 	}
@@ -746,6 +760,9 @@ func (a *App) fetchUpdateManifest(channel UpdateChannel) (UpdateManifest, error)
 	if strings.TrimSpace(manifest.Latest.Asset.URL) == "" {
 		return UpdateManifest{}, errors.New("manifest latest.asset.url is required")
 	}
+	if _, err := validateUpdateURL(manifest.Latest.Asset.URL); err != nil {
+		return UpdateManifest{}, fmt.Errorf("manifest latest.asset.url is invalid: %w", err)
+	}
 	if strings.TrimSpace(manifest.Latest.Asset.SHA256) == "" {
 		return UpdateManifest{}, errors.New("manifest latest.asset.sha256 is required")
 	}
@@ -768,7 +785,7 @@ func (a *App) fetchUpdateManifest(channel UpdateChannel) (UpdateManifest, error)
 }
 
 func (a *App) downloadUpdateAsset(rawURL string) (zipPath string, stageRoot string, err error) {
-	parsed, err := url.Parse(rawURL)
+	parsed, err := validateUpdateURL(rawURL)
 	if err != nil {
 		return "", "", err
 	}
@@ -805,6 +822,47 @@ func (a *App) downloadUpdateAsset(rawURL string) (zipPath string, stageRoot stri
 		return "", "", err
 	}
 	return zipPath, stageRoot, nil
+}
+
+func validateUpdateURL(raw string) (*url.URL, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil, errors.New("update URL is empty")
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return nil, err
+	}
+	if parsed.Scheme == "https" {
+		return parsed, nil
+	}
+	if parsed.Scheme == "http" && updatesAllowInsecureHTTP() && isLoopbackHost(parsed.Hostname()) {
+		return parsed, nil
+	}
+	return nil, fmt.Errorf("update URL must use https: %s", trimmed)
+}
+
+func updatesAllowInsecureHTTP() bool {
+	allowRaw := strings.TrimSpace(os.Getenv("WORKSET_UPDATES_ALLOW_INSECURE"))
+	if allowRaw == "" {
+		return false
+	}
+	allow, err := strconv.ParseBool(allowRaw)
+	if err != nil {
+		return false
+	}
+	return allow
+}
+
+func isLoopbackHost(host string) bool {
+	switch strings.ToLower(strings.TrimSpace(host)) {
+	case "localhost":
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
 }
 
 func verifySHA256(path, expected string) error {

@@ -263,6 +263,7 @@ func TestFetchUpdateManifestValidation(t *testing.T) {
 			}))
 			defer server.Close()
 
+			t.Setenv("WORKSET_UPDATES_ALLOW_INSECURE", "1")
 			t.Setenv("WORKSET_UPDATES_BASE_URL", server.URL)
 			a := &App{}
 			_, err = a.fetchUpdateManifest(UpdateChannelStable)
@@ -273,6 +274,51 @@ func TestFetchUpdateManifestValidation(t *testing.T) {
 				t.Fatalf("expected error containing %q, got %v", tc.wantErrPart, err)
 			}
 		})
+	}
+}
+
+func TestValidateUpdateURL(t *testing.T) {
+	if _, err := validateUpdateURL("https://example.com/update.json"); err != nil {
+		t.Fatalf("expected https URL to be accepted: %v", err)
+	}
+	if _, err := validateUpdateURL("http://example.com/update.json"); err == nil {
+		t.Fatalf("expected non-https URL to be rejected")
+	}
+
+	t.Setenv("WORKSET_UPDATES_ALLOW_INSECURE", "true")
+	if _, err := validateUpdateURL("http://localhost/update.json"); err != nil {
+		t.Fatalf("expected localhost http URL when insecure override enabled: %v", err)
+	}
+	if _, err := validateUpdateURL("http://127.0.0.1/update.json"); err != nil {
+		t.Fatalf("expected loopback ip http URL when insecure override enabled: %v", err)
+	}
+	if _, err := validateUpdateURL("http://example.com/update.json"); err == nil {
+		t.Fatalf("expected non-loopback http URL to remain rejected")
+	}
+}
+
+func TestFetchUpdateManifestRejectsInsecureBaseURL(t *testing.T) {
+	t.Setenv("WORKSET_UPDATES_BASE_URL", "http://example.com/updates")
+	a := &App{}
+	_, err := a.fetchUpdateManifest(UpdateChannelStable)
+	if err == nil {
+		t.Fatalf("expected insecure manifest base URL to be rejected")
+	}
+	if !strings.Contains(err.Error(), "must use https") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDownloadUpdateAssetRejectsInsecureURL(t *testing.T) {
+	t.Parallel()
+
+	a := &App{}
+	_, _, err := a.downloadUpdateAsset("http://example.com/workset-update.zip")
+	if err == nil {
+		t.Fatalf("expected insecure asset URL to be rejected")
+	}
+	if !strings.Contains(err.Error(), "must use https") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
