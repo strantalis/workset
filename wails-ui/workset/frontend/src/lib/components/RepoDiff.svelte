@@ -1252,21 +1252,6 @@
 		);
 	};
 
-	const selectedFileChanged = (
-		current: RepoDiffFileSummary | null,
-		next: RepoDiffFileSummary,
-	): boolean => {
-		if (!current) return true;
-		return (
-			current.path !== next.path ||
-			current.prevPath !== next.prevPath ||
-			current.added !== next.added ||
-			current.removed !== next.removed ||
-			current.status !== next.status ||
-			current.binary !== next.binary
-		);
-	};
-
 	const applySummaryUpdate = (data: RepoDiffSummary, source: 'pr' | 'local'): void => {
 		if (source === 'pr') {
 			summary = data;
@@ -1287,11 +1272,8 @@
 		}
 		const match = findSummaryMatch(data, selected);
 		if (match) {
-			const shouldReload = selectedFileChanged(selected, match);
 			selected = match;
-			if (shouldReload) {
-				void loadFileDiff(match);
-			}
+			void loadFileDiff(match);
 			return;
 		}
 		selectFile(data.files[0], source);
