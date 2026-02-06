@@ -1,0 +1,35 @@
+thresholds:
+  source: 1000
+  tests: 1200
+
+source_extensions:
+  - .go
+  - .ts
+  - .svelte
+
+test_patterns:
+  - '*_test.go'
+  - '*.test.ts'
+  - '*.spec.ts'
+  - '*.test.svelte'
+  - '*.spec.svelte'
+
+ignore:
+  - '**/node_modules/**'
+  - '**/dist/**'
+  - '**/wailsjs/**'
+  - '**/vendor/**'
+  - '**/*.gen.*'
+  - '**/*_generated.*'
+
+allowlist:
+  - wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte
+  - wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte
+  - wails-ui/workset/frontend/src/lib/terminal/terminalService.ts
+  - pkg/sessiond/session.go
+  - pkg/worksetapi/github_service.go
+  - pkg/termemu/termemu.go
+  - wails-ui/workset/frontend/src/lib/api.ts
+  - wails-ui/workset/app_updates.go
+  - wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte
+  - wails-ui/workset/frontend/src/lib/components/WorkspaceManager.svelte
