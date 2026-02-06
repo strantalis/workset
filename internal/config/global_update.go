@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -11,7 +12,7 @@ import (
 
 // UpdateGlobal loads the latest global config under a lock, applies fn, and writes atomically.
 func UpdateGlobal(path string, fn func(cfg *GlobalConfig, info GlobalConfigLoadInfo) error) (GlobalConfigLoadInfo, error) {
-	_, info, err := loadGlobal(path)
+	info, err := resolveGlobalPathForUpdate(path)
 	if err != nil {
 		return info, err
 	}
@@ -30,6 +31,7 @@ func UpdateGlobal(path string, fn func(cfg *GlobalConfig, info GlobalConfigLoadI
 	}
 
 	err = lockedfile.Transform(info.Path, func(old []byte) ([]byte, error) {
+		info.Exists = len(bytes.TrimSpace(old)) > 0
 		cfg, err := loadGlobalFromBytes(old)
 		if err != nil {
 			return nil, err
@@ -59,5 +61,54 @@ func UpdateGlobal(path string, fn func(cfg *GlobalConfig, info GlobalConfigLoadI
 		return info, err
 	}
 	_ = os.Chmod(info.Path, perm)
+	return info, nil
+}
+
+func resolveGlobalPathForUpdate(path string) (GlobalConfigLoadInfo, error) {
+	info := GlobalConfigLoadInfo{}
+	if path != "" {
+		info.Path = path
+		return info, nil
+	}
+
+	globalPath, err := GlobalConfigPath()
+	if err != nil {
+		return info, err
+	}
+	info.Path = globalPath
+
+	legacyPaths, legacyErr := legacyGlobalConfigPaths()
+	if legacyErr != nil || len(legacyPaths) == 0 {
+		return info, nil
+	}
+
+	newExists := true
+	if _, statErr := os.Stat(globalPath); statErr != nil {
+		if errors.Is(statErr, os.ErrNotExist) {
+			newExists = false
+		} else {
+			return info, statErr
+		}
+	}
+	if newExists {
+		return info, nil
+	}
+
+	for _, legacyPath := range legacyPaths {
+		if err := migrateLegacyGlobalConfig(globalPath, legacyPath); err == nil {
+			if _, statErr := os.Stat(globalPath); statErr == nil {
+				info.Migrated = true
+				info.LegacyPath = legacyPath
+				break
+			}
+			continue
+		} else {
+			info.Path = legacyPath
+			info.UsedLegacy = true
+			info.LegacyPath = legacyPath
+			break
+		}
+	}
+
 	return info, nil
 }

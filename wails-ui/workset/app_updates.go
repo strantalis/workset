@@ -834,15 +834,15 @@ func extractAppBundle(zipPath, stageRoot string) (string, error) {
 	if err := os.MkdirAll(extractRoot, 0o755); err != nil {
 		return "", err
 	}
+	absExtractRoot, err := filepath.Abs(extractRoot)
+	if err != nil {
+		return "", err
+	}
 
 	for _, file := range reader.File {
-		cleanName := filepath.Clean(file.Name)
-		if strings.HasPrefix(cleanName, "..") || filepath.IsAbs(cleanName) {
-			return "", fmt.Errorf("unsafe path in archive: %s", file.Name)
-		}
-		target := filepath.Join(extractRoot, cleanName)
-		if !strings.HasPrefix(target, extractRoot+string(filepath.Separator)) && target != extractRoot {
-			return "", fmt.Errorf("unsafe output path: %s", file.Name)
+		target, err := safeExtractTarget(absExtractRoot, file.Name)
+		if err != nil {
+			return "", err
 		}
 		if file.FileInfo().IsDir() {
 			if err := os.MkdirAll(target, 0o755); err != nil {
@@ -897,6 +897,29 @@ func extractAppBundle(zipPath, stageRoot string) (string, error) {
 		return "", errors.New("no .app bundle found in update archive")
 	}
 	return found, nil
+}
+
+func safeExtractTarget(absRoot, name string) (string, error) {
+	if strings.ContainsRune(name, '\x00') {
+		return "", fmt.Errorf("unsafe path in archive: %q", name)
+	}
+	cleanName := filepath.Clean(name)
+	if filepath.IsAbs(cleanName) {
+		return "", fmt.Errorf("unsafe absolute path in archive: %q", name)
+	}
+	target := filepath.Join(absRoot, cleanName)
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(absRoot, absTarget)
+	if err != nil {
+		return "", err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("unsafe path in archive: %q", name)
+	}
+	return absTarget, nil
 }
 
 func verifyCodesign(appPath, expectedTeamID string) error {
