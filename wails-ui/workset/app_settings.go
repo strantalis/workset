@@ -22,7 +22,6 @@ type SettingsDefaults struct {
 	Agent                string              `json:"agent"`
 	AgentModel           string              `json:"agentModel"`
 	AgentLaunch          string              `json:"agentLaunch"`
-	TerminalRenderer     string              `json:"terminalRenderer"`
 	TerminalIdleTimeout  string              `json:"terminalIdleTimeout"`
 	TerminalProtocolLog  string              `json:"terminalProtocolLog"`
 	TerminalDebugOverlay string              `json:"terminalDebugOverlay"`
@@ -73,7 +72,6 @@ func (a *App) GetSettings() (SettingsSnapshot, error) {
 			Agent:                cfg.Defaults.Agent,
 			AgentModel:           cfg.Defaults.AgentModel,
 			AgentLaunch:          cfg.Defaults.AgentLaunch,
-			TerminalRenderer:     cfg.Defaults.TerminalRenderer,
 			TerminalIdleTimeout:  cfg.Defaults.TerminalIdleTimeout,
 			TerminalProtocolLog:  cfg.Defaults.TerminalProtocolLog,
 			TerminalDebugOverlay: cfg.Defaults.TerminalDebugOverlay,

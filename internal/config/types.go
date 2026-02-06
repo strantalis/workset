@@ -16,7 +16,6 @@ type Defaults struct {
 	Agent                string              `yaml:"agent" json:"agent" mapstructure:"agent"`
 	AgentModel           string              `yaml:"agent_model" json:"agent_model" mapstructure:"agent_model"`
 	AgentLaunch          string              `yaml:"agent_launch" json:"agent_launch" mapstructure:"agent_launch"`
-	TerminalRenderer     string              `yaml:"terminal_renderer" json:"terminal_renderer" mapstructure:"terminal_renderer"`
 	TerminalIdleTimeout  string              `yaml:"terminal_idle_timeout" json:"terminal_idle_timeout" mapstructure:"terminal_idle_timeout"`
 	TerminalProtocolLog  string              `yaml:"terminal_protocol_log" json:"terminal_protocol_log" mapstructure:"terminal_protocol_log"`
 	TerminalDebugOverlay string              `yaml:"terminal_debug_overlay" json:"terminal_debug_overlay" mapstructure:"terminal_debug_overlay"`
