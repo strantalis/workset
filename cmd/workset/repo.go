@@ -107,9 +107,7 @@ func repoCommand() *cli.Command {
 					}
 					printConfigInfo(cmd, result)
 					mode := outputModeFromContext(cmd)
-					if mode.JSON {
-						return output.WriteJSON(commandWriter(cmd), result.Payload)
-					}
+					styles := output.NewStyles(commandWriter(cmd), mode.Plain)
 					if len(result.PendingHooks) > 0 && term.IsTerminal(int(os.Stdin.Fd())) {
 						for _, pending := range result.PendingHooks {
 							if pending.Reason != "" && pending.Reason != "untrusted" {
@@ -125,12 +123,16 @@ func repoCommand() *cli.Command {
 								return promptErr
 							}
 							if ok {
-								if _, err := svc.RunHooks(ctx, worksetapi.HooksRunInput{
+								runResult, err := svc.RunHooks(ctx, worksetapi.HooksRunInput{
 									Workspace: worksetapi.WorkspaceSelector{Value: workspaceValue},
 									Repo:      pending.Repo,
 									Event:     pending.Event,
 									Reason:    "repo.add",
-								}); err != nil {
+								})
+								if err != nil {
+									return err
+								}
+								if err := printHookRunReport(commandWriter(cmd), styles, runResult.Repo, runResult.Event, runResult.Results); err != nil {
 									return err
 								}
 								trustPrompt := fmt.Sprintf("trust hooks for repo %s? [y/N] ", pending.Repo)
@@ -146,7 +148,18 @@ func repoCommand() *cli.Command {
 							}
 						}
 					}
-					styles := output.NewStyles(commandWriter(cmd), mode.Plain)
+					if mode.JSON {
+						return output.WriteJSON(commandWriter(cmd), struct {
+							worksetapi.RepoAddResultJSON
+
+							Warnings []string                       `json:"warnings,omitempty"`
+							HookRuns []worksetapi.HookExecutionJSON `json:"hook_runs,omitempty"`
+						}{
+							RepoAddResultJSON: result.Payload,
+							Warnings:          result.Warnings,
+							HookRuns:          result.HookRuns,
+						})
+					}
 					msg := fmt.Sprintf("added %s to %s", result.Payload.Repo, result.Payload.Workspace)
 					if styles.Enabled {
 						msg = styles.Render(styles.Success, msg)
@@ -188,7 +201,7 @@ func repoCommand() *cli.Command {
 							return err
 						}
 					}
-					return nil
+					return printHookExecutionResults(commandWriter(cmd), styles, result.HookRuns)
 				},
 			},
 			{

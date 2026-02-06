@@ -131,6 +131,7 @@ func (s *Service) AddRepo(ctx context.Context, input RepoAddInput) (RepoAddResul
 
 	warnings := []string{}
 	pendingHooks := []HookPending{}
+	hookRuns := []HookExecutionJSON{}
 	if len(repoWarnings) > 0 {
 		warnings = append(warnings, repoWarnings...)
 	}
@@ -194,12 +195,15 @@ func (s *Service) AddRepo(ctx context.Context, input RepoAddInput) (RepoAddResul
 	if wsName == "" {
 		wsName = filepath.Base(wsRoot)
 	}
-	pending, hookWarnings, err := s.runWorktreeCreatedHooks(ctx, cfg, wsRoot, wsName, config.RepoConfig{
+	pending, runs, hookWarnings, err := s.runWorktreeCreatedHooks(ctx, cfg, wsRoot, wsName, config.RepoConfig{
 		Name:    name,
 		RepoDir: repoDir,
 	}, worktreePath, branch, "repo.add")
 	if err != nil {
 		return RepoAddResult{}, err
+	}
+	if len(runs) > 0 {
+		hookRuns = append(hookRuns, runs...)
 	}
 	if len(hookWarnings) > 0 {
 		warnings = append(warnings, hookWarnings...)
@@ -227,6 +231,7 @@ func (s *Service) AddRepo(ctx context.Context, input RepoAddInput) (RepoAddResul
 		RepoDir:      repoDir,
 		Warnings:     warnings,
 		PendingHooks: pendingHooks,
+		HookRuns:     hookRuns,
 		Config:       info,
 	}, nil
 }

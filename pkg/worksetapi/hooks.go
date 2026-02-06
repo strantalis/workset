@@ -84,6 +84,7 @@ func (s *Service) RunHooks(ctx context.Context, input HooksRunInput) (HooksRunRe
 		DefaultOnError: cfg.Hooks.OnError,
 		LogRoot:        hooksLogRoot(wsRoot),
 		Context:        ctxPayload,
+		Observer:       hookObserverAdapter{observer: s.hookEvents},
 	})
 	if err != nil {
 		return HooksRunResult{}, err
@@ -138,19 +139,19 @@ func (s *Service) TrustRepoHooks(ctx context.Context, repoName string) (config.G
 	return info, nil
 }
 
-func (s *Service) runWorktreeCreatedHooks(ctx context.Context, cfg config.GlobalConfig, wsRoot, wsName string, repo config.RepoConfig, worktreePath, branch, reason string) (HookPending, []string, error) {
+func (s *Service) runWorktreeCreatedHooks(ctx context.Context, cfg config.GlobalConfig, wsRoot, wsName string, repo config.RepoConfig, worktreePath, branch, reason string) (HookPending, []HookExecutionJSON, []string, error) {
 	hookFile, exists, err := hooks.LoadRepoHooks(worktreePath)
 	if err != nil {
-		return HookPending{}, nil, err
+		return HookPending{}, nil, nil, err
 	}
 	if !exists || len(hookFile.Hooks) == 0 {
-		return HookPending{}, nil, nil
+		return HookPending{}, nil, nil, nil
 	}
 
 	event := hooks.EventWorktreeCreated
 	candidateIDs := hookIDsForEvent(hookFile.Hooks, event)
 	if len(candidateIDs) == 0 {
-		return HookPending{}, nil, nil
+		return HookPending{}, nil, nil, nil
 	}
 
 	if !cfg.Hooks.Enabled {
@@ -161,7 +162,7 @@ func (s *Service) runWorktreeCreatedHooks(ctx context.Context, cfg config.Global
 			Hooks:  candidateIDs,
 			Status: HookRunStatusSkipped,
 			Reason: "disabled",
-		}, []string{warn}, nil
+		}, nil, []string{warn}, nil
 	}
 
 	if !isTrustedRepo(&cfg, repo.Name) {
@@ -173,7 +174,7 @@ func (s *Service) runWorktreeCreatedHooks(ctx context.Context, cfg config.Global
 			Reason: "untrusted",
 		}
 		warn := fmt.Sprintf("repo %s defines hooks; run `workset hooks run -w %s %s` to execute or trust", repo.Name, wsName, repo.Name)
-		return pending, []string{warn}, nil
+		return pending, nil, []string{warn}, nil
 	}
 
 	ctxPayload := hooks.Context{
@@ -189,16 +190,18 @@ func (s *Service) runWorktreeCreatedHooks(ctx context.Context, cfg config.Global
 		Reason:          reason,
 	}
 	engine := hooks.Engine{Runner: s.hookRunner, Clock: s.clock}
-	if _, err := engine.Run(ctx, hooks.RunInput{
+	report, err := engine.Run(ctx, hooks.RunInput{
 		Event:          event,
 		Hooks:          hookFile.Hooks,
 		DefaultOnError: cfg.Hooks.OnError,
 		LogRoot:        hooksLogRoot(wsRoot),
 		Context:        ctxPayload,
-	}); err != nil {
-		return HookPending{}, nil, err
+		Observer:       hookObserverAdapter{observer: s.hookEvents},
+	})
+	if err != nil {
+		return HookPending{}, nil, nil, err
 	}
-	return HookPending{}, nil, nil
+	return HookPending{}, hookExecutionsForEvent(report, repo.Name, event), nil, nil
 }
 
 func hooksLogRoot(workspaceRoot string) string {
@@ -237,6 +240,59 @@ func hookIDsForEvent(hooksList []hooks.Hook, event hooks.Event) []string {
 		}
 	}
 	return ids
+}
+
+func hookExecutionsForEvent(report hooks.RunReport, repoName string, event hooks.Event) []HookExecutionJSON {
+	if len(report.Results) == 0 {
+		return nil
+	}
+	results := make([]HookExecutionJSON, 0, len(report.Results))
+	for _, result := range report.Results {
+		status := HookRunStatus(result.Status)
+		if status == "" {
+			status = HookRunStatusOK
+		}
+		if status == HookRunStatusSkipped {
+			continue
+		}
+		results = append(results, HookExecutionJSON{
+			Event:   string(event),
+			Repo:    repoName,
+			ID:      result.HookID,
+			Status:  status,
+			LogPath: result.LogPath,
+		})
+	}
+	return results
+}
+
+type hookObserverAdapter struct {
+	observer HookProgressObserver
+}
+
+func (a hookObserverAdapter) OnHookProgress(progress hooks.HookProgress) {
+	if a.observer == nil {
+		return
+	}
+	status := HookRunStatus(progress.Status)
+	a.observer.OnHookProgress(HookProgress{
+		Phase:     string(progress.Phase),
+		Event:     string(progress.Event),
+		Repo:      progress.RepoName,
+		Workspace: progress.WorkspaceName,
+		HookID:    progress.HookID,
+		Reason:    progress.Reason,
+		Status:    status,
+		LogPath:   progress.LogPath,
+		Error:     errorString(progress.Err),
+	})
+}
+
+func errorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 func findWorkspaceRepo(wsConfig config.WorkspaceConfig, name string) (config.RepoConfig, bool) {

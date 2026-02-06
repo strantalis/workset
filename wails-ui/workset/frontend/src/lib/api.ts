@@ -17,6 +17,7 @@ import type {
 	RepoFileDiff,
 	AgentCLIStatus,
 	EnvSnapshotResult,
+	HooksRunResponse,
 	SettingsSnapshot,
 	AppVersion,
 	Workspace,
@@ -105,6 +106,8 @@ import {
 	SaveSkill as WailsSaveSkill,
 	DeleteSkill as WailsDeleteSkill,
 	SyncSkill as WailsSyncSkill,
+	RunHooks,
+	TrustRepoHooks,
 } from '../../wailsjs/go/main/App';
 
 type WorkspaceSnapshot = {
@@ -508,6 +511,19 @@ export async function addRepo(
 	repoDir: string,
 ): Promise<RepoAddResponse> {
 	return AddRepo({ workspaceId, source, name, repoDir });
+}
+
+export async function runRepoHooks(
+	workspaceId: string,
+	repo: string,
+	event: string,
+	reason = '',
+): Promise<HooksRunResponse> {
+	return RunHooks({ workspaceId, repo, event, reason });
+}
+
+export async function trustRepoHooks(repo: string): Promise<void> {
+	await TrustRepoHooks(repo);
 }
 
 export async function removeRepo(
