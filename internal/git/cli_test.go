@@ -36,6 +36,66 @@ func TestIsContentMergedSquashMerge(t *testing.T) {
 	}
 }
 
+func TestIsContentMergedMergeCommit(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	repo := initGitRepo(t)
+	ensureBranch(t, repo, "main")
+	commitFile(t, repo, "file.txt", "one\n", "initial")
+
+	runGit(t, repo, "checkout", "-b", "feature")
+	commitFile(t, repo, "file.txt", "two\n", "feature change")
+
+	runGit(t, repo, "checkout", "main")
+	runGit(t, repo, "merge", "--no-ff", "-m", "merge feature", "feature")
+
+	client := NewCLIClient()
+	merged, err := client.IsContentMerged(repo, "refs/heads/feature", "refs/heads/main")
+	if err != nil {
+		t.Fatalf("IsContentMerged: %v", err)
+	}
+	if !merged {
+		t.Fatalf("expected content to be merged after merge commit")
+	}
+}
+
+func TestIsContentMergedRebaseMerge(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	repo := initGitRepo(t)
+	ensureBranch(t, repo, "main")
+	commitFile(t, repo, "base.txt", "one\n", "initial")
+
+	runGit(t, repo, "checkout", "-b", "feature")
+	commitFile(t, repo, "feature.txt", "feature\n", "feature change")
+	featureHead := gitRevParse(t, repo, "refs/heads/feature")
+
+	runGit(t, repo, "checkout", "main")
+	commitFile(t, repo, "base.txt", "two\n", "main moved")
+	runGit(t, repo, "cherry-pick", featureHead)
+
+	client := NewCLIClient()
+	ancestor, err := client.IsAncestor(repo, "refs/heads/feature", "refs/heads/main")
+	if err != nil {
+		t.Fatalf("IsAncestor: %v", err)
+	}
+	if ancestor {
+		t.Fatalf("expected feature not to be an ancestor after cherry-pick")
+	}
+
+	merged, err := client.IsContentMerged(repo, "refs/heads/feature", "refs/heads/main")
+	if err != nil {
+		t.Fatalf("IsContentMerged: %v", err)
+	}
+	if !merged {
+		t.Fatalf("expected content to be merged after rebase/cherry-pick style merge")
+	}
+}
+
 func TestIsContentMergedDetectsMissingChanges(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
@@ -57,6 +117,39 @@ func TestIsContentMergedDetectsMissingChanges(t *testing.T) {
 	}
 	if merged {
 		t.Fatalf("expected content to be unmerged when changes are missing")
+	}
+}
+
+func TestWorktreeRemoveRetriesWithForce(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	repo := initGitRepo(t)
+	ensureBranch(t, repo, "main")
+	commitFile(t, repo, "file.txt", "one\n", "initial")
+
+	worktreePath := filepath.Join(t.TempDir(), "wt")
+	runGit(t, repo, "worktree", "add", "-b", "feature", worktreePath)
+
+	if err := os.WriteFile(filepath.Join(worktreePath, "untracked.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatalf("write untracked: %v", err)
+	}
+
+	client := NewCLIClient()
+	worktrees, err := client.WorktreeList(repo)
+	if err != nil {
+		t.Fatalf("WorktreeList: %v", err)
+	}
+	if len(worktrees) != 1 {
+		t.Fatalf("expected one linked worktree, got %v", worktrees)
+	}
+	if err := client.WorktreeRemove(WorktreeRemoveOptions{
+		RepoPath:     repo,
+		WorktreeName: worktrees[0],
+		Force:        false,
+	}); err != nil {
+		t.Fatalf("WorktreeRemove: %v", err)
 	}
 }
 

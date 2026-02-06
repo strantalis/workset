@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -249,11 +250,26 @@ func (c CLIClient) IsContentMerged(repoPath, branchRef, baseRef string) (bool, e
 	if branchRef == "" || baseRef == "" {
 		return false, errors.New("branch and base refs required")
 	}
+
+	ancestor, err := c.IsAncestor(repoPath, branchRef, baseRef)
+	if err == nil && ancestor {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
 	if equal, err := c.refsMatch(repoPath, baseRef, branchRef); err == nil && equal {
 		return true, nil
 	} else if err != nil {
 		return false, err
 	}
+
+	uniqueByPatch, cherryErr := c.rightOnlyCherryCount(repoPath, baseRef, branchRef)
+	if cherryErr == nil && uniqueByPatch == 0 {
+		return true, nil
+	}
+	// Continue with tree-based fallbacks when patch-id matching cannot run.
 
 	bases, err := c.mergeBases(repoPath, branchRef, baseRef)
 	if err != nil {
@@ -406,15 +422,23 @@ func (c CLIClient) WorktreeRemove(opts WorktreeRemoveOptions) error {
 		}
 		return err
 	}
-	args := []string{"worktree", "remove"}
-	if opts.Force {
-		args = append(args, "--force")
-	}
-	args = append(args, worktreePath)
-	result, err := c.run(context.Background(), opts.RepoPath, args...)
-	if err != nil {
+	forced := opts.Force
+	for {
+		args := []string{"worktree", "remove"}
+		if forced {
+			args = append(args, "--force")
+		}
+		args = append(args, worktreePath)
+		result, err := c.run(context.Background(), opts.RepoPath, args...)
+		if err == nil {
+			return nil
+		}
 		if strings.Contains(result.stderr, "is not a working tree") || strings.Contains(result.stderr, "not a working tree") {
 			return ErrWorktreeNotFound
+		}
+		if !forced && shouldRetryWorktreeRemoveWithForce(result.stderr) {
+			forced = true
+			continue
 		}
 		message := strings.TrimSpace(result.stderr)
 		if message == "" {
@@ -425,7 +449,6 @@ func (c CLIClient) WorktreeRemove(opts WorktreeRemoveOptions) error {
 		}
 		return err
 	}
-	return nil
 }
 
 func (c CLIClient) WorktreeList(repoPath string) ([]string, error) {
@@ -471,6 +494,22 @@ func (c CLIClient) mergeBases(repoPath, left, right string) ([]string, error) {
 	}
 	lines := strings.Fields(strings.TrimSpace(result.stdout))
 	return lines, nil
+}
+
+func (c CLIClient) rightOnlyCherryCount(repoPath, leftRef, rightRef string) (int, error) {
+	result, err := c.run(context.Background(), repoPath, "rev-list", "--right-only", "--cherry-pick", "--count", leftRef+"..."+rightRef)
+	if err != nil {
+		return 0, err
+	}
+	value := strings.TrimSpace(result.stdout)
+	if value == "" {
+		return 0, errors.New("empty rev-list --count output")
+	}
+	count, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("parse rev-list count %q: %w", value, err)
+	}
+	return count, nil
 }
 
 func (c CLIClient) changesAppliedInBase(repoPath, mergeBase, branchRef, baseRef string) (bool, error) {
@@ -605,6 +644,12 @@ func (c CLIClient) worktreePathFromName(repoPath, worktreeName string) (string, 
 	return filepath.Dir(gitDir), nil
 }
 
+func shouldRetryWorktreeRemoveWithForce(stderr string) bool {
+	msg := strings.ToLower(stderr)
+	return strings.Contains(msg, "contains modified or untracked files") ||
+		strings.Contains(msg, "directory not empty")
+}
+
 func (c CLIClient) gitAdminPath(repoPath, path string) (string, error) {
 	result, err := c.run(context.Background(), repoPath, "rev-parse", "--git-path", path)
 	if err != nil {
@@ -617,7 +662,14 @@ func (c CLIClient) gitAdminPath(repoPath, path string) (string, error) {
 	if gitPath == "" {
 		return "", ErrWorktreeNotFound
 	}
-	return gitPath, nil
+	if filepath.IsAbs(gitPath) {
+		return filepath.Clean(gitPath), nil
+	}
+	workDir, _, normErr := normalizeRepoPath(repoPath)
+	if normErr == nil && workDir != "" {
+		return filepath.Clean(filepath.Join(workDir, gitPath)), nil
+	}
+	return filepath.Clean(filepath.Join(repoPath, gitPath)), nil
 }
 
 func isNotRepo(result gitResult) bool {
