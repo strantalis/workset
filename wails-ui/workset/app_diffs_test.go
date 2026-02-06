@@ -121,6 +121,32 @@ func TestGitUntrackedNumstatBatch(t *testing.T) {
 	}
 }
 
+func TestGitUntrackedNumstatFallsBackWhenBatchPathspecFails(t *testing.T) {
+	ctx := context.Background()
+	repoPath := t.TempDir()
+	runGit(t, repoPath, "init", "-q")
+
+	// This filename is valid on disk but parsed as pathspec magic in batched
+	// no-index mode, which forces fallback to per-file numstat.
+	path := ":(bad).txt"
+	if err := os.WriteFile(filepath.Join(repoPath, path), []byte("line one\nline two\n"), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	stats, err := gitUntrackedNumstat(ctx, repoPath, []string{path})
+	if err != nil {
+		t.Fatalf("gitUntrackedNumstat failed: %v", err)
+	}
+
+	entry, ok := stats[path]
+	if !ok {
+		t.Fatalf("missing %q entry: %+v", path, stats)
+	}
+	if entry.added != 2 || entry.removed != 0 || entry.binary {
+		t.Fatalf("unexpected stats: %+v", entry)
+	}
+}
+
 func runGit(t *testing.T, repoPath string, args ...string) {
 	t.Helper()
 	cmdArgs := append([]string{"-C", repoPath}, args...)
