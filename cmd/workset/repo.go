@@ -107,6 +107,18 @@ func repoCommand() *cli.Command {
 					}
 					printConfigInfo(cmd, result)
 					mode := outputModeFromContext(cmd)
+					if mode.JSON {
+						return output.WriteJSON(commandWriter(cmd), struct {
+							worksetapi.RepoAddResultJSON
+
+							Warnings []string                       `json:"warnings,omitempty"`
+							HookRuns []worksetapi.HookExecutionJSON `json:"hook_runs,omitempty"`
+						}{
+							RepoAddResultJSON: result.Payload,
+							Warnings:          result.Warnings,
+							HookRuns:          result.HookRuns,
+						})
+					}
 					styles := output.NewStyles(commandWriter(cmd), mode.Plain)
 					if len(result.PendingHooks) > 0 && term.IsTerminal(int(os.Stdin.Fd())) {
 						for _, pending := range result.PendingHooks {
@@ -147,18 +159,6 @@ func repoCommand() *cli.Command {
 								}
 							}
 						}
-					}
-					if mode.JSON {
-						return output.WriteJSON(commandWriter(cmd), struct {
-							worksetapi.RepoAddResultJSON
-
-							Warnings []string                       `json:"warnings,omitempty"`
-							HookRuns []worksetapi.HookExecutionJSON `json:"hook_runs,omitempty"`
-						}{
-							RepoAddResultJSON: result.Payload,
-							Warnings:          result.Warnings,
-							HookRuns:          result.HookRuns,
-						})
 					}
 					msg := fmt.Sprintf("added %s to %s", result.Payload.Repo, result.Payload.Workspace)
 					if styles.Enabled {
