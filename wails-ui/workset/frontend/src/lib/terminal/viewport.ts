@@ -1,6 +1,6 @@
 export type ViewportSnapshot = {
 	followOutput: boolean;
-	linesFromBottom: number;
+	viewportLine: number;
 };
 
 type ViewportPosition = {
@@ -17,9 +17,9 @@ export const captureViewportSnapshot = (position: ViewportPosition): ViewportSna
 	const baseY = clampNonNegativeInt(position.baseY);
 	const viewportY = clampNonNegativeInt(position.viewportY);
 	if (viewportY >= baseY) {
-		return { followOutput: true, linesFromBottom: 0 };
+		return { followOutput: true, viewportLine: baseY };
 	}
-	return { followOutput: false, linesFromBottom: baseY - viewportY };
+	return { followOutput: false, viewportLine: viewportY };
 };
 
 export const resolveViewportTargetLine = (
@@ -27,9 +27,8 @@ export const resolveViewportTargetLine = (
 	nextBaseY: number,
 ): number | null => {
 	const baseY = clampNonNegativeInt(nextBaseY);
-	if (snapshot.followOutput || snapshot.linesFromBottom <= 0) {
+	if (snapshot.followOutput) {
 		return null;
 	}
-	const linesFromBottom = Math.min(clampNonNegativeInt(snapshot.linesFromBottom), baseY);
-	return Math.max(0, baseY - linesFromBottom);
+	return Math.min(clampNonNegativeInt(snapshot.viewportLine), baseY);
 };

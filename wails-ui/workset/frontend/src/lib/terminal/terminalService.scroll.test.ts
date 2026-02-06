@@ -213,7 +213,7 @@ describe('terminalService fit viewport preservation', () => {
 
 		expect(createdTerminals).toHaveLength(1);
 		const terminal = createdTerminals[0];
-		expect(terminal.scrollToLine).toHaveBeenCalledWith(230);
+		expect(terminal.scrollToLine).toHaveBeenCalledWith(90);
 		expect(terminal.scrollToBottom).not.toHaveBeenCalled();
 	});
 
