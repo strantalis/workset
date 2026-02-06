@@ -1,4 +1,4 @@
-import { describe, test, expect, vi, afterEach } from 'vitest';
+import { describe, test, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, fireEvent, cleanup, waitFor } from '@testing-library/svelte';
 import SettingsPanel from '../SettingsPanel.svelte';
 import * as api from '../../api';
@@ -8,6 +8,11 @@ import type { SettingsDefaults } from '../../types';
 vi.mock('../../api', () => ({
 	fetchSettings: vi.fn(),
 	fetchAppVersion: vi.fn(),
+	fetchUpdatePreferences: vi.fn(),
+	fetchUpdateState: vi.fn(),
+	checkForUpdates: vi.fn(),
+	startAppUpdate: vi.fn(),
+	setUpdatePreferences: vi.fn(),
 	fetchWorkspaceTerminalLayout: vi.fn(),
 	setDefaultSetting: vi.fn(),
 	restartSessiond: vi.fn(),
@@ -41,6 +46,22 @@ describe('SettingsPanel About Section', () => {
 	const buildDefaults = (overrides: Partial<SettingsDefaults> = {}): SettingsDefaults => ({
 		...baseDefaults,
 		...overrides,
+	});
+
+	beforeEach(() => {
+		vi.mocked(api.fetchUpdatePreferences).mockResolvedValue({
+			channel: 'stable',
+			autoCheck: true,
+		});
+		vi.mocked(api.fetchUpdateState).mockResolvedValue({
+			phase: 'idle',
+			channel: 'stable',
+			currentVersion: '',
+			latestVersion: '',
+			message: '',
+			error: '',
+			checkedAt: '',
+		});
 	});
 
 	afterEach(() => {
