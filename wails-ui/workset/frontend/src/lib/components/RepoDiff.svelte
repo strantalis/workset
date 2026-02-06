@@ -760,6 +760,10 @@
 		switch (commitPushStage) {
 			case 'queued':
 				return 'Preparing...';
+			case 'generating_message':
+				return 'Generating message...';
+			case 'staging':
+				return 'Staging changes...';
 			case 'committing':
 				return 'Committing...';
 			case 'pushing':

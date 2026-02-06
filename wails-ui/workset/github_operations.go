@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,13 +23,15 @@ const (
 type GitHubOperationStage string
 
 const (
-	GitHubOperationStageQueued     GitHubOperationStage = "queued"
-	GitHubOperationStageGenerating GitHubOperationStage = "generating"
-	GitHubOperationStageCreating   GitHubOperationStage = "creating"
-	GitHubOperationStageCommitting GitHubOperationStage = "committing"
-	GitHubOperationStagePushing    GitHubOperationStage = "pushing"
-	GitHubOperationStageCompleted  GitHubOperationStage = "completed"
-	GitHubOperationStageFailed     GitHubOperationStage = "failed"
+	GitHubOperationStageQueued            GitHubOperationStage = "queued"
+	GitHubOperationStageGenerating        GitHubOperationStage = "generating"
+	GitHubOperationStageCreating          GitHubOperationStage = "creating"
+	GitHubOperationStageGeneratingMessage GitHubOperationStage = "generating_message"
+	GitHubOperationStageStaging           GitHubOperationStage = "staging"
+	GitHubOperationStageCommitting        GitHubOperationStage = "committing"
+	GitHubOperationStagePushing           GitHubOperationStage = "pushing"
+	GitHubOperationStageCompleted         GitHubOperationStage = "completed"
+	GitHubOperationStageFailed            GitHubOperationStage = "failed"
 )
 
 type GitHubOperationState string
@@ -62,12 +65,24 @@ type githubOperationKey struct {
 type githubOperationManager struct {
 	mu     sync.Mutex
 	seq    uint64
-	status map[githubOperationKey]GitHubOperationStatusPayload
+	now    func() time.Time
+	status map[githubOperationKey]githubOperationRecord
 }
+
+type githubOperationRecord struct {
+	status      GitHubOperationStatusPayload
+	lastUpdated time.Time
+}
+
+const (
+	githubOperationRetention  = 6 * time.Hour
+	githubOperationMaxEntries = 256
+)
 
 func newGitHubOperationManager() *githubOperationManager {
 	return &githubOperationManager{
-		status: map[githubOperationKey]GitHubOperationStatusPayload{},
+		now:    time.Now,
+		status: map[githubOperationKey]githubOperationRecord{},
 	}
 }
 
@@ -81,18 +96,20 @@ func (m *githubOperationManager) start(workspaceID, repoID string, opType GitHub
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	m.cleanupLocked(m.now())
+
 	for currentKey, currentStatus := range m.status {
 		if currentKey.workspaceID != workspaceID || currentKey.repoID != repoID {
 			continue
 		}
-		if currentStatus.State == GitHubOperationStateRunning {
+		if currentStatus.status.State == GitHubOperationStateRunning {
 			return githubOperationKey{}, GitHubOperationStatusPayload{}, worksetapi.ValidationError{
-				Message: fmt.Sprintf("operation already running for repo (%s)", currentStatus.Type),
+				Message: fmt.Sprintf("operation already running for repo (%s)", currentStatus.status.Type),
 			}
 		}
 	}
 
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := m.now()
 	status := GitHubOperationStatusPayload{
 		OperationID: m.nextOperationID(opType),
 		WorkspaceID: workspaceID,
@@ -100,75 +117,98 @@ func (m *githubOperationManager) start(workspaceID, repoID string, opType GitHub
 		Type:        opType,
 		Stage:       GitHubOperationStageQueued,
 		State:       GitHubOperationStateRunning,
-		StartedAt:   now,
+		StartedAt:   now.UTC().Format(time.RFC3339),
 	}
-	m.status[key] = status
+	m.status[key] = githubOperationRecord{
+		status:      status,
+		lastUpdated: now,
+	}
 	return key, status, nil
 }
 
 func (m *githubOperationManager) get(key githubOperationKey) (GitHubOperationStatusPayload, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	status, ok := m.status[key]
-	return status, ok
+	record, ok := m.status[key]
+	if !ok {
+		return GitHubOperationStatusPayload{}, false
+	}
+	return record.status, true
 }
 
 func (m *githubOperationManager) setStage(key githubOperationKey, stage GitHubOperationStage) (GitHubOperationStatusPayload, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	status, ok := m.status[key]
+	record, ok := m.status[key]
 	if !ok {
 		return GitHubOperationStatusPayload{}, false
 	}
+	status := record.status
 	status.Stage = stage
 	status.State = GitHubOperationStateRunning
 	status.Error = ""
 	status.FinishedAt = ""
-	m.status[key] = status
+	m.status[key] = githubOperationRecord{
+		status:      status,
+		lastUpdated: m.now(),
+	}
 	return status, true
 }
 
 func (m *githubOperationManager) completeCreatePR(key githubOperationKey, result worksetapi.PullRequestCreatedJSON) (GitHubOperationStatusPayload, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	status, ok := m.status[key]
+	record, ok := m.status[key]
 	if !ok {
 		return GitHubOperationStatusPayload{}, false
 	}
+	status := record.status
 	status.Stage = GitHubOperationStageCompleted
 	status.State = GitHubOperationStateCompleted
 	status.Error = ""
-	status.FinishedAt = time.Now().UTC().Format(time.RFC3339)
+	status.FinishedAt = m.now().UTC().Format(time.RFC3339)
 	status.PullRequest = &result
 	status.CommitPush = nil
-	m.status[key] = status
+	now := m.now()
+	m.status[key] = githubOperationRecord{
+		status:      status,
+		lastUpdated: now,
+	}
+	m.cleanupLocked(now)
 	return status, true
 }
 
 func (m *githubOperationManager) completeCommitPush(key githubOperationKey, result worksetapi.CommitAndPushResultJSON) (GitHubOperationStatusPayload, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	status, ok := m.status[key]
+	record, ok := m.status[key]
 	if !ok {
 		return GitHubOperationStatusPayload{}, false
 	}
+	status := record.status
 	status.Stage = GitHubOperationStageCompleted
 	status.State = GitHubOperationStateCompleted
 	status.Error = ""
-	status.FinishedAt = time.Now().UTC().Format(time.RFC3339)
+	status.FinishedAt = m.now().UTC().Format(time.RFC3339)
 	status.PullRequest = nil
 	status.CommitPush = &result
-	m.status[key] = status
+	now := m.now()
+	m.status[key] = githubOperationRecord{
+		status:      status,
+		lastUpdated: now,
+	}
+	m.cleanupLocked(now)
 	return status, true
 }
 
 func (m *githubOperationManager) fail(key githubOperationKey, err error) (GitHubOperationStatusPayload, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	status, ok := m.status[key]
+	record, ok := m.status[key]
 	if !ok {
 		return GitHubOperationStatusPayload{}, false
 	}
+	status := record.status
 	status.Stage = GitHubOperationStageFailed
 	status.State = GitHubOperationStateFailed
 	if err != nil {
@@ -176,9 +216,61 @@ func (m *githubOperationManager) fail(key githubOperationKey, err error) (GitHub
 	} else {
 		status.Error = ""
 	}
-	status.FinishedAt = time.Now().UTC().Format(time.RFC3339)
-	m.status[key] = status
+	status.FinishedAt = m.now().UTC().Format(time.RFC3339)
+	now := m.now()
+	m.status[key] = githubOperationRecord{
+		status:      status,
+		lastUpdated: now,
+	}
+	m.cleanupLocked(now)
 	return status, true
+}
+
+func (m *githubOperationManager) cleanupLocked(now time.Time) {
+	ttlCutoff := now.Add(-githubOperationRetention)
+	for key, record := range m.status {
+		if record.status.State == GitHubOperationStateRunning {
+			continue
+		}
+		if record.lastUpdated.Before(ttlCutoff) {
+			delete(m.status, key)
+		}
+	}
+
+	if len(m.status) <= githubOperationMaxEntries {
+		return
+	}
+
+	type candidate struct {
+		key         githubOperationKey
+		lastUpdated time.Time
+	}
+	candidates := make([]candidate, 0, len(m.status))
+	for key, record := range m.status {
+		if record.status.State == GitHubOperationStateRunning {
+			continue
+		}
+		candidates = append(candidates, candidate{
+			key:         key,
+			lastUpdated: record.lastUpdated,
+		})
+	}
+	slices.SortFunc(candidates, func(a, b candidate) int {
+		if a.lastUpdated.Equal(b.lastUpdated) {
+			return 0
+		}
+		if a.lastUpdated.Before(b.lastUpdated) {
+			return -1
+		}
+		return 1
+	})
+
+	for _, candidate := range candidates {
+		if len(m.status) <= githubOperationMaxEntries {
+			break
+		}
+		delete(m.status, candidate.key)
+	}
 }
 
 func (m *githubOperationManager) nextOperationID(opType GitHubOperationType) string {
@@ -262,14 +354,27 @@ func (a *App) runCreatePullRequestAsync(ctx context.Context, key githubOperation
 
 func (a *App) runCommitAndPushAsync(ctx context.Context, key githubOperationKey, repoName string, input StartCommitAndPushAsyncRequest) {
 	manager := a.ensureGitHubOperationManager()
-	if status, ok := manager.setStage(key, GitHubOperationStageCommitting); ok {
-		a.emitGitHubOperation(status)
-	}
 
 	result, err := a.service.CommitAndPush(ctx, worksetapi.CommitAndPushInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
 		Repo:      repoName,
 		Message:   input.Message,
+		OnStage: func(stage worksetapi.CommitAndPushStage) {
+			statusStage := GitHubOperationStageCommitting
+			switch stage {
+			case worksetapi.CommitAndPushStageGeneratingMessage:
+				statusStage = GitHubOperationStageGeneratingMessage
+			case worksetapi.CommitAndPushStageStaging:
+				statusStage = GitHubOperationStageStaging
+			case worksetapi.CommitAndPushStageCommitting:
+				statusStage = GitHubOperationStageCommitting
+			case worksetapi.CommitAndPushStagePushing:
+				statusStage = GitHubOperationStagePushing
+			}
+			if status, ok := manager.setStage(key, statusStage); ok {
+				a.emitGitHubOperation(status)
+			}
+		},
 	})
 	if err != nil {
 		if status, ok := manager.fail(key, err); ok {
@@ -278,9 +383,6 @@ func (a *App) runCommitAndPushAsync(ctx context.Context, key githubOperationKey,
 		return
 	}
 
-	if status, ok := manager.setStage(key, GitHubOperationStagePushing); ok {
-		a.emitGitHubOperation(status)
-	}
 	if status, ok := manager.completeCommitPush(key, result.Payload); ok {
 		a.emitGitHubOperation(status)
 	}

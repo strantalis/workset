@@ -309,7 +309,18 @@ type CommitAndPushInput struct {
 	Workspace WorkspaceSelector
 	Repo      string
 	Message   string // Empty = auto-generate via agent
+	OnStage   func(stage CommitAndPushStage)
 }
+
+// CommitAndPushStage describes progress phases for commit/push.
+type CommitAndPushStage string
+
+const (
+	CommitAndPushStageGeneratingMessage CommitAndPushStage = "generating_message"
+	CommitAndPushStageStaging           CommitAndPushStage = "staging"
+	CommitAndPushStageCommitting        CommitAndPushStage = "committing"
+	CommitAndPushStagePushing           CommitAndPushStage = "pushing"
+)
 
 // CommitAndPushResultJSON describes the result of a commit and push operation.
 type CommitAndPushResultJSON struct {

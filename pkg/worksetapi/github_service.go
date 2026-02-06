@@ -861,6 +861,12 @@ func (s *Service) ListRemotes(ctx context.Context, input ListRemotesInput) (List
 
 // CommitAndPush commits all changes and pushes to the remote.
 func (s *Service) CommitAndPush(ctx context.Context, input CommitAndPushInput) (CommitAndPushResult, error) {
+	emitStage := func(stage CommitAndPushStage) {
+		if input.OnStage != nil {
+			input.OnStage(stage)
+		}
+	}
+
 	resolution, err := s.resolveRepo(ctx, RepoSelectionInput{
 		Workspace: input.Workspace,
 		Repo:      input.Repo,
@@ -889,6 +895,7 @@ func (s *Service) CommitAndPush(ctx context.Context, input CommitAndPushInput) (
 	// Generate commit message if not provided
 	message := strings.TrimSpace(input.Message)
 	if message == "" {
+		emitStage(CommitAndPushStageGeneratingMessage)
 		agent := strings.TrimSpace(resolution.Defaults.Agent)
 		if agent == "" {
 			return CommitAndPushResult{}, ValidationError{Message: "defaults.agent is not configured; cannot auto-generate commit message"}
@@ -905,6 +912,7 @@ func (s *Service) CommitAndPush(ctx context.Context, input CommitAndPushInput) (
 	}
 
 	// Stage all changes
+	emitStage(CommitAndPushStageStaging)
 	if err := gitAddAll(ctx, resolution.RepoPath, s.commands); err != nil {
 		return CommitAndPushResult{}, err
 	}
@@ -919,6 +927,7 @@ func (s *Service) CommitAndPush(ctx context.Context, input CommitAndPushInput) (
 	}
 
 	// Commit
+	emitStage(CommitAndPushStageCommitting)
 	if err := gitCommitMessage(ctx, resolution.RepoPath, message, s.commands); err != nil {
 		return CommitAndPushResult{}, err
 	}
@@ -944,6 +953,7 @@ func (s *Service) CommitAndPush(ctx context.Context, input CommitAndPushInput) (
 	}
 
 	// Push
+	emitStage(CommitAndPushStagePushing)
 	if err := gitPushBranch(ctx, resolution.RepoPath, headInfo.Remote, branch, s.commands); err != nil {
 		return CommitAndPushResult{
 			Payload: CommitAndPushResultJSON{

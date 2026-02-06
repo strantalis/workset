@@ -366,6 +366,8 @@ export type GitHubOperationStage =
 	| 'queued'
 	| 'generating'
 	| 'creating'
+	| 'generating_message'
+	| 'staging'
 	| 'committing'
 	| 'pushing'
 	| 'completed'

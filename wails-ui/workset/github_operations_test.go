@@ -2,7 +2,9 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/strantalis/workset/pkg/worksetapi"
 )
@@ -106,5 +108,53 @@ func TestGetGitHubOperationStatus(t *testing.T) {
 	}
 	if status.OperationID != started.OperationID || status.Stage != GitHubOperationStageCommitting {
 		t.Fatalf("unexpected status payload: %+v", status)
+	}
+}
+
+func TestGitHubOperationManagerEvictsStaleCompletedStatuses(t *testing.T) {
+	now := time.Date(2026, 2, 6, 15, 0, 0, 0, time.UTC)
+	manager := newGitHubOperationManager()
+	manager.now = func() time.Time { return now }
+
+	oldKey, _, err := manager.start("ws-1", "repo-1", GitHubOperationTypeCreatePR)
+	if err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+	if _, ok := manager.completeCreatePR(oldKey, worksetapi.PullRequestCreatedJSON{Repo: "repo-1", Number: 1}); !ok {
+		t.Fatal("expected completion")
+	}
+
+	now = now.Add(githubOperationRetention + time.Minute)
+	if _, _, err := manager.start("ws-2", "repo-2", GitHubOperationTypeCreatePR); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+
+	if _, ok := manager.get(oldKey); ok {
+		t.Fatal("expected stale completed status to be evicted")
+	}
+}
+
+func TestGitHubOperationManagerEnforcesMaxEntries(t *testing.T) {
+	now := time.Date(2026, 2, 6, 15, 0, 0, 0, time.UTC)
+	manager := newGitHubOperationManager()
+	manager.now = func() time.Time { return now }
+
+	for i := 0; i < githubOperationMaxEntries+40; i++ {
+		repoID := fmt.Sprintf("repo-%d", i)
+		key, _, err := manager.start("ws-1", repoID, GitHubOperationTypeCreatePR)
+		if err != nil {
+			t.Fatalf("start %d failed: %v", i, err)
+		}
+		if _, ok := manager.completeCreatePR(key, worksetapi.PullRequestCreatedJSON{
+			Repo:   repoID,
+			Number: i + 1,
+		}); !ok {
+			t.Fatalf("completion %d failed", i)
+		}
+		now = now.Add(time.Second)
+	}
+
+	if got := len(manager.status); got > githubOperationMaxEntries {
+		t.Fatalf("expected at most %d entries, got %d", githubOperationMaxEntries, got)
 	}
 }
