@@ -76,6 +76,7 @@
 	let activeHookWorkspace: string | null = $state(null);
 	let hookWorkspaceId: string | null = $state(null);
 	let hookEventUnsubscribe: (() => void) | null = null;
+	let autoCloseTimer: ReturnType<typeof setTimeout> | null = null;
 	let loading = $state(false);
 
 	// Phase state: 'form' for input, 'hook-results' after successful create/add with hooks
@@ -611,15 +612,15 @@
 			if (createdWarnings.length > 0) {
 				warnings = Array.from(new Set(createdWarnings));
 			}
-			const hasHookActivity =
-				warnings.length > 0 || pendingHooks.length > 0 || hookRuns.length > 0;
+			const hasHookActivity = warnings.length > 0 || pendingHooks.length > 0 || hookRuns.length > 0;
 			if (hasHookActivity) {
 				success = `Created ${result.workspace.name}.`;
 				hookResultContext = { action: 'created', name: result.workspace.name };
 				phase = 'hook-results';
-				// Auto-close when all hooks ran OK and nothing is pending
-				if (pendingHooks.length === 0 && warnings.length === 0) {
-					setTimeout(() => onClose(), 1500);
+				// Auto-close only when everything completed cleanly
+				const allRunsOk = hookRuns.every((r) => r.status === 'ok' || r.status === 'skipped');
+				if (pendingHooks.length === 0 && warnings.length === 0 && allRunsOk) {
+					autoCloseTimer = setTimeout(() => onClose(), 1500);
 				}
 			} else {
 				onClose();
@@ -731,8 +732,7 @@
 			if (collectedWarnings.length > 0) {
 				warnings = Array.from(new Set(collectedWarnings));
 			}
-			const hasHookActivity =
-				warnings.length > 0 || pendingHooks.length > 0 || hookRuns.length > 0;
+			const hasHookActivity = warnings.length > 0 || pendingHooks.length > 0 || hookRuns.length > 0;
 			if (hasHookActivity) {
 				success = `Added ${itemCount} item${itemCount !== 1 ? 's' : ''}.`;
 				hookResultContext = {
@@ -741,9 +741,10 @@
 					itemCount,
 				};
 				phase = 'hook-results';
-				// Auto-close when all hooks ran OK and nothing is pending
-				if (pendingHooks.length === 0 && warnings.length === 0) {
-					setTimeout(() => onClose(), 1500);
+				// Auto-close only when everything completed cleanly
+				const allRunsOk = hookRuns.every((r) => r.status === 'ok' || r.status === 'skipped');
+				if (pendingHooks.length === 0 && warnings.length === 0 && allRunsOk) {
+					autoCloseTimer = setTimeout(() => onClose(), 1500);
 				}
 			} else {
 				onClose();
@@ -867,6 +868,10 @@
 	onDestroy(() => {
 		hookEventUnsubscribe?.();
 		hookEventUnsubscribe = null;
+		if (autoCloseTimer) {
+			clearTimeout(autoCloseTimer);
+			autoCloseTimer = null;
+		}
 	});
 </script>
 
@@ -956,7 +961,16 @@
 			{/if}
 
 			<div class="hook-results-footer">
-				<Button variant="primary" onclick={onClose}>Done</Button>
+				<Button
+					variant="primary"
+					onclick={() => {
+						if (autoCloseTimer) {
+							clearTimeout(autoCloseTimer);
+							autoCloseTimer = null;
+						}
+						onClose();
+					}}>Done</Button
+				>
 			</div>
 		</div>
 	{:else}
@@ -1022,693 +1036,693 @@
 		{/if}
 
 		{#if mode === 'create'}
-		<div class="form create-two-column">
-			<div class="column-left">
-				<!-- Tab Bar - only when aliases/groups exist -->
-				{#if aliasItems.length > 0 || groupItems.length > 0}
-					<div class="tab-bar">
-						<button
-							class="tab"
-							class:active={activeTab === 'direct'}
-							type="button"
-							onclick={() => {
-								activeTab = 'direct';
-								searchQuery = '';
-							}}
-						>
-							Direct
-						</button>
-						{#if aliasItems.length > 0}
+			<div class="form create-two-column">
+				<div class="column-left">
+					<!-- Tab Bar - only when aliases/groups exist -->
+					{#if aliasItems.length > 0 || groupItems.length > 0}
+						<div class="tab-bar">
 							<button
 								class="tab"
-								class:active={activeTab === 'repos'}
+								class:active={activeTab === 'direct'}
 								type="button"
 								onclick={() => {
-									activeTab = 'repos';
+									activeTab = 'direct';
 									searchQuery = '';
 								}}
 							>
-								Repos ({aliasItems.length})
+								Direct
 							</button>
-						{/if}
-						{#if groupItems.length > 0}
-							<button
-								class="tab"
-								class:active={activeTab === 'groups'}
-								type="button"
-								onclick={() => {
-									activeTab = 'groups';
-									searchQuery = '';
-								}}
-							>
-								Groups ({groupItems.length})
-							</button>
+							{#if aliasItems.length > 0}
+								<button
+									class="tab"
+									class:active={activeTab === 'repos'}
+									type="button"
+									onclick={() => {
+										activeTab = 'repos';
+										searchQuery = '';
+									}}
+								>
+									Repos ({aliasItems.length})
+								</button>
+							{/if}
+							{#if groupItems.length > 0}
+								<button
+									class="tab"
+									class:active={activeTab === 'groups'}
+									type="button"
+									onclick={() => {
+										activeTab = 'groups';
+										searchQuery = '';
+									}}
+								>
+									Groups ({groupItems.length})
+								</button>
+							{/if}
+						</div>
+					{/if}
+
+					<!-- Selection Area - Left Column -->
+					<div class="selection-area">
+						{#if activeTab === 'direct'}
+							<label class="field">
+								<span>Repo URL or local path</span>
+								<div class="inline">
+									<input
+										bind:value={primaryInput}
+										placeholder="git@github.com:org/repo.git"
+										autocapitalize="off"
+										autocorrect="off"
+										spellcheck="false"
+										onkeydown={(e) => {
+											if (e.key === 'Enter') {
+												e.preventDefault();
+												addDirectRepo();
+											}
+										}}
+									/>
+									<Button
+										variant="ghost"
+										size="sm"
+										onclick={async () => {
+											try {
+												const path = await openDirectoryDialog(
+													'Select repo directory',
+													primaryInput.trim(),
+												);
+												if (path) primaryInput = path;
+											} catch (err) {
+												error = formatError(err, 'Failed to open directory picker.');
+											}
+										}}>Browse</Button
+									>
+									<Button
+										variant="primary"
+										size="sm"
+										onclick={addDirectRepo}
+										disabled={!primaryInput.trim() || !isRepoSource(primaryInput)}>Add</Button
+									>
+								</div>
+							</label>
+							{#if directRepos.length > 0}
+								<div class="direct-repos-list">
+									{#each directRepos as repo (repo.url)}
+										<div class="direct-repo-item">
+											<div class="direct-repo-info">
+												<span class="direct-repo-name">{deriveRepoName(repo.url) || repo.url}</span>
+												<span class="direct-repo-url">{repo.url}</span>
+											</div>
+											<label
+												class="direct-repo-register"
+												title="Save to Repo Registry for future use"
+											>
+												<input
+													type="checkbox"
+													checked={repo.register}
+													onchange={() => toggleDirectRepoRegister(repo.url)}
+												/>
+												<span>Register</span>
+											</label>
+											<button
+												type="button"
+												class="direct-repo-remove"
+												onclick={() => removeDirectRepo(repo.url)}
+											>
+												×
+											</button>
+										</div>
+									{/each}
+								</div>
+							{/if}
+						{:else if activeTab === 'repos'}
+							<div class="field">
+								<div class="inline">
+									<input
+										bind:value={searchQuery}
+										placeholder="Search repos..."
+										class="search-input"
+										autocapitalize="off"
+										autocorrect="off"
+										spellcheck="false"
+									/>
+									{#if searchQuery}
+										<button type="button" class="search-clear" onclick={() => (searchQuery = '')}
+											>Clear</button
+										>
+									{/if}
+								</div>
+								<div class="checkbox-list">
+									{#if filteredAliases.length === 0}
+										<div class="empty-search">No repos match "{searchQuery}"</div>
+									{:else}
+										{#each filteredAliases as alias (alias)}
+											<label class="checkbox-item" class:selected={selectedAliases.has(alias.name)}>
+												<input
+													type="checkbox"
+													checked={selectedAliases.has(alias.name)}
+													onchange={() => toggleAlias(alias.name)}
+												/>
+												<div class="checkbox-content">
+													<span class="checkbox-name">{alias.name}</span>
+													<span class="checkbox-meta">{getAliasSource(alias)}</span>
+												</div>
+											</label>
+										{/each}
+									{/if}
+								</div>
+							</div>
+						{:else if activeTab === 'groups'}
+							<div class="field">
+								<div class="inline">
+									<input
+										bind:value={searchQuery}
+										placeholder="Search groups..."
+										class="search-input"
+										autocapitalize="off"
+										autocorrect="off"
+										spellcheck="false"
+									/>
+									{#if searchQuery}
+										<button type="button" class="search-clear" onclick={() => (searchQuery = '')}
+											>Clear</button
+										>
+									{/if}
+								</div>
+								<div class="group-list">
+									{#if filteredGroups.length === 0}
+										<div class="empty-search">No groups match "{searchQuery}"</div>
+									{:else}
+										{#each filteredGroups as group (group)}
+											<label class="group-card" class:selected={selectedGroups.has(group.name)}>
+												<input
+													type="checkbox"
+													checked={selectedGroups.has(group.name)}
+													onchange={() => toggleGroup(group.name)}
+												/>
+												<div class="group-content">
+													<div class="group-header">
+														<span class="group-name">{group.name}</span>
+														<span class="group-badge"
+															>{group.repo_count} repo{group.repo_count !== 1 ? 's' : ''}</span
+														>
+													</div>
+													{#if group.description}
+														<span class="group-description">{group.description}</span>
+													{/if}
+													<button
+														type="button"
+														class="group-expand"
+														onclick={(e) => {
+															e.preventDefault();
+															toggleGroupExpand(group.name);
+														}}
+													>
+														{expandedGroups.has(group.name) ? '▾ Hide' : '▸ Show'} repos
+													</button>
+													{#if expandedGroups.has(group.name)}
+														<ul class="group-members">
+															{#each groupDetails.get(group.name) || [] as repoName (repoName)}
+																<li>{repoName}</li>
+															{/each}
+														</ul>
+													{/if}
+												</div>
+											</label>
+										{/each}
+									{/if}
+								</div>
+							</div>
 						{/if}
 					</div>
-				{/if}
 
-				<!-- Selection Area - Left Column -->
-				<div class="selection-area">
-					{#if activeTab === 'direct'}
-						<label class="field">
-							<span>Repo URL or local path</span>
-							<div class="inline">
-								<input
-									bind:value={primaryInput}
-									placeholder="git@github.com:org/repo.git"
-									autocapitalize="off"
-									autocorrect="off"
-									spellcheck="false"
-									onkeydown={(e) => {
-										if (e.key === 'Enter') {
-											e.preventDefault();
-											addDirectRepo();
-										}
-									}}
-								/>
-								<Button
-									variant="ghost"
-									size="sm"
-									onclick={async () => {
-										try {
-											const path = await openDirectoryDialog(
-												'Select repo directory',
-												primaryInput.trim(),
-											);
-											if (path) primaryInput = path;
-										} catch (err) {
-											error = formatError(err, 'Failed to open directory picker.');
-										}
-									}}>Browse</Button
-								>
-								<Button
-									variant="primary"
-									size="sm"
-									onclick={addDirectRepo}
-									disabled={!primaryInput.trim() || !isRepoSource(primaryInput)}>Add</Button
-								>
-							</div>
-						</label>
-						{#if directRepos.length > 0}
-							<div class="direct-repos-list">
-								{#each directRepos as repo (repo.url)}
-									<div class="direct-repo-item">
-										<div class="direct-repo-info">
-											<span class="direct-repo-name">{deriveRepoName(repo.url) || repo.url}</span>
-											<span class="direct-repo-url">{repo.url}</span>
-										</div>
-										<label
-											class="direct-repo-register"
-											title="Save to Repo Registry for future use"
-										>
-											<input
-												type="checkbox"
-												checked={repo.register}
-												onchange={() => toggleDirectRepoRegister(repo.url)}
-											/>
-											<span>Register</span>
-										</label>
-										<button
-											type="button"
-											class="direct-repo-remove"
-											onclick={() => removeDirectRepo(repo.url)}
-										>
-											×
-										</button>
-									</div>
-								{/each}
-							</div>
-						{/if}
-					{:else if activeTab === 'repos'}
-						<div class="field">
-							<div class="inline">
-								<input
-									bind:value={searchQuery}
-									placeholder="Search repos..."
-									class="search-input"
-									autocapitalize="off"
-									autocorrect="off"
-									spellcheck="false"
-								/>
-								{#if searchQuery}
-									<button type="button" class="search-clear" onclick={() => (searchQuery = '')}
-										>Clear</button
-									>
-								{/if}
-							</div>
-							<div class="checkbox-list">
-								{#if filteredAliases.length === 0}
-									<div class="empty-search">No repos match "{searchQuery}"</div>
-								{:else}
-									{#each filteredAliases as alias (alias)}
-										<label class="checkbox-item" class:selected={selectedAliases.has(alias.name)}>
-											<input
-												type="checkbox"
-												checked={selectedAliases.has(alias.name)}
-												onchange={() => toggleAlias(alias.name)}
-											/>
-											<div class="checkbox-content">
-												<span class="checkbox-name">{alias.name}</span>
-												<span class="checkbox-meta">{getAliasSource(alias)}</span>
-											</div>
-										</label>
-									{/each}
-								{/if}
-							</div>
-						</div>
-					{:else if activeTab === 'groups'}
-						<div class="field">
-							<div class="inline">
-								<input
-									bind:value={searchQuery}
-									placeholder="Search groups..."
-									class="search-input"
-									autocapitalize="off"
-									autocorrect="off"
-									spellcheck="false"
-								/>
-								{#if searchQuery}
-									<button type="button" class="search-clear" onclick={() => (searchQuery = '')}
-										>Clear</button
-									>
-								{/if}
-							</div>
-							<div class="group-list">
-								{#if filteredGroups.length === 0}
-									<div class="empty-search">No groups match "{searchQuery}"</div>
-								{:else}
-									{#each filteredGroups as group (group)}
-										<label class="group-card" class:selected={selectedGroups.has(group.name)}>
-											<input
-												type="checkbox"
-												checked={selectedGroups.has(group.name)}
-												onchange={() => toggleGroup(group.name)}
-											/>
-											<div class="group-content">
-												<div class="group-header">
-													<span class="group-name">{group.name}</span>
-													<span class="group-badge"
-														>{group.repo_count} repo{group.repo_count !== 1 ? 's' : ''}</span
-													>
-												</div>
-												{#if group.description}
-													<span class="group-description">{group.description}</span>
-												{/if}
-												<button
-													type="button"
-													class="group-expand"
-													onclick={(e) => {
-														e.preventDefault();
-														toggleGroupExpand(group.name);
-													}}
-												>
-													{expandedGroups.has(group.name) ? '▾ Hide' : '▸ Show'} repos
-												</button>
-												{#if expandedGroups.has(group.name)}
-													<ul class="group-members">
-														{#each groupDetails.get(group.name) || [] as repoName (repoName)}
-															<li>{repoName}</li>
-														{/each}
-													</ul>
-												{/if}
-											</div>
-										</label>
-									{/each}
-								{/if}
-							</div>
-						</div>
+					{#if aliasItems.length === 0 && groupItems.length === 0}
+						<div class="hint">No registered repos or groups configured. Add them in Settings.</div>
 					{/if}
 				</div>
 
-				{#if aliasItems.length === 0 && groupItems.length === 0}
-					<div class="hint">No registered repos or groups configured. Add them in Settings.</div>
-				{/if}
+				<div class="column-right">
+					<div class="selection-panel">
+						<h4 class="panel-title">Selected ({totalRepos} repos)</h4>
+
+						<div class="selected-list">
+							{#if selectedItems.length === 0}
+								<div class="empty-selection">No repos selected</div>
+							{:else}
+								{#each selectedItems as item (item.name)}
+									<div class="selected-item" class:pending={item.pending}>
+										<span class="selected-badge {item.type}">{item.type}</span>
+										<span class="selected-name">{item.name}</span>
+										{#if item.pending}
+											<span class="pending-label">pending</span>
+										{:else}
+											<button
+												type="button"
+												class="selected-remove"
+												onclick={() => {
+													if (item.type === 'repo' && item.url) removeDirectRepo(item.url);
+													else if (item.type === 'alias') removeAlias(item.name);
+													else if (item.type === 'group') removeGroup(item.name);
+												}}
+											>
+												×
+											</button>
+										{/if}
+									</div>
+								{/each}
+							{/if}
+						</div>
+
+						<div class="panel-section">
+							<span class="panel-label">Workspace name</span>
+							<input
+								bind:value={customizeName}
+								placeholder={generatedName || 'workspace-name'}
+								class="name-input"
+								autocapitalize="off"
+								autocorrect="off"
+								spellcheck="false"
+							/>
+							{#if alternatives.length > 0}
+								<div class="alt-chips">
+									{#each alternatives as alt, i (i)}
+										<button type="button" class="alt-chip" onclick={() => selectAlternative(alt)}
+											>{alt}</button
+										>
+									{/each}
+								</div>
+							{/if}
+						</div>
+
+						<Button
+							variant="primary"
+							onclick={handleCreate}
+							disabled={loading || !finalName}
+							class="create-btn"
+						>
+							{loading ? 'Creating…' : 'Create'}
+						</Button>
+					</div>
+				</div>
 			</div>
+		{:else if mode === 'rename'}
+			<div class="form">
+				<label class="field">
+					<span>New name</span>
+					<input
+						bind:this={nameInput}
+						bind:value={renameName}
+						placeholder="acme"
+						autocapitalize="off"
+						autocorrect="off"
+						spellcheck="false"
+					/>
+				</label>
+				<div class="hint">Renaming updates config and workset.yaml. Files stay in place.</div>
+				<Button variant="primary" onclick={handleRename} disabled={loading} class="action-btn">
+					{loading ? 'Renaming…' : 'Rename'}
+				</Button>
+			</div>
+		{:else if mode === 'add-repo'}
+			<div class="form add-two-column">
+				<div class="column-left">
+					<!-- Tab Bar - only when aliases/groups exist -->
+					{#if aliasItems.length > 0 || groupItems.length > 0}
+						<div class="tab-bar">
+							<button
+								class="tab"
+								class:active={activeTab === 'direct'}
+								type="button"
+								onclick={() => {
+									activeTab = 'direct';
+									searchQuery = '';
+								}}
+							>
+								Direct
+							</button>
+							{#if aliasItems.length > 0}
+								<button
+									class="tab"
+									class:active={activeTab === 'repos'}
+									type="button"
+									onclick={() => {
+										activeTab = 'repos';
+										searchQuery = '';
+									}}
+								>
+									Repos ({aliasItems.length})
+								</button>
+							{/if}
+							{#if groupItems.length > 0}
+								<button
+									class="tab"
+									class:active={activeTab === 'groups'}
+									type="button"
+									onclick={() => {
+										activeTab = 'groups';
+										searchQuery = '';
+									}}
+								>
+									Groups ({groupItems.length})
+								</button>
+							{/if}
+						</div>
+					{/if}
 
-			<div class="column-right">
-				<div class="selection-panel">
-					<h4 class="panel-title">Selected ({totalRepos} repos)</h4>
-
-					<div class="selected-list">
-						{#if selectedItems.length === 0}
-							<div class="empty-selection">No repos selected</div>
-						{:else}
-							{#each selectedItems as item (item.name)}
-								<div class="selected-item" class:pending={item.pending}>
-									<span class="selected-badge {item.type}">{item.type}</span>
-									<span class="selected-name">{item.name}</span>
-									{#if item.pending}
-										<span class="pending-label">pending</span>
+					<!-- Selection Area - Left Column -->
+					<div class="selection-area">
+						{#if activeTab === 'direct'}
+							<label class="field">
+								<span>Repo URL or local path</span>
+								<div class="inline">
+									<input
+										bind:value={addSource}
+										placeholder="git@github.com:org/repo.git"
+										autocapitalize="off"
+										autocorrect="off"
+										spellcheck="false"
+									/>
+									<Button variant="ghost" size="sm" onclick={handleBrowse}>Browse</Button>
+								</div>
+							</label>
+						{:else if activeTab === 'repos'}
+							<div class="field">
+								<div class="inline">
+									<input
+										bind:value={searchQuery}
+										placeholder="Search repos..."
+										class="search-input"
+										autocapitalize="off"
+										autocorrect="off"
+										spellcheck="false"
+									/>
+									{#if searchQuery}
+										<button type="button" class="search-clear" onclick={() => (searchQuery = '')}
+											>Clear</button
+										>
+									{/if}
+								</div>
+								<div class="checkbox-list">
+									{#if filteredAliases.length === 0}
+										<div class="empty-search">No repos match "{searchQuery}"</div>
 									{:else}
+										{#each filteredAliases as alias (alias)}
+											<label class="checkbox-item" class:selected={selectedAliases.has(alias.name)}>
+												<input
+													type="checkbox"
+													checked={selectedAliases.has(alias.name)}
+													onchange={() => toggleAlias(alias.name)}
+												/>
+												<div class="checkbox-content">
+													<span class="checkbox-name">{alias.name}</span>
+													<span class="checkbox-meta">{getAliasSource(alias)}</span>
+												</div>
+											</label>
+										{/each}
+									{/if}
+								</div>
+							</div>
+						{:else if activeTab === 'groups'}
+							<div class="field">
+								<div class="inline">
+									<input
+										bind:value={searchQuery}
+										placeholder="Search groups..."
+										class="search-input"
+										autocapitalize="off"
+										autocorrect="off"
+										spellcheck="false"
+									/>
+									{#if searchQuery}
+										<button type="button" class="search-clear" onclick={() => (searchQuery = '')}
+											>Clear</button
+										>
+									{/if}
+								</div>
+								<div class="group-list">
+									{#if filteredGroups.length === 0}
+										<div class="empty-search">No groups match "{searchQuery}"</div>
+									{:else}
+										{#each filteredGroups as group (group)}
+											<label class="group-card" class:selected={selectedGroups.has(group.name)}>
+												<input
+													type="checkbox"
+													checked={selectedGroups.has(group.name)}
+													onchange={() => toggleGroup(group.name)}
+												/>
+												<div class="group-content">
+													<div class="group-header">
+														<span class="group-name">{group.name}</span>
+														<span class="group-badge"
+															>{group.repo_count} repo{group.repo_count !== 1 ? 's' : ''}</span
+														>
+													</div>
+													{#if group.description}
+														<span class="group-description">{group.description}</span>
+													{/if}
+													<button
+														type="button"
+														class="group-expand"
+														onclick={(e) => {
+															e.preventDefault();
+															toggleGroupExpand(group.name);
+														}}
+													>
+														{expandedGroups.has(group.name) ? '▾ Hide' : '▸ Show'} repos
+													</button>
+													{#if expandedGroups.has(group.name)}
+														<ul class="group-members">
+															{#each groupDetails.get(group.name) || [] as repoName (repoName)}
+																<li>{repoName}</li>
+															{/each}
+														</ul>
+													{/if}
+												</div>
+											</label>
+										{/each}
+									{/if}
+								</div>
+							</div>
+						{/if}
+					</div>
+
+					{#if aliasItems.length === 0 && groupItems.length === 0}
+						<div class="hint">No registered repos or groups configured. Add them in Settings.</div>
+					{/if}
+				</div>
+
+				<div class="column-right">
+					<div class="selection-panel">
+						{#if existingRepos.length > 0}
+							<div class="panel-section existing-section">
+								<span class="panel-label">Already in workspace ({existingRepos.length} repos)</span>
+								<div class="existing-list">
+									{#each existingRepos as repo (repo.name)}
+										<div class="existing-item">
+											<span class="selected-badge existing">repo</span>
+											<span class="selected-name">{repo.name}</span>
+										</div>
+									{/each}
+								</div>
+							</div>
+						{/if}
+
+						<h4 class="panel-title">Selected ({addRepoTotalItems} items)</h4>
+
+						<div class="selected-list">
+							{#if addRepoSelectedItems.length === 0}
+								<div class="empty-selection">No items selected</div>
+							{:else}
+								{#each addRepoSelectedItems as item (item.name)}
+									<div class="selected-item">
+										<span class="selected-badge {item.type}">{item.type}</span>
+										<span class="selected-name">{item.name}</span>
 										<button
 											type="button"
 											class="selected-remove"
 											onclick={() => {
-												if (item.type === 'repo' && item.url) removeDirectRepo(item.url);
+												if (item.type === 'repo') addSource = '';
 												else if (item.type === 'alias') removeAlias(item.name);
 												else if (item.type === 'group') removeGroup(item.name);
 											}}
 										>
 											×
 										</button>
-									{/if}
-								</div>
-							{/each}
-						{/if}
-					</div>
-
-					<div class="panel-section">
-						<span class="panel-label">Workspace name</span>
-						<input
-							bind:value={customizeName}
-							placeholder={generatedName || 'workspace-name'}
-							class="name-input"
-							autocapitalize="off"
-							autocorrect="off"
-							spellcheck="false"
-						/>
-						{#if alternatives.length > 0}
-							<div class="alt-chips">
-								{#each alternatives as alt, i (i)}
-									<button type="button" class="alt-chip" onclick={() => selectAlternative(alt)}
-										>{alt}</button
-									>
-								{/each}
-							</div>
-						{/if}
-					</div>
-
-					<Button
-						variant="primary"
-						onclick={handleCreate}
-						disabled={loading || !finalName}
-						class="create-btn"
-					>
-						{loading ? 'Creating…' : 'Create'}
-					</Button>
-				</div>
-			</div>
-		</div>
-	{:else if mode === 'rename'}
-		<div class="form">
-			<label class="field">
-				<span>New name</span>
-				<input
-					bind:this={nameInput}
-					bind:value={renameName}
-					placeholder="acme"
-					autocapitalize="off"
-					autocorrect="off"
-					spellcheck="false"
-				/>
-			</label>
-			<div class="hint">Renaming updates config and workset.yaml. Files stay in place.</div>
-			<Button variant="primary" onclick={handleRename} disabled={loading} class="action-btn">
-				{loading ? 'Renaming…' : 'Rename'}
-			</Button>
-		</div>
-	{:else if mode === 'add-repo'}
-		<div class="form add-two-column">
-			<div class="column-left">
-				<!-- Tab Bar - only when aliases/groups exist -->
-				{#if aliasItems.length > 0 || groupItems.length > 0}
-					<div class="tab-bar">
-						<button
-							class="tab"
-							class:active={activeTab === 'direct'}
-							type="button"
-							onclick={() => {
-								activeTab = 'direct';
-								searchQuery = '';
-							}}
-						>
-							Direct
-						</button>
-						{#if aliasItems.length > 0}
-							<button
-								class="tab"
-								class:active={activeTab === 'repos'}
-								type="button"
-								onclick={() => {
-									activeTab = 'repos';
-									searchQuery = '';
-								}}
-							>
-								Repos ({aliasItems.length})
-							</button>
-						{/if}
-						{#if groupItems.length > 0}
-							<button
-								class="tab"
-								class:active={activeTab === 'groups'}
-								type="button"
-								onclick={() => {
-									activeTab = 'groups';
-									searchQuery = '';
-								}}
-							>
-								Groups ({groupItems.length})
-							</button>
-						{/if}
-					</div>
-				{/if}
-
-				<!-- Selection Area - Left Column -->
-				<div class="selection-area">
-					{#if activeTab === 'direct'}
-						<label class="field">
-							<span>Repo URL or local path</span>
-							<div class="inline">
-								<input
-									bind:value={addSource}
-									placeholder="git@github.com:org/repo.git"
-									autocapitalize="off"
-									autocorrect="off"
-									spellcheck="false"
-								/>
-								<Button variant="ghost" size="sm" onclick={handleBrowse}>Browse</Button>
-							</div>
-						</label>
-					{:else if activeTab === 'repos'}
-						<div class="field">
-							<div class="inline">
-								<input
-									bind:value={searchQuery}
-									placeholder="Search repos..."
-									class="search-input"
-									autocapitalize="off"
-									autocorrect="off"
-									spellcheck="false"
-								/>
-								{#if searchQuery}
-									<button type="button" class="search-clear" onclick={() => (searchQuery = '')}
-										>Clear</button
-									>
-								{/if}
-							</div>
-							<div class="checkbox-list">
-								{#if filteredAliases.length === 0}
-									<div class="empty-search">No repos match "{searchQuery}"</div>
-								{:else}
-									{#each filteredAliases as alias (alias)}
-										<label class="checkbox-item" class:selected={selectedAliases.has(alias.name)}>
-											<input
-												type="checkbox"
-												checked={selectedAliases.has(alias.name)}
-												onchange={() => toggleAlias(alias.name)}
-											/>
-											<div class="checkbox-content">
-												<span class="checkbox-name">{alias.name}</span>
-												<span class="checkbox-meta">{getAliasSource(alias)}</span>
-											</div>
-										</label>
-									{/each}
-								{/if}
-							</div>
-						</div>
-					{:else if activeTab === 'groups'}
-						<div class="field">
-							<div class="inline">
-								<input
-									bind:value={searchQuery}
-									placeholder="Search groups..."
-									class="search-input"
-									autocapitalize="off"
-									autocorrect="off"
-									spellcheck="false"
-								/>
-								{#if searchQuery}
-									<button type="button" class="search-clear" onclick={() => (searchQuery = '')}
-										>Clear</button
-									>
-								{/if}
-							</div>
-							<div class="group-list">
-								{#if filteredGroups.length === 0}
-									<div class="empty-search">No groups match "{searchQuery}"</div>
-								{:else}
-									{#each filteredGroups as group (group)}
-										<label class="group-card" class:selected={selectedGroups.has(group.name)}>
-											<input
-												type="checkbox"
-												checked={selectedGroups.has(group.name)}
-												onchange={() => toggleGroup(group.name)}
-											/>
-											<div class="group-content">
-												<div class="group-header">
-													<span class="group-name">{group.name}</span>
-													<span class="group-badge"
-														>{group.repo_count} repo{group.repo_count !== 1 ? 's' : ''}</span
-													>
-												</div>
-												{#if group.description}
-													<span class="group-description">{group.description}</span>
-												{/if}
-												<button
-													type="button"
-													class="group-expand"
-													onclick={(e) => {
-														e.preventDefault();
-														toggleGroupExpand(group.name);
-													}}
-												>
-													{expandedGroups.has(group.name) ? '▾ Hide' : '▸ Show'} repos
-												</button>
-												{#if expandedGroups.has(group.name)}
-													<ul class="group-members">
-														{#each groupDetails.get(group.name) || [] as repoName (repoName)}
-															<li>{repoName}</li>
-														{/each}
-													</ul>
-												{/if}
-											</div>
-										</label>
-									{/each}
-								{/if}
-							</div>
-						</div>
-					{/if}
-				</div>
-
-				{#if aliasItems.length === 0 && groupItems.length === 0}
-					<div class="hint">No registered repos or groups configured. Add them in Settings.</div>
-				{/if}
-			</div>
-
-			<div class="column-right">
-				<div class="selection-panel">
-					{#if existingRepos.length > 0}
-						<div class="panel-section existing-section">
-							<span class="panel-label">Already in workspace ({existingRepos.length} repos)</span>
-							<div class="existing-list">
-								{#each existingRepos as repo (repo.name)}
-									<div class="existing-item">
-										<span class="selected-badge existing">repo</span>
-										<span class="selected-name">{repo.name}</span>
 									</div>
 								{/each}
+							{/if}
+						</div>
+
+						<Button
+							variant="primary"
+							onclick={handleAddItems}
+							disabled={loading || addRepoTotalItems === 0}
+							class="create-btn"
+						>
+							{loading ? 'Adding…' : 'Add'}
+						</Button>
+					</div>
+				</div>
+			</div>
+		{:else if mode === 'archive'}
+			<div class="form">
+				<div class="hint">Archiving hides the workspace but keeps files on disk.</div>
+				<label class="field">
+					<span>Reason (optional)</span>
+					<input
+						bind:this={nameInput}
+						bind:value={archiveReason}
+						placeholder="paused"
+						autocapitalize="off"
+						autocorrect="off"
+						spellcheck="false"
+					/>
+				</label>
+				<Button variant="danger" onclick={handleArchive} disabled={loading} class="action-btn">
+					{loading ? 'Archiving…' : 'Archive'}
+				</Button>
+			</div>
+		{:else if mode === 'remove-workspace'}
+			<div class="form form-removing" class:removing class:success={removalSuccess}>
+				<div class="form-content">
+					<div class="hint hint-intro">Remove workspace registration only by default.</div>
+					<label class="option option-main">
+						<input type="checkbox" bind:checked={removeDeleteFiles} />
+						<span>Also delete workspace files and worktrees</span>
+					</label>
+					{#if removeDeleteFiles}
+						<div class="deletion-options">
+							<div class="hint deletion-hint">
+								Deletes the workspace directory and removes all worktrees.
 							</div>
+							<label class="field">
+								<span>Type DELETE to confirm</span>
+								<input
+									bind:value={removeConfirmText}
+									placeholder="DELETE"
+									autocapitalize="off"
+									autocorrect="off"
+									spellcheck="false"
+								/>
+							</label>
+							<label class="option">
+								<input type="checkbox" bind:checked={removeForceDelete} />
+								<span>Force delete (skip safety checks)</span>
+							</label>
+							{#if removeForceDelete}
+								<Alert variant="warning">
+									Force delete bypasses dirty/unmerged checks and may delete uncommitted work.
+								</Alert>
+							{/if}
 						</div>
 					{/if}
-
-					<h4 class="panel-title">Selected ({addRepoTotalItems} items)</h4>
-
-					<div class="selected-list">
-						{#if addRepoSelectedItems.length === 0}
-							<div class="empty-selection">No items selected</div>
-						{:else}
-							{#each addRepoSelectedItems as item (item.name)}
-								<div class="selected-item">
-									<span class="selected-badge {item.type}">{item.type}</span>
-									<span class="selected-name">{item.name}</span>
-									<button
-										type="button"
-										class="selected-remove"
-										onclick={() => {
-											if (item.type === 'repo') addSource = '';
-											else if (item.type === 'alias') removeAlias(item.name);
-											else if (item.type === 'group') removeGroup(item.name);
-										}}
-									>
-										×
-									</button>
-								</div>
-							{/each}
-						{/if}
-					</div>
-
 					<Button
-						variant="primary"
-						onclick={handleAddItems}
-						disabled={loading || addRepoTotalItems === 0}
-						class="create-btn"
+						variant="danger"
+						onclick={handleRemoveWorkspace}
+						disabled={loading || !removeConfirmValid}
+						class="action-btn"
 					>
-						{loading ? 'Adding…' : 'Add'}
+						{loading ? 'Removing…' : 'Remove workspace'}
 					</Button>
 				</div>
-			</div>
-		</div>
-	{:else if mode === 'archive'}
-		<div class="form">
-			<div class="hint">Archiving hides the workspace but keeps files on disk.</div>
-			<label class="field">
-				<span>Reason (optional)</span>
-				<input
-					bind:this={nameInput}
-					bind:value={archiveReason}
-					placeholder="paused"
-					autocapitalize="off"
-					autocorrect="off"
-					spellcheck="false"
-				/>
-			</label>
-			<Button variant="danger" onclick={handleArchive} disabled={loading} class="action-btn">
-				{loading ? 'Archiving…' : 'Archive'}
-			</Button>
-		</div>
-	{:else if mode === 'remove-workspace'}
-		<div class="form form-removing" class:removing class:success={removalSuccess}>
-			<div class="form-content">
-				<div class="hint hint-intro">Remove workspace registration only by default.</div>
-				<label class="option option-main">
-					<input type="checkbox" bind:checked={removeDeleteFiles} />
-					<span>Also delete workspace files and worktrees</span>
-				</label>
-				{#if removeDeleteFiles}
-					<div class="deletion-options">
-						<div class="hint deletion-hint">
-							Deletes the workspace directory and removes all worktrees.
-						</div>
-						<label class="field">
-							<span>Type DELETE to confirm</span>
-							<input
-								bind:value={removeConfirmText}
-								placeholder="DELETE"
-								autocapitalize="off"
-								autocorrect="off"
-								spellcheck="false"
-							/>
-						</label>
-						<label class="option">
-							<input type="checkbox" bind:checked={removeForceDelete} />
-							<span>Force delete (skip safety checks)</span>
-						</label>
-						{#if removeForceDelete}
-							<Alert variant="warning">
-								Force delete bypasses dirty/unmerged checks and may delete uncommitted work.
-							</Alert>
-						{/if}
-					</div>
-				{/if}
-				<Button
-					variant="danger"
-					onclick={handleRemoveWorkspace}
-					disabled={loading || !removeConfirmValid}
-					class="action-btn"
-				>
-					{loading ? 'Removing…' : 'Remove workspace'}
-				</Button>
-			</div>
-			{#if removing}
-				<div class="removal-overlay">
-					{#if removalSuccess}
-						<div class="removal-success">
-							<svg
-								class="success-icon"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-							>
-								<path d="M20 6L9 17l-5-5" />
-							</svg>
-							<span class="removal-text">Removed successfully</span>
-						</div>
-					{:else}
-						<div class="removal-loading">
-							<div class="spinner"></div>
-							<span class="removal-text">Removing workspace…</span>
-						</div>
-					{/if}
-				</div>
-			{/if}
-		</div>
-	{:else if mode === 'remove-repo'}
-		<div class="form form-removing" class:removing class:success={removalSuccess}>
-			<div class="form-content">
-				<div class="hint hint-intro">
-					This removes the repo from the workspace config by default.
-				</div>
-				<label class="option option-main">
-					<input type="checkbox" bind:checked={removeDeleteWorktree} />
-					<span>Also delete worktrees for this repo</span>
-				</label>
-				{#if removeRepoConfirmRequired}
-					<div class="deletion-options">
-						<label class="field">
-							<span>Type DELETE to confirm</span>
-							<input
-								bind:value={removeRepoConfirmText}
-								placeholder="DELETE"
-								autocapitalize="off"
-								autocorrect="off"
-								spellcheck="false"
-							/>
-						</label>
-						{#if removeDeleteWorktree}
-							<div class="hint deletion-hint">
-								Destructive deletes are permanent and cannot be undone.
+				{#if removing}
+					<div class="removal-overlay">
+						{#if removalSuccess}
+							<div class="removal-success">
+								<svg
+									class="success-icon"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+								>
+									<path d="M20 6L9 17l-5-5" />
+								</svg>
+								<span class="removal-text">Removed successfully</span>
+							</div>
+						{:else}
+							<div class="removal-loading">
+								<div class="spinner"></div>
+								<span class="removal-text">Removing workspace…</span>
 							</div>
 						{/if}
-						{#if removeRepoStatusRefreshing}
-							<Alert variant="warning">Fetching repo status…</Alert>
-						{:else if removeRepoStatus?.statusKnown === false && removeDeleteWorktree}
-							<Alert variant="warning">
-								Repo status unknown. Destructive deletes may be blocked if the repo is dirty.
-							</Alert>
-						{/if}
-						{#if removeRepoStatus?.dirty && removeDeleteWorktree}
-							<Alert variant="warning">
-								Uncommitted changes detected. Destructive deletes will be blocked until the repo is
-								clean.
-							</Alert>
+					</div>
+				{/if}
+			</div>
+		{:else if mode === 'remove-repo'}
+			<div class="form form-removing" class:removing class:success={removalSuccess}>
+				<div class="form-content">
+					<div class="hint hint-intro">
+						This removes the repo from the workspace config by default.
+					</div>
+					<label class="option option-main">
+						<input type="checkbox" bind:checked={removeDeleteWorktree} />
+						<span>Also delete worktrees for this repo</span>
+					</label>
+					{#if removeRepoConfirmRequired}
+						<div class="deletion-options">
+							<label class="field">
+								<span>Type DELETE to confirm</span>
+								<input
+									bind:value={removeRepoConfirmText}
+									placeholder="DELETE"
+									autocapitalize="off"
+									autocorrect="off"
+									spellcheck="false"
+								/>
+							</label>
+							{#if removeDeleteWorktree}
+								<div class="hint deletion-hint">
+									Destructive deletes are permanent and cannot be undone.
+								</div>
+							{/if}
+							{#if removeRepoStatusRefreshing}
+								<Alert variant="warning">Fetching repo status…</Alert>
+							{:else if removeRepoStatus?.statusKnown === false && removeDeleteWorktree}
+								<Alert variant="warning">
+									Repo status unknown. Destructive deletes may be blocked if the repo is dirty.
+								</Alert>
+							{/if}
+							{#if removeRepoStatus?.dirty && removeDeleteWorktree}
+								<Alert variant="warning">
+									Uncommitted changes detected. Destructive deletes will be blocked until the repo
+									is clean.
+								</Alert>
+							{/if}
+						</div>
+					{/if}
+					<Button
+						variant="danger"
+						onclick={handleRemoveRepo}
+						disabled={loading || !removeRepoConfirmValid}
+						class="action-btn"
+					>
+						{loading ? 'Removing…' : 'Remove repo'}
+					</Button>
+				</div>
+				{#if removing}
+					<div class="removal-overlay">
+						{#if removalSuccess}
+							<div class="removal-success">
+								<svg
+									class="success-icon"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+								>
+									<path d="M20 6L9 17l-5-5" />
+								</svg>
+								<span class="removal-text">Removed successfully</span>
+							</div>
+						{:else}
+							<div class="removal-loading">
+								<div class="spinner"></div>
+								<span class="removal-text">Removing repo…</span>
+							</div>
 						{/if}
 					</div>
 				{/if}
-				<Button
-					variant="danger"
-					onclick={handleRemoveRepo}
-					disabled={loading || !removeRepoConfirmValid}
-					class="action-btn"
-				>
-					{loading ? 'Removing…' : 'Remove repo'}
-				</Button>
 			</div>
-			{#if removing}
-				<div class="removal-overlay">
-					{#if removalSuccess}
-						<div class="removal-success">
-							<svg
-								class="success-icon"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-							>
-								<path d="M20 6L9 17l-5-5" />
-							</svg>
-							<span class="removal-text">Removed successfully</span>
-						</div>
-					{:else}
-						<div class="removal-loading">
-							<div class="spinner"></div>
-							<span class="removal-text">Removing repo…</span>
-						</div>
-					{/if}
-				</div>
-			{/if}
-		</div>
-	{/if}
+		{/if}
 	{/if}
 </Modal>
 
