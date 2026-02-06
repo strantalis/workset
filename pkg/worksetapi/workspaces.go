@@ -55,6 +55,9 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 	if err != nil {
 		return WorkspaceCreateResult{}, err
 	}
+	if err := workspaceCreateConflict(cfg, name, ""); err != nil {
+		return WorkspaceCreateResult{}, err
+	}
 
 	root := strings.TrimSpace(input.Path)
 	if root == "" {
@@ -80,6 +83,9 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 
 	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
 		info = loadInfo
+		if err := workspaceCreateConflict(*cfg, name, ""); err != nil {
+			return err
+		}
 		registerWorkspace(cfg, name, root, s.clock())
 		return nil
 	}); err != nil {
@@ -159,6 +165,9 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 
 	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
 		info = loadInfo
+		if err := workspaceCreateConflict(*cfg, name, root); err != nil {
+			return err
+		}
 		for aliasName, update := range aliasUpdates {
 			alias, ok := cfg.Repos[aliasName]
 			if !ok {
@@ -473,6 +482,30 @@ func warnOutsideWorkspaceRoot(root, workspaceRoot string) []string {
 		return nil
 	}
 	return []string{fmt.Sprintf("workspace created outside defaults.workspace_root (%s)", absWorkspace)}
+}
+
+func workspaceCreateConflict(cfg config.GlobalConfig, name, allowPath string) error {
+	ref, ok := cfg.Workspaces[name]
+	if !ok {
+		return nil
+	}
+	path := strings.TrimSpace(ref.Path)
+	if path != "" && allowPath != "" && samePath(path, allowPath) {
+		return nil
+	}
+	if path != "" {
+		return ConflictError{Message: fmt.Sprintf("workspace %q already exists at %s", name, path)}
+	}
+	return ConflictError{Message: fmt.Sprintf("workspace %q already exists", name)}
+}
+
+func samePath(a, b string) bool {
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	if errA == nil && errB == nil {
+		return filepath.Clean(absA) == filepath.Clean(absB)
+	}
+	return filepath.Clean(a) == filepath.Clean(b)
 }
 
 func workspacesWithin(cfg config.GlobalConfig, targetName, absTarget string) ([]string, error) {

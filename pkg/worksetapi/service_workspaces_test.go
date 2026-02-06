@@ -101,6 +101,97 @@ func TestCreateWorkspaceValidation(t *testing.T) {
 	_ = requireErrorType[ValidationError](t, err)
 }
 
+func TestCreateWorkspaceDuplicateNameBlocked(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+
+	result, err := env.svc.CreateWorkspace(ctx, WorkspaceCreateInput{Name: "demo"})
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+
+	duplicatePath := filepath.Join(env.root, "duplicate-demo")
+	_, err = env.svc.CreateWorkspace(ctx, WorkspaceCreateInput{
+		Name: "demo",
+		Path: duplicatePath,
+	})
+	conflict := requireErrorType[ConflictError](t, err)
+	if !strings.Contains(conflict.Message, "already exists") {
+		t.Fatalf("unexpected conflict message: %q", conflict.Message)
+	}
+
+	if _, err := os.Stat(duplicatePath); !os.IsNotExist(err) {
+		t.Fatalf("expected duplicate path to remain absent, got err=%v", err)
+	}
+
+	cfg := env.loadConfig()
+	ref, ok := cfg.Workspaces["demo"]
+	if !ok {
+		t.Fatalf("workspace missing from config")
+	}
+	if ref.Path != result.Workspace.Path {
+		t.Fatalf("workspace path changed after duplicate create: got %q want %q", ref.Path, result.Workspace.Path)
+	}
+}
+
+type hideWorkspaceOnFirstLoadStore struct {
+	FileConfigStore
+
+	name   string
+	hidden bool
+}
+
+func (s *hideWorkspaceOnFirstLoadStore) Load(ctx context.Context, path string) (config.GlobalConfig, config.GlobalConfigLoadInfo, error) {
+	cfg, info, err := s.FileConfigStore.Load(ctx, path)
+	if err != nil {
+		return cfg, info, err
+	}
+	if !s.hidden {
+		delete(cfg.Workspaces, s.name)
+		s.hidden = true
+	}
+	return cfg, info, nil
+}
+
+func TestCreateWorkspaceDuplicateNameBlockedDuringAtomicUpdate(t *testing.T) {
+	env := newTestEnv(t)
+	injectedPath := filepath.Join(env.root, "existing-demo")
+	cfg := env.loadConfig()
+	if cfg.Workspaces == nil {
+		cfg.Workspaces = map[string]config.WorkspaceRef{}
+	}
+	cfg.Workspaces["demo"] = config.WorkspaceRef{Path: injectedPath}
+	env.saveConfig(cfg)
+
+	store := &hideWorkspaceOnFirstLoadStore{name: "demo"}
+	env.svc = NewService(Options{
+		ConfigPath:    env.configPath,
+		ConfigStore:   store,
+		Git:           env.git,
+		SessionRunner: env.runner,
+		Logf:          func(string, ...any) {},
+	})
+
+	targetPath := filepath.Join(env.root, "new-demo")
+	_, err := env.svc.CreateWorkspace(context.Background(), WorkspaceCreateInput{
+		Name: "demo",
+		Path: targetPath,
+	})
+	conflict := requireErrorType[ConflictError](t, err)
+	if !strings.Contains(conflict.Message, injectedPath) {
+		t.Fatalf("unexpected conflict message: %q", conflict.Message)
+	}
+
+	cfg = env.loadConfig()
+	ref, ok := cfg.Workspaces["demo"]
+	if !ok {
+		t.Fatalf("workspace missing from config")
+	}
+	if ref.Path != injectedPath {
+		t.Fatalf("workspace path changed after injected conflict: got %q want %q", ref.Path, injectedPath)
+	}
+}
+
 func TestCreateWorkspaceWithGroupRepos(t *testing.T) {
 	env := newTestEnv(t)
 	local := env.createLocalRepo("repo-a")
