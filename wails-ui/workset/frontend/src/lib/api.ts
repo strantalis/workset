@@ -1077,7 +1077,12 @@ export async function getSkill(
 	tool: string,
 	workspaceId?: string,
 ): Promise<SkillContent> {
-	return (await WailsGetSkill({ scope, dirName, tool, workspaceId: workspaceId ?? '' })) as SkillContent;
+	return (await WailsGetSkill({
+		scope,
+		dirName,
+		tool,
+		workspaceId: workspaceId ?? '',
+	})) as SkillContent;
 }
 
 export async function saveSkill(

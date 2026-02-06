@@ -3,7 +3,6 @@ package worksetapi
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/strantalis/workset/internal/config"
 	"github.com/strantalis/workset/internal/session"
@@ -67,14 +66,6 @@ func setGlobalDefault(cfg *config.GlobalConfig, key, value string) error {
 			return fmt.Errorf("unsupported agent launch mode %q", value)
 		}
 		cfg.Defaults.AgentLaunch = mode
-	case "defaults.terminal_renderer":
-		renderer := strings.ToLower(strings.TrimSpace(value))
-		switch renderer {
-		case "auto", "webgl", "canvas":
-			cfg.Defaults.TerminalRenderer = renderer
-		default:
-			return fmt.Errorf("unsupported terminal renderer %q", value)
-		}
 	case "defaults.terminal_idle_timeout":
 		cfg.Defaults.TerminalIdleTimeout = value
 	case "defaults.terminal_protocol_log":

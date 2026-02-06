@@ -29,9 +29,6 @@ func TestGetConfig(t *testing.T) {
 	if cfg.Defaults.AgentLaunch != "auto" {
 		t.Fatalf("unexpected agent launch default: %q", cfg.Defaults.AgentLaunch)
 	}
-	if cfg.Defaults.TerminalRenderer != "auto" {
-		t.Fatalf("unexpected terminal renderer default: %q", cfg.Defaults.TerminalRenderer)
-	}
 	if cfg.Defaults.TerminalIdleTimeout == "" {
 		t.Fatalf("unexpected terminal idle timeout default: %q", cfg.Defaults.TerminalIdleTimeout)
 	}
@@ -101,7 +98,6 @@ func TestSetDefaultVariousKeys(t *testing.T) {
 		"defaults.agent":                     "codex",
 		"defaults.agent_model":               "gpt-4o-mini",
 		"defaults.agent_launch":              "strict",
-		"defaults.terminal_renderer":         "webgl",
 		"defaults.terminal_idle_timeout":     "0",
 		"defaults.terminal_protocol_log":     "on",
 		"defaults.terminal_debug_overlay":    "off",
@@ -126,9 +122,6 @@ func TestSetDefaultVariousKeys(t *testing.T) {
 	}
 	if cfg.Defaults.AgentLaunch != "strict" {
 		t.Fatalf("agent launch default not set")
-	}
-	if cfg.Defaults.TerminalRenderer != "webgl" {
-		t.Fatalf("terminal renderer default not set")
 	}
 	if cfg.Defaults.TerminalIdleTimeout != "0" {
 		t.Fatalf("terminal idle timeout default not set")

@@ -30,9 +30,6 @@ func TestLoadGlobalDefaults(t *testing.T) {
 	if cfg.Defaults.SessionNameFormat == "" {
 		t.Fatalf("expected default session_name_format set")
 	}
-	if cfg.Defaults.TerminalRenderer == "" {
-		t.Fatalf("expected default terminal_renderer set")
-	}
 	if cfg.Defaults.TerminalIdleTimeout == "" {
 		t.Fatalf("expected default terminal_idle_timeout set")
 	}

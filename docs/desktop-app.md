@@ -33,7 +33,6 @@ The app defaults to GitHub CLI. Open Settings -> GitHub to connect via CLI or a 
 
 ## Terminal settings
 
-- `defaults.terminal_renderer` controls the xterm.js renderer (`webgl`).
 - `defaults.terminal_idle_timeout` controls idle shutdown for GUI terminals.
 - `defaults.terminal_protocol_log` enables sessiond protocol logging (restart daemon to apply).
 - `defaults.terminal_debug_overlay` shows the terminal debug overlay.

@@ -293,7 +293,6 @@ const resizeTimers = new Map<string, number>();
 const initTokens = new Map<string, number>();
 const startedSessions = new Set<string>();
 
-let rendererPreference = 'webgl' as const;
 let sessiondAvailable: boolean | null = null;
 let sessiondChecked = false;
 let debugEnabled = false;
@@ -1885,7 +1884,7 @@ const ensureSessionActive = async (id: string): Promise<void> => {
 				rendererMap = { ...rendererMap, [id]: 'unknown' };
 			}
 			if (!rendererModeMap[id]) {
-				rendererModeMap = { ...rendererModeMap, [id]: rendererPreference };
+				rendererModeMap = { ...rendererModeMap, [id]: 'webgl' };
 			}
 			emitState(id);
 		}
@@ -1986,7 +1985,6 @@ const ensureStream = async (id: string): Promise<void> => {
 };
 
 const loadTerminalDefaults = async (): Promise<void> => {
-	rendererPreference = 'webgl';
 	let nextDebugPreference = debugOverlayPreference;
 	try {
 		const settings = await fetchSettings();
@@ -2300,7 +2298,7 @@ const initTerminal = async (id: string): Promise<void> => {
 			rendererMap = { ...rendererMap, [id]: 'unknown' };
 		}
 		if (!rendererModeMap[id]) {
-			rendererModeMap = { ...rendererModeMap, [id]: rendererPreference };
+			rendererModeMap = { ...rendererModeMap, [id]: 'webgl' };
 		}
 		emitState(id);
 		return;
@@ -2315,7 +2313,7 @@ const initTerminal = async (id: string): Promise<void> => {
 			rendererMap = { ...rendererMap, [id]: 'unknown' };
 		}
 		if (!rendererModeMap[id]) {
-			rendererModeMap = { ...rendererModeMap, [id]: rendererPreference };
+			rendererModeMap = { ...rendererModeMap, [id]: 'webgl' };
 		}
 		inputMap = { ...inputMap, [id]: false };
 		emitState(id);
