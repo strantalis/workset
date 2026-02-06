@@ -121,13 +121,13 @@ func TestGitUntrackedNumstatBatch(t *testing.T) {
 	}
 }
 
-func TestGitUntrackedNumstatFallsBackWhenBatchPathspecFails(t *testing.T) {
+func TestGitUntrackedNumstatHandlesPathspecMagicFilename(t *testing.T) {
 	ctx := context.Background()
 	repoPath := t.TempDir()
 	runGit(t, repoPath, "init", "-q")
 
-	// This filename is valid on disk but parsed as pathspec magic in batched
-	// no-index mode, which forces fallback to per-file numstat.
+	// This filename is valid on disk but parsed as pathspec magic unless
+	// literal-pathspec handling is enabled.
 	path := ":(bad).txt"
 	if err := os.WriteFile(filepath.Join(repoPath, path), []byte("line one\nline two\n"), 0o644); err != nil {
 		t.Fatalf("write file: %v", err)
@@ -144,6 +144,37 @@ func TestGitUntrackedNumstatFallsBackWhenBatchPathspecFails(t *testing.T) {
 	}
 	if entry.added != 2 || entry.removed != 0 || entry.binary {
 		t.Fatalf("unexpected stats: %+v", entry)
+	}
+}
+
+func TestGitDiffNoIndexNumstatBatchLiteralPathspec(t *testing.T) {
+	ctx := context.Background()
+	repoPath := t.TempDir()
+	runGit(t, repoPath, "init", "-q")
+
+	path := ":(bad).txt"
+	if err := os.WriteFile(filepath.Join(repoPath, path), []byte("line one\nline two\n"), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	emptyDir := t.TempDir()
+	output, err := gitDiffNoIndexNumstatBatch(ctx, repoPath, emptyDir, []string{path})
+	if err != nil {
+		t.Fatalf("gitDiffNoIndexNumstatBatch failed: %v", err)
+	}
+
+	var found bool
+	for _, entry := range parseNumstatZ(output) {
+		if normalizeNoIndexPath(entry.path) != path {
+			continue
+		}
+		found = true
+		if entry.added != 2 || entry.removed != 0 || entry.binary {
+			t.Fatalf("unexpected entry for %q: %+v", path, entry)
+		}
+	}
+	if !found {
+		t.Fatalf("did not find expected entry for %q in output %q", path, string(output))
 	}
 }
 

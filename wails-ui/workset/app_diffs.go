@@ -304,6 +304,7 @@ func gitDiffNoIndex(ctx context.Context, repoPath, relativePath string) (string,
 		return "", nil
 	}
 	args := []string{
+		"--literal-pathspecs",
 		"-C", repoPath,
 		"diff",
 		"--no-index",
@@ -645,6 +646,7 @@ func gitDiffNoIndexNumstatBatch(ctx context.Context, repoPath, emptyDir string, 
 	}
 
 	args := []string{
+		"--literal-pathspecs",
 		"-C", repoPath,
 		"diff",
 		"--no-index",
