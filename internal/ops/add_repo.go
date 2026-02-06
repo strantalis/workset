@@ -189,6 +189,7 @@ func AddRepo(ctx context.Context, input AddRepoInput) (config.WorkspaceConfig, s
 			} else {
 				localRef := "refs/heads/" + defaultBranch
 				remoteRef := fmt.Sprintf("refs/remotes/%s/%s", startRemote, defaultBranch)
+				remoteStartRef := fmt.Sprintf("%s/%s", startRemote, defaultBranch)
 				localExists, err := input.Git.ReferenceExists(ctx, gitDirPath, localRef)
 				if err != nil {
 					warnings = append(warnings, fmt.Sprintf("check local base branch %s: %v", defaultBranch, err))
@@ -212,11 +213,26 @@ func AddRepo(ctx context.Context, input AddRepoInput) (config.WorkspaceConfig, s
 					case err != nil:
 						warnings = append(warnings, fmt.Sprintf("compare base branch %s to %s/%s: %v", defaultBranch, startRemote, defaultBranch, err))
 					case ancestor:
-						if err := input.Git.UpdateBranch(ctx, gitDirPath, defaultBranch, fmt.Sprintf("%s/%s", startRemote, defaultBranch)); err != nil {
+						if err := input.Git.UpdateBranch(ctx, gitDirPath, defaultBranch, remoteStartRef); err != nil {
 							warnings = append(warnings, fmt.Sprintf("fast-forward %s to %s/%s failed: %v", defaultBranch, startRemote, defaultBranch, err))
 						}
 					default:
 						warnings = append(warnings, fmt.Sprintf("base branch %s does not fast-forward to %s/%s; leaving local branch unchanged", defaultBranch, startRemote, defaultBranch))
+					}
+				}
+
+				targetRef := "refs/heads/" + targetBranch
+				targetExists, err := input.Git.ReferenceExists(ctx, gitDirPath, targetRef)
+				if err != nil {
+					warnings = append(warnings, fmt.Sprintf("check workspace branch %s: %v", targetBranch, err))
+				} else if targetExists && remoteExists && targetBranch != defaultBranch {
+					ancestor, err := input.Git.IsAncestor(gitDirPath, targetRef, remoteRef)
+					if err != nil {
+						warnings = append(warnings, fmt.Sprintf("compare workspace branch %s to %s/%s: %v", targetBranch, startRemote, defaultBranch, err))
+					} else if ancestor {
+						if err := input.Git.UpdateBranch(ctx, gitDirPath, targetBranch, remoteStartRef); err != nil {
+							warnings = append(warnings, fmt.Sprintf("fast-forward workspace branch %s to %s/%s failed: %v", targetBranch, startRemote, defaultBranch, err))
+						}
 					}
 				}
 			}

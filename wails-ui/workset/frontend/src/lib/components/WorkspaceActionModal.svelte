@@ -49,6 +49,7 @@
 
 	let error: string | null = $state(null);
 	let success: string | null = $state(null);
+	let warnings: string[] = $state([]);
 	let loading = $state(false);
 
 	// Removal modal state for loading overlay
@@ -387,6 +388,8 @@
 		}
 		loading = true;
 		error = null;
+		success = null;
+		warnings = [];
 		try {
 			// Auto-add primaryInput if it's a repo source and not already added
 			const reposToProcess = [...directRepos];
@@ -429,8 +432,14 @@
 
 			await loadWorkspaces(true);
 			selectWorkspace(result.workspace.name);
-			success = `Created ${result.workspace.name}.`;
-			onClose();
+			const createdWarnings = result.warnings ?? [];
+			if (createdWarnings.length > 0) {
+				warnings = Array.from(new Set(createdWarnings));
+				success = `Created ${result.workspace.name} with ${warnings.length} warning${warnings.length === 1 ? '' : 's'}.`;
+			} else {
+				success = `Created ${result.workspace.name}.`;
+				onClose();
+			}
 		} catch (err) {
 			error = formatError(err, 'Failed to create workspace.');
 		} finally {
@@ -447,6 +456,8 @@
 		}
 		loading = true;
 		error = null;
+		success = null;
+		warnings = [];
 		try {
 			await renameWorkspace(workspace.id, nextName);
 			await loadWorkspaces(true);
@@ -476,14 +487,23 @@
 
 		loading = true;
 		error = null;
+		success = null;
+		warnings = [];
 		try {
+			const collectedWarnings: string[] = [];
 			// 1. Add direct repo URL if provided
 			if (hasSource) {
-				await addRepo(workspace.id, source, '', '');
+				const result = await addRepo(workspace.id, source, '', '');
+				if (result.warnings?.length) {
+					collectedWarnings.push(...result.warnings);
+				}
 			}
 			// 2. Add each selected alias
 			for (const alias of selectedAliases) {
-				await addRepo(workspace.id, alias, '', '');
+				const result = await addRepo(workspace.id, alias, '', '');
+				if (result.warnings?.length) {
+					collectedWarnings.push(...result.warnings);
+				}
 			}
 			// 3. Apply each selected group
 			for (const group of selectedGroups) {
@@ -492,8 +512,13 @@
 
 			await loadWorkspaces(true);
 			const itemCount = (hasSource ? 1 : 0) + selectedAliases.size + selectedGroups.size;
-			success = `Added ${itemCount} item${itemCount !== 1 ? 's' : ''}.`;
-			onClose();
+			if (collectedWarnings.length > 0) {
+				warnings = Array.from(new Set(collectedWarnings));
+				success = `Added ${itemCount} item${itemCount !== 1 ? 's' : ''} with ${warnings.length} warning${warnings.length === 1 ? '' : 's'}.`;
+			} else {
+				success = `Added ${itemCount} item${itemCount !== 1 ? 's' : ''}.`;
+				onClose();
+			}
 		} catch (err) {
 			error = formatError(err, 'Failed to add items.');
 		} finally {
@@ -516,6 +541,8 @@
 		if (!workspace) return;
 		loading = true;
 		error = null;
+		success = null;
+		warnings = [];
 		try {
 			await archiveWorkspace(workspace.id, archiveReason.trim());
 			await loadWorkspaces(true);
@@ -535,6 +562,8 @@
 		loading = true;
 		removing = true;
 		error = null;
+		success = null;
+		warnings = [];
 		try {
 			if (removeDeleteFiles && !removeConfirmValid) {
 				error = 'Type DELETE to confirm file deletion.';
@@ -567,6 +596,8 @@
 		loading = true;
 		removing = true;
 		error = null;
+		success = null;
+		warnings = [];
 		try {
 			if (!removeRepoConfirmValid) {
 				error = 'Type DELETE to confirm repo deletion.';
@@ -608,8 +639,16 @@
 >
 	{#if error}
 		<Alert variant="error">{error}</Alert>
-	{:else if success}
+	{/if}
+	{#if success}
 		<Alert variant="success">{success}</Alert>
+	{/if}
+	{#if warnings.length > 0}
+		<Alert variant="warning">
+			{#each warnings as warning (warning)}
+				<div>{warning}</div>
+			{/each}
+		</Alert>
 	{/if}
 
 	{#if mode === 'create'}
