@@ -1202,6 +1202,10 @@
 		return resolveBranchRefs(remotes, prStatus?.pullRequest ?? prTracked);
 	};
 
+	const shouldSplitLocalPendingSection = $derived.by(
+		() => effectiveMode === 'status' && useBranchDiff() !== null,
+	);
+
 	const loadSummary = async (): Promise<void> => {
 		if (!repoId) {
 			summary = null;
@@ -1261,6 +1265,14 @@
 			localSummary = data;
 		}
 		if (selectedSource !== source) {
+			if (
+				source === 'local' &&
+				(!summary || summary.files.length === 0) &&
+				!selected &&
+				data.files.length > 0
+			) {
+				selectFile(data.files[0], 'local');
+			}
 			return;
 		}
 		if (data.files.length === 0) {
@@ -1712,7 +1724,7 @@
 				<div class="message">{summaryError}</div>
 				<button class="ghost" type="button" onclick={loadSummary}>Retry</button>
 			</div>
-		{:else if !summary || summary.files.length === 0}
+		{:else if (!summary || summary.files.length === 0) && (!localSummary || localSummary.files.length === 0)}
 			<div class="state">No changes detected in this repo.</div>
 		{:else}
 			<div class="diff-body" style="--sidebar-width: {sidebarWidth}px">
@@ -1728,7 +1740,8 @@
 							>
 								Files
 								<span class="tab-count"
-									>{summary.files.length + (localSummary?.files.length ?? 0)}</span
+									>{(summary?.files.length ?? 0) +
+										(shouldSplitLocalPendingSection ? (localSummary?.files.length ?? 0) : 0)}</span
 								>
 							</button>
 							<button
@@ -1755,48 +1768,76 @@
 
 					<!-- Files tab content -->
 					{#if sidebarTab === 'files'}
-						<!-- PR changed files section -->
-						{#if !(effectiveMode === 'status' && prStatus && prStatus.checks.length > 0)}
+						{#if summary && summary.files.length > 0}
 							<div class="section-title">
-								{localSummary && localSummary.files.length > 0 ? 'PR files' : 'Changed files'}
+								{shouldSplitLocalPendingSection && localSummary && localSummary.files.length > 0
+									? 'PR files'
+									: 'Changed files'}
 							</div>
-						{:else if localSummary && localSummary.files.length > 0}
-							<div class="section-title">PR files</div>
-						{/if}
-						{#each summary.files as file (file.path)}
-							{@const reviewCount = reviewCountForFile(file.path)}
-							<button
-								class:selected={file.path === selected?.path &&
-									file.prevPath === selected?.prevPath &&
-									selectedSource === 'pr'}
-								class="file-row"
-								onclick={() => selectFile(file, 'pr')}
-								type="button"
-							>
-								<div class="file-meta">
-									<span class="path" title={file.path}>{formatPath(file.path)}</span>
-									{#if file.prevPath}
-										<span class="rename">from {file.prevPath}</span>
-									{/if}
-								</div>
-								<div class="stats">
-									{#if reviewCount > 0}
-										<span
-											class="review-badge"
-											title="{reviewCount} review comment{reviewCount > 1 ? 's' : ''}"
+							{#each summary.files as file (file.path)}
+								{@const reviewCount = reviewCountForFile(file.path)}
+								<button
+									class:selected={file.path === selected?.path &&
+										file.prevPath === selected?.prevPath &&
+										selectedSource === 'pr'}
+									class="file-row"
+									onclick={() => selectFile(file, 'pr')}
+									type="button"
+								>
+									<div class="file-meta">
+										<span class="path" title={file.path}>{formatPath(file.path)}</span>
+										{#if file.prevPath}
+											<span class="rename">from {file.prevPath}</span>
+										{/if}
+									</div>
+									<div class="stats">
+										{#if reviewCount > 0}
+											<span
+												class="review-badge"
+												title="{reviewCount} review comment{reviewCount > 1 ? 's' : ''}"
+											>
+												💬 {reviewCount}
+											</span>
+										{/if}
+										<span class="tag {file.status}">{statusLabel(file.status)}</span>
+										<span class="diffstat"
+											><span class="add">+{file.added}</span><span class="sep">/</span><span
+												class="del">-{file.removed}</span
+											></span
 										>
-											💬 {reviewCount}
-										</span>
-									{/if}
-									<span class="tag {file.status}">{statusLabel(file.status)}</span>
-									<span class="diffstat"
-										><span class="add">+{file.added}</span><span class="sep">/</span><span
-											class="del">-{file.removed}</span
-										></span
-									>
-								</div>
-							</button>
-						{/each}
+									</div>
+								</button>
+							{/each}
+						{/if}
+
+						{#if shouldSplitLocalPendingSection && localSummary && localSummary.files.length > 0}
+							<div class="section-title local-section-title">Local pending changes</div>
+							{#each localSummary.files as file (`local:${file.path}:${file.prevPath ?? ''}`)}
+								<button
+									class:selected={file.path === selected?.path &&
+										file.prevPath === selected?.prevPath &&
+										selectedSource === 'local'}
+									class="file-row local-file"
+									onclick={() => selectFile(file, 'local')}
+									type="button"
+								>
+									<div class="file-meta">
+										<span class="path" title={file.path}>{formatPath(file.path)}</span>
+										{#if file.prevPath}
+											<span class="rename">from {file.prevPath}</span>
+										{/if}
+									</div>
+									<div class="stats">
+										<span class="tag {file.status} local-tag">{statusLabel(file.status)}</span>
+										<span class="diffstat local-diffstat"
+											><span class="add">+{file.added}</span><span class="sep">/</span><span
+												class="del">-{file.removed}</span
+											></span
+										>
+									</div>
+								</button>
+							{/each}
+						{/if}
 					{/if}
 
 					<!-- Checks tab content -->
