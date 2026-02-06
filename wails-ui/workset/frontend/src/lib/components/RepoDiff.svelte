@@ -1202,6 +1202,10 @@
 		return resolveBranchRefs(remotes, prStatus?.pullRequest ?? prTracked);
 	};
 
+	const shouldSplitLocalPendingSection = $derived.by(
+		() => effectiveMode === 'status' && useBranchDiff() !== null,
+	);
+
 	const loadSummary = async (): Promise<void> => {
 		if (!repoId) {
 			summary = null;
@@ -1736,7 +1740,8 @@
 							>
 								Files
 								<span class="tab-count"
-									>{(summary?.files.length ?? 0) + (localSummary?.files.length ?? 0)}</span
+									>{(summary?.files.length ?? 0) +
+										(shouldSplitLocalPendingSection ? (localSummary?.files.length ?? 0) : 0)}</span
 								>
 							</button>
 							<button
@@ -1765,7 +1770,7 @@
 					{#if sidebarTab === 'files'}
 						{#if summary && summary.files.length > 0}
 							<div class="section-title">
-								{effectiveMode === 'status' && localSummary && localSummary.files.length > 0
+								{shouldSplitLocalPendingSection && localSummary && localSummary.files.length > 0
 									? 'PR files'
 									: 'Changed files'}
 							</div>
@@ -1805,7 +1810,7 @@
 							{/each}
 						{/if}
 
-						{#if effectiveMode === 'status' && localSummary && localSummary.files.length > 0}
+						{#if shouldSplitLocalPendingSection && localSummary && localSummary.files.length > 0}
 							<div class="section-title local-section-title">Local pending changes</div>
 							{#each localSummary.files as file (`local:${file.path}:${file.prevPath ?? ''}`)}
 								<button

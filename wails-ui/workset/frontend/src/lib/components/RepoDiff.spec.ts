@@ -286,6 +286,78 @@ index 1111111..2222222 100644
 		});
 
 		expect(await findByText('Local pending changes')).toBeInTheDocument();
-		expect(await findByText('pkg/worksetapi/service_workspaces_test.go')).toBeInTheDocument();
+		expect(await findByText(/service_workspaces_test\.go/)).toBeInTheDocument();
+	});
+
+	it('does not split local pending files when PR branch refs are unavailable', async () => {
+		vi.mocked(api.fetchTrackedPullRequest).mockResolvedValue({
+			repo: 'acme/workset',
+			number: 42,
+			url: 'https://github.com/acme/workset/pull/42',
+			title: 'Improve repo diff',
+			state: 'open',
+			draft: false,
+			baseRepo: 'acme/workset',
+			baseBranch: '',
+			headRepo: 'acme/workset',
+			headBranch: '',
+		});
+		vi.mocked(api.fetchPullRequestStatus).mockResolvedValue({
+			pullRequest: {
+				repo: 'acme/workset',
+				number: 42,
+				url: 'https://github.com/acme/workset/pull/42',
+				title: 'Improve repo diff',
+				state: 'open',
+				draft: false,
+				baseRepo: 'acme/workset',
+				baseBranch: '',
+				headRepo: 'acme/workset',
+				headBranch: '',
+			},
+			checks: [],
+		});
+		vi.mocked(api.fetchRepoLocalStatus).mockResolvedValue({
+			hasUncommitted: true,
+			ahead: 0,
+			behind: 0,
+			currentBranch: 'feature/local-diff',
+		});
+		vi.mocked(api.fetchRepoDiffSummary).mockResolvedValue({
+			files: [
+				{
+					path: 'pkg/worksetapi/service_workspaces_test.go',
+					added: 33,
+					removed: 0,
+					status: 'modified',
+				},
+			],
+			totalAdded: 33,
+			totalRemoved: 0,
+		});
+		vi.mocked(api.fetchRepoFileDiff).mockResolvedValue({
+			patch: `diff --git a/pkg/worksetapi/service_workspaces_test.go b/pkg/worksetapi/service_workspaces_test.go
+index 1111111..2222222 100644
+--- a/pkg/worksetapi/service_workspaces_test.go
++++ b/pkg/worksetapi/service_workspaces_test.go
+@@ -1 +1 @@
+-old
++new
+`,
+			truncated: false,
+			totalBytes: 80,
+			totalLines: 1,
+		});
+
+		const { findByText, queryByText } = render(RepoDiff, {
+			props: {
+				repo,
+				workspaceId: 'ws-1',
+				onClose: vi.fn(),
+			},
+		});
+
+		expect(await findByText('Changed files')).toBeInTheDocument();
+		expect(queryByText('Local pending changes')).not.toBeInTheDocument();
 	});
 });
