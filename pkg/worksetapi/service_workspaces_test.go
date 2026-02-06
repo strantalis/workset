@@ -101,6 +101,39 @@ func TestCreateWorkspaceValidation(t *testing.T) {
 	_ = requireErrorType[ValidationError](t, err)
 }
 
+func TestCreateWorkspaceDuplicateNameBlocked(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+
+	result, err := env.svc.CreateWorkspace(ctx, WorkspaceCreateInput{Name: "demo"})
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+
+	duplicatePath := filepath.Join(env.root, "duplicate-demo")
+	_, err = env.svc.CreateWorkspace(ctx, WorkspaceCreateInput{
+		Name: "demo",
+		Path: duplicatePath,
+	})
+	conflict := requireErrorType[ConflictError](t, err)
+	if !strings.Contains(conflict.Message, "already exists") {
+		t.Fatalf("unexpected conflict message: %q", conflict.Message)
+	}
+
+	if _, err := os.Stat(duplicatePath); !os.IsNotExist(err) {
+		t.Fatalf("expected duplicate path to remain absent, got err=%v", err)
+	}
+
+	cfg := env.loadConfig()
+	ref, ok := cfg.Workspaces["demo"]
+	if !ok {
+		t.Fatalf("workspace missing from config")
+	}
+	if ref.Path != result.Workspace.Path {
+		t.Fatalf("workspace path changed after duplicate create: got %q want %q", ref.Path, result.Workspace.Path)
+	}
+}
+
 func TestCreateWorkspaceWithGroupRepos(t *testing.T) {
 	env := newTestEnv(t)
 	local := env.createLocalRepo("repo-a")

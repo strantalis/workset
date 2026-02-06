@@ -55,6 +55,13 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 	if err != nil {
 		return WorkspaceCreateResult{}, err
 	}
+	if existing, ok := cfg.Workspaces[name]; ok {
+		path := strings.TrimSpace(existing.Path)
+		if path != "" {
+			return WorkspaceCreateResult{}, ConflictError{Message: fmt.Sprintf("workspace %q already exists at %s", name, path)}
+		}
+		return WorkspaceCreateResult{}, ConflictError{Message: fmt.Sprintf("workspace %q already exists", name)}
+	}
 
 	root := strings.TrimSpace(input.Path)
 	if root == "" {
