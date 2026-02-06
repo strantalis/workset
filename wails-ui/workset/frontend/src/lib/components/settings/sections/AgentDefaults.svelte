@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import type { SettingsDefaultField } from '../../../types';
 	import type { AgentCLIStatus } from '../../../types';
+	import { toErrorMessage } from '../../../errors';
 	import SettingsSection from '../SettingsSection.svelte';
 	import Select from '../../ui/Select.svelte';
 	import Button from '../../ui/Button.svelte';
@@ -73,16 +74,6 @@
 	let envMessage = $state<string | null>(null);
 	let envError = $state<string | null>(null);
 
-	const formatError = (err: unknown, fallback: string): string => {
-		if (err instanceof Error) return err.message;
-		if (typeof err === 'string') return err;
-		if (err && typeof err === 'object' && 'message' in err) {
-			const message = (err as { message?: string }).message;
-			if (typeof message === 'string') return message;
-		}
-		return fallback;
-	};
-
 	const checkStatus = async (): Promise<void> => {
 		if (checking) return;
 		statusError = null;
@@ -99,7 +90,7 @@
 				cliPath = status.configuredPath;
 			}
 		} catch (err) {
-			statusError = formatError(err, 'Failed to check agent status.');
+			statusError = toErrorMessage(err, 'Failed to check agent status.');
 		} finally {
 			checking = false;
 		}
@@ -124,7 +115,7 @@
 			status = await setAgentCLIPath(agent, path);
 			cliPath = status?.configuredPath ?? path;
 		} catch (err) {
-			statusError = formatError(err, 'Failed to save agent CLI path.');
+			statusError = toErrorMessage(err, 'Failed to save agent CLI path.');
 		} finally {
 			savingPath = false;
 		}
@@ -139,7 +130,7 @@
 			cliPath = selected;
 			await saveCLIPath();
 		} catch (err) {
-			statusError = formatError(err, 'Failed to open file dialog.');
+			statusError = toErrorMessage(err, 'Failed to open file dialog.');
 		}
 	};
 
@@ -158,7 +149,7 @@
 				envMessage = 'Environment already up to date.';
 			}
 		} catch (err) {
-			envError = formatError(err, 'Failed to reload environment.');
+			envError = toErrorMessage(err, 'Failed to reload environment.');
 		} finally {
 			envReloading = false;
 		}

@@ -2,6 +2,7 @@
 	import { listSkills, getSkill, saveSkill, deleteSkill, syncSkill } from '../../../api';
 	import type { SkillInfo } from '../../../api';
 	import { activeWorkspace } from '../../../state';
+	import { toErrorMessage } from '../../../errors';
 	import SettingsSection from '../SettingsSection.svelte';
 	import Button from '../../ui/Button.svelte';
 
@@ -52,17 +53,12 @@
 
 	const getWorkspaceId = (): string | undefined => $activeWorkspace?.id;
 
-	const formatError = (err: unknown): string => {
-		if (err instanceof Error) return err.message;
-		return 'An error occurred.';
-	};
-
 	const loadSkills = async (): Promise<void> => {
 		try {
 			skills = await listSkills(getWorkspaceId());
 			onSkillCountChange(skills.length);
 		} catch (err) {
-			error = formatError(err);
+			error = toErrorMessage(err, 'An error occurred.');
 		}
 	};
 
@@ -84,7 +80,7 @@
 			formContent = result.content;
 		} catch (err) {
 			formContent = '';
-			error = formatError(err);
+			error = toErrorMessage(err, 'An error occurred.');
 		}
 	};
 
@@ -158,7 +154,7 @@
 					editing = false;
 				}
 			} catch (err) {
-				error = formatError(err);
+				error = toErrorMessage(err, 'An error occurred.');
 			} finally {
 				loading = false;
 			}
@@ -184,7 +180,7 @@
 					selectedSkill = updated;
 				}
 			} catch (err) {
-				error = formatError(err);
+				error = toErrorMessage(err, 'An error occurred.');
 			} finally {
 				loading = false;
 			}
@@ -210,7 +206,7 @@
 			editing = false;
 			await loadSkills();
 		} catch (err) {
-			error = formatError(err);
+			error = toErrorMessage(err, 'An error occurred.');
 		} finally {
 			loading = false;
 		}
@@ -264,7 +260,7 @@
 				await selectSkill(updated);
 			}
 		} catch (err) {
-			error = formatError(err);
+			error = toErrorMessage(err, 'An error occurred.');
 		} finally {
 			loading = false;
 		}
@@ -306,7 +302,7 @@
 				}
 			}
 		} catch (err) {
-			error = formatError(err);
+			error = toErrorMessage(err, 'An error occurred.');
 		} finally {
 			loading = false;
 		}
