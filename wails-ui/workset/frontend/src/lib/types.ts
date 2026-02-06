@@ -54,6 +54,8 @@ export type TerminalLayoutNode = {
 	ratio?: number;
 	first?: TerminalLayoutNode;
 	second?: TerminalLayoutNode;
+	workspaceId?: string;
+	workspaceName?: string;
 };
 
 export type TerminalLayout = {

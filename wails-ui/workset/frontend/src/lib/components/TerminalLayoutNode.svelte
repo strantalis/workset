@@ -2,6 +2,7 @@
 	import TerminalPane from './TerminalPane.svelte';
 	import Self from './TerminalLayoutNode.svelte';
 	import { shouldHandlePaneKeydown } from './terminalLayoutKeydown';
+	import { workspaces } from '../state';
 
 	type DragState = {
 		tabId: string;
@@ -49,6 +50,8 @@
 		onTabDrop,
 		// eslint-disable-next-line prefer-const
 		onTabSplitDrop,
+		// eslint-disable-next-line prefer-const
+		onChangePaneWorkspace,
 	}: {
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		node: any;
@@ -73,6 +76,7 @@
 			direction: 'row' | 'column',
 			position: 'before' | 'after',
 		) => void;
+		onChangePaneWorkspace?: (paneId: string, newWsId: string, newWsName: string) => void;
 	} = $props();
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -267,6 +271,7 @@
 				{onTabDragEnd}
 				{onTabDrop}
 				{onTabSplitDrop}
+				{onChangePaneWorkspace}
 			/>
 		</div>
 		<!-- role="separator" with tabindex makes this an interactive widget per WAI-ARIA -->
@@ -306,6 +311,7 @@
 				{onTabDragEnd}
 				{onTabDrop}
 				{onTabSplitDrop}
+				{onChangePaneWorkspace}
 			/>
 		</div>
 	</div>
@@ -316,6 +322,9 @@
 		node.tabs.find((tab: { id: string }) => tab.id === node.activeTabId) ?? node.tabs[0]}
 	{@const isFocused = focusedPaneId === node.id}
 	{@const isDragTarget = dragState && dragState.sourcePaneId !== node.id}
+	{@const effectiveWorkspaceId = node.workspaceId || workspaceId}
+	{@const effectiveWorkspaceName = node.workspaceName || workspaceName}
+	{@const availableWorkspaces = $workspaces.filter((w) => !w.archived)}
 	<div
 		class="pane"
 		class:focused={isFocused}
@@ -401,6 +410,24 @@
 				{/each}
 			</div>
 			<div class="pane-actions">
+				{#if availableWorkspaces.length >= 2 && onChangePaneWorkspace}
+					<select
+						class="workspace-select"
+						value={effectiveWorkspaceId}
+						title="Pane workspace"
+						onchange={(e) => {
+							const target = e.currentTarget;
+							const selected = availableWorkspaces.find((w) => w.id === target.value);
+							if (selected) {
+								onChangePaneWorkspace(node.id, selected.id, selected.name);
+							}
+						}}
+					>
+						{#each availableWorkspaces as ws (ws.id)}
+							<option value={ws.id}>{ws.name}</option>
+						{/each}
+					</select>
+				{/if}
 				<button type="button" class="action-btn" title="New tab" onclick={() => onAddTab(node.id)}>
 					<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
 						<path
@@ -459,8 +486,8 @@
 			ondrop={handleBodyDrop}
 		>
 			<TerminalPane
-				{workspaceId}
-				{workspaceName}
+				workspaceId={effectiveWorkspaceId}
+				workspaceName={effectiveWorkspaceName}
 				terminalId={activeTab.terminalId}
 				active={isFocused && active}
 				compact={true}
@@ -843,5 +870,28 @@
 	.action-btn:active {
 		transform: scale(0.95);
 		box-shadow: none;
+	}
+
+	.workspace-select {
+		font-size: 11px;
+		max-width: 120px;
+		height: 28px;
+		padding: 0 6px;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		background: var(--panel);
+		color: var(--muted);
+		cursor: pointer;
+		outline: none;
+		transition: all 0.15s ease;
+		box-shadow: var(--shadow-sm);
+		box-sizing: border-box;
+		margin: 0;
+	}
+
+	.workspace-select:hover,
+	.workspace-select:focus {
+		color: var(--text);
+		border-color: var(--accent);
 	}
 </style>
