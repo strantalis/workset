@@ -138,6 +138,11 @@ type parsedVersion struct {
 	hasPrelabel bool
 }
 
+type queuedSymlink struct {
+	path   string
+	target string
+}
+
 func (a *App) GetUpdatePreferences() (UpdatePreferences, error) {
 	updateStateMu.Lock()
 	defer updateStateMu.Unlock()
@@ -839,40 +844,82 @@ func extractAppBundle(zipPath, stageRoot string) (string, error) {
 		return "", err
 	}
 
+	var symlinks []queuedSymlink
 	for _, file := range reader.File {
 		target, err := safeExtractTarget(absExtractRoot, file.Name)
 		if err != nil {
 			return "", err
 		}
-		if file.FileInfo().IsDir() {
+		mode := file.Mode()
+		switch {
+		case mode.IsDir():
 			if err := os.MkdirAll(target, 0o755); err != nil {
 				return "", err
 			}
 			continue
+		case mode&os.ModeSymlink != 0:
+			src, err := file.Open()
+			if err != nil {
+				return "", err
+			}
+			targetBytes, readErr := io.ReadAll(src)
+			closeErr := src.Close()
+			if readErr != nil {
+				return "", readErr
+			}
+			if closeErr != nil {
+				return "", closeErr
+			}
+			symlinks = append(symlinks, queuedSymlink{
+				path:   target,
+				target: string(targetBytes),
+			})
+			continue
+		case mode.IsRegular():
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return "", err
+			}
+			src, err := file.Open()
+			if err != nil {
+				return "", err
+			}
+			perm := mode.Perm()
+			if perm == 0 {
+				perm = 0o644
+			}
+			dst, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, perm)
+			if err != nil {
+				src.Close()
+				return "", err
+			}
+			_, copyErr := io.Copy(dst, src)
+			closeErr := dst.Close()
+			srcCloseErr := src.Close()
+			if copyErr != nil {
+				return "", copyErr
+			}
+			if closeErr != nil {
+				return "", closeErr
+			}
+			if srcCloseErr != nil {
+				return "", srcCloseErr
+			}
+		default:
+			return "", fmt.Errorf("unsupported entry type in archive: %s", file.Name)
 		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			return "", err
-		}
-		src, err := file.Open()
+	}
+
+	for _, link := range symlinks {
+		symlinkTarget, err := sanitizeSymlinkTarget(absExtractRoot, link.path, link.target)
 		if err != nil {
 			return "", err
 		}
-		dst, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, file.Mode())
-		if err != nil {
-			src.Close()
+		if err := os.MkdirAll(filepath.Dir(link.path), 0o755); err != nil {
 			return "", err
 		}
-		_, copyErr := io.Copy(dst, src)
-		closeErr := dst.Close()
-		srcCloseErr := src.Close()
-		if copyErr != nil {
-			return "", copyErr
-		}
-		if closeErr != nil {
-			return "", closeErr
-		}
-		if srcCloseErr != nil {
-			return "", srcCloseErr
+		_ = os.Remove(link.path)
+		if err := os.Symlink(symlinkTarget, link.path); err != nil {
+			return "", err
 		}
 	}
 
@@ -920,6 +967,29 @@ func safeExtractTarget(absRoot, name string) (string, error) {
 		return "", fmt.Errorf("unsafe path in archive: %q", name)
 	}
 	return absTarget, nil
+}
+
+func sanitizeSymlinkTarget(absRoot, linkPath, rawTarget string) (string, error) {
+	target := filepath.Clean(strings.TrimSpace(rawTarget))
+	if target == "" || target == "." {
+		return "", fmt.Errorf("unsafe symlink target: %q", rawTarget)
+	}
+	if filepath.IsAbs(target) {
+		return "", fmt.Errorf("absolute symlink targets are not allowed: %q", rawTarget)
+	}
+	resolved := filepath.Join(filepath.Dir(linkPath), target)
+	absResolved, err := filepath.Abs(resolved)
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(absRoot, absResolved)
+	if err != nil {
+		return "", err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("symlink target escapes extraction root: %q", rawTarget)
+	}
+	return target, nil
 }
 
 func verifyCodesign(appPath, expectedTeamID string) error {
@@ -972,15 +1042,15 @@ func updaterHelperPath(bundlePath string) (string, error) {
 	if info, err := os.Stat(resourcePath); err == nil && !info.IsDir() {
 		return resourcePath, nil
 	}
-	cwd, _ := os.Getwd()
-	candidates := []string{
-		filepath.Join(cwd, "build", "updater", "workset-updater"),
-		filepath.Join(cwd, "wails-ui", "workset", "build", "updater", "workset-updater"),
-	}
-	for _, candidate := range candidates {
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-			return candidate, nil
+	overridePath := strings.TrimSpace(os.Getenv("WORKSET_UPDATER_HELPER_PATH"))
+	if overridePath != "" {
+		if !filepath.IsAbs(overridePath) {
+			return "", errors.New("WORKSET_UPDATER_HELPER_PATH must be an absolute path")
 		}
+		if info, err := os.Stat(overridePath); err == nil && !info.IsDir() {
+			return overridePath, nil
+		}
+		return "", fmt.Errorf("WORKSET_UPDATER_HELPER_PATH not found: %s", overridePath)
 	}
-	return "", errors.New("workset-updater helper executable not found")
+	return "", errors.New("workset-updater helper executable not found in app bundle resources")
 }
