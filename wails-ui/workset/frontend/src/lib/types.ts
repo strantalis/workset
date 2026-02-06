@@ -86,6 +86,7 @@ export type WorkspaceCreateResponse = {
 		status?: string;
 		reason?: string;
 	}[];
+	hookRuns?: HookExecution[];
 };
 
 export type RepoAddResponse = {
@@ -111,6 +112,38 @@ export type RepoAddResponse = {
 		status?: string;
 		reason?: string;
 	}[];
+	hookRuns?: HookExecution[];
+};
+
+export type HookExecution = {
+	event: string;
+	repo: string;
+	id: string;
+	status: string;
+	log_path?: string;
+};
+
+export type HooksRunResponse = {
+	event: string;
+	repo: string;
+	results: {
+		id: string;
+		status: string;
+		log_path?: string;
+	}[];
+};
+
+export type HookProgressEvent = {
+	operation?: string;
+	reason?: string;
+	workspace?: string;
+	repo: string;
+	event: string;
+	hookId: string;
+	phase: 'started' | 'finished';
+	status?: string;
+	logPath?: string;
+	error?: string;
 };
 
 export type RegisteredRepo = {
@@ -197,6 +230,56 @@ export type AppVersion = {
 	version: string;
 	commit: string;
 	dirty: boolean;
+};
+
+export type UpdateChannel = 'stable' | 'alpha';
+
+export type UpdatePreferences = {
+	channel: UpdateChannel;
+	autoCheck: boolean;
+};
+
+export type UpdateReleaseAsset = {
+	name: string;
+	url: string;
+	sha256: string;
+};
+
+export type UpdateReleaseSigning = {
+	teamId: string;
+};
+
+export type UpdateRelease = {
+	version: string;
+	pubDate: string;
+	notesUrl: string;
+	minimumVersion: string;
+	asset: UpdateReleaseAsset;
+	signing: UpdateReleaseSigning;
+};
+
+export type UpdateCheckResult = {
+	status: 'up_to_date' | 'update_available' | 'unavailable';
+	channel: UpdateChannel;
+	currentVersion: string;
+	latestVersion: string;
+	message: string;
+	release?: UpdateRelease;
+};
+
+export type UpdateState = {
+	phase: 'idle' | 'checking' | 'downloading' | 'validating' | 'applying' | 'failed';
+	channel: string;
+	currentVersion: string;
+	latestVersion: string;
+	message: string;
+	error: string;
+	checkedAt: string;
+};
+
+export type UpdateStartResult = {
+	started: boolean;
+	state: UpdateState;
 };
 
 export type RepoDiffFileSummary = {

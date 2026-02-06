@@ -97,6 +97,7 @@ type WorkspaceCreateResult struct {
 	Workspace    WorkspaceCreatedJSON
 	Warnings     []string
 	PendingHooks []HookPending
+	HookRuns     []HookExecutionJSON
 	Config       config.GlobalConfigLoadInfo
 }
 
@@ -150,6 +151,7 @@ type RepoAddResult struct {
 	RepoDir      string
 	Warnings     []string
 	PendingHooks []HookPending
+	HookRuns     []HookExecutionJSON
 	Config       config.GlobalConfigLoadInfo
 }
 
@@ -184,6 +186,33 @@ type HookRunJSON struct {
 	ID      string        `json:"id"`
 	Status  HookRunStatus `json:"status"`
 	LogPath string        `json:"log_path,omitempty"`
+}
+
+// HookExecutionJSON reports hook execution results with repo and event context.
+type HookExecutionJSON struct {
+	Event   string        `json:"event"`
+	Repo    string        `json:"repo"`
+	ID      string        `json:"id"`
+	Status  HookRunStatus `json:"status"`
+	LogPath string        `json:"log_path,omitempty"`
+}
+
+// HookProgress describes lifecycle updates emitted while hooks run.
+type HookProgress struct {
+	Phase     string        `json:"phase"`
+	Event     string        `json:"event"`
+	Repo      string        `json:"repo"`
+	Workspace string        `json:"workspace,omitempty"`
+	HookID    string        `json:"hook_id"`
+	Reason    string        `json:"reason,omitempty"`
+	Status    HookRunStatus `json:"status,omitempty"`
+	LogPath   string        `json:"log_path,omitempty"`
+	Error     string        `json:"error,omitempty"`
+}
+
+// HookProgressObserver receives live hook lifecycle updates.
+type HookProgressObserver interface {
+	OnHookProgress(progress HookProgress)
 }
 
 type HookRunStatus string

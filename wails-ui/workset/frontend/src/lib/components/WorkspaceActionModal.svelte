@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { get } from 'svelte/store';
 	import {
 		addRepo,
@@ -14,6 +14,8 @@
 		removeRepo,
 		removeWorkspace,
 		renameWorkspace,
+		runRepoHooks,
+		trustRepoHooks,
 	} from '../api';
 	import {
 		activeWorkspaceId,
@@ -24,7 +26,15 @@
 		selectWorkspace,
 		workspaces,
 	} from '../state';
-	import type { Alias, GroupSummary, Repo, Workspace } from '../types';
+	import type {
+		Alias,
+		GroupSummary,
+		HookExecution,
+		HookProgressEvent,
+		Repo,
+		Workspace,
+	} from '../types';
+	import { subscribeHookProgressEvent } from '../hookEventService';
 	import {
 		generateWorkspaceName,
 		generateAlternatives,
@@ -49,7 +59,33 @@
 
 	let error: string | null = $state(null);
 	let success: string | null = $state(null);
+	let warnings: string[] = $state([]);
+	let pendingHooks: {
+		event: string;
+		repo: string;
+		hooks: string[];
+		status?: string;
+		reason?: string;
+		running?: boolean;
+		runError?: string;
+		trusting?: boolean;
+		trusted?: boolean;
+	}[] = $state([]);
+	let hookRuns: HookExecution[] = $state([]);
+	let activeHookOperation: string | null = $state(null);
+	let activeHookWorkspace: string | null = $state(null);
+	let hookWorkspaceId: string | null = $state(null);
+	let hookEventUnsubscribe: (() => void) | null = null;
+	let autoCloseTimer: ReturnType<typeof setTimeout> | null = null;
 	let loading = $state(false);
+
+	// Phase state: 'form' for input, 'hook-results' after successful create/add with hooks
+	let phase = $state<'form' | 'hook-results'>('form');
+	let hookResultContext = $state<{
+		action: 'created' | 'added';
+		name: string;
+		itemCount?: number;
+	} | null>(null);
 
 	// Removal modal state for loading overlay
 	let removing = $state(false);
@@ -326,22 +362,32 @@
 	});
 
 	const modeTitle = $derived(
-		mode === 'create'
-			? 'Create workspace'
-			: mode === 'rename'
-				? 'Rename workspace'
-				: mode === 'add-repo'
-					? 'Add to workspace'
-					: mode === 'archive'
-						? 'Archive workspace'
-						: mode === 'remove-workspace'
-							? 'Remove workspace'
-							: mode === 'remove-repo'
-								? 'Remove repo'
-								: 'Workspace action',
+		phase === 'hook-results'
+			? 'Hook results'
+			: mode === 'create'
+				? 'Create workspace'
+				: mode === 'rename'
+					? 'Rename workspace'
+					: mode === 'add-repo'
+						? 'Add to workspace'
+						: mode === 'archive'
+							? 'Archive workspace'
+							: mode === 'remove-workspace'
+								? 'Remove workspace'
+								: mode === 'remove-repo'
+									? 'Remove repo'
+									: 'Workspace action',
 	);
 
-	const modalSize = $derived(mode === 'create' || mode === 'add-repo' ? 'wide' : 'md');
+	const modalSubtitle = $derived.by(() => {
+		if (phase === 'hook-results') return hookResultContext?.name ?? '';
+		if (mode === 'create') return '';
+		return workspace?.name ?? '';
+	});
+
+	const modalSize = $derived(
+		phase === 'hook-results' ? 'md' : mode === 'create' || mode === 'add-repo' ? 'wide' : 'md',
+	);
 
 	const formatError = (err: unknown, fallback: string): string => {
 		if (err instanceof Error) return err.message;
@@ -353,7 +399,131 @@
 		return fallback;
 	};
 
+	const beginHookTracking = (operation: string, workspaceName: string | null): void => {
+		activeHookOperation = operation;
+		activeHookWorkspace = workspaceName;
+		hookRuns = [];
+		pendingHooks = [];
+	};
+
+	const clearHookTracking = (): void => {
+		activeHookOperation = null;
+		activeHookWorkspace = null;
+	};
+
+	const appendHookRuns = (runs: HookExecution[] | undefined): void => {
+		if (!runs || runs.length === 0) {
+			return;
+		}
+		const byKey = new Map<string, HookExecution>();
+		for (const run of hookRuns) {
+			byKey.set(`${run.repo}:${run.event}:${run.id}`, run);
+		}
+		for (const run of runs) {
+			byKey.set(`${run.repo}:${run.event}:${run.id}`, run);
+		}
+		hookRuns = Array.from(byKey.values());
+	};
+
+	const shouldTrackHookEvent = (payload: HookProgressEvent): boolean => {
+		if (!activeHookOperation || !loading) {
+			return false;
+		}
+		if (payload.operation !== activeHookOperation) {
+			return false;
+		}
+		if (
+			activeHookWorkspace &&
+			payload.workspace &&
+			payload.workspace.trim() &&
+			payload.workspace !== activeHookWorkspace
+		) {
+			return false;
+		}
+		return true;
+	};
+
+	const applyHookProgress = (payload: HookProgressEvent): void => {
+		const existingIdx = hookRuns.findIndex(
+			(entry) =>
+				entry.repo === payload.repo && entry.event === payload.event && entry.id === payload.hookId,
+		);
+		const next: HookExecution = {
+			repo: payload.repo,
+			event: payload.event,
+			id: payload.hookId,
+			status:
+				payload.phase === 'finished'
+					? payload.status || (payload.error ? 'failed' : 'ok')
+					: 'running',
+			log_path: payload.logPath,
+		};
+		if (existingIdx >= 0) {
+			hookRuns = hookRuns.map((entry, index) => (index === existingIdx ? next : entry));
+		} else {
+			hookRuns = [...hookRuns, next];
+		}
+	};
+
+	const handleRunPendingHook = async (pending: (typeof pendingHooks)[number]): Promise<void> => {
+		const targetWorkspace =
+			workspace?.id || workspaceId || hookWorkspaceId || activeHookWorkspace || '';
+		if (!targetWorkspace) {
+			pendingHooks = pendingHooks.map((entry) =>
+				entry.repo === pending.repo
+					? { ...entry, running: false, runError: 'Workspace reference unavailable for hook run.' }
+					: entry,
+			);
+			return;
+		}
+		pendingHooks = pendingHooks.map((entry) =>
+			entry.repo === pending.repo ? { ...entry, running: true, runError: undefined } : entry,
+		);
+		try {
+			const result = await runRepoHooks(
+				targetWorkspace,
+				pending.repo,
+				pending.event,
+				`${activeHookOperation ?? 'hooks.run'}.ui`,
+			);
+			appendHookRuns(
+				result.results.map((run) => ({
+					event: result.event,
+					repo: result.repo,
+					id: run.id,
+					status: run.status,
+					log_path: run.log_path,
+				})),
+			);
+			pendingHooks = pendingHooks.filter((entry) => entry.repo !== pending.repo);
+		} catch (err) {
+			const message = formatError(err, `Failed to run hooks for ${pending.repo}.`);
+			pendingHooks = pendingHooks.map((entry) =>
+				entry.repo === pending.repo ? { ...entry, running: false, runError: message } : entry,
+			);
+		}
+	};
+
+	const handleTrustPendingHook = async (pending: (typeof pendingHooks)[number]): Promise<void> => {
+		pendingHooks = pendingHooks.map((entry) =>
+			entry.repo === pending.repo ? { ...entry, trusting: true, runError: undefined } : entry,
+		);
+		try {
+			await trustRepoHooks(pending.repo);
+			pendingHooks = pendingHooks.map((entry) =>
+				entry.repo === pending.repo ? { ...entry, trusting: false, trusted: true } : entry,
+			);
+		} catch (err) {
+			const message = formatError(err, `Failed to trust hooks for ${pending.repo}.`);
+			pendingHooks = pendingHooks.map((entry) =>
+				entry.repo === pending.repo ? { ...entry, trusting: false, runError: message } : entry,
+			);
+		}
+	};
+
 	const loadContext = async (): Promise<void> => {
+		phase = 'form';
+		hookResultContext = null;
 		await loadWorkspaces(true);
 		const current = get(workspaces);
 		workspace = workspaceId ? (current.find((entry) => entry.id === workspaceId) ?? null) : null;
@@ -387,6 +557,12 @@
 		}
 		loading = true;
 		error = null;
+		success = null;
+		warnings = [];
+		pendingHooks = [];
+		hookRuns = [];
+		hookWorkspaceId = null;
+		beginHookTracking('workspace.create', finalName);
 		try {
 			// Auto-add primaryInput if it's a repo source and not already added
 			const reposToProcess = [...directRepos];
@@ -427,14 +603,33 @@
 				groups.length > 0 ? groups : undefined,
 			);
 
+			appendHookRuns(result.hookRuns);
+			pendingHooks = (result.pendingHooks ?? []).map((pending) => ({ ...pending }));
+			hookWorkspaceId = result.workspace.name;
 			await loadWorkspaces(true);
 			selectWorkspace(result.workspace.name);
-			success = `Created ${result.workspace.name}.`;
-			onClose();
+			const createdWarnings = result.warnings ?? [];
+			if (createdWarnings.length > 0) {
+				warnings = Array.from(new Set(createdWarnings));
+			}
+			const hasHookActivity = warnings.length > 0 || pendingHooks.length > 0 || hookRuns.length > 0;
+			if (hasHookActivity) {
+				success = `Created ${result.workspace.name}.`;
+				hookResultContext = { action: 'created', name: result.workspace.name };
+				phase = 'hook-results';
+				// Auto-close only when everything completed cleanly
+				const allRunsOk = hookRuns.every((r) => r.status === 'ok' || r.status === 'skipped');
+				if (pendingHooks.length === 0 && warnings.length === 0 && allRunsOk) {
+					autoCloseTimer = setTimeout(() => onClose(), 1500);
+				}
+			} else {
+				onClose();
+			}
 		} catch (err) {
 			error = formatError(err, 'Failed to create workspace.');
 		} finally {
 			loading = false;
+			clearHookTracking();
 		}
 	};
 
@@ -447,6 +642,8 @@
 		}
 		loading = true;
 		error = null;
+		success = null;
+		warnings = [];
 		try {
 			await renameWorkspace(workspace.id, nextName);
 			await loadWorkspaces(true);
@@ -476,28 +673,87 @@
 
 		loading = true;
 		error = null;
+		success = null;
+		warnings = [];
+		pendingHooks = [];
+		hookRuns = [];
+		hookWorkspaceId = workspace.id;
+		beginHookTracking('repo.add', workspace.name);
 		try {
+			const collectedWarnings: string[] = [];
+			const collectedPending: {
+				event: string;
+				repo: string;
+				hooks: string[];
+				status?: string;
+				reason?: string;
+			}[] = [];
+			const collectedRuns: HookExecution[] = [];
 			// 1. Add direct repo URL if provided
 			if (hasSource) {
-				await addRepo(workspace.id, source, '', '');
+				const result = await addRepo(workspace.id, source, '', '');
+				if (result.warnings?.length) {
+					collectedWarnings.push(...result.warnings);
+				}
+				if (result.pendingHooks?.length) {
+					collectedPending.push(...result.pendingHooks);
+				}
+				if (result.hookRuns?.length) {
+					collectedRuns.push(...result.hookRuns);
+				}
 			}
 			// 2. Add each selected alias
 			for (const alias of selectedAliases) {
-				await addRepo(workspace.id, alias, '', '');
+				const result = await addRepo(workspace.id, alias, '', '');
+				if (result.warnings?.length) {
+					collectedWarnings.push(...result.warnings);
+				}
+				if (result.pendingHooks?.length) {
+					collectedPending.push(...result.pendingHooks);
+				}
+				if (result.hookRuns?.length) {
+					collectedRuns.push(...result.hookRuns);
+				}
 			}
 			// 3. Apply each selected group
 			for (const group of selectedGroups) {
 				await applyGroup(workspace.id, group);
 			}
 
+			appendHookRuns(collectedRuns);
+			const pendingByKey = new Map<string, (typeof pendingHooks)[number]>();
+			for (const pending of collectedPending) {
+				pendingByKey.set(`${pending.repo}:${pending.event}`, { ...pending });
+			}
+			pendingHooks = Array.from(pendingByKey.values());
+
 			await loadWorkspaces(true);
 			const itemCount = (hasSource ? 1 : 0) + selectedAliases.size + selectedGroups.size;
-			success = `Added ${itemCount} item${itemCount !== 1 ? 's' : ''}.`;
-			onClose();
+			if (collectedWarnings.length > 0) {
+				warnings = Array.from(new Set(collectedWarnings));
+			}
+			const hasHookActivity = warnings.length > 0 || pendingHooks.length > 0 || hookRuns.length > 0;
+			if (hasHookActivity) {
+				success = `Added ${itemCount} item${itemCount !== 1 ? 's' : ''}.`;
+				hookResultContext = {
+					action: 'added',
+					name: workspace.name,
+					itemCount,
+				};
+				phase = 'hook-results';
+				// Auto-close only when everything completed cleanly
+				const allRunsOk = hookRuns.every((r) => r.status === 'ok' || r.status === 'skipped');
+				if (pendingHooks.length === 0 && warnings.length === 0 && allRunsOk) {
+					autoCloseTimer = setTimeout(() => onClose(), 1500);
+				}
+			} else {
+				onClose();
+			}
 		} catch (err) {
 			error = formatError(err, 'Failed to add items.');
 		} finally {
 			loading = false;
+			clearHookTracking();
 		}
 	};
 
@@ -516,6 +772,8 @@
 		if (!workspace) return;
 		loading = true;
 		error = null;
+		success = null;
+		warnings = [];
 		try {
 			await archiveWorkspace(workspace.id, archiveReason.trim());
 			await loadWorkspaces(true);
@@ -535,6 +793,8 @@
 		loading = true;
 		removing = true;
 		error = null;
+		success = null;
+		warnings = [];
 		try {
 			if (removeDeleteFiles && !removeConfirmValid) {
 				error = 'Type DELETE to confirm file deletion.';
@@ -567,6 +827,8 @@
 		loading = true;
 		removing = true;
 		error = null;
+		success = null;
+		warnings = [];
 		try {
 			if (!removeRepoConfirmValid) {
 				error = 'Type DELETE to confirm repo deletion.';
@@ -592,713 +854,875 @@
 	};
 
 	onMount(async () => {
+		hookEventUnsubscribe = subscribeHookProgressEvent((payload) => {
+			if (!shouldTrackHookEvent(payload)) {
+				return;
+			}
+			applyHookProgress(payload);
+		});
 		await loadContext();
 		await tick();
 		nameInput?.focus();
+	});
+
+	onDestroy(() => {
+		hookEventUnsubscribe?.();
+		hookEventUnsubscribe = null;
+		if (autoCloseTimer) {
+			clearTimeout(autoCloseTimer);
+			autoCloseTimer = null;
+		}
 	});
 </script>
 
 <Modal
 	title={modeTitle}
-	subtitle={mode === 'create' ? '' : (workspace?.name ?? '')}
+	subtitle={modalSubtitle}
 	size={modalSize}
 	headerAlign="left"
 	{onClose}
 	disableClose={removing}
 >
-	{#if error}
-		<Alert variant="error">{error}</Alert>
-	{:else if success}
-		<Alert variant="success">{success}</Alert>
-	{/if}
+	{#if phase === 'hook-results'}
+		<div class="hook-results-container">
+			{#if success}
+				<Alert variant="success">{success}</Alert>
+			{/if}
+			{#if warnings.length > 0}
+				<Alert variant="warning">
+					{#each warnings as warning (warning)}
+						<div>{warning}</div>
+					{/each}
+				</Alert>
+			{/if}
 
-	{#if mode === 'create'}
-		<div class="form create-two-column">
-			<div class="column-left">
-				<!-- Tab Bar - only when aliases/groups exist -->
-				{#if aliasItems.length > 0 || groupItems.length > 0}
-					<div class="tab-bar">
-						<button
-							class="tab"
-							class:active={activeTab === 'direct'}
-							type="button"
-							onclick={() => {
-								activeTab = 'direct';
-								searchQuery = '';
-							}}
-						>
-							Direct
-						</button>
-						{#if aliasItems.length > 0}
-							<button
-								class="tab"
-								class:active={activeTab === 'repos'}
-								type="button"
-								onclick={() => {
-									activeTab = 'repos';
-									searchQuery = '';
-								}}
-							>
-								Repos ({aliasItems.length})
-							</button>
-						{/if}
-						{#if groupItems.length > 0}
-							<button
-								class="tab"
-								class:active={activeTab === 'groups'}
-								type="button"
-								onclick={() => {
-									activeTab = 'groups';
-									searchQuery = '';
-								}}
-							>
-								Groups ({groupItems.length})
-							</button>
-						{/if}
-					</div>
-				{/if}
-
-				<!-- Selection Area - Left Column -->
-				<div class="selection-area">
-					{#if activeTab === 'direct'}
-						<label class="field">
-							<span>Repo URL or local path</span>
-							<div class="inline">
-								<input
-									bind:value={primaryInput}
-									placeholder="git@github.com:org/repo.git"
-									autocapitalize="off"
-									autocorrect="off"
-									spellcheck="false"
-									onkeydown={(e) => {
-										if (e.key === 'Enter') {
-											e.preventDefault();
-											addDirectRepo();
-										}
-									}}
-								/>
-								<Button
-									variant="ghost"
-									size="sm"
-									onclick={async () => {
-										try {
-											const path = await openDirectoryDialog(
-												'Select repo directory',
-												primaryInput.trim(),
-											);
-											if (path) primaryInput = path;
-										} catch (err) {
-											error = formatError(err, 'Failed to open directory picker.');
-										}
-									}}>Browse</Button
+			{#if hookRuns.length > 0}
+				<div class="hook-results-section">
+					<h4 class="hook-results-heading">Hook runs</h4>
+					<div class="hook-runs-list">
+						{#each hookRuns as run (`${run.repo}:${run.event}:${run.id}`)}
+							<div class="hook-run-row">
+								<span class="hook-run-repo">{run.repo}</span>
+								<code class="hook-run-id">{run.id}</code>
+								<span
+									class="hook-status-badge"
+									class:ok={run.status === 'ok'}
+									class:failed={run.status === 'failed'}
+									class:running={run.status === 'running'}
+									class:skipped={run.status === 'skipped'}
 								>
+									{run.status}
+								</span>
+								{#if run.log_path}
+									<span class="hook-run-log" title={run.log_path}>log</span>
+								{/if}
+							</div>
+						{/each}
+					</div>
+				</div>
+			{/if}
+
+			{#if pendingHooks.length > 0}
+				<div class="hook-results-section">
+					<h4 class="hook-results-heading">Pending hooks</h4>
+					{#each pendingHooks as pending (`${pending.repo}:${pending.event}`)}
+						<div class="pending-hook-card">
+							<div class="pending-hook-info">
+								<span class="pending-hook-repo">{pending.repo}</span>
+								<span class="pending-hook-names">{pending.hooks.join(', ')}</span>
+								{#if pending.trusted}
+									<span class="hook-status-badge ok">trusted</span>
+								{/if}
+							</div>
+							<div class="pending-hook-actions">
 								<Button
 									variant="primary"
 									size="sm"
-									onclick={addDirectRepo}
-									disabled={!primaryInput.trim() || !isRepoSource(primaryInput)}>Add</Button
+									disabled={pending.running || pending.trusted}
+									onclick={() => void handleRunPendingHook(pending)}
 								>
+									{pending.running ? 'Running…' : 'Run now'}
+								</Button>
+								<Button
+									variant="ghost"
+									size="sm"
+									disabled={pending.trusting || pending.trusted}
+									onclick={() => void handleTrustPendingHook(pending)}
+								>
+									{pending.trusting ? 'Trusting…' : pending.trusted ? 'Trusted' : 'Trust'}
+								</Button>
 							</div>
-						</label>
-						{#if directRepos.length > 0}
-							<div class="direct-repos-list">
-								{#each directRepos as repo (repo.url)}
-									<div class="direct-repo-item">
-										<div class="direct-repo-info">
-											<span class="direct-repo-name">{deriveRepoName(repo.url) || repo.url}</span>
-											<span class="direct-repo-url">{repo.url}</span>
+							{#if pending.runError}
+								<div class="pending-hook-error">{pending.runError}</div>
+							{/if}
+						</div>
+					{/each}
+				</div>
+			{/if}
+
+			<div class="hook-results-footer">
+				<Button
+					variant="primary"
+					onclick={() => {
+						if (autoCloseTimer) {
+							clearTimeout(autoCloseTimer);
+							autoCloseTimer = null;
+						}
+						onClose();
+					}}>Done</Button
+				>
+			</div>
+		</div>
+	{:else}
+		{#if error}
+			<Alert variant="error">{error}</Alert>
+		{/if}
+		{#if success}
+			<Alert variant="success">{success}</Alert>
+		{/if}
+		{#if warnings.length > 0}
+			<Alert variant="warning">
+				{#each warnings as warning (warning)}
+					<div>{warning}</div>
+				{/each}
+			</Alert>
+		{/if}
+		{#if hookRuns.length > 0}
+			<Alert variant="info">
+				{#each hookRuns as run (`${run.repo}:${run.event}:${run.id}`)}
+					<div>
+						<code>{run.repo}</code> <code>{run.id}</code>: <code>{run.status}</code>
+						{#if run.log_path}
+							(log: <code>{run.log_path}</code>)
+						{/if}
+					</div>
+				{/each}
+			</Alert>
+		{/if}
+		{#if pendingHooks.length > 0}
+			<Alert variant="warning">
+				{#each pendingHooks as pending (`${pending.repo}:${pending.event}`)}
+					<div class="pending-hook-row">
+						<div>
+							{pending.repo} pending hooks: {pending.hooks.join(', ')}
+							{#if pending.trusted}
+								(trusted)
+							{/if}
+						</div>
+						<div class="pending-hook-actions">
+							<Button
+								variant="ghost"
+								size="sm"
+								disabled={pending.running}
+								onclick={() => void handleRunPendingHook(pending)}
+							>
+								{pending.running ? 'Running…' : 'Run now'}
+							</Button>
+							<Button
+								variant="ghost"
+								size="sm"
+								disabled={pending.trusting || pending.trusted}
+								onclick={() => void handleTrustPendingHook(pending)}
+							>
+								{pending.trusting ? 'Trusting…' : pending.trusted ? 'Trusted' : 'Trust'}
+							</Button>
+						</div>
+						{#if pending.runError}
+							<div class="pending-hook-error">{pending.runError}</div>
+						{/if}
+					</div>
+				{/each}
+			</Alert>
+		{/if}
+
+		{#if mode === 'create'}
+			<div class="form create-two-column">
+				<div class="column-left">
+					<!-- Tab Bar - only when aliases/groups exist -->
+					{#if aliasItems.length > 0 || groupItems.length > 0}
+						<div class="tab-bar">
+							<button
+								class="tab"
+								class:active={activeTab === 'direct'}
+								type="button"
+								onclick={() => {
+									activeTab = 'direct';
+									searchQuery = '';
+								}}
+							>
+								Direct
+							</button>
+							{#if aliasItems.length > 0}
+								<button
+									class="tab"
+									class:active={activeTab === 'repos'}
+									type="button"
+									onclick={() => {
+										activeTab = 'repos';
+										searchQuery = '';
+									}}
+								>
+									Repos ({aliasItems.length})
+								</button>
+							{/if}
+							{#if groupItems.length > 0}
+								<button
+									class="tab"
+									class:active={activeTab === 'groups'}
+									type="button"
+									onclick={() => {
+										activeTab = 'groups';
+										searchQuery = '';
+									}}
+								>
+									Groups ({groupItems.length})
+								</button>
+							{/if}
+						</div>
+					{/if}
+
+					<!-- Selection Area - Left Column -->
+					<div class="selection-area">
+						{#if activeTab === 'direct'}
+							<label class="field">
+								<span>Repo URL or local path</span>
+								<div class="inline">
+									<input
+										bind:value={primaryInput}
+										placeholder="git@github.com:org/repo.git"
+										autocapitalize="off"
+										autocorrect="off"
+										spellcheck="false"
+										onkeydown={(e) => {
+											if (e.key === 'Enter') {
+												e.preventDefault();
+												addDirectRepo();
+											}
+										}}
+									/>
+									<Button
+										variant="ghost"
+										size="sm"
+										onclick={async () => {
+											try {
+												const path = await openDirectoryDialog(
+													'Select repo directory',
+													primaryInput.trim(),
+												);
+												if (path) primaryInput = path;
+											} catch (err) {
+												error = formatError(err, 'Failed to open directory picker.');
+											}
+										}}>Browse</Button
+									>
+									<Button
+										variant="primary"
+										size="sm"
+										onclick={addDirectRepo}
+										disabled={!primaryInput.trim() || !isRepoSource(primaryInput)}>Add</Button
+									>
+								</div>
+							</label>
+							{#if directRepos.length > 0}
+								<div class="direct-repos-list">
+									{#each directRepos as repo (repo.url)}
+										<div class="direct-repo-item">
+											<div class="direct-repo-info">
+												<span class="direct-repo-name">{deriveRepoName(repo.url) || repo.url}</span>
+												<span class="direct-repo-url">{repo.url}</span>
+											</div>
+											<label
+												class="direct-repo-register"
+												title="Save to Repo Registry for future use"
+											>
+												<input
+													type="checkbox"
+													checked={repo.register}
+													onchange={() => toggleDirectRepoRegister(repo.url)}
+												/>
+												<span>Register</span>
+											</label>
+											<button
+												type="button"
+												class="direct-repo-remove"
+												onclick={() => removeDirectRepo(repo.url)}
+											>
+												×
+											</button>
 										</div>
-										<label
-											class="direct-repo-register"
-											title="Save to Repo Registry for future use"
+									{/each}
+								</div>
+							{/if}
+						{:else if activeTab === 'repos'}
+							<div class="field">
+								<div class="inline">
+									<input
+										bind:value={searchQuery}
+										placeholder="Search repos..."
+										class="search-input"
+										autocapitalize="off"
+										autocorrect="off"
+										spellcheck="false"
+									/>
+									{#if searchQuery}
+										<button type="button" class="search-clear" onclick={() => (searchQuery = '')}
+											>Clear</button
 										>
-											<input
-												type="checkbox"
-												checked={repo.register}
-												onchange={() => toggleDirectRepoRegister(repo.url)}
-											/>
-											<span>Register</span>
-										</label>
-										<button
-											type="button"
-											class="direct-repo-remove"
-											onclick={() => removeDirectRepo(repo.url)}
+									{/if}
+								</div>
+								<div class="checkbox-list">
+									{#if filteredAliases.length === 0}
+										<div class="empty-search">No repos match "{searchQuery}"</div>
+									{:else}
+										{#each filteredAliases as alias (alias)}
+											<label class="checkbox-item" class:selected={selectedAliases.has(alias.name)}>
+												<input
+													type="checkbox"
+													checked={selectedAliases.has(alias.name)}
+													onchange={() => toggleAlias(alias.name)}
+												/>
+												<div class="checkbox-content">
+													<span class="checkbox-name">{alias.name}</span>
+													<span class="checkbox-meta">{getAliasSource(alias)}</span>
+												</div>
+											</label>
+										{/each}
+									{/if}
+								</div>
+							</div>
+						{:else if activeTab === 'groups'}
+							<div class="field">
+								<div class="inline">
+									<input
+										bind:value={searchQuery}
+										placeholder="Search groups..."
+										class="search-input"
+										autocapitalize="off"
+										autocorrect="off"
+										spellcheck="false"
+									/>
+									{#if searchQuery}
+										<button type="button" class="search-clear" onclick={() => (searchQuery = '')}
+											>Clear</button
 										>
-											×
-										</button>
-									</div>
-								{/each}
+									{/if}
+								</div>
+								<div class="group-list">
+									{#if filteredGroups.length === 0}
+										<div class="empty-search">No groups match "{searchQuery}"</div>
+									{:else}
+										{#each filteredGroups as group (group)}
+											<label class="group-card" class:selected={selectedGroups.has(group.name)}>
+												<input
+													type="checkbox"
+													checked={selectedGroups.has(group.name)}
+													onchange={() => toggleGroup(group.name)}
+												/>
+												<div class="group-content">
+													<div class="group-header">
+														<span class="group-name">{group.name}</span>
+														<span class="group-badge"
+															>{group.repo_count} repo{group.repo_count !== 1 ? 's' : ''}</span
+														>
+													</div>
+													{#if group.description}
+														<span class="group-description">{group.description}</span>
+													{/if}
+													<button
+														type="button"
+														class="group-expand"
+														onclick={(e) => {
+															e.preventDefault();
+															toggleGroupExpand(group.name);
+														}}
+													>
+														{expandedGroups.has(group.name) ? '▾ Hide' : '▸ Show'} repos
+													</button>
+													{#if expandedGroups.has(group.name)}
+														<ul class="group-members">
+															{#each groupDetails.get(group.name) || [] as repoName (repoName)}
+																<li>{repoName}</li>
+															{/each}
+														</ul>
+													{/if}
+												</div>
+											</label>
+										{/each}
+									{/if}
+								</div>
 							</div>
 						{/if}
-					{:else if activeTab === 'repos'}
-						<div class="field">
-							<div class="inline">
-								<input
-									bind:value={searchQuery}
-									placeholder="Search repos..."
-									class="search-input"
-									autocapitalize="off"
-									autocorrect="off"
-									spellcheck="false"
-								/>
-								{#if searchQuery}
-									<button type="button" class="search-clear" onclick={() => (searchQuery = '')}
-										>Clear</button
-									>
-								{/if}
-							</div>
-							<div class="checkbox-list">
-								{#if filteredAliases.length === 0}
-									<div class="empty-search">No repos match "{searchQuery}"</div>
-								{:else}
-									{#each filteredAliases as alias (alias)}
-										<label class="checkbox-item" class:selected={selectedAliases.has(alias.name)}>
-											<input
-												type="checkbox"
-												checked={selectedAliases.has(alias.name)}
-												onchange={() => toggleAlias(alias.name)}
-											/>
-											<div class="checkbox-content">
-												<span class="checkbox-name">{alias.name}</span>
-												<span class="checkbox-meta">{getAliasSource(alias)}</span>
-											</div>
-										</label>
-									{/each}
-								{/if}
-							</div>
-						</div>
-					{:else if activeTab === 'groups'}
-						<div class="field">
-							<div class="inline">
-								<input
-									bind:value={searchQuery}
-									placeholder="Search groups..."
-									class="search-input"
-									autocapitalize="off"
-									autocorrect="off"
-									spellcheck="false"
-								/>
-								{#if searchQuery}
-									<button type="button" class="search-clear" onclick={() => (searchQuery = '')}
-										>Clear</button
-									>
-								{/if}
-							</div>
-							<div class="group-list">
-								{#if filteredGroups.length === 0}
-									<div class="empty-search">No groups match "{searchQuery}"</div>
-								{:else}
-									{#each filteredGroups as group (group)}
-										<label class="group-card" class:selected={selectedGroups.has(group.name)}>
-											<input
-												type="checkbox"
-												checked={selectedGroups.has(group.name)}
-												onchange={() => toggleGroup(group.name)}
-											/>
-											<div class="group-content">
-												<div class="group-header">
-													<span class="group-name">{group.name}</span>
-													<span class="group-badge"
-														>{group.repo_count} repo{group.repo_count !== 1 ? 's' : ''}</span
-													>
-												</div>
-												{#if group.description}
-													<span class="group-description">{group.description}</span>
-												{/if}
-												<button
-													type="button"
-													class="group-expand"
-													onclick={(e) => {
-														e.preventDefault();
-														toggleGroupExpand(group.name);
-													}}
-												>
-													{expandedGroups.has(group.name) ? '▾ Hide' : '▸ Show'} repos
-												</button>
-												{#if expandedGroups.has(group.name)}
-													<ul class="group-members">
-														{#each groupDetails.get(group.name) || [] as repoName (repoName)}
-															<li>{repoName}</li>
-														{/each}
-													</ul>
-												{/if}
-											</div>
-										</label>
-									{/each}
-								{/if}
-							</div>
-						</div>
+					</div>
+
+					{#if aliasItems.length === 0 && groupItems.length === 0}
+						<div class="hint">No registered repos or groups configured. Add them in Settings.</div>
 					{/if}
 				</div>
 
-				{#if aliasItems.length === 0 && groupItems.length === 0}
-					<div class="hint">No registered repos or groups configured. Add them in Settings.</div>
-				{/if}
+				<div class="column-right">
+					<div class="selection-panel">
+						<h4 class="panel-title">Selected ({totalRepos} repos)</h4>
+
+						<div class="selected-list">
+							{#if selectedItems.length === 0}
+								<div class="empty-selection">No repos selected</div>
+							{:else}
+								{#each selectedItems as item (item.name)}
+									<div class="selected-item" class:pending={item.pending}>
+										<span class="selected-badge {item.type}">{item.type}</span>
+										<span class="selected-name">{item.name}</span>
+										{#if item.pending}
+											<span class="pending-label">pending</span>
+										{:else}
+											<button
+												type="button"
+												class="selected-remove"
+												onclick={() => {
+													if (item.type === 'repo' && item.url) removeDirectRepo(item.url);
+													else if (item.type === 'alias') removeAlias(item.name);
+													else if (item.type === 'group') removeGroup(item.name);
+												}}
+											>
+												×
+											</button>
+										{/if}
+									</div>
+								{/each}
+							{/if}
+						</div>
+
+						<div class="panel-section">
+							<span class="panel-label">Workspace name</span>
+							<input
+								bind:value={customizeName}
+								placeholder={generatedName || 'workspace-name'}
+								class="name-input"
+								autocapitalize="off"
+								autocorrect="off"
+								spellcheck="false"
+							/>
+							{#if alternatives.length > 0}
+								<div class="alt-chips">
+									{#each alternatives as alt, i (i)}
+										<button type="button" class="alt-chip" onclick={() => selectAlternative(alt)}
+											>{alt}</button
+										>
+									{/each}
+								</div>
+							{/if}
+						</div>
+
+						<Button
+							variant="primary"
+							onclick={handleCreate}
+							disabled={loading || !finalName}
+							class="create-btn"
+						>
+							{loading ? 'Creating…' : 'Create'}
+						</Button>
+					</div>
+				</div>
 			</div>
+		{:else if mode === 'rename'}
+			<div class="form">
+				<label class="field">
+					<span>New name</span>
+					<input
+						bind:this={nameInput}
+						bind:value={renameName}
+						placeholder="acme"
+						autocapitalize="off"
+						autocorrect="off"
+						spellcheck="false"
+					/>
+				</label>
+				<div class="hint">Renaming updates config and workset.yaml. Files stay in place.</div>
+				<Button variant="primary" onclick={handleRename} disabled={loading} class="action-btn">
+					{loading ? 'Renaming…' : 'Rename'}
+				</Button>
+			</div>
+		{:else if mode === 'add-repo'}
+			<div class="form add-two-column">
+				<div class="column-left">
+					<!-- Tab Bar - only when aliases/groups exist -->
+					{#if aliasItems.length > 0 || groupItems.length > 0}
+						<div class="tab-bar">
+							<button
+								class="tab"
+								class:active={activeTab === 'direct'}
+								type="button"
+								onclick={() => {
+									activeTab = 'direct';
+									searchQuery = '';
+								}}
+							>
+								Direct
+							</button>
+							{#if aliasItems.length > 0}
+								<button
+									class="tab"
+									class:active={activeTab === 'repos'}
+									type="button"
+									onclick={() => {
+										activeTab = 'repos';
+										searchQuery = '';
+									}}
+								>
+									Repos ({aliasItems.length})
+								</button>
+							{/if}
+							{#if groupItems.length > 0}
+								<button
+									class="tab"
+									class:active={activeTab === 'groups'}
+									type="button"
+									onclick={() => {
+										activeTab = 'groups';
+										searchQuery = '';
+									}}
+								>
+									Groups ({groupItems.length})
+								</button>
+							{/if}
+						</div>
+					{/if}
 
-			<div class="column-right">
-				<div class="selection-panel">
-					<h4 class="panel-title">Selected ({totalRepos} repos)</h4>
-
-					<div class="selected-list">
-						{#if selectedItems.length === 0}
-							<div class="empty-selection">No repos selected</div>
-						{:else}
-							{#each selectedItems as item (item.name)}
-								<div class="selected-item" class:pending={item.pending}>
-									<span class="selected-badge {item.type}">{item.type}</span>
-									<span class="selected-name">{item.name}</span>
-									{#if item.pending}
-										<span class="pending-label">pending</span>
+					<!-- Selection Area - Left Column -->
+					<div class="selection-area">
+						{#if activeTab === 'direct'}
+							<label class="field">
+								<span>Repo URL or local path</span>
+								<div class="inline">
+									<input
+										bind:value={addSource}
+										placeholder="git@github.com:org/repo.git"
+										autocapitalize="off"
+										autocorrect="off"
+										spellcheck="false"
+									/>
+									<Button variant="ghost" size="sm" onclick={handleBrowse}>Browse</Button>
+								</div>
+							</label>
+						{:else if activeTab === 'repos'}
+							<div class="field">
+								<div class="inline">
+									<input
+										bind:value={searchQuery}
+										placeholder="Search repos..."
+										class="search-input"
+										autocapitalize="off"
+										autocorrect="off"
+										spellcheck="false"
+									/>
+									{#if searchQuery}
+										<button type="button" class="search-clear" onclick={() => (searchQuery = '')}
+											>Clear</button
+										>
+									{/if}
+								</div>
+								<div class="checkbox-list">
+									{#if filteredAliases.length === 0}
+										<div class="empty-search">No repos match "{searchQuery}"</div>
 									{:else}
+										{#each filteredAliases as alias (alias)}
+											<label class="checkbox-item" class:selected={selectedAliases.has(alias.name)}>
+												<input
+													type="checkbox"
+													checked={selectedAliases.has(alias.name)}
+													onchange={() => toggleAlias(alias.name)}
+												/>
+												<div class="checkbox-content">
+													<span class="checkbox-name">{alias.name}</span>
+													<span class="checkbox-meta">{getAliasSource(alias)}</span>
+												</div>
+											</label>
+										{/each}
+									{/if}
+								</div>
+							</div>
+						{:else if activeTab === 'groups'}
+							<div class="field">
+								<div class="inline">
+									<input
+										bind:value={searchQuery}
+										placeholder="Search groups..."
+										class="search-input"
+										autocapitalize="off"
+										autocorrect="off"
+										spellcheck="false"
+									/>
+									{#if searchQuery}
+										<button type="button" class="search-clear" onclick={() => (searchQuery = '')}
+											>Clear</button
+										>
+									{/if}
+								</div>
+								<div class="group-list">
+									{#if filteredGroups.length === 0}
+										<div class="empty-search">No groups match "{searchQuery}"</div>
+									{:else}
+										{#each filteredGroups as group (group)}
+											<label class="group-card" class:selected={selectedGroups.has(group.name)}>
+												<input
+													type="checkbox"
+													checked={selectedGroups.has(group.name)}
+													onchange={() => toggleGroup(group.name)}
+												/>
+												<div class="group-content">
+													<div class="group-header">
+														<span class="group-name">{group.name}</span>
+														<span class="group-badge"
+															>{group.repo_count} repo{group.repo_count !== 1 ? 's' : ''}</span
+														>
+													</div>
+													{#if group.description}
+														<span class="group-description">{group.description}</span>
+													{/if}
+													<button
+														type="button"
+														class="group-expand"
+														onclick={(e) => {
+															e.preventDefault();
+															toggleGroupExpand(group.name);
+														}}
+													>
+														{expandedGroups.has(group.name) ? '▾ Hide' : '▸ Show'} repos
+													</button>
+													{#if expandedGroups.has(group.name)}
+														<ul class="group-members">
+															{#each groupDetails.get(group.name) || [] as repoName (repoName)}
+																<li>{repoName}</li>
+															{/each}
+														</ul>
+													{/if}
+												</div>
+											</label>
+										{/each}
+									{/if}
+								</div>
+							</div>
+						{/if}
+					</div>
+
+					{#if aliasItems.length === 0 && groupItems.length === 0}
+						<div class="hint">No registered repos or groups configured. Add them in Settings.</div>
+					{/if}
+				</div>
+
+				<div class="column-right">
+					<div class="selection-panel">
+						{#if existingRepos.length > 0}
+							<div class="panel-section existing-section">
+								<span class="panel-label">Already in workspace ({existingRepos.length} repos)</span>
+								<div class="existing-list">
+									{#each existingRepos as repo (repo.name)}
+										<div class="existing-item">
+											<span class="selected-badge existing">repo</span>
+											<span class="selected-name">{repo.name}</span>
+										</div>
+									{/each}
+								</div>
+							</div>
+						{/if}
+
+						<h4 class="panel-title">Selected ({addRepoTotalItems} items)</h4>
+
+						<div class="selected-list">
+							{#if addRepoSelectedItems.length === 0}
+								<div class="empty-selection">No items selected</div>
+							{:else}
+								{#each addRepoSelectedItems as item (item.name)}
+									<div class="selected-item">
+										<span class="selected-badge {item.type}">{item.type}</span>
+										<span class="selected-name">{item.name}</span>
 										<button
 											type="button"
 											class="selected-remove"
 											onclick={() => {
-												if (item.type === 'repo' && item.url) removeDirectRepo(item.url);
+												if (item.type === 'repo') addSource = '';
 												else if (item.type === 'alias') removeAlias(item.name);
 												else if (item.type === 'group') removeGroup(item.name);
 											}}
 										>
 											×
 										</button>
-									{/if}
-								</div>
-							{/each}
-						{/if}
-					</div>
-
-					<div class="panel-section">
-						<span class="panel-label">Workspace name</span>
-						<input
-							bind:value={customizeName}
-							placeholder={generatedName || 'workspace-name'}
-							class="name-input"
-							autocapitalize="off"
-							autocorrect="off"
-							spellcheck="false"
-						/>
-						{#if alternatives.length > 0}
-							<div class="alt-chips">
-								{#each alternatives as alt, i (i)}
-									<button type="button" class="alt-chip" onclick={() => selectAlternative(alt)}
-										>{alt}</button
-									>
-								{/each}
-							</div>
-						{/if}
-					</div>
-
-					<Button
-						variant="primary"
-						onclick={handleCreate}
-						disabled={loading || !finalName}
-						class="create-btn"
-					>
-						{loading ? 'Creating…' : 'Create'}
-					</Button>
-				</div>
-			</div>
-		</div>
-	{:else if mode === 'rename'}
-		<div class="form">
-			<label class="field">
-				<span>New name</span>
-				<input
-					bind:this={nameInput}
-					bind:value={renameName}
-					placeholder="acme"
-					autocapitalize="off"
-					autocorrect="off"
-					spellcheck="false"
-				/>
-			</label>
-			<div class="hint">Renaming updates config and workset.yaml. Files stay in place.</div>
-			<Button variant="primary" onclick={handleRename} disabled={loading} class="action-btn">
-				{loading ? 'Renaming…' : 'Rename'}
-			</Button>
-		</div>
-	{:else if mode === 'add-repo'}
-		<div class="form add-two-column">
-			<div class="column-left">
-				<!-- Tab Bar - only when aliases/groups exist -->
-				{#if aliasItems.length > 0 || groupItems.length > 0}
-					<div class="tab-bar">
-						<button
-							class="tab"
-							class:active={activeTab === 'direct'}
-							type="button"
-							onclick={() => {
-								activeTab = 'direct';
-								searchQuery = '';
-							}}
-						>
-							Direct
-						</button>
-						{#if aliasItems.length > 0}
-							<button
-								class="tab"
-								class:active={activeTab === 'repos'}
-								type="button"
-								onclick={() => {
-									activeTab = 'repos';
-									searchQuery = '';
-								}}
-							>
-								Repos ({aliasItems.length})
-							</button>
-						{/if}
-						{#if groupItems.length > 0}
-							<button
-								class="tab"
-								class:active={activeTab === 'groups'}
-								type="button"
-								onclick={() => {
-									activeTab = 'groups';
-									searchQuery = '';
-								}}
-							>
-								Groups ({groupItems.length})
-							</button>
-						{/if}
-					</div>
-				{/if}
-
-				<!-- Selection Area - Left Column -->
-				<div class="selection-area">
-					{#if activeTab === 'direct'}
-						<label class="field">
-							<span>Repo URL or local path</span>
-							<div class="inline">
-								<input
-									bind:value={addSource}
-									placeholder="git@github.com:org/repo.git"
-									autocapitalize="off"
-									autocorrect="off"
-									spellcheck="false"
-								/>
-								<Button variant="ghost" size="sm" onclick={handleBrowse}>Browse</Button>
-							</div>
-						</label>
-					{:else if activeTab === 'repos'}
-						<div class="field">
-							<div class="inline">
-								<input
-									bind:value={searchQuery}
-									placeholder="Search repos..."
-									class="search-input"
-									autocapitalize="off"
-									autocorrect="off"
-									spellcheck="false"
-								/>
-								{#if searchQuery}
-									<button type="button" class="search-clear" onclick={() => (searchQuery = '')}
-										>Clear</button
-									>
-								{/if}
-							</div>
-							<div class="checkbox-list">
-								{#if filteredAliases.length === 0}
-									<div class="empty-search">No repos match "{searchQuery}"</div>
-								{:else}
-									{#each filteredAliases as alias (alias)}
-										<label class="checkbox-item" class:selected={selectedAliases.has(alias.name)}>
-											<input
-												type="checkbox"
-												checked={selectedAliases.has(alias.name)}
-												onchange={() => toggleAlias(alias.name)}
-											/>
-											<div class="checkbox-content">
-												<span class="checkbox-name">{alias.name}</span>
-												<span class="checkbox-meta">{getAliasSource(alias)}</span>
-											</div>
-										</label>
-									{/each}
-								{/if}
-							</div>
-						</div>
-					{:else if activeTab === 'groups'}
-						<div class="field">
-							<div class="inline">
-								<input
-									bind:value={searchQuery}
-									placeholder="Search groups..."
-									class="search-input"
-									autocapitalize="off"
-									autocorrect="off"
-									spellcheck="false"
-								/>
-								{#if searchQuery}
-									<button type="button" class="search-clear" onclick={() => (searchQuery = '')}
-										>Clear</button
-									>
-								{/if}
-							</div>
-							<div class="group-list">
-								{#if filteredGroups.length === 0}
-									<div class="empty-search">No groups match "{searchQuery}"</div>
-								{:else}
-									{#each filteredGroups as group (group)}
-										<label class="group-card" class:selected={selectedGroups.has(group.name)}>
-											<input
-												type="checkbox"
-												checked={selectedGroups.has(group.name)}
-												onchange={() => toggleGroup(group.name)}
-											/>
-											<div class="group-content">
-												<div class="group-header">
-													<span class="group-name">{group.name}</span>
-													<span class="group-badge"
-														>{group.repo_count} repo{group.repo_count !== 1 ? 's' : ''}</span
-													>
-												</div>
-												{#if group.description}
-													<span class="group-description">{group.description}</span>
-												{/if}
-												<button
-													type="button"
-													class="group-expand"
-													onclick={(e) => {
-														e.preventDefault();
-														toggleGroupExpand(group.name);
-													}}
-												>
-													{expandedGroups.has(group.name) ? '▾ Hide' : '▸ Show'} repos
-												</button>
-												{#if expandedGroups.has(group.name)}
-													<ul class="group-members">
-														{#each groupDetails.get(group.name) || [] as repoName (repoName)}
-															<li>{repoName}</li>
-														{/each}
-													</ul>
-												{/if}
-											</div>
-										</label>
-									{/each}
-								{/if}
-							</div>
-						</div>
-					{/if}
-				</div>
-
-				{#if aliasItems.length === 0 && groupItems.length === 0}
-					<div class="hint">No registered repos or groups configured. Add them in Settings.</div>
-				{/if}
-			</div>
-
-			<div class="column-right">
-				<div class="selection-panel">
-					{#if existingRepos.length > 0}
-						<div class="panel-section existing-section">
-							<span class="panel-label">Already in workspace ({existingRepos.length} repos)</span>
-							<div class="existing-list">
-								{#each existingRepos as repo (repo.name)}
-									<div class="existing-item">
-										<span class="selected-badge existing">repo</span>
-										<span class="selected-name">{repo.name}</span>
 									</div>
 								{/each}
+							{/if}
+						</div>
+
+						<Button
+							variant="primary"
+							onclick={handleAddItems}
+							disabled={loading || addRepoTotalItems === 0}
+							class="create-btn"
+						>
+							{loading ? 'Adding…' : 'Add'}
+						</Button>
+					</div>
+				</div>
+			</div>
+		{:else if mode === 'archive'}
+			<div class="form">
+				<div class="hint">Archiving hides the workspace but keeps files on disk.</div>
+				<label class="field">
+					<span>Reason (optional)</span>
+					<input
+						bind:this={nameInput}
+						bind:value={archiveReason}
+						placeholder="paused"
+						autocapitalize="off"
+						autocorrect="off"
+						spellcheck="false"
+					/>
+				</label>
+				<Button variant="danger" onclick={handleArchive} disabled={loading} class="action-btn">
+					{loading ? 'Archiving…' : 'Archive'}
+				</Button>
+			</div>
+		{:else if mode === 'remove-workspace'}
+			<div class="form form-removing" class:removing class:success={removalSuccess}>
+				<div class="form-content">
+					<div class="hint hint-intro">Remove workspace registration only by default.</div>
+					<label class="option option-main">
+						<input type="checkbox" bind:checked={removeDeleteFiles} />
+						<span>Also delete workspace files and worktrees</span>
+					</label>
+					{#if removeDeleteFiles}
+						<div class="deletion-options">
+							<div class="hint deletion-hint">
+								Deletes the workspace directory and removes all worktrees.
 							</div>
+							<label class="field">
+								<span>Type DELETE to confirm</span>
+								<input
+									bind:value={removeConfirmText}
+									placeholder="DELETE"
+									autocapitalize="off"
+									autocorrect="off"
+									spellcheck="false"
+								/>
+							</label>
+							<label class="option">
+								<input type="checkbox" bind:checked={removeForceDelete} />
+								<span>Force delete (skip safety checks)</span>
+							</label>
+							{#if removeForceDelete}
+								<Alert variant="warning">
+									Force delete bypasses dirty/unmerged checks and may delete uncommitted work.
+								</Alert>
+							{/if}
 						</div>
 					{/if}
-
-					<h4 class="panel-title">Selected ({addRepoTotalItems} items)</h4>
-
-					<div class="selected-list">
-						{#if addRepoSelectedItems.length === 0}
-							<div class="empty-selection">No items selected</div>
-						{:else}
-							{#each addRepoSelectedItems as item (item.name)}
-								<div class="selected-item">
-									<span class="selected-badge {item.type}">{item.type}</span>
-									<span class="selected-name">{item.name}</span>
-									<button
-										type="button"
-										class="selected-remove"
-										onclick={() => {
-											if (item.type === 'repo') addSource = '';
-											else if (item.type === 'alias') removeAlias(item.name);
-											else if (item.type === 'group') removeGroup(item.name);
-										}}
-									>
-										×
-									</button>
-								</div>
-							{/each}
-						{/if}
-					</div>
-
 					<Button
-						variant="primary"
-						onclick={handleAddItems}
-						disabled={loading || addRepoTotalItems === 0}
-						class="create-btn"
+						variant="danger"
+						onclick={handleRemoveWorkspace}
+						disabled={loading || !removeConfirmValid}
+						class="action-btn"
 					>
-						{loading ? 'Adding…' : 'Add'}
+						{loading ? 'Removing…' : 'Remove workspace'}
 					</Button>
 				</div>
-			</div>
-		</div>
-	{:else if mode === 'archive'}
-		<div class="form">
-			<div class="hint">Archiving hides the workspace but keeps files on disk.</div>
-			<label class="field">
-				<span>Reason (optional)</span>
-				<input
-					bind:this={nameInput}
-					bind:value={archiveReason}
-					placeholder="paused"
-					autocapitalize="off"
-					autocorrect="off"
-					spellcheck="false"
-				/>
-			</label>
-			<Button variant="danger" onclick={handleArchive} disabled={loading} class="action-btn">
-				{loading ? 'Archiving…' : 'Archive'}
-			</Button>
-		</div>
-	{:else if mode === 'remove-workspace'}
-		<div class="form form-removing" class:removing class:success={removalSuccess}>
-			<div class="form-content">
-				<div class="hint hint-intro">Remove workspace registration only by default.</div>
-				<label class="option option-main">
-					<input type="checkbox" bind:checked={removeDeleteFiles} />
-					<span>Also delete workspace files and worktrees</span>
-				</label>
-				{#if removeDeleteFiles}
-					<div class="deletion-options">
-						<div class="hint deletion-hint">
-							Deletes the workspace directory and removes all worktrees.
-						</div>
-						<label class="field">
-							<span>Type DELETE to confirm</span>
-							<input
-								bind:value={removeConfirmText}
-								placeholder="DELETE"
-								autocapitalize="off"
-								autocorrect="off"
-								spellcheck="false"
-							/>
-						</label>
-						<label class="option">
-							<input type="checkbox" bind:checked={removeForceDelete} />
-							<span>Force delete (skip safety checks)</span>
-						</label>
-						{#if removeForceDelete}
-							<Alert variant="warning">
-								Force delete bypasses dirty/unmerged checks and may delete uncommitted work.
-							</Alert>
-						{/if}
-					</div>
-				{/if}
-				<Button
-					variant="danger"
-					onclick={handleRemoveWorkspace}
-					disabled={loading || !removeConfirmValid}
-					class="action-btn"
-				>
-					{loading ? 'Removing…' : 'Remove workspace'}
-				</Button>
-			</div>
-			{#if removing}
-				<div class="removal-overlay">
-					{#if removalSuccess}
-						<div class="removal-success">
-							<svg
-								class="success-icon"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-							>
-								<path d="M20 6L9 17l-5-5" />
-							</svg>
-							<span class="removal-text">Removed successfully</span>
-						</div>
-					{:else}
-						<div class="removal-loading">
-							<div class="spinner"></div>
-							<span class="removal-text">Removing workspace…</span>
-						</div>
-					{/if}
-				</div>
-			{/if}
-		</div>
-	{:else if mode === 'remove-repo'}
-		<div class="form form-removing" class:removing class:success={removalSuccess}>
-			<div class="form-content">
-				<div class="hint hint-intro">
-					This removes the repo from the workspace config by default.
-				</div>
-				<label class="option option-main">
-					<input type="checkbox" bind:checked={removeDeleteWorktree} />
-					<span>Also delete worktrees for this repo</span>
-				</label>
-				{#if removeRepoConfirmRequired}
-					<div class="deletion-options">
-						<label class="field">
-							<span>Type DELETE to confirm</span>
-							<input
-								bind:value={removeRepoConfirmText}
-								placeholder="DELETE"
-								autocapitalize="off"
-								autocorrect="off"
-								spellcheck="false"
-							/>
-						</label>
-						{#if removeDeleteWorktree}
-							<div class="hint deletion-hint">
-								Destructive deletes are permanent and cannot be undone.
+				{#if removing}
+					<div class="removal-overlay">
+						{#if removalSuccess}
+							<div class="removal-success">
+								<svg
+									class="success-icon"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+								>
+									<path d="M20 6L9 17l-5-5" />
+								</svg>
+								<span class="removal-text">Removed successfully</span>
+							</div>
+						{:else}
+							<div class="removal-loading">
+								<div class="spinner"></div>
+								<span class="removal-text">Removing workspace…</span>
 							</div>
 						{/if}
-						{#if removeRepoStatusRefreshing}
-							<Alert variant="warning">Fetching repo status…</Alert>
-						{:else if removeRepoStatus?.statusKnown === false && removeDeleteWorktree}
-							<Alert variant="warning">
-								Repo status unknown. Destructive deletes may be blocked if the repo is dirty.
-							</Alert>
-						{/if}
-						{#if removeRepoStatus?.dirty && removeDeleteWorktree}
-							<Alert variant="warning">
-								Uncommitted changes detected. Destructive deletes will be blocked until the repo is
-								clean.
-							</Alert>
+					</div>
+				{/if}
+			</div>
+		{:else if mode === 'remove-repo'}
+			<div class="form form-removing" class:removing class:success={removalSuccess}>
+				<div class="form-content">
+					<div class="hint hint-intro">
+						This removes the repo from the workspace config by default.
+					</div>
+					<label class="option option-main">
+						<input type="checkbox" bind:checked={removeDeleteWorktree} />
+						<span>Also delete worktrees for this repo</span>
+					</label>
+					{#if removeRepoConfirmRequired}
+						<div class="deletion-options">
+							<label class="field">
+								<span>Type DELETE to confirm</span>
+								<input
+									bind:value={removeRepoConfirmText}
+									placeholder="DELETE"
+									autocapitalize="off"
+									autocorrect="off"
+									spellcheck="false"
+								/>
+							</label>
+							{#if removeDeleteWorktree}
+								<div class="hint deletion-hint">
+									Destructive deletes are permanent and cannot be undone.
+								</div>
+							{/if}
+							{#if removeRepoStatusRefreshing}
+								<Alert variant="warning">Fetching repo status…</Alert>
+							{:else if removeRepoStatus?.statusKnown === false && removeDeleteWorktree}
+								<Alert variant="warning">
+									Repo status unknown. Destructive deletes may be blocked if the repo is dirty.
+								</Alert>
+							{/if}
+							{#if removeRepoStatus?.dirty && removeDeleteWorktree}
+								<Alert variant="warning">
+									Uncommitted changes detected. Destructive deletes will be blocked until the repo
+									is clean.
+								</Alert>
+							{/if}
+						</div>
+					{/if}
+					<Button
+						variant="danger"
+						onclick={handleRemoveRepo}
+						disabled={loading || !removeRepoConfirmValid}
+						class="action-btn"
+					>
+						{loading ? 'Removing…' : 'Remove repo'}
+					</Button>
+				</div>
+				{#if removing}
+					<div class="removal-overlay">
+						{#if removalSuccess}
+							<div class="removal-success">
+								<svg
+									class="success-icon"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+								>
+									<path d="M20 6L9 17l-5-5" />
+								</svg>
+								<span class="removal-text">Removed successfully</span>
+							</div>
+						{:else}
+							<div class="removal-loading">
+								<div class="spinner"></div>
+								<span class="removal-text">Removing repo…</span>
+							</div>
 						{/if}
 					</div>
 				{/if}
-				<Button
-					variant="danger"
-					onclick={handleRemoveRepo}
-					disabled={loading || !removeRepoConfirmValid}
-					class="action-btn"
-				>
-					{loading ? 'Removing…' : 'Remove repo'}
-				</Button>
 			</div>
-			{#if removing}
-				<div class="removal-overlay">
-					{#if removalSuccess}
-						<div class="removal-success">
-							<svg
-								class="success-icon"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-							>
-								<path d="M20 6L9 17l-5-5" />
-							</svg>
-							<span class="removal-text">Removed successfully</span>
-						</div>
-					{:else}
-						<div class="removal-loading">
-							<div class="spinner"></div>
-							<span class="removal-text">Removing repo…</span>
-						</div>
-					{/if}
-				</div>
-			{/if}
-		</div>
+		{/if}
 	{/if}
 </Modal>
 
@@ -2450,5 +2874,143 @@
 	.mini-chip.more {
 		background: rgba(255, 255, 255, 0.1);
 		color: var(--muted);
+	}
+
+	.pending-hook-row {
+		display: grid;
+		gap: 6px;
+		margin-bottom: 10px;
+	}
+
+	.pending-hook-actions {
+		display: flex;
+		gap: 8px;
+	}
+
+	.pending-hook-error {
+		color: var(--danger);
+		font-size: 12px;
+	}
+
+	/* Hook Results Phase */
+	.hook-results-container {
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+	}
+
+	.hook-results-section {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.hook-results-heading {
+		margin: 0;
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--muted);
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+	}
+
+	.hook-runs-list {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.hook-run-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 10px;
+		background: var(--panel);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		font-size: 13px;
+	}
+
+	.hook-run-repo {
+		font-weight: 500;
+		color: var(--text);
+	}
+
+	.hook-run-id {
+		font-size: 12px;
+		color: var(--muted);
+	}
+
+	.hook-status-badge {
+		display: inline-flex;
+		align-items: center;
+		padding: 2px 8px;
+		border-radius: var(--radius-sm);
+		font-size: 11px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.02em;
+		margin-left: auto;
+	}
+
+	.hook-status-badge.ok {
+		background: rgba(74, 222, 128, 0.15);
+		color: var(--success, #4ade80);
+	}
+
+	.hook-status-badge.failed {
+		background: rgba(239, 68, 68, 0.15);
+		color: var(--danger, #ef4444);
+	}
+
+	.hook-status-badge.running {
+		background: rgba(59, 130, 246, 0.15);
+		color: var(--accent);
+	}
+
+	.hook-status-badge.skipped {
+		background: rgba(255, 255, 255, 0.08);
+		color: var(--muted);
+	}
+
+	.hook-run-log {
+		font-size: 11px;
+		color: var(--muted);
+		cursor: help;
+	}
+
+	.pending-hook-card {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		padding: 12px;
+		background: var(--panel);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+	}
+
+	.pending-hook-info {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+
+	.pending-hook-repo {
+		font-weight: 500;
+		font-size: 14px;
+		color: var(--text);
+	}
+
+	.pending-hook-names {
+		font-size: 12px;
+		color: var(--muted);
+	}
+
+	.hook-results-footer {
+		display: flex;
+		justify-content: flex-end;
+		padding-top: 8px;
+		border-top: 1px solid var(--border);
 	}
 </style>

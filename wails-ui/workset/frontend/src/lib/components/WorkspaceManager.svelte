@@ -49,6 +49,7 @@
 	let addRepoDir = $state('');
 	let addError: string | null = $state(null);
 	let addSuccess: string | null = $state(null);
+	let addWarnings: string[] = $state([]);
 	let adding = $state(false);
 	let addSourceInput: HTMLInputElement | null = $state(null);
 
@@ -76,6 +77,7 @@
 		removeRepoDeleteLocal = false;
 		addError = null;
 		addSuccess = null;
+		addWarnings = [];
 		workspaceError = null;
 	};
 
@@ -219,6 +221,7 @@
 		if (adding || !selectedWorkspace) return;
 		addError = null;
 		addSuccess = null;
+		addWarnings = [];
 		const source = addSource.trim();
 		if (!source) {
 			addError = 'Repo source is required.';
@@ -226,11 +229,17 @@
 		}
 		adding = true;
 		try {
-			await addRepo(selectedWorkspace.id, source, addName.trim(), addRepoDir.trim());
+			const result = await addRepo(selectedWorkspace.id, source, addName.trim(), addRepoDir.trim());
+			const warnings = result.warnings ?? [];
 			addSource = '';
 			addName = '';
 			addRepoDir = '';
-			addSuccess = 'Repo added.';
+			if (warnings.length > 0) {
+				addWarnings = Array.from(new Set(warnings));
+				addSuccess = `Repo added with ${addWarnings.length} warning${addWarnings.length === 1 ? '' : 's'}.`;
+			} else {
+				addSuccess = 'Repo added.';
+			}
 			await loadWorkspaces(true);
 		} catch (err) {
 			addError = formatError(err, 'Failed to add repo.');
@@ -559,8 +568,17 @@
 								</button>
 								{#if addError}
 									<div class="note error">{addError}</div>
-								{:else if addSuccess}
-									<div class="note success">{addSuccess}</div>
+								{:else}
+									{#if addSuccess}
+										<div class="note success">{addSuccess}</div>
+									{/if}
+									{#if addWarnings.length > 0}
+										<div class="note warning">
+											{#each addWarnings as warning (warning)}
+												<div>{warning}</div>
+											{/each}
+										</div>
+									{/if}
 								{/if}
 							</div>
 							<div class="hint">Removes only update the workset config. Files stay on disk.</div>

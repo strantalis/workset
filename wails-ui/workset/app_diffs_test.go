@@ -1,6 +1,12 @@
 package main
 
-import "testing"
+import (
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+)
 
 func TestParseNameStatusZ(t *testing.T) {
 	input := []byte("M\x00readme.md\x00R100\x00old.txt\x00new.txt\x00")
@@ -53,5 +59,131 @@ func TestFinalizePatch(t *testing.T) {
 	}
 	if largeResult.Patch != "" {
 		t.Fatalf("expected truncated patch to be empty")
+	}
+}
+
+func TestNormalizeNoIndexPath(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "relative dot slash", input: "./src/main.go", want: "src/main.go"},
+		{name: "windows dot slash", input: ".\\src\\main.go", want: "src/main.go"},
+		{name: "dev null", input: "/dev/null", want: ""},
+		{name: "windows nul", input: "NUL", want: ""},
+		{name: "empty", input: "", want: ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := normalizeNoIndexPath(tc.input); got != tc.want {
+				t.Fatalf("expected %q, got %q", tc.want, got)
+			}
+		})
+	}
+}
+
+func TestGitUntrackedNumstatBatch(t *testing.T) {
+	ctx := context.Background()
+	repoPath := t.TempDir()
+	runGit(t, repoPath, "init", "-q")
+
+	textPath := filepath.Join(repoPath, "notes.txt")
+	if err := os.WriteFile(textPath, []byte("one\ntwo\n"), 0o644); err != nil {
+		t.Fatalf("write text file: %v", err)
+	}
+
+	binaryPath := filepath.Join(repoPath, "assets.bin")
+	if err := os.WriteFile(binaryPath, []byte{0x00, 0x01, 0x02, 0x03}, 0o644); err != nil {
+		t.Fatalf("write binary file: %v", err)
+	}
+
+	stats, err := gitUntrackedNumstat(ctx, repoPath, []string{"notes.txt", "assets.bin"})
+	if err != nil {
+		t.Fatalf("gitUntrackedNumstat failed: %v", err)
+	}
+
+	textEntry, ok := stats["notes.txt"]
+	if !ok {
+		t.Fatalf("missing notes.txt entry: %+v", stats)
+	}
+	if textEntry.added != 2 || textEntry.removed != 0 || textEntry.binary {
+		t.Fatalf("unexpected notes.txt stats: %+v", textEntry)
+	}
+
+	binaryEntry, ok := stats["assets.bin"]
+	if !ok {
+		t.Fatalf("missing assets.bin entry: %+v", stats)
+	}
+	if !binaryEntry.binary || binaryEntry.removed != 0 {
+		t.Fatalf("unexpected assets.bin stats: %+v", binaryEntry)
+	}
+}
+
+func TestGitUntrackedNumstatHandlesPathspecMagicFilename(t *testing.T) {
+	ctx := context.Background()
+	repoPath := t.TempDir()
+	runGit(t, repoPath, "init", "-q")
+
+	// This filename is valid on disk but parsed as pathspec magic unless
+	// literal-pathspec handling is enabled.
+	path := ":(bad).txt"
+	if err := os.WriteFile(filepath.Join(repoPath, path), []byte("line one\nline two\n"), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	stats, err := gitUntrackedNumstat(ctx, repoPath, []string{path})
+	if err != nil {
+		t.Fatalf("gitUntrackedNumstat failed: %v", err)
+	}
+
+	entry, ok := stats[path]
+	if !ok {
+		t.Fatalf("missing %q entry: %+v", path, stats)
+	}
+	if entry.added != 2 || entry.removed != 0 || entry.binary {
+		t.Fatalf("unexpected stats: %+v", entry)
+	}
+}
+
+func TestGitDiffNoIndexNumstatBatchLiteralPathspec(t *testing.T) {
+	ctx := context.Background()
+	repoPath := t.TempDir()
+	runGit(t, repoPath, "init", "-q")
+
+	path := ":(bad).txt"
+	if err := os.WriteFile(filepath.Join(repoPath, path), []byte("line one\nline two\n"), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	emptyDir := t.TempDir()
+	output, err := gitDiffNoIndexNumstatBatch(ctx, repoPath, emptyDir, []string{path})
+	if err != nil {
+		t.Fatalf("gitDiffNoIndexNumstatBatch failed: %v", err)
+	}
+
+	var found bool
+	for _, entry := range parseNumstatZ(output) {
+		if normalizeNoIndexPath(entry.path) != path {
+			continue
+		}
+		found = true
+		if entry.added != 2 || entry.removed != 0 || entry.binary {
+			t.Fatalf("unexpected entry for %q: %+v", path, entry)
+		}
+	}
+	if !found {
+		t.Fatalf("did not find expected entry for %q in output %q", path, string(output))
+	}
+}
+
+func runGit(t *testing.T, repoPath string, args ...string) {
+	t.Helper()
+	cmdArgs := append([]string{"-C", repoPath}, args...)
+	cmd := exec.Command("git", cmdArgs...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v (%s)", args, err, string(output))
 	}
 }

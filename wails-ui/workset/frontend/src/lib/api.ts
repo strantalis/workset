@@ -17,8 +17,13 @@ import type {
 	RepoFileDiff,
 	AgentCLIStatus,
 	EnvSnapshotResult,
+	HooksRunResponse,
 	SettingsSnapshot,
 	AppVersion,
+	UpdateCheckResult,
+	UpdatePreferences,
+	UpdateStartResult,
+	UpdateState,
 	Workspace,
 	WorkspaceCreateResponse,
 	TerminalLayout,
@@ -50,6 +55,7 @@ import {
 	GetPullRequestStatus,
 	GetTrackedPullRequest,
 	GeneratePullRequestText,
+	GetGitHubOperationStatus,
 	GetSettings,
 	GetSessiondStatus,
 	RestartSessiond,
@@ -83,6 +89,11 @@ import {
 	GetWorkspaceTerminalLayout,
 	SetWorkspaceTerminalLayout,
 	GetAppVersion,
+	GetUpdatePreferences,
+	SetUpdatePreferences,
+	CheckForUpdates,
+	StartUpdate,
+	GetUpdateState,
 	GetGitHubAuthInfo,
 	GetGitHubAuthStatus,
 	DisconnectGitHub,
@@ -92,6 +103,8 @@ import {
 	CheckAgentStatus,
 	SetAgentCLIPath,
 	ReloadLoginEnv,
+	StartCreatePullRequestAsync,
+	StartCommitAndPushAsync,
 	StartRepoDiffWatch,
 	UpdateRepoDiffWatch,
 	StopRepoDiffWatch,
@@ -105,6 +118,8 @@ import {
 	SaveSkill as WailsSaveSkill,
 	DeleteSkill as WailsDeleteSkill,
 	SyncSkill as WailsSyncSkill,
+	RunHooks,
+	TrustRepoHooks,
 } from '../../wailsjs/go/main/App';
 
 type WorkspaceSnapshot = {
@@ -140,6 +155,34 @@ type RepoDiffSnapshot = {
 
 export async function fetchAppVersion(): Promise<AppVersion> {
 	return (await GetAppVersion()) as AppVersion;
+}
+
+export async function fetchUpdatePreferences(): Promise<UpdatePreferences> {
+	return (await GetUpdatePreferences()) as UpdatePreferences;
+}
+
+export async function setUpdatePreferences(
+	input: Partial<UpdatePreferences> & { channel?: string },
+): Promise<UpdatePreferences> {
+	const payload: { channel: string; autoCheck?: boolean } = {
+		channel: input.channel ?? '',
+	};
+	if (input.autoCheck !== undefined) {
+		payload.autoCheck = input.autoCheck;
+	}
+	return (await SetUpdatePreferences(payload)) as UpdatePreferences;
+}
+
+export async function checkForUpdates(channel?: string): Promise<UpdateCheckResult> {
+	return (await CheckForUpdates({ channel: channel ?? '' })) as UpdateCheckResult;
+}
+
+export async function startAppUpdate(channel?: string): Promise<UpdateStartResult> {
+	return (await StartUpdate({ channel: channel ?? '' })) as UpdateStartResult;
+}
+
+export async function fetchUpdateState(): Promise<UpdateState> {
+	return (await GetUpdateState()) as UpdateState;
 }
 
 export async function reloadLoginEnv(): Promise<EnvSnapshotResult> {
@@ -289,6 +332,20 @@ type PullRequestReviewCommentResponse = {
 	resolved?: boolean;
 };
 
+type GitHubOperationStatusResponse = {
+	operationId: string;
+	workspaceId: string;
+	repoId: string;
+	type: GitHubOperationType;
+	stage: GitHubOperationStage;
+	state: GitHubOperationState;
+	startedAt: string;
+	finishedAt?: string;
+	error?: string;
+	pullRequest?: PullRequestCreateResponse;
+	commitPush?: CommitAndPushResult;
+};
+
 export type RepoLocalStatus = {
 	hasUncommitted: boolean;
 	ahead: number;
@@ -301,6 +358,35 @@ export type CommitAndPushResult = {
 	pushed: boolean;
 	message: string;
 	sha?: string;
+};
+
+export type GitHubOperationType = 'create_pr' | 'commit_push';
+
+export type GitHubOperationStage =
+	| 'queued'
+	| 'generating'
+	| 'creating'
+	| 'generating_message'
+	| 'staging'
+	| 'committing'
+	| 'pushing'
+	| 'completed'
+	| 'failed';
+
+export type GitHubOperationState = 'running' | 'completed' | 'failed';
+
+export type GitHubOperationStatus = {
+	operationId: string;
+	workspaceId: string;
+	repoId: string;
+	type: GitHubOperationType;
+	stage: GitHubOperationStage;
+	state: GitHubOperationState;
+	startedAt: string;
+	finishedAt?: string;
+	error?: string;
+	pullRequest?: PullRequestCreated;
+	commitPush?: CommitAndPushResult;
 };
 
 export type TerminalBacklogResponse = {
@@ -508,6 +594,19 @@ export async function addRepo(
 	repoDir: string,
 ): Promise<RepoAddResponse> {
 	return AddRepo({ workspaceId, source, name, repoDir });
+}
+
+export async function runRepoHooks(
+	workspaceId: string,
+	repo: string,
+	event: string,
+	reason = '',
+): Promise<HooksRunResponse> {
+	return RunHooks({ workspaceId, repo, event, reason });
+}
+
+export async function trustRepoHooks(repo: string): Promise<void> {
+	await TrustRepoHooks(repo);
 }
 
 export async function removeRepo(
@@ -723,6 +822,86 @@ export async function createPullRequest(
 		autoPush: payload.autoPush ?? false,
 	})) as PullRequestCreateResponse;
 	return mapPullRequest(result);
+}
+
+const mapGitHubOperationStatus = (
+	result: GitHubOperationStatusResponse,
+): GitHubOperationStatus => ({
+	operationId: result.operationId,
+	workspaceId: result.workspaceId,
+	repoId: result.repoId,
+	type: result.type,
+	stage: result.stage,
+	state: result.state,
+	startedAt: result.startedAt,
+	finishedAt: result.finishedAt,
+	error: result.error,
+	pullRequest: result.pullRequest ? mapPullRequest(result.pullRequest) : undefined,
+	commitPush: result.commitPush,
+});
+
+const isOperationStatusNotFound = (err: unknown): boolean => {
+	if (err instanceof Error) {
+		return err.message.includes('operation status not found');
+	}
+	if (typeof err === 'string') {
+		return err.includes('operation status not found');
+	}
+	return false;
+};
+
+export async function startCreatePullRequestAsync(
+	workspaceId: string,
+	repoId: string,
+	payload: {
+		base?: string;
+		head?: string;
+		baseRemote?: string;
+		draft: boolean;
+	},
+): Promise<GitHubOperationStatus> {
+	const result = (await StartCreatePullRequestAsync({
+		workspaceId,
+		repoId,
+		base: payload.base ?? '',
+		head: payload.head ?? '',
+		baseRemote: payload.baseRemote ?? '',
+		draft: payload.draft,
+	})) as GitHubOperationStatusResponse;
+	return mapGitHubOperationStatus(result);
+}
+
+export async function startCommitAndPushAsync(
+	workspaceId: string,
+	repoId: string,
+	message?: string,
+): Promise<GitHubOperationStatus> {
+	const result = (await StartCommitAndPushAsync({
+		workspaceId,
+		repoId,
+		message: message ?? '',
+	})) as GitHubOperationStatusResponse;
+	return mapGitHubOperationStatus(result);
+}
+
+export async function fetchGitHubOperationStatus(
+	workspaceId: string,
+	repoId: string,
+	type: GitHubOperationType,
+): Promise<GitHubOperationStatus | null> {
+	try {
+		const result = (await GetGitHubOperationStatus({
+			workspaceId,
+			repoId,
+			type,
+		})) as GitHubOperationStatusResponse;
+		return mapGitHubOperationStatus(result);
+	} catch (err) {
+		if (isOperationStatusNotFound(err)) {
+			return null;
+		}
+		throw err;
+	}
 }
 
 type RemoteInfoResponse = {
@@ -1077,7 +1256,12 @@ export async function getSkill(
 	tool: string,
 	workspaceId?: string,
 ): Promise<SkillContent> {
-	return (await WailsGetSkill({ scope, dirName, tool, workspaceId: workspaceId ?? '' })) as SkillContent;
+	return (await WailsGetSkill({
+		scope,
+		dirName,
+		tool,
+		workspaceId: workspaceId ?? '',
+	})) as SkillContent;
 }
 
 export async function saveSkill(

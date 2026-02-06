@@ -774,13 +774,8 @@
 		const tab = sourcePane.tabs.find((t) => t.id === tabId);
 		if (!tab) return;
 
-		// Create a new pane with the tab
-		const newPane: PaneNode = {
-			id: newId(),
-			kind: 'pane',
-			tabs: [tab],
-			activeTabId: tab.id,
-		};
+		// Create a new pane with the tab, inheriting the source pane's workspace override
+		const newPane = buildPane(tab, sourcePane.workspaceId, sourcePane.workspaceName);
 
 		// Remove tab from source pane
 		let nextRoot = updatePane(layout.root, sourcePaneId, (pane) => ({

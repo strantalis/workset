@@ -44,7 +44,6 @@ Remote names and default branches come from repo aliases (`repos.<name>.remote` 
 | `agent` | Default agent for PR text generation, commit messages, and the GUI terminal launcher. |
 | `agent_model` | Optional model override for PR text generation and commit messages (does not affect the terminal launcher). Examples: `gpt-5.1-codex-mini` (Codex), `haiku` (Claude). |
 | `agent_launch` | Agent launch strategy: `auto` (shell + PTY fallback) or `strict` (requires a path with directory separators in `defaults.agent` or `agent.cli_path`). |
-| `terminal_renderer` | Default GUI terminal renderer (`auto`, `webgl`, `canvas`). |
 | `terminal_idle_timeout` | Idle timeout for GUI terminals/sessiond (duration like `30m`; use `0` to disable). Default is `0`. |
 | `terminal_protocol_log` | Enable sessiond protocol logging (`on`/`off`). Requires daemon restart. |
 | `terminal_debug_overlay` | Show the terminal debug overlay (`on`/`off`). |
@@ -96,7 +95,6 @@ defaults:
   agent: codex
   # agent_model: gpt-5.1-codex-mini
   agent_launch: auto
-  terminal_renderer: auto
   terminal_idle_timeout: "0"
   terminal_protocol_log: off
   terminal_debug_overlay: off

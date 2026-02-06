@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/strantalis/workset/internal/config"
 	"github.com/strantalis/workset/internal/git"
@@ -101,6 +102,97 @@ func TestCreateWorkspaceValidation(t *testing.T) {
 	_ = requireErrorType[ValidationError](t, err)
 }
 
+func TestCreateWorkspaceDuplicateNameBlocked(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+
+	result, err := env.svc.CreateWorkspace(ctx, WorkspaceCreateInput{Name: "demo"})
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+
+	duplicatePath := filepath.Join(env.root, "duplicate-demo")
+	_, err = env.svc.CreateWorkspace(ctx, WorkspaceCreateInput{
+		Name: "demo",
+		Path: duplicatePath,
+	})
+	conflict := requireErrorType[ConflictError](t, err)
+	if !strings.Contains(conflict.Message, "already exists") {
+		t.Fatalf("unexpected conflict message: %q", conflict.Message)
+	}
+
+	if _, err := os.Stat(duplicatePath); !os.IsNotExist(err) {
+		t.Fatalf("expected duplicate path to remain absent, got err=%v", err)
+	}
+
+	cfg := env.loadConfig()
+	ref, ok := cfg.Workspaces["demo"]
+	if !ok {
+		t.Fatalf("workspace missing from config")
+	}
+	if ref.Path != result.Workspace.Path {
+		t.Fatalf("workspace path changed after duplicate create: got %q want %q", ref.Path, result.Workspace.Path)
+	}
+}
+
+type hideWorkspaceOnFirstLoadStore struct {
+	FileConfigStore
+
+	name   string
+	hidden bool
+}
+
+func (s *hideWorkspaceOnFirstLoadStore) Load(ctx context.Context, path string) (config.GlobalConfig, config.GlobalConfigLoadInfo, error) {
+	cfg, info, err := s.FileConfigStore.Load(ctx, path)
+	if err != nil {
+		return cfg, info, err
+	}
+	if !s.hidden {
+		delete(cfg.Workspaces, s.name)
+		s.hidden = true
+	}
+	return cfg, info, nil
+}
+
+func TestCreateWorkspaceDuplicateNameBlockedDuringAtomicUpdate(t *testing.T) {
+	env := newTestEnv(t)
+	injectedPath := filepath.Join(env.root, "existing-demo")
+	cfg := env.loadConfig()
+	if cfg.Workspaces == nil {
+		cfg.Workspaces = map[string]config.WorkspaceRef{}
+	}
+	cfg.Workspaces["demo"] = config.WorkspaceRef{Path: injectedPath}
+	env.saveConfig(cfg)
+
+	store := &hideWorkspaceOnFirstLoadStore{name: "demo"}
+	env.svc = NewService(Options{
+		ConfigPath:    env.configPath,
+		ConfigStore:   store,
+		Git:           env.git,
+		SessionRunner: env.runner,
+		Logf:          func(string, ...any) {},
+	})
+
+	targetPath := filepath.Join(env.root, "new-demo")
+	_, err := env.svc.CreateWorkspace(context.Background(), WorkspaceCreateInput{
+		Name: "demo",
+		Path: targetPath,
+	})
+	conflict := requireErrorType[ConflictError](t, err)
+	if !strings.Contains(conflict.Message, injectedPath) {
+		t.Fatalf("unexpected conflict message: %q", conflict.Message)
+	}
+
+	cfg = env.loadConfig()
+	ref, ok := cfg.Workspaces["demo"]
+	if !ok {
+		t.Fatalf("workspace missing from config")
+	}
+	if ref.Path != injectedPath {
+		t.Fatalf("workspace path changed after injected conflict: got %q want %q", ref.Path, injectedPath)
+	}
+}
+
 func TestCreateWorkspaceWithGroupRepos(t *testing.T) {
 	env := newTestEnv(t)
 	local := env.createLocalRepo("repo-a")
@@ -184,6 +276,55 @@ func TestCreateWorkspacePendingHooks(t *testing.T) {
 	}
 	if result.PendingHooks[0].Status != HookRunStatusSkipped || result.PendingHooks[0].Reason != "untrusted" {
 		t.Fatalf("expected skipped/untrusted status")
+	}
+}
+
+func TestCreateWorkspaceRunsTrustedHooks(t *testing.T) {
+	env := newTestEnv(t)
+	local := env.createLocalRepo("repo-a")
+	env.git.worktreeAddHook = func(path string) error {
+		hooksDir := filepath.Join(path, ".workset")
+		if err := os.MkdirAll(hooksDir, 0o755); err != nil {
+			return err
+		}
+		data := []byte("hooks:\n  - id: bootstrap\n    on: [worktree.created]\n    run: [\"npm\", \"ci\"]\n")
+		return os.WriteFile(filepath.Join(hooksDir, "hooks.yaml"), data, 0o644)
+	}
+
+	cfg := env.loadConfig()
+	cfg.Repos = map[string]config.RegisteredRepo{
+		"repo-a": {Path: local},
+	}
+	cfg.Hooks.RepoHooks.TrustedRepos = []string{"repo-a"}
+	env.saveConfig(cfg)
+	runner := &stubHookRunner{}
+	env.svc = NewService(Options{
+		ConfigPath:    env.configPath,
+		Git:           env.git,
+		SessionRunner: env.runner,
+		HookRunner:    runner,
+		Clock:         func() time.Time { return env.now },
+		Logf:          func(string, ...any) {},
+	})
+
+	result, err := env.svc.CreateWorkspace(context.Background(), WorkspaceCreateInput{
+		Name:  "demo",
+		Repos: []string{"repo-a"},
+	})
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if len(result.PendingHooks) != 0 {
+		t.Fatalf("expected no pending hooks")
+	}
+	if len(result.HookRuns) != 1 {
+		t.Fatalf("expected hook runs, got %d", len(result.HookRuns))
+	}
+	if result.HookRuns[0].Repo != "repo-a" || result.HookRuns[0].Event != "worktree.created" {
+		t.Fatalf("unexpected hook run payload: %+v", result.HookRuns[0])
+	}
+	if runner.calls == 0 {
+		t.Fatalf("expected hook runner to run")
 	}
 }
 

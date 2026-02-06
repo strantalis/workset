@@ -20,6 +20,9 @@ vi.mock('../api', () => ({
 	listRemotes: vi.fn(),
 	replyToReviewComment: vi.fn(),
 	resolveReviewThread: vi.fn(),
+	startCommitAndPushAsync: vi.fn(),
+	startCreatePullRequestAsync: vi.fn(),
+	fetchGitHubOperationStatus: vi.fn(),
 	startRepoDiffWatch: vi.fn(),
 	updateRepoDiffWatch: vi.fn(),
 	stopRepoDiffWatch: vi.fn(),
@@ -33,6 +36,20 @@ vi.mock('../repoDiffService', () => ({
 	subscribeRepoDiffEvent: vi.fn(() => () => {}),
 }));
 
+const githubOperationHandlers = new Set<(payload: unknown) => void>();
+vi.mock('../githubOperationService', () => ({
+	subscribeGitHubOperationEvent: vi.fn((handler: (payload: unknown) => void) => {
+		githubOperationHandlers.add(handler);
+		return () => githubOperationHandlers.delete(handler);
+	}),
+}));
+
+const emitGitHubOperation = (payload: unknown): void => {
+	for (const handler of [...githubOperationHandlers]) {
+		handler(payload);
+	}
+};
+
 const repo: Repo = {
 	id: 'repo-1',
 	name: 'workset',
@@ -44,16 +61,6 @@ const repo: Repo = {
 };
 
 const mockSummary = { files: [], totalAdded: 0, totalRemoved: 0 };
-
-const createDeferred = <T>() => {
-	let resolve: (value: T) => void;
-	let reject: (reason?: unknown) => void;
-	const promise = new Promise<T>((res, rej) => {
-		resolve = res;
-		reject = rej;
-	});
-	return { promise, resolve: resolve!, reject: reject! };
-};
 
 let api: typeof import('../api');
 let RepoDiff: typeof import('./RepoDiff.svelte').default;
@@ -90,6 +97,8 @@ beforeEach(async () => {
 	vi.mocked(api.startRepoDiffWatch).mockResolvedValue(true);
 	vi.mocked(api.updateRepoDiffWatch).mockResolvedValue(true);
 	vi.mocked(api.stopRepoDiffWatch).mockResolvedValue(true);
+	vi.mocked(api.fetchGitHubOperationStatus).mockResolvedValue(null);
+	githubOperationHandlers.clear();
 }, 30000);
 
 afterEach(() => {
@@ -99,22 +108,15 @@ afterEach(() => {
 
 describe('RepoDiff create PR feedback', () => {
 	it('shows progress stages and clears on error', async () => {
-		const generateDeferred = createDeferred<{ title: string; body: string }>();
-		const createDeferredResult = createDeferred<{
-			repo: string;
-			number: number;
-			url: string;
-			title: string;
-			state: string;
-			draft: boolean;
-			baseRepo: string;
-			baseBranch: string;
-			headRepo: string;
-			headBranch: string;
-		}>();
-
-		vi.mocked(api.generatePullRequestText).mockReturnValueOnce(generateDeferred.promise);
-		vi.mocked(api.createPullRequest).mockReturnValueOnce(createDeferredResult.promise);
+		vi.mocked(api.startCreatePullRequestAsync).mockResolvedValue({
+			operationId: 'op-1',
+			workspaceId: 'ws-1',
+			repoId: 'repo-1',
+			type: 'create_pr',
+			stage: 'queued',
+			state: 'running',
+			startedAt: new Date().toISOString(),
+		});
 
 		const { getByRole, queryByText, container, findByText } = render(RepoDiff, {
 			props: {
@@ -132,11 +134,29 @@ describe('RepoDiff create PR feedback', () => {
 		expect(queryByText('Step 1/2: Generating title...')).toBeInTheDocument();
 		expect(container.querySelector('.pr-panel-content')).toHaveClass('expanded');
 
-		generateDeferred.resolve({ title: 'Title', body: 'Body' });
+		emitGitHubOperation({
+			operationId: 'op-1',
+			workspaceId: 'ws-1',
+			repoId: 'repo-1',
+			type: 'create_pr',
+			stage: 'creating',
+			state: 'running',
+			startedAt: new Date().toISOString(),
+		});
 		await waitFor(() => expect(createButton).toHaveTextContent('Creating PR...'));
 		expect(queryByText('Step 2/2: Creating PR...')).toBeInTheDocument();
 
-		createDeferredResult.reject(new Error('Failed to create pull request.'));
+		emitGitHubOperation({
+			operationId: 'op-1',
+			workspaceId: 'ws-1',
+			repoId: 'repo-1',
+			type: 'create_pr',
+			stage: 'failed',
+			state: 'failed',
+			startedAt: new Date().toISOString(),
+			finishedAt: new Date().toISOString(),
+			error: 'Failed to create pull request.',
+		});
 		await waitFor(() => expect(createButton).toHaveTextContent('Create PR'));
 		expect(queryByText('Step 1/2: Generating title...')).not.toBeInTheDocument();
 		expect(queryByText('Step 2/2: Creating PR...')).not.toBeInTheDocument();
@@ -188,5 +208,176 @@ describe('RepoDiff watcher lifecycle', () => {
 			expect(api.stopRepoDiffWatch).toHaveBeenCalledWith('ws-1', 'repo-1');
 			expect(api.startRepoDiffWatch).toHaveBeenCalledWith('ws-1', 'repo-2', undefined, undefined);
 		});
+	});
+});
+
+describe('RepoDiff local pending section', () => {
+	it('shows local pending files separately when PR exists', async () => {
+		vi.mocked(api.fetchTrackedPullRequest).mockResolvedValue({
+			repo: 'acme/workset',
+			number: 42,
+			url: 'https://github.com/acme/workset/pull/42',
+			title: 'Improve repo diff',
+			state: 'open',
+			draft: false,
+			baseRepo: 'acme/workset',
+			baseBranch: 'main',
+			headRepo: 'acme/workset',
+			headBranch: 'feature/local-diff',
+		});
+		vi.mocked(api.fetchPullRequestStatus).mockResolvedValue({
+			pullRequest: {
+				repo: 'acme/workset',
+				number: 42,
+				url: 'https://github.com/acme/workset/pull/42',
+				title: 'Improve repo diff',
+				state: 'open',
+				draft: false,
+				baseRepo: 'acme/workset',
+				baseBranch: 'main',
+				headRepo: 'acme/workset',
+				headBranch: 'feature/local-diff',
+			},
+			checks: [],
+		});
+		vi.mocked(api.fetchRepoLocalStatus).mockResolvedValue({
+			hasUncommitted: true,
+			ahead: 0,
+			behind: 0,
+			currentBranch: 'feature/local-diff',
+		});
+		vi.mocked(api.fetchBranchDiffSummary).mockResolvedValue({
+			files: [
+				{
+					path: 'pkg/worksetapi/workspaces.go',
+					added: 7,
+					removed: 0,
+					status: 'modified',
+				},
+			],
+			totalAdded: 7,
+			totalRemoved: 0,
+		});
+		vi.mocked(api.fetchRepoDiffSummary).mockResolvedValue({
+			files: [
+				{
+					path: 'pkg/worksetapi/service_workspaces_test.go',
+					added: 33,
+					removed: 0,
+					status: 'modified',
+				},
+			],
+			totalAdded: 33,
+			totalRemoved: 0,
+		});
+		vi.mocked(api.fetchBranchFileDiff).mockResolvedValue({
+			patch: `diff --git a/pkg/worksetapi/workspaces.go b/pkg/worksetapi/workspaces.go
+index 1111111..2222222 100644
+--- a/pkg/worksetapi/workspaces.go
++++ b/pkg/worksetapi/workspaces.go
+@@ -1 +1 @@
+-old
++new
+`,
+			truncated: false,
+			totalBytes: 80,
+			totalLines: 1,
+		});
+		vi.mocked(api.fetchRepoFileDiff).mockResolvedValue({
+			patch: `diff --git a/pkg/worksetapi/service_workspaces_test.go b/pkg/worksetapi/service_workspaces_test.go
+index 1111111..2222222 100644
+--- a/pkg/worksetapi/service_workspaces_test.go
++++ b/pkg/worksetapi/service_workspaces_test.go
+@@ -1 +1 @@
+-old
++new
+`,
+			truncated: false,
+			totalBytes: 80,
+			totalLines: 1,
+		});
+
+		const { findByText } = render(RepoDiff, {
+			props: {
+				repo,
+				workspaceId: 'ws-1',
+				onClose: vi.fn(),
+			},
+		});
+
+		expect(await findByText('Local pending changes')).toBeInTheDocument();
+		expect(await findByText(/service_workspaces_test\.go/)).toBeInTheDocument();
+	});
+
+	it('does not split local pending files when PR branch refs are unavailable', async () => {
+		vi.mocked(api.fetchTrackedPullRequest).mockResolvedValue({
+			repo: 'acme/workset',
+			number: 42,
+			url: 'https://github.com/acme/workset/pull/42',
+			title: 'Improve repo diff',
+			state: 'open',
+			draft: false,
+			baseRepo: 'acme/workset',
+			baseBranch: '',
+			headRepo: 'acme/workset',
+			headBranch: '',
+		});
+		vi.mocked(api.fetchPullRequestStatus).mockResolvedValue({
+			pullRequest: {
+				repo: 'acme/workset',
+				number: 42,
+				url: 'https://github.com/acme/workset/pull/42',
+				title: 'Improve repo diff',
+				state: 'open',
+				draft: false,
+				baseRepo: 'acme/workset',
+				baseBranch: '',
+				headRepo: 'acme/workset',
+				headBranch: '',
+			},
+			checks: [],
+		});
+		vi.mocked(api.fetchRepoLocalStatus).mockResolvedValue({
+			hasUncommitted: true,
+			ahead: 0,
+			behind: 0,
+			currentBranch: 'feature/local-diff',
+		});
+		vi.mocked(api.fetchRepoDiffSummary).mockResolvedValue({
+			files: [
+				{
+					path: 'pkg/worksetapi/service_workspaces_test.go',
+					added: 33,
+					removed: 0,
+					status: 'modified',
+				},
+			],
+			totalAdded: 33,
+			totalRemoved: 0,
+		});
+		vi.mocked(api.fetchRepoFileDiff).mockResolvedValue({
+			patch: `diff --git a/pkg/worksetapi/service_workspaces_test.go b/pkg/worksetapi/service_workspaces_test.go
+index 1111111..2222222 100644
+--- a/pkg/worksetapi/service_workspaces_test.go
++++ b/pkg/worksetapi/service_workspaces_test.go
+@@ -1 +1 @@
+-old
++new
+`,
+			truncated: false,
+			totalBytes: 80,
+			totalLines: 1,
+		});
+
+		const { findByText, queryByText } = render(RepoDiff, {
+			props: {
+				repo,
+				workspaceId: 'ws-1',
+				onClose: vi.fn(),
+			},
+		});
+
+		expect(await findByText('Changed files')).toBeInTheDocument();
+		expect(queryByText('Local pending changes')).not.toBeInTheDocument();
 	});
 });

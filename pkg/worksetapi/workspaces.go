@@ -55,6 +55,9 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 	if err != nil {
 		return WorkspaceCreateResult{}, err
 	}
+	if err := workspaceCreateConflict(cfg, name, ""); err != nil {
+		return WorkspaceCreateResult{}, err
+	}
 
 	root := strings.TrimSpace(input.Path)
 	if root == "" {
@@ -80,6 +83,9 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 
 	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
 		info = loadInfo
+		if err := workspaceCreateConflict(*cfg, name, ""); err != nil {
+			return err
+		}
 		registerWorkspace(cfg, name, root, s.clock())
 		return nil
 	}); err != nil {
@@ -97,6 +103,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 	aliasUpdates := map[string]aliasUpdate{}
 	warnings := []string{}
 	pendingHooks := []HookPending{}
+	hookRuns := []HookExecutionJSON{}
 	for _, plan := range repoPlans {
 		_, resolvedRemote, repoWarnings, err := ops.AddRepo(ctx, ops.AddRepoInput{
 			WorkspaceRoot: ws.Root,
@@ -132,12 +139,15 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 		}
 		repoDir := plan.Name
 		worktreePath := workspace.RepoWorktreePath(ws.Root, ws.State.CurrentBranch, repoDir)
-		pending, hookWarnings, err := s.runWorktreeCreatedHooks(ctx, cfg, ws.Root, name, config.RepoConfig{
+		pending, runs, hookWarnings, err := s.runWorktreeCreatedHooks(ctx, cfg, ws.Root, name, config.RepoConfig{
 			Name:    plan.Name,
 			RepoDir: repoDir,
 		}, worktreePath, ws.State.CurrentBranch, "workspace.create")
 		if err != nil {
 			return WorkspaceCreateResult{}, err
+		}
+		if len(runs) > 0 {
+			hookRuns = append(hookRuns, runs...)
 		}
 		if len(hookWarnings) > 0 {
 			warnings = append(warnings, hookWarnings...)
@@ -159,6 +169,9 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 
 	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
 		info = loadInfo
+		if err := workspaceCreateConflict(*cfg, name, root); err != nil {
+			return err
+		}
 		for aliasName, update := range aliasUpdates {
 			alias, ok := cfg.Repos[aliasName]
 			if !ok {
@@ -177,7 +190,13 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 	}); err != nil {
 		return WorkspaceCreateResult{}, err
 	}
-	return WorkspaceCreateResult{Workspace: infoPayload, Warnings: warnings, PendingHooks: pendingHooks, Config: info}, nil
+	return WorkspaceCreateResult{
+		Workspace:    infoPayload,
+		Warnings:     warnings,
+		PendingHooks: pendingHooks,
+		HookRuns:     hookRuns,
+		Config:       info,
+	}, nil
 }
 
 // DeleteWorkspace removes a workspace registration or deletes files when requested.
@@ -473,6 +492,30 @@ func warnOutsideWorkspaceRoot(root, workspaceRoot string) []string {
 		return nil
 	}
 	return []string{fmt.Sprintf("workspace created outside defaults.workspace_root (%s)", absWorkspace)}
+}
+
+func workspaceCreateConflict(cfg config.GlobalConfig, name, allowPath string) error {
+	ref, ok := cfg.Workspaces[name]
+	if !ok {
+		return nil
+	}
+	path := strings.TrimSpace(ref.Path)
+	if path != "" && allowPath != "" && samePath(path, allowPath) {
+		return nil
+	}
+	if path != "" {
+		return ConflictError{Message: fmt.Sprintf("workspace %q already exists at %s", name, path)}
+	}
+	return ConflictError{Message: fmt.Sprintf("workspace %q already exists", name)}
+}
+
+func samePath(a, b string) bool {
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	if errA == nil && errB == nil {
+		return filepath.Clean(absA) == filepath.Clean(absB)
+	}
+	return filepath.Clean(a) == filepath.Clean(b)
 }
 
 func workspacesWithin(cfg config.GlobalConfig, targetName, absTarget string) ([]string, error) {

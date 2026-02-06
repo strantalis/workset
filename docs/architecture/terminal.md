@@ -86,7 +86,6 @@ sequenceDiagram
 ## Config knobs
 
 - `defaults.terminal_idle_timeout` controls idle shutdown (used by both the daemon and the app).
-- `defaults.terminal_renderer` selects `webgl` for xterm.js rendering.
 - `defaults.terminal_protocol_log` enables OSC/CSI/DSR protocol logging (restart daemon to apply).
 - `defaults.terminal_debug_overlay` shows the terminal debug overlay (bytes in/out, backlog, timestamps).
 - `defaults.agent` controls the default coding agent for terminal launchers and PR generation.

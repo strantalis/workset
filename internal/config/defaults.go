@@ -23,7 +23,6 @@ func DefaultConfig() GlobalConfig {
 			Agent:                "codex",
 			AgentModel:           "",
 			AgentLaunch:          "auto",
-			TerminalRenderer:     "auto",
 			TerminalIdleTimeout:  "0",
 			TerminalProtocolLog:  "off",
 			TerminalDebugOverlay: "off",

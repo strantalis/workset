@@ -1,13 +1,8 @@
 <script lang="ts">
-	import {
-		listSkills,
-		getSkill,
-		saveSkill,
-		deleteSkill,
-		syncSkill,
-	} from '../../../api';
+	import { listSkills, getSkill, saveSkill, deleteSkill, syncSkill } from '../../../api';
 	import type { SkillInfo } from '../../../api';
 	import { activeWorkspace } from '../../../state';
+	import { toErrorMessage } from '../../../errors';
 	import SettingsSection from '../SettingsSection.svelte';
 	import Button from '../../ui/Button.svelte';
 
@@ -58,17 +53,12 @@
 
 	const getWorkspaceId = (): string | undefined => $activeWorkspace?.id;
 
-	const formatError = (err: unknown): string => {
-		if (err instanceof Error) return err.message;
-		return 'An error occurred.';
-	};
-
 	const loadSkills = async (): Promise<void> => {
 		try {
 			skills = await listSkills(getWorkspaceId());
 			onSkillCountChange(skills.length);
 		} catch (err) {
-			error = formatError(err);
+			error = toErrorMessage(err, 'An error occurred.');
 		}
 	};
 
@@ -90,7 +80,7 @@
 			formContent = result.content;
 		} catch (err) {
 			formContent = '';
-			error = formatError(err);
+			error = toErrorMessage(err, 'An error occurred.');
 		}
 	};
 
@@ -164,7 +154,7 @@
 					editing = false;
 				}
 			} catch (err) {
-				error = formatError(err);
+				error = toErrorMessage(err, 'An error occurred.');
 			} finally {
 				loading = false;
 			}
@@ -190,7 +180,7 @@
 					selectedSkill = updated;
 				}
 			} catch (err) {
-				error = formatError(err);
+				error = toErrorMessage(err, 'An error occurred.');
 			} finally {
 				loading = false;
 			}
@@ -216,7 +206,7 @@
 			editing = false;
 			await loadSkills();
 		} catch (err) {
-			error = formatError(err);
+			error = toErrorMessage(err, 'An error occurred.');
 		} finally {
 			loading = false;
 		}
@@ -270,7 +260,7 @@
 				await selectSkill(updated);
 			}
 		} catch (err) {
-			error = formatError(err);
+			error = toErrorMessage(err, 'An error occurred.');
 		} finally {
 			loading = false;
 		}
@@ -294,13 +284,7 @@
 			for (const skill of skills) {
 				const toTools = availableToolsForSync(skill);
 				if (toTools.length === 0) continue;
-				await syncSkill(
-					skill.scope,
-					skill.dirName,
-					skill.tools[0],
-					toTools,
-					getWorkspaceId(),
-				);
+				await syncSkill(skill.scope, skill.dirName, skill.tools[0], toTools, getWorkspaceId());
 				synced++;
 			}
 			if (synced === 0) {
@@ -318,7 +302,7 @@
 				}
 			}
 		} catch (err) {
-			error = formatError(err);
+			error = toErrorMessage(err, 'An error occurred.');
 		} finally {
 			loading = false;
 		}
@@ -345,8 +329,15 @@
 		<div class="list-header">
 			<span class="list-count">{skills.length} skill{skills.length === 1 ? '' : 's'}</span>
 			<div class="list-actions">
-				<Button variant="primary" size="sm" onclick={handleSyncAllSkills} disabled={loading || totalUnsyncedCount === 0}>
-					{loading ? 'Syncing...' : `Sync All${totalUnsyncedCount > 0 ? ` (${totalUnsyncedCount})` : ''}`}
+				<Button
+					variant="primary"
+					size="sm"
+					onclick={handleSyncAllSkills}
+					disabled={loading || totalUnsyncedCount === 0}
+				>
+					{loading
+						? 'Syncing...'
+						: `Sync All${totalUnsyncedCount > 0 ? ` (${totalUnsyncedCount})` : ''}`}
 				</Button>
 				<Button variant="ghost" size="sm" onclick={startNew}>+ New</Button>
 			</div>
@@ -444,7 +435,14 @@
 				<div class="detail-header">
 					<span>New Skill</span>
 					<button class="close-btn" type="button" onclick={closeDetail} title="Close">
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<svg
+							width="14"
+							height="14"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+						>
 							<path d="M18 6L6 18M6 6l12 12" />
 						</svg>
 					</button>
@@ -482,11 +480,7 @@
 					</label>
 					<label class="field">
 						<span>SKILL.md content</span>
-						<textarea
-							bind:value={formContent}
-							rows="10"
-							spellcheck="false"
-							class="content-editor"
+						<textarea bind:value={formContent} rows="10" spellcheck="false" class="content-editor"
 						></textarea>
 					</label>
 				</div>
@@ -508,7 +502,14 @@
 						{/if}
 					</div>
 					<button class="close-btn" type="button" onclick={closeDetail} title="Close">
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<svg
+							width="14"
+							height="14"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+						>
 							<path d="M18 6L6 18M6 6l12 12" />
 						</svg>
 					</button>
@@ -532,10 +533,13 @@
 							{/if}
 						{/each}
 					</div>
-					<Button variant="ghost" size="sm" onclick={handleSync} disabled={loading}>
-						Sync
-					</Button>
-					<Button variant="primary" size="sm" onclick={handleSyncAll} disabled={loading || availableToolsForSync(selectedSkill).length === 0}>
+					<Button variant="ghost" size="sm" onclick={handleSync} disabled={loading}>Sync</Button>
+					<Button
+						variant="primary"
+						size="sm"
+						onclick={handleSyncAll}
+						disabled={loading || availableToolsForSync(selectedSkill).length === 0}
+					>
 						Sync All
 					</Button>
 				</div>
@@ -543,17 +547,11 @@
 				{#if editing}
 					<label class="field">
 						<span>SKILL.md content</span>
-						<textarea
-							bind:value={formContent}
-							rows="12"
-							spellcheck="false"
-							class="content-editor"
+						<textarea bind:value={formContent} rows="12" spellcheck="false" class="content-editor"
 						></textarea>
 					</label>
 					<div class="actions">
-						<Button variant="danger" onclick={handleDelete} disabled={loading}>
-							Delete
-						</Button>
+						<Button variant="danger" onclick={handleDelete} disabled={loading}>Delete</Button>
 						<div class="spacer"></div>
 						<Button variant="ghost" onclick={cancelEdit} disabled={loading}>Cancel</Button>
 						<Button variant="primary" onclick={handleSave} disabled={loading}>
@@ -563,9 +561,7 @@
 				{:else}
 					<div class="content-preview">{formContent}</div>
 					<div class="actions">
-						<Button variant="danger" onclick={handleDelete} disabled={loading}>
-							Delete
-						</Button>
+						<Button variant="danger" onclick={handleDelete} disabled={loading}>Delete</Button>
 						<div class="spacer"></div>
 						<Button variant="ghost" onclick={() => (editing = true)}>Edit</Button>
 					</div>

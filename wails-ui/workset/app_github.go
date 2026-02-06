@@ -22,6 +22,15 @@ type PullRequestCreateRequest struct {
 	AutoPush    bool   `json:"autoPush"`
 }
 
+type StartCreatePullRequestAsyncRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	RepoID      string `json:"repoId"`
+	Base        string `json:"base,omitempty"`
+	Head        string `json:"head,omitempty"`
+	BaseRemote  string `json:"baseRemote,omitempty"`
+	Draft       bool   `json:"draft"`
+}
+
 type ListRemotesRequest struct {
 	WorkspaceID string `json:"workspaceId"`
 	RepoID      string `json:"repoId"`
@@ -111,6 +120,29 @@ func (a *App) CreatePullRequest(input PullRequestCreateRequest) (worksetapi.Pull
 		return worksetapi.PullRequestCreatedJSON{}, err
 	}
 	return result.Payload, nil
+}
+
+func (a *App) StartCreatePullRequestAsync(input StartCreatePullRequestAsyncRequest) (GitHubOperationStatusPayload, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	a.ensureService()
+
+	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
+	if err != nil {
+		return GitHubOperationStatusPayload{}, err
+	}
+
+	manager := a.ensureGitHubOperationManager()
+	key, status, err := manager.start(input.WorkspaceID, input.RepoID, GitHubOperationTypeCreatePR)
+	if err != nil {
+		return GitHubOperationStatusPayload{}, err
+	}
+	a.emitGitHubOperation(status)
+
+	go a.runCreatePullRequestAsync(ctx, key, repoName, input)
+	return status, nil
 }
 
 func (a *App) GetPullRequestStatus(input PullRequestStatusRequest) (PullRequestStatusPayload, error) {
@@ -261,6 +293,18 @@ type CommitAndPushRequest struct {
 	Message     string `json:"message,omitempty"`
 }
 
+type StartCommitAndPushAsyncRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	RepoID      string `json:"repoId"`
+	Message     string `json:"message,omitempty"`
+}
+
+type GitHubOperationStatusRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	RepoID      string `json:"repoId"`
+	Type        string `json:"type"`
+}
+
 type ReplyToReviewCommentRequest struct {
 	WorkspaceID string `json:"workspaceId"`
 	RepoID      string `json:"repoId"`
@@ -314,6 +358,48 @@ func (a *App) CommitAndPush(input CommitAndPushRequest) (worksetapi.CommitAndPus
 		return worksetapi.CommitAndPushResultJSON{}, err
 	}
 	return result.Payload, nil
+}
+
+func (a *App) StartCommitAndPushAsync(input StartCommitAndPushAsyncRequest) (GitHubOperationStatusPayload, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	a.ensureService()
+
+	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
+	if err != nil {
+		return GitHubOperationStatusPayload{}, err
+	}
+
+	manager := a.ensureGitHubOperationManager()
+	key, status, err := manager.start(input.WorkspaceID, input.RepoID, GitHubOperationTypeCommitPush)
+	if err != nil {
+		return GitHubOperationStatusPayload{}, err
+	}
+	a.emitGitHubOperation(status)
+
+	go a.runCommitAndPushAsync(ctx, key, repoName, input)
+	return status, nil
+}
+
+func (a *App) GetGitHubOperationStatus(input GitHubOperationStatusRequest) (GitHubOperationStatusPayload, error) {
+	opType, err := parseGitHubOperationType(input.Type)
+	if err != nil {
+		return GitHubOperationStatusPayload{}, err
+	}
+	key := githubOperationKey{
+		workspaceID: input.WorkspaceID,
+		repoID:      input.RepoID,
+		opType:      opType,
+	}
+	status, ok := a.ensureGitHubOperationManager().get(key)
+	if !ok {
+		return GitHubOperationStatusPayload{}, worksetapi.NotFoundError{
+			Message: fmt.Sprintf("operation status not found (%s)", opType),
+		}
+	}
+	return status, nil
 }
 
 func (a *App) GetRepoLocalStatus(input RepoLocalStatusRequest) (worksetapi.RepoLocalStatusJSON, error) {

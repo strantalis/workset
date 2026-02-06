@@ -1,4 +1,4 @@
-import { describe, test, expect, vi, afterEach } from 'vitest';
+import { describe, test, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, fireEvent, cleanup, waitFor } from '@testing-library/svelte';
 import SettingsPanel from '../SettingsPanel.svelte';
 import * as api from '../../api';
@@ -8,6 +8,11 @@ import type { SettingsDefaults } from '../../types';
 vi.mock('../../api', () => ({
 	fetchSettings: vi.fn(),
 	fetchAppVersion: vi.fn(),
+	fetchUpdatePreferences: vi.fn(),
+	fetchUpdateState: vi.fn(),
+	checkForUpdates: vi.fn(),
+	startAppUpdate: vi.fn(),
+	setUpdatePreferences: vi.fn(),
 	fetchWorkspaceTerminalLayout: vi.fn(),
 	setDefaultSetting: vi.fn(),
 	restartSessiond: vi.fn(),
@@ -41,6 +46,22 @@ describe('SettingsPanel About Section', () => {
 	const buildDefaults = (overrides: Partial<SettingsDefaults> = {}): SettingsDefaults => ({
 		...baseDefaults,
 		...overrides,
+	});
+
+	beforeEach(() => {
+		vi.mocked(api.fetchUpdatePreferences).mockResolvedValue({
+			channel: 'stable',
+			autoCheck: true,
+		});
+		vi.mocked(api.fetchUpdateState).mockResolvedValue({
+			phase: 'idle',
+			channel: 'stable',
+			currentVersion: '',
+			latestVersion: '',
+			message: '',
+			error: '',
+			checkedAt: '',
+		});
 	});
 
 	afterEach(() => {
@@ -236,6 +257,63 @@ describe('SettingsPanel About Section', () => {
 		// Check links
 		expect(getByText('GitHub Repository')).toBeInTheDocument();
 		expect(getByText('Report an Issue')).toBeInTheDocument();
+	});
+
+	test('shows backend string error when update check fails', async () => {
+		vi.mocked(api.fetchSettings).mockResolvedValue({
+			configPath: '/test/config.yaml',
+			defaults: buildDefaults(),
+		});
+		vi.mocked(api.fetchAppVersion).mockResolvedValue({
+			version: '1.0.0',
+			commit: 'abc123',
+			dirty: false,
+		});
+		vi.mocked(api.checkForUpdates).mockRejectedValue('network timeout while fetching manifest');
+
+		const { getByText, queryByText } = render(SettingsPanel, {
+			props: {
+				onClose: mockOnClose,
+			},
+		});
+
+		await waitForLoadingAndClickAbout(getByText, queryByText);
+
+		await fireEvent.click(getByText('Check for Updates'));
+
+		await waitFor(() => {
+			expect(getByText('network timeout while fetching manifest')).toBeInTheDocument();
+		});
+		expect(queryByText('Failed to update settings.')).not.toBeInTheDocument();
+	});
+
+	test('shows backend object message when update check fails', async () => {
+		vi.mocked(api.fetchSettings).mockResolvedValue({
+			configPath: '/test/config.yaml',
+			defaults: buildDefaults(),
+		});
+		vi.mocked(api.fetchAppVersion).mockResolvedValue({
+			version: '1.0.0',
+			commit: 'abc123',
+			dirty: false,
+		});
+		vi.mocked(api.checkForUpdates).mockRejectedValue({
+			message: 'updates endpoint returned 503',
+		});
+
+		const { getByText, queryByText } = render(SettingsPanel, {
+			props: {
+				onClose: mockOnClose,
+			},
+		});
+
+		await waitForLoadingAndClickAbout(getByText, queryByText);
+
+		await fireEvent.click(getByText('Check for Updates'));
+
+		await waitFor(() => {
+			expect(getByText('updates endpoint returned 503')).toBeInTheDocument();
+		});
 	});
 
 	test('copy button copies version info to clipboard', async () => {

@@ -31,9 +31,42 @@ Note: `wails dev` reads/writes config, workspaces, repo store, and UI state unde
 
 The app defaults to GitHub CLI. Open Settings -> GitHub to connect via CLI or a personal access token. Tokens are stored in your OS keychain.
 
+## In-app updates (macOS)
+
+The desktop app now supports a custom updater flow from **Settings -> About**:
+
+- Choose an update channel (`stable` or `alpha`).
+- Click **Check for Updates**.
+- If a newer version exists, click **Update and Restart**.
+
+Update manifests are fetched from `WORKSET_UPDATES_BASE_URL` when set, otherwise from:
+
+```text
+https://strantalis.github.io/workset/updates
+```
+
+The updater requires both:
+
+- SHA256 match for the update archive.
+- Matching macOS signing Team ID from the manifest.
+
+### Manifest helper script
+
+Use `scripts/generate_update_manifest.sh` to create channel manifests:
+
+```bash
+scripts/generate_update_manifest.sh \
+  --channel stable \
+  --version 0.3.0 \
+  --asset-url https://github.com/strantalis/workset/releases/download/v0.3.0/workset-v0.3.0-macos-update.zip \
+  --sha256 <sha256> \
+  --team-id <apple-team-id> \
+  --notes-url https://github.com/strantalis/workset/releases/tag/v0.3.0 \
+  --output updates/stable.json
+```
+
 ## Terminal settings
 
-- `defaults.terminal_renderer` controls the xterm.js renderer (`webgl`).
 - `defaults.terminal_idle_timeout` controls idle shutdown for GUI terminals.
 - `defaults.terminal_protocol_log` enables sessiond protocol logging (restart daemon to apply).
 - `defaults.terminal_debug_overlay` shows the terminal debug overlay.

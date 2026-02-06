@@ -23,17 +23,19 @@ type App struct {
 	sessiondStart    *sessiondStartState
 	sessiondRestart  *sessiondRestartState
 	repoDiffWatchers *repoDiffWatchManager
+	githubOps        *githubOperationManager
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{
-		service:          newWorksetService(),
+		service:          nil,
 		terminals:        map[string]*terminalSession{},
 		restoredModes:    map[string]terminalModeState{},
 		sessiondStart:    &sessiondStartState{},
 		sessiondRestart:  &sessiondRestartState{},
 		repoDiffWatchers: newRepoDiffWatchManager(),
+		githubOps:        newGitHubOperationManager(),
 	}
 }
 

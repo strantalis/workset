@@ -44,3 +44,32 @@
 ## Agent-Specific Instructions
 - Favor small, reversible changes; call out production impact early.
 - Avoid destructive commands without explicit confirmation.
+
+## Review Guidelines
+
+### 1) Correctness & Safety
+- Prioritize behavior correctness and failure handling over code shape.
+- Flag side effects and compatibility risks early.
+- Escalate high-risk changes (API contracts, data/schema, security-sensitive flows, critical performance paths).
+
+### 2) Testing
+- Require tests for every behavior change.
+- Include negative/edge cases, not just happy paths.
+- Match test type to change scope: unit, integration, and critical-path end-to-end where needed.
+- Do not merge if required checks/tests were not run.
+
+### 3) Performance
+- Call out hot-path impact (time, memory, I/O) in PR notes.
+- Flag unbounded loops, N+1 patterns, unnecessary allocations, and repeated expensive operations.
+- Request evidence for perf-sensitive changes (benchmark/profile/before-after timing).
+
+### 4) Security
+- Treat external inputs as untrusted.
+- Validate inputs and enforce clear trust boundaries.
+- Flag risky defaults, privilege boundary crossings, and unsafe data/process handling.
+
+### 5) Idiomatic Style
+- Prefer clear, idiomatic Go/TypeScript over cleverness.
+- Keep APIs predictable and backward-compatible where possible.
+- Favor small, reversible changes with explicit error handling.
+- Don’t block on pure style preferences if correctness, safety, and maintainability are solid.
