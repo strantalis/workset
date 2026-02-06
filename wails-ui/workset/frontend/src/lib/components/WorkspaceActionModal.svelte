@@ -447,12 +447,14 @@
 	};
 
 	const handleRunPendingHook = async (pending: (typeof pendingHooks)[number]): Promise<void> => {
-		if (!workspace && !workspaceId) {
-			return;
-		}
 		const targetWorkspace =
 			workspace?.id || workspaceId || hookWorkspaceId || activeHookWorkspace || '';
 		if (!targetWorkspace) {
+			pendingHooks = pendingHooks.map((entry) =>
+				entry.repo === pending.repo
+					? { ...entry, running: false, runError: 'Workspace reference unavailable for hook run.' }
+					: entry,
+			);
 			return;
 		}
 		pendingHooks = pendingHooks.map((entry) =>
