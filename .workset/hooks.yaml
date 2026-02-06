@@ -1,0 +1,11 @@
+hooks:
+  - id: bootstrap-frontend-deps
+    on: [worktree.created]
+    run: ["npm", "ci"]
+    cwd: "{repo.path}/wails-ui/workset/frontend"
+    on_error: warn
+  - id: generate-wails-bindings
+    on: [worktree.created]
+    run: ["wails", "generate", "module"]
+    cwd: "{repo.path}/wails-ui/workset"
+    on_error: warn
