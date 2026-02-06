@@ -60,7 +60,10 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Run Go complexity checks (PR delta)
-        run: golangci-lint run -c .golangci-complexity.yml --new-from-rev "${{ github.event.pull_request.base.sha }}"
+        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9
+        with:
+          version: v2.7.2
+          args: -c .golangci-complexity.yml --new-from-rev "${{ github.event.pull_request.base.sha }}"
 
   frontend-format-check:
     if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]') }}
