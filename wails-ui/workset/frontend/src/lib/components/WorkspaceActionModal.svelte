@@ -78,6 +78,14 @@
 	let hookEventUnsubscribe: (() => void) | null = null;
 	let loading = $state(false);
 
+	// Phase state: 'form' for input, 'hook-results' after successful create/add with hooks
+	let phase = $state<'form' | 'hook-results'>('form');
+	let hookResultContext = $state<{
+		action: 'created' | 'added';
+		name: string;
+		itemCount?: number;
+	} | null>(null);
+
 	// Removal modal state for loading overlay
 	let removing = $state(false);
 	let removalSuccess = $state(false);
@@ -353,22 +361,32 @@
 	});
 
 	const modeTitle = $derived(
-		mode === 'create'
-			? 'Create workspace'
-			: mode === 'rename'
-				? 'Rename workspace'
-				: mode === 'add-repo'
-					? 'Add to workspace'
-					: mode === 'archive'
-						? 'Archive workspace'
-						: mode === 'remove-workspace'
-							? 'Remove workspace'
-							: mode === 'remove-repo'
-								? 'Remove repo'
-								: 'Workspace action',
+		phase === 'hook-results'
+			? 'Hook results'
+			: mode === 'create'
+				? 'Create workspace'
+				: mode === 'rename'
+					? 'Rename workspace'
+					: mode === 'add-repo'
+						? 'Add to workspace'
+						: mode === 'archive'
+							? 'Archive workspace'
+							: mode === 'remove-workspace'
+								? 'Remove workspace'
+								: mode === 'remove-repo'
+									? 'Remove repo'
+									: 'Workspace action',
 	);
 
-	const modalSize = $derived(mode === 'create' || mode === 'add-repo' ? 'wide' : 'md');
+	const modalSubtitle = $derived.by(() => {
+		if (phase === 'hook-results') return hookResultContext?.name ?? '';
+		if (mode === 'create') return '';
+		return workspace?.name ?? '';
+	});
+
+	const modalSize = $derived(
+		phase === 'hook-results' ? 'md' : mode === 'create' || mode === 'add-repo' ? 'wide' : 'md',
+	);
 
 	const formatError = (err: unknown, fallback: string): string => {
 		if (err instanceof Error) return err.message;
@@ -503,6 +521,8 @@
 	};
 
 	const loadContext = async (): Promise<void> => {
+		phase = 'form';
+		hookResultContext = null;
 		await loadWorkspaces(true);
 		const current = get(workspaces);
 		workspace = workspaceId ? (current.find((entry) => entry.id === workspaceId) ?? null) : null;
@@ -591,14 +611,17 @@
 			if (createdWarnings.length > 0) {
 				warnings = Array.from(new Set(createdWarnings));
 			}
-			if (warnings.length > 0 || pendingHooks.length > 0) {
-				if (warnings.length === 0 && pendingHooks.length > 0) {
-					success = `Created ${result.workspace.name}. ${pendingHooks.length} repo hook prompt${pendingHooks.length === 1 ? '' : 's'} available.`;
-				} else {
-					success = `Created ${result.workspace.name} with ${warnings.length} warning${warnings.length === 1 ? '' : 's'}.`;
+			const hasHookActivity =
+				warnings.length > 0 || pendingHooks.length > 0 || hookRuns.length > 0;
+			if (hasHookActivity) {
+				success = `Created ${result.workspace.name}.`;
+				hookResultContext = { action: 'created', name: result.workspace.name };
+				phase = 'hook-results';
+				// Auto-close when all hooks ran OK and nothing is pending
+				if (pendingHooks.length === 0 && warnings.length === 0) {
+					setTimeout(() => onClose(), 1500);
 				}
 			} else {
-				success = `Created ${result.workspace.name}.`;
 				onClose();
 			}
 		} catch (err) {
@@ -708,14 +731,21 @@
 			if (collectedWarnings.length > 0) {
 				warnings = Array.from(new Set(collectedWarnings));
 			}
-			if (warnings.length > 0 || pendingHooks.length > 0) {
-				if (warnings.length === 0 && pendingHooks.length > 0) {
-					success = `Added ${itemCount} item${itemCount !== 1 ? 's' : ''}. ${pendingHooks.length} repo hook prompt${pendingHooks.length === 1 ? '' : 's'} available.`;
-				} else {
-					success = `Added ${itemCount} item${itemCount !== 1 ? 's' : ''} with ${warnings.length} warning${warnings.length === 1 ? '' : 's'}.`;
+			const hasHookActivity =
+				warnings.length > 0 || pendingHooks.length > 0 || hookRuns.length > 0;
+			if (hasHookActivity) {
+				success = `Added ${itemCount} item${itemCount !== 1 ? 's' : ''}.`;
+				hookResultContext = {
+					action: 'added',
+					name: workspace.name,
+					itemCount,
+				};
+				phase = 'hook-results';
+				// Auto-close when all hooks ran OK and nothing is pending
+				if (pendingHooks.length === 0 && warnings.length === 0) {
+					setTimeout(() => onClose(), 1500);
 				}
 			} else {
-				success = `Added ${itemCount} item${itemCount !== 1 ? 's' : ''}.`;
 				onClose();
 			}
 		} catch (err) {
@@ -842,74 +872,156 @@
 
 <Modal
 	title={modeTitle}
-	subtitle={mode === 'create' ? '' : (workspace?.name ?? '')}
+	subtitle={modalSubtitle}
 	size={modalSize}
 	headerAlign="left"
 	{onClose}
 	disableClose={removing}
 >
-	{#if error}
-		<Alert variant="error">{error}</Alert>
-	{/if}
-	{#if success}
-		<Alert variant="success">{success}</Alert>
-	{/if}
-	{#if warnings.length > 0}
-		<Alert variant="warning">
-			{#each warnings as warning (warning)}
-				<div>{warning}</div>
-			{/each}
-		</Alert>
-	{/if}
-	{#if hookRuns.length > 0}
-		<Alert variant="info">
-			{#each hookRuns as run (`${run.repo}:${run.event}:${run.id}`)}
-				<div>
-					<code>{run.repo}</code> <code>{run.id}</code>: <code>{run.status}</code>
-					{#if run.log_path}
-						(log: <code>{run.log_path}</code>)
-					{/if}
+	{#if phase === 'hook-results'}
+		<div class="hook-results-container">
+			{#if success}
+				<Alert variant="success">{success}</Alert>
+			{/if}
+			{#if warnings.length > 0}
+				<Alert variant="warning">
+					{#each warnings as warning (warning)}
+						<div>{warning}</div>
+					{/each}
+				</Alert>
+			{/if}
+
+			{#if hookRuns.length > 0}
+				<div class="hook-results-section">
+					<h4 class="hook-results-heading">Hook runs</h4>
+					<div class="hook-runs-list">
+						{#each hookRuns as run (`${run.repo}:${run.event}:${run.id}`)}
+							<div class="hook-run-row">
+								<span class="hook-run-repo">{run.repo}</span>
+								<code class="hook-run-id">{run.id}</code>
+								<span
+									class="hook-status-badge"
+									class:ok={run.status === 'ok'}
+									class:failed={run.status === 'failed'}
+									class:running={run.status === 'running'}
+									class:skipped={run.status === 'skipped'}
+								>
+									{run.status}
+								</span>
+								{#if run.log_path}
+									<span class="hook-run-log" title={run.log_path}>log</span>
+								{/if}
+							</div>
+						{/each}
+					</div>
 				</div>
-			{/each}
-		</Alert>
-	{/if}
-	{#if pendingHooks.length > 0}
-		<Alert variant="warning">
-			{#each pendingHooks as pending (`${pending.repo}:${pending.event}`)}
-				<div class="pending-hook-row">
+			{/if}
+
+			{#if pendingHooks.length > 0}
+				<div class="hook-results-section">
+					<h4 class="hook-results-heading">Pending hooks</h4>
+					{#each pendingHooks as pending (`${pending.repo}:${pending.event}`)}
+						<div class="pending-hook-card">
+							<div class="pending-hook-info">
+								<span class="pending-hook-repo">{pending.repo}</span>
+								<span class="pending-hook-names">{pending.hooks.join(', ')}</span>
+								{#if pending.trusted}
+									<span class="hook-status-badge ok">trusted</span>
+								{/if}
+							</div>
+							<div class="pending-hook-actions">
+								<Button
+									variant="primary"
+									size="sm"
+									disabled={pending.running || pending.trusted}
+									onclick={() => void handleRunPendingHook(pending)}
+								>
+									{pending.running ? 'Running…' : 'Run now'}
+								</Button>
+								<Button
+									variant="ghost"
+									size="sm"
+									disabled={pending.trusting || pending.trusted}
+									onclick={() => void handleTrustPendingHook(pending)}
+								>
+									{pending.trusting ? 'Trusting…' : pending.trusted ? 'Trusted' : 'Trust'}
+								</Button>
+							</div>
+							{#if pending.runError}
+								<div class="pending-hook-error">{pending.runError}</div>
+							{/if}
+						</div>
+					{/each}
+				</div>
+			{/if}
+
+			<div class="hook-results-footer">
+				<Button variant="primary" onclick={onClose}>Done</Button>
+			</div>
+		</div>
+	{:else}
+		{#if error}
+			<Alert variant="error">{error}</Alert>
+		{/if}
+		{#if success}
+			<Alert variant="success">{success}</Alert>
+		{/if}
+		{#if warnings.length > 0}
+			<Alert variant="warning">
+				{#each warnings as warning (warning)}
+					<div>{warning}</div>
+				{/each}
+			</Alert>
+		{/if}
+		{#if hookRuns.length > 0}
+			<Alert variant="info">
+				{#each hookRuns as run (`${run.repo}:${run.event}:${run.id}`)}
 					<div>
-						{pending.repo} pending hooks: {pending.hooks.join(', ')}
-						{#if pending.trusted}
-							(trusted)
+						<code>{run.repo}</code> <code>{run.id}</code>: <code>{run.status}</code>
+						{#if run.log_path}
+							(log: <code>{run.log_path}</code>)
 						{/if}
 					</div>
-					<div class="pending-hook-actions">
-						<Button
-							variant="ghost"
-							size="sm"
-							disabled={pending.running}
-							onclick={() => void handleRunPendingHook(pending)}
-						>
-							{pending.running ? 'Running…' : 'Run now'}
-						</Button>
-						<Button
-							variant="ghost"
-							size="sm"
-							disabled={pending.trusting || pending.trusted}
-							onclick={() => void handleTrustPendingHook(pending)}
-						>
-							{pending.trusting ? 'Trusting…' : pending.trusted ? 'Trusted' : 'Trust'}
-						</Button>
+				{/each}
+			</Alert>
+		{/if}
+		{#if pendingHooks.length > 0}
+			<Alert variant="warning">
+				{#each pendingHooks as pending (`${pending.repo}:${pending.event}`)}
+					<div class="pending-hook-row">
+						<div>
+							{pending.repo} pending hooks: {pending.hooks.join(', ')}
+							{#if pending.trusted}
+								(trusted)
+							{/if}
+						</div>
+						<div class="pending-hook-actions">
+							<Button
+								variant="ghost"
+								size="sm"
+								disabled={pending.running}
+								onclick={() => void handleRunPendingHook(pending)}
+							>
+								{pending.running ? 'Running…' : 'Run now'}
+							</Button>
+							<Button
+								variant="ghost"
+								size="sm"
+								disabled={pending.trusting || pending.trusted}
+								onclick={() => void handleTrustPendingHook(pending)}
+							>
+								{pending.trusting ? 'Trusting…' : pending.trusted ? 'Trusted' : 'Trust'}
+							</Button>
+						</div>
+						{#if pending.runError}
+							<div class="pending-hook-error">{pending.runError}</div>
+						{/if}
 					</div>
-					{#if pending.runError}
-						<div class="pending-hook-error">{pending.runError}</div>
-					{/if}
-				</div>
-			{/each}
-		</Alert>
-	{/if}
+				{/each}
+			</Alert>
+		{/if}
 
-	{#if mode === 'create'}
+		{#if mode === 'create'}
 		<div class="form create-two-column">
 			<div class="column-left">
 				<!-- Tab Bar - only when aliases/groups exist -->
@@ -1596,6 +1708,7 @@
 				</div>
 			{/if}
 		</div>
+	{/if}
 	{/if}
 </Modal>
 
@@ -2763,5 +2876,127 @@
 	.pending-hook-error {
 		color: var(--danger);
 		font-size: 12px;
+	}
+
+	/* Hook Results Phase */
+	.hook-results-container {
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+	}
+
+	.hook-results-section {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.hook-results-heading {
+		margin: 0;
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--muted);
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+	}
+
+	.hook-runs-list {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.hook-run-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 10px;
+		background: var(--panel);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		font-size: 13px;
+	}
+
+	.hook-run-repo {
+		font-weight: 500;
+		color: var(--text);
+	}
+
+	.hook-run-id {
+		font-size: 12px;
+		color: var(--muted);
+	}
+
+	.hook-status-badge {
+		display: inline-flex;
+		align-items: center;
+		padding: 2px 8px;
+		border-radius: var(--radius-sm);
+		font-size: 11px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.02em;
+		margin-left: auto;
+	}
+
+	.hook-status-badge.ok {
+		background: rgba(74, 222, 128, 0.15);
+		color: var(--success, #4ade80);
+	}
+
+	.hook-status-badge.failed {
+		background: rgba(239, 68, 68, 0.15);
+		color: var(--danger, #ef4444);
+	}
+
+	.hook-status-badge.running {
+		background: rgba(59, 130, 246, 0.15);
+		color: var(--accent);
+	}
+
+	.hook-status-badge.skipped {
+		background: rgba(255, 255, 255, 0.08);
+		color: var(--muted);
+	}
+
+	.hook-run-log {
+		font-size: 11px;
+		color: var(--muted);
+		cursor: help;
+	}
+
+	.pending-hook-card {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		padding: 12px;
+		background: var(--panel);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+	}
+
+	.pending-hook-info {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+
+	.pending-hook-repo {
+		font-weight: 500;
+		font-size: 14px;
+		color: var(--text);
+	}
+
+	.pending-hook-names {
+		font-size: 12px;
+		color: var(--muted);
+	}
+
+	.hook-results-footer {
+		display: flex;
+		justify-content: flex-end;
+		padding-top: 8px;
+		border-top: 1px solid var(--border);
 	}
 </style>
