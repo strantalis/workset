@@ -11,6 +11,7 @@
 		updateGroup,
 	} from '../../../api';
 	import type { Alias, Group, GroupSummary } from '../../../types';
+	import { toErrorMessage } from '../../../errors';
 	import SettingsSection from '../SettingsSection.svelte';
 	import GroupMemberRow from './GroupMemberRow.svelte';
 	import Button from '../../ui/Button.svelte';
@@ -35,18 +36,13 @@
 	let addingMember = $state(false);
 	let memberRepo = $state('');
 
-	const formatError = (err: unknown): string => {
-		if (err instanceof Error) return err.message;
-		return 'An error occurred.';
-	};
-
 	const loadGroups = async (): Promise<void> => {
 		try {
 			groups = await listGroups();
 			aliases = await listAliases();
 			onGroupCountChange(groups.length);
 		} catch (err) {
-			error = formatError(err);
+			error = toErrorMessage(err, 'An error occurred.');
 		}
 	};
 
@@ -60,7 +56,7 @@
 			error = null;
 			success = null;
 		} catch (err) {
-			error = formatError(err);
+			error = toErrorMessage(err, 'An error occurred.');
 		}
 	};
 
@@ -114,7 +110,7 @@
 				await selectGroup(summary);
 			}
 		} catch (err) {
-			error = formatError(err);
+			error = toErrorMessage(err, 'An error occurred.');
 		} finally {
 			loading = false;
 		}
@@ -141,7 +137,7 @@
 				formDescription = '';
 			}
 		} catch (err) {
-			error = formatError(err);
+			error = toErrorMessage(err, 'An error occurred.');
 		} finally {
 			loading = false;
 		}
@@ -181,7 +177,7 @@
 			selectedGroup = await getGroup(selectedGroup.name);
 			addingMember = false;
 		} catch (err) {
-			error = formatError(err);
+			error = toErrorMessage(err, 'An error occurred.');
 		} finally {
 			loading = false;
 		}
@@ -199,7 +195,7 @@
 			success = `Removed ${repo}.`;
 			selectedGroup = await getGroup(selectedGroup.name);
 		} catch (err) {
-			error = formatError(err);
+			error = toErrorMessage(err, 'An error occurred.');
 		} finally {
 			loading = false;
 		}

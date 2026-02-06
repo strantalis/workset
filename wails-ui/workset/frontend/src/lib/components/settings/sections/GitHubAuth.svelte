@@ -3,6 +3,7 @@
 	import Alert from '../../ui/Alert.svelte';
 	import Button from '../../ui/Button.svelte';
 	import SettingsSection from '../SettingsSection.svelte';
+	import { toErrorMessage } from '../../../errors';
 	import type { GitHubAuthInfo } from '../../../types';
 	import {
 		disconnectGitHub,
@@ -27,16 +28,6 @@
 	const login = $derived(info?.status.login ?? '');
 	const cliInstalled = $derived(info?.cli.installed ?? false);
 
-	const formatError = (err: unknown, fallback: string): string => {
-		if (err instanceof Error) return err.message;
-		if (typeof err === 'string') return err;
-		if (err && typeof err === 'object' && 'message' in err) {
-			const message = (err as { message?: string }).message;
-			if (typeof message === 'string') return message;
-		}
-		return fallback;
-	};
-
 	const loadInfo = async (): Promise<void> => {
 		loading = true;
 		error = null;
@@ -52,7 +43,7 @@
 				}, 1500);
 			}
 		} catch (err) {
-			error = formatError(err, 'Failed to load GitHub auth status.');
+			error = toErrorMessage(err, 'Failed to load GitHub auth status.');
 		} finally {
 			loading = false;
 		}
@@ -68,7 +59,7 @@
 			statusMessage =
 				next === 'cli' ? 'Using GitHub CLI for authentication.' : 'Using a personal access token.';
 		} catch (err) {
-			error = formatError(err, 'Failed to update GitHub auth mode.');
+			error = toErrorMessage(err, 'Failed to update GitHub auth mode.');
 		} finally {
 			saving = false;
 		}
@@ -91,7 +82,7 @@
 				? `Connected as ${info.status.login}.`
 				: 'GitHub token saved.';
 		} catch (err) {
-			error = formatError(err, 'Failed to save token.');
+			error = toErrorMessage(err, 'Failed to save token.');
 		} finally {
 			saving = false;
 		}
@@ -113,7 +104,7 @@
 				? 'GitHub CLI path saved.'
 				: 'Path saved. GitHub CLI still not detected.';
 		} catch (err) {
-			error = formatError(err, 'Failed to save GitHub CLI path.');
+			error = toErrorMessage(err, 'Failed to save GitHub CLI path.');
 		} finally {
 			saving = false;
 		}
@@ -128,7 +119,7 @@
 			cliPath = selected;
 			await saveCLIPath();
 		} catch (err) {
-			error = formatError(err, 'Failed to open file dialog.');
+			error = toErrorMessage(err, 'Failed to open file dialog.');
 		}
 	};
 
@@ -142,7 +133,7 @@
 			info = await fetchGitHubAuthInfo();
 			statusMessage = 'Token removed.';
 		} catch (err) {
-			error = formatError(err, 'Failed to remove token.');
+			error = toErrorMessage(err, 'Failed to remove token.');
 		} finally {
 			saving = false;
 		}

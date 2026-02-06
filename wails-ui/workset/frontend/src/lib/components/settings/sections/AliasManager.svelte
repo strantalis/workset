@@ -8,6 +8,7 @@
 		updateAlias,
 	} from '../../../api';
 	import type { Alias } from '../../../types';
+	import { toErrorMessage } from '../../../errors';
 	import SettingsSection from '../SettingsSection.svelte';
 	import Button from '../../ui/Button.svelte';
 
@@ -29,17 +30,12 @@
 	let formRemote = $state('');
 	let formBranch = $state('');
 
-	const formatError = (err: unknown): string => {
-		if (err instanceof Error) return err.message;
-		return 'An error occurred.';
-	};
-
 	const loadAliases = async (): Promise<void> => {
 		try {
 			aliases = await listAliases();
 			onAliasCountChange(aliases.length);
 		} catch (err) {
-			error = formatError(err);
+			error = toErrorMessage(err, 'An error occurred.');
 		}
 	};
 
@@ -109,7 +105,7 @@
 				selectAlias(updated);
 			}
 		} catch (err) {
-			error = formatError(err);
+			error = toErrorMessage(err, 'An error occurred.');
 		} finally {
 			loading = false;
 		}
@@ -134,7 +130,7 @@
 			formRemote = '';
 			formBranch = '';
 		} catch (err) {
-			error = formatError(err);
+			error = toErrorMessage(err, 'An error occurred.');
 		} finally {
 			loading = false;
 		}
@@ -155,7 +151,7 @@
 			if (!path) return;
 			formSource = path;
 		} catch (err) {
-			error = formatError(err);
+			error = toErrorMessage(err, 'An error occurred.');
 		}
 	};
 

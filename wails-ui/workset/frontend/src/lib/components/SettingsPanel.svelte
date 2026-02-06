@@ -27,6 +27,7 @@
 		UpdateState,
 	} from '../types';
 	import { activeWorkspace } from '../state';
+	import { toErrorMessage } from '../errors';
 	import { generateTerminalName } from '../names';
 	import SettingsSidebar from './settings/SettingsSidebar.svelte';
 	import WorkspaceDefaults from './settings/sections/WorkspaceDefaults.svelte';
@@ -90,13 +91,6 @@
 	const MIGRATION_PREFIX = 'workset:terminal-layout:migrated:v';
 	const MIGRATION_VERSION = 1;
 
-	const formatError = (err: unknown): string => {
-		if (err instanceof Error) {
-			return err.message;
-		}
-		return 'Failed to update settings.';
-	};
-
 	const buildDraft = (defaults: SettingsDefaults): void => {
 		const next: Record<FieldId, string> = {} as Record<FieldId, string>;
 		allFields.forEach((field) => {
@@ -124,7 +118,7 @@
 			snapshot = data;
 			buildDraft(data.defaults);
 		} catch (err) {
-			error = formatError(err);
+			error = toErrorMessage(err, 'Failed to update settings.');
 		} finally {
 			loading = false;
 		}
@@ -149,7 +143,7 @@
 			try {
 				await setDefaultSetting(field.key, draft[field.id] ?? '');
 			} catch (err) {
-				error = `Failed to save: ${formatError(err)}`;
+				error = `Failed to save: ${toErrorMessage(err, 'Failed to update settings.')}`;
 				break;
 			}
 		}
@@ -189,7 +183,7 @@
 					: `Failed to restart session daemon.${warning}`;
 			}
 		} catch (err) {
-			error = `Failed to restart: ${formatError(err)}`;
+			error = `Failed to restart: ${toErrorMessage(err, 'Failed to update settings.')}`;
 		} finally {
 			restartingSessiond = false;
 		}
@@ -300,7 +294,7 @@
 			);
 			success = `Terminal layout reset for ${workspace.name}.`;
 		} catch (err) {
-			error = `Failed to reset terminal layout: ${formatError(err)}`;
+			error = `Failed to reset terminal layout: ${toErrorMessage(err, 'Failed to update settings.')}`;
 		} finally {
 			resettingTerminalLayout = false;
 		}
@@ -325,7 +319,7 @@
 			updatePreferences = await setUpdatePreferences({ channel: nextChannel });
 			updateCheck = null;
 		} catch (err) {
-			updateError = formatError(err);
+			updateError = toErrorMessage(err, 'Failed to update channel preference.');
 		}
 	};
 
@@ -337,7 +331,7 @@
 			updateCheck = await checkForUpdates(updatePreferences.channel);
 			updateState = await fetchUpdateState();
 		} catch (err) {
-			updateError = formatError(err);
+			updateError = toErrorMessage(err, 'Failed to check for updates.');
 		} finally {
 			updateBusy = false;
 		}
@@ -351,7 +345,7 @@
 			const result = await startAppUpdate(updatePreferences.channel);
 			updateState = result.state;
 		} catch (err) {
-			updateError = formatError(err);
+			updateError = toErrorMessage(err, 'Failed to start update.');
 		} finally {
 			updateBusy = false;
 		}
