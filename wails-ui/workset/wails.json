@@ -11,12 +11,12 @@
     "email": "stran58@gmail.com"
   },
   "preBuildHooks": {
-    "darwin/*": "sh -c \"ROOT=$(git rev-parse --show-toplevel) && mkdir -p \\\"$ROOT/wails-ui/workset/build/sessiond\\\" && go build -o \\\"$ROOT/wails-ui/workset/build/sessiond/workset-sessiond\\\" \\\"$ROOT/cmd/workset-sessiond\\\"\"",
+    "darwin/*": "sh -c \"ROOT=$(git rev-parse --show-toplevel) && mkdir -p \\\"$ROOT/wails-ui/workset/build/sessiond\\\" \\\"$ROOT/wails-ui/workset/build/updater\\\" && go build -o \\\"$ROOT/wails-ui/workset/build/sessiond/workset-sessiond\\\" \\\"$ROOT/cmd/workset-sessiond\\\" && go build -o \\\"$ROOT/wails-ui/workset/build/updater/workset-updater\\\" \\\"$ROOT/cmd/workset-updater\\\"\"",
     "linux/*": "sh -c \"ROOT=$(git rev-parse --show-toplevel) && mkdir -p \\\"$ROOT/wails-ui/workset/build/sessiond\\\" && go build -o \\\"$ROOT/wails-ui/workset/build/sessiond/workset-sessiond\\\" \\\"$ROOT/cmd/workset-sessiond\\\"\"",
     "windows/*": "powershell -Command \"$root = (git rev-parse --show-toplevel); New-Item -ItemType Directory -Force \\\"$root\\\\wails-ui\\\\workset\\\\build\\\\sessiond\\\" | Out-Null; go build -o \\\"$root\\\\wails-ui\\\\workset\\\\build\\\\sessiond\\\\workset-sessiond.exe\\\" \\\"$root\\\\cmd\\\\workset-sessiond\\\"\""
   },
   "postBuildHooks": {
-    "darwin/*": "sh -c \"ROOT=$(git rev-parse --show-toplevel); BIN='${bin}'; if [ -n \\\"$BIN\\\" ] && [ \\\"$BIN\\\" != '\\${bin}' ]; then DEST=\\\"$BIN.app/Contents/Resources/workset-sessiond\\\"; else DEST=\\\"$ROOT/wails-ui/workset/build/bin/workset.app/Contents/Resources/workset-sessiond\\\"; fi; cp \\\"$ROOT/wails-ui/workset/build/sessiond/workset-sessiond\\\" \\\"$DEST\\\"\"",
+    "darwin/*": "sh -c \"ROOT=$(git rev-parse --show-toplevel); BIN='${bin}'; if [ -n \\\"$BIN\\\" ] && [ \\\"$BIN\\\" != '\\${bin}' ]; then DEST=\\\"$BIN.app/Contents/Resources/workset-sessiond\\\"; else DEST=\\\"$ROOT/wails-ui/workset/build/bin/workset.app/Contents/Resources/workset-sessiond\\\"; fi; cp \\\"$ROOT/wails-ui/workset/build/sessiond/workset-sessiond\\\" \\\"$DEST\\\"; cp \\\"$ROOT/wails-ui/workset/build/updater/workset-updater\\\" \\\"$(dirname \\\"$DEST\\\")/workset-updater\\\"\"",
     "linux/*": "sh -c \"ROOT=$(git rev-parse --show-toplevel); BIN='${bin}'; if [ -n \\\"$BIN\\\" ] && [ \\\"$BIN\\\" != '\\${bin}' ]; then DEST=\\\"$BIN\\\"; else DEST=\\\"$ROOT/wails-ui/workset/build/bin/workset\\\"; fi; cp \\\"$ROOT/wails-ui/workset/build/sessiond/workset-sessiond\\\" \\\"$DEST\\\"\"",
     "windows/*": "powershell -Command \"$root = (git rev-parse --show-toplevel); $bin = '${bin}'; if ($bin -and $bin -ne '${bin}') { $dest = $bin + '.exe' } else { $dest = $root + '\\\\wails-ui\\\\workset\\\\build\\\\bin\\\\workset.exe' }; copy \\\"$root\\\\wails-ui\\\\workset\\\\build\\\\sessiond\\\\workset-sessiond.exe\\\" \\\"$dest\\\"\""
   }

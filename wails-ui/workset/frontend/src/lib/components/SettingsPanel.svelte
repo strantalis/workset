@@ -1,12 +1,17 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import {
+		checkForUpdates,
 		createWorkspaceTerminal,
 		fetchAppVersion,
 		fetchSettings,
+		fetchUpdatePreferences,
+		fetchUpdateState,
 		fetchWorkspaceTerminalLayout,
 		persistWorkspaceTerminalLayout,
 		restartSessiond,
+		setUpdatePreferences,
+		startAppUpdate,
 		setDefaultSetting,
 		stopWorkspaceTerminal,
 	} from '../api';
@@ -17,6 +22,9 @@
 		SettingsSnapshot,
 		TerminalLayout,
 		TerminalLayoutNode,
+		UpdateCheckResult,
+		UpdatePreferences,
+		UpdateState,
 	} from '../types';
 	import { activeWorkspace } from '../state';
 	import { generateTerminalName } from '../names';
@@ -72,6 +80,11 @@
 	let groupCount = $state(0);
 	let skillCount = $state(0);
 	let appVersion = $state<AppVersion | null>(null);
+	let updatePreferences = $state<UpdatePreferences>({ channel: 'stable', autoCheck: true });
+	let updateState = $state<UpdateState | null>(null);
+	let updateCheck = $state<UpdateCheckResult | null>(null);
+	let updateBusy = $state(false);
+	let updateError = $state<string | null>(null);
 	const LAYOUT_VERSION = 1;
 	const LEGACY_STORAGE_PREFIX = 'workset:terminal-layout:';
 	const MIGRATION_PREFIX = 'workset:terminal-layout:migrated:v';
@@ -305,6 +318,45 @@
 		error = null;
 	};
 
+	const handleUpdateChannelChange = async (channel: string): Promise<void> => {
+		const nextChannel = channel === 'alpha' ? 'alpha' : 'stable';
+		updateError = null;
+		try {
+			updatePreferences = await setUpdatePreferences({ channel: nextChannel });
+			updateCheck = null;
+		} catch (err) {
+			updateError = formatError(err);
+		}
+	};
+
+	const handleCheckForUpdates = async (): Promise<void> => {
+		if (updateBusy) return;
+		updateBusy = true;
+		updateError = null;
+		try {
+			updateCheck = await checkForUpdates(updatePreferences.channel);
+			updateState = await fetchUpdateState();
+		} catch (err) {
+			updateError = formatError(err);
+		} finally {
+			updateBusy = false;
+		}
+	};
+
+	const handleUpdateAndRestart = async (): Promise<void> => {
+		if (updateBusy) return;
+		updateBusy = true;
+		updateError = null;
+		try {
+			const result = await startAppUpdate(updatePreferences.channel);
+			updateState = result.state;
+		} catch (err) {
+			updateError = formatError(err);
+		} finally {
+			updateBusy = false;
+		}
+	};
+
 	onMount(() => {
 		void loadSettings();
 		void (async () => {
@@ -312,6 +364,18 @@
 				appVersion = await fetchAppVersion();
 			} catch {
 				appVersion = null;
+			}
+		})();
+		void (async () => {
+			try {
+				updatePreferences = await fetchUpdatePreferences();
+			} catch {
+				updatePreferences = { channel: 'stable', autoCheck: true };
+			}
+			try {
+				updateState = await fetchUpdateState();
+			} catch {
+				updateState = null;
 			}
 		})();
 	});
@@ -419,22 +483,50 @@
 										</div>
 									{/if}
 								</div>
-								<button type="button" class="update-btn" disabled>
-									<svg
-										width="16"
-										height="16"
-										viewBox="0 0 24 24"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2"
-									>
-										<path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-										<path d="M21 3v6h-6" />
-										<path d="M21 3l-9 9" />
-									</svg>
-									Check for Updates
-									<span class="coming-soon">Coming soon</span>
-								</button>
+								<div class="updates">
+									<div class="update-row">
+										<label for="update-channel">Channel</label>
+										<select
+											id="update-channel"
+											class="update-select"
+											value={updatePreferences.channel}
+											onchange={(event) =>
+												handleUpdateChannelChange((event.currentTarget as HTMLSelectElement).value)}
+										>
+											<option value="stable">Stable</option>
+											<option value="alpha">Alpha</option>
+										</select>
+									</div>
+									<div class="update-actions">
+										<button
+											type="button"
+											class="update-btn"
+											disabled={updateBusy}
+											onclick={handleCheckForUpdates}
+										>
+											{updateBusy ? 'Checking...' : 'Check for Updates'}
+										</button>
+										{#if updateCheck?.status === 'update_available'}
+											<button
+												type="button"
+												class="update-btn primary"
+												disabled={updateBusy}
+												onclick={handleUpdateAndRestart}
+											>
+												{updateBusy ? 'Preparing...' : 'Update and Restart'}
+											</button>
+										{/if}
+									</div>
+									{#if updateCheck}
+										<div class="update-note">{updateCheck.message}</div>
+									{/if}
+									{#if updateState?.phase === 'applying'}
+										<div class="update-note">{updateState.message}</div>
+									{/if}
+									{#if updateError}
+										<div class="update-error">{updateError}</div>
+									{/if}
+								</div>
 							</div>
 						{/if}
 
@@ -693,31 +785,74 @@
 		background: color-mix(in srgb, var(--accent) 8%, transparent);
 	}
 
+	.updates {
+		margin-top: 16px;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.update-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 10px;
+		font-size: 12px;
+		color: var(--muted);
+	}
+
+	.update-select {
+		min-width: 120px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		padding: 4px 8px;
+		background: var(--panel);
+		color: var(--text);
+	}
+
+	.update-actions {
+		display: flex;
+		gap: 8px;
+	}
+
 	.update-btn {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		margin-top: 16px;
 		padding: 8px 16px;
 		border: 1px solid var(--border);
 		border-radius: var(--radius-md);
 		background: var(--panel-strong);
-		color: var(--muted);
+		color: var(--text);
 		font-size: 13px;
+		cursor: pointer;
+		opacity: 1;
+		transition: all 0.15s ease;
+	}
+
+	.update-btn:hover:not(:disabled) {
+		border-color: var(--accent);
+		background: color-mix(in srgb, var(--accent) 8%, var(--panel-strong));
+	}
+
+	.update-btn.primary {
+		border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+		color: var(--accent);
+	}
+
+	.update-btn:disabled {
 		cursor: not-allowed;
 		opacity: 0.6;
 	}
 
-	.update-btn:disabled {
-		pointer-events: none;
+	.update-note {
+		font-size: 12px;
+		color: var(--muted);
 	}
 
-	.coming-soon {
-		font-size: 10px;
-		padding: 2px 6px;
-		background: var(--border);
-		border-radius: 4px;
-		margin-left: 4px;
+	.update-error {
+		font-size: 12px;
+		color: var(--danger);
 	}
 
 	.version-info {

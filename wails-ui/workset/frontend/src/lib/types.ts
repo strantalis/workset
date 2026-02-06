@@ -230,6 +230,56 @@ export type AppVersion = {
 	dirty: boolean;
 };
 
+export type UpdateChannel = 'stable' | 'alpha';
+
+export type UpdatePreferences = {
+	channel: UpdateChannel;
+	autoCheck: boolean;
+};
+
+export type UpdateReleaseAsset = {
+	name: string;
+	url: string;
+	sha256: string;
+};
+
+export type UpdateReleaseSigning = {
+	teamId: string;
+};
+
+export type UpdateRelease = {
+	version: string;
+	pubDate: string;
+	notesUrl: string;
+	minimumVersion: string;
+	asset: UpdateReleaseAsset;
+	signing: UpdateReleaseSigning;
+};
+
+export type UpdateCheckResult = {
+	status: 'up_to_date' | 'update_available' | 'unavailable';
+	channel: UpdateChannel;
+	currentVersion: string;
+	latestVersion: string;
+	message: string;
+	release?: UpdateRelease;
+};
+
+export type UpdateState = {
+	phase: 'idle' | 'checking' | 'downloading' | 'validating' | 'applying' | 'failed';
+	channel: string;
+	currentVersion: string;
+	latestVersion: string;
+	message: string;
+	error: string;
+	checkedAt: string;
+};
+
+export type UpdateStartResult = {
+	started: boolean;
+	state: UpdateState;
+};
+
 export type RepoDiffFileSummary = {
 	path: string;
 	prevPath?: string;
