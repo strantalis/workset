@@ -633,6 +633,52 @@ func TestWorkspaceRemoveSquashMergedBranch(t *testing.T) {
 	}
 }
 
+func TestWorkspaceRemoveMergeCommitMergedBranch(t *testing.T) {
+	runner := newRunner(t)
+	source := setupRepo(t, filepath.Join(runner.root, "src", "merge-merged-repo"))
+
+	if _, err := runner.run("new", "ws-merge"); err != nil {
+		t.Fatalf("workset new: %v", err)
+	}
+	if _, err := runner.run("repo", "add", "-w", "ws-merge", source); err != nil {
+		t.Fatalf("repo add: %v", err)
+	}
+
+	repoName := filepath.Base(source)
+	worktreePath := filepath.Join(runner.workspaceRoot(), "ws-merge", repoName)
+
+	commitFile(t, worktreePath, "", "feature.txt", "feature", "feat: add feature")
+	runGit(t, source, "checkout", "main")
+	runGit(t, source, "merge", "--no-ff", "-m", "merge ws-merge", "ws-merge")
+
+	if _, err := runner.run("rm", "-w", "ws-merge", "--delete", "--yes"); err != nil {
+		t.Fatalf("expected workspace rm after merge commit: %v", err)
+	}
+}
+
+func TestWorkspaceRemoveRebaseMergedBranch(t *testing.T) {
+	runner := newRunner(t)
+	source := setupRepo(t, filepath.Join(runner.root, "src", "rebase-merged-repo"))
+
+	if _, err := runner.run("new", "ws-rebase"); err != nil {
+		t.Fatalf("workset new: %v", err)
+	}
+	if _, err := runner.run("repo", "add", "-w", "ws-rebase", source); err != nil {
+		t.Fatalf("repo add: %v", err)
+	}
+
+	repoName := filepath.Base(source)
+	worktreePath := filepath.Join(runner.workspaceRoot(), "ws-rebase", repoName)
+
+	commitFile(t, worktreePath, "", "feature.txt", "feature", "feat: add feature")
+	commitFile(t, source, "main", "base.txt", "main moved", "chore: main moved")
+	runGit(t, source, "cherry-pick", "ws-rebase")
+
+	if _, err := runner.run("rm", "-w", "ws-rebase", "--delete", "--yes"); err != nil {
+		t.Fatalf("expected workspace rm after rebase/cherry-pick merge: %v", err)
+	}
+}
+
 func TestStatusJSONOutput(t *testing.T) {
 	runner := newRunner(t)
 	source := setupRepo(t, filepath.Join(runner.root, "src", "status-repo"))

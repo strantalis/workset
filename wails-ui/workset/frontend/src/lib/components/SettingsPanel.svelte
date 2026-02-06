@@ -335,7 +335,13 @@
 		</div>
 	{:else if snapshot}
 		<div class="body">
-			<SettingsSidebar {activeSection} onSelectSection={selectSection} {aliasCount} {groupCount} {skillCount} />
+			<SettingsSidebar
+				{activeSection}
+				onSelectSection={selectSection}
+				{aliasCount}
+				{groupCount}
+				{skillCount}
+			/>
 
 			<div class="content">
 				{#if activeSection === 'workspace'}

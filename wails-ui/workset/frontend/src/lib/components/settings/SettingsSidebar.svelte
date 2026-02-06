@@ -7,7 +7,13 @@
 		skillCount?: number;
 	}
 
-	const { activeSection, onSelectSection, aliasCount = 0, groupCount = 0, skillCount = 0 }: Props = $props();
+	const {
+		activeSection,
+		onSelectSection,
+		aliasCount = 0,
+		groupCount = 0,
+		skillCount = 0,
+	}: Props = $props();
 
 	type SidebarItem = {
 		id: string;
