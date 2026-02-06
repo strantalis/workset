@@ -10,6 +10,28 @@ permissions:
   contents: read
 
 jobs:
+  guardrails-loc:
+    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6
+        with:
+          go-version-file: go.mod
+      - name: Run LOC guardrails
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            go run ./scripts/guardrails --config guardrails.yml --base-sha "${{ github.event.pull_request.base.sha }}" --head-sha "${{ github.sha }}"
+          else
+            go run ./scripts/guardrails --config guardrails.yml --head-sha "${{ github.sha }}"
+          fi
+
   golangci-lint:
     if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
@@ -24,6 +46,24 @@ jobs:
         uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9
         with:
           version: v2.7.2
+
+  go-complexity:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6
+        with:
+          go-version-file: go.mod
+      - name: Run Go complexity checks (PR delta)
+        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9
+        with:
+          version: v2.7.2
+          args: -c .golangci-complexity.yml --new-from-rev "${{ github.event.pull_request.base.sha }}"
 
   frontend-format-check:
     if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]') }}
@@ -43,3 +83,23 @@ jobs:
       - name: Check frontend formatting
         run: npm run format:check
         working-directory: wails-ui/workset/frontend
+
+  frontend-complexity:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: wails-ui/workset/frontend/package-lock.json
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: wails-ui/workset/frontend
+      - name: Run frontend complexity checks (PR delta)
+        run: .github/scripts/frontend-complexity.sh "${{ github.event.pull_request.base.sha }}"
