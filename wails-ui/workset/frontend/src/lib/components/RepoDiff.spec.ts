@@ -190,3 +190,102 @@ describe('RepoDiff watcher lifecycle', () => {
 		});
 	});
 });
+
+describe('RepoDiff local pending section', () => {
+	it('shows local pending files separately when PR exists', async () => {
+		vi.mocked(api.fetchTrackedPullRequest).mockResolvedValue({
+			repo: 'acme/workset',
+			number: 42,
+			url: 'https://github.com/acme/workset/pull/42',
+			title: 'Improve repo diff',
+			state: 'open',
+			draft: false,
+			baseRepo: 'acme/workset',
+			baseBranch: 'main',
+			headRepo: 'acme/workset',
+			headBranch: 'feature/local-diff',
+		});
+		vi.mocked(api.fetchPullRequestStatus).mockResolvedValue({
+			pullRequest: {
+				repo: 'acme/workset',
+				number: 42,
+				url: 'https://github.com/acme/workset/pull/42',
+				title: 'Improve repo diff',
+				state: 'open',
+				draft: false,
+				baseRepo: 'acme/workset',
+				baseBranch: 'main',
+				headRepo: 'acme/workset',
+				headBranch: 'feature/local-diff',
+			},
+			checks: [],
+		});
+		vi.mocked(api.fetchRepoLocalStatus).mockResolvedValue({
+			hasUncommitted: true,
+			ahead: 0,
+			behind: 0,
+			currentBranch: 'feature/local-diff',
+		});
+		vi.mocked(api.fetchBranchDiffSummary).mockResolvedValue({
+			files: [
+				{
+					path: 'pkg/worksetapi/workspaces.go',
+					added: 7,
+					removed: 0,
+					status: 'modified',
+				},
+			],
+			totalAdded: 7,
+			totalRemoved: 0,
+		});
+		vi.mocked(api.fetchRepoDiffSummary).mockResolvedValue({
+			files: [
+				{
+					path: 'pkg/worksetapi/service_workspaces_test.go',
+					added: 33,
+					removed: 0,
+					status: 'modified',
+				},
+			],
+			totalAdded: 33,
+			totalRemoved: 0,
+		});
+		vi.mocked(api.fetchBranchFileDiff).mockResolvedValue({
+			patch: `diff --git a/pkg/worksetapi/workspaces.go b/pkg/worksetapi/workspaces.go
+index 1111111..2222222 100644
+--- a/pkg/worksetapi/workspaces.go
++++ b/pkg/worksetapi/workspaces.go
+@@ -1 +1 @@
+-old
++new
+`,
+			truncated: false,
+			totalBytes: 80,
+			totalLines: 1,
+		});
+		vi.mocked(api.fetchRepoFileDiff).mockResolvedValue({
+			patch: `diff --git a/pkg/worksetapi/service_workspaces_test.go b/pkg/worksetapi/service_workspaces_test.go
+index 1111111..2222222 100644
+--- a/pkg/worksetapi/service_workspaces_test.go
++++ b/pkg/worksetapi/service_workspaces_test.go
+@@ -1 +1 @@
+-old
++new
+`,
+			truncated: false,
+			totalBytes: 80,
+			totalLines: 1,
+		});
+
+		const { findByText } = render(RepoDiff, {
+			props: {
+				repo,
+				workspaceId: 'ws-1',
+				onClose: vi.fn(),
+			},
+		});
+
+		expect(await findByText('Local pending changes')).toBeInTheDocument();
+		expect(await findByText('pkg/worksetapi/service_workspaces_test.go')).toBeInTheDocument();
+	});
+});
