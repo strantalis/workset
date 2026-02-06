@@ -26,6 +26,7 @@ import {
 	stopWorkspaceTerminal,
 } from '../api';
 import { stripMouseReports } from './inputFilter';
+import { captureViewportSnapshot, resolveViewportTargetLine } from './viewport';
 
 export type TerminalViewState = {
 	status: string;
@@ -1133,6 +1134,35 @@ const createTerminal = (): Terminal => {
 	return new Terminal(options);
 };
 
+const captureTerminalViewport = (terminal: Terminal) => {
+	const buffer = terminal.buffer.active;
+	return captureViewportSnapshot({
+		baseY: buffer.baseY,
+		viewportY: buffer.viewportY,
+	});
+};
+
+const restoreTerminalViewport = (
+	terminal: Terminal,
+	viewport: ReturnType<typeof captureTerminalViewport>,
+): void => {
+	const targetLine = resolveViewportTargetLine(viewport, terminal.buffer.active.baseY);
+	if (targetLine === null) {
+		terminal.scrollToBottom();
+		return;
+	}
+	terminal.scrollToLine(targetLine);
+};
+
+const fitWithPreservedViewport = (
+	handle: TerminalHandle,
+	viewport = captureTerminalViewport(handle.terminal),
+): void => {
+	handle.fitAddon.fit();
+	restoreTerminalViewport(handle.terminal, viewport);
+	resizeKittyOverlay(handle);
+};
+
 const attachTerminal = (
 	id: string,
 	container: HTMLDivElement | null,
@@ -1228,8 +1258,7 @@ const attachTerminal = (
 					.then(() => {
 						const current = terminalHandles.get(id);
 						if (!current) return;
-						current.fitAddon.fit();
-						resizeKittyOverlay(current);
+						fitWithPreservedViewport(current);
 						const updated = current.fitAddon.proposeDimensions();
 						if (updated) {
 							const workspaceId = getWorkspaceId(id);
@@ -1249,8 +1278,7 @@ const attachTerminal = (
 			scheduleFitStabilization(id, 'open');
 		}
 		handle.container.setAttribute('data-active', 'true');
-		handle.fitAddon.fit();
-		resizeKittyOverlay(handle);
+		fitWithPreservedViewport(handle);
 		const dims = handle.fitAddon.proposeDimensions();
 		if (dims) {
 			const workspaceId = getWorkspaceId(id);
@@ -1299,13 +1327,7 @@ const attachResizeObserver = (id: string, container: HTMLDivElement | null): voi
 const fitTerminal = (id: string, resizeSession: boolean): void => {
 	const handle = terminalHandles.get(id);
 	if (!handle) return;
-	const buffer = handle.terminal.buffer.active;
-	const wasAtBottom = buffer.baseY === buffer.viewportY;
-	handle.fitAddon.fit();
-	resizeKittyOverlay(handle);
-	if (wasAtBottom) {
-		handle.terminal.scrollToBottom();
-	}
+	fitWithPreservedViewport(handle);
 	forceRedraw(id);
 	if (!resizeSession) return;
 	const dims = handle.fitAddon.proposeDimensions();
@@ -1793,9 +1815,9 @@ const scheduleRenderCheck = (id: string): void => {
 			if (handle?.container && !reopenAttempted.has(id)) {
 				reopenAttempted.add(id);
 				try {
+					const viewport = captureTerminalViewport(handle.terminal);
 					handle.terminal.open(handle.container);
-					handle.fitAddon.fit();
-					resizeKittyOverlay(handle);
+					fitWithPreservedViewport(handle, viewport);
 					nudgeTerminalRedraw(id);
 				} catch {
 					// Best-effort re-open.
@@ -1824,8 +1846,7 @@ const scheduleRenderHealthCheck = (id: string, payloadBytes: number): void => {
 			if (!handle) return;
 			const stats = renderStatsMap.get(id);
 			if (stats && stats.lastRenderAt >= startedAt) return;
-			handle.fitAddon.fit();
-			resizeKittyOverlay(handle);
+			fitWithPreservedViewport(handle);
 			window.setTimeout(() => {
 				const updated = renderStatsMap.get(id);
 				if (updated && updated.lastRenderAt >= startedAt) return;
