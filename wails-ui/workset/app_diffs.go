@@ -390,17 +390,18 @@ func collectRepoDiffSummary(ctx context.Context, repoPath string) ([]RepoDiffFil
 	if err != nil {
 		return nil, err
 	}
+	untrackedStats, err := gitUntrackedNumstat(ctx, repoPath, untracked)
+	if err != nil {
+		return nil, err
+	}
 	for _, path := range untracked {
-		added, removed, binary, err := untrackedNumstat(ctx, repoPath, path)
-		if err != nil {
-			return nil, err
-		}
+		entry := untrackedStats[normalizeNoIndexPath(path)]
 		file := RepoDiffFile{
 			Path:    path,
-			Added:   added,
-			Removed: removed,
+			Added:   entry.added,
+			Removed: entry.removed,
 			Status:  "untracked",
-			Binary:  binary,
+			Binary:  entry.binary,
 		}
 		upsert(file)
 	}
@@ -498,15 +499,28 @@ func parseNumstatZ(output []byte) []numstatEntry {
 			continue
 		}
 		parts := strings.Split(token, "\t")
-		if len(parts) < 3 {
+		if len(parts) < 2 {
 			continue
 		}
 		added, removed, binary := parseNumstatCounts(parts[0], parts[1])
 		entry := numstatEntry{
-			path:    parts[2],
 			added:   added,
 			removed: removed,
 			binary:  binary,
+		}
+		if len(parts) >= 3 {
+			entry.path = parts[2]
+		}
+		if entry.path == "" {
+			// no-index with -z encodes paths as additional NUL-delimited tokens:
+			// "<added>\t<removed>\t\0<old>\0<new>\0"
+			if i+2 < len(tokens) {
+				entry.prevPath = tokens[i+1]
+				entry.path = tokens[i+2]
+				i += 2
+			}
+			entries = append(entries, entry)
+			continue
 		}
 		if i+1 < len(tokens) && tokens[i+1] != "" && !strings.Contains(tokens[i+1], "\t") {
 			entry.prevPath = entry.path
@@ -552,27 +566,48 @@ func fileKey(path, prevPath string) string {
 	return prevPath + "->" + path
 }
 
-func untrackedNumstat(ctx context.Context, repoPath, relativePath string) (int, int, bool, error) {
-	diff, err := gitDiffNoIndexNumstat(ctx, repoPath, relativePath)
+const maxUntrackedNumstatBatchSize = 200
+
+func gitUntrackedNumstat(ctx context.Context, repoPath string, paths []string) (map[string]numstatEntry, error) {
+	stats := make(map[string]numstatEntry, len(paths))
+	if len(paths) == 0 {
+		return stats, nil
+	}
+
+	emptyDir, err := os.MkdirTemp("", "workset-untracked-numstat-*")
 	if err != nil {
-		return 0, 0, false, err
+		return nil, fmt.Errorf("create temp dir for untracked numstat: %w", err)
 	}
-	entries := parseNumstatZ([]byte(diff))
-	if len(entries) == 0 {
-		return 0, 0, false, nil
+	defer os.RemoveAll(emptyDir)
+
+	for start := 0; start < len(paths); start += maxUntrackedNumstatBatchSize {
+		end := start + maxUntrackedNumstatBatchSize
+		if end > len(paths) {
+			end = len(paths)
+		}
+		output, err := gitDiffNoIndexNumstatBatch(ctx, repoPath, emptyDir, paths[start:end])
+		if err != nil {
+			return nil, err
+		}
+		for _, entry := range parseNumstatZ(output) {
+			key := normalizeNoIndexPath(entry.path)
+			if key == "" {
+				continue
+			}
+			entry.path = key
+			entry.prevPath = ""
+			stats[key] = entry
+		}
 	}
-	return entries[0].added, entries[0].removed, entries[0].binary, nil
+
+	return stats, nil
 }
 
-func gitDiffNoIndexNumstat(ctx context.Context, repoPath, relativePath string) (string, error) {
-	absolutePath := filepath.Join(repoPath, relativePath)
-	info, err := os.Stat(absolutePath)
-	if err != nil {
-		return "", fmt.Errorf("untracked path unavailable: %w", err)
+func gitDiffNoIndexNumstatBatch(ctx context.Context, repoPath, emptyDir string, paths []string) ([]byte, error) {
+	if len(paths) == 0 {
+		return nil, nil
 	}
-	if info.IsDir() {
-		return "", nil
-	}
+
 	args := []string{
 		"-C", repoPath,
 		"diff",
@@ -581,20 +616,37 @@ func gitDiffNoIndexNumstat(ctx context.Context, repoPath, relativePath string) (
 		"--numstat",
 		"-z",
 		"--",
-		os.DevNull,
-		relativePath,
+		emptyDir,
+		".",
+		"--",
 	}
+	args = append(args, paths...)
+
 	cmd := exec.CommandContext(ctx, "git", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		if exitErr := (&exec.ExitError{}); errors.As(err, &exitErr) {
 			if exitErr.ExitCode() == 1 {
-				return string(output), nil
+				return output, nil
 			}
 		}
-		return "", fmt.Errorf("git numstat for untracked file failed: %s", strings.TrimSpace(string(output)))
+		return nil, fmt.Errorf("git numstat for untracked files failed: %s", strings.TrimSpace(string(output)))
 	}
-	return string(output), nil
+	return output, nil
+}
+
+func normalizeNoIndexPath(value string) string {
+	path := strings.TrimSpace(filepath.ToSlash(strings.ReplaceAll(value, "\\", "/")))
+	if path == "" {
+		return ""
+	}
+	path = strings.TrimPrefix(path, "./")
+	path = strings.TrimPrefix(path, ".\\")
+	path = strings.TrimPrefix(path, "/")
+	if path == "" || path == "." || path == "dev/null" || strings.EqualFold(path, "nul") {
+		return ""
+	}
+	return path
 }
 
 const (
