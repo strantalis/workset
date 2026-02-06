@@ -2,6 +2,7 @@ build/bin
 workset
 workset.exe
 node_modules
-frontend/dist
+frontend/dist/*
+!frontend/dist/.gitkeep
 frontend/wailsjs/
 frontend/package.json.md5
