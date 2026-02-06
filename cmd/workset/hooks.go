@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/strantalis/workset/internal/hooks"
@@ -71,26 +70,7 @@ func hooksCommand() *cli.Command {
 						})
 					}
 					styles := output.NewStyles(commandWriter(cmd), mode.Plain)
-					header := fmt.Sprintf("hooks run for %s (%s)", result.Repo, result.Event)
-					if styles.Enabled {
-						header = styles.Render(styles.Title, header)
-					}
-					if _, err := fmt.Fprintln(commandWriter(cmd), header); err != nil {
-						return err
-					}
-					for _, run := range result.Results {
-						line := fmt.Sprintf("- %s: %s", run.ID, run.Status)
-						if run.LogPath != "" {
-							line = fmt.Sprintf("%s (log: %s)", line, run.LogPath)
-						}
-						if styles.Enabled && run.Status == "ok" {
-							line = styles.Render(styles.Success, line)
-						}
-						if _, err := fmt.Fprintln(commandWriter(cmd), line); err != nil {
-							return err
-						}
-					}
-					return nil
+					return printHookRunReport(commandWriter(cmd), styles, result.Repo, result.Event, result.Results)
 				},
 			},
 		},

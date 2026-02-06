@@ -21,10 +21,19 @@ func (s *stubRunner) Run(_ context.Context, req RunRequest) error {
 	return nil
 }
 
+type stubObserver struct {
+	events []HookProgress
+}
+
+func (s *stubObserver) OnHookProgress(progress HookProgress) {
+	s.events = append(s.events, progress)
+}
+
 func TestEngineRunsHookAndLogs(t *testing.T) {
 	root := t.TempDir()
 	logRoot := filepath.Join(root, "logs")
 	runner := &stubRunner{}
+	observer := &stubObserver{}
 	engine := Engine{
 		Runner: runner,
 		Clock: func() time.Time {
@@ -52,6 +61,7 @@ func TestEngineRunsHookAndLogs(t *testing.T) {
 		DefaultOnError: OnErrorFail,
 		LogRoot:        logRoot,
 		Context:        ctxPayload,
+		Observer:       observer,
 	})
 	if err != nil {
 		t.Fatalf("run hooks: %v", err)
@@ -74,5 +84,20 @@ func TestEngineRunsHookAndLogs(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "hello from hook") {
 		t.Fatalf("expected hook output in log")
+	}
+	if len(observer.events) != 2 {
+		t.Fatalf("expected 2 observer events, got %d", len(observer.events))
+	}
+	if observer.events[0].Phase != HookPhaseStarted {
+		t.Fatalf("expected start event first")
+	}
+	if observer.events[1].Phase != HookPhaseFinished {
+		t.Fatalf("expected finish event second")
+	}
+	if observer.events[1].Status != RunStatusOK {
+		t.Fatalf("expected ok status, got %s", observer.events[1].Status)
+	}
+	if observer.events[0].LogPath == "" || observer.events[1].LogPath == "" {
+		t.Fatalf("expected observer log path")
 	}
 }

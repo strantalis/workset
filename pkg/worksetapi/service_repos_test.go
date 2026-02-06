@@ -316,6 +316,12 @@ func TestAddRepoRunsTrustedHooks(t *testing.T) {
 	if len(result.PendingHooks) != 0 {
 		t.Fatalf("expected no pending hooks")
 	}
+	if len(result.HookRuns) != 1 {
+		t.Fatalf("expected hook runs, got %d", len(result.HookRuns))
+	}
+	if result.HookRuns[0].Repo != "repo-a" || result.HookRuns[0].Event != "worktree.created" {
+		t.Fatalf("unexpected hook run payload: %+v", result.HookRuns[0])
+	}
 	if runner.calls == 0 {
 		t.Fatalf("expected hook runner to run")
 	}

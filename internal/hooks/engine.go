@@ -23,6 +23,7 @@ type RunInput struct {
 	DefaultOnError string
 	LogRoot        string
 	Context        Context
+	Observer       RunObserver
 }
 
 func (e Engine) Run(ctx context.Context, input RunInput) (RunReport, error) {
@@ -72,6 +73,16 @@ func (e Engine) Run(ctx context.Context, input RunInput) (RunReport, error) {
 			return report, err
 		}
 		result := RunResult{HookID: hook.ID, Status: RunStatusOK, LogPath: logPath}
+		notifyObserver(input.Observer, HookProgress{
+			Phase:         HookPhaseStarted,
+			Event:         input.Event,
+			HookID:        hook.ID,
+			WorkspaceName: input.Context.WorkspaceName,
+			RepoName:      input.Context.RepoName,
+			WorktreePath:  input.Context.WorktreePath,
+			Reason:        input.Context.Reason,
+			LogPath:       logPath,
+		})
 
 		if err := writeHookHeader(file, hook, input.Event, input.Context, command, cwd, clock()); err != nil {
 			_ = file.Close()
@@ -103,14 +114,44 @@ func (e Engine) Run(ctx context.Context, input RunInput) (RunReport, error) {
 			result.Status = RunStatusFailed
 			result.Err = runErr
 			report.Results = append(report.Results, result)
+			notifyObserver(input.Observer, HookProgress{
+				Phase:         HookPhaseFinished,
+				Event:         input.Event,
+				HookID:        hook.ID,
+				WorkspaceName: input.Context.WorkspaceName,
+				RepoName:      input.Context.RepoName,
+				WorktreePath:  input.Context.WorktreePath,
+				Reason:        input.Context.Reason,
+				Status:        result.Status,
+				LogPath:       logPath,
+				Err:           runErr,
+			})
 			if onError == OnErrorFail {
 				return report, HookFailedError{HookID: hook.ID, LogPath: logPath, Err: runErr}
 			}
 			continue
 		}
 		report.Results = append(report.Results, result)
+		notifyObserver(input.Observer, HookProgress{
+			Phase:         HookPhaseFinished,
+			Event:         input.Event,
+			HookID:        hook.ID,
+			WorkspaceName: input.Context.WorkspaceName,
+			RepoName:      input.Context.RepoName,
+			WorktreePath:  input.Context.WorktreePath,
+			Reason:        input.Context.Reason,
+			Status:        result.Status,
+			LogPath:       logPath,
+		})
 	}
 	return report, nil
+}
+
+func notifyObserver(observer RunObserver, progress HookProgress) {
+	if observer == nil {
+		return
+	}
+	observer.OnHookProgress(progress)
 }
 
 func hookMatchesEvent(hook Hook, event Event) bool {

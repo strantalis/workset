@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/strantalis/workset/internal/config"
 	"github.com/strantalis/workset/internal/git"
@@ -184,6 +185,55 @@ func TestCreateWorkspacePendingHooks(t *testing.T) {
 	}
 	if result.PendingHooks[0].Status != HookRunStatusSkipped || result.PendingHooks[0].Reason != "untrusted" {
 		t.Fatalf("expected skipped/untrusted status")
+	}
+}
+
+func TestCreateWorkspaceRunsTrustedHooks(t *testing.T) {
+	env := newTestEnv(t)
+	local := env.createLocalRepo("repo-a")
+	env.git.worktreeAddHook = func(path string) error {
+		hooksDir := filepath.Join(path, ".workset")
+		if err := os.MkdirAll(hooksDir, 0o755); err != nil {
+			return err
+		}
+		data := []byte("hooks:\n  - id: bootstrap\n    on: [worktree.created]\n    run: [\"npm\", \"ci\"]\n")
+		return os.WriteFile(filepath.Join(hooksDir, "hooks.yaml"), data, 0o644)
+	}
+
+	cfg := env.loadConfig()
+	cfg.Repos = map[string]config.RegisteredRepo{
+		"repo-a": {Path: local},
+	}
+	cfg.Hooks.RepoHooks.TrustedRepos = []string{"repo-a"}
+	env.saveConfig(cfg)
+	runner := &stubHookRunner{}
+	env.svc = NewService(Options{
+		ConfigPath:    env.configPath,
+		Git:           env.git,
+		SessionRunner: env.runner,
+		HookRunner:    runner,
+		Clock:         func() time.Time { return env.now },
+		Logf:          func(string, ...any) {},
+	})
+
+	result, err := env.svc.CreateWorkspace(context.Background(), WorkspaceCreateInput{
+		Name:  "demo",
+		Repos: []string{"repo-a"},
+	})
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if len(result.PendingHooks) != 0 {
+		t.Fatalf("expected no pending hooks")
+	}
+	if len(result.HookRuns) != 1 {
+		t.Fatalf("expected hook runs, got %d", len(result.HookRuns))
+	}
+	if result.HookRuns[0].Repo != "repo-a" || result.HookRuns[0].Event != "worktree.created" {
+		t.Fatalf("unexpected hook run payload: %+v", result.HookRuns[0])
+	}
+	if runner.calls == 0 {
+		t.Fatalf("expected hook runner to run")
 	}
 }
 

@@ -18,6 +18,7 @@ type WorkspaceCreateResponse struct {
 	Workspace    worksetapi.WorkspaceCreatedJSON `json:"workspace"`
 	Warnings     []string                        `json:"warnings,omitempty"`
 	PendingHooks []worksetapi.HookPendingJSON    `json:"pendingHooks,omitempty"`
+	HookRuns     []worksetapi.HookExecutionJSON  `json:"hookRuns,omitempty"`
 }
 
 type RepoAddRequest struct {
@@ -28,9 +29,23 @@ type RepoAddRequest struct {
 }
 
 type RepoAddResponse struct {
-	Payload      worksetapi.RepoAddResultJSON `json:"payload"`
-	Warnings     []string                     `json:"warnings,omitempty"`
-	PendingHooks []worksetapi.HookPendingJSON `json:"pendingHooks,omitempty"`
+	Payload      worksetapi.RepoAddResultJSON   `json:"payload"`
+	Warnings     []string                       `json:"warnings,omitempty"`
+	PendingHooks []worksetapi.HookPendingJSON   `json:"pendingHooks,omitempty"`
+	HookRuns     []worksetapi.HookExecutionJSON `json:"hookRuns,omitempty"`
+}
+
+type HooksRunRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	Repo        string `json:"repo"`
+	Event       string `json:"event,omitempty"`
+	Reason      string `json:"reason,omitempty"`
+}
+
+type HooksRunResponse struct {
+	Event   string                   `json:"event"`
+	Repo    string                   `json:"repo"`
+	Results []worksetapi.HookRunJSON `json:"results"`
 }
 
 type RepoRemoveRequest struct {
@@ -90,6 +105,9 @@ func (a *App) CreateWorkspace(input WorkspaceCreateRequest) (WorkspaceCreateResp
 		for _, pending := range result.PendingHooks {
 			response.PendingHooks = append(response.PendingHooks, worksetapi.HookPendingJSON(pending))
 		}
+	}
+	if len(result.HookRuns) > 0 {
+		response.HookRuns = append(response.HookRuns, result.HookRuns...)
 	}
 	return response, nil
 }
@@ -184,7 +202,43 @@ func (a *App) AddRepo(input RepoAddRequest) (RepoAddResponse, error) {
 			response.PendingHooks = append(response.PendingHooks, worksetapi.HookPendingJSON(pending))
 		}
 	}
+	if len(result.HookRuns) > 0 {
+		response.HookRuns = append(response.HookRuns, result.HookRuns...)
+	}
 	return response, nil
+}
+
+func (a *App) RunHooks(input HooksRunRequest) (HooksRunResponse, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	a.ensureService()
+
+	result, err := a.service.RunHooks(ctx, worksetapi.HooksRunInput{
+		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
+		Repo:      input.Repo,
+		Event:     input.Event,
+		Reason:    input.Reason,
+	})
+	if err != nil {
+		return HooksRunResponse{}, err
+	}
+	return HooksRunResponse{
+		Event:   result.Event,
+		Repo:    result.Repo,
+		Results: result.Results,
+	}, nil
+}
+
+func (a *App) TrustRepoHooks(repoName string) error {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	a.ensureService()
+	_, err := a.service.TrustRepoHooks(ctx, repoName)
+	return err
 }
 
 func (a *App) RemoveRepo(input RepoRemoveRequest) (worksetapi.RepoRemoveResultJSON, error) {

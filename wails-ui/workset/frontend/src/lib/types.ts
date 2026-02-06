@@ -84,6 +84,7 @@ export type WorkspaceCreateResponse = {
 		status?: string;
 		reason?: string;
 	}[];
+	hookRuns?: HookExecution[];
 };
 
 export type RepoAddResponse = {
@@ -109,6 +110,38 @@ export type RepoAddResponse = {
 		status?: string;
 		reason?: string;
 	}[];
+	hookRuns?: HookExecution[];
+};
+
+export type HookExecution = {
+	event: string;
+	repo: string;
+	id: string;
+	status: string;
+	log_path?: string;
+};
+
+export type HooksRunResponse = {
+	event: string;
+	repo: string;
+	results: {
+		id: string;
+		status: string;
+		log_path?: string;
+	}[];
+};
+
+export type HookProgressEvent = {
+	operation?: string;
+	reason?: string;
+	workspace?: string;
+	repo: string;
+	event: string;
+	hookId: string;
+	phase: 'started' | 'finished';
+	status?: string;
+	logPath?: string;
+	error?: string;
 };
 
 export type RegisteredRepo = {

@@ -64,6 +64,7 @@ func newCommand() *cli.Command {
 				Next:    result.Workspace.Next,
 			}
 			mode := outputModeFromContext(cmd)
+			styles := output.NewStyles(commandWriter(cmd), mode.Plain)
 			handledHooks := map[string]bool{}
 			if !mode.JSON && len(result.PendingHooks) > 0 && term.IsTerminal(int(os.Stdin.Fd())) {
 				for _, pending := range result.PendingHooks {
@@ -80,12 +81,16 @@ func newCommand() *cli.Command {
 						return promptErr
 					}
 					if ok {
-						if _, err := svc.RunHooks(ctx, worksetapi.HooksRunInput{
+						runResult, err := svc.RunHooks(ctx, worksetapi.HooksRunInput{
 							Workspace: worksetapi.WorkspaceSelector{Value: result.Workspace.Name},
 							Repo:      pending.Repo,
 							Event:     pending.Event,
 							Reason:    "workspace.create",
-						}); err != nil {
+						})
+						if err != nil {
+							return err
+						}
+						if err := printHookRunReport(commandWriter(cmd), styles, runResult.Repo, runResult.Event, runResult.Results); err != nil {
 							return err
 						}
 						handledHooks[pending.Repo] = true
@@ -102,6 +107,10 @@ func newCommand() *cli.Command {
 					}
 				}
 			}
+			pendingHooks := make([]worksetapi.HookPendingJSON, 0, len(result.PendingHooks))
+			for _, pending := range result.PendingHooks {
+				pendingHooks = append(pendingHooks, worksetapi.HookPendingJSON(pending))
+			}
 			for _, warning := range result.Warnings {
 				_, _ = fmt.Fprintln(os.Stderr, "warning:", warning)
 			}
@@ -111,7 +120,24 @@ func newCommand() *cli.Command {
 				}
 				_, _ = fmt.Fprintf(os.Stderr, "warning: repo %s hooks pending approval; run `workset hooks run -w %s %s` to execute\n", pending.Repo, result.Workspace.Name, pending.Repo)
 			}
-			return printWorkspaceCreated(commandWriter(cmd), info, mode.JSON, mode.Plain)
+			if mode.JSON {
+				return output.WriteJSON(commandWriter(cmd), struct {
+					output.WorkspaceCreated
+
+					Warnings     []string                       `json:"warnings,omitempty"`
+					PendingHooks []worksetapi.HookPendingJSON   `json:"pending_hooks,omitempty"`
+					HookRuns     []worksetapi.HookExecutionJSON `json:"hook_runs,omitempty"`
+				}{
+					WorkspaceCreated: info,
+					Warnings:         result.Warnings,
+					PendingHooks:     pendingHooks,
+					HookRuns:         result.HookRuns,
+				})
+			}
+			if err := printWorkspaceCreated(commandWriter(cmd), info, false, mode.Plain); err != nil {
+				return err
+			}
+			return printHookExecutionResults(commandWriter(cmd), styles, result.HookRuns)
 		},
 	}
 }

@@ -24,8 +24,10 @@ type Options struct {
 	ExecFunc func(ctx context.Context, root string, command []string, env []string) error
 	// HookRunner overrides how hooks run commands (useful for embedding/tests).
 	HookRunner hooks.Runner
-	Clock      func() time.Time
-	Logf       func(format string, args ...any)
+	// HookObserver receives per-hook execution lifecycle updates.
+	HookObserver HookProgressObserver
+	Clock        func() time.Time
+	Logf         func(format string, args ...any)
 }
 
 // Service provides the public API for workspace, repo, alias, group, session,
@@ -39,6 +41,7 @@ type Service struct {
 	commands   CommandRunner
 	exec       func(ctx context.Context, root string, command []string, env []string) error
 	hookRunner hooks.Runner
+	hookEvents HookProgressObserver
 	clock      func() time.Time
 	logf       func(format string, args ...any)
 	github     GitHubProvider
@@ -97,6 +100,7 @@ func NewService(opts Options) *Service {
 		commands:   commandRunner,
 		exec:       execFunc,
 		hookRunner: hookRunner,
+		hookEvents: opts.HookObserver,
 		clock:      clock,
 		logf:       opts.Logf,
 		github:     githubProvider,
