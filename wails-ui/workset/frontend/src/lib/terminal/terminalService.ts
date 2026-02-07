@@ -28,6 +28,7 @@ import {
 	createTerminalInstanceManager,
 	type TerminalInstanceHandle,
 } from './terminalInstanceManager';
+import { createTerminalOutputBuffer } from './terminalOutputBuffer';
 import {
 	createKittyState,
 	createTerminalKittyController,
@@ -69,11 +70,6 @@ type TerminalContext = {
 
 type TerminalKey = string;
 type ClipboardSelection = string;
-
-type OutputChunk = {
-	data: string;
-	bytes: number;
-};
 
 type TerminalHandle = TerminalInstanceHandle<KittyState> & {
 	kittyOverlay?: KittyOverlay;
@@ -118,10 +114,6 @@ const persistFontSize = (): void => {
 
 let currentFontSize = loadInitialFontSize();
 
-const outputQueues = new Map<
-	string,
-	{ chunks: OutputChunk[]; bytes: number; scheduled: boolean }
->();
 const bootstrapHandled = new Map<string, boolean>();
 const bootstrapFetchTimers = new Map<string, number>();
 const statsMap = new Map<
@@ -142,8 +134,6 @@ let debugOverlayPreference: 'on' | 'off' | '' = '';
 let suppressMouseUntil: Record<string, number> = {};
 let mouseInputTail: Record<string, string> = {};
 
-const OUTPUT_FLUSH_BUDGET = 128 * 1024;
-const OUTPUT_BACKLOG_LIMIT = 512 * 1024;
 const ACK_BATCH_BYTES = 32 * 1024;
 const ACK_FLUSH_DELAY_MS = 25;
 const INITIAL_STREAM_CREDIT = 256 * 1024;
@@ -337,7 +327,7 @@ const destroyTerminalState = (id: string): void => {
 	terminalViewportResizeController.destroy(id);
 	resetSessionState(id);
 	terminalStores.delete(id);
-	outputQueues.delete(id);
+	terminalOutputBuffer.clear(id);
 	replayAckOrchestrator.destroy(id);
 	bootstrapHandled.delete(id);
 	statsMap.delete(id);
@@ -556,7 +546,7 @@ const sendInput = (id: string, data: string): void => {
 
 const resetSessionState = (id: string): void => {
 	replayAckOrchestrator.resetSession(id);
-	outputQueues.delete(id);
+	terminalOutputBuffer.clear(id);
 	bootstrapHandled.delete(id);
 	const bootstrapTimer = bootstrapFetchTimers.get(id);
 	if (bootstrapTimer) {
@@ -660,48 +650,24 @@ const renderHealth = createTerminalRenderHealth({
 	logDebug,
 });
 
-const enqueueOutput = (id: string, data: string, bytes: number): void => {
-	const queue = outputQueues.get(id) ?? { chunks: [], bytes: 0, scheduled: false };
-	queue.chunks.push({ data, bytes });
-	queue.bytes += bytes;
-	outputQueues.set(id, queue);
-	if (!queue.scheduled) {
-		queue.scheduled = true;
-		requestAnimationFrame(() => flushOutput(id, true));
-	}
-};
-
-const flushOutput = (id: string, scheduled: boolean): void => {
-	const queue = outputQueues.get(id);
-	if (!queue) return;
-	if (queue.scheduled !== scheduled) return;
-	queue.scheduled = false;
-	const handle = terminalHandles.get(id);
-	if (!handle) return;
-	let budget = OUTPUT_FLUSH_BUDGET;
-	while (queue.chunks.length > 0 && budget > 0) {
-		const chunk = queue.chunks.shift();
-		if (!chunk) break;
-		budget -= chunk.bytes;
-		handle.terminal.write(chunk.data, () => {
+const terminalOutputBuffer = createTerminalOutputBuffer({
+	canWrite: (id) => terminalHandles.has(id),
+	writeChunk: (id, data) => {
+		const handle = terminalHandles.get(id);
+		if (!handle) return;
+		handle.terminal.write(data, () => {
 			renderHealth.noteRender(id);
 		});
+	},
+	onChunkFlushed: (id) => {
 		updateStatsLastOutput(id);
-	}
-	queue.bytes = queue.chunks.reduce((sum, chunk) => sum + chunk.bytes, 0);
-	if (queue.bytes > OUTPUT_BACKLOG_LIMIT) {
-		queue.chunks.splice(0, Math.floor(queue.chunks.length / 2));
-		queue.bytes = queue.chunks.reduce((sum, chunk) => sum + chunk.bytes, 0);
-	}
-	if (queue.chunks.length > 0 && !queue.scheduled) {
-		queue.scheduled = true;
-		requestAnimationFrame(() => flushOutput(id, true));
-	}
-};
+	},
+	requestAnimationFrameFn: (callback) => requestAnimationFrame(callback),
+});
 
 const replayAckOrchestrator = createTerminalReplayAckOrchestrator<KittyEventPayload>({
-	enqueueOutput,
-	flushOutput,
+	enqueueOutput: terminalOutputBuffer.enqueueOutput,
+	flushOutput: terminalOutputBuffer.flushOutput,
 	forceRedraw,
 	hasTerminalHandle: (id) => terminalHandles.has(id),
 	applyKittyEvent: (id, event) => terminalKittyController.applyEvent(id, event),
@@ -978,7 +944,7 @@ const terminalAttachOpenLifecycle = createTerminalAttachOpenLifecycle({
 	scheduleFitStabilization: (id, reason) => {
 		terminalViewportResizeController.scheduleFitStabilization(id, reason);
 	},
-	flushOutput,
+	flushOutput: terminalOutputBuffer.flushOutput,
 	markAttached: (id) => {
 		terminalAttachState.markAttached(id);
 	},
@@ -1042,7 +1008,7 @@ const terminalModeBootstrapCoordinator = createTerminalModeBootstrapCoordinator<
 	},
 	bootstrapHandled,
 	setReplayState: replayAckOrchestrator.setReplayState,
-	enqueueOutput,
+	enqueueOutput: terminalOutputBuffer.enqueueOutput,
 	countBytes,
 	pendingReplayKitty: replayAckOrchestrator.pendingReplayKitty,
 	hasTerminalHandle: (id) => terminalHandles.has(id),
