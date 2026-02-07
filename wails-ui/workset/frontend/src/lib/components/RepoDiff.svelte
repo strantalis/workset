@@ -82,6 +82,7 @@
 		type BranchDiffRefs,
 		type SummarySource,
 	} from './repo-diff/fileDiffController';
+	import { createGitHubOperationsController } from './repo-diff/githubOperationsController';
 	import { createReviewAnnotationActionsController } from './repo-diff/reviewAnnotationActions';
 	import { createSummaryController } from './repo-diff/summaryController';
 	import { createRepoDiffWatcherLifecycle } from './repo-diff/watcherLifecycle';
@@ -366,61 +367,9 @@
 		return fallback;
 	};
 
-	const authRequiredPrefix = 'AUTH_REQUIRED:';
-
-	const isAuthRequiredMessage = (message: string): boolean =>
-		message.startsWith(authRequiredPrefix);
-
-	const stripAuthPrefix = (message: string): string =>
-		message.replace(/^AUTH_REQUIRED:\s*/, '') || 'GitHub authentication required.';
-
-	const runGitHubAction = async (
-		action: () => Promise<void>,
-		onError: (message: string) => void,
-		fallback: string,
-	): Promise<void> => {
-		if (authModalOpen) {
-			authPendingAction = () => runGitHubAction(action, onError, fallback);
-			return;
-		}
-		try {
-			await action();
-		} catch (err) {
-			const message = formatError(err, fallback);
-			if (isAuthRequiredMessage(message)) {
-				authModalMessage = stripAuthPrefix(message);
-				authPendingAction = () => runGitHubAction(action, onError, fallback);
-				authModalOpen = true;
-				return;
-			}
-			onError(message);
-		}
-	};
-
-	const handleAuthSuccess = async (): Promise<void> => {
-		authModalOpen = false;
-		authModalMessage = null;
-		const pending = authPendingAction;
-		authPendingAction = null;
-		if (pending) {
-			await pending();
-		}
-	};
-
-	const handleAuthClose = (): void => {
-		authModalOpen = false;
-		authPendingAction = null;
-	};
-
 	const parseNumber = (value: string): number | undefined => {
 		const parsed = Number.parseInt(value.trim(), 10);
 		return Number.isFinite(parsed) ? parsed : undefined;
-	};
-
-	const toPrCreateStage = (stage: GitHubOperationStage): PrCreateStage | null => {
-		if (stage === 'queued' || stage === 'generating') return 'generating';
-		if (stage === 'creating') return 'creating';
-		return null;
 	};
 
 	const commitPushStageCopy = $derived.by(() => {
@@ -440,92 +389,87 @@
 		}
 	});
 
-	const applyGitHubOperationStatus = (status: GitHubOperationStatus): void => {
-		if (status.workspaceId !== workspaceId || status.repoId !== repoId) return;
+	const githubOperationsController = createGitHubOperationsController({
+		workspaceId: () => workspaceId,
+		repoId: () => repoId,
+		prBase: () => prBase,
+		prBaseRemote: () => prBaseRemote,
+		prDraft: () => prDraft,
+		prCreating: () => prCreating,
+		commitPushLoading: () => commitPushLoading,
+		authModalOpen: () => authModalOpen,
+		getAuthPendingAction: () => authPendingAction,
+		setAuthModalOpen: (value) => {
+			authModalOpen = value;
+		},
+		setAuthModalMessage: (value) => {
+			authModalMessage = value;
+		},
+		setAuthPendingAction: (value) => {
+			authPendingAction = value;
+		},
+		setPrPanelExpanded: (value) => {
+			prPanelExpanded = value;
+		},
+		setPrCreating: (value) => {
+			prCreating = value;
+		},
+		setPrCreatingStage: (value) => {
+			prCreatingStage = value;
+		},
+		setPrCreateError: (value) => {
+			prCreateError = value;
+		},
+		setPrCreateSuccess: (value) => {
+			prCreateSuccess = value;
+		},
+		setPrTracked: (value) => {
+			prTracked = value;
+		},
+		setForceMode: (value) => {
+			forceMode = value;
+		},
+		setPrNumberInput: (value) => {
+			prNumberInput = value;
+		},
+		setPrStatus: (value) => {
+			prStatus = value;
+		},
+		setCommitPushLoading: (value) => {
+			commitPushLoading = value;
+		},
+		setCommitPushStage: (value) => {
+			commitPushStage = value;
+		},
+		setCommitPushError: (value) => {
+			commitPushError = value;
+		},
+		setCommitPushSuccess: (value) => {
+			commitPushSuccess = value;
+		},
+		handledOperationCompletions,
+		handleRefresh: () => handleRefresh(),
+		formatError,
+		startCreatePullRequestAsync,
+		startCommitAndPushAsync,
+		fetchGitHubOperationStatus,
+	});
 
-		if (status.type === 'create_pr') {
-			if (status.state === 'running') {
-				prPanelExpanded = true;
-				prCreating = true;
-				prCreatingStage = toPrCreateStage(status.stage);
-				prCreateError = null;
-				return;
-			}
+	const runGitHubAction = (
+		action: () => Promise<void>,
+		onError: (message: string) => void,
+		fallback: string,
+	): Promise<void> => githubOperationsController.runGitHubAction(action, onError, fallback);
 
-			prCreating = false;
-			prCreatingStage = null;
-			if (status.state === 'completed') {
-				prCreateError = null;
-				if (status.pullRequest) {
-					prCreateSuccess = status.pullRequest;
-					prTracked = status.pullRequest;
-					forceMode = null;
-					prNumberInput = `${status.pullRequest.number}`;
-					prStatus = {
-						pullRequest: status.pullRequest,
-						checks: [],
-					};
-				}
-				if (!handledOperationCompletions.has(status.operationId)) {
-					handledOperationCompletions.add(status.operationId);
-					void handleRefresh();
-				}
-				return;
-			}
+	const handleAuthSuccess = (): Promise<void> => githubOperationsController.handleAuthSuccess();
 
-			if (status.state === 'failed') {
-				prCreateError = status.error || 'Failed to create pull request.';
-			}
-			return;
-		}
+	const handleAuthClose = (): void => githubOperationsController.handleAuthClose();
 
-		if (status.type !== 'commit_push') {
-			return;
-		}
+	const applyGitHubOperationStatus = (status: GitHubOperationStatus): void =>
+		githubOperationsController.applyGitHubOperationStatus(status);
 
-		if (status.state === 'running') {
-			commitPushLoading = true;
-			commitPushStage = status.stage;
-			commitPushError = null;
-			commitPushSuccess = false;
-			return;
-		}
-
-		commitPushLoading = false;
-		commitPushStage = null;
-		if (status.state === 'completed') {
-			commitPushError = null;
-			commitPushSuccess = true;
-			if (!handledOperationCompletions.has(status.operationId)) {
-				handledOperationCompletions.add(status.operationId);
-				void handleRefresh();
-			}
-			return;
-		}
-
-		if (status.state === 'failed') {
-			commitPushSuccess = false;
-			commitPushError = status.error || 'Failed to commit and push.';
-		}
-	};
-
-	const loadGitHubOperationStatuses = async (): Promise<void> => {
-		if (!repoId) return;
-		try {
-			const [createStatus, commitStatus] = await Promise.all([
-				fetchGitHubOperationStatus(workspaceId, repoId, 'create_pr'),
-				fetchGitHubOperationStatus(workspaceId, repoId, 'commit_push'),
-			]);
-			if (createStatus) {
-				applyGitHubOperationStatus(createStatus);
-			}
-			if (commitStatus) {
-				applyGitHubOperationStatus(commitStatus);
-			}
-		} catch {
-			// best effort recovery, ignore status load errors
-		}
-	};
+	const loadGitHubOperationStatuses = (): Promise<void> =>
+		githubOperationsController.loadGitHubOperationStatuses();
 
 	const loadRemotes = async (): Promise<void> => {
 		if (!repoId) return;
@@ -540,53 +484,9 @@
 		}
 	};
 
-	const handleCommitAndPush = async (): Promise<void> => {
-		if (!repoId) return;
-		if (commitPushLoading) return;
-		commitPushLoading = true;
-		commitPushStage = 'queued';
-		commitPushError = null;
-		commitPushSuccess = false;
-		await runGitHubAction(
-			async () => {
-				const status = await startCommitAndPushAsync(workspaceId, repoId);
-				applyGitHubOperationStatus(status);
-			},
-			(message) => {
-				commitPushLoading = false;
-				commitPushStage = null;
-				commitPushSuccess = false;
-				commitPushError = message;
-			},
-			'Failed to commit and push.',
-		);
-	};
+	const handleCommitAndPush = (): Promise<void> => githubOperationsController.handleCommitAndPush();
 
-	const handleCreatePR = async (): Promise<void> => {
-		if (!repoId) return;
-		if (prCreating) return;
-		prPanelExpanded = true;
-		prCreating = true;
-		prCreatingStage = 'generating';
-		prCreateError = null;
-		prCreateSuccess = null;
-		await runGitHubAction(
-			async () => {
-				const status = await startCreatePullRequestAsync(workspaceId, repoId, {
-					base: prBase.trim() || undefined,
-					baseRemote: prBaseRemote || undefined,
-					draft: prDraft,
-				});
-				applyGitHubOperationStatus(status);
-			},
-			(message) => {
-				prCreating = false;
-				prCreatingStage = null;
-				prCreateError = message;
-			},
-			'Failed to create pull request.',
-		);
-	};
+	const handleCreatePR = (): Promise<void> => githubOperationsController.handleCreatePR();
 
 	const handleDeleteComment = async (commentId: number): Promise<void> => {
 		if (!repoId) return;

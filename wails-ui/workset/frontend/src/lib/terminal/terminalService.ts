@@ -5,15 +5,6 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import type { WebLinksAddon } from '@xterm/addon-web-links';
 import type { WebglAddon } from '@xterm/addon-webgl';
 import type { Readable, Writable } from 'svelte/store';
-import {
-	EVENT_SESSIOND_RESTARTED,
-	EVENT_TERMINAL_BOOTSTRAP,
-	EVENT_TERMINAL_BOOTSTRAP_DONE,
-	EVENT_TERMINAL_DATA,
-	EVENT_TERMINAL_KITTY,
-	EVENT_TERMINAL_LIFECYCLE,
-	EVENT_TERMINAL_MODES,
-} from '../events';
 import { terminalTransport } from './terminalTransport';
 import { createTerminalInstance } from './terminalRenderer';
 import { createTerminalWebLinksSync } from './terminalWebLinks';
@@ -29,6 +20,15 @@ import {
 	createTerminalRendererAddonState,
 } from './terminalAttachRendererState';
 import { createTerminalAttachOpenLifecycle } from './terminalAttachOpenLifecycle';
+import {
+	createTerminalEventSubscriptions,
+	type TerminalBootstrapDonePayload,
+	type TerminalBootstrapPayload,
+	type TerminalKittyPayload,
+	type TerminalLifecyclePayload,
+	type TerminalModesPayload,
+	type TerminalPayload,
+} from './terminalEventSubscriptions';
 
 export type TerminalViewState = {
 	status: string;
@@ -61,7 +61,6 @@ type TerminalContext = {
 
 type TerminalKey = string;
 type ClipboardSelection = string;
-type EventHandler<T> = (payload: T) => void;
 
 type OutputChunk = {
 	data: string;
@@ -153,64 +152,9 @@ type KittyEventPayload = {
 	};
 };
 
-type TerminalPayload = {
-	workspaceId: string;
-	terminalId: string;
-	data: string;
-	bytes?: number;
-};
-
-type TerminalBootstrapPayload = {
-	workspaceId: string;
-	terminalId: string;
-	snapshot?: string;
-	snapshotSource?: string;
-	kitty?: { images?: unknown[]; placements?: unknown[] } | null;
-	backlog?: string;
-	backlogSource?: string;
-	backlogTruncated?: boolean;
-	nextOffset?: number;
-	source?: string;
-	altScreen?: boolean;
-	mouse?: boolean;
-	mouseSGR?: boolean;
-	mouseEncoding?: string;
-	safeToReplay?: boolean;
-	initialCredit?: number;
-};
-
-type TerminalBootstrapDonePayload = {
-	workspaceId: string;
-	terminalId: string;
-};
-
-type TerminalLifecyclePayload = {
-	workspaceId: string;
-	terminalId: string;
-	status: string;
-	message?: string;
-};
-
-type TerminalModesPayload = {
-	workspaceId: string;
-	terminalId: string;
-	altScreen?: boolean;
-	mouse?: boolean;
-	mouseSGR?: boolean;
-	mouseEncoding?: string;
-};
-
-type TerminalKittyPayload = {
-	workspaceId: string;
-	terminalId: string;
-	event: KittyEventPayload;
-};
-
 const terminalHandles = new Map<string, TerminalHandle>();
 const terminalContexts = new Map<string, TerminalContext>();
 const terminalStores = new TerminalStateStore<TerminalViewState>();
-const listeners = new Set<string>();
-const unsubscribeHandlers: Array<() => void> = [];
 const DISPOSE_TTL_MS = 10 * 60 * 1000;
 
 // Font size configuration
@@ -455,7 +399,7 @@ const syncTerminalWebLinks = createTerminalWebLinksSync({
 	},
 });
 
-const subscribeEvent = <T>(event: string, handler: EventHandler<T>): (() => void) =>
+const subscribeEvent = <T>(event: string, handler: (payload: T) => void): (() => void) =>
 	terminalTransport.onEvent(event, handler);
 
 const clearTimeoutMap = (map: Map<string, number>, id: string): void => {
@@ -1741,133 +1685,83 @@ const terminalAttachOpenLifecycle = createTerminalAttachOpenLifecycle({
 	},
 });
 
-const ensureListener = (): void => {
-	if (!listeners.has(EVENT_TERMINAL_DATA)) {
-		const handler = (payload: TerminalPayload): void => {
-			const terminalId = payload.terminalId;
-			const workspaceId = payload.workspaceId;
-			if (!terminalId || !workspaceId) return;
-			const id = buildTerminalKey(workspaceId, terminalId);
-			if (!id) return;
-			if (isWorkspaceMismatch(id, workspaceId, terminalId)) return;
-			lifecycle.markInput(id);
-			const bytes = payload.bytes && payload.bytes > 0 ? payload.bytes : countBytes(payload.data);
-			const replayStateValue = replayState.get(id) ?? 'unknown';
-			const isLive = replayStateValue === 'live';
-			if (!isLive) {
-				const pending = pendingReplayOutput.get(id) ?? [];
-				pending.push({ data: payload.data, bytes });
-				pendingReplayOutput.set(id, pending);
-				return;
-			}
-			enqueueOutput(id, payload.data, bytes);
-			recordAckBytes(id, bytes);
-			updateStats(id, (stats) => {
-				stats.bytesIn += bytes;
-			});
-			renderHealth.noteOutputActivity(id);
-		};
-		unsubscribeHandlers.push(subscribeEvent(EVENT_TERMINAL_DATA, handler));
-		listeners.add(EVENT_TERMINAL_DATA);
+const handleTerminalDataEvent = (id: string, payload: TerminalPayload): void => {
+	lifecycle.markInput(id);
+	const bytes = payload.bytes && payload.bytes > 0 ? payload.bytes : countBytes(payload.data);
+	const replayStateValue = replayState.get(id) ?? 'unknown';
+	const isLive = replayStateValue === 'live';
+	if (!isLive) {
+		const pending = pendingReplayOutput.get(id) ?? [];
+		pending.push({ data: payload.data, bytes });
+		pendingReplayOutput.set(id, pending);
+		return;
 	}
-	if (!listeners.has(EVENT_TERMINAL_BOOTSTRAP)) {
-		const handler = (payload: TerminalBootstrapPayload): void => {
-			handleBootstrapPayload(payload);
-		};
-		unsubscribeHandlers.push(subscribeEvent(EVENT_TERMINAL_BOOTSTRAP, handler));
-		listeners.add(EVENT_TERMINAL_BOOTSTRAP);
-	}
-	if (!listeners.has(EVENT_TERMINAL_BOOTSTRAP_DONE)) {
-		const handler = (payload: TerminalBootstrapDonePayload): void => {
-			handleBootstrapDonePayload(payload);
-		};
-		unsubscribeHandlers.push(subscribeEvent(EVENT_TERMINAL_BOOTSTRAP_DONE, handler));
-		listeners.add(EVENT_TERMINAL_BOOTSTRAP_DONE);
-	}
-	if (!listeners.has(EVENT_TERMINAL_LIFECYCLE)) {
-		const handler = (payload: TerminalLifecyclePayload): void => {
-			const terminalId = payload.terminalId;
-			const workspaceId = payload.workspaceId;
-			if (!terminalId || !workspaceId) return;
-			const id = buildTerminalKey(workspaceId, terminalId);
-			if (!id) return;
-			if (isWorkspaceMismatch(id, workspaceId, terminalId)) return;
-			lifecycle.applyLifecyclePayload(id, payload);
-		};
-		unsubscribeHandlers.push(subscribeEvent(EVENT_TERMINAL_LIFECYCLE, handler));
-		listeners.add(EVENT_TERMINAL_LIFECYCLE);
-	}
-	if (!listeners.has(EVENT_TERMINAL_MODES)) {
-		const handler = (payload: TerminalModesPayload): void => {
-			const terminalId = payload.terminalId;
-			const workspaceId = payload.workspaceId;
-			if (!terminalId || !workspaceId) return;
-			const id = buildTerminalKey(workspaceId, terminalId);
-			if (!id) return;
-			if (isWorkspaceMismatch(id, workspaceId, terminalId)) return;
-			lifecycle.setMode(id, {
-				altScreen: payload.altScreen ?? false,
-				mouse: payload.mouse ?? false,
-				mouseSGR: payload.mouseSGR ?? false,
-				mouseEncoding: payload.mouseEncoding ?? 'x10',
-			});
-			syncTerminalWebLinks(id);
-		};
-		unsubscribeHandlers.push(subscribeEvent(EVENT_TERMINAL_MODES, handler));
-		listeners.add(EVENT_TERMINAL_MODES);
-	}
-	if (!listeners.has(EVENT_TERMINAL_KITTY)) {
-		const handler = (payload: TerminalKittyPayload): void => {
-			const terminalId = payload.terminalId;
-			const workspaceId = payload.workspaceId;
-			if (!terminalId || !workspaceId) return;
-			const id = buildTerminalKey(workspaceId, terminalId);
-			if (!id) return;
-			if (isWorkspaceMismatch(id, workspaceId, terminalId)) return;
-			const replayStateValue = replayState.get(id) ?? 'unknown';
-			const isLive = replayStateValue === 'live';
-			if (!isLive || !terminalHandles.has(id)) {
-				const pending = pendingReplayKitty.get(id) ?? [];
-				pending.push(payload.event);
-				pendingReplayKitty.set(id, pending);
-				return;
-			}
-			void applyKittyEvent(id, payload.event);
-		};
-		unsubscribeHandlers.push(subscribeEvent(EVENT_TERMINAL_KITTY, handler));
-		listeners.add(EVENT_TERMINAL_KITTY);
-	}
-	if (!listeners.has(EVENT_SESSIOND_RESTARTED)) {
-		const handler = (): void => {
-			lifecycle.resetSessiondChecked();
-			void (async () => {
-				await refreshSessiondStatus();
-				if (lifecycle.isSessiondAvailable() !== true) return;
-				for (const id of terminalContexts.keys()) {
-					lifecycle.clearSessionFlags(id);
-					resetTerminalInstance(id);
-					resetSessionState(id);
-					noteMouseSuppress(id, 4000);
-					void beginTerminal(id, true);
-				}
-			})();
-		};
-		unsubscribeHandlers.push(subscribeEvent(EVENT_SESSIOND_RESTARTED, handler));
-		listeners.add(EVENT_SESSIOND_RESTARTED);
-	}
+	enqueueOutput(id, payload.data, bytes);
+	recordAckBytes(id, bytes);
+	updateStats(id, (stats) => {
+		stats.bytesIn += bytes;
+	});
+	renderHealth.noteOutputActivity(id);
 };
 
-const cleanupListeners = (): void => {
-	for (const unsubscribe of unsubscribeHandlers.splice(0)) {
-		unsubscribe();
-	}
-	listeners.clear();
+const handleTerminalLifecycleEvent = (id: string, payload: TerminalLifecyclePayload): void => {
+	lifecycle.applyLifecyclePayload(id, payload);
 };
+
+const handleTerminalModesEvent = (id: string, payload: TerminalModesPayload): void => {
+	lifecycle.setMode(id, {
+		altScreen: payload.altScreen ?? false,
+		mouse: payload.mouse ?? false,
+		mouseSGR: payload.mouseSGR ?? false,
+		mouseEncoding: payload.mouseEncoding ?? 'x10',
+	});
+	syncTerminalWebLinks(id);
+};
+
+const handleTerminalKittyEvent = (id: string, payload: TerminalKittyPayload): void => {
+	const replayStateValue = replayState.get(id) ?? 'unknown';
+	const isLive = replayStateValue === 'live';
+	if (!isLive || !terminalHandles.has(id)) {
+		const pending = pendingReplayKitty.get(id) ?? [];
+		pending.push(payload.event);
+		pendingReplayKitty.set(id, pending);
+		return;
+	}
+	void applyKittyEvent(id, payload.event);
+};
+
+const handleSessiondRestarted = (): void => {
+	lifecycle.resetSessiondChecked();
+	void (async () => {
+		await refreshSessiondStatus();
+		if (lifecycle.isSessiondAvailable() !== true) return;
+		for (const id of terminalContexts.keys()) {
+			lifecycle.clearSessionFlags(id);
+			resetTerminalInstance(id);
+			resetSessionState(id);
+			noteMouseSuppress(id, 4000);
+			void beginTerminal(id, true);
+		}
+	})();
+};
+
+const terminalEventSubscriptions = createTerminalEventSubscriptions({
+	subscribeEvent,
+	buildTerminalKey,
+	isWorkspaceMismatch,
+	onTerminalData: handleTerminalDataEvent,
+	onTerminalBootstrap: handleBootstrapPayload,
+	onTerminalBootstrapDone: handleBootstrapDonePayload,
+	onTerminalLifecycle: handleTerminalLifecycleEvent,
+	onTerminalModes: handleTerminalModesEvent,
+	onTerminalKitty: handleTerminalKittyEvent,
+	onSessiondRestarted: handleSessiondRestarted,
+});
 
 const initTerminal = async (id: string): Promise<void> => {
 	if (!id) return;
 	const token = lifecycle.nextInitToken(id);
-	ensureListener();
+	terminalEventSubscriptions.ensureListeners();
 	if (!lifecycle.isSessiondChecked()) {
 		await refreshSessiondStatus();
 	}
@@ -2051,7 +1945,7 @@ export const isTerminalAtBottom = (workspaceId: string, terminalId: string): boo
 };
 
 export const shutdownTerminalService = (): void => {
-	cleanupListeners();
+	terminalEventSubscriptions.cleanupListeners();
 };
 
 // Font size controls (VS Code style Cmd/Ctrl +/-)
