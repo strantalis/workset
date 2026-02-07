@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (subagent pass 5)
+Last updated: 2026-02-07 (subagent pass 6)
 
 ## Goal
 
@@ -34,8 +34,8 @@ Largest files by LOC right now:
 - [ ] `#116` FE-WORKSPACE (slice 2 landed)
 - [ ] `#117` FE-TERMINAL (slice 1 landed)
 - [ ] `#118` FE-PLATFORM
-- [ ] `#119` BE-SESSIOND (slice 4 landed)
-- [ ] `#120` BE-GITHUB (slice 1 landed)
+- [ ] `#119` BE-SESSIOND (slice 5 landed)
+- [ ] `#120` BE-GITHUB (slice 2 landed)
 - [ ] `#121` BE-TERMEMU
 - [ ] `#122` BE-UPDATER
 - [ ] `#123` TEST-E2E
@@ -221,7 +221,7 @@ Tasks:
 - [x] Extract persistence/snapshot + transcript/recording subsystem into `pkg/sessiond/session_persist.go`.
 - [x] Extract protocol message handling package.
 - [ ] Extract backlog/snapshot logic package.
-- [ ] Extract lifecycle + process supervision package.
+- [x] Extract lifecycle + process supervision package.
 - [ ] Keep public session behavior and API unchanged.
 - [ ] Add churn tests around create/stop/restore.
 
@@ -246,7 +246,7 @@ Target architecture:
 Tasks:
 
 - [x] Move pure git command/diff helpers into `pkg/worksetapi/github_git_helpers.go`.
-- [ ] Separate read vs write use-cases.
+- [x] Separate read vs write helper use-cases into dedicated modules (`github_service_read_helpers.go`, `github_service_write_helpers.go`).
 - [ ] Separate synchronous status fetch from async operation orchestration.
 - [ ] Add unit tests for each extracted service boundary.
 
@@ -337,6 +337,6 @@ Verification:
 
 ## Immediate Next Actions
 
-1. Run `#119` slice 5: extract lifecycle/process supervision boundary from `session.go`.
-2. Run `#120` slice 2: split `github_service.go` read and write paths.
+1. Run final `#119` slice: move remaining backlog/snapshot response shaping out of `session.go`.
+2. Run `#120` slice 3: separate synchronous status-fetch paths from async operation orchestration.
 3. Run `#116` slice 3: move remaining modal state transitions/mutations out of `WorkspaceActionModal.svelte`.
