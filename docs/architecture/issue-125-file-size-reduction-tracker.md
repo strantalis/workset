@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (subagent pass 3)
+Last updated: 2026-02-07 (subagent pass 4)
 
 ## Goal
 
@@ -25,7 +25,7 @@ Largest files by LOC right now:
 - `pkg/termemu/termemu.go` (1714)
 - `wails-ui/workset/frontend/src/lib/api.ts` (1312)
 - `wails-ui/workset/app_updates.go` (1114)
-- `pkg/sessiond/session.go` (1046)
+- `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
 
 ## Parallel Tracks (Issue Map)
 
@@ -34,7 +34,7 @@ Largest files by LOC right now:
 - [ ] `#116` FE-WORKSPACE (slice 1 landed)
 - [ ] `#117` FE-TERMINAL (slice 1 landed)
 - [ ] `#118` FE-PLATFORM
-- [ ] `#119` BE-SESSIOND (slice 2 landed)
+- [ ] `#119` BE-SESSIOND (slice 3 landed)
 - [ ] `#120` BE-GITHUB (slice 1 landed)
 - [ ] `#121` BE-TERMEMU
 - [ ] `#122` BE-UPDATER
@@ -217,6 +217,7 @@ Tasks:
 
 - [x] Extract terminal filter + protocol parsing/logging block into `pkg/sessiond/terminal_filter.go`.
 - [x] Extract stream/subscriber fanout + credit handling into `pkg/sessiond/stream.go`.
+- [x] Extract persistence/snapshot + transcript/recording subsystem into `pkg/sessiond/session_persist.go`.
 - [ ] Extract protocol message handling package.
 - [ ] Extract backlog/snapshot logic package.
 - [ ] Extract lifecycle + process supervision package.
@@ -335,6 +336,6 @@ Verification:
 
 ## Immediate Next Actions
 
-1. Run `#119` slice 3: extract protocol message handling boundary from `session.go`.
-2. Run `#117` slice 2: remove remaining transport/renderer coupling from `terminalService.ts`.
+1. Run `#119` slice 4: extract protocol message handling boundary from `session.go`.
+2. Run `#119` slice 5: extract lifecycle/process supervision boundary from `session.go`.
 3. Run `#116` slice 2: separate modal state transitions and add transition/failure-path tests.
