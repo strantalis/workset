@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (main-agent pass 41)
+Last updated: 2026-02-07 (main-agent pass 42)
 
 ## Goal
 
@@ -19,7 +19,6 @@ Reduce architecture risk from oversized files by splitting high-complexity modul
 Largest files by LOC right now:
 
 - `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (1978)
-- `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
 - `wails-ui/workset/app_diffs.go` (926)
 - `pkg/sessiond/terminal_filter.go` (889)
 - `wails-ui/workset/frontend/src/lib/components/TerminalLayoutNode.svelte` (847)
@@ -29,6 +28,7 @@ Largest files by LOC right now:
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceManager.svelte` (688)
 - `internal/ops/remove.go` (680)
 - `cmd/workset/pr.go` (678)
+- `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (677)
 - `pkg/sessiond/server.go` (669)
 - `wails-ui/workset/frontend/src/lib/components/settings/sections/SkillManager.svelte` (663)
 - `pkg/worksetapi/github_service_read_helpers_test.go` (662)
@@ -241,6 +241,8 @@ Remaining tasks:
   Slice landed: extracted replay/ack coordination into `terminalReplayAckOrchestrator.ts`.
 - [x] Add service-level tests for reconnect/attach/detach/stream-release (`terminalStreamOrchestrator.test.ts`).
 - [x] Shrink `terminalService.ts` to orchestration-only facade (`terminalService.ts` is now 491 LOC).
+- [x] Extract terminal layout-tree/storage helpers from `TerminalWorkspace.svelte`.
+  Slice landed: moved layout normalization/tree operations and storage migration helpers into `terminal/terminalLayoutTree.ts` and `terminal/terminalLayoutStorage.ts`; `TerminalWorkspace.svelte` is now 677 LOC.
 
 Verification:
 
@@ -435,5 +437,5 @@ Verification:
 ## Immediate Next Actions
 
 1. Reconcile `#125` and `#116` progress state after pass 40 LOC changes.
-2. Continue remaining non-RepoDiff frontend files over 700 LOC (`TerminalWorkspace.svelte`) before next `#115` RepoDiff slice.
+2. Continue remaining non-RepoDiff frontend files over 700 LOC (`TerminalLayoutNode.svelte`) before next `#115` RepoDiff slice.
 3. Prepare closeout criteria for `#125` once remaining FE tracks are complete.
