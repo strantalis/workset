@@ -125,6 +125,7 @@
 	const repoMissing = $derived(repo?.missing ?? false);
 	const repoDirty = $derived(repo?.dirty ?? false);
 	let lastRepoId = $state('');
+	let lastWorkspaceId = $state('');
 
 	type DiffsModule = {
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1504,42 +1505,45 @@
 	onDestroy(() => {
 		diffInstance?.cleanUp();
 		repoDiffUnsubscribers.forEach((unsubscribe) => unsubscribe());
-		if (lastRepoId) {
-			void stopRepoDiffWatch(workspaceId, lastRepoId);
+		if (lastRepoId && lastWorkspaceId) {
+			void stopRepoDiffWatch(lastWorkspaceId, lastRepoId);
 		}
 	});
 
 	$effect(() => {
 		if (!repoId) {
-			if (lastRepoId) {
-				void stopRepoDiffWatch(workspaceId, lastRepoId);
+			if (lastRepoId && lastWorkspaceId) {
+				void stopRepoDiffWatch(lastWorkspaceId, lastRepoId);
 				watchActive = false;
 				watchStarting = false;
 				lastRepoId = '';
+				lastWorkspaceId = '';
 			}
 			return;
 		}
 
 		const repoChanged = lastRepoId !== '' && lastRepoId !== repoId;
-		if (repoChanged) {
-			void stopRepoDiffWatch(workspaceId, lastRepoId);
+		const workspaceChanged = lastWorkspaceId !== '' && lastWorkspaceId !== workspaceId;
+		if ((repoChanged || workspaceChanged) && lastRepoId && lastWorkspaceId) {
+			void stopRepoDiffWatch(lastWorkspaceId, lastRepoId);
 			watchActive = false;
 			watchStarting = false;
 		}
 
-		if ((!watchActive || repoChanged) && !watchStarting) {
+		if ((!watchActive || repoChanged || workspaceChanged) && !watchStarting) {
 			const startRepoId = repoId;
+			const startWorkspaceId = workspaceId;
 			const prNumber = parseNumber(prNumberInput);
 			const prBranch = prBranchInput.trim() || undefined;
 			watchStarting = true;
-			void startRepoDiffWatch(workspaceId, startRepoId, prNumber, prBranch)
+			void startRepoDiffWatch(startWorkspaceId, startRepoId, prNumber, prBranch)
 				.then(() => {
-					if (repoId === startRepoId) {
+					if (repoId === startRepoId && workspaceId === startWorkspaceId) {
 						watchActive = true;
 					}
 				})
 				.catch(() => {
-					if (repoId === startRepoId) {
+					if (repoId === startRepoId && workspaceId === startWorkspaceId) {
 						watchActive = false;
 					}
 				})
@@ -1549,6 +1553,7 @@
 		}
 
 		lastRepoId = repoId;
+		lastWorkspaceId = workspaceId;
 	});
 
 	$effect(() => {

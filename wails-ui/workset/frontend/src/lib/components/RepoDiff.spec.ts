@@ -209,6 +209,42 @@ describe('RepoDiff watcher lifecycle', () => {
 			expect(api.startRepoDiffWatch).toHaveBeenCalledWith('ws-1', 'repo-2', undefined, undefined);
 		});
 	});
+
+	it('restarts watcher when workspace changes for the same repo', async () => {
+		const onClose = vi.fn();
+		const repoA: Repo = {
+			id: 'repo-1',
+			name: 'alpha',
+			path: '/repo/a',
+			dirty: false,
+			missing: false,
+			diff: { added: 0, removed: 0 },
+			files: [],
+		};
+
+		const { rerender } = render(RepoDiff, {
+			props: {
+				repo: repoA,
+				workspaceId: 'ws-1',
+				onClose,
+			},
+		});
+
+		await waitFor(() => {
+			expect(api.startRepoDiffWatch).toHaveBeenCalledWith('ws-1', 'repo-1', undefined, undefined);
+		});
+
+		await rerender({
+			repo: repoA,
+			workspaceId: 'ws-2',
+			onClose,
+		});
+
+		await waitFor(() => {
+			expect(api.stopRepoDiffWatch).toHaveBeenCalledWith('ws-1', 'repo-1');
+			expect(api.startRepoDiffWatch).toHaveBeenCalledWith('ws-2', 'repo-1', undefined, undefined);
+		});
+	});
 });
 
 describe('RepoDiff local pending section', () => {

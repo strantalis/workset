@@ -301,6 +301,8 @@ type repoDiffWatch struct {
 
 	refreshMu    sync.Mutex
 	refreshTimer *time.Timer
+	watchMu      sync.Mutex
+	watchedPaths map[string]struct{}
 
 	localRefreshCh chan struct{}
 	prRefreshCh    chan struct{}
@@ -332,6 +334,7 @@ func newRepoDiffWatch(app *App, ctx context.Context, cancel context.CancelFunc, 
 		fullRefs:       fullRefs,
 		localRefreshCh: make(chan struct{}, 1),
 		prRefreshCh:    make(chan struct{}, 1),
+		watchedPaths:   map[string]struct{}{},
 	}
 }
 
@@ -376,6 +379,7 @@ func (w *repoDiffWatch) clearPrInfo() {
 
 func (w *repoDiffWatch) stop() {
 	w.cancel()
+	w.stopRefreshTimer()
 }
 
 func (w *repoDiffWatch) updatePrInfo(number int, branch string) {
@@ -408,6 +412,7 @@ func (w *repoDiffWatch) run() {
 	}
 
 	<-w.ctx.Done()
+	w.stopRefreshTimer()
 	if watch != nil {
 		_ = watch.Close()
 	}
@@ -457,7 +462,10 @@ func (w *repoDiffWatch) fsnotifyLoop(watcher *fsnotify.Watcher) {
 				}
 			}
 			w.scheduleLocalRefresh()
-		case <-watcher.Errors:
+		case _, ok := <-watcher.Errors:
+			if !ok {
+				return
+			}
 			// ignore watcher errors; fallback polling keeps state fresh
 		}
 	}
@@ -467,7 +475,9 @@ func (w *repoDiffWatch) scheduleLocalRefresh() {
 	w.refreshMu.Lock()
 	defer w.refreshMu.Unlock()
 	if w.refreshTimer == nil {
-		w.refreshTimer = time.AfterFunc(repoDiffDebounceWindow, w.enqueueLocalRefresh)
+		w.refreshTimer = time.AfterFunc(repoDiffDebounceWindow, func() {
+			w.enqueueLocalRefresh()
+		})
 		return
 	}
 	w.refreshTimer.Reset(repoDiffDebounceWindow)
@@ -475,12 +485,22 @@ func (w *repoDiffWatch) scheduleLocalRefresh() {
 
 func (w *repoDiffWatch) enqueueLocalRefresh() {
 	select {
+	case <-w.ctx.Done():
+		return
+	default:
+	}
+	select {
 	case w.localRefreshCh <- struct{}{}:
 	default:
 	}
 }
 
 func (w *repoDiffWatch) enqueuePrRefresh() {
+	select {
+	case <-w.ctx.Done():
+		return
+	default:
+	}
 	if !w.hasFullWatch() {
 		return
 	}
@@ -705,14 +725,42 @@ func (w *repoDiffWatch) addWatchRecursive(watcher *fsnotify.Watcher, root string
 		if err != nil {
 			return nil
 		}
-		if entry.IsDir() {
-			if shouldIgnorePath(path) {
-				return filepath.SkipDir
+			if entry.IsDir() {
+				if shouldIgnorePath(path) {
+					return filepath.SkipDir
+				}
+				_ = w.addWatchPath(watcher, path)
 			}
-			_ = watcher.Add(path)
-		}
-		return nil
+			return nil
 	})
+}
+
+func (w *repoDiffWatch) addWatchPath(watcher *fsnotify.Watcher, path string) error {
+	cleanPath := filepath.Clean(path)
+	w.watchMu.Lock()
+	if w.watchedPaths == nil {
+		w.watchedPaths = map[string]struct{}{}
+	}
+	if _, exists := w.watchedPaths[cleanPath]; exists {
+		w.watchMu.Unlock()
+		return nil
+	}
+	if err := watcher.Add(cleanPath); err != nil {
+		w.watchMu.Unlock()
+		return err
+	}
+	w.watchedPaths[cleanPath] = struct{}{}
+	w.watchMu.Unlock()
+	return nil
+}
+
+func (w *repoDiffWatch) stopRefreshTimer() {
+	w.refreshMu.Lock()
+	if w.refreshTimer != nil {
+		w.refreshTimer.Stop()
+		w.refreshTimer = nil
+	}
+	w.refreshMu.Unlock()
 }
 
 func resolveBranchRefs(remotes []worksetapi.RemoteInfoJSON, pr worksetapi.PullRequestStatusJSON) (string, string) {

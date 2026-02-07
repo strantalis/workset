@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/strantalis/workset/pkg/worksetapi"
 )
 
@@ -346,4 +349,57 @@ func TestRepoDiffWatchManagerStartDedupesConcurrentStarts(t *testing.T) {
 
 	manager.stop(input)
 	manager.stop(input)
+}
+
+func TestRepoDiffWatchStopStopsRefreshTimer(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	watch := &repoDiffWatch{
+		ctx:            ctx,
+		cancel:         cancel,
+		localRefreshCh: make(chan struct{}, 1),
+	}
+	watch.refreshTimer = time.AfterFunc(500*time.Millisecond, func() {
+		watch.enqueueLocalRefresh()
+	})
+
+	watch.stop()
+
+	if watch.refreshTimer != nil {
+		t.Fatal("expected refresh timer to be cleared on stop")
+	}
+	if got := len(watch.localRefreshCh); got != 0 {
+		t.Fatalf("expected no pending refresh events after stop, got %d", got)
+	}
+}
+
+func TestRepoDiffWatchAddWatchRecursiveDedupesPaths(t *testing.T) {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		t.Fatalf("create watcher: %v", err)
+	}
+	defer watcher.Close()
+
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "a", "b"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "c"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	watch := &repoDiffWatch{watchedPaths: map[string]struct{}{}}
+	if err := watch.addWatchRecursive(watcher, root); err != nil {
+		t.Fatalf("add first recursive watch: %v", err)
+	}
+	firstCount := len(watch.watchedPaths)
+	if firstCount == 0 {
+		t.Fatal("expected at least one watched path")
+	}
+
+	if err := watch.addWatchRecursive(watcher, root); err != nil {
+		t.Fatalf("add second recursive watch: %v", err)
+	}
+	if got := len(watch.watchedPaths); got != firstCount {
+		t.Fatalf("expected deduped watch count %d, got %d", firstCount, got)
+	}
 }
