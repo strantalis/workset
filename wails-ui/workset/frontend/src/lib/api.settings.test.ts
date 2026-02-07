@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { createAlias, deleteAlias, listAliases, restartSessiond, updateAlias } from './api';
+import {
+	createAlias,
+	deleteAlias,
+	listAliases,
+	restartSessiond,
+	updateAlias,
+} from './api/settings';
 import {
 	CreateAlias,
 	DeleteAlias,

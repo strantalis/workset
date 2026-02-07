@@ -1,4 +1,4 @@
-import type { GitHubOperationStatus, RepoLocalStatus } from '../../api';
+import type { GitHubOperationStatus, RepoLocalStatus } from '../../api/github';
 import {
 	EVENT_REPO_DIFF_LOCAL_STATUS,
 	EVENT_REPO_DIFF_LOCAL_SUMMARY,

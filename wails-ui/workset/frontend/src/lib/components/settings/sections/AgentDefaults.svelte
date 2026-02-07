@@ -6,7 +6,12 @@
 	import SettingsSection from '../SettingsSection.svelte';
 	import Select from '../../ui/Select.svelte';
 	import Button from '../../ui/Button.svelte';
-	import { checkAgentStatus, openFileDialog, reloadLoginEnv, setAgentCLIPath } from '../../../api';
+	import {
+		checkAgentStatus,
+		openFileDialog,
+		reloadLoginEnv,
+		setAgentCLIPath,
+	} from '../../../api/settings';
 
 	type FieldId = SettingsDefaultField;
 

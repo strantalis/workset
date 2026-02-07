@@ -1,11 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
-	fetchWorkspaceTerminalLayout as fetchWorkspaceTerminalLayoutFromApi,
-	fetchWorkspaces as fetchWorkspacesFromApi,
-	persistWorkspaceTerminalLayout as persistWorkspaceTerminalLayoutFromApi,
-	removeWorkspace as removeWorkspaceFromApi,
-} from './api';
-import {
 	fetchWorkspaceTerminalLayout,
 	persistWorkspaceTerminalLayout,
 } from './api/terminal-layout';
@@ -28,13 +22,6 @@ vi.mock('../../wailsjs/go/main/App', () => ({
 describe('workspace + terminal API compatibility exports', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-	});
-
-	test('barrel re-exports workspace and terminal APIs from domain modules', () => {
-		expect(fetchWorkspacesFromApi).toBe(fetchWorkspaces);
-		expect(removeWorkspaceFromApi).toBe(removeWorkspace);
-		expect(fetchWorkspaceTerminalLayoutFromApi).toBe(fetchWorkspaceTerminalLayout);
-		expect(persistWorkspaceTerminalLayoutFromApi).toBe(persistWorkspaceTerminalLayout);
 	});
 
 	test('fetchWorkspaces maps snapshot payloads through compatibility export', async () => {
@@ -66,7 +53,7 @@ describe('workspace + terminal API compatibility exports', () => {
 		] as unknown as Awaited<ReturnType<typeof ListWorkspaceSnapshots>>;
 		vi.mocked(ListWorkspaceSnapshots).mockResolvedValue(snapshots);
 
-		const result = await fetchWorkspacesFromApi(true, true);
+		const result = await fetchWorkspaces(true, true);
 
 		expect(ListWorkspaceSnapshots).toHaveBeenCalledWith({
 			includeArchived: true,
@@ -106,7 +93,7 @@ describe('workspace + terminal API compatibility exports', () => {
 	});
 
 	test('removeWorkspace preserves fetchRemotes default behavior via barrel export', async () => {
-		await removeWorkspaceFromApi('ws-1', { deleteFiles: true });
+		await removeWorkspace('ws-1', { deleteFiles: true });
 
 		expect(RemoveWorkspace).toHaveBeenCalledWith({
 			workspaceId: 'ws-1',
@@ -134,8 +121,8 @@ describe('workspace + terminal API compatibility exports', () => {
 		} as unknown as Awaited<ReturnType<typeof GetWorkspaceTerminalLayout>>;
 		vi.mocked(GetWorkspaceTerminalLayout).mockResolvedValue(terminalLayoutPayload);
 
-		const result = await fetchWorkspaceTerminalLayoutFromApi('ws-1');
-		await persistWorkspaceTerminalLayoutFromApi('ws-1', layout);
+		const result = await fetchWorkspaceTerminalLayout('ws-1');
+		await persistWorkspaceTerminalLayout('ws-1', layout);
 
 		expect(GetWorkspaceTerminalLayout).toHaveBeenCalledWith('ws-1');
 		expect(SetWorkspaceTerminalLayout).toHaveBeenCalledWith({

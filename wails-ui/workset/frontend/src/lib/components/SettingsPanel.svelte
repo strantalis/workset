@@ -2,20 +2,24 @@
 	import { onMount } from 'svelte';
 	import {
 		checkForUpdates,
-		createWorkspaceTerminal,
 		fetchAppVersion,
-		fetchSettings,
 		fetchUpdatePreferences,
 		fetchUpdateState,
-		fetchWorkspaceTerminalLayout,
-		persistWorkspaceTerminalLayout,
-		restartSessiond,
 		setUpdatePreferences,
 		startAppUpdate,
-		setDefaultSetting,
+	} from '../api/updates';
+	import {
+		createWorkspaceTerminal,
+		fetchWorkspaceTerminalLayout,
+		persistWorkspaceTerminalLayout,
 		stopWorkspaceTerminal,
-	} from '../api';
-	import type { SessiondStatusResponse } from '../api';
+	} from '../api/terminal-layout';
+	import {
+		fetchSettings,
+		restartSessiond,
+		setDefaultSetting,
+		type SessiondStatusResponse,
+	} from '../api/settings';
 	import type {
 		SettingsDefaultField,
 		SettingsDefaults,

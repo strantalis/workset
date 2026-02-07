@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (subagent pass 25)
+Last updated: 2026-02-08 (subagent pass 26)
 
 ## Goal
 
@@ -18,14 +18,15 @@ Reduce architecture risk from oversized files by splitting high-complexity modul
 
 Largest files by LOC right now:
 
-- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (2984)
-- `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2476)
+- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (2986)
+- `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2478)
 - `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (1327)
-- `pkg/termemu/termemu.go` (972)
-- `wails-ui/workset/app_diffs.go` (926)
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceManager.svelte` (1022)
-- `wails-ui/workset/frontend/src/lib/api.ts` (86)
+- `wails-ui/workset/frontend/src/lib/components/SettingsPanel.svelte` (987)
+- `pkg/termemu/termemu.go` (972)
+- `wails-ui/workset/frontend/src/lib/components/settings/sections/SkillManager.svelte` (956)
+- `wails-ui/workset/app_diffs.go` (926)
 
 ## Parallel Tracks (Issue Map)
 
@@ -33,10 +34,10 @@ Largest files by LOC right now:
 - [x] `#115` FE-DIFF (slice 13 landed)
 - [ ] `#116` FE-WORKSPACE (slice 5 landed)
 - [ ] `#117` FE-TERMINAL (slice 15 landed)
-- [ ] `#118` FE-PLATFORM (slice 4 landed)
+- [x] `#118` FE-PLATFORM (slice 5 landed; adapter removed)
 - [x] `#119` BE-SESSIOND (structural splits complete)
-- [ ] `#120` BE-GITHUB (slice 5 + tests tranche 2 landed)
-- [ ] `#121` BE-TERMEMU (slice 4 landed)
+- [x] `#120` BE-GITHUB (slice 5 + tests tranche 2 landed)
+- [x] `#121` BE-TERMEMU (slice 4 landed)
 - [ ] `#122` BE-UPDATER (slice 2 landed)
 - [ ] `#123` TEST-E2E
 
@@ -226,7 +227,8 @@ Tasks:
 - [x] Split monolithic API module into domain entrypoints.
   Slices landed: extracted updates/app-version domain into `api/updates.ts`; extracted GitHub operations into `api/github.ts`; extracted repo-diff watch/diff APIs into `api/repo-diff.ts`; extracted settings/session/group/alias APIs into `api/settings.ts`; extracted workspace APIs into `api/workspaces.ts`; extracted terminal/layout APIs into `api/terminal-layout.ts`, all with compatibility re-exports from `api.ts`.
 - [x] Keep backward-compatible imports through adapter layer during migration.
-- [ ] Remove adapter after callsites are migrated.
+- [x] Remove adapter after callsites are migrated.
+  Slice landed: migrated remaining frontend/test callsites to domain API modules, moved skills API into `api/skills.ts`, and removed the `src/lib/api.ts` compatibility barrel.
 
 Verification:
 
@@ -376,5 +378,5 @@ Verification:
 ## Immediate Next Actions
 
 1. Run `#117` next slice: extract stream/output queue + stats/state internals from `terminalService.ts` to continue shrinking toward orchestration-only facade.
-2. Run `#118` decision slice: choose whether to keep `api.ts` compatibility barrel long-term or migrate callsites and remove adapter layer.
-3. Run `#116` next slice: separate modal state transitions from UI markup in `WorkspaceActionModal.svelte`.
+2. Run `#116` next slice: separate modal state transitions from UI markup in `WorkspaceActionModal.svelte`.
+3. Run `#122` next slice: split update check/start orchestration from Wails app binding and add channel/state tests.

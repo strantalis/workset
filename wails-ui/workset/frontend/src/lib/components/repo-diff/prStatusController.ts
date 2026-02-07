@@ -1,4 +1,4 @@
-import type { RepoLocalStatus } from '../../api';
+import type { RepoLocalStatus } from '../../api/github';
 import type { PullRequestReviewComment, PullRequestStatusResult } from '../../types';
 
 export type RepoDiffPrStatusEvent = {

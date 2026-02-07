@@ -5,7 +5,7 @@ import {
 	mapPullRequestStatus,
 } from './prStatusController';
 import type { PullRequestReviewComment, PullRequestStatusResult } from '../../types';
-import type { RepoLocalStatus } from '../../api';
+import type { RepoLocalStatus } from '../../api/github';
 
 describe('prStatusController', () => {
 	it('maps pull request status payload to frontend status model', () => {

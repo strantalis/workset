@@ -4,14 +4,20 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { render, waitFor, cleanup } from '@testing-library/svelte';
 import TerminalWorkspace from './TerminalWorkspace.svelte';
-import * as api from '../api';
+import * as terminalApi from '../api/terminal-layout';
 import type { TerminalLayout } from '../types';
 
-vi.mock('../api', () => ({
+vi.mock('../api/terminal-layout', () => ({
 	createWorkspaceTerminal: vi.fn(),
 	fetchWorkspaceTerminalStatus: vi.fn(),
 	fetchWorkspaceTerminalLayout: vi.fn(),
 	persistWorkspaceTerminalLayout: vi.fn(),
+}));
+
+vi.mock('../api/settings', () => ({
+	fetchSettings: vi.fn().mockResolvedValue({
+		defaults: {},
+	}),
 }));
 
 vi.mock('../terminal/terminalService', async () => {
@@ -92,17 +98,17 @@ describe('TerminalWorkspace migration', () => {
 			focusedPaneId: 'pane-1',
 		};
 
-		vi.mocked(api.fetchWorkspaceTerminalLayout).mockResolvedValue({
+		vi.mocked(terminalApi.fetchWorkspaceTerminalLayout).mockResolvedValue({
 			workspaceId: 'ws-1',
 			workspacePath: '/tmp/ws-1',
 			layout,
 		});
-		vi.mocked(api.fetchWorkspaceTerminalStatus).mockResolvedValue({
+		vi.mocked(terminalApi.fetchWorkspaceTerminalStatus).mockResolvedValue({
 			workspaceId: 'ws-1',
 			terminalId: 'term-legacy',
 			active: false,
 		});
-		vi.mocked(api.createWorkspaceTerminal).mockResolvedValue({
+		vi.mocked(terminalApi.createWorkspaceTerminal).mockResolvedValue({
 			workspaceId: 'ws-1',
 			terminalId: 'term-new',
 		});
@@ -116,12 +122,12 @@ describe('TerminalWorkspace migration', () => {
 		});
 
 		await waitFor(() => {
-			expect(api.persistWorkspaceTerminalLayout).toHaveBeenCalledTimes(1);
+			expect(terminalApi.persistWorkspaceTerminalLayout).toHaveBeenCalledTimes(1);
 		});
 
-		expect(api.fetchWorkspaceTerminalStatus).toHaveBeenCalledWith('ws-1', 'term-legacy');
-		expect(api.createWorkspaceTerminal).toHaveBeenCalledTimes(1);
-		expect(api.persistWorkspaceTerminalLayout).toHaveBeenCalledWith(
+		expect(terminalApi.fetchWorkspaceTerminalStatus).toHaveBeenCalledWith('ws-1', 'term-legacy');
+		expect(terminalApi.createWorkspaceTerminal).toHaveBeenCalledTimes(1);
+		expect(terminalApi.persistWorkspaceTerminalLayout).toHaveBeenCalledWith(
 			'ws-1',
 			expect.objectContaining({
 				root: expect.objectContaining({
@@ -138,7 +144,7 @@ describe('TerminalWorkspace migration', () => {
 
 		cleanup();
 
-		vi.mocked(api.fetchWorkspaceTerminalLayout).mockResolvedValue({
+		vi.mocked(terminalApi.fetchWorkspaceTerminalLayout).mockResolvedValue({
 			workspaceId: 'ws-1',
 			workspacePath: '/tmp/ws-1',
 			layout,
@@ -153,9 +159,9 @@ describe('TerminalWorkspace migration', () => {
 		});
 
 		await waitFor(() => {
-			expect(api.fetchWorkspaceTerminalLayout).toHaveBeenCalledTimes(2);
+			expect(terminalApi.fetchWorkspaceTerminalLayout).toHaveBeenCalledTimes(2);
 		});
-		expect(api.createWorkspaceTerminal).toHaveBeenCalledTimes(1);
+		expect(terminalApi.createWorkspaceTerminal).toHaveBeenCalledTimes(1);
 	});
 
 	test('skips migration when status returns an error', async () => {
@@ -176,12 +182,12 @@ describe('TerminalWorkspace migration', () => {
 			focusedPaneId: 'pane-1',
 		};
 
-		vi.mocked(api.fetchWorkspaceTerminalLayout).mockResolvedValue({
+		vi.mocked(terminalApi.fetchWorkspaceTerminalLayout).mockResolvedValue({
 			workspaceId: 'ws-1',
 			workspacePath: '/tmp/ws-1',
 			layout,
 		});
-		vi.mocked(api.fetchWorkspaceTerminalStatus).mockResolvedValue({
+		vi.mocked(terminalApi.fetchWorkspaceTerminalStatus).mockResolvedValue({
 			workspaceId: 'ws-1',
 			terminalId: 'term-legacy',
 			active: false,
@@ -197,10 +203,10 @@ describe('TerminalWorkspace migration', () => {
 		});
 
 		await waitFor(() => {
-			expect(api.fetchWorkspaceTerminalStatus).toHaveBeenCalledTimes(1);
+			expect(terminalApi.fetchWorkspaceTerminalStatus).toHaveBeenCalledTimes(1);
 		});
 
-		expect(api.createWorkspaceTerminal).not.toHaveBeenCalled();
-		expect(api.persistWorkspaceTerminalLayout).not.toHaveBeenCalled();
+		expect(terminalApi.createWorkspaceTerminal).not.toHaveBeenCalled();
+		expect(terminalApi.persistWorkspaceTerminalLayout).not.toHaveBeenCalled();
 	});
 });

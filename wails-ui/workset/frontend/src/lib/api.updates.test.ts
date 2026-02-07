@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { setUpdatePreferences } from './api';
+import { setUpdatePreferences } from './api/updates';
 import { SetUpdatePreferences } from '../../wailsjs/go/main/App';
 
 vi.mock('../../wailsjs/go/main/App', () => ({

@@ -25,20 +25,22 @@
 		fetchPullRequestReviews,
 		fetchPullRequestStatus,
 		fetchRepoLocalStatus,
-		fetchRepoDiffSummary,
-		fetchRepoFileDiff,
-		fetchBranchDiffSummary,
-		fetchBranchFileDiff,
 		listRemotes,
 		replyToReviewComment,
 		resolveReviewThread,
 		startCommitAndPushAsync,
 		startCreatePullRequestAsync,
+	} from '../api/github';
+	import type { GitHubOperationStatus, GitHubOperationStage, RepoLocalStatus } from '../api/github';
+	import {
+		fetchRepoDiffSummary,
+		fetchRepoFileDiff,
+		fetchBranchDiffSummary,
+		fetchBranchFileDiff,
 		startRepoDiffWatch,
 		updateRepoDiffWatch,
 		stopRepoDiffWatch,
-	} from '../api';
-	import type { GitHubOperationStatus, GitHubOperationStage, RepoLocalStatus } from '../api';
+	} from '../api/repo-diff';
 	import GitHubLoginModal from './GitHubLoginModal.svelte';
 	import { formatPath } from '../pathUtils';
 	import { getPrCreateStageCopy } from '../prCreateProgress';

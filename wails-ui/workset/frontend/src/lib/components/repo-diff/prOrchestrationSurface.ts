@@ -1,4 +1,4 @@
-import type { GitHubOperationStage, RepoLocalStatus } from '../../api';
+import type { GitHubOperationStage, RepoLocalStatus } from '../../api/github';
 import type { PrCreateStage } from '../../prCreateProgress';
 import type {
 	PullRequestCreated,

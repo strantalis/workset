@@ -16,7 +16,7 @@
 		removeWorkspace,
 		renameWorkspace,
 		unarchiveWorkspace,
-	} from '../api';
+	} from '../api/workspaces';
 	import type { Repo, Workspace } from '../types';
 
 	interface Props {

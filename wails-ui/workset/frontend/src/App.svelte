@@ -20,8 +20,9 @@
 	import WorkspaceActionModal from './lib/components/WorkspaceActionModal.svelte';
 	import WorkspaceTree from './lib/components/WorkspaceTree.svelte';
 	import type { Workspace } from './lib/types';
-	import type { RepoLocalStatus } from './lib/api';
-	import { fetchGitHubAuthInfo, startRepoStatusWatch, stopRepoStatusWatch } from './lib/api';
+	import type { RepoLocalStatus } from './lib/api/github';
+	import { fetchGitHubAuthInfo } from './lib/api/github';
+	import { startRepoStatusWatch, stopRepoStatusWatch } from './lib/api/repo-diff';
 	import { subscribeRepoDiffEvent } from './lib/repoDiffService';
 	import { EVENT_REPO_DIFF_LOCAL_STATUS } from './lib/events';
 

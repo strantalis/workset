@@ -5,9 +5,9 @@
 		createWorkspaceTerminal,
 		fetchWorkspaceTerminalStatus,
 		fetchWorkspaceTerminalLayout,
-		fetchSettings,
 		persistWorkspaceTerminalLayout,
-	} from '../api';
+	} from '../api/terminal-layout';
+	import { fetchSettings } from '../api/settings';
 	import { generateTerminalName } from '../names';
 	import type {
 		TerminalLayout as TerminalLayoutType,

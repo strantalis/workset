@@ -9,7 +9,7 @@
 		listGroups,
 		removeGroupMember,
 		updateGroup,
-	} from '../../../api';
+	} from '../../../api/settings';
 	import type { Alias, Group, GroupSummary } from '../../../types';
 	import { toErrorMessage } from '../../../errors';
 	import SettingsSection from '../SettingsSection.svelte';

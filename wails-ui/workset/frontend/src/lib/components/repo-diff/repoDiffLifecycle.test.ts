@@ -6,7 +6,7 @@ import {
 	EVENT_REPO_DIFF_PR_STATUS,
 	EVENT_REPO_DIFF_SUMMARY,
 } from '../../events';
-import type { GitHubOperationStatus } from '../../api';
+import type { GitHubOperationStatus } from '../../api/github';
 import { createRepoDiffLifecycle, type RepoDiffSummaryEvent } from './repoDiffLifecycle';
 import type { RepoDiffPrReviewsEvent, RepoDiffPrStatusEvent } from './prStatusController';
 import type { RepoDiffWatchParams } from './watcherLifecycle';

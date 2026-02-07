@@ -6,7 +6,7 @@
 		listAliases,
 		openDirectoryDialog,
 		updateAlias,
-	} from '../../../api';
+	} from '../../../api/settings';
 	import type { Alias } from '../../../types';
 	import { toErrorMessage } from '../../../errors';
 	import SettingsSection from '../SettingsSection.svelte';

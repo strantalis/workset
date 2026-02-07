@@ -1,4 +1,4 @@
-import type { GitHubOperationStatus } from './api';
+import type { GitHubOperationStatus } from './api/github';
 import { EVENT_GITHUB_OPERATION } from './events';
 import { subscribeWailsEvent } from './wailsEventRegistry';
 

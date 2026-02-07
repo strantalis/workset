@@ -1,21 +1,34 @@
 import { describe, test, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, fireEvent, cleanup, waitFor } from '@testing-library/svelte';
 import SettingsPanel from '../SettingsPanel.svelte';
-import * as api from '../../api';
+import * as settingsApi from '../../api/settings';
+import * as updatesApi from '../../api/updates';
+import * as terminalApi from '../../api/terminal-layout';
 import type { SettingsDefaults } from '../../types';
 
-// Mock the API module
-vi.mock('../../api', () => ({
+const api = {
+	...settingsApi,
+	...updatesApi,
+	...terminalApi,
+};
+
+vi.mock('../../api/settings', () => ({
 	fetchSettings: vi.fn(),
+	setDefaultSetting: vi.fn(),
+	restartSessiond: vi.fn(),
+}));
+
+vi.mock('../../api/updates', () => ({
 	fetchAppVersion: vi.fn(),
 	fetchUpdatePreferences: vi.fn(),
 	fetchUpdateState: vi.fn(),
 	checkForUpdates: vi.fn(),
 	startAppUpdate: vi.fn(),
 	setUpdatePreferences: vi.fn(),
+}));
+
+vi.mock('../../api/terminal-layout', () => ({
 	fetchWorkspaceTerminalLayout: vi.fn(),
-	setDefaultSetting: vi.fn(),
-	restartSessiond: vi.fn(),
 	createWorkspaceTerminal: vi.fn(),
 	persistWorkspaceTerminalLayout: vi.fn(),
 	stopWorkspaceTerminal: vi.fn(),

@@ -2,9 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, cleanup, waitFor } from '@testing-library/svelte';
 import type { Repo } from '../types';
 
-vi.mock('../api', () => ({
-	commitAndPush: vi.fn(),
-	createPullRequest: vi.fn(),
+vi.mock('../api/github', () => ({
 	deleteReviewComment: vi.fn(),
 	editReviewComment: vi.fn(),
 	fetchCurrentGitHubUser: vi.fn(),
@@ -12,17 +10,19 @@ vi.mock('../api', () => ({
 	fetchPullRequestReviews: vi.fn(),
 	fetchPullRequestStatus: vi.fn(),
 	fetchRepoLocalStatus: vi.fn(),
-	fetchRepoDiffSummary: vi.fn(),
-	fetchRepoFileDiff: vi.fn(),
-	fetchBranchDiffSummary: vi.fn(),
-	fetchBranchFileDiff: vi.fn(),
-	generatePullRequestText: vi.fn(),
 	listRemotes: vi.fn(),
 	replyToReviewComment: vi.fn(),
 	resolveReviewThread: vi.fn(),
 	startCommitAndPushAsync: vi.fn(),
 	startCreatePullRequestAsync: vi.fn(),
 	fetchGitHubOperationStatus: vi.fn(),
+}));
+
+vi.mock('../api/repo-diff', () => ({
+	fetchRepoDiffSummary: vi.fn(),
+	fetchRepoFileDiff: vi.fn(),
+	fetchBranchDiffSummary: vi.fn(),
+	fetchBranchFileDiff: vi.fn(),
 	startRepoDiffWatch: vi.fn(),
 	updateRepoDiffWatch: vi.fn(),
 	stopRepoDiffWatch: vi.fn(),
@@ -62,11 +62,13 @@ const repo: Repo = {
 
 const mockSummary = { files: [], totalAdded: 0, totalRemoved: 0 };
 
-let api: typeof import('../api');
+let api: typeof import('../api/repo-diff') & typeof import('../api/github');
 let RepoDiff: typeof import('./RepoDiff.svelte').default;
 
 beforeEach(async () => {
-	api = await import('../api');
+	const repoDiffApi = await import('../api/repo-diff');
+	const githubApi = await import('../api/github');
+	api = { ...repoDiffApi, ...githubApi };
 	RepoDiff = (await import('./RepoDiff.svelte')).default;
 	vi.mocked(api.fetchRepoDiffSummary).mockResolvedValue(mockSummary);
 	vi.mocked(api.fetchBranchDiffSummary).mockResolvedValue(mockSummary);

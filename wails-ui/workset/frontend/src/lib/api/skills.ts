@@ -4,26 +4,7 @@ import {
 	ListSkills as WailsListSkills,
 	SaveSkill as WailsSaveSkill,
 	SyncSkill as WailsSyncSkill,
-} from '../../wailsjs/go/main/App';
-
-export {
-	checkForUpdates,
-	fetchAppVersion,
-	fetchUpdatePreferences,
-	fetchUpdateState,
-	setUpdatePreferences,
-	startAppUpdate,
-} from './api/updates';
-
-export type { PullRequestCreated, PullRequestStatusResult } from './types';
-
-export * from './api/github';
-export * from './api/repo-diff';
-export * from './api/settings';
-export * from './api/workspaces';
-export * from './api/terminal-layout';
-
-// --- Skills API ---
+} from '../../../wailsjs/go/main/App';
 
 export type SkillInfo = {
 	name: string;

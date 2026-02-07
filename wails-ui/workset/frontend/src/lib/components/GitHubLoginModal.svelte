@@ -4,13 +4,13 @@
 	import Button from './ui/Button.svelte';
 	import { onMount } from 'svelte';
 	import type { GitHubAuthInfo, GitHubAuthStatus } from '../types';
+	import { openFileDialog } from '../api/settings';
 	import {
 		fetchGitHubAuthInfo,
-		openFileDialog,
 		setGitHubAuthMode,
 		setGitHubCLIPath,
 		setGitHubToken,
-	} from '../api';
+	} from '../api/github';
 
 	interface Props {
 		onClose?: () => void;

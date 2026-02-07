@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { listSkills, getSkill, saveSkill, deleteSkill, syncSkill } from '../../../api';
-	import type { SkillInfo } from '../../../api';
+	import { listSkills, getSkill, saveSkill, deleteSkill, syncSkill } from '../../../api/skills';
+	import type { SkillInfo } from '../../../api/skills';
 	import { activeWorkspace } from '../../../state';
 	import { toErrorMessage } from '../../../errors';
 	import SettingsSection from '../SettingsSection.svelte';

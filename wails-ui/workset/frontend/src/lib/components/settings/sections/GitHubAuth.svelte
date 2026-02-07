@@ -5,14 +5,14 @@
 	import SettingsSection from '../SettingsSection.svelte';
 	import { toErrorMessage } from '../../../errors';
 	import type { GitHubAuthInfo } from '../../../types';
+	import { openFileDialog } from '../../../api/settings';
 	import {
 		disconnectGitHub,
 		fetchGitHubAuthInfo,
-		openFileDialog,
 		setGitHubAuthMode,
 		setGitHubCLIPath,
 		setGitHubToken,
-	} from '../../../api';
+	} from '../../../api/github';
 
 	let info = $state<GitHubAuthInfo | null>(null);
 	let loading = $state(true);

@@ -5,17 +5,15 @@ import {
 	StartWorkspaceTerminal,
 	WriteWorkspaceTerminal,
 } from '../../../wailsjs/go/main/App';
+import { fetchSessiondStatus, fetchSettings, type SessiondStatusResponse } from '../api/settings';
 import {
-	fetchSessiondStatus,
-	fetchSettings,
 	fetchTerminalBootstrap,
 	fetchWorkspaceTerminalStatus,
 	logTerminalDebug,
 	stopWorkspaceTerminal,
-	type SessiondStatusResponse,
 	type TerminalBootstrapResponse,
 	type WorkspaceTerminalStatusResponse,
-} from '../api';
+} from '../api/terminal-layout';
 import type { SettingsSnapshot } from '../types';
 import { subscribeWailsEvent } from '../wailsEventRegistry';
 

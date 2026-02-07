@@ -3,20 +3,22 @@
 	import { get } from 'svelte/store';
 	import {
 		addRepo,
-		applyGroup,
 		archiveWorkspace,
 		createWorkspace,
-		getGroup,
-		listAliases,
-		listGroups,
-		openDirectoryDialog,
-		registerRepo,
 		removeRepo,
 		removeWorkspace,
 		renameWorkspace,
 		runRepoHooks,
 		trustRepoHooks,
-	} from '../api';
+	} from '../api/workspaces';
+	import {
+		applyGroup,
+		getGroup,
+		listAliases,
+		listGroups,
+		openDirectoryDialog,
+		registerRepo,
+	} from '../api/settings';
 	import {
 		activeWorkspaceId,
 		clearRepo,

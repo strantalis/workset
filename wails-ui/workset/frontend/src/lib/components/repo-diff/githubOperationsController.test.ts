@@ -1,10 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import type {
-	GitHubOperationStage,
-	GitHubOperationStatus,
-	PullRequestCreated,
-	PullRequestStatusResult,
-} from '../../api';
+import type { GitHubOperationStage, GitHubOperationStatus } from '../../api/github';
+import type { PullRequestCreated, PullRequestStatusResult } from '../../types';
 import type { PrCreateStage } from '../../prCreateProgress';
 import { createGitHubOperationsController } from './githubOperationsController';
 
