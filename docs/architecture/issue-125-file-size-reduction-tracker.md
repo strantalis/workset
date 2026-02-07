@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (main-agent pass 33)
+Last updated: 2026-02-07 (main-agent pass 34)
 
 ## Goal
 
@@ -36,7 +36,7 @@ Largest files by LOC right now:
 - [ ] `#115` FE-DIFF (slice 14 landed; file-list sidebar extracted)
 - [ ] `#116` FE-WORKSPACE (slice 7 landed; modal sections split)
 - [x] `#117` FE-TERMINAL (slice 20 landed; service now 491 LOC)
-- [ ] `#118` FE-PLATFORM (slice 6 landed; `api/github.ts` split to 46 LOC)
+- [x] `#118` FE-PLATFORM (slice 7 landed; settings side effects extracted)
 - [x] `#119` BE-SESSIOND (structural splits complete)
 - [x] `#120` BE-GITHUB (slice 5 + tests tranche 2 landed)
 - [x] `#121` BE-TERMEMU (extraction landed; `termemu.go` now 221 LOC)
@@ -243,6 +243,8 @@ Tasks:
   Slices landed: extracted updates/app-version domain into `api/updates.ts`; extracted GitHub operations into `api/github.ts`; extracted repo-diff watch/diff APIs into `api/repo-diff.ts`; extracted settings/session/group/alias APIs into `api/settings.ts`; extracted workspace APIs into `api/workspaces.ts`; extracted terminal/layout APIs into `api/terminal-layout.ts`, all with compatibility re-exports from `api.ts`.
 - [x] Split oversized GitHub domain client into focused modules.
   Slice landed: extracted GitHub auth/review/PR/operations/mapping/user modules under `src/lib/api/github/*`; `src/lib/api/github.ts` is now a 46 LOC export barrel.
+- [x] Extract settings panel side effects into dedicated module.
+  Slice landed: moved sessiond restart, terminal-layout reset, and updater orchestration into `components/settings/settingsPanelSideEffects.ts`, reducing `SettingsPanel.svelte` to 873 LOC and adding dedicated tests (`settingsPanelSideEffects.test.ts`).
 - [x] Keep backward-compatible imports through adapter layer during migration.
 - [x] Remove adapter after callsites are migrated.
   Slice landed: migrated remaining frontend/test callsites to domain API modules, moved skills API into `api/skills.ts`, and removed the `src/lib/api.ts` compatibility barrel.
@@ -406,6 +408,6 @@ Verification:
 
 ## Immediate Next Actions
 
-1. Reconcile GitHub status for `#117` closure and `#118` progress evidence.
-2. Continue `#118` settings-panel orchestration review against issue acceptance criteria.
-3. Continue `#115` and `#116` large-component reductions.
+1. Reconcile GitHub status for `#118` closure and refresh `#125` progress state.
+2. Continue `#115` and `#116` large-component reductions.
+3. Prepare closeout criteria for `#125` once remaining FE tracks are complete.

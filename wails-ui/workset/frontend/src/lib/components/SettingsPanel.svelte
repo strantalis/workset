@@ -1,39 +1,22 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import {
-		checkForUpdates,
-		fetchAppVersion,
-		fetchUpdatePreferences,
-		fetchUpdateState,
-		setUpdatePreferences,
-		startAppUpdate,
-	} from '../api/updates';
-	import {
-		createWorkspaceTerminal,
-		fetchWorkspaceTerminalLayout,
-		persistWorkspaceTerminalLayout,
-		stopWorkspaceTerminal,
-	} from '../api/terminal-layout';
-	import {
-		fetchSettings,
-		restartSessiond,
-		setDefaultSetting,
-		type SessiondStatusResponse,
-	} from '../api/settings';
+	import { fetchSettings, setDefaultSetting } from '../api/settings';
 	import type {
+		AppVersion,
 		SettingsDefaultField,
 		SettingsDefaults,
 		SettingsSnapshot,
-		TerminalLayout,
-		TerminalLayoutNode,
 		UpdateCheckResult,
 		UpdatePreferences,
 		UpdateState,
 	} from '../types';
 	import { activeWorkspace } from '../state';
 	import { toErrorMessage } from '../errors';
-	import { generateTerminalName } from '../names';
 	import SettingsSidebar from './settings/SettingsSidebar.svelte';
+	import {
+		createSettingsPanelSideEffects,
+		DEFAULT_UPDATE_PREFERENCES,
+	} from './settings/settingsPanelSideEffects';
 	import WorkspaceDefaults from './settings/sections/WorkspaceDefaults.svelte';
 	import AgentDefaults from './settings/sections/AgentDefaults.svelte';
 	import SessionDefaults from './settings/sections/SessionDefaults.svelte';
@@ -42,7 +25,6 @@
 	import GroupManager from './settings/sections/GroupManager.svelte';
 	import SkillManager from './settings/sections/SkillManager.svelte';
 	import Button from './ui/Button.svelte';
-	import type { AppVersion } from '../types';
 
 	interface Props {
 		onClose: () => void;
@@ -70,6 +52,8 @@
 		{ id: 'terminalDebugOverlay', key: 'defaults.terminal_debug_overlay' },
 	];
 
+	const sideEffects = createSettingsPanelSideEffects();
+
 	let snapshot: SettingsSnapshot | null = $state(null);
 	let loading = $state(true);
 	let saving = $state(false);
@@ -85,15 +69,11 @@
 	let groupCount = $state(0);
 	let skillCount = $state(0);
 	let appVersion = $state<AppVersion | null>(null);
-	let updatePreferences = $state<UpdatePreferences>({ channel: 'stable', autoCheck: true });
+	let updatePreferences = $state<UpdatePreferences>(DEFAULT_UPDATE_PREFERENCES);
 	let updateState = $state<UpdateState | null>(null);
 	let updateCheck = $state<UpdateCheckResult | null>(null);
 	let updateBusy = $state(false);
 	let updateError = $state<string | null>(null);
-	const LAYOUT_VERSION = 1;
-	const LEGACY_STORAGE_PREFIX = 'workset:terminal-layout:';
-	const MIGRATION_PREFIX = 'workset:terminal-layout:migrated:v';
-	const MIGRATION_VERSION = 1;
 
 	const buildDraft = (defaults: SettingsDefaults): void => {
 		const next: Record<FieldId, string> = {} as Record<FieldId, string>;
@@ -132,14 +112,17 @@
 		if (saving || !snapshot) {
 			return;
 		}
+
 		const updates = changedFields();
 		const shouldRefreshTerminalDefaults = updates.some(
 			(field) => field.id === 'terminalDebugOverlay',
 		);
+
 		if (updates.length === 0) {
 			success = 'No changes to save.';
 			return;
 		}
+
 		saving = true;
 		error = null;
 		success = null;
@@ -151,6 +134,7 @@
 				break;
 			}
 		}
+
 		if (!error) {
 			baseline = { ...draft };
 			success = `Saved ${updates.length} change${updates.length === 1 ? '' : 's'}.`;
@@ -159,113 +143,30 @@
 				await refreshTerminalDefaults();
 			}
 		}
+
 		saving = false;
 	};
 
 	const handleRestartSessiond = async (): Promise<void> => {
-		if (saving || restartingSessiond) return;
+		if (saving || restartingSessiond) {
+			return;
+		}
 		restartingSessiond = true;
 		error = null;
 		success = null;
 		try {
-			const status = await Promise.race([
-				restartSessiond('settings_panel'),
-				new Promise<SessiondStatusResponse>((_, reject) => {
-					window.setTimeout(() => {
-						reject(new Error('Session daemon restart timed out.'));
-					}, 20000);
-				}),
-			]);
-			if (status?.available) {
-				success = status.warning
-					? `Session daemon restarted. ${status.warning}`
-					: 'Session daemon restarted.';
-			} else {
-				const warning = status?.warning ? ` ${status.warning}` : '';
-				error = status?.error
-					? `Failed to restart: ${status.error}${warning}`
-					: `Failed to restart session daemon.${warning}`;
-			}
-		} catch (err) {
-			error = `Failed to restart: ${toErrorMessage(err, 'Failed to update settings.')}`;
+			const result = await sideEffects.restartSessiond();
+			error = result.error ?? null;
+			success = result.success ?? null;
 		} finally {
 			restartingSessiond = false;
 		}
 	};
 
-	const newId = (): string => {
-		if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-			return crypto.randomUUID();
-		}
-		return `term-${Math.random().toString(36).slice(2)}`;
-	};
-
-	const clearLegacyLayout = (workspaceId: string): void => {
-		if (!workspaceId || typeof localStorage === 'undefined') return;
-		try {
-			localStorage.removeItem(`${LEGACY_STORAGE_PREFIX}${workspaceId}`);
-			localStorage.setItem(`${MIGRATION_PREFIX}${MIGRATION_VERSION}:${workspaceId}`, '1');
-		} catch {
-			// Ignore storage failures.
-		}
-	};
-
-	const loadLegacyLayout = (workspaceId: string): TerminalLayout | null => {
-		if (!workspaceId || typeof localStorage === 'undefined') return null;
-		try {
-			const raw = localStorage.getItem(`${LEGACY_STORAGE_PREFIX}${workspaceId}`);
-			if (!raw) return null;
-			const parsed = JSON.parse(raw) as TerminalLayout;
-			if (!parsed?.root) return null;
-			return parsed;
-		} catch {
-			return null;
-		}
-	};
-
-	const collectTerminalIds = (node: TerminalLayoutNode | null | undefined): string[] => {
-		if (!node) return [];
-		if (node.kind === 'pane') {
-			return (node.tabs ?? []).map((tab) => tab.terminalId).filter(Boolean);
-		}
-		return [...collectTerminalIds(node.first), ...collectTerminalIds(node.second)];
-	};
-
-	const stopSessionsForLayout = async (
-		workspaceId: string,
-		layout: TerminalLayout | null,
-	): Promise<void> => {
-		if (!layout) return;
-		const ids = Array.from(new Set(collectTerminalIds(layout.root)));
-		if (ids.length === 0) return;
-		await Promise.allSettled(
-			ids.map((terminalId) => stopWorkspaceTerminal(workspaceId, terminalId)),
-		);
-	};
-
-	const buildFreshLayout = (workspaceName: string, terminalId: string): TerminalLayout => {
-		const tabId = newId();
-		const paneId = newId();
-		return {
-			version: LAYOUT_VERSION,
-			root: {
-				id: paneId,
-				kind: 'pane',
-				tabs: [
-					{
-						id: tabId,
-						terminalId,
-						title: generateTerminalName(workspaceName, 0),
-					},
-				],
-				activeTabId: tabId,
-			},
-			focusedPaneId: paneId,
-		};
-	};
-
 	const handleResetTerminalLayout = async (): Promise<void> => {
-		if (saving || restartingSessiond || resettingTerminalLayout) return;
+		if (saving || restartingSessiond || resettingTerminalLayout) {
+			return;
+		}
 		const workspace = $activeWorkspace;
 		if (!workspace) {
 			error = 'Select a workspace before resetting terminal layout.';
@@ -274,31 +175,16 @@
 		const confirmed = window.confirm(
 			`Reset the terminal layout for "${workspace.name}"? This will close existing panes and stop running terminal sessions.`,
 		);
-		if (!confirmed) return;
+		if (!confirmed) {
+			return;
+		}
 		resettingTerminalLayout = true;
 		error = null;
 		success = null;
 		try {
-			let layoutToStop: TerminalLayout | null = null;
-			try {
-				const payload = await fetchWorkspaceTerminalLayout(workspace.id);
-				layoutToStop = payload?.layout ?? loadLegacyLayout(workspace.id);
-			} catch {
-				layoutToStop = loadLegacyLayout(workspace.id);
-			}
-			await stopSessionsForLayout(workspace.id, layoutToStop);
-			const created = await createWorkspaceTerminal(workspace.id);
-			const layout = buildFreshLayout(workspace.name, created.terminalId);
-			await persistWorkspaceTerminalLayout(workspace.id, layout);
-			clearLegacyLayout(workspace.id);
-			window.dispatchEvent(
-				new CustomEvent('workset:terminal-layout-reset', {
-					detail: { workspaceId: workspace.id },
-				}),
-			);
-			success = `Terminal layout reset for ${workspace.name}.`;
-		} catch (err) {
-			error = `Failed to reset terminal layout: ${toErrorMessage(err, 'Failed to update settings.')}`;
+			const result = await sideEffects.resetTerminalLayout(workspace);
+			error = result.error ?? null;
+			success = result.success ?? null;
 		} finally {
 			resettingTerminalLayout = false;
 		}
@@ -317,39 +203,50 @@
 	};
 
 	const handleUpdateChannelChange = async (channel: string): Promise<void> => {
-		const nextChannel = channel === 'alpha' ? 'alpha' : 'stable';
 		updateError = null;
-		try {
-			updatePreferences = await setUpdatePreferences({ channel: nextChannel });
+		const result = await sideEffects.setUpdateChannel(channel);
+		if (result.error) {
+			updateError = result.error;
+			return;
+		}
+		if (result.updatePreferences) {
+			updatePreferences = result.updatePreferences;
 			updateCheck = null;
-		} catch (err) {
-			updateError = toErrorMessage(err, 'Failed to update channel preference.');
 		}
 	};
 
 	const handleCheckForUpdates = async (): Promise<void> => {
-		if (updateBusy) return;
+		if (updateBusy) {
+			return;
+		}
 		updateBusy = true;
 		updateError = null;
 		try {
-			updateCheck = await checkForUpdates(updatePreferences.channel);
-			updateState = await fetchUpdateState();
-		} catch (err) {
-			updateError = toErrorMessage(err, 'Failed to check for updates.');
+			const result = await sideEffects.checkForUpdates(updatePreferences.channel);
+			if (result.error) {
+				updateError = result.error;
+				return;
+			}
+			updateCheck = result.updateCheck ?? null;
+			updateState = result.updateState ?? null;
 		} finally {
 			updateBusy = false;
 		}
 	};
 
 	const handleUpdateAndRestart = async (): Promise<void> => {
-		if (updateBusy) return;
+		if (updateBusy) {
+			return;
+		}
 		updateBusy = true;
 		updateError = null;
 		try {
-			const result = await startAppUpdate(updatePreferences.channel);
-			updateState = result.state;
-		} catch (err) {
-			updateError = toErrorMessage(err, 'Failed to start update.');
+			const result = await sideEffects.startUpdate(updatePreferences.channel);
+			if (result.error) {
+				updateError = result.error;
+				return;
+			}
+			updateState = result.updateState ?? null;
 		} finally {
 			updateBusy = false;
 		}
@@ -358,23 +255,12 @@
 	onMount(() => {
 		void loadSettings();
 		void (async () => {
-			try {
-				appVersion = await fetchAppVersion();
-			} catch {
-				appVersion = null;
-			}
+			appVersion = await sideEffects.loadAppVersion();
 		})();
 		void (async () => {
-			try {
-				updatePreferences = await fetchUpdatePreferences();
-			} catch {
-				updatePreferences = { channel: 'stable', autoCheck: true };
-			}
-			try {
-				updateState = await fetchUpdateState();
-			} catch {
-				updateState = null;
-			}
+			const bootstrap = await sideEffects.loadUpdateBootstrap();
+			updatePreferences = bootstrap.updatePreferences;
+			updateState = bootstrap.updateState;
 		})();
 	});
 </script>
