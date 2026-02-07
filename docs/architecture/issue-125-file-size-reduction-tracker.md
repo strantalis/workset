@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (main-agent pass 35)
+Last updated: 2026-02-07 (main-agent pass 36)
 
 ## Goal
 
@@ -18,7 +18,7 @@ Reduce architecture risk from oversized files by splitting high-complexity modul
 
 Largest files by LOC right now:
 
-- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (2393)
+- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (1978)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (1921)
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceManager.svelte` (1022)
@@ -33,7 +33,7 @@ Largest files by LOC right now:
 ## Parallel Tracks (Issue Map)
 
 - [x] `#124` Guardrails (must start first)
-- [ ] `#115` FE-DIFF (slice 15 landed; header PR badge extracted)
+- [ ] `#115` FE-DIFF (slice 16 landed; dead scoped CSS removed after extractions)
 - [ ] `#116` FE-WORKSPACE (slice 8 landed; add-repo form extracted)
 - [x] `#117` FE-TERMINAL (slice 20 landed; service now 491 LOC)
 - [x] `#118` FE-PLATFORM (slice 7 landed; settings side effects extracted)
@@ -139,6 +139,8 @@ Tasks:
   Slice landed: extracted GitHub auth overlay into `repo-diff/RepoDiffAuthModal.svelte`.
 - [x] Extract header PR badge rendering state surface from `RepoDiff.svelte` template.
   Slice landed: extracted status-mode PR badge into `repo-diff/RepoDiffHeaderPrBadge.svelte`.
+- [x] Remove dead scoped styles in `RepoDiff.svelte` left behind by component extraction.
+  Slice landed: deleted unused selectors/animations after sidebar/header modularization (`svelte-check` warnings for `RepoDiff.svelte` now 0).
 
 Verification:
 
