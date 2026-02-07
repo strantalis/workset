@@ -70,6 +70,7 @@
 	import { applyRepoDiffSummary, applyRepoLocalStatus } from '../state';
 	import type { DiffLineAnnotation, ReviewAnnotation } from './repo-diff/annotations';
 	import { buildLineAnnotations } from './repo-diff/annotations';
+	import { createSummaryController } from './repo-diff/summaryController';
 	import { createRepoDiffWatcherLifecycle } from './repo-diff/watcherLifecycle';
 
 	/**
@@ -299,7 +300,6 @@
 		}
 	});
 
-	let summaryRequest = 0;
 	let fileRequest = 0;
 
 	let renderQueued = false;
@@ -1287,24 +1287,6 @@
 		void loadFileDiff(file);
 	};
 
-	const loadLocalSummary = async (): Promise<void> => {
-		if (!repoId) {
-			localSummary = null;
-			return;
-		}
-		if (!localStatus?.hasUncommitted) {
-			localSummary = null;
-			return;
-		}
-		try {
-			const data = await fetchRepoDiffSummary(workspaceId, repoId);
-			applySummaryUpdate(data, 'local');
-			applyRepoDiffSummary(workspaceId, repoId, data);
-		} catch {
-			localSummary = null;
-		}
-	};
-
 	// Check if we should use branch diff (when PR exists with branches)
 	const useBranchDiff = (): { base: string; head: string } | null => {
 		return resolveBranchRefs(remotes, prStatus?.pullRequest ?? prTracked);
@@ -1314,90 +1296,51 @@
 		() => effectiveMode === 'status' && useBranchDiff() !== null,
 	);
 
-	const loadSummary = async (): Promise<void> => {
-		if (!repoId) {
-			summary = null;
-			summaryLoading = false;
-			return;
-		}
-		summaryLoading = true;
-		summaryError = null;
-		summary = null;
-		selected = null;
-		selectedDiff = null;
-		fileMeta = null;
-		fileError = null;
-		if (repoStatusKnown !== false && repoMissing) {
-			summaryError = 'Repo is missing on disk. Restore it to view the diff.';
-			summaryLoading = false;
-			return;
-		}
-		const requestId = ++summaryRequest;
-		try {
-			const branchRefs = useBranchDiff();
-			const data = branchRefs
-				? await fetchBranchDiffSummary(workspaceId, repoId, branchRefs.base, branchRefs.head)
-				: await fetchRepoDiffSummary(workspaceId, repoId);
-			if (requestId !== summaryRequest) return;
-			summary = data;
-			if (summary.files.length > 0) {
-				selectFile(summary.files[0]);
-			}
-		} catch (err) {
-			if (requestId !== summaryRequest) return;
-			summaryError = formatError(err, 'Failed to load diff summary.');
-		} finally {
-			if (requestId === summaryRequest) {
-				summaryLoading = false;
-			}
-		}
-	};
+	const summaryController = createSummaryController({
+		workspaceId: () => workspaceId,
+		repoId: () => repoId,
+		repoStatusKnown: () => repoStatusKnown,
+		repoMissing: () => repoMissing,
+		localHasUncommitted: () => localStatus?.hasUncommitted ?? false,
+		selected: () => selected,
+		selectedSource: () => selectedSource,
+		summary: () => summary,
+		setSummary: (value) => {
+			summary = value;
+		},
+		setSummaryLoading: (value) => {
+			summaryLoading = value;
+		},
+		setSummaryError: (value) => {
+			summaryError = value;
+		},
+		setLocalSummary: (value) => {
+			localSummary = value;
+		},
+		setSelected: (value) => {
+			selected = value;
+		},
+		setSelectedDiff: (value) => {
+			selectedDiff = value;
+		},
+		setFileMeta: (value) => {
+			fileMeta = value;
+		},
+		setFileError: (value) => {
+			fileError = value;
+		},
+		selectFile,
+		useBranchDiff,
+		fetchRepoDiffSummary,
+		fetchBranchDiffSummary,
+		applyRepoDiffSummary,
+		formatError,
+	});
 
-	const findSummaryMatch = (
-		data: RepoDiffSummary,
-		current: RepoDiffFileSummary | null,
-	): RepoDiffFileSummary | null => {
-		if (!current) return null;
-		return (
-			data.files.find((file) => file.path === current.path && file.prevPath === current.prevPath) ??
-			null
-		);
-	};
-
-	const applySummaryUpdate = (data: RepoDiffSummary, source: 'pr' | 'local'): void => {
-		if (source === 'pr') {
-			summary = data;
-			summaryLoading = false;
-			summaryError = null;
-		} else {
-			localSummary = data;
-		}
-		if (selectedSource !== source) {
-			if (
-				source === 'local' &&
-				(!summary || summary.files.length === 0) &&
-				!selected &&
-				data.files.length > 0
-			) {
-				selectFile(data.files[0], 'local');
-			}
-			return;
-		}
-		if (data.files.length === 0) {
-			selected = null;
-			selectedDiff = null;
-			fileMeta = null;
-			fileError = null;
-			return;
-		}
-		const match = findSummaryMatch(data, selected);
-		if (match) {
-			selected = match;
-			void loadFileDiff(match);
-			return;
-		}
-		selectFile(data.files[0], source);
-	};
+	const loadSummary = (): Promise<void> => summaryController.loadSummary();
+	const loadLocalSummary = (): Promise<void> => summaryController.loadLocalSummary();
+	const applySummaryUpdate = (data: RepoDiffSummary, source: 'pr' | 'local'): void =>
+		summaryController.applySummaryUpdate(data, source);
 
 	const loadFileDiff = async (file: RepoDiffFileSummary): Promise<void> => {
 		if (!repoId) return;

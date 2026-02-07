@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (subagent pass 11)
+Last updated: 2026-02-07 (subagent pass 12)
 
 ## Goal
 
@@ -18,26 +18,26 @@ Reduce architecture risk from oversized files by splitting high-complexity modul
 
 Largest files by LOC right now:
 
-- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (4181)
+- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (4124)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2476)
 - `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (2290)
 - `pkg/termemu/termemu.go` (1566)
 - `wails-ui/workset/frontend/src/lib/api.ts` (1312)
-- `wails-ui/workset/app_updates.go` (1114)
+- `wails-ui/workset/app_updates.go` (964)
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
 - `wails-ui/workset/app_diffs.go` (926)
 
 ## Parallel Tracks (Issue Map)
 
 - [x] `#124` Guardrails (must start first)
-- [ ] `#115` FE-DIFF (slice 1 landed)
+- [ ] `#115` FE-DIFF (slice 2 landed)
 - [ ] `#116` FE-WORKSPACE (slice 5 landed)
 - [ ] `#117` FE-TERMINAL (slice 3 landed)
 - [ ] `#118` FE-PLATFORM
 - [x] `#119` BE-SESSIOND (structural splits complete)
 - [ ] `#120` BE-GITHUB (slice 5 landed)
 - [ ] `#121` BE-TERMEMU (slice 1 landed)
-- [ ] `#122` BE-UPDATER
+- [ ] `#122` BE-UPDATER (slice 1 landed)
 - [ ] `#123` TEST-E2E
 
 ## Execution Strategy
@@ -115,7 +115,7 @@ Target architecture:
 Tasks:
 
 - [x] Extract watcher lifecycle/start-stop-update orchestration module (`repo-diff/watcherLifecycle.ts`).
-- [ ] Extract summary loader/store module.
+- [x] Extract summary loader/store controller module (`repo-diff/summaryController.ts`).
 - [ ] Extract PR status/reviews controller.
 - [ ] Extract render queue/selection/file-fetch controller.
 - [ ] Extract annotation/reply/edit/delete actions module.
@@ -299,6 +299,7 @@ Target architecture:
 
 Tasks:
 
+- [x] Extract update manifest/asset client helpers into `app_update_client.go`.
 - [ ] Split update check/start orchestration from app binding layer.
 - [ ] Isolate signing/asset selection logic.
 - [ ] Add tests for channel preference + state transitions.
@@ -344,6 +345,6 @@ Verification:
 
 ## Immediate Next Actions
 
-1. Run `#115` slice 2: extract summary/PR controllers from `RepoDiff.svelte`.
-2. Run `#117` slice 4: extract reconnect/attach/detach stream orchestration from `terminalService.ts`.
+1. Run `#117` slice 4: extract reconnect/attach/detach stream orchestration from `terminalService.ts`.
+2. Run `#115` slice 3: extract PR status/review controller from `RepoDiff.svelte`.
 3. Run `#121` slice 2: extract termemu state transition engine from `termemu.go`.
