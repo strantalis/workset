@@ -85,6 +85,7 @@
 	import { createReviewAnnotationActionsController } from './repo-diff/reviewAnnotationActions';
 	import { createSummaryController } from './repo-diff/summaryController';
 	import { createRepoDiffWatcherLifecycle } from './repo-diff/watcherLifecycle';
+	import { createCheckSidebarController, getCheckStats } from './repo-diff/checkSidebarController';
 
 	/**
 	 * Validates and opens URL only if it belongs to trusted GitHub domains.
@@ -632,15 +633,7 @@
 	);
 
 	// Check stats for compact display
-	const checkStats = $derived.by(() => {
-		const checks = prStatus?.checks ?? [];
-		const passed = checks.filter((c) => c.conclusion === 'success').length;
-		const failed = checks.filter((c) => c.conclusion === 'failure').length;
-		const pending = checks.filter(
-			(c) => !c.conclusion || c.status === 'in_progress' || c.status === 'queued',
-		).length;
-		return { total: checks.length, passed, failed, pending };
-	});
+	const checkStats = $derived.by(() => getCheckStats(prStatus?.checks ?? []));
 
 	const reviewCountsByPath = $derived.by(() => {
 		const counts = new Map<string, number>();
@@ -653,115 +646,6 @@
 	// Count reviews for a specific file path
 	const reviewCountForFile = (path: string): number => {
 		return reviewCountsByPath.get(path) ?? 0;
-	};
-
-	// Format duration from milliseconds to human readable string
-	const formatDuration = (ms: number): string => {
-		if (ms < 1000) return `${ms}ms`;
-		if (ms < 60000) return `${Math.round(ms / 1000)}s`;
-		const minutes = Math.floor(ms / 60000);
-		const seconds = Math.round((ms % 60000) / 1000);
-		return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
-	};
-
-	// Get check status color class
-	const getCheckStatusClass = (conclusion: string | undefined, status: string): string => {
-		if (conclusion === 'success') return 'check-success';
-		if (conclusion === 'failure') return 'check-failure';
-		if (conclusion === 'skipped' || conclusion === 'cancelled' || conclusion === 'neutral')
-			return 'check-neutral';
-		if (status === 'in_progress' || status === 'queued') return 'check-pending';
-		return 'check-neutral';
-	};
-
-	// Load check annotations on demand
-	const loadCheckAnnotations = async (
-		checkName: string,
-		checkRunId: number | undefined,
-	): Promise<void> => {
-		if (!checkRunId) return;
-		if (checkAnnotationsLoading[checkName]) return;
-
-		// Get owner/repo from PR info or remotes
-		let owner: string | undefined;
-		let repoName: string | undefined;
-
-		if (prStatus?.pullRequest?.baseRepo) {
-			const parts = prStatus.pullRequest.baseRepo.split('/');
-			if (parts.length === 2) {
-				owner = parts[0];
-				repoName = parts[1];
-			}
-		}
-
-		if (!owner || !repoName) {
-			// Fallback to remotes
-			const remote = remotes.find((r) => r.name === prBaseRemote) || remotes[0];
-			if (remote) {
-				owner = remote.owner;
-				repoName = remote.repo;
-			}
-		}
-
-		if (!owner || !repoName) {
-			// eslint-disable-next-line no-console
-			console.error('Cannot load annotations: missing owner/repo', {
-				checkName,
-				checkRunId,
-				baseRepo: prStatus?.pullRequest?.baseRepo,
-				remotes,
-			});
-			checkAnnotations = { ...checkAnnotations, [checkName]: [] };
-			return;
-		}
-
-		checkAnnotationsLoading = { ...checkAnnotationsLoading, [checkName]: true };
-		try {
-			const result = await fetchCheckAnnotations(owner, repoName, checkRunId);
-			checkAnnotations = { ...checkAnnotations, [checkName]: result };
-		} catch (err) {
-			// eslint-disable-next-line no-console
-			console.error('Failed to load annotations:', err);
-			checkAnnotations = { ...checkAnnotations, [checkName]: [] };
-		} finally {
-			checkAnnotationsLoading = { ...checkAnnotationsLoading, [checkName]: false };
-		}
-	};
-
-	// Toggle check expansion and load annotations if needed
-	const toggleCheckExpansion = (check: PullRequestCheck): void => {
-		if (expandedCheck === check.name) {
-			expandedCheck = null;
-		} else {
-			expandedCheck = check.name;
-			// Load annotations for failed checks
-			if (check.conclusion === 'failure' && check.checkRunId) {
-				void loadCheckAnnotations(check.name, check.checkRunId);
-			}
-		}
-	};
-
-	// Navigate to file from annotation
-	const navigateToAnnotationFile = (path: string, line: number): void => {
-		// Find the file in summary
-		const file = summary?.files.find((f) => f.path === path);
-		if (file) {
-			pendingScrollLine = line;
-			selectFile(file, 'pr');
-		}
-	};
-
-	// Filter annotations to only show ones for files in the PR diff
-	const getFilteredAnnotations = (
-		checkName: string,
-	): { annotations: CheckAnnotation[]; filteredCount: number } => {
-		const allAnnotations = checkAnnotations[checkName] ?? [];
-		const filesInDiff = new Set(summary?.files.map((f) => f.path) ?? []);
-		const filtered = allAnnotations.filter((a) => filesInDiff.has(a.path));
-		return {
-			annotations: filtered,
-			filteredCount: allAnnotations.length - filtered.length,
-		};
 	};
 
 	const ensureRenderer = async (): Promise<void> => {
@@ -879,6 +763,45 @@
 
 	const selectFile = (file: RepoDiffFileSummary, source: SummarySource = 'pr'): void =>
 		fileDiffController.selectFile(file, source);
+
+	const checkSidebarController = createCheckSidebarController({
+		getExpandedCheck: () => expandedCheck,
+		setExpandedCheck: (value) => {
+			expandedCheck = value;
+		},
+		getCheckAnnotations: () => checkAnnotations,
+		setCheckAnnotations: (value) => {
+			checkAnnotations = value;
+		},
+		getCheckAnnotationsLoading: () => checkAnnotationsLoading,
+		setCheckAnnotationsLoading: (value) => {
+			checkAnnotationsLoading = value;
+		},
+		getPrStatus: () => prStatus,
+		getRemotes: () => remotes,
+		getPrBaseRemote: () => prBaseRemote,
+		getSummary: () => summary,
+		fetchCheckAnnotations: (owner, repoName, checkRunId) =>
+			fetchCheckAnnotations(owner, repoName, checkRunId),
+		selectFile,
+		setPendingScrollLine: (line) => {
+			pendingScrollLine = line;
+		},
+		// eslint-disable-next-line no-console
+		logError: (...args) => console.error(...args),
+	});
+
+	const formatDuration = (ms: number): string => checkSidebarController.formatDuration(ms);
+	const getCheckStatusClass = (conclusion: string | undefined, status: string): string =>
+		checkSidebarController.getCheckStatusClass(conclusion, status);
+	const toggleCheckExpansion = (check: PullRequestCheck): void =>
+		checkSidebarController.toggleCheckExpansion(check);
+	const navigateToAnnotationFile = (path: string, line: number): void =>
+		checkSidebarController.navigateToAnnotationFile(path, line);
+	const getFilteredAnnotations = (
+		checkName: string,
+	): { annotations: CheckAnnotation[]; filteredCount: number } =>
+		checkSidebarController.getFilteredAnnotations(checkName);
 
 	const shouldSplitLocalPendingSection = $derived.by(
 		() => effectiveMode === 'status' && useBranchDiff() !== null,

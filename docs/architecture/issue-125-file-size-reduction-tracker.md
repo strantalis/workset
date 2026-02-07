@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (subagent pass 17)
+Last updated: 2026-02-07 (subagent pass 18)
 
 ## Goal
 
@@ -18,22 +18,22 @@ Reduce architecture risk from oversized files by splitting high-complexity modul
 
 Largest files by LOC right now:
 
-- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (3699)
+- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (3622)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2476)
-- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (2105)
-- `wails-ui/workset/frontend/src/lib/api.ts` (1278)
+- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (2094)
 - `pkg/termemu/termemu.go` (972)
+- `wails-ui/workset/app_diffs.go` (926)
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceManager.svelte` (1022)
-- `wails-ui/workset/app_diffs.go` (926)
+- `wails-ui/workset/frontend/src/lib/api.ts` (593)
 
 ## Parallel Tracks (Issue Map)
 
 - [x] `#124` Guardrails (must start first)
-- [ ] `#115` FE-DIFF (slice 5 landed)
+- [ ] `#115` FE-DIFF (slice 6 landed)
 - [ ] `#116` FE-WORKSPACE (slice 5 landed)
-- [ ] `#117` FE-TERMINAL (slice 7 landed)
-- [ ] `#118` FE-PLATFORM (slice 1 landed)
+- [ ] `#117` FE-TERMINAL (slice 8 landed)
+- [ ] `#118` FE-PLATFORM (slice 2 landed)
 - [x] `#119` BE-SESSIOND (structural splits complete)
 - [ ] `#120` BE-GITHUB (slice 5 + tests tranche 2 landed)
 - [ ] `#121` BE-TERMEMU (slice 4 landed)
@@ -119,6 +119,7 @@ Tasks:
 - [x] Extract PR status/reviews controller (`repo-diff/prStatusController.ts`).
 - [x] Extract render queue/selection/file-fetch controller (`repo-diff/fileDiffController.ts`).
 - [x] Extract annotation/reply/edit/delete actions module (`repo-diff/reviewAnnotationActions.ts`).
+- [x] Extract check-sidebar grouping/filtering/summary state into `repo-diff/checkSidebarController.ts`.
 - [ ] Keep current public props/events unchanged.
 
 Verification:
@@ -177,6 +178,8 @@ Remaining tasks:
 - [x] Extract reconnect/attach/detach stream orchestration into `terminalStreamOrchestrator.ts`.
 - [ ] Remove remaining renderer/transport coupling from service shell.
   Slices landed: extracted resize/transport coupling into `terminalResizeBridge.ts`; extracted render-health/recovery orchestration into `terminalRenderHealth.ts`; extracted attach/dispose + renderer-addon state handling into `terminalAttachRendererState.ts`.
+- [ ] Extract attach/open lifecycle sequencing into a standalone module.
+  Slice landed: extracted open/create/connect + retry sequencing into `terminalAttachOpenLifecycle.ts`.
 - [x] Add service-level tests for reconnect/attach/detach/stream-release (`terminalStreamOrchestrator.test.ts`).
 - [ ] Shrink `terminalService.ts` to orchestration-only facade.
 
@@ -200,7 +203,7 @@ Target architecture:
 Tasks:
 
 - [ ] Split monolithic API module into domain entrypoints.
-   Slice landed: extracted updates/app-version domain into `api/updates.ts` with compatibility re-exports from `api.ts`.
+  Slices landed: extracted updates/app-version domain into `api/updates.ts`; extracted GitHub operations into `api/github.ts`; extracted repo-diff watch/diff APIs into `api/repo-diff.ts`, all with compatibility re-exports from `api.ts`.
 - [ ] Keep backward-compatible imports through adapter layer during migration.
 - [ ] Remove adapter after callsites are migrated.
 
@@ -351,6 +354,6 @@ Verification:
 
 ## Immediate Next Actions
 
-1. Run `#117` final slice: extract remaining lifecycle/render wiring so `terminalService.ts` is orchestration-only.
-2. Run `#118` slice 2: extract github + repo-diff API domains into `api/` modules with compatibility re-exports.
-3. Run `#115` final composition pass: confirm `RepoDiff.svelte` remains shell-only and remove residual controller leakage.
+1. Run `#117` final slice: remove remaining terminal lifecycle/transport wiring from `terminalService.ts` and keep facade-only composition.
+2. Run `#118` slice 3: extract workspace/settings/auth domains and narrow `api.ts` to a compatibility barrel.
+3. Run `#115` final composition pass: remove remaining check-sidebar orchestration leakage from `RepoDiff.svelte` and lock parity tests.

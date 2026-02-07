@@ -28,6 +28,7 @@ import {
 	createTerminalAttachState,
 	createTerminalRendererAddonState,
 } from './terminalAttachRendererState';
+import { createTerminalAttachOpenLifecycle } from './terminalAttachOpenLifecycle';
 
 export type TerminalViewState = {
 	status: string;
@@ -1069,38 +1070,7 @@ const attachTerminal = (
 		void beginTerminal(id);
 		sendInput(id, data);
 	});
-	if (container) {
-		if (container.firstChild !== handle.container) {
-			container.replaceChildren(handle.container);
-		}
-		const terminalElement = handle.terminal.element;
-		const needsOpen = !terminalElement || terminalElement.parentElement !== handle.container;
-		if (needsOpen) {
-			handle.container.replaceChildren();
-			handle.terminal.open(handle.container);
-			ensureKittyOverlay(handle, id);
-			void terminalRendererAddonState.load(id, handle);
-			if (typeof document !== 'undefined' && document.fonts?.ready) {
-				document.fonts.ready
-					.then(() => {
-						const current = terminalHandles.get(id);
-						if (!current) return;
-						fitWithPreservedViewport(current);
-						terminalResizeBridge.resizeToFit(id, current);
-					})
-					.catch(() => undefined);
-			}
-			scheduleFitStabilization(id, 'open');
-		}
-		handle.container.setAttribute('data-active', 'true');
-		fitWithPreservedViewport(handle);
-		terminalResizeBridge.resizeToFit(id, handle);
-		if (active) {
-			handle.terminal.focus();
-		}
-		flushOutput(id, false);
-		terminalAttachState.markAttached(id);
-	}
+	terminalAttachOpenLifecycle.attach({ id, handle, container, active });
 	return handle;
 };
 
@@ -1749,6 +1719,25 @@ const terminalRendererAddonState = createTerminalRendererAddonState({
 	},
 	onComplete: (id) => {
 		emitState(id);
+	},
+});
+
+const terminalAttachOpenLifecycle = createTerminalAttachOpenLifecycle({
+	getHandle: (id) => terminalHandles.get(id),
+	ensureOverlay: (handle, id) => {
+		ensureKittyOverlay(handle, id);
+	},
+	loadRendererAddon: (id, handle) => terminalRendererAddonState.load(id, handle),
+	fitWithPreservedViewport: (handle) => {
+		fitWithPreservedViewport(handle);
+	},
+	resizeToFit: (id, handle) => {
+		terminalResizeBridge.resizeToFit(id, handle);
+	},
+	scheduleFitStabilization,
+	flushOutput,
+	markAttached: (id) => {
+		terminalAttachState.markAttached(id);
 	},
 });
 
