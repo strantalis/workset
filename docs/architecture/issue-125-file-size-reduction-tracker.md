@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (subagent pass 10)
+Last updated: 2026-02-07 (subagent pass 11)
 
 ## Goal
 
@@ -20,8 +20,8 @@ Largest files by LOC right now:
 
 - `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (4181)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2476)
-- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (2294)
-- `pkg/termemu/termemu.go` (1714)
+- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (2290)
+- `pkg/termemu/termemu.go` (1566)
 - `wails-ui/workset/frontend/src/lib/api.ts` (1312)
 - `wails-ui/workset/app_updates.go` (1114)
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
@@ -32,11 +32,11 @@ Largest files by LOC right now:
 - [x] `#124` Guardrails (must start first)
 - [ ] `#115` FE-DIFF (slice 1 landed)
 - [ ] `#116` FE-WORKSPACE (slice 5 landed)
-- [ ] `#117` FE-TERMINAL (slice 2 landed)
+- [ ] `#117` FE-TERMINAL (slice 3 landed)
 - [ ] `#118` FE-PLATFORM
 - [x] `#119` BE-SESSIOND (structural splits complete)
 - [ ] `#120` BE-GITHUB (slice 5 landed)
-- [ ] `#121` BE-TERMEMU
+- [ ] `#121` BE-TERMEMU (slice 1 landed)
 - [ ] `#122` BE-UPDATER
 - [ ] `#123` TEST-E2E
 
@@ -173,6 +173,7 @@ Remaining tasks:
 
 - [x] Move lifecycle FSM to standalone module with explicit state graph.
 - [x] Move renderer addon wiring (WebGL + web-links sync) into `terminalRenderer.ts`.
+- [x] Move web-links transport/renderer adapter wiring into `terminalWebLinks.ts`.
 - [ ] Remove remaining renderer/transport coupling from service shell.
 - [ ] Add service-level tests for reconnect/attach/detach/stream-release.
 - [ ] Shrink `terminalService.ts` to orchestration-only facade.
@@ -274,7 +275,7 @@ Target architecture:
 
 Tasks:
 
-- [ ] Extract parser package and fixtures.
+- [x] Extract parser state machine boundary into `pkg/termemu/parser.go`.
 - [ ] Extract state transition engine.
 - [ ] Extract snapshot renderer/serializer.
 - [ ] Backfill regression tests for escape-sequence edge cases.
@@ -343,6 +344,6 @@ Verification:
 
 ## Immediate Next Actions
 
-1. Run `#117` slice 3: remove remaining transport/renderer coupling from `terminalService.ts`.
-2. Run `#115` slice 2: extract summary/PR controllers from `RepoDiff.svelte`.
-3. Run `#121` slice 1: extract parser/state boundaries from `pkg/termemu/termemu.go`.
+1. Run `#115` slice 2: extract summary/PR controllers from `RepoDiff.svelte`.
+2. Run `#117` slice 4: extract reconnect/attach/detach stream orchestration from `terminalService.ts`.
+3. Run `#121` slice 2: extract termemu state transition engine from `termemu.go`.

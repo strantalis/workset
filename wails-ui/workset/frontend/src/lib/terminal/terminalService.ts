@@ -15,7 +15,8 @@ import {
 	EVENT_TERMINAL_MODES,
 } from '../events';
 import { terminalTransport } from './terminalTransport';
-import { createTerminalInstance, loadRendererAddon, syncWebLinksForMode } from './terminalRenderer';
+import { createTerminalInstance, loadRendererAddon } from './terminalRenderer';
+import { createTerminalWebLinksSync } from './terminalWebLinks';
 import { TerminalStateStore } from './terminalStateStore';
 import { stripMouseReports } from './inputFilter';
 import { createTerminalLifecycle } from './terminalLifecycle';
@@ -385,19 +386,6 @@ const createClipboardBase64 = (): {
 	decodeText: decodeClipboardText,
 });
 
-const syncTerminalWebLinks = (id: string): void => {
-	const handle = terminalHandles.get(id);
-	if (!handle) return;
-	handle.webLinksAddon = syncWebLinksForMode({
-		terminal: handle.terminal,
-		webLinksAddon: handle.webLinksAddon,
-		mouseActive: lifecycle.getMode(id).mouse,
-		openURL: (url) => {
-			void terminalTransport.openURL(url);
-		},
-	});
-};
-
 const getRuntimeClipboard = (): ((text: string) => Promise<boolean>) | null => {
 	if (typeof window === 'undefined') return null;
 	const runtime = (
@@ -460,6 +448,14 @@ const emitAllStates = (): void => {
 const lifecycle = createTerminalLifecycle({
 	emitState,
 	emitAllStates,
+});
+
+const syncTerminalWebLinks = createTerminalWebLinksSync({
+	getHandle: (id) => terminalHandles.get(id),
+	isMouseModeActive: (id) => lifecycle.getMode(id).mouse,
+	openURL: (url) => {
+		void terminalTransport.openURL(url);
+	},
 });
 
 const subscribeEvent = <T>(event: string, handler: EventHandler<T>): (() => void) =>
