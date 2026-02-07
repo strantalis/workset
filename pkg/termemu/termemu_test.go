@@ -147,6 +147,48 @@ func TestTerminalUTF8Continuation(t *testing.T) {
 	}
 }
 
+func TestTerminalDSRReportsCursorPosition(t *testing.T) {
+	term := New(10, 2)
+	var responses [][]byte
+	term.SetResponder(func(data []byte) {
+		responses = append(responses, append([]byte(nil), data...))
+	})
+
+	term.Write(context.Background(), []byte("ab\x1b[6n"))
+
+	if len(responses) != 1 {
+		t.Fatalf("expected one response, got %d", len(responses))
+	}
+	if got := string(responses[0]); got != "\x1b[1;3R" {
+		t.Fatalf("unexpected DSR response: %q", got)
+	}
+}
+
+func TestTerminalDECRQMModeQuery(t *testing.T) {
+	term := New(10, 2)
+	var responses [][]byte
+	term.SetResponder(func(data []byte) {
+		responses = append(responses, append([]byte(nil), data...))
+	})
+
+	term.Write(context.Background(), []byte("\x1b[?25$p"))
+	if len(responses) != 1 {
+		t.Fatalf("expected one response, got %d", len(responses))
+	}
+	if got := string(responses[0]); got != "\x1b[?25;1$y" {
+		t.Fatalf("unexpected DECRQM response: %q", got)
+	}
+
+	responses = nil
+	term.Write(context.Background(), []byte("\x1b[?25l\x1b[?25$p"))
+	if len(responses) != 1 {
+		t.Fatalf("expected one response after disabling cursor, got %d", len(responses))
+	}
+	if got := string(responses[0]); got != "\x1b[?25;2$y" {
+		t.Fatalf("unexpected DECRQM response after mode change: %q", got)
+	}
+}
+
 func TestTerminalReplayGoldens(t *testing.T) {
 	cases := []struct {
 		name   string

@@ -70,6 +70,13 @@
 	import { applyRepoDiffSummary, applyRepoLocalStatus } from '../state';
 	import type { DiffLineAnnotation, ReviewAnnotation } from './repo-diff/annotations';
 	import { buildLineAnnotations } from './repo-diff/annotations';
+	import {
+		createPrStatusController,
+		mapPullRequestReviews,
+		mapPullRequestStatus,
+		type RepoDiffPrReviewsEvent,
+		type RepoDiffPrStatusEvent,
+	} from './repo-diff/prStatusController';
 	import { createSummaryController } from './repo-diff/summaryController';
 	import { createRepoDiffWatcherLifecycle } from './repo-diff/watcherLifecycle';
 
@@ -143,63 +150,6 @@
 		workspaceId: string;
 		repoId: string;
 		status: RepoLocalStatus;
-	};
-
-	type RepoDiffPrStatusEvent = {
-		workspaceId: string;
-		repoId: string;
-		status: {
-			pullRequest: {
-				repo: string;
-				number: number;
-				url: string;
-				title: string;
-				state: string;
-				draft: boolean;
-				base_repo: string;
-				base_branch: string;
-				head_repo: string;
-				head_branch: string;
-				mergeable?: string;
-			};
-			checks: Array<{
-				name: string;
-				status: string;
-				conclusion?: string;
-				details_url?: string;
-				started_at?: string;
-				completed_at?: string;
-				check_run_id?: number;
-			}>;
-		};
-	};
-
-	type RepoDiffPrReviewsEvent = {
-		workspaceId: string;
-		repoId: string;
-		comments: Array<{
-			id: number;
-			node_id?: string;
-			thread_id?: string;
-			review_id?: number;
-			author?: string;
-			author_id?: number;
-			body: string;
-			path: string;
-			line?: number;
-			side?: string;
-			commit_id?: string;
-			original_commit_id?: string;
-			original_line?: number;
-			original_start_line?: number;
-			outdated: boolean;
-			url?: string;
-			created_at?: string;
-			updated_at?: string;
-			in_reply_to?: number;
-			reply?: boolean;
-			resolved?: boolean;
-		}>;
 	};
 
 	let summary: RepoDiffSummary | null = $state(null);
@@ -652,63 +602,6 @@
 		return fallback;
 	};
 
-	const mapPullRequestStatus = (
-		status: RepoDiffPrStatusEvent['status'],
-	): PullRequestStatusResult => {
-		const checks = (status.checks ?? []).map((check) => ({
-			name: check.name,
-			status: check.status,
-			conclusion: check.conclusion,
-			detailsUrl: check.details_url,
-			startedAt: check.started_at,
-			completedAt: check.completed_at,
-			checkRunId: check.check_run_id,
-		}));
-		return {
-			pullRequest: {
-				repo: status.pullRequest.repo,
-				number: status.pullRequest.number,
-				url: status.pullRequest.url,
-				title: status.pullRequest.title,
-				state: status.pullRequest.state,
-				draft: status.pullRequest.draft,
-				baseRepo: status.pullRequest.base_repo,
-				baseBranch: status.pullRequest.base_branch,
-				headRepo: status.pullRequest.head_repo,
-				headBranch: status.pullRequest.head_branch,
-				mergeable: status.pullRequest.mergeable,
-			},
-			checks,
-		};
-	};
-
-	const mapPullRequestReviews = (
-		comments: RepoDiffPrReviewsEvent['comments'],
-	): PullRequestReviewComment[] =>
-		comments.map((comment) => ({
-			id: comment.id,
-			nodeId: comment.node_id,
-			threadId: comment.thread_id,
-			reviewId: comment.review_id,
-			author: comment.author,
-			authorId: comment.author_id,
-			body: comment.body,
-			path: comment.path,
-			line: comment.line,
-			side: comment.side,
-			commitId: comment.commit_id,
-			originalCommit: comment.original_commit_id,
-			originalLine: comment.original_line,
-			originalStart: comment.original_start_line,
-			outdated: comment.outdated,
-			url: comment.url,
-			createdAt: comment.created_at,
-			updatedAt: comment.updated_at,
-			inReplyTo: comment.in_reply_to,
-			reply: comment.reply,
-			resolved: comment.resolved,
-		}));
-
 	const authRequiredPrefix = 'AUTH_REQUIRED:';
 
 	const isAuthRequiredMessage = (message: string): boolean =>
@@ -870,85 +763,6 @@
 		}
 	};
 
-	const loadPrStatus = async (): Promise<void> => {
-		if (!repoId) return;
-		prStatusLoading = true;
-		prStatusError = null;
-		try {
-			await runGitHubAction(
-				async () => {
-					prStatus = await fetchPullRequestStatus(
-						workspaceId,
-						repoId,
-						parseNumber(prNumberInput),
-						prBranchInput.trim() || undefined,
-					);
-				},
-				(message) => {
-					prStatusError = message;
-					prStatus = null;
-				},
-				'Failed to load pull request status.',
-			);
-		} finally {
-			prStatusLoading = false;
-		}
-	};
-
-	const loadPrReviews = async (): Promise<void> => {
-		if (!repoId) return;
-		prReviewsLoading = true;
-		// Error handling is done via prReviewsLoading and prReviews state
-		prReviewsSent = false;
-		try {
-			await runGitHubAction(
-				async () => {
-					prReviews = await fetchPullRequestReviews(
-						workspaceId,
-						repoId,
-						parseNumber(prNumberInput),
-						prBranchInput.trim() || undefined,
-					);
-					// Also fetch current user for edit/delete permissions
-					if (currentUserId === null) {
-						loadCurrentUser();
-					}
-				},
-				(_message) => {
-					// Error displayed via UI state, clear reviews on error
-					prReviews = [];
-				},
-				'Failed to load review comments.',
-			);
-		} finally {
-			prReviewsLoading = false;
-		}
-	};
-
-	const loadCurrentUser = async (): Promise<void> => {
-		if (!repoId) return;
-		try {
-			const user = await fetchCurrentGitHubUser(workspaceId, repoId);
-			currentUserId = user.id;
-		} catch {
-			// Non-fatal: if we can't get user, edit/delete buttons won't show
-			currentUserId = null;
-		}
-	};
-
-	const loadLocalStatus = async (): Promise<void> => {
-		if (!repoId) return;
-		try {
-			localStatus = await fetchRepoLocalStatus(workspaceId, repoId);
-			if (localStatus) {
-				applyRepoLocalStatus(workspaceId, repoId, localStatus);
-			}
-		} catch {
-			// Non-fatal: local status is optional
-			localStatus = null;
-		}
-	};
-
 	const loadRemotes = async (): Promise<void> => {
 		if (!repoId) return;
 		remotesLoading = true;
@@ -982,18 +796,6 @@
 			},
 			'Failed to commit and push.',
 		);
-	};
-
-	const handleRefresh = async (): Promise<void> => {
-		// Refresh diff summary
-		await loadSummary();
-		// In status mode, also refresh PR status, reviews, and local status
-		if (effectiveMode === 'status') {
-			await loadPrStatus();
-			await loadPrReviews();
-			await loadLocalStatus();
-			await loadLocalSummary();
-		}
 	};
 
 	const handleCreatePR = async (): Promise<void> => {
@@ -1341,6 +1143,52 @@
 	const loadLocalSummary = (): Promise<void> => summaryController.loadLocalSummary();
 	const applySummaryUpdate = (data: RepoDiffSummary, source: 'pr' | 'local'): void =>
 		summaryController.applySummaryUpdate(data, source);
+	const prStatusController = createPrStatusController({
+		workspaceId: () => workspaceId,
+		repoId: () => repoId,
+		prNumberInput: () => prNumberInput,
+		prBranchInput: () => prBranchInput,
+		effectiveMode: () => effectiveMode,
+		currentUserId: () => currentUserId,
+		setCurrentUserId: (value) => {
+			currentUserId = value;
+		},
+		setPrStatus: (value) => {
+			prStatus = value;
+		},
+		setPrStatusLoading: (value) => {
+			prStatusLoading = value;
+		},
+		setPrStatusError: (value) => {
+			prStatusError = value;
+		},
+		setPrReviews: (value) => {
+			prReviews = value;
+		},
+		setPrReviewsLoading: (value) => {
+			prReviewsLoading = value;
+		},
+		setPrReviewsSent: (value) => {
+			prReviewsSent = value;
+		},
+		setLocalStatus: (value) => {
+			localStatus = value;
+		},
+		parseNumber,
+		runGitHubAction,
+		loadSummary,
+		loadLocalSummary,
+		fetchPullRequestStatus,
+		fetchPullRequestReviews,
+		fetchCurrentGitHubUser,
+		fetchRepoLocalStatus,
+		applyRepoLocalStatus,
+	});
+	const loadPrStatus = (): Promise<void> => prStatusController.loadPrStatus();
+	const loadPrReviews = (): Promise<void> => prStatusController.loadPrReviews();
+	const loadCurrentUser = (): Promise<void> => prStatusController.loadCurrentUser();
+	const loadLocalStatus = (): Promise<void> => prStatusController.loadLocalStatus();
+	const handleRefresh = (): Promise<void> => prStatusController.handleRefresh();
 
 	const loadFileDiff = async (file: RepoDiffFileSummary): Promise<void> => {
 		if (!repoId) return;

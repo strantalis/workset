@@ -19,9 +19,7 @@ type TerminalStreamOrchestratorDependencies = {
 
 const REATTACH_DELAY_MS = 240;
 
-export const createTerminalStreamOrchestrator = (
-	deps: TerminalStreamOrchestratorDependencies,
-) => {
+export const createTerminalStreamOrchestrator = (deps: TerminalStreamOrchestratorDependencies) => {
 	const setTimeoutFn =
 		deps.setTimeoutFn ?? ((handler, timeoutMs) => window.setTimeout(handler, timeoutMs));
 	const clearTimeoutFn = deps.clearTimeoutFn ?? ((timer) => window.clearTimeout(timer));

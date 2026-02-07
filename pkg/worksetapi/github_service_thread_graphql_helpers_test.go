@@ -167,4 +167,3 @@ func TestGraphQLGetThreadIDReturnsValidationErrorWhenThreadMissing(t *testing.T)
 		t.Fatalf("unexpected message: %q", validationErr.Message)
 	}
 }
-
