@@ -1,6 +1,3 @@
-import { ClipboardAddon } from '@xterm/addon-clipboard';
-import { FitAddon } from '@xterm/addon-fit';
-import { Unicode11Addon } from '@xterm/addon-unicode11';
 import type { Writable } from 'svelte/store';
 import { terminalTransport } from './terminalTransport';
 import { createTerminalInstance } from './terminalRenderer';
@@ -15,7 +12,6 @@ import {
 	createTerminalAttachState,
 	createTerminalRendererAddonState,
 } from './terminalAttachRendererState';
-import { createTerminalAttachOpenLifecycle } from './terminalAttachOpenLifecycle';
 import {
 	createTerminalEventSubscriptions,
 	type TerminalKittyPayload,
@@ -23,10 +19,7 @@ import {
 } from './terminalEventSubscriptions';
 import { createTerminalModeBootstrapCoordinator } from './terminalModeBootstrapCoordinator';
 import { createTerminalReplayAckOrchestrator } from './terminalReplayAckOrchestrator';
-import {
-	createTerminalInstanceManager,
-	type TerminalInstanceHandle,
-} from './terminalInstanceManager';
+import { type TerminalInstanceHandle } from './terminalInstanceManager';
 import { createTerminalOutputBuffer } from './terminalOutputBuffer';
 import {
 	createKittyState,
@@ -37,16 +30,11 @@ import {
 } from './terminalKittyImageController';
 import { createTerminalInputOrchestrator } from './terminalInputOrchestrator';
 import { createTerminalViewportResizeController } from './terminalViewportResizeController';
-import {
-	createTerminalClipboardBase64,
-	createTerminalClipboardProvider,
-} from './terminalClipboard';
-import { registerTerminalOscHandlers } from './terminalOscHandlers';
-import { createTerminalFontSizeController } from './terminalFontSizeController';
 import { createTerminalContextRegistry } from './terminalContextRegistry';
 import { createTerminalSessionCoordinator } from './terminalSessionCoordinator';
 import { createTerminalResourceLifecycle } from './terminalResourceLifecycle';
 import { createTerminalServiceExports } from './terminalServiceExports';
+import { createTerminalInstanceOrchestration } from './terminalInstanceOrchestration';
 
 export type TerminalViewState = {
 	status: string;
@@ -454,92 +442,42 @@ const terminalRendererAddonState = createTerminalRendererAddonState({
 	},
 });
 
-const terminalAttachOpenLifecycle = createTerminalAttachOpenLifecycle({
-	getHandle: (id) => terminalHandles.get(id),
-	ensureOverlay: (_handle, id) => {
-		terminalKittyController.ensureOverlay(id);
-	},
-	loadRendererAddon: (id, handle) => terminalRendererAddonState.load(id, handle),
-	fitWithPreservedViewport: (handle) => {
-		terminalViewportResizeController.fitWithPreservedViewport(handle);
-	},
-	resizeToFit: (id, handle) => {
-		terminalResizeBridge.resizeToFit(id, handle);
-	},
-	scheduleFitStabilization: (id, reason) => {
-		terminalViewportResizeController.scheduleFitStabilization(id, reason);
-	},
-	flushOutput: terminalOutputBuffer.flushOutput,
-	markAttached: (id) => {
-		terminalAttachState.markAttached(id);
-	},
-});
-
-const applyFontSizeToAllTerminals = (fontSize: number): void => {
-	for (const [id, handle] of terminalHandles.entries()) {
-		handle.terminal.options.fontSize = fontSize;
-		// Refit terminal to recalculate dimensions with new font size.
-		try {
-			terminalViewportResizeController.fitTerminal(id, lifecycle.hasStarted(id));
-		} catch {
-			// Ignore fit errors for terminals not attached to DOM.
-		}
-	}
-};
-
-const terminalFontSizeController = createTerminalFontSizeController({
-	onFontSizeChange: applyFontSizeToAllTerminals,
-});
-
-const terminalInstanceManager = createTerminalInstanceManager<KittyState>({
+const terminalInstanceOrchestration = createTerminalInstanceOrchestration<
+	KittyState,
+	TerminalHandle
+>({
 	terminalHandles,
-	createTerminalInstance: () =>
+	createTerminalInstance: (fontSize) =>
 		createTerminalInstance({
-			fontSize: terminalFontSizeController.getCurrentFontSize(),
+			fontSize,
 			getToken,
 		}),
-	createFitAddon: () => new FitAddon(),
-	createUnicode11Addon: () => new Unicode11Addon(),
-	createClipboardAddon: () =>
-		new ClipboardAddon(createTerminalClipboardBase64(), createTerminalClipboardProvider()),
 	createKittyState,
 	syncTerminalWebLinks,
-	registerOscHandlers: (id, terminal) =>
-		registerTerminalOscHandlers(id, terminal, { sendInput, getToken }),
-	ensureMode: (id) => {
-		lifecycle.ensureMode(id);
-	},
-	onShiftEnter: (id) => {
-		lifecycle.setInput(id, true);
-		void beginTerminal(id);
-		sendInput(id, '\x0a');
-	},
-	onData: (id, data) => {
-		lifecycle.setInput(id, true);
-		void beginTerminal(id);
-		captureCpr(id, data);
-		sendInput(id, data);
-	},
-	onBinary: (id, data) => {
-		lifecycle.setInput(id, true);
-		void beginTerminal(id);
-		sendInput(id, data);
-	},
-	onRender: (id) => {
-		renderHealth.noteRender(id);
-	},
-	attachOpen: ({ id, handle, container, active }) => {
-		terminalAttachOpenLifecycle.attach({ id, handle, container, active });
-	},
+	ensureMode: (id) => lifecycle.ensureMode(id),
+	setInput: (id, value) => lifecycle.setInput(id, value),
+	beginTerminal: (id) => beginTerminal(id),
+	sendInput,
+	captureCpr,
+	noteRender: (id) => renderHealth.noteRender(id),
+	getToken,
+	getHandle: (id) => terminalHandles.get(id),
+	fitTerminal: (id, started) => terminalViewportResizeController.fitTerminal(id, started),
+	hasStarted: (id) => lifecycle.hasStarted(id),
+	ensureOverlay: (id) => terminalKittyController.ensureOverlay(id),
+	loadRendererAddon: (id, handle) => terminalRendererAddonState.load(id, handle),
+	fitWithPreservedViewport: (handle) =>
+		terminalViewportResizeController.fitWithPreservedViewport(handle),
+	resizeToFit: (id, handle) => terminalResizeBridge.resizeToFit(id, handle),
+	scheduleFitStabilization: (id, reason) =>
+		terminalViewportResizeController.scheduleFitStabilization(id, reason),
+	flushOutput: terminalOutputBuffer.flushOutput,
+	markAttached: (id) => terminalAttachState.markAttached(id),
 });
 
-const attachTerminal = (
-	id: string,
-	container: HTMLDivElement | null,
-	active: boolean,
-): TerminalHandle => {
-	return terminalInstanceManager.attach(id, container, active);
-};
+const terminalFontSizeController = terminalInstanceOrchestration.terminalFontSizeController;
+const terminalInstanceManager = terminalInstanceOrchestration.terminalInstanceManager;
+const attachTerminal = terminalInstanceOrchestration.attachTerminal;
 
 const terminalResourceLifecycle = createTerminalResourceLifecycle<TerminalHandle>({
 	clearBootstrapFetchTimer: (id) => clearTimeoutMap(bootstrapFetchTimers, id),

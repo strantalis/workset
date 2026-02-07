@@ -1,6 +1,6 @@
 import type { TerminalModesState } from './terminalLifecycle';
 
-type ResettableTerminalHandle = {
+export type ResettableTerminalHandle = {
 	terminal: {
 		reset: () => void;
 		clear: () => void;
