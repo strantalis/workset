@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (main-agent pass 32)
+Last updated: 2026-02-07 (main-agent pass 33)
 
 ## Goal
 
@@ -35,8 +35,8 @@ Largest files by LOC right now:
 - [x] `#124` Guardrails (must start first)
 - [ ] `#115` FE-DIFF (slice 14 landed; file-list sidebar extracted)
 - [ ] `#116` FE-WORKSPACE (slice 7 landed; modal sections split)
-- [ ] `#117` FE-TERMINAL (slice 19 landed; service now 658 LOC)
-- [ ] `#118` FE-PLATFORM (slice 5 landed; adapter removed)
+- [x] `#117` FE-TERMINAL (slice 20 landed; service now 491 LOC)
+- [ ] `#118` FE-PLATFORM (slice 6 landed; `api/github.ts` split to 46 LOC)
 - [x] `#119` BE-SESSIOND (structural splits complete)
 - [x] `#120` BE-GITHUB (slice 5 + tests tranche 2 landed)
 - [x] `#121` BE-TERMEMU (extraction landed; `termemu.go` now 221 LOC)
@@ -204,6 +204,7 @@ Remaining tasks:
   Latest slice landed: extracted clipboard/runtime clipboard helpers, OSC/theme response handling, and font-size preference control into dedicated modules (`terminalClipboard.ts`, `terminalOscHandlers.ts`, `terminalFontSizeController.ts`).
   Latest slice landed: extracted terminal context keying/registry ownership into `terminalContextRegistry.ts` and routed service context access through that boundary.
   Latest slice landed: extracted debug-overlay state and mouse suppression/tail state into `terminalDebugState.ts` and `terminalMouseState.ts`.
+  Latest slice landed: extracted runtime helper boundary (`terminalServiceRuntime.ts`) and dependency builders (`terminalServiceDeps.ts`, `terminalServiceState.ts`) and reduced facade wiring in `terminalService.ts`.
 - [x] Extract attach/open lifecycle sequencing into a standalone module.
   Slice landed: extracted open/create/connect + retry sequencing into `terminalAttachOpenLifecycle.ts`.
 - [x] Extract event subscription wiring into a standalone module.
@@ -217,7 +218,7 @@ Remaining tasks:
 - [x] Extract replay/ack buffering orchestration into a standalone module.
   Slice landed: extracted replay/ack coordination into `terminalReplayAckOrchestrator.ts`.
 - [x] Add service-level tests for reconnect/attach/detach/stream-release (`terminalStreamOrchestrator.test.ts`).
-- [ ] Shrink `terminalService.ts` to orchestration-only facade.
+- [x] Shrink `terminalService.ts` to orchestration-only facade (`terminalService.ts` is now 491 LOC).
 
 Verification:
 
@@ -240,6 +241,8 @@ Tasks:
 
 - [x] Split monolithic API module into domain entrypoints.
   Slices landed: extracted updates/app-version domain into `api/updates.ts`; extracted GitHub operations into `api/github.ts`; extracted repo-diff watch/diff APIs into `api/repo-diff.ts`; extracted settings/session/group/alias APIs into `api/settings.ts`; extracted workspace APIs into `api/workspaces.ts`; extracted terminal/layout APIs into `api/terminal-layout.ts`, all with compatibility re-exports from `api.ts`.
+- [x] Split oversized GitHub domain client into focused modules.
+  Slice landed: extracted GitHub auth/review/PR/operations/mapping/user modules under `src/lib/api/github/*`; `src/lib/api/github.ts` is now a 46 LOC export barrel.
 - [x] Keep backward-compatible imports through adapter layer during migration.
 - [x] Remove adapter after callsites are migrated.
   Slice landed: migrated remaining frontend/test callsites to domain API modules, moved skills API into `api/skills.ts`, and removed the `src/lib/api.ts` compatibility barrel.
@@ -403,6 +406,6 @@ Verification:
 
 ## Immediate Next Actions
 
-1. Continue `#117` reduction toward issue target `<500` (program target met at 658 LOC; issue target still open).
-2. Continue `#118` reduction (`api/github.ts` is still 590 LOC vs `<400` issue target).
-3. Reconcile GitHub issue status/checklists for `#115`-`#123` to match shipped commits.
+1. Reconcile GitHub status for `#117` closure and `#118` progress evidence.
+2. Continue `#118` settings-panel orchestration review against issue acceptance criteria.
+3. Continue `#115` and `#116` large-component reductions.
