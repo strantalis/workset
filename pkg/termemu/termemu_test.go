@@ -36,6 +36,33 @@ func TestTerminalHistoryCapture(t *testing.T) {
 	}
 }
 
+func TestTerminalSnapshotANSIPrimary(t *testing.T) {
+	term := New(2, 1)
+	term.Write(context.Background(), []byte("A"))
+
+	got := term.SnapshotANSI()
+	want := "\x1b[?1049l\x1b[2J\x1b[H\x1b[1;1HA \x1b[0m\x1b[?25h\x1b[1;2H"
+	if got != want {
+		t.Fatalf("unexpected ANSI snapshot:\nwant: %q\n got: %q", want, got)
+	}
+}
+
+func TestWriteRowANSITrimTrailingWhitespace(t *testing.T) {
+	row := Row{
+		Cells: []Cell{
+			{Ch: 'A'},
+			{Ch: 'B', Attr: Attr{Bold: true}},
+			{Ch: ' '},
+			{Ch: 0},
+		},
+	}
+	var b strings.Builder
+	writeRowANSI(&b, row, 4)
+	if got := b.String(); got != "A\x1b[0;1;39;49mB" {
+		t.Fatalf("unexpected row ANSI: %q", got)
+	}
+}
+
 func TestTerminalAltScreen(t *testing.T) {
 	term := New(4, 2)
 	term.Write(context.Background(), []byte("\x1b[?1049h"))

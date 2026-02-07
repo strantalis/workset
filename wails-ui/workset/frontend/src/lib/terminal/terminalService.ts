@@ -22,6 +22,7 @@ import { stripMouseReports } from './inputFilter';
 import { createTerminalLifecycle } from './terminalLifecycle';
 import { captureViewportSnapshot, resolveViewportTargetLine } from './viewport';
 import { createTerminalStreamOrchestrator } from './terminalStreamOrchestrator';
+import { createTerminalResizeBridge } from './terminalResizeBridge';
 
 export type TerminalViewState = {
 	status: string;
@@ -267,7 +268,6 @@ const statsMap = new Map<
 const renderStatsMap = new Map<string, { lastRenderAt: number; renderCount: number }>();
 const pendingInput = new Map<string, string>();
 const pendingRenderCheck = new Map<string, number>();
-const pendingRedraw = new Set<string>();
 const renderCheckLogged = new Set<string>();
 const reopenAttempted = new Set<string>();
 const pendingAckBytes = new Map<string, number>();
@@ -526,7 +526,7 @@ const destroyTerminalState = (id: string): void => {
 	statsMap.delete(id);
 	renderStatsMap.delete(id);
 	pendingInput.delete(id);
-	pendingRedraw.delete(id);
+	terminalResizeBridge.clear(id);
 	renderCheckLogged.delete(id);
 	reopenAttempted.delete(id);
 	pendingAckBytes.delete(id);
@@ -1116,16 +1116,7 @@ const attachTerminal = (
 						const current = terminalHandles.get(id);
 						if (!current) return;
 						fitWithPreservedViewport(current);
-						const updated = current.fitAddon.proposeDimensions();
-						if (updated) {
-							const workspaceId = getWorkspaceId(id);
-							const terminalId = getTerminalId(id);
-							if (workspaceId && terminalId) {
-								void terminalTransport
-									.resize(workspaceId, terminalId, updated.cols, updated.rows)
-									.catch(() => undefined);
-							}
-						}
+						terminalResizeBridge.resizeToFit(id, current);
 					})
 					.catch(() => undefined);
 			}
@@ -1133,16 +1124,7 @@ const attachTerminal = (
 		}
 		handle.container.setAttribute('data-active', 'true');
 		fitWithPreservedViewport(handle);
-		const dims = handle.fitAddon.proposeDimensions();
-		if (dims) {
-			const workspaceId = getWorkspaceId(id);
-			const terminalId = getTerminalId(id);
-			if (workspaceId && terminalId) {
-				void terminalTransport
-					.resize(workspaceId, terminalId, dims.cols, dims.rows)
-					.catch(() => undefined);
-			}
-		}
+		terminalResizeBridge.resizeToFit(id, handle);
 		if (active) {
 			handle.terminal.focus();
 		}
@@ -1184,16 +1166,7 @@ const fitTerminal = (id: string, resizeSession: boolean): void => {
 	fitWithPreservedViewport(handle);
 	forceRedraw(id);
 	if (!resizeSession) return;
-	const dims = handle.fitAddon.proposeDimensions();
-	if (dims) {
-		const workspaceId = getWorkspaceId(id);
-		const terminalId = getTerminalId(id);
-		if (workspaceId && terminalId) {
-			void terminalTransport
-				.resize(workspaceId, terminalId, dims.cols, dims.rows)
-				.catch(() => undefined);
-		}
-	}
+	terminalResizeBridge.resizeToFit(id, handle);
 };
 
 const scheduleFitStabilization = (id: string, reason: string): void => {
@@ -1304,7 +1277,7 @@ const resetSessionState = (id: string): void => {
 	}
 	pendingRenderCheck.delete(id);
 	renderStatsMap.delete(id);
-	pendingRedraw.delete(id);
+	terminalResizeBridge.clear(id);
 	if (mouseInputTail[id]) {
 		mouseInputTail = { ...mouseInputTail, [id]: '' };
 	}
@@ -1361,34 +1334,18 @@ const logDebug = (id: string, event: string, details: Record<string, unknown>): 
 	void terminalTransport.logDebug(workspaceId, terminalId, event, JSON.stringify(details));
 };
 
+const terminalResizeBridge = createTerminalResizeBridge({
+	getWorkspaceId,
+	getTerminalId,
+	resize: (workspaceId, terminalId, cols, rows) =>
+		terminalTransport.resize(workspaceId, terminalId, cols, rows),
+	logDebug,
+});
+
 const forceRedraw = (id: string): void => {
 	const handle = terminalHandles.get(id);
 	if (!handle) return;
 	handle.terminal.refresh(0, handle.terminal.rows - 1);
-};
-
-const nudgeTerminalRedraw = (id: string): void => {
-	if (pendingRedraw.has(id)) return;
-	const handle = terminalHandles.get(id);
-	if (!handle) return;
-	const dims = handle.fitAddon.proposeDimensions();
-	if (!dims) return;
-	const workspaceId = getWorkspaceId(id);
-	const terminalId = getTerminalId(id);
-	if (!workspaceId || !terminalId) {
-		handle.terminal.write('');
-		return;
-	}
-	const cols = Math.max(2, dims.cols);
-	const rows = Math.max(1, dims.rows);
-	const nudgeCols = cols + 1;
-	pendingRedraw.add(id);
-	void terminalTransport.resize(workspaceId, terminalId, nudgeCols, rows).catch(() => undefined);
-	logDebug(id, 'redraw_nudge', { cols, rows, nudgeCols });
-	window.setTimeout(() => {
-		void terminalTransport.resize(workspaceId, terminalId, cols, rows).catch(() => undefined);
-		pendingRedraw.delete(id);
-	}, 60);
 };
 
 const hasVisibleContent = (terminal: Terminal): boolean => {
@@ -1627,7 +1584,7 @@ const scheduleRenderCheck = (id: string): void => {
 					const viewport = captureTerminalViewport(handle.terminal);
 					handle.terminal.open(handle.container);
 					fitWithPreservedViewport(handle, viewport);
-					nudgeTerminalRedraw(id);
+					terminalResizeBridge.nudgeRedraw(id, handle);
 				} catch {
 					// Best-effort re-open.
 				}
@@ -1637,7 +1594,7 @@ const scheduleRenderCheck = (id: string): void => {
 				const current = terminalHandles.get(id);
 				if (!current) return;
 				if (!hasVisibleContent(current.terminal)) {
-					nudgeTerminalRedraw(id);
+					terminalResizeBridge.nudgeRedraw(id, current);
 				}
 			}, RENDER_RECOVERY_DELAY_MS);
 		}, RENDER_CHECK_DELAY_MS),
@@ -1660,7 +1617,7 @@ const scheduleRenderHealthCheck = (id: string, payloadBytes: number): void => {
 				const updated = renderStatsMap.get(id);
 				if (updated && updated.lastRenderAt >= startedAt) return;
 				if (!hasVisibleContent(handle.terminal)) {
-					nudgeTerminalRedraw(id);
+					terminalResizeBridge.nudgeRedraw(id, handle);
 				}
 				logDebug(id, 'render_health_check', {
 					rendered: updated ? updated.lastRenderAt >= startedAt : false,
@@ -2151,7 +2108,7 @@ export const syncTerminal = (input: {
 				forceRedraw(terminalKey);
 				const handle = terminalHandles.get(terminalKey);
 				if (handle && !hasVisibleContent(handle.terminal)) {
-					nudgeTerminalRedraw(terminalKey);
+					terminalResizeBridge.nudgeRedraw(terminalKey, handle);
 				}
 			});
 		}

@@ -8,6 +8,23 @@ import (
 	"github.com/strantalis/workset/internal/ops"
 )
 
+type readHelpersGetPullRequestCall struct {
+	owner  string
+	repo   string
+	number int
+}
+
+type readHelpersGetRepoDefaultBranchCall struct {
+	owner string
+	repo  string
+}
+
+type readHelpersGetCheckRunAnnotationsCall struct {
+	owner      string
+	repo       string
+	checkRunID int64
+}
+
 type readHelpersPRCall struct {
 	owner   string
 	repo    string
@@ -26,19 +43,33 @@ type readHelpersCheckRunCall struct {
 }
 
 type readHelpersGitHubClient struct {
-	listPullRequestsCalls []readHelpersPRCall
-	listCheckRunsCalls    []readHelpersCheckRunCall
+	getPullRequestCalls       []readHelpersGetPullRequestCall
+	getRepoDefaultBranchCalls []readHelpersGetRepoDefaultBranchCall
+	getCheckAnnotationsCalls  []readHelpersGetCheckRunAnnotationsCall
+	listPullRequestsCalls     []readHelpersPRCall
+	listCheckRunsCalls        []readHelpersCheckRunCall
 
-	listPullRequestsFunc func(ctx context.Context, owner, repo, head, state string, page, perPage int) ([]GitHubPullRequest, int, error)
-	listCheckRunsFunc    func(ctx context.Context, owner, repo, ref string, page, perPage int) ([]PullRequestCheckJSON, int, error)
+	getPullRequestFunc         func(ctx context.Context, owner, repo string, number int) (GitHubPullRequest, error)
+	getRepoDefaultBranchFunc   func(ctx context.Context, owner, repo string) (string, error)
+	getCheckRunAnnotationsFunc func(ctx context.Context, owner, repo string, checkRunID int64) ([]CheckAnnotationJSON, error)
+	listPullRequestsFunc       func(ctx context.Context, owner, repo, head, state string, page, perPage int) ([]GitHubPullRequest, int, error)
+	listCheckRunsFunc          func(ctx context.Context, owner, repo, ref string, page, perPage int) ([]PullRequestCheckJSON, int, error)
 }
 
 func (c *readHelpersGitHubClient) CreatePullRequest(_ context.Context, _ string, _ string, _ GitHubNewPullRequest) (GitHubPullRequest, error) {
 	return GitHubPullRequest{}, nil
 }
 
-func (c *readHelpersGitHubClient) GetPullRequest(_ context.Context, _ string, _ string, _ int) (GitHubPullRequest, error) {
-	return GitHubPullRequest{}, nil
+func (c *readHelpersGitHubClient) GetPullRequest(ctx context.Context, owner, repo string, number int) (GitHubPullRequest, error) {
+	c.getPullRequestCalls = append(c.getPullRequestCalls, readHelpersGetPullRequestCall{
+		owner:  owner,
+		repo:   repo,
+		number: number,
+	})
+	if c.getPullRequestFunc == nil {
+		return GitHubPullRequest{}, nil
+	}
+	return c.getPullRequestFunc(ctx, owner, repo, number)
 }
 
 func (c *readHelpersGitHubClient) ListPullRequests(ctx context.Context, owner, repo, head, state string, page, perPage int) ([]GitHubPullRequest, int, error) {
@@ -86,12 +117,27 @@ func (c *readHelpersGitHubClient) ListCheckRuns(ctx context.Context, owner, repo
 	return c.listCheckRunsFunc(ctx, owner, repo, ref, page, perPage)
 }
 
-func (c *readHelpersGitHubClient) GetCheckRunAnnotations(_ context.Context, _ string, _ string, _ int64) ([]CheckAnnotationJSON, error) {
-	return nil, nil
+func (c *readHelpersGitHubClient) GetCheckRunAnnotations(ctx context.Context, owner, repo string, checkRunID int64) ([]CheckAnnotationJSON, error) {
+	c.getCheckAnnotationsCalls = append(c.getCheckAnnotationsCalls, readHelpersGetCheckRunAnnotationsCall{
+		owner:      owner,
+		repo:       repo,
+		checkRunID: checkRunID,
+	})
+	if c.getCheckRunAnnotationsFunc == nil {
+		return nil, nil
+	}
+	return c.getCheckRunAnnotationsFunc(ctx, owner, repo, checkRunID)
 }
 
-func (c *readHelpersGitHubClient) GetRepoDefaultBranch(_ context.Context, _ string, _ string) (string, error) {
-	return "", nil
+func (c *readHelpersGitHubClient) GetRepoDefaultBranch(ctx context.Context, owner, repo string) (string, error) {
+	c.getRepoDefaultBranchCalls = append(c.getRepoDefaultBranchCalls, readHelpersGetRepoDefaultBranchCall{
+		owner: owner,
+		repo:  repo,
+	})
+	if c.getRepoDefaultBranchFunc == nil {
+		return "", nil
+	}
+	return c.getRepoDefaultBranchFunc(ctx, owner, repo)
 }
 
 func (c *readHelpersGitHubClient) GetCurrentUser(_ context.Context) (GitHubUserJSON, []string, error) {
@@ -108,6 +154,256 @@ func (c *readHelpersGitHubClient) GetReviewThreadID(_ context.Context, _ string)
 
 func (c *readHelpersGitHubClient) ResolveReviewThread(_ context.Context, _ string, _ bool) (bool, error) {
 	return false, nil
+}
+
+type readHelpersGitHubProvider struct {
+	client      GitHubClient
+	clientErr   error
+	importErr   error
+	clientHosts []string
+	importCalls int
+}
+
+func (p *readHelpersGitHubProvider) AuthStatus(_ context.Context) (GitHubAuthStatusJSON, error) {
+	return GitHubAuthStatusJSON{}, nil
+}
+
+func (p *readHelpersGitHubProvider) SetToken(_ context.Context, _ string) (GitHubAuthStatusJSON, error) {
+	return GitHubAuthStatusJSON{}, nil
+}
+
+func (p *readHelpersGitHubProvider) ClearAuth(_ context.Context) error {
+	return nil
+}
+
+func (p *readHelpersGitHubProvider) Client(_ context.Context, host string) (GitHubClient, error) {
+	p.clientHosts = append(p.clientHosts, host)
+	if p.clientErr != nil {
+		return nil, p.clientErr
+	}
+	return p.client, nil
+}
+
+func (p *readHelpersGitHubProvider) ImportPATFromEnv(_ context.Context) (bool, error) {
+	p.importCalls++
+	if p.importErr != nil {
+		return false, p.importErr
+	}
+	return false, nil
+}
+
+func setupGitHubServiceRepo(t *testing.T) (*testEnv, string, string) {
+	t.Helper()
+	ctx := context.Background()
+	env := newTestEnv(t)
+	root := env.createWorkspace(ctx, "demo")
+	local := env.createLocalRepo("repo-a")
+	result, err := env.svc.AddRepo(ctx, RepoAddInput{
+		Workspace:  WorkspaceSelector{Value: root},
+		Name:       "repo-a",
+		NameSet:    true,
+		SourcePath: local,
+	})
+	if err != nil {
+		t.Fatalf("AddRepo: %v", err)
+	}
+	return env, root, result.WorktreePath
+}
+
+func TestGitHubClientRequiresAuthWhenProviderMissing(t *testing.T) {
+	svc := &Service{}
+
+	_, err := svc.githubClient(context.Background(), defaultGitHubHost)
+	if err == nil {
+		t.Fatalf("expected auth error")
+	}
+	authErr := requireErrorType[AuthRequiredError](t, err)
+	if authErr.Message != "GitHub authentication required" {
+		t.Fatalf("unexpected message: %q", authErr.Message)
+	}
+}
+
+func TestGitHubClientPropagatesPATImportError(t *testing.T) {
+	wantErr := errors.New("import failed")
+	svc := &Service{
+		github: &readHelpersGitHubProvider{importErr: wantErr},
+	}
+
+	_, err := svc.githubClient(context.Background(), defaultGitHubHost)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected %v, got %v", wantErr, err)
+	}
+}
+
+func TestGitHubClientReturnsClientForHost(t *testing.T) {
+	client := &readHelpersGitHubClient{}
+	provider := &readHelpersGitHubProvider{client: client}
+	svc := &Service{github: provider}
+
+	got, err := svc.githubClient(context.Background(), "ghe.example.com")
+	if err != nil {
+		t.Fatalf("githubClient: %v", err)
+	}
+	if got != client {
+		t.Fatalf("unexpected client: %#v", got)
+	}
+	if provider.importCalls != 1 {
+		t.Fatalf("expected one PAT import attempt, got %d", provider.importCalls)
+	}
+	if len(provider.clientHosts) != 1 || provider.clientHosts[0] != "ghe.example.com" {
+		t.Fatalf("unexpected host calls: %+v", provider.clientHosts)
+	}
+}
+
+func TestResolveDefaultBranchUsesGitHubDefault(t *testing.T) {
+	client := &readHelpersGitHubClient{
+		getRepoDefaultBranchFunc: func(_ context.Context, owner, repo string) (string, error) {
+			if owner != "base-org" || repo != "base-repo" {
+				t.Fatalf("unexpected repo lookup: %s/%s", owner, repo)
+			}
+			return "main", nil
+		},
+	}
+	svc := &Service{}
+
+	branch, err := svc.resolveDefaultBranch(context.Background(), client, remoteInfo{Owner: "base-org", Repo: "base-repo"}, repoResolution{})
+	if err != nil {
+		t.Fatalf("resolveDefaultBranch: %v", err)
+	}
+	if branch != "main" {
+		t.Fatalf("unexpected branch: %q", branch)
+	}
+}
+
+func TestResolveDefaultBranchFallsBackToRepoDefaults(t *testing.T) {
+	client := &readHelpersGitHubClient{
+		getRepoDefaultBranchFunc: func(_ context.Context, _ string, _ string) (string, error) {
+			return "", errors.New("api unavailable")
+		},
+	}
+	svc := &Service{}
+
+	branch, err := svc.resolveDefaultBranch(context.Background(), client, remoteInfo{}, repoResolution{
+		RepoDefaults: ops.RepoDefaults{DefaultBranch: "develop"},
+	})
+	if err != nil {
+		t.Fatalf("resolveDefaultBranch: %v", err)
+	}
+	if branch != "develop" {
+		t.Fatalf("unexpected branch: %q", branch)
+	}
+}
+
+func TestResolveDefaultBranchRequiresFallbackWhenGitHubUnavailable(t *testing.T) {
+	client := &readHelpersGitHubClient{
+		getRepoDefaultBranchFunc: func(_ context.Context, _ string, _ string) (string, error) {
+			return "", errors.New("api unavailable")
+		},
+	}
+	svc := &Service{}
+
+	_, err := svc.resolveDefaultBranch(context.Background(), client, remoteInfo{}, repoResolution{})
+	if err == nil {
+		t.Fatalf("expected validation error")
+	}
+	validationErr := requireErrorType[ValidationError](t, err)
+	if validationErr.Message != "base branch required" {
+		t.Fatalf("unexpected message: %q", validationErr.Message)
+	}
+}
+
+func TestResolvePullRequestUsesProvidedNumber(t *testing.T) {
+	env, root, repoPath := setupGitHubServiceRepo(t)
+	env.git.remoteURLs[repoPath] = map[string][]string{
+		"origin": {"git@github.com:head-org/head-repo.git"},
+	}
+	env.git.remoteExists[repoPath] = map[string]bool{"upstream": false}
+
+	client := &readHelpersGitHubClient{
+		getPullRequestFunc: func(_ context.Context, owner, repo string, number int) (GitHubPullRequest, error) {
+			if owner != "head-org" || repo != "head-repo" || number != 27 {
+				t.Fatalf("unexpected pull request lookup: owner=%s repo=%s number=%d", owner, repo, number)
+			}
+			return GitHubPullRequest{
+				Number: 27,
+				Title:  "Add tests",
+			}, nil
+		},
+	}
+	provider := &readHelpersGitHubProvider{client: client}
+	env.svc.github = provider
+
+	pr, headInfo, baseInfo, gotClient, resolution, err := env.svc.resolvePullRequest(context.Background(), PullRequestStatusInput{
+		Workspace: WorkspaceSelector{Value: root},
+		Repo:      "repo-a",
+		Number:    27,
+	})
+	if err != nil {
+		t.Fatalf("resolvePullRequest: %v", err)
+	}
+	if pr.Number != 27 || pr.Title != "Add tests" {
+		t.Fatalf("unexpected pull request: %+v", pr)
+	}
+	if headInfo.Owner != "head-org" || baseInfo.Owner != "head-org" {
+		t.Fatalf("unexpected remote info: head=%+v base=%+v", headInfo, baseInfo)
+	}
+	if gotClient != client {
+		t.Fatalf("unexpected github client: %#v", gotClient)
+	}
+	if resolution.Repo.Name != "repo-a" {
+		t.Fatalf("unexpected resolution: %+v", resolution)
+	}
+	if len(client.listPullRequestsCalls) != 0 {
+		t.Fatalf("expected no ListPullRequests calls, got %d", len(client.listPullRequestsCalls))
+	}
+	if len(client.getPullRequestCalls) != 1 {
+		t.Fatalf("expected one GetPullRequest call, got %d", len(client.getPullRequestCalls))
+	}
+}
+
+func TestResolvePullRequestFindsNumberFromBranch(t *testing.T) {
+	env, root, repoPath := setupGitHubServiceRepo(t)
+	env.git.remoteURLs[repoPath] = map[string][]string{
+		"origin": {"git@github.com:head-org/head-repo.git"},
+	}
+	env.git.remoteExists[repoPath] = map[string]bool{"upstream": false}
+
+	client := &readHelpersGitHubClient{
+		listPullRequestsFunc: func(_ context.Context, owner, repo, head, state string, page, perPage int) ([]GitHubPullRequest, int, error) {
+			if owner != "head-org" || repo != "head-repo" {
+				t.Fatalf("unexpected list repo: %s/%s", owner, repo)
+			}
+			if head != "head-org:feature/topic" || state != "open" {
+				t.Fatalf("unexpected list query: head=%q state=%q", head, state)
+			}
+			if page != 1 || perPage != 50 {
+				t.Fatalf("unexpected pagination: page=%d perPage=%d", page, perPage)
+			}
+			return []GitHubPullRequest{{Number: 34}}, 0, nil
+		},
+		getPullRequestFunc: func(_ context.Context, _ string, _ string, number int) (GitHubPullRequest, error) {
+			return GitHubPullRequest{Number: number, Title: "Topic PR"}, nil
+		},
+	}
+	env.svc.github = &readHelpersGitHubProvider{client: client}
+
+	pr, _, _, _, _, err := env.svc.resolvePullRequest(context.Background(), PullRequestStatusInput{
+		Workspace: WorkspaceSelector{Value: root},
+		Repo:      "repo-a",
+		Branch:    "feature/topic",
+	})
+	if err != nil {
+		t.Fatalf("resolvePullRequest: %v", err)
+	}
+	if pr.Number != 34 {
+		t.Fatalf("unexpected pull request: %+v", pr)
+	}
+	if len(client.listPullRequestsCalls) != 1 {
+		t.Fatalf("expected one ListPullRequests call, got %d", len(client.listPullRequestsCalls))
+	}
+	if len(client.getPullRequestCalls) != 1 || client.getPullRequestCalls[0].number != 34 {
+		t.Fatalf("unexpected GetPullRequest calls: %+v", client.getPullRequestCalls)
+	}
 }
 
 func TestResolveRemoteInfoAutoDetectsUpstream(t *testing.T) {

@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (subagent pass 14)
+Last updated: 2026-02-07 (subagent pass 15)
 
 ## Goal
 
@@ -20,9 +20,9 @@ Largest files by LOC right now:
 
 - `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (3972)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2476)
-- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (2266)
-- `pkg/termemu/termemu.go` (1214)
+- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (2223)
 - `wails-ui/workset/frontend/src/lib/api.ts` (1312)
+- `pkg/termemu/termemu.go` (972)
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceManager.svelte` (1022)
 - `wails-ui/workset/app_diffs.go` (926)
@@ -32,11 +32,11 @@ Largest files by LOC right now:
 - [x] `#124` Guardrails (must start first)
 - [ ] `#115` FE-DIFF (slice 3 landed)
 - [ ] `#116` FE-WORKSPACE (slice 5 landed)
-- [ ] `#117` FE-TERMINAL (slice 5 tests landed)
+- [ ] `#117` FE-TERMINAL (slice 5 bridge + tests landed)
 - [ ] `#118` FE-PLATFORM
 - [x] `#119` BE-SESSIOND (structural splits complete)
-- [ ] `#120` BE-GITHUB (slice 5 landed)
-- [ ] `#121` BE-TERMEMU (slice 2 landed)
+- [ ] `#120` BE-GITHUB (slice 5 + tests tranche 2 landed)
+- [ ] `#121` BE-TERMEMU (slice 3 landed)
 - [ ] `#122` BE-UPDATER (slice 2 landed)
 - [ ] `#123` TEST-E2E
 
@@ -176,6 +176,7 @@ Remaining tasks:
 - [x] Move web-links transport/renderer adapter wiring into `terminalWebLinks.ts`.
 - [x] Extract reconnect/attach/detach stream orchestration into `terminalStreamOrchestrator.ts`.
 - [ ] Remove remaining renderer/transport coupling from service shell.
+  Slice landed: extracted resize/transport coupling into `terminalResizeBridge.ts`.
 - [x] Add service-level tests for reconnect/attach/detach/stream-release (`terminalStreamOrchestrator.test.ts`).
 - [ ] Shrink `terminalService.ts` to orchestration-only facade.
 
@@ -258,6 +259,7 @@ Tasks:
 - [x] Extract GraphQL thread-mapping helpers into `github_service_thread_graphql_helpers.go`.
 - [ ] Add unit tests for each extracted service boundary.
   Tranche 1 landed: read-helper and GraphQL thread helper tests (`github_service_read_helpers_test.go`, `github_service_thread_graphql_helpers_test.go`).
+  Tranche 2 landed: read/status/write helper boundary tests (`github_service_read_helpers_test.go`, `github_service_status_test.go`, `github_service_write_helpers_test.go`).
 
 Verification:
 
@@ -279,7 +281,7 @@ Tasks:
 
 - [x] Extract parser state machine boundary into `pkg/termemu/parser.go`.
 - [x] Extract state transition engine into `pkg/termemu/state_engine.go`.
-- [ ] Extract snapshot renderer/serializer.
+- [x] Extract snapshot renderer/serializer into `pkg/termemu/snapshot_ansi.go` and `pkg/termemu/snapshot_state.go`.
 - [ ] Backfill regression tests for escape-sequence edge cases.
 
 Verification:
@@ -350,4 +352,4 @@ Verification:
 
 1. Run `#117` slice 5 completion: remove remaining renderer/transport coupling and shrink `terminalService.ts`.
 2. Run `#115` slice 4: extract render queue/selection/file-fetch controller from `RepoDiff.svelte`.
-3. Run `#121` slice 3: extract snapshot renderer/serializer from `termemu.go`.
+3. Run `#121` slice 4: backfill additional escape-sequence regression tests.

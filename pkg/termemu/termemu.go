@@ -3,10 +3,8 @@ package termemu
 import (
 	"bytes"
 	"context"
-	"encoding/gob"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -311,149 +309,10 @@ func (t *Terminal) Write(ctx context.Context, data []byte) {
 	}
 }
 
-func (t *Terminal) Snapshot() Snapshot {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return Snapshot{
-		Cols:         t.cols,
-		Rows:         t.rows,
-		Modes:        t.modes,
-		Cursor:       t.cursor,
-		SavedCursor:  t.saved,
-		Attr:         t.attr,
-		SavedAttr:    t.savedAttr,
-		SavedG0:      t.savedG0,
-		SavedG1:      t.savedG1,
-		SavedShifted: t.savedShifted,
-		ScrollTop:    t.scrollTop,
-		ScrollBottom: t.scrollBottom,
-		Primary:      cloneRows(t.primary),
-		Alt:          cloneRows(t.alt),
-		AltActive:    t.modes.AltScreen,
-		G0:           t.g0,
-		G1:           t.g1,
-		Shifted:      t.shifted,
-		TabStops:     cloneTabStops(t.tabStops),
-	}
-}
-
-func (t *Terminal) Restore(snapshot Snapshot) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.cols = snapshot.Cols
-	t.rows = snapshot.Rows
-	t.modes = snapshot.Modes
-	t.cursor = snapshot.Cursor
-	t.saved = snapshot.SavedCursor
-	t.attr = snapshot.Attr
-	t.savedAttr = snapshot.SavedAttr
-	t.savedG0 = snapshot.SavedG0
-	t.savedG1 = snapshot.SavedG1
-	t.savedShifted = snapshot.SavedShifted
-	t.scrollTop = snapshot.ScrollTop
-	t.scrollBottom = snapshot.ScrollBottom
-	t.primary = cloneRows(snapshot.Primary)
-	t.alt = cloneRows(snapshot.Alt)
-	t.modes.AltScreen = snapshot.AltActive
-	t.g0 = snapshot.G0
-	t.g1 = snapshot.G1
-	t.shifted = snapshot.Shifted
-	if snapshot.TabStops != nil {
-		t.tabStops = cloneTabStops(snapshot.TabStops)
-	} else {
-		t.tabStops = defaultTabStops(t.cols)
-		if snapshot.G1 == 0 {
-			t.g1 = charsetDEC
-		}
-		if snapshot.SavedG1 == 0 {
-			t.savedG1 = charsetDEC
-		}
-	}
-}
-
-func (t *Terminal) SnapshotANSI() string {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.snapshotANSILocked()
-}
-
-// SnapshotANSIWithHistory returns an ANSI snapshot that preserves primary-screen history.
-// It is only emitted when the terminal is in the primary screen and history exists.
-func (t *Terminal) SnapshotANSIWithHistory() string {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.modes.AltScreen || len(t.history) == 0 {
-		return t.snapshotANSILocked()
-	}
-	var b strings.Builder
-	for _, row := range t.history {
-		writeRowANSI(&b, row, t.cols)
-		b.WriteString("\x1b[0m\r\n")
-	}
-	b.WriteString(t.snapshotANSILocked())
-	return b.String()
-}
-
-func (t *Terminal) snapshotANSILocked() string {
-	screen := t.active()
-	var b strings.Builder
-	if t.modes.AltScreen {
-		b.WriteString("\x1b[?1049h")
-	} else {
-		b.WriteString("\x1b[?1049l")
-	}
-	b.WriteString("\x1b[2J\x1b[H")
-	current := Attr{}
-	for r := 0; r < t.rows; r++ {
-		b.WriteString(fmt.Sprintf("\x1b[%d;1H", r+1))
-		row := screen[r]
-		for c := 0; c < t.cols; c++ {
-			cell := row.Cells[c]
-			if cell.Attr != current {
-				b.WriteString(sgrForAttr(cell.Attr))
-				current = cell.Attr
-			}
-			if cell.Ch == 0 {
-				b.WriteByte(' ')
-			} else {
-				b.WriteRune(cell.Ch)
-			}
-		}
-	}
-	b.WriteString("\x1b[0m")
-	if t.modes.CursorVisible {
-		b.WriteString("\x1b[?25h")
-	} else {
-		b.WriteString("\x1b[?25l")
-	}
-	b.WriteString(fmt.Sprintf("\x1b[%d;%dH", t.cursor.Row+1, t.cursor.Col+1))
-	return b.String()
-}
-
 func (t *Terminal) IsAltScreen() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.modes.AltScreen
-}
-
-func (t *Terminal) MarshalBinary() ([]byte, error) {
-	snap := t.Snapshot()
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	if err := enc.Encode(snap); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
-
-func (t *Terminal) UnmarshalBinary(data []byte) error {
-	var snap Snapshot
-	dec := gob.NewDecoder(bytes.NewReader(data))
-	if err := dec.Decode(&snap); err != nil {
-		return err
-	}
-	t.Restore(snap)
-	return nil
 }
 
 func (t *Terminal) putRune(r rune) {
@@ -921,43 +780,6 @@ func cloneRow(row Row) Row {
 	return out
 }
 
-func writeRowANSI(b *strings.Builder, row Row, cols int) {
-	if cols <= 0 {
-		return
-	}
-	if len(row.Cells) < cols {
-		cols = len(row.Cells)
-	}
-	lastNonSpace := -1
-	for i := cols - 1; i >= 0; i-- {
-		cell := row.Cells[i]
-		ch := cell.Ch
-		if ch == 0 {
-			ch = ' '
-		}
-		if ch != ' ' {
-			lastNonSpace = i
-			break
-		}
-	}
-	if lastNonSpace < 0 {
-		return
-	}
-	current := Attr{}
-	for i := 0; i <= lastNonSpace; i++ {
-		cell := row.Cells[i]
-		if cell.Attr != current {
-			b.WriteString(sgrForAttr(cell.Attr))
-			current = cell.Attr
-		}
-		ch := cell.Ch
-		if ch == 0 {
-			ch = ' '
-		}
-		b.WriteRune(ch)
-	}
-}
-
 func rowHasContent(row Row) bool {
 	for _, cell := range row.Cells {
 		ch := cell.Ch
@@ -1127,70 +949,6 @@ func parseCSIParams(buf []byte) ([]int, byte) {
 		params = append(params, val)
 	}
 	return params, priv
-}
-
-func sgrForAttr(attr Attr) string {
-	codes := []string{"0"}
-	if attr.Bold {
-		codes = append(codes, "1")
-	}
-	if attr.Dim {
-		codes = append(codes, "2")
-	}
-	if attr.Italic {
-		codes = append(codes, "3")
-	}
-	if attr.Underline {
-		codes = append(codes, "4")
-	}
-	if attr.Inverse {
-		codes = append(codes, "7")
-	}
-	if attr.Hidden {
-		codes = append(codes, "8")
-	}
-	if attr.Strike {
-		codes = append(codes, "9")
-	}
-	codes = append(codes, colorToSGR(attr.Fg, true)...)
-	codes = append(codes, colorToSGR(attr.Bg, false)...)
-	return "\x1b[" + strings.Join(codes, ";") + "m"
-}
-
-func colorToSGR(c Color, fg bool) []string {
-	switch c.Kind {
-	case ColorDefault:
-		if fg {
-			return []string{"39"}
-		}
-		return []string{"49"}
-	case ColorIndexed:
-		if c.Index < 16 {
-			base := 30
-			if !fg {
-				base = 40
-			}
-			if c.Index >= 8 {
-				base += 60
-				return []string{strconv.Itoa(base + int(c.Index-8))}
-			}
-			return []string{strconv.Itoa(base + int(c.Index))}
-		}
-		if fg {
-			return []string{fmt.Sprintf("38;5;%d", c.Index)}
-		}
-		return []string{fmt.Sprintf("48;5;%d", c.Index)}
-	case ColorRGB:
-		if fg {
-			return []string{fmt.Sprintf("38;2;%d;%d;%d", c.R, c.G, c.B)}
-		}
-		return []string{fmt.Sprintf("48;2;%d;%d;%d", c.R, c.G, c.B)}
-	default:
-		if fg {
-			return []string{"39"}
-		}
-		return []string{"49"}
-	}
 }
 
 func param(params []int, idx int, fallback int) int {
