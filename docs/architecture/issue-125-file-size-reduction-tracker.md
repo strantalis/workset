@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (subagent pass 9)
+Last updated: 2026-02-07 (subagent pass 10)
 
 ## Goal
 
@@ -19,23 +19,23 @@ Reduce architecture risk from oversized files by splitting high-complexity modul
 Largest files by LOC right now:
 
 - `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (4181)
-- `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2651)
+- `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2476)
 - `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (2294)
 - `pkg/termemu/termemu.go` (1714)
 - `wails-ui/workset/frontend/src/lib/api.ts` (1312)
-- `pkg/worksetapi/github_service.go` (1295)
 - `wails-ui/workset/app_updates.go` (1114)
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
+- `wails-ui/workset/app_diffs.go` (926)
 
 ## Parallel Tracks (Issue Map)
 
 - [x] `#124` Guardrails (must start first)
 - [ ] `#115` FE-DIFF (slice 1 landed)
-- [ ] `#116` FE-WORKSPACE (slice 4 landed)
+- [ ] `#116` FE-WORKSPACE (slice 5 landed)
 - [ ] `#117` FE-TERMINAL (slice 2 landed)
 - [ ] `#118` FE-PLATFORM
 - [x] `#119` BE-SESSIOND (structural splits complete)
-- [ ] `#120` BE-GITHUB (slice 4 landed)
+- [ ] `#120` BE-GITHUB (slice 5 landed)
 - [ ] `#121` BE-TERMEMU
 - [ ] `#122` BE-UPDATER
 - [ ] `#123` TEST-E2E
@@ -147,6 +147,7 @@ Tasks:
 - [x] Extract create/add mutation + hook transition logic into `services/workspaceActionService.ts`.
 - [x] Extract rename/archive/remove mutation runners into `services/workspaceActionService.ts`.
 - [x] Extract hook tracking + pending-hook action core into `services/workspaceActionHooks.ts`.
+- [x] Extract context loading/derivation into `services/workspaceActionContextService.ts`.
 - [ ] Separate modal state transitions from UI markup.
 - [ ] Extract workspace mutations into dedicated service.
 - [ ] Split large modal sections into components.
@@ -252,6 +253,7 @@ Tasks:
 - [x] Separate read vs write helper use-cases into dedicated modules (`github_service_read_helpers.go`, `github_service_write_helpers.go`).
 - [x] Separate synchronous status fetch paths into `github_service_status.go`.
 - [x] Extract mutating operation orchestration entrypoints into `github_service_write.go`.
+- [x] Extract GraphQL thread-mapping helpers into `github_service_thread_graphql_helpers.go`.
 - [ ] Add unit tests for each extracted service boundary.
 
 Verification:
@@ -341,6 +343,6 @@ Verification:
 
 ## Immediate Next Actions
 
-1. Run `#120` slice 5: move GraphQL/thread mapping helpers out of `github_service.go`.
-2. Run `#116` slice 5: move context-loading/derivation out of `WorkspaceActionModal.svelte`.
-3. Run `#117` slice 3: remove remaining transport/renderer coupling from `terminalService.ts`.
+1. Run `#117` slice 3: remove remaining transport/renderer coupling from `terminalService.ts`.
+2. Run `#115` slice 2: extract summary/PR controllers from `RepoDiff.svelte`.
+3. Run `#121` slice 1: extract parser/state boundaries from `pkg/termemu/termemu.go`.

@@ -58,7 +58,10 @@ type TrustPendingHookCoreDeps = {
 	formatError: (err: unknown, fallback: string) => string;
 };
 
-export const beginHookTracking = (operation: string, workspaceName: string | null): HookTrackingState => ({
+export const beginHookTracking = (
+	operation: string,
+	workspaceName: string | null,
+): HookTrackingState => ({
 	activeHookOperation: operation,
 	activeHookWorkspace: workspaceName,
 	hookRuns: [],
@@ -116,14 +119,17 @@ export const applyHookProgress = (
 	payload: HookProgressEvent,
 ): HookExecution[] => {
 	const existingIdx = currentHookRuns.findIndex(
-		(entry) => entry.repo === payload.repo && entry.event === payload.event && entry.id === payload.hookId,
+		(entry) =>
+			entry.repo === payload.repo && entry.event === payload.event && entry.id === payload.hookId,
 	);
 	const next: HookExecution = {
 		repo: payload.repo,
 		event: payload.event,
 		id: payload.hookId,
 		status:
-			payload.phase === 'finished' ? payload.status || (payload.error ? 'failed' : 'ok') : 'running',
+			payload.phase === 'finished'
+				? payload.status || (payload.error ? 'failed' : 'ok')
+				: 'running',
 		log_path: payload.logPath,
 	};
 	if (existingIdx >= 0) {
@@ -139,7 +145,9 @@ const updatePendingHookByRepo = (
 ): WorkspaceActionPendingHook[] =>
 	pendingHooks.map((entry) => (entry.repo === repo ? { ...entry, ...patch } : entry));
 
-const resolveWorkspaceReference = (workspaceReferences: Array<string | null | undefined>): string => {
+const resolveWorkspaceReference = (
+	workspaceReferences: Array<string | null | undefined>,
+): string => {
 	for (const candidate of workspaceReferences) {
 		if (candidate) {
 			return candidate;
@@ -220,7 +228,10 @@ export const handleRunPendingHookCore = (
 export const handleTrustPendingHookCore = (
 	input: HandleTrustPendingHookCoreInput,
 	deps: TrustPendingHookCoreDeps,
-): { pendingHooks: WorkspaceActionPendingHook[]; completion: Promise<WorkspaceActionPendingHook[]> } => {
+): {
+	pendingHooks: WorkspaceActionPendingHook[];
+	completion: Promise<WorkspaceActionPendingHook[]>;
+} => {
 	const trustingPendingHooks = updatePendingHookByRepo(input.pendingHooks, input.pending.repo, {
 		trusting: true,
 		runError: undefined,

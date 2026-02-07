@@ -26,20 +26,9 @@
 		selectWorkspace,
 		workspaces,
 	} from '../state';
-	import type {
-		Alias,
-		GroupSummary,
-		HookExecution,
-		Repo,
-		Workspace,
-	} from '../types';
+	import type { Alias, GroupSummary, HookExecution, Repo, Workspace } from '../types';
 	import { subscribeHookProgressEvent } from '../hookEventService';
-	import {
-		generateWorkspaceName,
-		generateAlternatives,
-		deriveRepoName,
-		isRepoSource,
-	} from '../names';
+	import { deriveRepoName, isRepoSource } from '../names';
 	import {
 		applyHookProgress,
 		appendHookRuns,
@@ -59,6 +48,14 @@
 		runRemoveWorkspaceMutation,
 		runRenameWorkspaceMutation,
 	} from '../services/workspaceActionService';
+	import {
+		deriveAddRepoContext,
+		deriveExistingReposContext,
+		deriveWorkspaceActionContext,
+		getAliasSource,
+		loadWorkspaceActionContext,
+		type WorkspaceActionDirectRepo,
+	} from '../services/workspaceActionContextService';
 	import Alert from './ui/Alert.svelte';
 	import Button from './ui/Button.svelte';
 	import Modal from './Modal.svelte';
@@ -105,10 +102,8 @@
 
 	// Create mode: smart single input
 	let primaryInput = $state(''); // URL, path, or workspace name
-	type DirectRepo = { url: string; register: boolean };
-	let directRepos: DirectRepo[] = $state([]); // Multiple direct URLs/paths
+	let directRepos: WorkspaceActionDirectRepo[] = $state([]); // Multiple direct URLs/paths
 	let customizeName = $state(''); // Override for generated name
-	let alternatives: string[] = $state([]); // Alternative name suggestions
 
 	// Tabbed interface state
 	type CreateTab = 'direct' | 'repos' | 'groups';
@@ -128,128 +123,39 @@
 	let selectedGroups: Set<string> = $state(new Set());
 
 	// Create mode: derived state
-	const detectedRepoName = $derived(deriveRepoName(primaryInput));
-	const inputIsSource = $derived(isRepoSource(primaryInput));
-
-	// Get the first direct repo name for auto-generation
-	const firstDirectRepoName = $derived(
-		directRepos.length > 0 ? deriveRepoName(directRepos[0].url) : null,
+	const createContext = $derived.by(() =>
+		deriveWorkspaceActionContext({
+			primaryInput,
+			directRepos,
+			customizeName,
+			searchQuery,
+			aliasItems,
+			groupItems,
+			selectedAliases,
+			selectedGroups,
+		}),
 	);
-
-	// Get the first selected alias or group name for auto-generation
-	const firstSelectedAlias = $derived(
-		selectedAliases.size > 0 ? Array.from(selectedAliases)[0] : null,
-	);
-	const firstSelectedGroup = $derived(
-		selectedGroups.size > 0 ? Array.from(selectedGroups)[0] : null,
-	);
-
-	// Source for name generation: first direct repo, pending input, first alias, or first group
-	const nameSource = $derived(
-		firstDirectRepoName ||
-			(inputIsSource ? detectedRepoName : null) ||
-			firstSelectedAlias ||
-			firstSelectedGroup,
-	);
-
-	const generatedName = $derived(nameSource ? generateWorkspaceName(nameSource) : null);
-
-	// Final name: custom override > generated > plain text input
-	const finalName = $derived(customizeName || generatedName || primaryInput.trim());
-
-	// Tab filtering logic
-	const filteredAliases = $derived(
-		searchQuery
-			? aliasItems.filter(
-					(a) =>
-						a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-						getAliasSource(a).toLowerCase().includes(searchQuery.toLowerCase()),
-				)
-			: aliasItems,
-	);
-
-	const filteredGroups = $derived(
-		searchQuery
-			? groupItems.filter(
-					(g) =>
-						g.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-						(g.description?.toLowerCase() || '').includes(searchQuery.toLowerCase()),
-				)
-			: groupItems,
-	);
-
-	// Check if pending input would be auto-added (not already in directRepos)
-	const pendingInputWillBeAdded = $derived(
-		inputIsSource && !directRepos.some((r) => r.url === primaryInput.trim()),
-	);
-
-	// Total repos for preview (include pending input if it will be auto-added)
-	const totalRepos = $derived(
-		directRepos.length +
-			(pendingInputWillBeAdded ? 1 : 0) +
-			selectedAliases.size +
-			Array.from(selectedGroups).reduce(
-				(sum, g) => sum + (groupItems.find((i) => i.name === g)?.repo_count || 0),
-				0,
-			),
-	);
-
-	// Get selected items for preview (include pending input if it will be auto-added)
-	const selectedItems = $derived([
-		...directRepos.map((r) => ({
-			type: 'repo',
-			name: deriveRepoName(r.url) || r.url,
-			url: r.url,
-			pending: false,
-		})),
-		...(pendingInputWillBeAdded
-			? [
-					{
-						type: 'repo',
-						name: detectedRepoName || primaryInput.trim(),
-						url: primaryInput.trim(),
-						pending: true,
-					},
-				]
-			: []),
-		...Array.from(selectedAliases).map((name) => ({
-			type: 'alias',
-			name,
-			url: undefined,
-			pending: false,
-		})),
-		...Array.from(selectedGroups).map((name) => ({
-			type: 'group',
-			name,
-			url: undefined,
-			pending: false,
-		})),
-	]);
+	const generatedName = $derived(createContext.generatedName);
+	const finalName = $derived(createContext.finalName);
+	const alternatives = $derived(createContext.alternatives);
+	const filteredAliases = $derived(createContext.filteredAliases);
+	const filteredGroups = $derived(createContext.filteredGroups);
+	const totalRepos = $derived(createContext.totalRepos);
+	const selectedItems = $derived(createContext.selectedItems);
 
 	// Add-repo mode: derived state for selected items
-	const addRepoHasSource = $derived(addSource.trim().length > 0);
-	const addRepoSelectedItems = $derived([
-		...(addRepoHasSource ? [{ type: 'repo' as const, name: addSource.trim() }] : []),
-		...Array.from(selectedAliases).map((name) => ({ type: 'alias' as const, name })),
-		...Array.from(selectedGroups).map((name) => ({ type: 'group' as const, name })),
-	]);
-	const addRepoTotalItems = $derived(addRepoSelectedItems.length);
+	const addRepoContext = $derived.by(() =>
+		deriveAddRepoContext({
+			addSource,
+			selectedAliases,
+			selectedGroups,
+		}),
+	);
+	const addRepoSelectedItems = $derived(addRepoContext.selectedItems);
+	const addRepoTotalItems = $derived(addRepoContext.totalItems);
 
 	// Existing repos in workspace (read-only context for add-repo mode)
-	const existingRepos = $derived(
-		mode === 'add-repo' && workspace
-			? (workspace as Workspace).repos.map((r: Repo) => ({ name: r.name }))
-			: [],
-	);
-
-	// Regenerate alternatives when name source changes
-	$effect(() => {
-		if (nameSource) {
-			alternatives = generateAlternatives(nameSource, 2);
-		} else {
-			alternatives = [];
-		}
-	});
+	const existingRepos = $derived(deriveExistingReposContext({ mode, workspace }));
 
 	// Initialize tab based on available items
 	$effect(() => {
@@ -263,9 +169,6 @@
 	function selectAlternative(name: string): void {
 		customizeName = name;
 	}
-
-	// Helper to get alias display info
-	const getAliasSource = (alias: Alias): string => alias.url || alias.path || '';
 
 	// Tab helper functions
 	function toggleAlias(name: string): void {
@@ -451,29 +354,29 @@
 	const loadContext = async (): Promise<void> => {
 		phase = 'form';
 		hookResultContext = null;
-		await loadWorkspaces(true);
-		const current = get(workspaces);
-		workspace = workspaceId ? (current.find((entry) => entry.id === workspaceId) ?? null) : null;
-		repo =
-			workspace && repoName
-				? (workspace.repos.find((entry) => entry.name === repoName) ?? null)
-				: null;
-		if (mode === 'rename' && workspace) {
-			renameName = workspace.name;
+		const context = await loadWorkspaceActionContext(
+			{
+				mode,
+				workspaceId,
+				repoName,
+			},
+			{
+				loadWorkspaces,
+				getWorkspaces: () => get(workspaces),
+				listAliases,
+				listGroups,
+				getGroup,
+			},
+		);
+		workspace = context.workspace;
+		repo = context.repo;
+		if (mode === 'rename' && context.workspace) {
+			renameName = context.renameName;
 		}
 		if (mode === 'add-repo' || mode === 'create') {
-			aliasItems = await listAliases();
-			groupItems = await listGroups();
-			// Fetch full details for each group to show repo names in tooltips
-			const details = new Map<string, string[]>();
-			for (const g of groupItems) {
-				const full = await getGroup(g.name);
-				details.set(
-					g.name,
-					full.members.map((m) => m.repo),
-				);
-			}
-			groupDetails = details;
+			aliasItems = context.aliasItems;
+			groupItems = context.groupItems;
+			groupDetails = context.groupDetails;
 		}
 	};
 
@@ -489,12 +392,10 @@
 		pendingHooks = [];
 		hookRuns = [];
 		hookWorkspaceId = null;
-		({
-			activeHookOperation,
-			activeHookWorkspace,
-			hookRuns,
-			pendingHooks,
-		} = beginHookTracking('workspace.create', finalName));
+		({ activeHookOperation, activeHookWorkspace, hookRuns, pendingHooks } = beginHookTracking(
+			'workspace.create',
+			finalName,
+		));
 		try {
 			const result = await runCreateWorkspaceMutation(
 				{
@@ -588,12 +489,10 @@
 		pendingHooks = [];
 		hookRuns = [];
 		hookWorkspaceId = workspace.id;
-		({
-			activeHookOperation,
-			activeHookWorkspace,
-			hookRuns,
-			pendingHooks,
-		} = beginHookTracking('repo.add', workspace.name));
+		({ activeHookOperation, activeHookWorkspace, hookRuns, pendingHooks } = beginHookTracking(
+			'repo.add',
+			workspace.name,
+		));
 		try {
 			const result = await runAddItemsMutation(
 				{
