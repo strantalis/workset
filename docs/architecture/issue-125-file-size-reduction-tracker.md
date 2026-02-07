@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (subagent pass 6)
+Last updated: 2026-02-07 (subagent pass 7)
 
 ## Goal
 
@@ -21,9 +21,9 @@ Largest files by LOC right now:
 - `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (4181)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2616)
 - `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (2296)
-- `pkg/worksetapi/github_service.go` (1760)
 - `pkg/termemu/termemu.go` (1714)
 - `wails-ui/workset/frontend/src/lib/api.ts` (1312)
+- `pkg/worksetapi/github_service.go` (1295)
 - `wails-ui/workset/app_updates.go` (1114)
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
 
@@ -34,8 +34,8 @@ Largest files by LOC right now:
 - [ ] `#116` FE-WORKSPACE (slice 2 landed)
 - [ ] `#117` FE-TERMINAL (slice 1 landed)
 - [ ] `#118` FE-PLATFORM
-- [ ] `#119` BE-SESSIOND (slice 5 landed)
-- [ ] `#120` BE-GITHUB (slice 2 landed)
+- [x] `#119` BE-SESSIOND (structural splits complete)
+- [ ] `#120` BE-GITHUB (slice 3 landed)
 - [ ] `#121` BE-TERMEMU
 - [ ] `#122` BE-UPDATER
 - [ ] `#123` TEST-E2E
@@ -220,10 +220,10 @@ Tasks:
 - [x] Extract stream/subscriber fanout + credit handling into `pkg/sessiond/stream.go`.
 - [x] Extract persistence/snapshot + transcript/recording subsystem into `pkg/sessiond/session_persist.go`.
 - [x] Extract protocol message handling package.
-- [ ] Extract backlog/snapshot logic package.
+- [x] Extract backlog/snapshot response shaping into `pkg/sessiond/session_response.go`.
 - [x] Extract lifecycle + process supervision package.
-- [ ] Keep public session behavior and API unchanged.
-- [ ] Add churn tests around create/stop/restore.
+- [x] Keep public session behavior and API unchanged.
+- [x] Add churn tests around create/stop/restore.
 
 Verification:
 
@@ -247,7 +247,7 @@ Tasks:
 
 - [x] Move pure git command/diff helpers into `pkg/worksetapi/github_git_helpers.go`.
 - [x] Separate read vs write helper use-cases into dedicated modules (`github_service_read_helpers.go`, `github_service_write_helpers.go`).
-- [ ] Separate synchronous status fetch from async operation orchestration.
+- [x] Separate synchronous status fetch paths into `github_service_status.go`.
 - [ ] Add unit tests for each extracted service boundary.
 
 Verification:
@@ -337,6 +337,6 @@ Verification:
 
 ## Immediate Next Actions
 
-1. Run final `#119` slice: move remaining backlog/snapshot response shaping out of `session.go`.
-2. Run `#120` slice 3: separate synchronous status-fetch paths from async operation orchestration.
-3. Run `#116` slice 3: move remaining modal state transitions/mutations out of `WorkspaceActionModal.svelte`.
+1. Run `#120` slice 4: extract operation orchestration paths from `github_service.go`.
+2. Run `#116` slice 3: move remaining modal state transitions/mutations out of `WorkspaceActionModal.svelte`.
+3. Run `#117` slice 2: remove remaining transport/renderer coupling from `terminalService.ts`.
