@@ -15,6 +15,7 @@ import (
 type App struct {
 	ctx              context.Context
 	service          *worksetapi.Service
+	serviceOnce      sync.Once
 	terminalMu       sync.Mutex
 	terminals        map[string]*terminalSession
 	restoredModes    map[string]terminalModeState

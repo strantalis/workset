@@ -40,7 +40,8 @@ type repoDiffPrStatusResult struct {
 }
 
 var repoDiffGetLocalStatus = func(ctx context.Context, app *App, key repoDiffWatchKey, repoName string) (worksetapi.RepoLocalStatusJSON, error) {
-	result, err := app.service.GetRepoLocalStatus(ctx, worksetapi.RepoLocalStatusInput{
+	svc := app.ensureService()
+	result, err := svc.GetRepoLocalStatus(ctx, worksetapi.RepoLocalStatusInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: key.workspaceID},
 		Repo:      repoName,
 	})
@@ -64,7 +65,8 @@ var repoDiffCollectLocalSummary = func(ctx context.Context, repoPath string) (Re
 }
 
 var repoDiffGetTrackedPR = func(ctx context.Context, app *App, key repoDiffWatchKey, repoName string) (worksetapi.PullRequestCreatedJSON, bool, error) {
-	result, err := app.service.GetTrackedPullRequest(ctx, worksetapi.PullRequestTrackedInput{
+	svc := app.ensureService()
+	result, err := svc.GetTrackedPullRequest(ctx, worksetapi.PullRequestTrackedInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: key.workspaceID},
 		Repo:      repoName,
 	})
@@ -78,7 +80,8 @@ var repoDiffGetTrackedPR = func(ctx context.Context, app *App, key repoDiffWatch
 }
 
 var repoDiffGetPrStatus = func(ctx context.Context, app *App, key repoDiffWatchKey, repoName string, prNumber int, prBranch string) (repoDiffPrStatusResult, error) {
-	result, err := app.service.GetPullRequestStatus(ctx, worksetapi.PullRequestStatusInput{
+	svc := app.ensureService()
+	result, err := svc.GetPullRequestStatus(ctx, worksetapi.PullRequestStatusInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: key.workspaceID},
 		Repo:      repoName,
 		Number:    prNumber,
@@ -94,7 +97,8 @@ var repoDiffGetPrStatus = func(ctx context.Context, app *App, key repoDiffWatchK
 }
 
 var repoDiffListRemotes = func(ctx context.Context, app *App, key repoDiffWatchKey, repoName string) ([]worksetapi.RemoteInfoJSON, error) {
-	result, err := app.service.ListRemotes(ctx, worksetapi.ListRemotesInput{
+	svc := app.ensureService()
+	result, err := svc.ListRemotes(ctx, worksetapi.ListRemotesInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: key.workspaceID},
 		Repo:      repoName,
 	})
@@ -118,7 +122,8 @@ var repoDiffCollectBranchSummary = func(ctx context.Context, repoPath, base, hea
 }
 
 var repoDiffGetPrReviews = func(ctx context.Context, app *App, key repoDiffWatchKey, repoName string, prNumber int, prBranch string) ([]worksetapi.PullRequestReviewCommentJSON, error) {
-	result, err := app.service.ListPullRequestReviewComments(ctx, worksetapi.PullRequestReviewsInput{
+	svc := app.ensureService()
+	result, err := svc.ListPullRequestReviewComments(ctx, worksetapi.PullRequestReviewsInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: key.workspaceID},
 		Repo:      repoName,
 		Number:    prNumber,
@@ -604,7 +609,7 @@ func (w *repoDiffWatch) emitSummary(summary RepoDiffSummary) {
 	if !w.shouldEmit(&w.lastSummaryHash, summary) {
 		return
 	}
-	repoDiffEmit(w.app.ctx, "repodiff:summary", RepoDiffSummaryEvent{
+	repoDiffEmit(w.app.ctx, EventRepoDiffSummary, RepoDiffSummaryEvent{
 		WorkspaceID: w.key.workspaceID,
 		RepoID:      w.key.repoID,
 		Summary:     summary,
@@ -616,7 +621,7 @@ func (w *repoDiffWatch) emitLocalSummary(summary RepoDiffSummary) {
 	if !w.shouldEmit(&w.lastLocalSummaryHash, summary) {
 		return
 	}
-	repoDiffEmit(w.app.ctx, "repodiff:local-summary", RepoDiffSummaryEvent{
+	repoDiffEmit(w.app.ctx, EventRepoDiffLocalSummary, RepoDiffSummaryEvent{
 		WorkspaceID: w.key.workspaceID,
 		RepoID:      w.key.repoID,
 		Summary:     summary,
@@ -627,7 +632,7 @@ func (w *repoDiffWatch) emitLocalStatus(status worksetapi.RepoLocalStatusJSON) {
 	if !w.shouldEmit(&w.lastLocalStatusHash, status) {
 		return
 	}
-	repoDiffEmit(w.app.ctx, "repodiff:local-status", RepoDiffLocalStatusEvent{
+	repoDiffEmit(w.app.ctx, EventRepoDiffLocalStatus, RepoDiffLocalStatusEvent{
 		WorkspaceID: w.key.workspaceID,
 		RepoID:      w.key.repoID,
 		Status:      status,
@@ -638,7 +643,7 @@ func (w *repoDiffWatch) emitPrStatus(status PullRequestStatusPayload) {
 	if !w.shouldEmit(&w.lastPrStatusHash, status) {
 		return
 	}
-	repoDiffEmit(w.app.ctx, "repodiff:pr-status", RepoDiffPrStatusEvent{
+	repoDiffEmit(w.app.ctx, EventRepoDiffPRStatus, RepoDiffPrStatusEvent{
 		WorkspaceID: w.key.workspaceID,
 		RepoID:      w.key.repoID,
 		Status:      status,
@@ -649,7 +654,7 @@ func (w *repoDiffWatch) emitPrReviews(comments []worksetapi.PullRequestReviewCom
 	if !w.shouldEmit(&w.lastPrReviewsHash, comments) {
 		return
 	}
-	repoDiffEmit(w.app.ctx, "repodiff:pr-reviews", RepoDiffPrReviewsEvent{
+	repoDiffEmit(w.app.ctx, EventRepoDiffPRReviews, RepoDiffPrReviewsEvent{
 		WorkspaceID: w.key.workspaceID,
 		RepoID:      w.key.repoID,
 		Comments:    comments,

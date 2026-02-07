@@ -1,30 +1,22 @@
-import {
-	Terminal,
-	type ITerminalInitOnlyOptions,
-	type ITerminalOptions,
-	type ITheme,
-} from '@xterm/xterm';
+import { Terminal, type ITheme } from '@xterm/xterm';
 import { ClipboardAddon } from '@xterm/addon-clipboard';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
-import { writable, type Readable, type Writable } from 'svelte/store';
-import { BrowserOpenURL, EventsOff, EventsOn } from '../../../wailsjs/runtime/runtime';
+import type { Readable, Writable } from 'svelte/store';
 import {
-	AckWorkspaceTerminal,
-	ResizeWorkspaceTerminal,
-	StartWorkspaceTerminal,
-	WriteWorkspaceTerminal,
-} from '../../../wailsjs/go/main/App';
-import {
-	fetchSessiondStatus,
-	fetchSettings,
-	fetchTerminalBootstrap,
-	fetchWorkspaceTerminalStatus,
-	logTerminalDebug,
-	stopWorkspaceTerminal,
-} from '../api';
+	EVENT_SESSIOND_RESTARTED,
+	EVENT_TERMINAL_BOOTSTRAP,
+	EVENT_TERMINAL_BOOTSTRAP_DONE,
+	EVENT_TERMINAL_DATA,
+	EVENT_TERMINAL_KITTY,
+	EVENT_TERMINAL_LIFECYCLE,
+	EVENT_TERMINAL_MODES,
+} from '../events';
+import { terminalTransport } from './terminalTransport';
+import { createTerminalInstance, createWebLinksAddon } from './terminalRenderer';
+import { TerminalStateStore } from './terminalStateStore';
 import { stripMouseReports } from './inputFilter';
 import { captureViewportSnapshot, resolveViewportTargetLine } from './viewport';
 
@@ -60,10 +52,6 @@ type TerminalContext = {
 type TerminalKey = string;
 type ClipboardSelection = string;
 type EventHandler<T> = (payload: T) => void;
-type EventRegistryEntry = {
-	handlers: Set<EventHandler<unknown>>;
-	bound: boolean;
-};
 
 type OutputChunk = {
 	data: string;
@@ -210,8 +198,7 @@ type TerminalKittyPayload = {
 
 const terminalHandles = new Map<string, TerminalHandle>();
 const terminalContexts = new Map<string, TerminalContext>();
-const terminalStores = new Map<string, Writable<TerminalViewState>>();
-const eventRegistry = new Map<string, EventRegistryEntry>();
+const terminalStores = new TerminalStateStore<TerminalViewState>();
 const listeners = new Set<string>();
 const unsubscribeHandlers: Array<() => void> = [];
 
@@ -359,19 +346,6 @@ const syncDebugEnabled = (): void => {
 	emitAllStates();
 };
 
-const openHttpsLink = (event: MouseEvent, uri: string): void => {
-	if (!uri) return;
-	if (!event?.ctrlKey && !event?.metaKey) return;
-	try {
-		const parsed = new URL(uri);
-		if (parsed.protocol !== 'https:') return;
-		BrowserOpenURL(parsed.toString());
-		event.preventDefault();
-	} catch {
-		// Ignore invalid URLs.
-	}
-};
-
 const getClipboardPayloadBytes = (value: string): number => {
 	if (!value) return 0;
 	if (textEncoder) {
@@ -428,11 +402,6 @@ const createClipboardBase64 = (): {
 	decodeText: decodeClipboardText,
 });
 
-const createWebLinksAddon = (): WebLinksAddon =>
-	new WebLinksAddon((event, uri) => {
-		openHttpsLink(event, uri);
-	});
-
 const syncWebLinksForMode = (id: string): void => {
 	const handle = terminalHandles.get(id);
 	if (!handle) return;
@@ -445,7 +414,9 @@ const syncWebLinksForMode = (id: string): void => {
 		return;
 	}
 	if (!handle.webLinksAddon) {
-		handle.webLinksAddon = createWebLinksAddon();
+		handle.webLinksAddon = createWebLinksAddon((url) => {
+			void terminalTransport.openURL(url);
+		});
 		handle.terminal.loadAddon(handle.webLinksAddon);
 	}
 };
@@ -504,55 +475,19 @@ const buildState = (id: string): TerminalViewState => {
 };
 
 const ensureStore = (id: string): Writable<TerminalViewState> => {
-	let store = terminalStores.get(id);
-	if (!store) {
-		store = writable(buildState(id));
-		terminalStores.set(id, store);
-	}
-	return store;
+	return terminalStores.ensure(id, buildState);
 };
 
 const emitState = (id: string): void => {
-	const store = ensureStore(id);
-	store.set(buildState(id));
+	terminalStores.emit(id, buildState);
 };
 
 const emitAllStates = (): void => {
-	for (const id of terminalStores.keys()) {
-		emitState(id);
-	}
+	terminalStores.emitAll(buildState);
 };
 
-const subscribeEvent = <T>(event: string, handler: EventHandler<T>): (() => void) => {
-	let entry = eventRegistry.get(event);
-	if (!entry) {
-		entry = { handlers: new Set(), bound: false };
-		eventRegistry.set(event, entry);
-	}
-	entry.handlers.add(handler as EventHandler<unknown>);
-	if (!entry.bound) {
-		EventsOn(event, (payload: T) => {
-			const current = eventRegistry.get(event);
-			if (!current) return;
-			for (const registered of current.handlers) {
-				registered(payload as unknown);
-			}
-		});
-		entry.bound = true;
-	}
-	return () => {
-		const current = eventRegistry.get(event);
-		if (!current) return;
-		current.handlers.delete(handler as EventHandler<unknown>);
-		if (current.handlers.size !== 0) {
-			return;
-		}
-		if (current.bound) {
-			EventsOff(event);
-		}
-		eventRegistry.delete(event);
-	};
-};
+const subscribeEvent = <T>(event: string, handler: EventHandler<T>): (() => void) =>
+	terminalTransport.onEvent(event, handler);
 
 const scheduleTerminalDispose = (id: string): void => {
 	if (!id) return;
@@ -1081,7 +1016,7 @@ const sendInput = (id: string, data: string): void => {
 	const workspaceId = getWorkspaceId(id);
 	const terminalId = getTerminalId(id);
 	if (!workspaceId || !terminalId) return;
-	void WriteWorkspaceTerminal(workspaceId, terminalId, filtered).catch((error: unknown) => {
+	void terminalTransport.write(workspaceId, terminalId, filtered).catch((error: unknown) => {
 		pendingInput.set(id, (pendingInput.get(id) ?? '') + filtered);
 		startedSessions.delete(id);
 		if (
@@ -1107,30 +1042,6 @@ const sendInput = (id: string, data: string): void => {
 		const handle = terminalHandles.get(id);
 		handle?.terminal.write(`\r\n[workset] write failed: ${String(error)}`);
 	});
-};
-
-const createTerminal = (): Terminal => {
-	const themeBackground = getToken('--panel-strong', '#111c29');
-	const themeForeground = getToken('--text', '#eef3f9');
-	const themeCursor = getToken('--accent', '#2d8cff');
-	const themeSelection = getToken('--accent', '#2d8cff');
-	const fontMono = getToken('--font-mono', '"JetBrains Mono", Menlo, Consolas, monospace');
-
-	const options: ITerminalOptions & ITerminalInitOnlyOptions & { rendererType?: string } = {
-		fontFamily: fontMono,
-		fontSize: currentFontSize,
-		lineHeight: 1.4,
-		cursorBlink: true,
-		scrollback: 4000,
-		allowProposedApi: true,
-		theme: {
-			background: themeBackground,
-			foreground: themeForeground,
-			cursor: themeCursor,
-			selectionBackground: themeSelection,
-		},
-	};
-	return new Terminal(options);
 };
 
 const captureTerminalViewport = (terminal: Terminal) => {
@@ -1169,7 +1080,10 @@ const attachTerminal = (
 ): TerminalHandle => {
 	let handle = terminalHandles.get(id);
 	if (!handle) {
-		const terminal = createTerminal();
+		const terminal = createTerminalInstance({
+			fontSize: currentFontSize,
+			getToken,
+		});
 		const fitAddon = new FitAddon();
 		terminal.loadAddon(fitAddon);
 		const unicode11Addon = new Unicode11Addon();
@@ -1263,12 +1177,9 @@ const attachTerminal = (
 							const workspaceId = getWorkspaceId(id);
 							const terminalId = getTerminalId(id);
 							if (workspaceId && terminalId) {
-								void ResizeWorkspaceTerminal(
-									workspaceId,
-									terminalId,
-									updated.cols,
-									updated.rows,
-								).catch(() => undefined);
+								void terminalTransport
+									.resize(workspaceId, terminalId, updated.cols, updated.rows)
+									.catch(() => undefined);
 							}
 						}
 					})
@@ -1283,9 +1194,9 @@ const attachTerminal = (
 			const workspaceId = getWorkspaceId(id);
 			const terminalId = getTerminalId(id);
 			if (workspaceId && terminalId) {
-				void ResizeWorkspaceTerminal(workspaceId, terminalId, dims.cols, dims.rows).catch(
-					() => undefined,
-				);
+				void terminalTransport
+					.resize(workspaceId, terminalId, dims.cols, dims.rows)
+					.catch(() => undefined);
 			}
 		}
 		if (active) {
@@ -1334,9 +1245,9 @@ const fitTerminal = (id: string, resizeSession: boolean): void => {
 		const workspaceId = getWorkspaceId(id);
 		const terminalId = getTerminalId(id);
 		if (workspaceId && terminalId) {
-			void ResizeWorkspaceTerminal(workspaceId, terminalId, dims.cols, dims.rows).catch(
-				() => undefined,
-			);
+			void terminalTransport
+				.resize(workspaceId, terminalId, dims.cols, dims.rows)
+				.catch(() => undefined);
 		}
 	}
 };
@@ -1543,7 +1454,7 @@ const logDebug = (id: string, event: string, details: Record<string, unknown>): 
 	const workspaceId = getWorkspaceId(id);
 	const terminalId = getTerminalId(id);
 	if (!workspaceId || !terminalId) return;
-	void logTerminalDebug(workspaceId, terminalId, event, JSON.stringify(details));
+	void terminalTransport.logDebug(workspaceId, terminalId, event, JSON.stringify(details));
 };
 
 const forceRedraw = (id: string): void => {
@@ -1568,10 +1479,10 @@ const nudgeTerminalRedraw = (id: string): void => {
 	const rows = Math.max(1, dims.rows);
 	const nudgeCols = cols + 1;
 	pendingRedraw.add(id);
-	void ResizeWorkspaceTerminal(workspaceId, terminalId, nudgeCols, rows).catch(() => undefined);
+	void terminalTransport.resize(workspaceId, terminalId, nudgeCols, rows).catch(() => undefined);
 	logDebug(id, 'redraw_nudge', { cols, rows, nudgeCols });
 	window.setTimeout(() => {
-		void ResizeWorkspaceTerminal(workspaceId, terminalId, cols, rows).catch(() => undefined);
+		void terminalTransport.resize(workspaceId, terminalId, cols, rows).catch(() => undefined);
 		pendingRedraw.delete(id);
 	}, 60);
 };
@@ -1752,7 +1663,7 @@ const flushAck = (id: string): void => {
 	const workspaceId = getWorkspaceId(id);
 	const terminalId = getTerminalId(id);
 	if (!workspaceId || !terminalId) return;
-	void AckWorkspaceTerminal(workspaceId, terminalId, bytes).catch(() => undefined);
+	void terminalTransport.ack(workspaceId, terminalId, bytes).catch(() => undefined);
 };
 
 const grantInitialCredit = (id: string): void => {
@@ -1762,7 +1673,7 @@ const grantInitialCredit = (id: string): void => {
 	if (!workspaceId || !terminalId) return;
 	initialCreditSent.add(id);
 	const credit = initialCreditMap.get(id) ?? INITIAL_STREAM_CREDIT;
-	void AckWorkspaceTerminal(workspaceId, terminalId, credit).catch(() => {
+	void terminalTransport.ack(workspaceId, terminalId, credit).catch(() => {
 		initialCreditSent.delete(id);
 	});
 };
@@ -1894,7 +1805,7 @@ const ensureSessionActive = async (id: string): Promise<void> => {
 	const terminalId = getTerminalId(id);
 	if (!workspaceId || !terminalId) return;
 	try {
-		const status = await fetchWorkspaceTerminalStatus(workspaceId, terminalId);
+		const status = await terminalTransport.fetchStatus(workspaceId, terminalId);
 		if (status?.active) {
 			startedSessions.add(id);
 			statusMap = { ...statusMap, [id]: 'ready' };
@@ -1921,7 +1832,7 @@ const maybeFetchBootstrap = async (id: string, reason: string): Promise<void> =>
 	const terminalId = getTerminalId(id);
 	if (!workspaceId || !terminalId) return;
 	try {
-		const payload = await fetchTerminalBootstrap(workspaceId, terminalId);
+		const payload = await terminalTransport.fetchBootstrap(workspaceId, terminalId);
 		if (bootstrapHandled.get(id)) return;
 		handleBootstrapPayload(payload);
 		handleBootstrapDonePayload({ workspaceId, terminalId });
@@ -1955,12 +1866,12 @@ const beginTerminal = async (id: string, quiet = false): Promise<void> => {
 		emitState(id);
 	}
 	try {
-		await StartWorkspaceTerminal(workspaceId, terminalId);
+		await terminalTransport.start(workspaceId, terminalId);
 		startedSessions.add(id);
 		const queued = pendingInput.get(id);
 		if (queued) {
 			pendingInput.delete(id);
-			await WriteWorkspaceTerminal(workspaceId, terminalId, queued);
+			await terminalTransport.write(workspaceId, terminalId, queued);
 		}
 		const existingTimer = bootstrapFetchTimers.get(id);
 		if (existingTimer) {
@@ -1996,7 +1907,7 @@ const ensureStream = async (id: string): Promise<void> => {
 	if (!workspaceId || !terminalId) return;
 	startInFlight.add(id);
 	try {
-		await StartWorkspaceTerminal(workspaceId, terminalId);
+		await terminalTransport.start(workspaceId, terminalId);
 		startedSessions.add(id);
 	} catch (error) {
 		logDebug(id, 'ensure_stream_failed', { error: String(error) });
@@ -2008,7 +1919,7 @@ const ensureStream = async (id: string): Promise<void> => {
 const loadTerminalDefaults = async (): Promise<void> => {
 	let nextDebugPreference = debugOverlayPreference;
 	try {
-		const settings = await fetchSettings();
+		const settings = await terminalTransport.fetchSettings();
 		const rawPreference = settings?.defaults?.terminalDebugOverlay ?? '';
 		const normalizedPreference = rawPreference.toLowerCase().trim();
 		if (normalizedPreference === 'on' || normalizedPreference === 'off') {
@@ -2030,7 +1941,7 @@ const loadTerminalDefaults = async (): Promise<void> => {
 
 const refreshSessiondStatus = async (): Promise<void> => {
 	try {
-		const status = await fetchSessiondStatus();
+		const status = await terminalTransport.fetchSessiondStatus();
 		sessiondAvailable = status?.available ?? false;
 	} catch {
 		sessiondAvailable = false;
@@ -2125,7 +2036,7 @@ const loadRendererAddon = async (handle: TerminalHandle, id: string): Promise<vo
 };
 
 const ensureListener = (): void => {
-	if (!listeners.has('terminal:data')) {
+	if (!listeners.has(EVENT_TERMINAL_DATA)) {
 		const handler = (payload: TerminalPayload): void => {
 			const terminalId = payload.terminalId;
 			const workspaceId = payload.workspaceId;
@@ -2152,24 +2063,24 @@ const ensureListener = (): void => {
 			});
 			noteRenderStats(id);
 		};
-		unsubscribeHandlers.push(subscribeEvent('terminal:data', handler));
-		listeners.add('terminal:data');
+		unsubscribeHandlers.push(subscribeEvent(EVENT_TERMINAL_DATA, handler));
+		listeners.add(EVENT_TERMINAL_DATA);
 	}
-	if (!listeners.has('terminal:bootstrap')) {
+	if (!listeners.has(EVENT_TERMINAL_BOOTSTRAP)) {
 		const handler = (payload: TerminalBootstrapPayload): void => {
 			handleBootstrapPayload(payload);
 		};
-		unsubscribeHandlers.push(subscribeEvent('terminal:bootstrap', handler));
-		listeners.add('terminal:bootstrap');
+		unsubscribeHandlers.push(subscribeEvent(EVENT_TERMINAL_BOOTSTRAP, handler));
+		listeners.add(EVENT_TERMINAL_BOOTSTRAP);
 	}
-	if (!listeners.has('terminal:bootstrap_done')) {
+	if (!listeners.has(EVENT_TERMINAL_BOOTSTRAP_DONE)) {
 		const handler = (payload: TerminalBootstrapDonePayload): void => {
 			handleBootstrapDonePayload(payload);
 		};
-		unsubscribeHandlers.push(subscribeEvent('terminal:bootstrap_done', handler));
-		listeners.add('terminal:bootstrap_done');
+		unsubscribeHandlers.push(subscribeEvent(EVENT_TERMINAL_BOOTSTRAP_DONE, handler));
+		listeners.add(EVENT_TERMINAL_BOOTSTRAP_DONE);
 	}
-	if (!listeners.has('terminal:lifecycle')) {
+	if (!listeners.has(EVENT_TERMINAL_LIFECYCLE)) {
 		const handler = (payload: TerminalLifecyclePayload): void => {
 			const terminalId = payload.terminalId;
 			const workspaceId = payload.workspaceId;
@@ -2212,10 +2123,10 @@ const ensureListener = (): void => {
 				emitState(id);
 			}
 		};
-		unsubscribeHandlers.push(subscribeEvent('terminal:lifecycle', handler));
-		listeners.add('terminal:lifecycle');
+		unsubscribeHandlers.push(subscribeEvent(EVENT_TERMINAL_LIFECYCLE, handler));
+		listeners.add(EVENT_TERMINAL_LIFECYCLE);
 	}
-	if (!listeners.has('terminal:modes')) {
+	if (!listeners.has(EVENT_TERMINAL_MODES)) {
 		const handler = (payload: TerminalModesPayload): void => {
 			const terminalId = payload.terminalId;
 			const workspaceId = payload.workspaceId;
@@ -2234,10 +2145,10 @@ const ensureListener = (): void => {
 			};
 			syncWebLinksForMode(id);
 		};
-		unsubscribeHandlers.push(subscribeEvent('terminal:modes', handler));
-		listeners.add('terminal:modes');
+		unsubscribeHandlers.push(subscribeEvent(EVENT_TERMINAL_MODES, handler));
+		listeners.add(EVENT_TERMINAL_MODES);
 	}
-	if (!listeners.has('terminal:kitty')) {
+	if (!listeners.has(EVENT_TERMINAL_KITTY)) {
 		const handler = (payload: TerminalKittyPayload): void => {
 			const terminalId = payload.terminalId;
 			const workspaceId = payload.workspaceId;
@@ -2255,10 +2166,10 @@ const ensureListener = (): void => {
 			}
 			void applyKittyEvent(id, payload.event);
 		};
-		unsubscribeHandlers.push(subscribeEvent('terminal:kitty', handler));
-		listeners.add('terminal:kitty');
+		unsubscribeHandlers.push(subscribeEvent(EVENT_TERMINAL_KITTY, handler));
+		listeners.add(EVENT_TERMINAL_KITTY);
 	}
-	if (!listeners.has('sessiond:restarted')) {
+	if (!listeners.has(EVENT_SESSIOND_RESTARTED)) {
 		const handler = (): void => {
 			sessiondChecked = false;
 			void (async () => {
@@ -2274,8 +2185,8 @@ const ensureListener = (): void => {
 				}
 			})();
 		};
-		unsubscribeHandlers.push(subscribeEvent('sessiond:restarted', handler));
-		listeners.add('sessiond:restarted');
+		unsubscribeHandlers.push(subscribeEvent(EVENT_SESSIOND_RESTARTED, handler));
+		listeners.add(EVENT_SESSIOND_RESTARTED);
 	}
 };
 
@@ -2302,7 +2213,7 @@ const initTerminal = async (id: string): Promise<void> => {
 			const workspaceId = getWorkspaceId(id);
 			const terminalId = getTerminalId(id);
 			if (workspaceId && terminalId) {
-				const status = await fetchWorkspaceTerminalStatus(workspaceId, terminalId);
+				const status = await terminalTransport.fetchStatus(workspaceId, terminalId);
 				resumed = status?.active ?? false;
 			}
 		} catch {
@@ -2442,7 +2353,7 @@ export const closeTerminal = async (workspaceId: string, terminalId: string): Pr
 	const terminalKey = buildTerminalKey(workspaceId, terminalId);
 	if (!terminalKey) return;
 	try {
-		await stopWorkspaceTerminal(workspaceId, terminalId);
+		await terminalTransport.stop(workspaceId, terminalId);
 	} catch {
 		// Ignore failures.
 	}

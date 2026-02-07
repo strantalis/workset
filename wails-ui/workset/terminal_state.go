@@ -10,6 +10,11 @@ import (
 	"time"
 )
 
+type terminalRestoreTarget struct {
+	workspaceID string
+	terminalID  string
+}
+
 func (a *App) ensureIdleWatcher(session *terminalSession) {
 	session.mu.Lock()
 	if session.client == nil {
@@ -130,45 +135,84 @@ func (a *App) restoreTerminalSessions(ctx context.Context) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	state := a.loadPersistedTerminalState()
+	targets := a.collectTerminalRestoreTargets(ctx, state)
+	for _, target := range targets {
+		_ = a.StartWorkspaceTerminal(target.workspaceID, target.terminalID)
+	}
+}
+
+func (a *App) loadPersistedTerminalState() terminalState {
 	statePath, err := a.terminalStatePath()
+	if err != nil {
+		return terminalState{}
+	}
+	data, readErr := os.ReadFile(statePath)
+	if readErr != nil {
+		return terminalState{}
+	}
 	var state terminalState
-	if err == nil {
-		if data, readErr := os.ReadFile(statePath); readErr == nil {
-			if jsonErr := json.Unmarshal(data, &state); jsonErr == nil {
-				a.terminalMu.Lock()
-				if a.restoredModes == nil {
-					a.restoredModes = map[string]terminalModeState{}
-				}
-				for _, entry := range state.Sessions {
-					if entry.Modes != nil {
-						sessionID := terminalSessionID(entry.WorkspaceID, entry.TerminalID)
-						a.restoredModes[sessionID] = *entry.Modes
-					}
-				}
-				a.terminalMu.Unlock()
-			}
-		}
+	if jsonErr := json.Unmarshal(data, &state); jsonErr != nil {
+		return terminalState{}
 	}
-	if store, layoutErr := a.loadTerminalLayoutStore(); layoutErr == nil {
-		if a.startSessionsFromLayouts(ctx, store) {
-			return
-		}
-	}
-	if client, err := a.getSessiondClient(); err == nil {
-		listCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		list, err := client.List(listCtx)
-		cancel()
-		if err == nil && len(list.Sessions) > 0 {
-			for _, info := range list.Sessions {
-				if info.Running {
-					workspaceID, terminalID, _ := parseTerminalSessionID(info.SessionID)
-					_ = a.StartWorkspaceTerminal(workspaceID, terminalID)
-				}
-			}
-			return
-		}
+	a.terminalMu.Lock()
+	if a.restoredModes == nil {
+		a.restoredModes = map[string]terminalModeState{}
 	}
 	for _, entry := range state.Sessions {
-		_ = a.StartWorkspaceTerminal(entry.WorkspaceID, entry.TerminalID)
+		if entry.Modes != nil {
+			sessionID := terminalSessionID(entry.WorkspaceID, entry.TerminalID)
+			a.restoredModes[sessionID] = *entry.Modes
+		}
 	}
+	a.terminalMu.Unlock()
+	return state
+}
+
+func (a *App) collectTerminalRestoreTargets(ctx context.Context, state terminalState) []terminalRestoreTarget {
+	targets := make([]terminalRestoreTarget, 0)
+	seen := make(map[string]struct{})
+	add := func(workspaceID, terminalID string) {
+		workspaceID = strings.TrimSpace(workspaceID)
+		terminalID = strings.TrimSpace(terminalID)
+		if workspaceID == "" {
+			return
+		}
+		sessionID := terminalSessionID(workspaceID, terminalID)
+		if _, exists := seen[sessionID]; exists {
+			return
+		}
+		seen[sessionID] = struct{}{}
+		targets = append(targets, terminalRestoreTarget{
+			workspaceID: workspaceID,
+			terminalID:  terminalID,
+		})
+	}
+
+	if store, err := a.loadTerminalLayoutStore(); err == nil {
+		for _, target := range a.terminalLayoutRestoreTargets(ctx, store) {
+			add(target.workspaceID, target.terminalID)
+		}
+	}
+
+	if client, err := a.getSessiondClient(); err == nil {
+		listCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		list, listErr := client.List(listCtx)
+		cancel()
+		if listErr == nil {
+			for _, info := range list.Sessions {
+				if !info.Running {
+					continue
+				}
+				workspaceID, terminalID, _ := parseTerminalSessionID(info.SessionID)
+				add(workspaceID, terminalID)
+			}
+		}
+	}
+
+	for _, entry := range state.Sessions {
+		add(entry.WorkspaceID, entry.TerminalID)
+	}
+
+	return targets
 }

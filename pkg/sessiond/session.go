@@ -471,11 +471,33 @@ func (s *Session) closeWithReason(reason string) {
 	s.persistSnapshot()
 	if cmd != nil && cmd.Process != nil {
 		_ = cmd.Process.Kill()
+		waitForCommandExit(cmd, 2*time.Second)
 	}
 	if onClose != nil {
 		onClose(s)
 	}
 	s.closeSubscribers()
+}
+
+func waitForCommandExit(cmd *exec.Cmd, timeout time.Duration) {
+	if cmd == nil {
+		return
+	}
+	done := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(done)
+	}()
+	if timeout <= 0 {
+		<-done
+		return
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-done:
+	case <-timer.C:
+	}
 }
 
 func (s *Session) isClosed() bool {

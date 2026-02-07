@@ -327,9 +327,9 @@ func startDaemon(_ context.Context, socketPath string, opts StartOptions) error 
 		_ = logFile.Close()
 		return err
 	}
+	_ = logFile.Close()
 	go func() {
 		_ = cmd.Wait()
-		_ = logFile.Close()
 	}()
 	return nil
 }

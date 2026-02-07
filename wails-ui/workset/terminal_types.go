@@ -119,6 +119,12 @@ type terminalModeState struct {
 	MouseURXVT bool  `json:"mouseURXVT,omitempty"`
 }
 
+type terminalStream interface {
+	Next(*sessiond.StreamMessage) error
+	ID() string
+	Close() error
+}
+
 type terminalSession struct {
 	id          string
 	workspaceID string
@@ -127,7 +133,7 @@ type terminalSession struct {
 	mu          sync.Mutex
 
 	client       *sessiond.Client
-	stream       *sessiond.Stream
+	stream       terminalStream
 	streamCancel context.CancelFunc
 	streamID     string
 	detaching    bool
@@ -291,6 +297,23 @@ func (s *terminalSession) Resize(cols, rows int) error {
 
 func (s *terminalSession) Close() error {
 	return s.CloseWithReason("closed")
+}
+
+func (s *terminalSession) releaseStream(stream terminalStream) (detaching bool, releasedCurrent bool) {
+	if stream != nil {
+		_ = stream.Close()
+	}
+	s.mu.Lock()
+	detaching = s.detaching
+	s.detaching = false
+	if s.stream == stream {
+		s.stream = nil
+		s.streamID = ""
+		s.streamCancel = nil
+		releasedCurrent = true
+	}
+	s.mu.Unlock()
+	return detaching, releasedCurrent
 }
 
 func (s *terminalSession) CloseWithReason(reason string) error {

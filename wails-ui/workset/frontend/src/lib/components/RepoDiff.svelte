@@ -60,6 +60,13 @@
 	import type { PrCreateStage } from '../prCreateProgress';
 	import { subscribeRepoDiffEvent } from '../repoDiffService';
 	import { subscribeGitHubOperationEvent } from '../githubOperationService';
+	import {
+		EVENT_REPO_DIFF_LOCAL_STATUS,
+		EVENT_REPO_DIFF_LOCAL_SUMMARY,
+		EVENT_REPO_DIFF_PR_REVIEWS,
+		EVENT_REPO_DIFF_PR_STATUS,
+		EVENT_REPO_DIFF_SUMMARY,
+	} from '../events';
 	import { applyRepoDiffSummary, applyRepoLocalStatus } from '../state';
 	import type { DiffLineAnnotation, ReviewAnnotation } from './repo-diff/annotations';
 	import { buildLineAnnotations } from './repo-diff/annotations';
@@ -1453,16 +1460,16 @@
 			subscribeGitHubOperationEvent((payload) => {
 				applyGitHubOperationStatus(payload);
 			}),
-			subscribeRepoDiffEvent<RepoDiffSummaryEvent>('repodiff:summary', (payload) => {
+			subscribeRepoDiffEvent<RepoDiffSummaryEvent>(EVENT_REPO_DIFF_SUMMARY, (payload) => {
 				if (payload.workspaceId !== workspaceId || payload.repoId !== repoId) return;
 				applySummaryUpdate(payload.summary, 'pr');
 			}),
-			subscribeRepoDiffEvent<RepoDiffSummaryEvent>('repodiff:local-summary', (payload) => {
+			subscribeRepoDiffEvent<RepoDiffSummaryEvent>(EVENT_REPO_DIFF_LOCAL_SUMMARY, (payload) => {
 				if (payload.workspaceId !== workspaceId || payload.repoId !== repoId) return;
 				applySummaryUpdate(payload.summary, 'local');
 				applyRepoDiffSummary(payload.workspaceId, payload.repoId, payload.summary);
 			}),
-			subscribeRepoDiffEvent<RepoDiffLocalStatusEvent>('repodiff:local-status', (payload) => {
+			subscribeRepoDiffEvent<RepoDiffLocalStatusEvent>(EVENT_REPO_DIFF_LOCAL_STATUS, (payload) => {
 				if (payload.workspaceId !== workspaceId || payload.repoId !== repoId) return;
 				localStatus = payload.status;
 				if (!payload.status.hasUncommitted) {
@@ -1470,13 +1477,13 @@
 				}
 				applyRepoLocalStatus(payload.workspaceId, payload.repoId, payload.status);
 			}),
-			subscribeRepoDiffEvent<RepoDiffPrStatusEvent>('repodiff:pr-status', (payload) => {
+			subscribeRepoDiffEvent<RepoDiffPrStatusEvent>(EVENT_REPO_DIFF_PR_STATUS, (payload) => {
 				if (payload.workspaceId !== workspaceId || payload.repoId !== repoId) return;
 				prStatus = mapPullRequestStatus(payload.status);
 				prStatusError = null;
 				prStatusLoading = false;
 			}),
-			subscribeRepoDiffEvent<RepoDiffPrReviewsEvent>('repodiff:pr-reviews', (payload) => {
+			subscribeRepoDiffEvent<RepoDiffPrReviewsEvent>(EVENT_REPO_DIFF_PR_REVIEWS, (payload) => {
 				if (payload.workspaceId !== workspaceId || payload.repoId !== repoId) return;
 				prReviews = mapPullRequestReviews(payload.comments);
 				prReviewsLoading = false;

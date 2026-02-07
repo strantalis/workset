@@ -23,6 +23,7 @@
 	import type { RepoLocalStatus } from './lib/api';
 	import { fetchGitHubAuthInfo, startRepoStatusWatch, stopRepoStatusWatch } from './lib/api';
 	import { subscribeRepoDiffEvent } from './lib/repoDiffService';
+	import { EVENT_REPO_DIFF_LOCAL_STATUS } from './lib/events';
 
 	// Sidebar resize constraints
 	const MIN_SIDEBAR_WIDTH = 200;
@@ -151,7 +152,7 @@
 		void loadWorkspaces();
 		void checkGitHubAuth();
 		repoStatusUnsubscribe = subscribeRepoDiffEvent<RepoDiffLocalStatusEvent>(
-			'repodiff:local-status',
+			EVENT_REPO_DIFF_LOCAL_STATUS,
 			(payload) => {
 				applyRepoLocalStatus(payload.workspaceId, payload.repoId, payload.status);
 			},

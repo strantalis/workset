@@ -209,8 +209,18 @@ func collectTerminalIDs(layout *TerminalLayout) []string {
 }
 
 func (a *App) startSessionsFromLayouts(ctx context.Context, store terminalLayoutStore) bool {
+	targets := a.terminalLayoutRestoreTargets(ctx, store)
+	started := false
+	for _, target := range targets {
+		_ = a.StartWorkspaceTerminal(target.workspaceID, target.terminalID)
+		started = true
+	}
+	return started
+}
+
+func (a *App) terminalLayoutRestoreTargets(ctx context.Context, store terminalLayoutStore) []terminalRestoreTarget {
 	if len(store.Layouts) == 0 {
-		return false
+		return nil
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -218,22 +228,24 @@ func (a *App) startSessionsFromLayouts(ctx context.Context, store terminalLayout
 	a.ensureService()
 	list, err := a.service.ListWorkspaces(ctx)
 	if err != nil {
-		return false
+		return nil
 	}
 	nameByPath := make(map[string]string, len(list.Workspaces))
 	for _, workspace := range list.Workspaces {
 		nameByPath[workspace.Path] = workspace.Name
 	}
-	started := false
+	targets := make([]terminalRestoreTarget, 0)
 	for path, entry := range store.Layouts {
-		name := nameByPath[path]
-		if strings.TrimSpace(name) == "" {
+		name := strings.TrimSpace(nameByPath[path])
+		if name == "" {
 			continue
 		}
 		for _, terminalID := range collectTerminalIDs(&entry.Layout) {
-			_ = a.StartWorkspaceTerminal(name, terminalID)
-			started = true
+			targets = append(targets, terminalRestoreTarget{
+				workspaceID: name,
+				terminalID:  terminalID,
+			})
 		}
 	}
-	return started
+	return targets
 }

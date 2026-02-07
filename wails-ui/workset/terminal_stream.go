@@ -12,12 +12,23 @@ import (
 
 const bootstrapReplayChunkSize = 64 * 1024
 
+var attachSessionStream = func(
+	client *sessiond.Client,
+	ctx context.Context,
+	sessionID string,
+	since int64,
+	withBuffer bool,
+	streamID string,
+) (terminalStream, sessiond.StreamMessage, error) {
+	return client.Attach(ctx, sessionID, since, withBuffer, streamID)
+}
+
 func (a *App) restartTerminalStream(session *terminalSession) {
 	if session == nil {
 		return
 	}
 	var cancel context.CancelFunc
-	var stream *sessiond.Stream
+	var stream terminalStream
 	session.mu.Lock()
 	if session.streamCancel != nil {
 		session.detaching = true
@@ -57,7 +68,7 @@ func (a *App) streamTerminal(session *terminalSession) {
 	session.mu.Lock()
 	session.streamCancel = cancel
 	session.mu.Unlock()
-	stream, first, err := client.Attach(ctx, session.id, 0, false, "")
+	stream, first, err := attachSessionStream(client, ctx, session.id, 0, false, "")
 	if err != nil {
 		session.mu.Lock()
 		session.streamCancel = nil
@@ -73,14 +84,8 @@ func (a *App) streamTerminal(session *terminalSession) {
 	session.streamID = stream.ID()
 	session.mu.Unlock()
 	defer func() {
-		session.mu.Lock()
-		detaching := session.detaching
-		session.detaching = false
-		session.stream = nil
-		session.streamID = ""
-		session.streamCancel = nil
-		session.mu.Unlock()
-		if detaching {
+		detaching, releasedCurrent := session.releaseStream(stream)
+		if detaching || !releasedCurrent {
 			return
 		}
 		_ = session.CloseWithReason("closed")
@@ -127,7 +132,7 @@ func (a *App) streamTerminal(session *terminalSession) {
 		switch msg.Type {
 		case "bootstrap":
 			applyStreamModes(msg, true)
-			wruntime.EventsEmit(a.ctx, "terminal:bootstrap", TerminalBootstrapPayload{
+			wruntime.EventsEmit(a.ctx, EventTerminalBootstrap, TerminalBootstrapPayload{
 				WorkspaceID:      session.workspaceID,
 				TerminalID:       session.terminalID,
 				SnapshotSource:   msg.SnapshotSource,
@@ -143,7 +148,7 @@ func (a *App) streamTerminal(session *terminalSession) {
 				InitialCredit:    msg.InitialCredit,
 			})
 			if msg.Kitty != nil {
-				wruntime.EventsEmit(a.ctx, "terminal:kitty", TerminalKittyPayload{
+				wruntime.EventsEmit(a.ctx, EventTerminalKitty, TerminalKittyPayload{
 					WorkspaceID: session.workspaceID,
 					TerminalID:  session.terminalID,
 					Event:       *msg.Kitty,
@@ -153,7 +158,7 @@ func (a *App) streamTerminal(session *terminalSession) {
 				a.emitTerminalLifecycle("started", session, "Backlog truncated; skipping replay.")
 			}
 		case "bootstrap_done":
-			wruntime.EventsEmit(a.ctx, "terminal:bootstrap_done", TerminalBootstrapDonePayload{
+			wruntime.EventsEmit(a.ctx, EventTerminalBootstrapDone, TerminalBootstrapDonePayload{
 				WorkspaceID: session.workspaceID,
 				TerminalID:  session.terminalID,
 			})
@@ -161,7 +166,7 @@ func (a *App) streamTerminal(session *terminalSession) {
 			applyStreamModes(msg, false)
 		case "kitty":
 			if msg.Kitty != nil {
-				wruntime.EventsEmit(a.ctx, "terminal:kitty", TerminalKittyPayload{
+				wruntime.EventsEmit(a.ctx, EventTerminalKitty, TerminalKittyPayload{
 					WorkspaceID: session.workspaceID,
 					TerminalID:  session.terminalID,
 					Event:       *msg.Kitty,
@@ -176,7 +181,7 @@ func (a *App) streamTerminal(session *terminalSession) {
 			if bytes <= 0 {
 				bytes = len(msg.Data)
 			}
-			wruntime.EventsEmit(a.ctx, "terminal:data", TerminalPayload{
+			wruntime.EventsEmit(a.ctx, EventTerminalData, TerminalPayload{
 				WorkspaceID: session.workspaceID,
 				TerminalID:  session.terminalID,
 				Data:        msg.Data,
@@ -231,7 +236,7 @@ func (a *App) emitBootstrapReplay(session *terminalSession) error {
 	if err != nil {
 		return err
 	}
-	wruntime.EventsEmit(a.ctx, "terminal:bootstrap", TerminalBootstrapPayload{
+	wruntime.EventsEmit(a.ctx, EventTerminalBootstrap, TerminalBootstrapPayload{
 		WorkspaceID:      session.workspaceID,
 		TerminalID:       session.terminalID,
 		SnapshotSource:   bootstrap.SnapshotSource,
@@ -247,7 +252,7 @@ func (a *App) emitBootstrapReplay(session *terminalSession) error {
 		InitialCredit:    bootstrap.InitialCredit,
 	})
 	if bootstrap.Kitty != nil {
-		wruntime.EventsEmit(a.ctx, "terminal:kitty", TerminalKittyPayload{
+		wruntime.EventsEmit(a.ctx, EventTerminalKitty, TerminalKittyPayload{
 			WorkspaceID: session.workspaceID,
 			TerminalID:  session.terminalID,
 			Event: kitty.Event{
@@ -257,7 +262,7 @@ func (a *App) emitBootstrapReplay(session *terminalSession) error {
 		})
 	}
 	if !bootstrap.SafeToReplay {
-		wruntime.EventsEmit(a.ctx, "terminal:bootstrap_done", TerminalBootstrapDonePayload{
+		wruntime.EventsEmit(a.ctx, EventTerminalBootstrapDone, TerminalBootstrapDonePayload{
 			WorkspaceID: session.workspaceID,
 			TerminalID:  session.terminalID,
 		})
@@ -275,7 +280,7 @@ func (a *App) emitBootstrapReplay(session *terminalSession) error {
 				n = len(buf)
 			}
 			chunk := buf[:n]
-			wruntime.EventsEmit(a.ctx, "terminal:data", TerminalPayload{
+			wruntime.EventsEmit(a.ctx, EventTerminalData, TerminalPayload{
 				WorkspaceID: session.workspaceID,
 				TerminalID:  session.terminalID,
 				Data:        string(chunk),
@@ -284,7 +289,7 @@ func (a *App) emitBootstrapReplay(session *terminalSession) error {
 			buf = buf[n:]
 		}
 	}
-	wruntime.EventsEmit(a.ctx, "terminal:bootstrap_done", TerminalBootstrapDonePayload{
+	wruntime.EventsEmit(a.ctx, EventTerminalBootstrapDone, TerminalBootstrapDonePayload{
 		WorkspaceID: session.workspaceID,
 		TerminalID:  session.terminalID,
 	})
@@ -295,7 +300,7 @@ func (a *App) emitTerminalLifecycle(status string, session *terminalSession, mes
 	if session == nil {
 		return
 	}
-	wruntime.EventsEmit(a.ctx, "terminal:lifecycle", TerminalLifecyclePayload{
+	wruntime.EventsEmit(a.ctx, EventTerminalLifecycle, TerminalLifecyclePayload{
 		WorkspaceID: session.workspaceID,
 		TerminalID:  session.terminalID,
 		Status:      status,
@@ -307,7 +312,7 @@ func (a *App) emitTerminalModes(session *terminalSession, altScreen, mouse, mous
 	if session == nil {
 		return
 	}
-	wruntime.EventsEmit(a.ctx, "terminal:modes", TerminalModesPayload{
+	wruntime.EventsEmit(a.ctx, EventTerminalModes, TerminalModesPayload{
 		WorkspaceID:   session.workspaceID,
 		TerminalID:    session.terminalID,
 		AltScreen:     altScreen,

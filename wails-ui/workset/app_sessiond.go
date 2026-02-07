@@ -285,7 +285,7 @@ func (a *App) restartSessiond(reason string) SessiondStatus {
 		if forceSocketRemove {
 			status.Warning = "Session daemon did not shut down cleanly; socket was force removed."
 		}
-		wruntime.EventsEmit(a.ctx, "sessiond:restarted", status)
+		wruntime.EventsEmit(a.ctx, EventSessiondRestarted, status)
 	}
 	logRestartf("restart_done")
 	status := SessiondStatus{Available: true}

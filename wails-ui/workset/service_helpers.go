@@ -9,8 +9,10 @@ func newWorksetService(observer appHookObserver) *worksetapi.Service {
 }
 
 func (a *App) ensureService() *worksetapi.Service {
-	if a.service == nil {
-		a.service = newWorksetService(appHookObserver{app: a})
-	}
+	a.serviceOnce.Do(func() {
+		if a.service == nil {
+			a.service = newWorksetService(appHookObserver{app: a})
+		}
+	})
 	return a.service
 }

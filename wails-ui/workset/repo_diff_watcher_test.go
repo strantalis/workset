@@ -108,7 +108,7 @@ func TestRefreshLocalEmitsEventsOnce(t *testing.T) {
 	var summaryPayload RepoDiffSummary
 	repoDiffEmit = func(_ context.Context, name string, data ...interface{}) {
 		events = append(events, name)
-		if name == "repodiff:summary" && len(data) > 0 {
+		if name == EventRepoDiffSummary && len(data) > 0 {
 			if payload, ok := data[0].(RepoDiffSummaryEvent); ok {
 				summaryPayload = payload.Summary
 			}
@@ -146,7 +146,7 @@ func TestRefreshLocalEmitsEventsOnce(t *testing.T) {
 	if len(events) != 3 {
 		t.Fatalf("expected 3 events, got %d: %v", len(events), events)
 	}
-	if events[0] != "repodiff:local-status" || events[1] != "repodiff:local-summary" || events[2] != "repodiff:summary" {
+	if events[0] != EventRepoDiffLocalStatus || events[1] != EventRepoDiffLocalSummary || events[2] != EventRepoDiffSummary {
 		t.Fatalf("unexpected event order: %v", events)
 	}
 
@@ -229,7 +229,7 @@ func TestRefreshPrEmitsEventsOnce(t *testing.T) {
 	if len(events) != 3 {
 		t.Fatalf("expected 3 events, got %d: %v", len(events), events)
 	}
-	if events[0] != "repodiff:pr-status" || events[1] != "repodiff:summary" || events[2] != "repodiff:pr-reviews" {
+	if events[0] != EventRepoDiffPRStatus || events[1] != EventRepoDiffSummary || events[2] != EventRepoDiffPRReviews {
 		t.Fatalf("unexpected event order: %v", events)
 	}
 
@@ -286,7 +286,7 @@ func TestLocalOnlySkipsSummaryAndPr(t *testing.T) {
 	}
 
 	watch.refreshLocal()
-	if len(events) != 1 || events[0] != "repodiff:local-status" {
+	if len(events) != 1 || events[0] != EventRepoDiffLocalStatus {
 		t.Fatalf("expected only local-status event, got %v", events)
 	}
 

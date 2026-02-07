@@ -44,7 +44,7 @@ func (o appHookObserver) OnHookProgress(progress worksetapi.HookProgress) {
 	if progress.Error != "" {
 		payload.Error = progress.Error
 	}
-	hookEventsEmit(o.app.ctx, "hooks:progress", payload)
+	hookEventsEmit(o.app.ctx, EventHooksProgress, payload)
 }
 
 func hookOperation(reason string) string {

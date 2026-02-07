@@ -38,7 +38,8 @@ The daemon is the only component that parses terminal bytes and owns terminal st
 
 - `workset-sessiond` parses all escape sequences, updates mode state, and produces snapshots/backlog.
 - The Wails backend forwards structured events and never interprets terminal bytes.
-- The UI renders events and does not parse terminal escape sequences.
+- The UI renders typed events and does not own terminal protocol parsing.
+  It may respond to limited renderer-level xterm callbacks (for example OSC color queries).
 
 ## Session lifecycle
 
