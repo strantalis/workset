@@ -12,9 +12,7 @@
 		ExternalLink,
 	} from '@lucide/svelte';
 	import type {
-		FileDiff as FileDiffBase,
 		FileDiffMetadata,
-		FileDiffOptions as FileDiffOptionsBase,
 		ParsedPatch,
 	} from '@pierre/diffs';
 	import type {
@@ -89,6 +87,11 @@
 		type RepoDiffSummaryEvent,
 	} from './repo-diff/repoDiffLifecycle';
 	import { createCheckSidebarController, getCheckStats } from './repo-diff/checkSidebarController';
+	import {
+		createDiffRenderController,
+		type FileDiffRenderOptions,
+		type FileDiffRendererModule,
+	} from './repo-diff/diffRenderController';
 
 	/**
 	 * Validates and opens URL only if it belongs to trusted GitHub domains.
@@ -109,26 +112,6 @@
 		}
 	}
 
-	type FileDiffOptions<T = undefined> = FileDiffOptionsBase & {
-		renderAnnotation?: (annotation: DiffLineAnnotation<T>) => HTMLElement | undefined;
-	};
-
-	// FileDiff instance type with annotation support
-	type FileDiffType<T = undefined> = FileDiffBase & {
-		setOptions(options: FileDiffOptions<T> | undefined): void;
-		setLineAnnotations(lineAnnotations: DiffLineAnnotation<T>[]): void;
-		render(props: {
-			fileDiff?: FileDiffMetadata;
-			oldFile?: unknown;
-			newFile?: unknown;
-			forceRender?: boolean;
-			fileContainer?: HTMLElement;
-			containerWrapper?: HTMLElement;
-			lineAnnotations?: DiffLineAnnotation<T>[];
-		}): void;
-		cleanUp(): void;
-	};
-
 	interface Props {
 		repo: Repo | null;
 		workspaceId: string;
@@ -144,9 +127,7 @@
 	const repoMissing = $derived(repo?.missing ?? false);
 	const repoDirty = $derived(repo?.dirty ?? false);
 
-	type DiffsModule = {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		FileDiff: new (options?: FileDiffOptionsBase) => any;
+	type DiffsModule = FileDiffRendererModule<ReviewAnnotation> & {
 		parsePatchFiles: (patch: string) => ParsedPatch[];
 	};
 
@@ -162,7 +143,6 @@
 
 	let diffMode: 'split' | 'unified' = $state('split');
 	let diffContainer: HTMLElement | null = $state(null);
-	let diffInstance: FileDiffType<ReviewAnnotation> | null = null;
 	let diffModule = $state<DiffsModule | null>(null);
 	let rendererLoading = $state(false);
 	let rendererError: string | null = $state(null);
@@ -218,9 +198,6 @@
 	// Sidebar tab: 'files' or 'checks'
 	let sidebarTab: 'files' | 'checks' = $state('files');
 
-	// Pending scroll line for annotation navigation
-	let pendingScrollLine: number | null = $state(null);
-
 	// Check annotations state
 	let expandedCheck: string | null = $state(null);
 	let checkAnnotations: Record<string, CheckAnnotation[]> = $state({});
@@ -274,7 +251,7 @@
 		showAlert: (message) => alert(message),
 	});
 
-	const buildOptions = (): FileDiffOptions<ReviewAnnotation> => ({
+	const buildOptions = (): FileDiffRenderOptions<ReviewAnnotation> => ({
 		theme: 'pierre-dark',
 		themeType: 'dark',
 		diffStyle: diffMode,
@@ -532,43 +509,17 @@
 		}
 	};
 
-	const renderDiff = (): void => {
-		if (!diffModule || !selectedDiff || !diffContainer) return;
-		if (!diffInstance) {
-			diffInstance = new diffModule.FileDiff(buildOptions()) as FileDiffType<ReviewAnnotation>;
-		} else {
-			diffInstance.setOptions(buildOptions());
-		}
-		const annotations = buildLineAnnotations(filteredReviews);
-		diffInstance.render({
-			fileDiff: selectedDiff,
-			fileContainer: diffContainer,
-			forceRender: true,
-			lineAnnotations: annotations,
-		});
+	const diffRenderController = createDiffRenderController<ReviewAnnotation>({
+		getDiffModule: () => diffModule,
+		getSelectedDiff: () => selectedDiff,
+		getDiffContainer: () => diffContainer,
+		buildOptions,
+		getLineAnnotations: () => buildLineAnnotations(filteredReviews),
+		requestAnimationFrame,
+		setTimeout,
+	});
 
-		// Handle pending scroll to line after render
-		if (pendingScrollLine !== null) {
-			const lineToScroll = pendingScrollLine;
-			pendingScrollLine = null;
-			// Use requestAnimationFrame to ensure DOM is updated
-			requestAnimationFrame(() => {
-				// Try to find the line element - look for data-line attribute or line number cell
-				const lineEl = diffContainer?.querySelector(
-					`[data-line-number="${lineToScroll}"], td.line-num[data-content="${lineToScroll}"], .line-num[data-content="${lineToScroll}"]`,
-				);
-				if (lineEl) {
-					lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-					// Add highlight effect to the line
-					const row = lineEl.closest('tr');
-					if (row) {
-						row.classList.add('highlight-line');
-						setTimeout(() => row.classList.remove('highlight-line'), 2000);
-					}
-				}
-			});
-		}
-	};
+	const renderDiff = (): void => diffRenderController.renderDiff();
 
 	// Check if we should use branch diff (when PR exists with branches)
 	const useBranchDiff = (): BranchDiffRefs | null => {
@@ -634,7 +585,7 @@
 			fetchCheckAnnotations(owner, repoName, checkRunId),
 		selectFile,
 		setPendingScrollLine: (line) => {
-			pendingScrollLine = line;
+			diffRenderController.setPendingScrollLine(line);
 		},
 		// eslint-disable-next-line no-console
 		logError: (...args) => console.error(...args),
@@ -788,7 +739,7 @@
 		loadLocalSummary,
 		loadGitHubOperationStatuses,
 		cleanupDiff: () => {
-			diffInstance?.cleanUp();
+			diffRenderController.cleanUp();
 		},
 		watcherLifecycle,
 	});

@@ -33,6 +33,7 @@ import {
 	type KittyOverlay,
 	type KittyState,
 } from './terminalKittyImageController';
+import { createTerminalInputOrchestrator } from './terminalInputOrchestrator';
 
 export type TerminalViewState = {
 	status: string;
@@ -573,56 +574,40 @@ const shouldSuppressMouseInput = (id: string, data: string): boolean => {
 	return data.includes('\x1b[<');
 };
 
-const sendInput = (id: string, data: string): void => {
-	if (shouldSuppressMouseInput(id, data)) {
-		return;
-	}
-	const modes = lifecycle.getMode(id);
-	const mouseResult = stripMouseReports(data, modes, mouseInputTail[id] ?? '');
-	if (mouseResult.tail !== (mouseInputTail[id] ?? '')) {
-		mouseInputTail = { ...mouseInputTail, [id]: mouseResult.tail };
-	}
-	const filtered = mouseResult.filtered;
-	if (!filtered) {
-		return;
-	}
-	void ensureSessionActive(id);
-	if (!lifecycle.hasStarted(id)) {
-		pendingInput.set(id, (pendingInput.get(id) ?? '') + filtered);
-		return;
-	}
-	updateStats(id, (stats) => {
-		stats.bytesOut += filtered.length;
-	});
-	const workspaceId = getWorkspaceId(id);
-	const terminalId = getTerminalId(id);
-	if (!workspaceId || !terminalId) return;
-	void terminalTransport.write(workspaceId, terminalId, filtered).catch((error: unknown) => {
-		pendingInput.set(id, (pendingInput.get(id) ?? '') + filtered);
-		lifecycle.markStopped(id);
-		if (
-			typeof error === 'string' &&
-			(error.includes('session not found') ||
-				error.includes('terminal not started') ||
-				error.includes('terminal not found'))
-		) {
-			resetTerminalInstance(id);
-			void beginTerminal(id, true);
-		}
-		if (error instanceof Error) {
-			const message = error.message;
-			if (
-				message.includes('session not found') ||
-				message.includes('terminal not started') ||
-				message.includes('terminal not found')
-			) {
-				resetTerminalInstance(id);
-				void beginTerminal(id, true);
-			}
-		}
+const terminalInputOrchestrator = createTerminalInputOrchestrator({
+	shouldSuppressMouseInput,
+	getMode: (id) => lifecycle.getMode(id),
+	filterMouseReports: stripMouseReports,
+	getMouseTail: (id) => mouseInputTail[id] ?? '',
+	setMouseTail: (id, tail) => {
+		mouseInputTail = { ...mouseInputTail, [id]: tail };
+	},
+	ensureSessionActive: (id) => ensureSessionActive(id),
+	hasStarted: (id) => lifecycle.hasStarted(id),
+	appendPendingInput: (id, data) => {
+		pendingInput.set(id, (pendingInput.get(id) ?? '') + data);
+	},
+	recordOutputBytes: (id, bytes) => {
+		updateStats(id, (stats) => {
+			stats.bytesOut += bytes;
+		});
+	},
+	getWorkspaceId,
+	getTerminalId,
+	write: (workspaceId, terminalId, data) => terminalTransport.write(workspaceId, terminalId, data),
+	markStopped: (id) => lifecycle.markStopped(id),
+	resetTerminalInstance: (id) => {
+		resetTerminalInstance(id);
+	},
+	beginTerminal: (id, quiet) => beginTerminal(id, quiet),
+	writeFailureMessage: (id, message) => {
 		const handle = terminalHandles.get(id);
-		handle?.terminal.write(`\r\n[workset] write failed: ${String(error)}`);
-	});
+		handle?.terminal.write(`\r\n[workset] write failed: ${message}`);
+	},
+});
+
+const sendInput = (id: string, data: string): void => {
+	terminalInputOrchestrator.sendInput(id, data);
 };
 
 const captureTerminalViewport = (terminal: Terminal) => {
