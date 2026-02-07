@@ -44,6 +44,8 @@
 	import Alert from './ui/Alert.svelte';
 	import Button from './ui/Button.svelte';
 	import Modal from './Modal.svelte';
+	import RemovalOverlay from './workspace-action/RemovalOverlay.svelte';
+	import WorkspaceActionHookResults from './workspace-action/WorkspaceActionHookResults.svelte';
 
 	interface Props {
 		onClose: () => void;
@@ -884,95 +886,21 @@
 	disableClose={removing}
 >
 	{#if phase === 'hook-results'}
-		<div class="hook-results-container">
-			{#if success}
-				<Alert variant="success">{success}</Alert>
-			{/if}
-			{#if warnings.length > 0}
-				<Alert variant="warning">
-					{#each warnings as warning (warning)}
-						<div>{warning}</div>
-					{/each}
-				</Alert>
-			{/if}
-
-			{#if hookRuns.length > 0}
-				<div class="hook-results-section">
-					<h4 class="hook-results-heading">Hook runs</h4>
-					<div class="hook-runs-list">
-						{#each hookRuns as run (`${run.repo}:${run.event}:${run.id}`)}
-							<div class="hook-run-row">
-								<span class="hook-run-repo">{run.repo}</span>
-								<code class="hook-run-id">{run.id}</code>
-								<span
-									class="hook-status-badge"
-									class:ok={run.status === 'ok'}
-									class:failed={run.status === 'failed'}
-									class:running={run.status === 'running'}
-									class:skipped={run.status === 'skipped'}
-								>
-									{run.status}
-								</span>
-								{#if run.log_path}
-									<span class="hook-run-log" title={run.log_path}>log</span>
-								{/if}
-							</div>
-						{/each}
-					</div>
-				</div>
-			{/if}
-
-			{#if pendingHooks.length > 0}
-				<div class="hook-results-section">
-					<h4 class="hook-results-heading">Pending hooks</h4>
-					{#each pendingHooks as pending (`${pending.repo}:${pending.event}`)}
-						<div class="pending-hook-card">
-							<div class="pending-hook-info">
-								<span class="pending-hook-repo">{pending.repo}</span>
-								<span class="pending-hook-names">{pending.hooks.join(', ')}</span>
-								{#if pending.trusted}
-									<span class="hook-status-badge ok">trusted</span>
-								{/if}
-							</div>
-							<div class="pending-hook-actions">
-								<Button
-									variant="primary"
-									size="sm"
-									disabled={pending.running || pending.trusted}
-									onclick={() => void handleRunPendingHook(pending)}
-								>
-									{pending.running ? 'Running…' : 'Run now'}
-								</Button>
-								<Button
-									variant="ghost"
-									size="sm"
-									disabled={pending.trusting || pending.trusted}
-									onclick={() => void handleTrustPendingHook(pending)}
-								>
-									{pending.trusting ? 'Trusting…' : pending.trusted ? 'Trusted' : 'Trust'}
-								</Button>
-							</div>
-							{#if pending.runError}
-								<div class="pending-hook-error">{pending.runError}</div>
-							{/if}
-						</div>
-					{/each}
-				</div>
-			{/if}
-
-			<div class="hook-results-footer">
-				<Button
-					variant="primary"
-					onclick={() => {
-						if (autoCloseTimer) {
-							clearTimeout(autoCloseTimer);
-							autoCloseTimer = null;
-						}
-						onClose();
-					}}>Done</Button
-				>
-			</div>
-		</div>
+		<WorkspaceActionHookResults
+			{success}
+			{warnings}
+			{hookRuns}
+			{pendingHooks}
+			onRunPendingHook={handleRunPendingHook}
+			onTrustPendingHook={handleTrustPendingHook}
+			onDone={() => {
+				if (autoCloseTimer) {
+					clearTimeout(autoCloseTimer);
+					autoCloseTimer = null;
+				}
+				onClose();
+			}}
+		/>
 	{:else}
 		{#if error}
 			<Alert variant="error">{error}</Alert>
@@ -1623,29 +1551,7 @@
 						{loading ? 'Removing…' : 'Remove workspace'}
 					</Button>
 				</div>
-				{#if removing}
-					<div class="removal-overlay">
-						{#if removalSuccess}
-							<div class="removal-success">
-								<svg
-									class="success-icon"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-								>
-									<path d="M20 6L9 17l-5-5" />
-								</svg>
-								<span class="removal-text">Removed successfully</span>
-							</div>
-						{:else}
-							<div class="removal-loading">
-								<div class="spinner"></div>
-								<span class="removal-text">Removing workspace…</span>
-							</div>
-						{/if}
-					</div>
-				{/if}
+				<RemovalOverlay {removing} {removalSuccess} removingText="Removing workspace…" />
 			</div>
 		{:else if mode === 'remove-repo'}
 			<div class="form form-removing" class:removing class:success={removalSuccess}>
@@ -1698,29 +1604,7 @@
 						{loading ? 'Removing…' : 'Remove repo'}
 					</Button>
 				</div>
-				{#if removing}
-					<div class="removal-overlay">
-						{#if removalSuccess}
-							<div class="removal-success">
-								<svg
-									class="success-icon"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-								>
-									<path d="M20 6L9 17l-5-5" />
-								</svg>
-								<span class="removal-text">Removed successfully</span>
-							</div>
-						{:else}
-							<div class="removal-loading">
-								<div class="spinner"></div>
-								<span class="removal-text">Removing repo…</span>
-							</div>
-						{/if}
-					</div>
-				{/if}
+				<RemovalOverlay {removing} {removalSuccess} removingText="Removing repo…" />
 			</div>
 		{/if}
 	{/if}
@@ -2320,108 +2204,6 @@
 		pointer-events: none;
 	}
 
-	.removal-overlay {
-		position: absolute;
-		inset: 0;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background: rgba(11, 15, 24, 0.6);
-		border-radius: var(--radius-md);
-		animation: overlayFadeIn 0.2s ease-out;
-	}
-
-	@keyframes overlayFadeIn {
-		from {
-			opacity: 0;
-		}
-		to {
-			opacity: 1;
-		}
-	}
-
-	.removal-loading,
-	.removal-success {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 16px;
-		padding: 24px;
-		animation: contentSlideIn 0.3s ease-out;
-	}
-
-	@keyframes contentSlideIn {
-		from {
-			opacity: 0;
-			transform: translateY(8px);
-		}
-		to {
-			opacity: 1;
-			transform: translateY(0);
-		}
-	}
-
-	.spinner {
-		width: 32px;
-		height: 32px;
-		border: 3px solid var(--muted);
-		border-top-color: var(--accent);
-		border-radius: 50%;
-		animation: spin 1s linear infinite;
-	}
-
-	@keyframes spin {
-		from {
-			transform: rotate(0deg);
-		}
-		to {
-			transform: rotate(360deg);
-		}
-	}
-
-	.removal-text {
-		font-size: 14px;
-		font-weight: 500;
-		color: var(--text);
-	}
-
-	.success-icon {
-		width: 48px;
-		height: 48px;
-		color: var(--success);
-		animation: successPop 0.4s ease-out;
-	}
-
-	@keyframes successPop {
-		0% {
-			transform: scale(0.5);
-			opacity: 0;
-		}
-		50% {
-			transform: scale(1.1);
-		}
-		100% {
-			transform: scale(1);
-			opacity: 1;
-		}
-	}
-
-	.removal-success {
-		animation: containerPulse 1.2s ease-out;
-	}
-
-	@keyframes containerPulse {
-		0% {
-			box-shadow: 0 0 0 0 rgba(var(--success-rgb), 0.4);
-		}
-		50% {
-			box-shadow: 0 0 16px 6px rgba(var(--success-rgb), 0.15);
-		}
-		100% {
-			box-shadow: 0 0 0 0 rgba(var(--success-rgb), 0);
-		}
-	}
-
 	/* Two-column create layout */
 	.form.create-two-column {
 		display: grid;
@@ -2890,127 +2672,5 @@
 	.pending-hook-error {
 		color: var(--danger);
 		font-size: 12px;
-	}
-
-	/* Hook Results Phase */
-	.hook-results-container {
-		display: flex;
-		flex-direction: column;
-		gap: 16px;
-	}
-
-	.hook-results-section {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
-
-	.hook-results-heading {
-		margin: 0;
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--muted);
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-	}
-
-	.hook-runs-list {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-
-	.hook-run-row {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 8px 10px;
-		background: var(--panel);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-sm);
-		font-size: 13px;
-	}
-
-	.hook-run-repo {
-		font-weight: 500;
-		color: var(--text);
-	}
-
-	.hook-run-id {
-		font-size: 12px;
-		color: var(--muted);
-	}
-
-	.hook-status-badge {
-		display: inline-flex;
-		align-items: center;
-		padding: 2px 8px;
-		border-radius: var(--radius-sm);
-		font-size: 11px;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.02em;
-		margin-left: auto;
-	}
-
-	.hook-status-badge.ok {
-		background: rgba(74, 222, 128, 0.15);
-		color: var(--success, #4ade80);
-	}
-
-	.hook-status-badge.failed {
-		background: rgba(239, 68, 68, 0.15);
-		color: var(--danger, #ef4444);
-	}
-
-	.hook-status-badge.running {
-		background: rgba(59, 130, 246, 0.15);
-		color: var(--accent);
-	}
-
-	.hook-status-badge.skipped {
-		background: rgba(255, 255, 255, 0.08);
-		color: var(--muted);
-	}
-
-	.hook-run-log {
-		font-size: 11px;
-		color: var(--muted);
-		cursor: help;
-	}
-
-	.pending-hook-card {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		padding: 12px;
-		background: var(--panel);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-	}
-
-	.pending-hook-info {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		flex-wrap: wrap;
-	}
-
-	.pending-hook-repo {
-		font-weight: 500;
-		font-size: 14px;
-		color: var(--text);
-	}
-
-	.pending-hook-names {
-		font-size: 12px;
-		color: var(--muted);
-	}
-
-	.hook-results-footer {
-		display: flex;
-		justify-content: flex-end;
-		padding-top: 8px;
-		border-top: 1px solid var(--border);
 	}
 </style>
