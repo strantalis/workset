@@ -11,10 +11,7 @@
 		ChevronRight,
 		ExternalLink,
 	} from '@lucide/svelte';
-	import type {
-		FileDiffMetadata,
-		ParsedPatch,
-	} from '@pierre/diffs';
+	import type { FileDiffMetadata, ParsedPatch } from '@pierre/diffs';
 	import type {
 		CheckAnnotation,
 		PullRequestCheck,
@@ -59,13 +56,15 @@
 	import { applyRepoDiffSummary, applyRepoLocalStatus } from '../state';
 	import type { DiffLineAnnotation, ReviewAnnotation } from './repo-diff/annotations';
 	import { buildLineAnnotations } from './repo-diff/annotations';
+	import { createPrStatusController } from './repo-diff/prStatusController';
 	import {
-		createPrStatusController,
-		mapPullRequestReviews,
-		mapPullRequestStatus,
-		type RepoDiffPrReviewsEvent,
-		type RepoDiffPrStatusEvent,
-	} from './repo-diff/prStatusController';
+		applyPrReviewsLifecycleEvent,
+		applyPrStatusLifecycleEvent,
+		applyTrackedPullRequestContext,
+		buildGitHubOperationsStateSurface,
+		buildPrStatusStateSurface,
+		resolveEffectivePrMode,
+	} from './repo-diff/prOrchestrationSurface';
 	import {
 		createRepoDiffFileController,
 		type BranchDiffRefs,
@@ -229,7 +228,7 @@
 	});
 
 	// Derived mode: status when PR exists, create otherwise
-	const effectiveMode = $derived(forceMode ?? (prTracked ? 'status' : 'create'));
+	const effectiveMode = $derived(resolveEffectivePrMode(forceMode, prTracked));
 
 	const annotationActionsController = createReviewAnnotationActionsController({
 		document,
@@ -316,63 +315,65 @@
 	});
 
 	const githubOperationsController = createGitHubOperationsController({
-		workspaceId: () => workspaceId,
-		repoId: () => repoId,
-		prBase: () => prBase,
-		prBaseRemote: () => prBaseRemote,
-		prDraft: () => prDraft,
-		prCreating: () => prCreating,
-		commitPushLoading: () => commitPushLoading,
-		authModalOpen: () => authModalOpen,
-		getAuthPendingAction: () => authPendingAction,
-		setAuthModalOpen: (value) => {
-			authModalOpen = value;
-		},
-		setAuthModalMessage: (value) => {
-			authModalMessage = value;
-		},
-		setAuthPendingAction: (value) => {
-			authPendingAction = value;
-		},
-		setPrPanelExpanded: (value) => {
-			prPanelExpanded = value;
-		},
-		setPrCreating: (value) => {
-			prCreating = value;
-		},
-		setPrCreatingStage: (value) => {
-			prCreatingStage = value;
-		},
-		setPrCreateError: (value) => {
-			prCreateError = value;
-		},
-		setPrCreateSuccess: (value) => {
-			prCreateSuccess = value;
-		},
-		setPrTracked: (value) => {
-			prTracked = value;
-		},
-		setForceMode: (value) => {
-			forceMode = value;
-		},
-		setPrNumberInput: (value) => {
-			prNumberInput = value;
-		},
-		setPrStatus: (value) => {
-			prStatus = value;
-		},
-		setCommitPushLoading: (value) => {
-			commitPushLoading = value;
-		},
-		setCommitPushStage: (value) => {
-			commitPushStage = value;
-		},
-		setCommitPushError: (value) => {
-			commitPushError = value;
-		},
-		setCommitPushSuccess: (value) => {
-			commitPushSuccess = value;
-		},
+		...buildGitHubOperationsStateSurface({
+			workspaceId: () => workspaceId,
+			repoId: () => repoId,
+			prBase: () => prBase,
+			prBaseRemote: () => prBaseRemote,
+			prDraft: () => prDraft,
+			prCreating: () => prCreating,
+			commitPushLoading: () => commitPushLoading,
+			authModalOpen: () => authModalOpen,
+			getAuthPendingAction: () => authPendingAction,
+			setAuthModalOpen: (value) => {
+				authModalOpen = value;
+			},
+			setAuthModalMessage: (value) => {
+				authModalMessage = value;
+			},
+			setAuthPendingAction: (value) => {
+				authPendingAction = value;
+			},
+			setPrPanelExpanded: (value) => {
+				prPanelExpanded = value;
+			},
+			setPrCreating: (value) => {
+				prCreating = value;
+			},
+			setPrCreatingStage: (value) => {
+				prCreatingStage = value;
+			},
+			setPrCreateError: (value) => {
+				prCreateError = value;
+			},
+			setPrCreateSuccess: (value) => {
+				prCreateSuccess = value;
+			},
+			setPrTracked: (value) => {
+				prTracked = value;
+			},
+			setForceMode: (value) => {
+				forceMode = value;
+			},
+			setPrNumberInput: (value) => {
+				prNumberInput = value;
+			},
+			setPrStatus: (value) => {
+				prStatus = value;
+			},
+			setCommitPushLoading: (value) => {
+				commitPushLoading = value;
+			},
+			setCommitPushStage: (value) => {
+				commitPushStage = value;
+			},
+			setCommitPushError: (value) => {
+				commitPushError = value;
+			},
+			setCommitPushSuccess: (value) => {
+				commitPushSuccess = value;
+			},
+		}),
 		handledOperationCompletions,
 		handleRefresh: () => handleRefresh(),
 		formatError,
@@ -494,13 +495,19 @@
 			if (!tracked) {
 				return;
 			}
-			prTracked = tracked;
-			if (!prNumberInput) {
-				prNumberInput = `${tracked.number}`;
-			}
-			if (!prBranchInput && tracked.headBranch) {
-				prBranchInput = tracked.headBranch;
-			}
+			applyTrackedPullRequestContext(tracked, {
+				setPrTracked: (value) => {
+					prTracked = value;
+				},
+				prNumberInput: () => prNumberInput,
+				setPrNumberInput: (value) => {
+					prNumberInput = value;
+				},
+				prBranchInput: () => prBranchInput,
+				setPrBranchInput: (value) => {
+					prBranchInput = value;
+				},
+			});
 			void loadPrStatus();
 			void loadPrReviews();
 			void loadLocalStatus().then(() => loadLocalSummary());
@@ -653,36 +660,38 @@
 	const applySummaryUpdate = (data: RepoDiffSummary, source: SummarySource): void =>
 		summaryController.applySummaryUpdate(data, source);
 	const prStatusController = createPrStatusController({
-		workspaceId: () => workspaceId,
-		repoId: () => repoId,
-		prNumberInput: () => prNumberInput,
-		prBranchInput: () => prBranchInput,
-		effectiveMode: () => effectiveMode,
-		currentUserId: () => currentUserId,
-		setCurrentUserId: (value) => {
-			currentUserId = value;
-		},
-		setPrStatus: (value) => {
-			prStatus = value;
-		},
-		setPrStatusLoading: (value) => {
-			prStatusLoading = value;
-		},
-		setPrStatusError: (value) => {
-			prStatusError = value;
-		},
-		setPrReviews: (value) => {
-			prReviews = value;
-		},
-		setPrReviewsLoading: (value) => {
-			prReviewsLoading = value;
-		},
-		setPrReviewsSent: (value) => {
-			prReviewsSent = value;
-		},
-		setLocalStatus: (value) => {
-			localStatus = value;
-		},
+		...buildPrStatusStateSurface({
+			workspaceId: () => workspaceId,
+			repoId: () => repoId,
+			prNumberInput: () => prNumberInput,
+			prBranchInput: () => prBranchInput,
+			effectiveMode: () => effectiveMode,
+			currentUserId: () => currentUserId,
+			setCurrentUserId: (value) => {
+				currentUserId = value;
+			},
+			setPrStatus: (value) => {
+				prStatus = value;
+			},
+			setPrStatusLoading: (value) => {
+				prStatusLoading = value;
+			},
+			setPrStatusError: (value) => {
+				prStatusError = value;
+			},
+			setPrReviews: (value) => {
+				prReviews = value;
+			},
+			setPrReviewsLoading: (value) => {
+				prReviewsLoading = value;
+			},
+			setPrReviewsSent: (value) => {
+				prReviewsSent = value;
+			},
+			setLocalStatus: (value) => {
+				localStatus = value;
+			},
+		}),
 		parseNumber,
 		runGitHubAction,
 		loadSummary,
@@ -719,18 +728,33 @@
 			}
 			applyRepoLocalStatus(payload.workspaceId, payload.repoId, payload.status);
 		},
-		onPrStatusEvent: (payload: RepoDiffPrStatusEvent) => {
-			prStatus = mapPullRequestStatus(payload.status);
-			prStatusError = null;
-			prStatusLoading = false;
+		onPrStatusEvent: (payload) => {
+			applyPrStatusLifecycleEvent(payload, {
+				setPrStatus: (value) => {
+					prStatus = value;
+				},
+				setPrStatusError: (value) => {
+					prStatusError = value;
+				},
+				setPrStatusLoading: (value) => {
+					prStatusLoading = value;
+				},
+			});
 		},
-		onPrReviewsEvent: (payload: RepoDiffPrReviewsEvent) => {
-			prReviews = mapPullRequestReviews(payload.comments);
-			prReviewsLoading = false;
-			prReviewsSent = false;
-			if (currentUserId === null) {
-				void loadCurrentUser();
-			}
+		onPrReviewsEvent: (payload) => {
+			applyPrReviewsLifecycleEvent(payload, {
+				setPrReviews: (value) => {
+					prReviews = value;
+				},
+				setPrReviewsLoading: (value) => {
+					prReviewsLoading = value;
+				},
+				setPrReviewsSent: (value) => {
+					prReviewsSent = value;
+				},
+				currentUserId: () => currentUserId,
+				loadCurrentUser,
+			});
 		},
 		loadSummary,
 		loadTrackedPR,

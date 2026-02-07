@@ -26,6 +26,7 @@ import {
 	type TerminalPayload,
 } from './terminalEventSubscriptions';
 import { createTerminalModeBootstrapCoordinator } from './terminalModeBootstrapCoordinator';
+import { createTerminalReplayAckOrchestrator } from './terminalReplayAckOrchestrator';
 import {
 	createKittyState,
 	createTerminalKittyController,
@@ -131,9 +132,6 @@ const outputQueues = new Map<
 	string,
 	{ chunks: OutputChunk[]; bytes: number; scheduled: boolean }
 >();
-const replayState = new Map<string, 'idle' | 'replaying' | 'live'>();
-const pendingReplayOutput = new Map<string, OutputChunk[]>();
-const pendingReplayKitty = new Map<string, KittyEventPayload[]>();
 const bootstrapHandled = new Map<string, boolean>();
 const bootstrapFetchTimers = new Map<string, number>();
 const focusTimers = new Map<string, number>();
@@ -149,10 +147,6 @@ const statsMap = new Map<
 	}
 >();
 const pendingInput = new Map<string, string>();
-const pendingAckBytes = new Map<string, number>();
-const initialCreditMap = new Map<string, number>();
-const initialCreditSent = new Set<string>();
-const ackTimers = new Map<string, number>();
 const fitStabilizers = new Map<string, number>();
 const resizeObservers = new Map<string, ResizeObserver>();
 const resizeTimers = new Map<string, number>();
@@ -356,25 +350,19 @@ const destroyTerminalState = (id: string): void => {
 	if (!id) return;
 	clearTimeoutMap(focusTimers, id);
 	clearTimeoutMap(bootstrapFetchTimers, id);
-	clearTimeoutMap(ackTimers, id);
 	clearTimeoutMap(fitStabilizers, id);
 	terminalStreamOrchestrator.clearReattachTimer(id);
 	clearTimeoutMap(resizeTimers, id);
 	resetSessionState(id);
 	terminalStores.delete(id);
 	outputQueues.delete(id);
-	replayState.delete(id);
-	pendingReplayOutput.delete(id);
-	pendingReplayKitty.delete(id);
+	replayAckOrchestrator.destroy(id);
 	bootstrapHandled.delete(id);
 	lastDims.delete(id);
 	statsMap.delete(id);
 	pendingInput.delete(id);
 	terminalResizeBridge.clear(id);
 	renderHealth.release(id);
-	pendingAckBytes.delete(id);
-	initialCreditMap.delete(id);
-	initialCreditSent.delete(id);
 	lifecycle.deleteState(id);
 	const observer = resizeObservers.get(id);
 	if (observer) {
@@ -810,52 +798,15 @@ const focusTerminal = (id: string): void => {
 	);
 };
 
-const setReplayState = (id: string, state: 'idle' | 'replaying' | 'live'): void => {
-	replayState.set(id, state);
-	if (state !== 'live') {
-		return;
-	}
-	const pending = pendingReplayOutput.get(id) ?? [];
-	if (pending.length > 0) {
-		pendingReplayOutput.delete(id);
-		for (const chunk of pending) {
-			enqueueOutput(id, chunk.data, chunk.bytes);
-		}
-	}
-	const kitty = pendingReplayKitty.get(id) ?? [];
-	if (kitty.length > 0) {
-		if (terminalHandles.has(id)) {
-			pendingReplayKitty.delete(id);
-			for (const event of kitty) {
-				void terminalKittyController.applyEvent(id, event);
-			}
-		}
-	}
-	flushOutput(id, true);
-	forceRedraw(id);
-	grantInitialCredit(id);
-	flushAck(id);
-};
-
 const resetSessionState = (id: string): void => {
-	replayState.set(id, 'idle');
-	pendingReplayOutput.delete(id);
-	pendingReplayKitty.delete(id);
+	replayAckOrchestrator.resetSession(id);
 	outputQueues.delete(id);
-	pendingAckBytes.delete(id);
-	initialCreditMap.delete(id);
-	initialCreditSent.delete(id);
 	bootstrapHandled.delete(id);
 	const bootstrapTimer = bootstrapFetchTimers.get(id);
 	if (bootstrapTimer) {
 		window.clearTimeout(bootstrapTimer);
 	}
 	bootstrapFetchTimers.delete(id);
-	const ackTimer = ackTimers.get(id);
-	if (ackTimer) {
-		window.clearTimeout(ackTimer);
-	}
-	ackTimers.delete(id);
 	lifecycle.dropHealthCheck(id);
 	renderHealth.clearSession(id);
 	terminalResizeBridge.clear(id);
@@ -979,48 +930,30 @@ const flushOutput = (id: string, scheduled: boolean): void => {
 	}
 };
 
-const scheduleAck = (id: string): void => {
-	if (ackTimers.has(id)) return;
-	ackTimers.set(
-		id,
-		window.setTimeout(() => {
-			ackTimers.delete(id);
-			flushAck(id);
-		}, ACK_FLUSH_DELAY_MS),
-	);
-};
-
-const flushAck = (id: string): void => {
-	const bytes = pendingAckBytes.get(id);
-	if (!bytes || bytes <= 0) return;
-	pendingAckBytes.delete(id);
-	const workspaceId = getWorkspaceId(id);
-	const terminalId = getTerminalId(id);
-	if (!workspaceId || !terminalId) return;
-	void terminalTransport.ack(workspaceId, terminalId, bytes).catch(() => undefined);
-};
-
-const grantInitialCredit = (id: string): void => {
-	if (initialCreditSent.has(id)) return;
-	const workspaceId = getWorkspaceId(id);
-	const terminalId = getTerminalId(id);
-	if (!workspaceId || !terminalId) return;
-	initialCreditSent.add(id);
-	const credit = initialCreditMap.get(id) ?? INITIAL_STREAM_CREDIT;
-	void terminalTransport.ack(workspaceId, terminalId, credit).catch(() => {
-		initialCreditSent.delete(id);
-	});
-};
-
-const recordAckBytes = (id: string, bytes: number): void => {
-	const total = (pendingAckBytes.get(id) ?? 0) + bytes;
-	pendingAckBytes.set(id, total);
-	if (total >= ACK_BATCH_BYTES) {
-		flushAck(id);
-		return;
-	}
-	scheduleAck(id);
-};
+const replayAckOrchestrator = createTerminalReplayAckOrchestrator<KittyEventPayload>({
+	enqueueOutput,
+	flushOutput,
+	forceRedraw,
+	hasTerminalHandle: (id) => terminalHandles.has(id),
+	applyKittyEvent: (id, event) => terminalKittyController.applyEvent(id, event),
+	getWorkspaceId,
+	getTerminalId,
+	ack: (workspaceId, terminalId, bytes) => terminalTransport.ack(workspaceId, terminalId, bytes),
+	setTimeoutFn: (callback, timeoutMs) => window.setTimeout(callback, timeoutMs),
+	clearTimeoutFn: (handle) => window.clearTimeout(handle),
+	countBytes,
+	recordBytesIn: (id, bytes) => {
+		updateStats(id, (stats) => {
+			stats.bytesIn += bytes;
+		});
+	},
+	noteOutputActivity: (id) => {
+		renderHealth.noteOutputActivity(id);
+	},
+	ackBatchBytes: ACK_BATCH_BYTES,
+	ackFlushDelayMs: ACK_FLUSH_DELAY_MS,
+	initialStreamCredit: INITIAL_STREAM_CREDIT,
+});
 
 const requestHealthCheck = (id: string): void => {
 	lifecycle.requestHealthCheck(id, { timeoutMs: HEALTH_TIMEOUT_MS });
@@ -1088,7 +1021,7 @@ const beginTerminal = async (id: string, quiet = false): Promise<void> => {
 	lifecycle.markStartInFlight(id);
 	resetSessionState(id);
 	bootstrapHandled.set(id, false);
-	setReplayState(id, 'replaying');
+	replayAckOrchestrator.setReplayState(id, 'replaying');
 	if (!quiet) {
 		lifecycle.setStatusAndMessage(id, 'starting', 'Waiting for shell output…');
 		setHealth(id, 'unknown');
@@ -1288,16 +1221,16 @@ const terminalModeBootstrapCoordinator = createTerminalModeBootstrapCoordinator<
 		lifecycle.markInput(id);
 	},
 	bootstrapHandled,
-	setReplayState,
+	setReplayState: replayAckOrchestrator.setReplayState,
 	enqueueOutput,
 	countBytes,
-	pendingReplayKitty,
+	pendingReplayKitty: replayAckOrchestrator.pendingReplayKitty,
 	hasTerminalHandle: (id) => terminalHandles.has(id),
 	applyKittyEvent: (id, event) => terminalKittyController.applyEvent(id, event),
 	setHealth,
-	initialCreditMap,
+	initialCreditMap: replayAckOrchestrator.initialCreditMap,
 	initialStreamCredit: INITIAL_STREAM_CREDIT,
-	pendingReplayOutput,
+	pendingReplayOutput: replayAckOrchestrator.pendingReplayOutput,
 	getStatus: (id) => lifecycle.getStatus(id),
 	setStatusAndMessage: (id, status, message) => {
 		lifecycle.setStatusAndMessage(id, status, message);
@@ -1317,33 +1250,11 @@ const terminalModeBootstrapCoordinator = createTerminalModeBootstrapCoordinator<
 
 const handleTerminalDataEvent = (id: string, payload: TerminalPayload): void => {
 	lifecycle.markInput(id);
-	const bytes = payload.bytes && payload.bytes > 0 ? payload.bytes : countBytes(payload.data);
-	const replayStateValue = replayState.get(id) ?? 'unknown';
-	const isLive = replayStateValue === 'live';
-	if (!isLive) {
-		const pending = pendingReplayOutput.get(id) ?? [];
-		pending.push({ data: payload.data, bytes });
-		pendingReplayOutput.set(id, pending);
-		return;
-	}
-	enqueueOutput(id, payload.data, bytes);
-	recordAckBytes(id, bytes);
-	updateStats(id, (stats) => {
-		stats.bytesIn += bytes;
-	});
-	renderHealth.noteOutputActivity(id);
+	replayAckOrchestrator.handleTerminalData(id, payload);
 };
 
 const handleTerminalKittyEvent = (id: string, payload: TerminalKittyPayload): void => {
-	const replayStateValue = replayState.get(id) ?? 'unknown';
-	const isLive = replayStateValue === 'live';
-	if (!isLive || !terminalHandles.has(id)) {
-		const pending = pendingReplayKitty.get(id) ?? [];
-		pending.push(payload.event);
-		pendingReplayKitty.set(id, pending);
-		return;
-	}
-	void terminalKittyController.applyEvent(id, payload.event);
+	replayAckOrchestrator.handleTerminalKitty(id, payload.event);
 };
 
 const handleSessiondRestarted = (): void => {

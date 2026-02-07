@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (subagent pass 22)
+Last updated: 2026-02-07 (subagent pass 23)
 
 ## Goal
 
@@ -18,9 +18,9 @@ Reduce architecture risk from oversized files by splitting high-complexity modul
 
 Largest files by LOC right now:
 
-- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (3425)
+- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (3449)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2476)
-- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (1604)
+- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (1515)
 - `pkg/termemu/termemu.go` (972)
 - `wails-ui/workset/app_diffs.go` (926)
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
@@ -30,9 +30,9 @@ Largest files by LOC right now:
 ## Parallel Tracks (Issue Map)
 
 - [x] `#124` Guardrails (must start first)
-- [ ] `#115` FE-DIFF (slice 10 landed)
+- [ ] `#115` FE-DIFF (slice 11 landed)
 - [ ] `#116` FE-WORKSPACE (slice 5 landed)
-- [ ] `#117` FE-TERMINAL (slice 12 landed)
+- [ ] `#117` FE-TERMINAL (slice 13 landed)
 - [ ] `#118` FE-PLATFORM (slice 4 landed)
 - [x] `#119` BE-SESSIOND (structural splits complete)
 - [ ] `#120` BE-GITHUB (slice 5 + tests tranche 2 landed)
@@ -125,8 +125,9 @@ Tasks:
 - [x] Extract sidebar resize/persistence lifecycle into `repo-diff/sidebarResizeController.ts`.
 - [x] Keep current public props/events unchanged.
 - [x] Extract diff rendering + scroll/highlight orchestration into `repo-diff/diffRenderController.ts`.
-- [ ] Extract PR/status/create orchestration state surface into a dedicated helper.
+- [x] Extract PR/status/create orchestration state surface into `repo-diff/prOrchestrationSurface.ts`.
 - [ ] Extract summary/local/branch diff source switching orchestration into a dedicated helper.
+- [ ] Extract checks sidebar rendering state surface from `RepoDiff.svelte` template.
 
 Verification:
 
@@ -194,6 +195,8 @@ Remaining tasks:
   Slice landed: extracted kitty state + overlay + event controller into `terminalKittyImageController.ts`.
 - [x] Extract input/filter/retry/session-recovery write path into a standalone module.
   Slice landed: extracted send-input orchestration into `terminalInputOrchestrator.ts`.
+- [x] Extract replay/ack buffering orchestration into a standalone module.
+  Slice landed: extracted replay/ack coordination into `terminalReplayAckOrchestrator.ts`.
 - [x] Add service-level tests for reconnect/attach/detach/stream-release (`terminalStreamOrchestrator.test.ts`).
 - [ ] Shrink `terminalService.ts` to orchestration-only facade.
 
@@ -368,6 +371,6 @@ Verification:
 
 ## Immediate Next Actions
 
-1. Run `#117` next slice: extract bootstrap/replay/ack buffering orchestration and reduce `terminalService.ts` toward ~1.3k LOC.
-2. Run `#115` next slice: extract PR/status/create orchestration state surface from `RepoDiff.svelte`.
+1. Run `#117` next slice: extract init/attach/focus/resize lifecycle orchestration and reduce `terminalService.ts` toward ~1.3k LOC.
+2. Run `#115` next slice: extract summary/local/branch diff source switching orchestration from `RepoDiff.svelte`.
 3. Run `#118` decision slice: choose whether to keep `api.ts` compatibility barrel long-term or migrate callsites and remove adapter layer.

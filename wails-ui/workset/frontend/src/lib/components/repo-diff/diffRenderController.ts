@@ -33,9 +33,7 @@ type DiffRenderControllerOptions<TAnnotation> = {
 	setTimeout: (callback: () => void, milliseconds: number) => unknown;
 };
 
-const LINE_SELECTOR = (
-	lineNumber: number,
-): string =>
+const LINE_SELECTOR = (lineNumber: number): string =>
 	`[data-line-number="${lineNumber}"], td.line-num[data-content="${lineNumber}"], .line-num[data-content="${lineNumber}"]`;
 
 export const createDiffRenderController = <TAnnotation>(

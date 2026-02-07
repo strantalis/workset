@@ -28,19 +28,17 @@ const createSetup = () => {
 	const annotations: DiffLineAnnotation<Annotation>[] = [
 		{ side: 'additions', lineNumber: 19, metadata: { id: 'annotation-1' } },
 	];
-	const buildOptions = vi.fn(
-		() => ({ diffStyle: 'split' }) as FileDiffRenderOptions<Annotation>,
-	);
+	const buildOptions = vi.fn(() => ({ diffStyle: 'split' }) as FileDiffRenderOptions<Annotation>);
 	const getLineAnnotations = vi.fn(() => annotations);
 
 	const instances: FileDiffRenderer<Annotation>[] = [];
-	const fileDiffConstructor = vi
-		.fn()
-		.mockImplementation(function (_options?: FileDiffRenderOptions<Annotation>) {
-			const instance = createRendererInstance();
-			instances.push(instance);
-			return instance;
-		});
+	const fileDiffConstructor = vi.fn().mockImplementation(function (
+		_options?: FileDiffRenderOptions<Annotation>,
+	) {
+		const instance = createRendererInstance();
+		instances.push(instance);
+		return instance;
+	});
 	diffModule = {
 		FileDiff: fileDiffConstructor as unknown as FileDiffRendererModule<Annotation>['FileDiff'],
 	};
@@ -89,7 +87,10 @@ const createSetup = () => {
 	};
 };
 
-const addLineCell = (setup: Setup, lineNumber: number): { row: HTMLTableRowElement; cell: HTMLTableCellElement } => {
+const addLineCell = (
+	setup: Setup,
+	lineNumber: number,
+): { row: HTMLTableRowElement; cell: HTMLTableCellElement } => {
 	const table = document.createElement('table');
 	const row = document.createElement('tr');
 	const cell = document.createElement('td');
@@ -113,9 +114,7 @@ describe('diffRenderController', () => {
 			fileDiff: expect.any(Object),
 			fileContainer: expect.any(HTMLElement),
 			forceRender: true,
-			lineAnnotations: [
-				{ side: 'additions', lineNumber: 19, metadata: { id: 'annotation-1' } },
-			],
+			lineAnnotations: [{ side: 'additions', lineNumber: 19, metadata: { id: 'annotation-1' } }],
 		});
 
 		setup.controller.renderDiff();
@@ -155,7 +154,8 @@ describe('diffRenderController', () => {
 		expect(setup.fileDiffConstructor).not.toHaveBeenCalled();
 
 		setup.setDiffModule({
-			FileDiff: setup.fileDiffConstructor as unknown as FileDiffRendererModule<Annotation>['FileDiff'],
+			FileDiff:
+				setup.fileDiffConstructor as unknown as FileDiffRendererModule<Annotation>['FileDiff'],
 		});
 		setup.setSelectedDiff(null);
 		setup.controller.renderDiff();
