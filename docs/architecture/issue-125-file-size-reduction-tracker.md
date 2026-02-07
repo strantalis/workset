@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (subagent pass 24)
+Last updated: 2026-02-07 (subagent pass 25)
 
 ## Goal
 
@@ -20,7 +20,7 @@ Largest files by LOC right now:
 
 - `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (2984)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2476)
-- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (1452)
+- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (1327)
 - `pkg/termemu/termemu.go` (972)
 - `wails-ui/workset/app_diffs.go` (926)
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
@@ -30,9 +30,9 @@ Largest files by LOC right now:
 ## Parallel Tracks (Issue Map)
 
 - [x] `#124` Guardrails (must start first)
-- [ ] `#115` FE-DIFF (slice 13 landed)
+- [x] `#115` FE-DIFF (slice 13 landed)
 - [ ] `#116` FE-WORKSPACE (slice 5 landed)
-- [ ] `#117` FE-TERMINAL (slice 14 landed)
+- [ ] `#117` FE-TERMINAL (slice 15 landed)
 - [ ] `#118` FE-PLATFORM (slice 4 landed)
 - [x] `#119` BE-SESSIOND (structural splits complete)
 - [ ] `#120` BE-GITHUB (slice 5 + tests tranche 2 landed)
@@ -188,6 +188,7 @@ Remaining tasks:
 - [ ] Remove remaining renderer/transport coupling from service shell.
   Slices landed: extracted resize/transport coupling into `terminalResizeBridge.ts`; extracted render-health/recovery orchestration into `terminalRenderHealth.ts`; extracted attach/dispose + renderer-addon state handling into `terminalAttachRendererState.ts`.
   Latest slice landed: extracted Xterm instance attach/dispose wiring into `terminalInstanceManager.ts`.
+  Latest slice landed: extracted viewport/resize/focus lifecycle into `terminalViewportResizeController.ts`.
 - [x] Extract attach/open lifecycle sequencing into a standalone module.
   Slice landed: extracted open/create/connect + retry sequencing into `terminalAttachOpenLifecycle.ts`.
 - [x] Extract event subscription wiring into a standalone module.
@@ -374,6 +375,6 @@ Verification:
 
 ## Immediate Next Actions
 
-1. Run `#117` next slice: extract init/attach/focus/resize lifecycle orchestration and reduce `terminalService.ts` toward ~1.3k LOC.
-2. Run `#115` next slice: extract summary/local/branch diff source switching orchestration from `RepoDiff.svelte`.
-3. Run `#118` decision slice: choose whether to keep `api.ts` compatibility barrel long-term or migrate callsites and remove adapter layer.
+1. Run `#117` next slice: extract stream/output queue + stats/state internals from `terminalService.ts` to continue shrinking toward orchestration-only facade.
+2. Run `#118` decision slice: choose whether to keep `api.ts` compatibility barrel long-term or migrate callsites and remove adapter layer.
+3. Run `#116` next slice: separate modal state transitions from UI markup in `WorkspaceActionModal.svelte`.

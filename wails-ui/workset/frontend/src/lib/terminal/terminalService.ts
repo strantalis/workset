@@ -9,7 +9,6 @@ import { createTerminalWebLinksSync } from './terminalWebLinks';
 import { TerminalStateStore } from './terminalStateStore';
 import { stripMouseReports } from './inputFilter';
 import { createTerminalLifecycle } from './terminalLifecycle';
-import { captureViewportSnapshot, resolveViewportTargetLine } from './viewport';
 import { createTerminalStreamOrchestrator } from './terminalStreamOrchestrator';
 import { createTerminalResizeBridge } from './terminalResizeBridge';
 import { createTerminalRenderHealth, hasVisibleTerminalContent } from './terminalRenderHealth';
@@ -37,6 +36,7 @@ import {
 	type KittyState,
 } from './terminalKittyImageController';
 import { createTerminalInputOrchestrator } from './terminalInputOrchestrator';
+import { createTerminalViewportResizeController } from './terminalViewportResizeController';
 
 export type TerminalViewState = {
 	status: string;
@@ -124,8 +124,6 @@ const outputQueues = new Map<
 >();
 const bootstrapHandled = new Map<string, boolean>();
 const bootstrapFetchTimers = new Map<string, number>();
-const focusTimers = new Map<string, number>();
-const lastDims = new Map<string, { cols: number; rows: number }>();
 const statsMap = new Map<
 	string,
 	{
@@ -137,9 +135,6 @@ const statsMap = new Map<
 	}
 >();
 const pendingInput = new Map<string, string>();
-const fitStabilizers = new Map<string, number>();
-const resizeObservers = new Map<string, ResizeObserver>();
-const resizeTimers = new Map<string, number>();
 
 let debugEnabled = false;
 let debugOverlayPreference: 'on' | 'off' | '' = '';
@@ -152,7 +147,6 @@ const OUTPUT_BACKLOG_LIMIT = 512 * 1024;
 const ACK_BATCH_BYTES = 32 * 1024;
 const ACK_FLUSH_DELAY_MS = 25;
 const INITIAL_STREAM_CREDIT = 256 * 1024;
-const RESIZE_DEBOUNCE_MS = 100;
 const HEALTH_TIMEOUT_MS = 1200;
 const STARTUP_OUTPUT_TIMEOUT_MS = 2000;
 const MAX_CLIPBOARD_BYTES = 1024 * 1024;
@@ -338,27 +332,19 @@ const deleteRecordKey = <T>(record: Record<string, T>, id: string): Record<strin
 
 const destroyTerminalState = (id: string): void => {
 	if (!id) return;
-	clearTimeoutMap(focusTimers, id);
 	clearTimeoutMap(bootstrapFetchTimers, id);
-	clearTimeoutMap(fitStabilizers, id);
 	terminalStreamOrchestrator.clearReattachTimer(id);
-	clearTimeoutMap(resizeTimers, id);
+	terminalViewportResizeController.destroy(id);
 	resetSessionState(id);
 	terminalStores.delete(id);
 	outputQueues.delete(id);
 	replayAckOrchestrator.destroy(id);
 	bootstrapHandled.delete(id);
-	lastDims.delete(id);
 	statsMap.delete(id);
 	pendingInput.delete(id);
 	terminalResizeBridge.clear(id);
 	renderHealth.release(id);
 	lifecycle.deleteState(id);
-	const observer = resizeObservers.get(id);
-	if (observer) {
-		observer.disconnect();
-	}
-	resizeObservers.delete(id);
 	suppressMouseUntil = deleteRecordKey(suppressMouseUntil, id);
 	mouseInputTail = deleteRecordKey(mouseInputTail, id);
 };
@@ -568,125 +554,6 @@ const sendInput = (id: string, data: string): void => {
 	terminalInputOrchestrator.sendInput(id, data);
 };
 
-const captureTerminalViewport = (terminal: Terminal) => {
-	const buffer = terminal.buffer.active;
-	return captureViewportSnapshot({
-		baseY: buffer.baseY,
-		viewportY: buffer.viewportY,
-	});
-};
-
-const restoreTerminalViewport = (
-	terminal: Terminal,
-	viewport: ReturnType<typeof captureTerminalViewport>,
-): void => {
-	const targetLine = resolveViewportTargetLine(viewport, terminal.buffer.active.baseY);
-	if (targetLine === null) {
-		terminal.scrollToBottom();
-		return;
-	}
-	terminal.scrollToLine(targetLine);
-};
-
-const fitWithPreservedViewport = (
-	handle: TerminalHandle,
-	viewport = captureTerminalViewport(handle.terminal),
-): void => {
-	handle.fitAddon.fit();
-	restoreTerminalViewport(handle.terminal, viewport);
-	terminalKittyController.resizeOverlay(handle);
-};
-
-const attachResizeObserver = (id: string, container: HTMLDivElement | null): void => {
-	const existing = resizeObservers.get(id);
-	if (existing) {
-		existing.disconnect();
-		resizeObservers.delete(id);
-	}
-	if (!container) return;
-	const observer = new ResizeObserver(() => {
-		const existingTimer = resizeTimers.get(id);
-		if (existingTimer) {
-			window.clearTimeout(existingTimer);
-		}
-		resizeTimers.set(
-			id,
-			window.setTimeout(() => {
-				resizeTimers.delete(id);
-				const handle = terminalHandles.get(id);
-				if (!handle) return;
-				fitTerminal(id, lifecycle.hasStarted(id));
-			}, RESIZE_DEBOUNCE_MS),
-		);
-	});
-	observer.observe(container);
-	resizeObservers.set(id, observer);
-};
-
-const fitTerminal = (id: string, resizeSession: boolean): void => {
-	const handle = terminalHandles.get(id);
-	if (!handle) return;
-	fitWithPreservedViewport(handle);
-	forceRedraw(id);
-	if (!resizeSession) return;
-	terminalResizeBridge.resizeToFit(id, handle);
-};
-
-const scheduleFitStabilization = (id: string, reason: string): void => {
-	const existing = fitStabilizers.get(id);
-	if (existing) {
-		window.clearTimeout(existing);
-		fitStabilizers.delete(id);
-	}
-	let attempts = 0;
-	let stableCount = 0;
-	const run = (): void => {
-		fitStabilizers.delete(id);
-		const handle = terminalHandles.get(id);
-		if (!handle) return;
-		const dims = handle.fitAddon.proposeDimensions();
-		if (!dims || dims.cols <= 0 || dims.rows <= 0) {
-			attempts += 1;
-			if (attempts < 6) {
-				fitStabilizers.set(id, window.setTimeout(run, 80 + attempts * 20));
-			}
-			return;
-		}
-		const prev = lastDims.get(id);
-		if (prev && prev.cols === dims.cols && prev.rows === dims.rows) {
-			stableCount += 1;
-		} else {
-			stableCount = 0;
-		}
-		lastDims.set(id, { cols: dims.cols, rows: dims.rows });
-		fitTerminal(id, lifecycle.hasStarted(id));
-		if (stableCount < 2 && attempts < 5) {
-			attempts += 1;
-			fitStabilizers.set(id, window.setTimeout(run, 80 + attempts * 30));
-		}
-	};
-	fitStabilizers.set(id, window.setTimeout(run, 60));
-	logDebug(id, 'fit', { reason });
-};
-
-const focusTerminal = (id: string): void => {
-	if (!id) return;
-	const handle = terminalHandles.get(id);
-	if (handle) {
-		handle.terminal.focus();
-		return;
-	}
-	if (focusTimers.has(id)) return;
-	focusTimers.set(
-		id,
-		window.setTimeout(() => {
-			focusTimers.delete(id);
-			const current = terminalHandles.get(id);
-			current?.terminal.focus();
-		}, 0),
-	);
-};
-
 const resetSessionState = (id: string): void => {
 	replayAckOrchestrator.resetSession(id);
 	outputQueues.delete(id);
@@ -762,17 +629,30 @@ const forceRedraw = (id: string): void => {
 	handle.terminal.refresh(0, handle.terminal.rows - 1);
 };
 
+const terminalViewportResizeController = createTerminalViewportResizeController<TerminalHandle>({
+	getHandle: (id) => terminalHandles.get(id),
+	hasStarted: (id) => lifecycle.hasStarted(id),
+	forceRedraw,
+	resizeToFit: (id, handle) => {
+		terminalResizeBridge.resizeToFit(id, handle);
+	},
+	resizeOverlay: (handle) => {
+		terminalKittyController.resizeOverlay(handle);
+	},
+	logDebug,
+});
+
 const renderHealth = createTerminalRenderHealth({
 	getHandle: (id) => terminalHandles.get(id),
 	reopenWithPreservedViewport: (id, handle) => {
 		if (!handle.container) return;
-		const viewport = captureTerminalViewport(handle.terminal);
+		const viewport = terminalViewportResizeController.captureViewport(handle.terminal);
 		handle.terminal.open(handle.container);
-		fitWithPreservedViewport(handle, viewport);
+		terminalViewportResizeController.fitWithPreservedViewport(handle, viewport);
 		terminalResizeBridge.nudgeRedraw(id, handle);
 	},
 	fitWithPreservedViewport: (_id, handle) => {
-		fitWithPreservedViewport(handle);
+		terminalViewportResizeController.fitWithPreservedViewport(handle);
 	},
 	nudgeRedraw: (id, handle) => {
 		terminalResizeBridge.nudgeRedraw(id, handle);
@@ -1090,12 +970,14 @@ const terminalAttachOpenLifecycle = createTerminalAttachOpenLifecycle({
 	},
 	loadRendererAddon: (id, handle) => terminalRendererAddonState.load(id, handle),
 	fitWithPreservedViewport: (handle) => {
-		fitWithPreservedViewport(handle);
+		terminalViewportResizeController.fitWithPreservedViewport(handle);
 	},
 	resizeToFit: (id, handle) => {
 		terminalResizeBridge.resizeToFit(id, handle);
 	},
-	scheduleFitStabilization,
+	scheduleFitStabilization: (id, reason) => {
+		terminalViewportResizeController.scheduleFitStabilization(id, reason);
+	},
 	flushOutput,
 	markAttached: (id) => {
 		terminalAttachState.markAttached(id);
@@ -1325,16 +1207,22 @@ export const syncTerminal = (input: {
 		lastWorkspaceId: terminalContexts.get(terminalKey)?.lastWorkspaceId ?? '',
 	});
 	if (context.lastWorkspaceId && context.lastWorkspaceId !== context.workspaceId) {
-		scheduleFitStabilization(context.terminalKey, 'workspace_switch');
+		terminalViewportResizeController.scheduleFitStabilization(
+			context.terminalKey,
+			'workspace_switch',
+		);
 		terminalStreamOrchestrator.scheduleReattachCheck(context.terminalKey, 'workspace_switch');
 	}
 	context.lastWorkspaceId = context.workspaceId;
 	if (input.container) {
 		attachTerminal(terminalKey, input.container, input.active);
-		attachResizeObserver(terminalKey, input.container);
+		terminalViewportResizeController.attachResizeObserver(terminalKey, input.container);
 		if (input.active) {
 			requestAnimationFrame(() => {
-				fitTerminal(terminalKey, lifecycle.hasStarted(terminalKey));
+				terminalViewportResizeController.fitTerminal(
+					terminalKey,
+					lifecycle.hasStarted(terminalKey),
+				);
 				forceRedraw(terminalKey);
 				const handle = terminalHandles.get(terminalKey);
 				if (handle && !hasVisibleTerminalContent(handle.terminal)) {
@@ -1350,16 +1238,7 @@ export const detachTerminal = (workspaceId: string, terminalId: string): void =>
 	const terminalKey = buildTerminalKey(workspaceId, terminalId);
 	if (!terminalKey) return;
 	terminalAttachState.markDetached(terminalKey);
-	const observer = resizeObservers.get(terminalKey);
-	if (observer) {
-		observer.disconnect();
-		resizeObservers.delete(terminalKey);
-	}
-	const timer = resizeTimers.get(terminalKey);
-	if (timer) {
-		window.clearTimeout(timer);
-		resizeTimers.delete(terminalKey);
-	}
+	terminalViewportResizeController.detachResizeObserver(terminalKey);
 };
 
 export const closeTerminal = async (workspaceId: string, terminalId: string): Promise<void> => {
@@ -1389,24 +1268,19 @@ export const retryHealthCheck = (workspaceId: string, terminalId: string): void 
 export const focusTerminalInstance = (workspaceId: string, terminalId: string): void => {
 	const terminalKey = buildTerminalKey(workspaceId, terminalId);
 	if (!terminalKey) return;
-	focusTerminal(terminalKey);
+	terminalViewportResizeController.focusTerminal(terminalKey);
 };
 
 export const scrollTerminalToBottom = (workspaceId: string, terminalId: string): void => {
 	const terminalKey = buildTerminalKey(workspaceId, terminalId);
 	if (!terminalKey) return;
-	const handle = terminalHandles.get(terminalKey);
-	if (!handle) return;
-	handle.terminal.scrollToBottom();
+	terminalViewportResizeController.scrollToBottom(terminalKey);
 };
 
 export const isTerminalAtBottom = (workspaceId: string, terminalId: string): boolean => {
 	const terminalKey = buildTerminalKey(workspaceId, terminalId);
 	if (!terminalKey) return true;
-	const handle = terminalHandles.get(terminalKey);
-	if (!handle) return true;
-	const buffer = handle.terminal.buffer.active;
-	return buffer.baseY === buffer.viewportY;
+	return terminalViewportResizeController.isAtBottom(terminalKey);
 };
 
 export const shutdownTerminalService = (): void => {
@@ -1419,7 +1293,7 @@ const applyFontSizeToAllTerminals = (): void => {
 		handle.terminal.options.fontSize = currentFontSize;
 		// Refit terminal to recalculate dimensions with new font size.
 		try {
-			fitTerminal(id, lifecycle.hasStarted(id));
+			terminalViewportResizeController.fitTerminal(id, lifecycle.hasStarted(id));
 		} catch {
 			// Ignore fit errors for terminals not attached to DOM.
 		}
