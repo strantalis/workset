@@ -245,6 +245,42 @@ describe('RepoDiff watcher lifecycle', () => {
 			expect(api.startRepoDiffWatch).toHaveBeenCalledWith('ws-2', 'repo-1', undefined, undefined);
 		});
 	});
+
+	it('updates watcher params when tracked PR context is loaded', async () => {
+		vi.mocked(api.fetchTrackedPullRequest).mockResolvedValue({
+			repo: 'acme/workset',
+			number: 42,
+			url: 'https://github.com/acme/workset/pull/42',
+			title: 'Improve repo diff',
+			state: 'open',
+			draft: false,
+			baseRepo: 'acme/workset',
+			baseBranch: 'main',
+			headRepo: 'acme/workset',
+			headBranch: 'feature/repo-diff',
+		});
+
+		render(RepoDiff, {
+			props: {
+				repo,
+				workspaceId: 'ws-1',
+				onClose: vi.fn(),
+			},
+		});
+
+		await waitFor(() => {
+			expect(api.startRepoDiffWatch).toHaveBeenCalledWith('ws-1', 'repo-1', undefined, undefined);
+		});
+
+		await waitFor(() => {
+			expect(api.updateRepoDiffWatch).toHaveBeenCalledWith(
+				'ws-1',
+				'repo-1',
+				42,
+				'feature/repo-diff',
+			);
+		});
+	});
 });
 
 describe('RepoDiff local pending section', () => {

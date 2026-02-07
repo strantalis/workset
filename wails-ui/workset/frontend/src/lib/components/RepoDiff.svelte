@@ -70,6 +70,7 @@
 	import { applyRepoDiffSummary, applyRepoLocalStatus } from '../state';
 	import type { DiffLineAnnotation, ReviewAnnotation } from './repo-diff/annotations';
 	import { buildLineAnnotations } from './repo-diff/annotations';
+	import { createRepoDiffWatcherLifecycle } from './repo-diff/watcherLifecycle';
 
 	/**
 	 * Validates and opens URL only if it belongs to trusted GitHub domains.
@@ -124,8 +125,6 @@
 	const repoStatusKnown = $derived(repo?.statusKnown ?? true);
 	const repoMissing = $derived(repo?.missing ?? false);
 	const repoDirty = $derived(repo?.dirty ?? false);
-	let lastRepoId = $state('');
-	let lastWorkspaceId = $state('');
 
 	type DiffsModule = {
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -303,10 +302,13 @@
 	let summaryRequest = 0;
 	let fileRequest = 0;
 
-	let watchActive = $state(false);
-	let watchStarting = $state(false);
 	let renderQueued = false;
 	let repoDiffUnsubscribers: Array<() => void> = [];
+	const watcherLifecycle = createRepoDiffWatcherLifecycle({
+		startWatch: startRepoDiffWatch,
+		updateWatch: updateRepoDiffWatch,
+		stopWatch: stopRepoDiffWatch,
+	});
 
 	// Derived mode: status when PR exists, create otherwise
 	const effectiveMode = $derived(forceMode ?? (prTracked ? 'status' : 'create'));
@@ -1505,55 +1507,16 @@
 	onDestroy(() => {
 		diffInstance?.cleanUp();
 		repoDiffUnsubscribers.forEach((unsubscribe) => unsubscribe());
-		if (lastRepoId && lastWorkspaceId) {
-			void stopRepoDiffWatch(lastWorkspaceId, lastRepoId);
-		}
+		watcherLifecycle.dispose();
 	});
 
 	$effect(() => {
-		if (!repoId) {
-			if (lastRepoId && lastWorkspaceId) {
-				void stopRepoDiffWatch(lastWorkspaceId, lastRepoId);
-				watchActive = false;
-				watchStarting = false;
-				lastRepoId = '';
-				lastWorkspaceId = '';
-			}
-			return;
-		}
-
-		const repoChanged = lastRepoId !== '' && lastRepoId !== repoId;
-		const workspaceChanged = lastWorkspaceId !== '' && lastWorkspaceId !== workspaceId;
-		if ((repoChanged || workspaceChanged) && lastRepoId && lastWorkspaceId) {
-			void stopRepoDiffWatch(lastWorkspaceId, lastRepoId);
-			watchActive = false;
-			watchStarting = false;
-		}
-
-		if ((!watchActive || repoChanged || workspaceChanged) && !watchStarting) {
-			const startRepoId = repoId;
-			const startWorkspaceId = workspaceId;
-			const prNumber = parseNumber(prNumberInput);
-			const prBranch = prBranchInput.trim() || undefined;
-			watchStarting = true;
-			void startRepoDiffWatch(startWorkspaceId, startRepoId, prNumber, prBranch)
-				.then(() => {
-					if (repoId === startRepoId && workspaceId === startWorkspaceId) {
-						watchActive = true;
-					}
-				})
-				.catch(() => {
-					if (repoId === startRepoId && workspaceId === startWorkspaceId) {
-						watchActive = false;
-					}
-				})
-				.finally(() => {
-					watchStarting = false;
-				});
-		}
-
-		lastRepoId = repoId;
-		lastWorkspaceId = workspaceId;
+		watcherLifecycle.syncLifecycle({
+			workspaceId,
+			repoId,
+			prNumber: parseNumber(prNumberInput),
+			prBranch: prBranchInput.trim() || undefined,
+		});
 	});
 
 	$effect(() => {
@@ -1583,13 +1546,12 @@
 	});
 
 	$effect(() => {
-		if (!watchActive || !repoId) return;
-		void updateRepoDiffWatch(
+		watcherLifecycle.syncUpdate({
 			workspaceId,
 			repoId,
-			parseNumber(prNumberInput),
-			prBranchInput.trim() || undefined,
-		);
+			prNumber: parseNumber(prNumberInput),
+			prBranch: prBranchInput.trim() || undefined,
+		});
 	});
 </script>
 
