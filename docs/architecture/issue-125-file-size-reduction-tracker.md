@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (subagent pass 1)
+Last updated: 2026-02-07 (subagent pass 2)
 
 ## Goal
 
@@ -31,11 +31,11 @@ Largest files by LOC right now:
 
 - [x] `#124` Guardrails (must start first)
 - [ ] `#115` FE-DIFF (slice 1 landed)
-- [ ] `#116` FE-WORKSPACE
+- [ ] `#116` FE-WORKSPACE (slice 1 landed)
 - [ ] `#117` FE-TERMINAL
 - [ ] `#118` FE-PLATFORM
 - [ ] `#119` BE-SESSIOND (slice 1 landed)
-- [ ] `#120` BE-GITHUB
+- [ ] `#120` BE-GITHUB (slice 1 landed)
 - [ ] `#121` BE-TERMEMU
 - [ ] `#122` BE-UPDATER
 - [ ] `#123` TEST-E2E
@@ -142,6 +142,8 @@ Target architecture:
 
 Tasks:
 
+- [x] Extract hook-results phase UI into `workspace-action/WorkspaceActionHookResults.svelte`.
+- [x] Extract removal overlay UI into `workspace-action/RemovalOverlay.svelte`.
 - [ ] Separate modal state transitions from UI markup.
 - [ ] Extract workspace mutations into dedicated service.
 - [ ] Split large modal sections into components.
@@ -149,6 +151,7 @@ Tasks:
 
 Verification:
 
+- [x] `cd wails-ui/workset/frontend && npm run test -- src/lib/components/workspace-action/*.test.ts`
 - [ ] `cd wails-ui/workset/frontend && npm run test -- src/lib/components/Workspace*.spec.ts`
 - [ ] `cd wails-ui/workset/frontend && npm run lint`
 
@@ -239,13 +242,14 @@ Target architecture:
 
 Tasks:
 
+- [x] Move pure git command/diff helpers into `pkg/worksetapi/github_git_helpers.go`.
 - [ ] Separate read vs write use-cases.
 - [ ] Separate synchronous status fetch from async operation orchestration.
 - [ ] Add unit tests for each extracted service boundary.
 
 Verification:
 
-- [ ] `go test ./pkg/worksetapi -count=1`
+- [x] `go test ./pkg/worksetapi -count=1`
 
 ## `#121` BE-TERMEMU
 
