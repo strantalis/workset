@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-08 (subagent pass 26)
+Last updated: 2026-02-08 (subagent pass 27)
 
 ## Goal
 
@@ -14,13 +14,13 @@ Reduce architecture risk from oversized files by splitting high-complexity modul
 - CI blocks regressions on file-size and test/lint failures.
 - Refactors are behavior-preserving and land in small, reversible commits.
 
-## Current Baseline (2026-02-07)
+## Current Baseline (2026-02-08)
 
 Largest files by LOC right now:
 
 - `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (2986)
-- `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2478)
-- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (1327)
+- `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2420)
+- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (1293)
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceManager.svelte` (1022)
 - `wails-ui/workset/frontend/src/lib/components/SettingsPanel.svelte` (987)
@@ -32,14 +32,14 @@ Largest files by LOC right now:
 
 - [x] `#124` Guardrails (must start first)
 - [x] `#115` FE-DIFF (slice 13 landed)
-- [ ] `#116` FE-WORKSPACE (slice 5 landed)
-- [ ] `#117` FE-TERMINAL (slice 15 landed)
+- [ ] `#116` FE-WORKSPACE (slice 6 landed)
+- [ ] `#117` FE-TERMINAL (slice 16 landed)
 - [x] `#118` FE-PLATFORM (slice 5 landed; adapter removed)
 - [x] `#119` BE-SESSIOND (structural splits complete)
 - [x] `#120` BE-GITHUB (slice 5 + tests tranche 2 landed)
 - [x] `#121` BE-TERMEMU (slice 4 landed)
-- [ ] `#122` BE-UPDATER (slice 2 landed)
-- [ ] `#123` TEST-E2E
+- [x] `#122` BE-UPDATER (slice 3 landed + orchestration tests)
+- [x] `#123` TEST-E2E (scenario split + fixtures landed)
 
 ## Execution Strategy
 
@@ -76,8 +76,8 @@ Order:
 
 ### Phase 3: Test Architecture (`#123`)
 
-- [ ] Split monolithic e2e suite into scenario files + shared fixtures.
-- [ ] Align test package/module boundaries with refactored production modules.
+- [x] Split monolithic e2e suite into scenario files + shared fixtures.
+- [x] Align test package/module boundaries with refactored production modules.
 
 ## Detailed Task Plan by Issue
 
@@ -159,8 +159,10 @@ Tasks:
 - [x] Extract rename/archive/remove mutation runners into `services/workspaceActionService.ts`.
 - [x] Extract hook tracking + pending-hook action core into `services/workspaceActionHooks.ts`.
 - [x] Extract context loading/derivation into `services/workspaceActionContextService.ts`.
-- [ ] Separate modal state transitions from UI markup.
-- [ ] Extract workspace mutations into dedicated service.
+- [x] Separate modal state transitions from UI markup.
+  Slice landed: extracted modal phase/title/subtitle/size and hook-transition decisions into `services/workspaceActionModalController.ts`.
+- [x] Extract workspace mutations into dedicated service.
+  Slice landed: added `workspaceActionMutations` gateway/service boundary in `services/workspaceActionService.ts` and routed modal mutations through it.
 - [ ] Split large modal sections into components.
 - [x] Add tests for action-state transitions and failure paths.
 
@@ -190,6 +192,7 @@ Remaining tasks:
   Slices landed: extracted resize/transport coupling into `terminalResizeBridge.ts`; extracted render-health/recovery orchestration into `terminalRenderHealth.ts`; extracted attach/dispose + renderer-addon state handling into `terminalAttachRendererState.ts`.
   Latest slice landed: extracted Xterm instance attach/dispose wiring into `terminalInstanceManager.ts`.
   Latest slice landed: extracted viewport/resize/focus lifecycle into `terminalViewportResizeController.ts`.
+  Latest slice landed: extracted output queue + backlog flush policy into `terminalOutputBuffer.ts`.
 - [x] Extract attach/open lifecycle sequencing into a standalone module.
   Slice landed: extracted open/create/connect + retry sequencing into `terminalAttachOpenLifecycle.ts`.
 - [x] Extract event subscription wiring into a standalone module.
@@ -332,9 +335,12 @@ Tasks:
 
 - [x] Extract update manifest/asset client helpers into `app_update_client.go`.
 - [x] Extract update package/signing helpers into `app_update_package.go`.
-- [ ] Split update check/start orchestration from app binding layer.
-- [ ] Isolate signing/asset selection logic.
-- [ ] Add tests for channel preference + state transitions.
+- [x] Split update check/start orchestration from app binding layer.
+  Slice landed: moved update lifecycle orchestration into `app_update_orchestrator.go` and kept `app_updates.go` as Wails binding surface.
+- [x] Isolate signing/asset selection logic.
+  Slice landed: added `selectUpdatePackage` validation/selection helper in `app_update_package.go`.
+- [x] Add tests for channel preference + state transitions.
+  Slice landed: added `app_update_orchestrator_test.go` covering channel preference and check/start phase transitions.
 
 Verification:
 
@@ -354,13 +360,16 @@ Target architecture:
 
 Tasks:
 
-- [ ] Split by scenario domain (workspace, repos, sessions, github).
-- [ ] Extract fixture manager.
-- [ ] Keep runtime equivalent or faster vs baseline.
+- [x] Split by scenario domain (workspace, repos, sessions, github).
+  Slice landed: replaced `e2e_test.go` with scenario files (`repo_test.go`, `workspace_test.go`, `template_group_test.go`, `status_test.go`, `cli_test.go`).
+- [x] Extract fixture manager.
+  Slice landed: extracted shared runner/git/bootstrap helpers into `main_test.go`, `bootstrap_test.go`, and `helpers_test.go`.
+- [x] Keep runtime equivalent or faster vs baseline.
+  Current runtime: `go test ./internal/e2e -count=1` ~14-18s in local runs.
 
 Verification:
 
-- [ ] `go test ./internal/e2e -count=1`
+- [x] `go test ./internal/e2e -count=1`
 
 ## Program-Level Verification Gate (Every PR)
 
@@ -377,6 +386,6 @@ Verification:
 
 ## Immediate Next Actions
 
-1. Run `#117` next slice: extract stream/output queue + stats/state internals from `terminalService.ts` to continue shrinking toward orchestration-only facade.
-2. Run `#116` next slice: separate modal state transitions from UI markup in `WorkspaceActionModal.svelte`.
-3. Run `#122` next slice: split update check/start orchestration from Wails app binding and add channel/state tests.
+1. Run `#117` next slice: extract OSC/theme response handling and clipboard/runtime clipboard helpers out of `terminalService.ts`.
+2. Run `#116` next slice: split large `WorkspaceActionModal.svelte` sections into dedicated per-mode components.
+3. Run issue closeout pass: verify no regression in `internal/e2e` signing assumptions and finalize `#125` completion checklist.
