@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (subagent pass 16)
+Last updated: 2026-02-07 (subagent pass 17)
 
 ## Goal
 
@@ -18,10 +18,10 @@ Reduce architecture risk from oversized files by splitting high-complexity modul
 
 Largest files by LOC right now:
 
-- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (3938)
+- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (3699)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2476)
-- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (2131)
-- `wails-ui/workset/frontend/src/lib/api.ts` (1312)
+- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (2105)
+- `wails-ui/workset/frontend/src/lib/api.ts` (1278)
 - `pkg/termemu/termemu.go` (972)
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceManager.svelte` (1022)
@@ -30,10 +30,10 @@ Largest files by LOC right now:
 ## Parallel Tracks (Issue Map)
 
 - [x] `#124` Guardrails (must start first)
-- [ ] `#115` FE-DIFF (slice 4 landed)
+- [ ] `#115` FE-DIFF (slice 5 landed)
 - [ ] `#116` FE-WORKSPACE (slice 5 landed)
-- [ ] `#117` FE-TERMINAL (slice 6 landed)
-- [ ] `#118` FE-PLATFORM
+- [ ] `#117` FE-TERMINAL (slice 7 landed)
+- [ ] `#118` FE-PLATFORM (slice 1 landed)
 - [x] `#119` BE-SESSIOND (structural splits complete)
 - [ ] `#120` BE-GITHUB (slice 5 + tests tranche 2 landed)
 - [ ] `#121` BE-TERMEMU (slice 4 landed)
@@ -118,7 +118,7 @@ Tasks:
 - [x] Extract summary loader/store controller module (`repo-diff/summaryController.ts`).
 - [x] Extract PR status/reviews controller (`repo-diff/prStatusController.ts`).
 - [x] Extract render queue/selection/file-fetch controller (`repo-diff/fileDiffController.ts`).
-- [ ] Extract annotation/reply/edit/delete actions module.
+- [x] Extract annotation/reply/edit/delete actions module (`repo-diff/reviewAnnotationActions.ts`).
 - [ ] Keep current public props/events unchanged.
 
 Verification:
@@ -176,7 +176,7 @@ Remaining tasks:
 - [x] Move web-links transport/renderer adapter wiring into `terminalWebLinks.ts`.
 - [x] Extract reconnect/attach/detach stream orchestration into `terminalStreamOrchestrator.ts`.
 - [ ] Remove remaining renderer/transport coupling from service shell.
-  Slices landed: extracted resize/transport coupling into `terminalResizeBridge.ts`; extracted render-health/recovery orchestration into `terminalRenderHealth.ts`.
+  Slices landed: extracted resize/transport coupling into `terminalResizeBridge.ts`; extracted render-health/recovery orchestration into `terminalRenderHealth.ts`; extracted attach/dispose + renderer-addon state handling into `terminalAttachRendererState.ts`.
 - [x] Add service-level tests for reconnect/attach/detach/stream-release (`terminalStreamOrchestrator.test.ts`).
 - [ ] Shrink `terminalService.ts` to orchestration-only facade.
 
@@ -200,6 +200,7 @@ Target architecture:
 Tasks:
 
 - [ ] Split monolithic API module into domain entrypoints.
+   Slice landed: extracted updates/app-version domain into `api/updates.ts` with compatibility re-exports from `api.ts`.
 - [ ] Keep backward-compatible imports through adapter layer during migration.
 - [ ] Remove adapter after callsites are migrated.
 
@@ -350,6 +351,6 @@ Verification:
 
 ## Immediate Next Actions
 
-1. Run `#117` completion: extract attach/renderer-addon state handling and finalize `terminalService.ts` as orchestration facade.
-2. Run `#115` slice 5: extract annotation/reply/edit/delete actions from `RepoDiff.svelte`.
-3. Run `#118` slice 1: split `api.ts` into domain clients with compatibility adapter.
+1. Run `#117` final slice: extract remaining lifecycle/render wiring so `terminalService.ts` is orchestration-only.
+2. Run `#118` slice 2: extract github + repo-diff API domains into `api/` modules with compatibility re-exports.
+3. Run `#115` final composition pass: confirm `RepoDiff.svelte` remains shell-only and remove residual controller leakage.

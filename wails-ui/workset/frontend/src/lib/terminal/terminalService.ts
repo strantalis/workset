@@ -15,7 +15,7 @@ import {
 	EVENT_TERMINAL_MODES,
 } from '../events';
 import { terminalTransport } from './terminalTransport';
-import { createTerminalInstance, loadRendererAddon } from './terminalRenderer';
+import { createTerminalInstance } from './terminalRenderer';
 import { createTerminalWebLinksSync } from './terminalWebLinks';
 import { TerminalStateStore } from './terminalStateStore';
 import { stripMouseReports } from './inputFilter';
@@ -24,6 +24,10 @@ import { captureViewportSnapshot, resolveViewportTargetLine } from './viewport';
 import { createTerminalStreamOrchestrator } from './terminalStreamOrchestrator';
 import { createTerminalResizeBridge } from './terminalResizeBridge';
 import { createTerminalRenderHealth, hasVisibleTerminalContent } from './terminalRenderHealth';
+import {
+	createTerminalAttachState,
+	createTerminalRendererAddonState,
+} from './terminalAttachRendererState';
 
 export type TerminalViewState = {
 	status: string;
@@ -206,9 +210,6 @@ const terminalContexts = new Map<string, TerminalContext>();
 const terminalStores = new TerminalStateStore<TerminalViewState>();
 const listeners = new Set<string>();
 const unsubscribeHandlers: Array<() => void> = [];
-
-const attachedTerminals = new Set<string>();
-const disposeTimers = new Map<string, number>();
 const DISPOSE_TTL_MS = 10 * 60 * 1000;
 
 // Font size configuration
@@ -456,37 +457,6 @@ const syncTerminalWebLinks = createTerminalWebLinksSync({
 const subscribeEvent = <T>(event: string, handler: EventHandler<T>): (() => void) =>
 	terminalTransport.onEvent(event, handler);
 
-const scheduleTerminalDispose = (id: string): void => {
-	if (!id) return;
-	if (attachedTerminals.has(id)) return;
-	if (disposeTimers.has(id)) return;
-	const timer = window.setTimeout(() => {
-		disposeTimers.delete(id);
-		if (attachedTerminals.has(id)) return;
-		disposeTerminalResources(id);
-	}, DISPOSE_TTL_MS);
-	disposeTimers.set(id, timer);
-};
-
-const cancelTerminalDispose = (id: string): void => {
-	const timer = disposeTimers.get(id);
-	if (!timer) return;
-	window.clearTimeout(timer);
-	disposeTimers.delete(id);
-};
-
-const markTerminalAttached = (id: string): void => {
-	if (!id) return;
-	attachedTerminals.add(id);
-	cancelTerminalDispose(id);
-};
-
-const markTerminalDetached = (id: string): void => {
-	if (!id) return;
-	attachedTerminals.delete(id);
-	scheduleTerminalDispose(id);
-};
-
 const clearTimeoutMap = (map: Map<string, number>, id: string): void => {
 	const timer = map.get(id);
 	if (!timer) return;
@@ -536,8 +506,7 @@ const destroyTerminalState = (id: string): void => {
 
 const disposeTerminalResources = (id: string): void => {
 	if (!id) return;
-	cancelTerminalDispose(id);
-	attachedTerminals.delete(id);
+	terminalAttachState.release(id);
 	const handle = terminalHandles.get(id);
 	if (handle) {
 		handle.dataDisposable?.dispose();
@@ -561,6 +530,15 @@ const disposeTerminalResources = (id: string): void => {
 	terminalHandles.delete(id);
 	destroyTerminalState(id);
 };
+
+const terminalAttachState = createTerminalAttachState({
+	disposeAfterMs: DISPOSE_TTL_MS,
+	onDispose: (id) => {
+		disposeTerminalResources(id);
+	},
+	setTimeoutFn: (callback, timeoutMs) => window.setTimeout(callback, timeoutMs),
+	clearTimeoutFn: (handle) => window.clearTimeout(handle),
+});
 
 const getContext = (key: TerminalKey): TerminalContext | null => {
 	return terminalContexts.get(key) ?? null;
@@ -1101,7 +1079,7 @@ const attachTerminal = (
 			handle.container.replaceChildren();
 			handle.terminal.open(handle.container);
 			ensureKittyOverlay(handle, id);
-			void loadTerminalRendererAddon(handle, id);
+			void terminalRendererAddonState.load(id, handle);
 			if (typeof document !== 'undefined' && document.fonts?.ready) {
 				document.fonts.ready
 					.then(() => {
@@ -1121,7 +1099,7 @@ const attachTerminal = (
 			handle.terminal.focus();
 		}
 		flushOutput(id, false);
-		markTerminalAttached(id);
+		terminalAttachState.markAttached(id);
 	}
 	return handle;
 };
@@ -1283,7 +1261,7 @@ const resetTerminalInstance = (id: string): void => {
 		mouseInputTail = { ...mouseInputTail, [id]: '' };
 	}
 	noteMouseSuppress(id, 2500);
-	void loadTerminalRendererAddon(handle, id);
+	void terminalRendererAddonState.load(id, handle);
 };
 
 const updateStatsLastOutput = (id: string): void => {
@@ -1757,26 +1735,22 @@ const registerOscHandlers = (id: string, terminal: Terminal): { dispose: () => v
 	return disposables;
 };
 
-const loadTerminalRendererAddon = async (handle: TerminalHandle, id: string): Promise<void> => {
-	handle.webglAddon = await loadRendererAddon({
-		terminal: handle.terminal,
-		webglAddon: handle.webglAddon,
-		setRendererMode: (mode) => {
-			lifecycle.setRendererMode(id, mode);
-		},
-		setRenderer: (renderer) => {
-			lifecycle.setRenderer(id, renderer);
-		},
-		onRendererUnavailable: (error) => {
-			lifecycle.setStatusAndMessage(id, 'error', 'WebGL renderer unavailable.');
-			setHealth(id, 'stale', 'WebGL renderer unavailable.');
-			logDebug(id, 'renderer_webgl_failed', { error: String(error) });
-		},
-		onComplete: () => {
-			emitState(id);
-		},
-	});
-};
+const terminalRendererAddonState = createTerminalRendererAddonState({
+	setRendererMode: (id, mode) => {
+		lifecycle.setRendererMode(id, mode);
+	},
+	setRenderer: (id, renderer) => {
+		lifecycle.setRenderer(id, renderer);
+	},
+	onRendererUnavailable: (id, error) => {
+		lifecycle.setStatusAndMessage(id, 'error', 'WebGL renderer unavailable.');
+		setHealth(id, 'stale', 'WebGL renderer unavailable.');
+		logDebug(id, 'renderer_webgl_failed', { error: String(error) });
+	},
+	onComplete: (id) => {
+		emitState(id);
+	},
+});
 
 const ensureListener = (): void => {
 	if (!listeners.has(EVENT_TERMINAL_DATA)) {
@@ -1961,9 +1935,9 @@ const ensureGlobals = (): void => {
 	void loadTerminalDefaults();
 	void refreshSessiondStatus();
 	window.addEventListener('focus', () => {
-		for (const id of attachedTerminals) {
+		terminalAttachState.forEachAttached((id) => {
 			void ensureSessionActive(id);
-		}
+		});
 	});
 };
 
@@ -2027,7 +2001,7 @@ export const syncTerminal = (input: {
 export const detachTerminal = (workspaceId: string, terminalId: string): void => {
 	const terminalKey = buildTerminalKey(workspaceId, terminalId);
 	if (!terminalKey) return;
-	markTerminalDetached(terminalKey);
+	terminalAttachState.markDetached(terminalKey);
 	const observer = resizeObservers.get(terminalKey);
 	if (observer) {
 		observer.disconnect();

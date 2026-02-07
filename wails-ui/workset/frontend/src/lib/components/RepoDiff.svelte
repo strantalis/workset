@@ -82,6 +82,7 @@
 		type BranchDiffRefs,
 		type SummarySource,
 	} from './repo-diff/fileDiffController';
+	import { createReviewAnnotationActionsController } from './repo-diff/reviewAnnotationActions';
 	import { createSummaryController } from './repo-diff/summaryController';
 	import { createRepoDiffWatcherLifecycle } from './repo-diff/watcherLifecycle';
 
@@ -265,6 +266,26 @@
 	// Derived mode: status when PR exists, create otherwise
 	const effectiveMode = $derived(forceMode ?? (prTracked ? 'status' : 'create'));
 
+	const annotationActionsController = createReviewAnnotationActionsController({
+		document,
+		workspaceId: () => workspaceId,
+		repoId: () => repoId,
+		prNumberInput: () => prNumberInput,
+		prBranchInput: () => prBranchInput,
+		parseNumber: (value) => parseNumber(value),
+		getCurrentUserId: () => currentUserId,
+		getPrReviews: () => prReviews,
+		setPrReviews: (value) => {
+			prReviews = value;
+		},
+		replyToReviewComment,
+		editReviewComment,
+		handleDeleteComment: (commentId) => handleDeleteComment(commentId),
+		handleResolveThread: (threadId, resolve) => handleResolveThread(threadId, resolve),
+		formatError: (error, fallback) => formatError(error, fallback),
+		showAlert: (message) => alert(message),
+	});
+
 	const buildOptions = (): FileDiffOptions<ReviewAnnotation> => ({
 		theme: 'pierre-dark',
 		themeType: 'dark',
@@ -274,269 +295,9 @@
 		lineDiffType: 'word',
 		overflow: 'scroll',
 		disableFileHeader: true,
-		renderAnnotation: (annotation: DiffLineAnnotation<ReviewAnnotation>) => {
-			if (!annotation.metadata || annotation.metadata.thread.length === 0) return undefined;
-			const el = document.createElement('div');
-			el.className = 'diff-annotation-thread';
-
-			const lastComment = annotation.metadata.thread[annotation.metadata.thread.length - 1];
-			const rootComment = annotation.metadata.thread[0];
-			const isResolved = annotation.metadata.resolved;
-			const resolvedThreadId =
-				rootComment.threadId ??
-				(rootComment.nodeId && rootComment.nodeId.startsWith('PRRT_')
-					? rootComment.nodeId
-					: undefined);
-
-			// If resolved, show collapsed view by default
-			if (isResolved) {
-				el.classList.add('diff-annotation-resolved', 'diff-annotation-collapsed');
-			}
-
-			// Collapsed header for resolved threads
-			const collapsedHeader = document.createElement('div');
-			collapsedHeader.className = 'diff-annotation-collapsed-header';
-			collapsedHeader.innerHTML = `
-        <span class="diff-annotation-collapsed-icon">▸</span>
-        <span class="diff-annotation-collapsed-badge">Resolved</span>
-        <span class="diff-annotation-collapsed-preview">${escapeHtml(rootComment.body.substring(0, 60))}${rootComment.body.length > 60 ? '...' : ''}</span>
-        <span class="diff-annotation-collapsed-count">${annotation.metadata.thread.length} comment${annotation.metadata.thread.length > 1 ? 's' : ''}</span>
-      `;
-			el.appendChild(collapsedHeader);
-
-			// Full thread content wrapper
-			const contentWrapper = document.createElement('div');
-			contentWrapper.className = 'diff-annotation-content';
-			contentWrapper.innerHTML = annotation.metadata.thread
-				.map((comment, idx) => {
-					const isOwn = currentUserId && comment.authorId && comment.authorId === currentUserId;
-
-					return `
-        <div class="diff-annotation${idx > 0 ? ' diff-annotation-reply' : ''}" data-comment-id="${comment.id}">
-          <div class="diff-annotation-header">
-            <span class="diff-annotation-avatar">${comment.author[0].toUpperCase()}</span>
-            <span class="diff-annotation-author">${comment.author}</span>
-            <div class="diff-annotation-actions">
-              ${
-								isOwn
-									? `
-                <button class="diff-action-btn" data-action="edit" data-comment-id="${comment.id}" title="Edit">✎</button>
-                <button class="diff-action-btn diff-action-delete" data-action="delete" data-comment-id="${comment.id}" title="Delete">×</button>
-              `
-									: ''
-							}
-            </div>
-          </div>
-          <div class="diff-annotation-body">${escapeHtml(comment.body)}</div>
-        </div>
-      `;
-				})
-				.join('');
-			el.appendChild(contentWrapper);
-
-			// Add thread footer with reply and resolve buttons
-			const footerEl = document.createElement('div');
-			footerEl.className = 'diff-annotation-footer';
-			footerEl.innerHTML = `
-        <button class="diff-action-btn diff-action-reply" data-action="reply" data-comment-id="${lastComment.id}" title="Reply">↩ Reply</button>
-        ${
-					resolvedThreadId
-						? `
-          <button class="diff-action-btn ${isResolved ? 'diff-action-unresolve' : 'diff-action-resolve'}" data-action="${isResolved ? 'unresolve' : 'resolve'}" data-thread-id="${resolvedThreadId}" title="${isResolved ? 'Unresolve thread' : 'Resolve thread'}">${isResolved ? '↺ Unresolve' : '✓ Resolve'}</button>
-        `
-						: ''
-				}
-      `;
-			el.appendChild(footerEl);
-
-			// Add event listeners
-			el.addEventListener('click', async (e) => {
-				const target = e.target as HTMLElement;
-
-				// Handle collapsed header click to expand
-				if (target.closest('.diff-annotation-collapsed-header')) {
-					el.classList.remove('diff-annotation-collapsed');
-					return;
-				}
-
-				const btn = target.closest('[data-action]') as HTMLElement;
-				if (!btn) return;
-
-				const action = btn.dataset.action;
-				const commentId = btn.dataset.commentId ? parseInt(btn.dataset.commentId, 10) : null;
-				const threadId = btn.dataset.threadId;
-
-				if (action === 'reply' && commentId) {
-					injectReplyForm(el, commentId);
-				} else if (action === 'edit' && commentId) {
-					const comment = prReviews.find((c) => c.id === commentId);
-					if (comment) injectEditForm(el, comment);
-				} else if (action === 'delete' && commentId) {
-					handleDeleteComment(commentId);
-				} else if (action === 'resolve' && threadId) {
-					handleResolveThread(threadId, true);
-				} else if (action === 'unresolve' && threadId) {
-					handleResolveThread(threadId, false);
-				} else if (action === 'cancel-reply') {
-					removeInlineForm(el);
-				} else if (action === 'submit-reply' && commentId) {
-					await submitInlineReply(el, commentId);
-				} else if (action === 'cancel-edit') {
-					removeInlineForm(el);
-				} else if (action === 'submit-edit' && commentId) {
-					await submitInlineEdit(el, commentId);
-				}
-			});
-
-			return el;
-		},
+		renderAnnotation: (annotation: DiffLineAnnotation<ReviewAnnotation>) =>
+			annotationActionsController.renderAnnotation(annotation),
 	});
-
-	const injectReplyForm = (threadEl: HTMLElement, commentId: number): void => {
-		// Remove any existing form
-		removeInlineForm(threadEl);
-
-		const formEl = document.createElement('div');
-		formEl.className = 'diff-annotation-inline-form';
-		formEl.innerHTML = `
-      <textarea class="diff-inline-textarea" placeholder="Write your reply..." rows="3"></textarea>
-      <div class="diff-inline-form-actions">
-        <button class="btn-ghost" data-action="cancel-reply" type="button">Cancel</button>
-        <button class="btn-primary" data-action="submit-reply" data-comment-id="${commentId}" type="button">Reply</button>
-      </div>
-    `;
-		threadEl.appendChild(formEl);
-
-		// Focus the textarea
-		const textarea = formEl.querySelector('textarea');
-		textarea?.focus();
-	};
-
-	const injectEditForm = (threadEl: HTMLElement, comment: PullRequestReviewComment): void => {
-		// Remove any existing form
-		removeInlineForm(threadEl);
-
-		// Find and hide the original comment body
-		const commentEl = threadEl.querySelector(`[data-comment-id="${comment.id}"]`);
-		const bodyEl = commentEl?.querySelector('.diff-annotation-body') as HTMLElement;
-		if (bodyEl) bodyEl.style.display = 'none';
-
-		const formEl = document.createElement('div');
-		formEl.className = 'diff-annotation-inline-form';
-		formEl.dataset.editingId = String(comment.id);
-		formEl.innerHTML = `
-      <textarea class="diff-inline-textarea" rows="3">${escapeHtml(comment.body)}</textarea>
-      <div class="diff-inline-form-actions">
-        <button class="btn-ghost" data-action="cancel-edit" type="button">Cancel</button>
-        <button class="btn-primary" data-action="submit-edit" data-comment-id="${comment.id}" type="button">Save</button>
-      </div>
-    `;
-
-		// Insert after the comment header
-		if (commentEl) {
-			commentEl.appendChild(formEl);
-		} else {
-			threadEl.appendChild(formEl);
-		}
-
-		// Focus the textarea
-		const textarea = formEl.querySelector('textarea');
-		textarea?.focus();
-	};
-
-	const removeInlineForm = (threadEl: HTMLElement): void => {
-		const existingForm = threadEl.querySelector('.diff-annotation-inline-form');
-		if (existingForm) {
-			// If editing, restore the hidden body
-			const editingId = (existingForm as HTMLElement).dataset.editingId;
-			if (editingId) {
-				const commentEl = threadEl.querySelector(`[data-comment-id="${editingId}"]`);
-				const bodyEl = commentEl?.querySelector('.diff-annotation-body') as HTMLElement;
-				if (bodyEl) bodyEl.style.display = '';
-			}
-			existingForm.remove();
-		}
-	};
-
-	const submitInlineReply = async (threadEl: HTMLElement, commentId: number): Promise<void> => {
-		const formEl = threadEl.querySelector('.diff-annotation-inline-form');
-		const textarea = formEl?.querySelector('textarea') as HTMLTextAreaElement;
-		const submitBtn = formEl?.querySelector('[data-action="submit-reply"]') as HTMLButtonElement;
-
-		if (!textarea || !textarea.value.trim()) return;
-
-		// Disable form while submitting
-		textarea.disabled = true;
-		if (submitBtn) {
-			submitBtn.disabled = true;
-			submitBtn.textContent = 'Posting...';
-		}
-
-		try {
-			const newComment = await replyToReviewComment(
-				workspaceId,
-				repoId,
-				commentId,
-				textarea.value.trim(),
-				parseNumber(prNumberInput),
-				prBranchInput.trim() || undefined,
-			);
-			prReviews = [...prReviews, newComment];
-			removeInlineForm(threadEl);
-		} catch (err) {
-			// Re-enable form on error
-			textarea.disabled = false;
-			if (submitBtn) {
-				submitBtn.disabled = false;
-				submitBtn.textContent = 'Reply';
-			}
-			const errorMsg = formatError(err, 'Failed to post reply.');
-			alert(errorMsg);
-		}
-	};
-
-	const submitInlineEdit = async (threadEl: HTMLElement, commentId: number): Promise<void> => {
-		const formEl = threadEl.querySelector('.diff-annotation-inline-form');
-		const textarea = formEl?.querySelector('textarea') as HTMLTextAreaElement;
-		const submitBtn = formEl?.querySelector('[data-action="submit-edit"]') as HTMLButtonElement;
-
-		if (!textarea || !textarea.value.trim()) return;
-
-		// Disable form while submitting
-		textarea.disabled = true;
-		if (submitBtn) {
-			submitBtn.disabled = true;
-			submitBtn.textContent = 'Saving...';
-		}
-
-		try {
-			const updated = await editReviewComment(
-				workspaceId,
-				repoId,
-				commentId,
-				textarea.value.trim(),
-			);
-			prReviews = prReviews.map((c) =>
-				c.id === updated.id ? { ...c, ...updated, threadId: updated.threadId ?? c.threadId } : c,
-			);
-			removeInlineForm(threadEl);
-		} catch (err) {
-			// Re-enable form on error
-			textarea.disabled = false;
-			if (submitBtn) {
-				submitBtn.disabled = false;
-				submitBtn.textContent = 'Save';
-			}
-			const errorMsg = formatError(err, 'Failed to save edit.');
-			alert(errorMsg);
-		}
-	};
-
-	const escapeHtml = (text: string): string => {
-		const div = document.createElement('div');
-		div.textContent = text;
-		return div.innerHTML;
-	};
 
 	const statusLabel = (status: string): string => {
 		switch (status) {
