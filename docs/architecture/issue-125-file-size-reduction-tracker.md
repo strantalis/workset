@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (main-agent pass 39)
+Last updated: 2026-02-07 (main-agent pass 40)
 
 ## Goal
 
@@ -19,22 +19,26 @@ Reduce architecture risk from oversized files by splitting high-complexity modul
 Largest files by LOC right now:
 
 - `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (1978)
-- `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (1921)
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
-- `wails-ui/workset/frontend/src/lib/components/WorkspaceManager.svelte` (1022)
-- `wails-ui/workset/frontend/src/lib/components/SettingsPanel.svelte` (987)
 - `wails-ui/workset/frontend/src/lib/components/settings/sections/SkillManager.svelte` (956)
 - `wails-ui/workset/app_diffs.go` (926)
 - `pkg/sessiond/terminal_filter.go` (889)
-- `wails-ui/workset/frontend/src/lib/components/WorkspaceItem.svelte` (876)
+- `wails-ui/workset/frontend/src/lib/components/SettingsPanel.svelte` (873)
 - `wails-ui/workset/frontend/src/lib/components/TerminalLayoutNode.svelte` (847)
 - `wails-ui/workset/repo_diff_watcher.go` (816)
+- `internal/git/cli.go` (795)
+- `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (699)
+- `wails-ui/workset/frontend/src/lib/components/WorkspaceManager.svelte` (688)
+- `internal/ops/remove.go` (680)
+- `cmd/workset/pr.go` (678)
+- `pkg/sessiond/server.go` (669)
+- `pkg/worksetapi/github_service_read_helpers_test.go` (662)
 
 ## Parallel Tracks (Issue Map)
 
 - [x] `#124` Guardrails (must start first)
 - [ ] `#115` FE-DIFF (slice 16 landed; dead scoped CSS removed after extractions)
-- [ ] `#116` FE-WORKSPACE (slice 11 landed; modal shell split under 700 LOC)
+- [ ] `#116` FE-WORKSPACE (slice 12 landed; manager/item/add-repo forms decomposed)
 - [x] `#117` FE-TERMINAL (slice 20 landed; service now 491 LOC)
 - [x] `#118` FE-PLATFORM (slice 7 landed; settings side effects extracted)
 - [x] `#119` BE-SESSIOND (structural splits complete)
@@ -184,6 +188,12 @@ Tasks:
   Slice landed: extracted direct/repos/groups/summary panes into `workspace-action/WorkspaceActionCreateDirectTab.svelte`, `workspace-action/WorkspaceActionCreateReposTab.svelte`, `workspace-action/WorkspaceActionCreateGroupsTab.svelte`, and `workspace-action/WorkspaceActionCreateSummaryPanel.svelte` to avoid shifting the monolith into a new oversized file.
 - [x] Split modal alert/form shell composition into dedicated components.
   Slice landed: extracted non-hook alerts into `workspace-action/WorkspaceActionStatusAlerts.svelte` and mode routing/rename/archive composition into `workspace-action/WorkspaceActionFormContent.svelte`; `WorkspaceActionModal.svelte` is now 698 LOC.
+- [x] Split add-repo form panes into focused components.
+  Slice landed: extracted direct-entry pane + summary panel into `workspace-action/WorkspaceActionAddRepoDirectTab.svelte` and `workspace-action/WorkspaceActionAddRepoSummaryPanel.svelte`; `WorkspaceActionAddRepoForm.svelte` is now 559 LOC.
+- [x] Split workspace list/repo list/create sections in workspace manager.
+  Slice landed: extracted `workspace-manager/WorkspaceManagerWorkspaceList.svelte`, `workspace-manager/WorkspaceManagerRepoListSection.svelte`, and `workspace-manager/WorkspaceManagerCreateWorkspaceSection.svelte`; `WorkspaceManager.svelte` is now 688 LOC.
+- [x] Split repo rendering/actions from workspace item shell.
+  Slice landed: extracted repo single/multi rendering + actions into `workspace-item/WorkspaceItemRepoSection.svelte`; `WorkspaceItem.svelte` is now 581 LOC.
 - [x] Add tests for action-state transitions and failure paths.
 
 Verification:
@@ -420,6 +430,6 @@ Verification:
 
 ## Immediate Next Actions
 
-1. Reconcile GitHub status for `#118` closure and refresh `#125` progress state.
-2. Continue `#115` and `#116` large-component reductions.
+1. Reconcile `#125` and `#116` progress state after pass 40 LOC changes.
+2. Continue remaining non-RepoDiff frontend files over 700 LOC before next `#115` RepoDiff slice.
 3. Prepare closeout criteria for `#125` once remaining FE tracks are complete.
