@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (main-agent pass 30)
+Last updated: 2026-02-07 (main-agent pass 31)
 
 ## Goal
 
@@ -37,7 +37,7 @@ Largest files by LOC right now:
 - [ ] `#118` FE-PLATFORM (slice 5 landed; adapter removed)
 - [x] `#119` BE-SESSIOND (structural splits complete)
 - [x] `#120` BE-GITHUB (slice 5 + tests tranche 2 landed)
-- [x] `#121` BE-TERMEMU (slice 4 landed)
+- [ ] `#121` BE-TERMEMU (structural split landed; LOC target still outstanding)
 - [x] `#122` BE-UPDATER (slice 3 landed + orchestration tests)
 - [x] `#123` TEST-E2E (scenario split + fixtures landed)
 
@@ -321,6 +321,7 @@ Tasks:
 - [x] Extract state transition engine into `pkg/termemu/state_engine.go`.
 - [x] Extract snapshot renderer/serializer into `pkg/termemu/snapshot_ansi.go` and `pkg/termemu/snapshot_state.go`.
 - [x] Backfill regression tests for escape-sequence edge cases in `pkg/termemu/termemu_test.go`.
+- [ ] Reduce `pkg/termemu/termemu.go` below 700 LOC while preserving parser/state behavior.
 
 Verification:
 
@@ -349,6 +350,10 @@ Tasks:
   Slice landed: added `selectUpdatePackage` validation/selection helper in `app_update_package.go`.
 - [x] Add tests for channel preference + state transitions.
   Slice landed: added `app_update_orchestrator_test.go` covering channel preference and check/start phase transitions.
+- [x] Reduce app binding adapter surface below target.
+  Slice landed: moved version parsing/comparison helpers into `app_update_version.go`; `app_updates.go` is now 311 LOC.
+- [x] Document updater trust boundaries and rollback behavior.
+  Slice landed: added explicit security/rollback constraints to `docs/desktop-app.md` (in-app updates section).
 
 Verification:
 

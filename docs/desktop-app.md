@@ -50,6 +50,13 @@ The updater requires both:
 - SHA256 match for the update archive.
 - Matching macOS signing Team ID from the manifest.
 
+Security and rollback boundaries:
+
+- Remote update assets must use `https://` (dev-only exception: loopback `http://` with `WORKSET_UPDATES_ALLOW_INSECURE_HTTP=1`).
+- Archive extraction rejects path traversal and symlink targets that escape the staging root.
+- Validation happens before apply (checksum + signing Team ID checks).
+- On update failure, the app records a failed update state and leaves the current installed bundle unchanged.
+
 ### Manifest helper script
 
 Use `scripts/generate_update_manifest.sh` to create channel manifests:
