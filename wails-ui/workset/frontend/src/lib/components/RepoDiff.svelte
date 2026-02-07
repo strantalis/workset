@@ -15,18 +15,14 @@
 		RepoFileDiff,
 	} from '../types';
 	import {
-		deleteReviewComment,
 		editReviewComment,
 		fetchGitHubOperationStatus,
 		fetchCheckAnnotations,
 		fetchCurrentGitHubUser,
-		fetchTrackedPullRequest,
 		fetchPullRequestReviews,
 		fetchPullRequestStatus,
 		fetchRepoLocalStatus,
-		listRemotes,
 		replyToReviewComment,
-		resolveReviewThread,
 		startCommitAndPushAsync,
 		startCreatePullRequestAsync,
 	} from '../api/github';
@@ -49,11 +45,19 @@
 	import {
 		applyPrReviewsLifecycleEvent,
 		applyPrStatusLifecycleEvent,
-		applyTrackedPullRequestContext,
 		buildGitHubOperationsStateSurface,
 		buildPrStatusStateSurface,
 		resolveEffectivePrMode,
 	} from './repo-diff/prOrchestrationSurface';
+	import {
+		createRepoDiffGitHubHandlers,
+		type RepoDiffGitHubHandlers,
+	} from './repo-diff/githubHandlers';
+	import {
+		buildReviewCountsByPath,
+		filterReviewsBySelectedPath,
+		getReviewCountForFile,
+	} from './repo-diff/reviewDerived';
 	import {
 		createRepoDiffFileController,
 		type BranchDiffRefs,
@@ -80,28 +84,20 @@
 		type FileDiffRenderOptions,
 		type FileDiffRendererModule,
 	} from './repo-diff/diffRenderController';
+	import {
+		formatRepoDiffError,
+		getCommitPushStageCopy,
+		openTrustedGitHubURL,
+		parseOptionalNumber,
+	} from './repo-diff/utils';
+	import RepoDiffAnnotationStyles from './repo-diff/RepoDiffAnnotationStyles.svelte';
 	import RepoDiffAuthModal from './repo-diff/RepoDiffAuthModal.svelte';
-	import RepoDiffHeaderPrBadge from './repo-diff/RepoDiffHeaderPrBadge.svelte';
-	import RepoDiffFileListSidebar from './repo-diff/RepoDiffFileListSidebar.svelte';
+	import RepoDiffContentPane from './repo-diff/RepoDiffContentPane.svelte';
+	import RepoDiffHeader from './repo-diff/RepoDiffHeader.svelte';
+	import RepoDiffPrPanel from './repo-diff/RepoDiffPrPanel.svelte';
 
-	/**
-	 * Validates and opens URL only if it belongs to trusted GitHub domains.
-	 */
-	function validateAndOpenURL(url: string | undefined | null): void {
-		if (!url) return;
-
-		try {
-			const parsed = new URL(url);
-			const hostname = parsed.hostname.toLowerCase();
-
-			// Allow github.com and subdomains (for GitHub Enterprise)
-			if (hostname === 'github.com' || hostname.endsWith('.github.com')) {
-				BrowserOpenURL(url);
-			}
-		} catch {
-			// Invalid URL - silently ignore
-		}
-	}
+	const validateAndOpenURL = (url: string | undefined | null): void =>
+		openTrustedGitHubURL(url, BrowserOpenURL);
 
 	interface Props {
 		repo: Repo | null;
@@ -149,6 +145,7 @@
 	let prCreatingStage: PrCreateStage | null = $state(null);
 
 	const prCreateStageCopy = $derived.by(() => getPrCreateStageCopy(prCreatingStage));
+	const commitPushStageCopy = $derived.by(() => getCommitPushStageCopy(commitPushStage));
 
 	// Remotes list for base remote dropdown
 	let remotes: RemoteInfo[] = $state([]);
@@ -195,6 +192,16 @@
 	let sidebarWidth = $state(REPO_DIFF_DEFAULT_SIDEBAR_WIDTH);
 	let isResizing = $state(false);
 
+	let repoDiffGitHubHandlers: RepoDiffGitHubHandlers | null = null;
+	const loadRemotes = (): Promise<void> =>
+		repoDiffGitHubHandlers?.loadRemotes() ?? Promise.resolve();
+	const loadTrackedPR = (): Promise<void> =>
+		repoDiffGitHubHandlers?.loadTrackedPR() ?? Promise.resolve();
+	const handleDeleteComment = (commentId: number): Promise<void> =>
+		repoDiffGitHubHandlers?.handleDeleteComment(commentId) ?? Promise.resolve();
+	const handleResolveThread = (threadId: string, resolve: boolean): Promise<void> =>
+		repoDiffGitHubHandlers?.handleResolveThread(threadId, resolve) ?? Promise.resolve();
+
 	const sidebarResizeController = createSidebarResizeController({
 		document,
 		window,
@@ -202,12 +209,8 @@
 		storageKey: REPO_DIFF_SIDEBAR_WIDTH_KEY,
 		minWidth: REPO_DIFF_MIN_SIDEBAR_WIDTH,
 		getSidebarWidth: () => sidebarWidth,
-		setSidebarWidth: (value) => {
-			sidebarWidth = value;
-		},
-		setIsResizing: (value) => {
-			isResizing = value;
-		},
+		setSidebarWidth: (value) => (sidebarWidth = value),
+		setIsResizing: (value) => (isResizing = value),
 	});
 
 	const watcherLifecycle = createRepoDiffWatcherLifecycle({
@@ -225,18 +228,16 @@
 		repoId: () => repoId,
 		prNumberInput: () => prNumberInput,
 		prBranchInput: () => prBranchInput,
-		parseNumber: (value) => parseNumber(value),
+		parseNumber: (value) => parseOptionalNumber(value),
 		getCurrentUserId: () => currentUserId,
 		getPrReviews: () => prReviews,
-		setPrReviews: (value) => {
-			prReviews = value;
-		},
+		setPrReviews: (value) => (prReviews = value),
 		replyToReviewComment,
 		editReviewComment,
 		handleDeleteComment: (commentId) => handleDeleteComment(commentId),
 		handleResolveThread: (threadId, resolve) => handleResolveThread(threadId, resolve),
-		formatError: (error, fallback) => formatError(error, fallback),
-		showAlert: (message) => alert(message),
+		formatError: (error, fallback) => formatRepoDiffError(error, fallback),
+		showAlert: alert,
 	});
 
 	const buildOptions = (): FileDiffRenderOptions<ReviewAnnotation> => ({
@@ -254,38 +255,6 @@
 
 	const startResize = (event: MouseEvent): void => sidebarResizeController.startResize(event);
 
-	const formatError = (err: unknown, fallback: string): string => {
-		if (err instanceof Error) return err.message;
-		if (typeof err === 'string') return err;
-		if (err && typeof err === 'object' && 'message' in err) {
-			const message = (err as { message?: string }).message;
-			if (typeof message === 'string') return message;
-		}
-		return fallback;
-	};
-
-	const parseNumber = (value: string): number | undefined => {
-		const parsed = Number.parseInt(value.trim(), 10);
-		return Number.isFinite(parsed) ? parsed : undefined;
-	};
-
-	const commitPushStageCopy = $derived.by(() => {
-		switch (commitPushStage) {
-			case 'queued':
-				return 'Preparing...';
-			case 'generating_message':
-				return 'Generating message...';
-			case 'staging':
-				return 'Staging changes...';
-			case 'committing':
-				return 'Committing...';
-			case 'pushing':
-				return 'Pushing...';
-			default:
-				return 'Committing...';
-		}
-	});
-
 	const githubOperationsController = createGitHubOperationsController({
 		...buildGitHubOperationsStateSurface({
 			workspaceId: () => workspaceId,
@@ -297,58 +266,26 @@
 			commitPushLoading: () => commitPushLoading,
 			authModalOpen: () => authModalOpen,
 			getAuthPendingAction: () => authPendingAction,
-			setAuthModalOpen: (value) => {
-				authModalOpen = value;
-			},
-			setAuthModalMessage: (value) => {
-				authModalMessage = value;
-			},
-			setAuthPendingAction: (value) => {
-				authPendingAction = value;
-			},
-			setPrPanelExpanded: (value) => {
-				prPanelExpanded = value;
-			},
-			setPrCreating: (value) => {
-				prCreating = value;
-			},
-			setPrCreatingStage: (value) => {
-				prCreatingStage = value;
-			},
-			setPrCreateError: (value) => {
-				prCreateError = value;
-			},
-			setPrCreateSuccess: (value) => {
-				prCreateSuccess = value;
-			},
-			setPrTracked: (value) => {
-				prTracked = value;
-			},
-			setForceMode: (value) => {
-				forceMode = value;
-			},
-			setPrNumberInput: (value) => {
-				prNumberInput = value;
-			},
-			setPrStatus: (value) => {
-				prStatus = value;
-			},
-			setCommitPushLoading: (value) => {
-				commitPushLoading = value;
-			},
-			setCommitPushStage: (value) => {
-				commitPushStage = value;
-			},
-			setCommitPushError: (value) => {
-				commitPushError = value;
-			},
-			setCommitPushSuccess: (value) => {
-				commitPushSuccess = value;
-			},
+			setAuthModalOpen: (value) => (authModalOpen = value),
+			setAuthModalMessage: (value) => (authModalMessage = value),
+			setAuthPendingAction: (value) => (authPendingAction = value),
+			setPrPanelExpanded: (value) => (prPanelExpanded = value),
+			setPrCreating: (value) => (prCreating = value),
+			setPrCreatingStage: (value) => (prCreatingStage = value),
+			setPrCreateError: (value) => (prCreateError = value),
+			setPrCreateSuccess: (value) => (prCreateSuccess = value),
+			setPrTracked: (value) => (prTracked = value),
+			setForceMode: (value) => (forceMode = value),
+			setPrNumberInput: (value) => (prNumberInput = value),
+			setPrStatus: (value) => (prStatus = value),
+			setCommitPushLoading: (value) => (commitPushLoading = value),
+			setCommitPushStage: (value) => (commitPushStage = value),
+			setCommitPushError: (value) => (commitPushError = value),
+			setCommitPushSuccess: (value) => (commitPushSuccess = value),
 		}),
 		handledOperationCompletions,
 		handleRefresh: () => handleRefresh(),
-		formatError,
+		formatError: formatRepoDiffError,
 		startCreatePullRequestAsync,
 		startCommitAndPushAsync,
 		fetchGitHubOperationStatus,
@@ -370,82 +307,20 @@
 	const loadGitHubOperationStatuses = (): Promise<void> =>
 		githubOperationsController.loadGitHubOperationStatuses();
 
-	const loadRemotes = async (): Promise<void> => {
-		if (!repoId) return;
-		remotesLoading = true;
-		try {
-			remotes = await listRemotes(workspaceId, repoId);
-		} catch {
-			// Non-fatal: remotes loading is optional
-			remotes = [];
-		} finally {
-			remotesLoading = false;
-		}
-	};
-
 	const handleCommitAndPush = (): Promise<void> => githubOperationsController.handleCommitAndPush();
 
 	const handleCreatePR = (): Promise<void> => githubOperationsController.handleCreatePR();
 
-	const handleDeleteComment = async (commentId: number): Promise<void> => {
-		if (!repoId) return;
-		// Note: native confirm() doesn't work in Wails WebView on macOS
-		// The delete button click is explicit enough user intent
-		await runGitHubAction(
-			async () => {
-				await deleteReviewComment(workspaceId, repoId, commentId);
-				await loadPrReviews();
-			},
-			(message) => {
-				alert(message);
-			},
-			'Failed to delete comment.',
-		);
-	};
-
-	let resolvingThread = $state(false);
-
-	const handleResolveThread = async (threadId: string, resolve: boolean): Promise<void> => {
-		if (!repoId) return;
-		if (!threadId) {
-			alert('No thread ID found for this comment');
-			return;
-		}
-		if (resolvingThread) return;
-		resolvingThread = true;
-		await runGitHubAction(
-			async () => {
-				await resolveReviewThread(workspaceId, repoId, threadId, resolve);
-				// Refresh reviews to get updated state
-				await loadPrReviews();
-			},
-			(message) => {
-				alert(message);
-			},
-			resolve ? 'Failed to resolve thread.' : 'Failed to unresolve thread.',
-		);
-		resolvingThread = false;
-	};
-
-	const filteredReviews = $derived(
-		prReviews.filter((comment) => (selected?.path ? comment.path === selected.path : true)),
+	const filteredReviews = $derived.by(() =>
+		filterReviewsBySelectedPath(prReviews, selected ? selected.path : undefined),
 	);
 
 	// Check stats for compact display
 	const checkStats = $derived.by(() => getCheckStats(prStatus?.checks ?? []));
 
-	const reviewCountsByPath = $derived.by(() => {
-		const counts = new Map<string, number>();
-		for (const comment of prReviews) {
-			counts.set(comment.path, (counts.get(comment.path) ?? 0) + 1);
-		}
-		return counts;
-	});
-
-	// Count reviews for a specific file path
-	const reviewCountForFile = (path: string): number => {
-		return reviewCountsByPath.get(path) ?? 0;
-	};
+	const reviewCountsByPath = $derived.by(() => buildReviewCountsByPath(prReviews));
+	const reviewCountForFile = (path: string): number =>
+		getReviewCountForFile(reviewCountsByPath, path);
 
 	const ensureRenderer = async (): Promise<void> => {
 		if (diffModule || rendererLoading) return;
@@ -454,37 +329,9 @@
 		try {
 			diffModule = (await import('@pierre/diffs')) as DiffsModule;
 		} catch (err) {
-			rendererError = formatError(err, 'Diff renderer failed to load.');
+			rendererError = formatRepoDiffError(err, 'Diff renderer failed to load.');
 		} finally {
 			rendererLoading = false;
-		}
-	};
-
-	const loadTrackedPR = async (): Promise<void> => {
-		if (!repoId) return;
-		try {
-			const tracked = await fetchTrackedPullRequest(workspaceId, repoId);
-			if (!tracked) {
-				return;
-			}
-			applyTrackedPullRequestContext(tracked, {
-				setPrTracked: (value) => {
-					prTracked = value;
-				},
-				prNumberInput: () => prNumberInput,
-				setPrNumberInput: (value) => {
-					prNumberInput = value;
-				},
-				prBranchInput: () => prBranchInput,
-				setPrBranchInput: (value) => {
-					prBranchInput = value;
-				},
-			});
-			void loadPrStatus();
-			void loadPrReviews();
-			void loadLocalStatus().then(() => loadLocalSummary());
-		} catch {
-			// ignore tracking failures
 		}
 	};
 
@@ -509,30 +356,18 @@
 		repoId: () => repoId,
 		selectedSource: () => selectedSource,
 		useBranchDiff,
-		setSelected: (value) => {
-			selected = value;
-		},
-		setSelectedSource: (value) => {
-			selectedSource = value;
-		},
-		setSelectedDiff: (value) => {
-			selectedDiff = value;
-		},
-		setFileMeta: (value) => {
-			fileMeta = value;
-		},
-		setFileLoading: (value) => {
-			fileLoading = value;
-		},
-		setFileError: (value) => {
-			fileError = value;
-		},
+		setSelected: (value) => (selected = value),
+		setSelectedSource: (value) => (selectedSource = value),
+		setSelectedDiff: (value) => (selectedDiff = value),
+		setFileMeta: (value) => (fileMeta = value),
+		setFileLoading: (value) => (fileLoading = value),
+		setFileError: (value) => (fileError = value),
 		ensureRenderer,
 		getDiffModule: () => diffModule,
 		getRendererError: () => rendererError,
 		fetchRepoFileDiff,
 		fetchBranchFileDiff,
-		formatError,
+		formatError: formatRepoDiffError,
 		requestAnimationFrame,
 		renderDiff,
 	});
@@ -544,17 +379,11 @@
 
 	const checkSidebarController = createCheckSidebarController({
 		getExpandedCheck: () => expandedCheck,
-		setExpandedCheck: (value) => {
-			expandedCheck = value;
-		},
+		setExpandedCheck: (value) => (expandedCheck = value),
 		getCheckAnnotations: () => checkAnnotations,
-		setCheckAnnotations: (value) => {
-			checkAnnotations = value;
-		},
+		setCheckAnnotations: (value) => (checkAnnotations = value),
 		getCheckAnnotationsLoading: () => checkAnnotationsLoading,
-		setCheckAnnotationsLoading: (value) => {
-			checkAnnotationsLoading = value;
-		},
+		setCheckAnnotationsLoading: (value) => (checkAnnotationsLoading = value),
 		getPrStatus: () => prStatus,
 		getRemotes: () => remotes,
 		getPrBaseRemote: () => prBaseRemote,
@@ -595,35 +424,19 @@
 		selected: () => selected,
 		selectedSource: () => selectedSource,
 		summary: () => summary,
-		setSummary: (value) => {
-			summary = value;
-		},
-		setSummaryLoading: (value) => {
-			summaryLoading = value;
-		},
-		setSummaryError: (value) => {
-			summaryError = value;
-		},
-		setLocalSummary: (value) => {
-			localSummary = value;
-		},
-		setSelected: (value) => {
-			selected = value;
-		},
-		setSelectedDiff: (value) => {
-			selectedDiff = value;
-		},
-		setFileMeta: (value) => {
-			fileMeta = value;
-		},
-		setFileError: (value) => {
-			fileError = value;
-		},
+		setSummary: (value) => (summary = value),
+		setSummaryLoading: (value) => (summaryLoading = value),
+		setSummaryError: (value) => (summaryError = value),
+		setLocalSummary: (value) => (localSummary = value),
+		setSelected: (value) => (selected = value),
+		setSelectedDiff: (value) => (selectedDiff = value),
+		setFileMeta: (value) => (fileMeta = value),
+		setFileError: (value) => (fileError = value),
 		selectFile,
 		fetchRepoDiffSummary,
 		fetchBranchDiffSummary,
 		applyRepoDiffSummary,
-		formatError,
+		formatError: formatRepoDiffError,
 	});
 
 	const loadSummary = (): Promise<void> => summarySourceController.loadSummary();
@@ -638,32 +451,16 @@
 			prBranchInput: () => prBranchInput,
 			effectiveMode: () => effectiveMode,
 			currentUserId: () => currentUserId,
-			setCurrentUserId: (value) => {
-				currentUserId = value;
-			},
-			setPrStatus: (value) => {
-				prStatus = value;
-			},
-			setPrStatusLoading: (value) => {
-				prStatusLoading = value;
-			},
-			setPrStatusError: (value) => {
-				prStatusError = value;
-			},
-			setPrReviews: (value) => {
-				prReviews = value;
-			},
-			setPrReviewsLoading: (value) => {
-				prReviewsLoading = value;
-			},
-			setPrReviewsSent: (value) => {
-				prReviewsSent = value;
-			},
-			setLocalStatus: (value) => {
-				localStatus = value;
-			},
+			setCurrentUserId: (value) => (currentUserId = value),
+			setPrStatus: (value) => (prStatus = value),
+			setPrStatusLoading: (value) => (prStatusLoading = value),
+			setPrStatusError: (value) => (prStatusError = value),
+			setPrReviews: (value) => (prReviews = value),
+			setPrReviewsLoading: (value) => (prReviewsLoading = value),
+			setPrReviewsSent: (value) => (prReviewsSent = value),
+			setLocalStatus: (value) => (localStatus = value),
 		}),
-		parseNumber,
+		parseNumber: parseOptionalNumber,
 		runGitHubAction,
 		loadSummary,
 		loadLocalSummary,
@@ -678,6 +475,24 @@
 	const loadCurrentUser = (): Promise<void> => prStatusController.loadCurrentUser();
 	const loadLocalStatus = (): Promise<void> => prStatusController.loadLocalStatus();
 	const handleRefresh = (): Promise<void> => prStatusController.handleRefresh();
+
+	repoDiffGitHubHandlers = createRepoDiffGitHubHandlers({
+		workspaceId: () => workspaceId,
+		repoId: () => repoId,
+		runGitHubAction,
+		loadPrReviews,
+		loadPrStatus,
+		loadLocalStatus,
+		loadLocalSummary,
+		setRemotesLoading: (value) => (remotesLoading = value),
+		setRemotes: (value) => (remotes = value),
+		setPrTracked: (value) => (prTracked = value),
+		getPrNumberInput: () => prNumberInput,
+		setPrNumberInput: (value) => (prNumberInput = value),
+		getPrBranchInput: () => prBranchInput,
+		setPrBranchInput: (value) => (prBranchInput = value),
+		alertUser: alert,
+	});
 
 	const repoDiffLifecycle = createRepoDiffLifecycle({
 		workspaceId: () => workspaceId,
@@ -694,35 +509,21 @@
 		},
 		onLocalStatusEvent: (payload: RepoDiffLocalStatusEvent) => {
 			localStatus = payload.status;
-			if (!payload.status.hasUncommitted) {
-				localSummary = null;
-			}
+			if (!payload.status.hasUncommitted) localSummary = null;
 			applyRepoLocalStatus(payload.workspaceId, payload.repoId, payload.status);
 		},
 		onPrStatusEvent: (payload) => {
 			applyPrStatusLifecycleEvent(payload, {
-				setPrStatus: (value) => {
-					prStatus = value;
-				},
-				setPrStatusError: (value) => {
-					prStatusError = value;
-				},
-				setPrStatusLoading: (value) => {
-					prStatusLoading = value;
-				},
+				setPrStatus: (value) => (prStatus = value),
+				setPrStatusError: (value) => (prStatusError = value),
+				setPrStatusLoading: (value) => (prStatusLoading = value),
 			});
 		},
 		onPrReviewsEvent: (payload) => {
 			applyPrReviewsLifecycleEvent(payload, {
-				setPrReviews: (value) => {
-					prReviews = value;
-				},
-				setPrReviewsLoading: (value) => {
-					prReviewsLoading = value;
-				},
-				setPrReviewsSent: (value) => {
-					prReviewsSent = value;
-				},
+				setPrReviews: (value) => (prReviews = value),
+				setPrReviewsLoading: (value) => (prReviewsLoading = value),
+				setPrReviewsSent: (value) => (prReviewsSent = value),
 				currentUserId: () => currentUserId,
 				loadCurrentUser,
 			});
@@ -753,7 +554,7 @@
 		repoDiffLifecycle.syncWatchLifecycle({
 			workspaceId,
 			repoId,
-			prNumber: parseNumber(prNumberInput),
+			prNumber: parseOptionalNumber(prNumberInput),
 			prBranch: prBranchInput.trim() || undefined,
 		});
 	});
@@ -780,7 +581,7 @@
 		repoDiffLifecycle.syncWatchUpdate({
 			workspaceId,
 			repoId,
-			prNumber: parseNumber(prNumberInput),
+			prNumber: parseOptionalNumber(prNumberInput),
 			prBranch: prBranchInput.trim() || undefined,
 		});
 	});
@@ -788,262 +589,83 @@
 
 {#if repo}
 	<section class="diff">
-		<header class="diff-header">
-			<div class="title">
-				<div class="repo-name">{repoName}</div>
-				<div class="meta">
-					{#if repoDefaultBranch}
-						<span>Default branch: {repoDefaultBranch}</span>
-					{/if}
-					{#if repoStatusKnown === false}
-						<span class="status unknown">unknown</span>
-					{:else if repoMissing}
-						<span class="status missing">missing</span>
-					{:else if repoDirty}
-						<span class="status dirty">dirty</span>
-					{:else}
-						<span class="status clean">clean</span>
-					{/if}
-					{#if summary}
-						<span>Files: {summary.files.length}</span>
-						<span class="diffstat"
-							><span class="add">+{summary.totalAdded}</span><span class="sep">/</span><span
-								class="del">-{summary.totalRemoved}</span
-							></span
-						>
-					{/if}
-					<RepoDiffHeaderPrBadge
-						{effectiveMode}
-						{prStatus}
-						{checkStats}
-						{prStatusLoading}
-						{prReviewsLoading}
-						onOpenPrUrl={validateAndOpenURL}
-					/>
-				</div>
-			</div>
-			<div class="controls">
-				<div class="toggle">
-					<button
-						class:active={diffMode === 'split'}
-						onclick={() => {
-							diffMode = 'split';
-						}}
-						type="button"
-					>
-						Split
-					</button>
-					<button
-						class:active={diffMode === 'unified'}
-						onclick={() => {
-							diffMode = 'unified';
-						}}
-						type="button"
-					>
-						Unified
-					</button>
-				</div>
-				<button class="ghost" type="button" onclick={handleRefresh}>Refresh</button>
-				<button class="close" onclick={onClose} type="button">Back to terminal</button>
-			</div>
-		</header>
+		<RepoDiffHeader
+			{repoName}
+			{repoDefaultBranch}
+			{repoStatusKnown}
+			{repoMissing}
+			{repoDirty}
+			{summary}
+			{effectiveMode}
+			{prStatus}
+			{checkStats}
+			{prStatusLoading}
+			{prReviewsLoading}
+			bind:diffMode
+			onRefresh={handleRefresh}
+			{onClose}
+			onOpenPrUrl={validateAndOpenURL}
+		/>
 
-		<!-- PR Create form (only shown in create mode) -->
-		{#if effectiveMode === 'create'}
-			<section class="pr-panel">
-				<button
-					class="pr-panel-toggle"
-					type="button"
-					onclick={() => (prPanelExpanded = !prPanelExpanded)}
-				>
-					<span class="pr-panel-toggle-icon">{prPanelExpanded ? '▾' : '▸'}</span>
-					<span class="pr-title">Create Pull Request</span>
-				</button>
+		<RepoDiffPrPanel
+			{effectiveMode}
+			bind:prPanelExpanded
+			{remotes}
+			{remotesLoading}
+			bind:prBaseRemote
+			bind:prBase
+			bind:prDraft
+			{prCreating}
+			{prCreateStageCopy}
+			{prCreateError}
+			{prTracked}
+			{prCreateSuccess}
+			{prStatusError}
+			{prReviewsSent}
+			hasUncommittedChanges={localStatus?.hasUncommitted ?? false}
+			{commitPushLoading}
+			{commitPushStageCopy}
+			{commitPushError}
+			{commitPushSuccess}
+			onCreatePr={handleCreatePR}
+			onViewStatus={() => {
+				forceMode = 'status';
+			}}
+			onCommitAndPush={handleCommitAndPush}
+		/>
 
-				<div class="pr-panel-content" class:expanded={prPanelExpanded}>
-					<div class="pr-panel-inner">
-						<div class="pr-form-row">
-							<label class="field-inline">
-								<span>Target</span>
-								<select
-									bind:value={prBaseRemote}
-									disabled={remotesLoading}
-									title="Base remote (defaults to upstream if available)"
-								>
-									<option value="">Auto</option>
-									{#each remotes as remote (remote.name)}
-										<option value={remote.name}>{remote.name}</option>
-									{/each}
-								</select>
-							</label>
-							<span class="field-separator">/</span>
-							<label class="field-inline">
-								<input
-									class="branch-input"
-									type="text"
-									bind:value={prBase}
-									placeholder="main"
-									autocapitalize="off"
-									autocorrect="off"
-									spellcheck="false"
-								/>
-							</label>
-							<label class="checkbox-inline">
-								<input type="checkbox" bind:checked={prDraft} />
-								Draft
-							</label>
-							<button
-								class="pr-create-btn"
-								class:loading={prCreating}
-								type="button"
-								onclick={handleCreatePR}
-								disabled={prCreating}
-							>
-								{#if prCreating}
-									<span class="pr-create-spinner" aria-hidden="true">
-										<svg
-											class="pr-create-spinner-icon"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											stroke-width="2"
-										>
-											<circle cx="12" cy="12" r="9" opacity="0.25" />
-											<path d="M21 12a9 9 0 0 0-9-9" stroke-linecap="round" />
-										</svg>
-									</span>
-								{/if}
-								<span class="pr-create-label"
-									>{prCreating
-										? (prCreateStageCopy?.button ?? 'Creating PR...')
-										: 'Create PR'}</span
-								>
-							</button>
-						</div>
-
-						{#if prCreating && prCreateStageCopy}
-							<div class="pr-create-progress" role="status" aria-live="polite">
-								{prCreateStageCopy.detail}
-							</div>
-						{/if}
-
-						{#if prCreateError}
-							<div class="error">{prCreateError}</div>
-						{/if}
-
-						{#if prTracked && !prCreateSuccess}
-							<div class="info-banner">
-								Existing PR #{prTracked.number} found.
-								<button class="mode-link" type="button" onclick={() => (forceMode = 'status')}>
-									View status →
-								</button>
-							</div>
-						{/if}
-					</div>
-				</div>
-			</section>
-		{/if}
-
-		<!-- Status errors/success banners (only in status mode) -->
-		{#if effectiveMode === 'status'}
-			{#if prStatusError}
-				<div class="error-banner compact">{prStatusError}</div>
-			{/if}
-			{#if prReviewsSent}
-				<div class="success-banner compact">Sent to terminal</div>
-			{/if}
-		{/if}
-
-		<!-- Local uncommitted changes banner (in status mode when PR exists) -->
-		{#if effectiveMode === 'status' && localStatus?.hasUncommitted}
-			<section class="local-changes-banner">
-				<span class="local-changes-text">You have uncommitted local changes</span>
-				<button
-					class="commit-push-btn"
-					type="button"
-					onclick={handleCommitAndPush}
-					disabled={commitPushLoading}
-				>
-					{commitPushLoading ? commitPushStageCopy : 'Commit & Push'}
-				</button>
-			</section>
-			{#if commitPushError}
-				<div class="error-banner compact">{commitPushError}</div>
-			{/if}
-			{#if commitPushSuccess}
-				<div class="success-banner compact">Changes committed and pushed</div>
-			{/if}
-		{/if}
-
-		{#if summaryLoading}
-			<div class="state">Loading diff summary...</div>
-		{:else if summaryError}
-			<div class="state error">
-				<div class="message">{summaryError}</div>
-				<button class="ghost" type="button" onclick={loadSummary}>Retry</button>
-			</div>
-		{:else if (!summary || summary.files.length === 0) && (!localSummary || localSummary.files.length === 0)}
-			<div class="state">No changes detected in this repo.</div>
-		{:else}
-			<div class="diff-body" style="--sidebar-width: {sidebarWidth}px">
-				<RepoDiffFileListSidebar
-					{summary}
-					{localSummary}
-					{selected}
-					{selectedSource}
-					{shouldSplitLocalPendingSection}
-					{effectiveMode}
-					{prStatus}
-					{checkStats}
-					{expandedCheck}
-					{checkAnnotationsLoading}
-					{formatDuration}
-					{getCheckStatusClass}
-					{toggleCheckExpansion}
-					{navigateToAnnotationFile}
-					{getFilteredAnnotations}
-					{reviewCountForFile}
-					{selectFile}
-					onOpenDetailsUrl={(url) => BrowserOpenURL(url)}
-				/>
-				<button
-					class="resize-handle"
-					class:resizing={isResizing}
-					onmousedown={startResize}
-					aria-label="Resize sidebar"
-					type="button"
-				></button>
-				<div class="diff-view">
-					<div class="file-header">
-						<div class="file-title">
-							<span>{selected?.path}</span>
-							{#if selected?.prevPath}
-								<span class="rename">from {selected.prevPath}</span>
-							{/if}
-						</div>
-						<span class="diffstat">
-							<span class="add">+{selected?.added ?? 0}</span><span class="sep">/</span><span
-								class="del">-{selected?.removed ?? 0}</span
-							>
-							{#if fileMeta && !fileMeta.truncated && fileMeta.totalLines > 0}
-								<span class="line-count">{fileMeta.totalLines} lines</span>
-							{/if}
-						</span>
-					</div>
-					{#if fileLoading || rendererLoading}
-						<div class="state compact">Loading file diff...</div>
-					{:else if fileError}
-						<div class="state compact">{fileError}</div>
-					{:else if rendererError}
-						<div class="state compact">{rendererError}</div>
-					{:else}
-						<div class="diff-renderer">
-							<diffs-container bind:this={diffContainer}></diffs-container>
-						</div>
-					{/if}
-				</div>
-			</div>
-		{/if}
+		<RepoDiffContentPane
+			{summaryLoading}
+			{summaryError}
+			{summary}
+			{localSummary}
+			{selected}
+			{selectedSource}
+			{shouldSplitLocalPendingSection}
+			{effectiveMode}
+			{prStatus}
+			{checkStats}
+			{expandedCheck}
+			{checkAnnotationsLoading}
+			{formatDuration}
+			{getCheckStatusClass}
+			{toggleCheckExpansion}
+			{navigateToAnnotationFile}
+			{getFilteredAnnotations}
+			{reviewCountForFile}
+			{selectFile}
+			onOpenDetailsUrl={(url) => BrowserOpenURL(url)}
+			{sidebarWidth}
+			{isResizing}
+			onStartResize={startResize}
+			{fileMeta}
+			{fileLoading}
+			{rendererLoading}
+			{fileError}
+			{rendererError}
+			bind:diffContainer
+			onRetrySummary={loadSummary}
+		/>
 	</section>
 {:else}
 	<div class="state">Select a repo to view diffs.</div>
@@ -1057,308 +679,9 @@
 	/>
 {/if}
 
+<RepoDiffAnnotationStyles />
+
 <style>
-	/* Local changes warning banner */
-	.local-changes-banner {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		padding: 12px 16px;
-		border-radius: 10px;
-		background: rgba(210, 153, 34, 0.12);
-		border: 1px solid rgba(210, 153, 34, 0.35);
-	}
-
-	.local-changes-text {
-		font-size: 13px;
-		font-weight: 500;
-		color: #d29922;
-	}
-
-	.commit-push-btn {
-		padding: 8px 16px;
-		border-radius: 8px;
-		border: none;
-		background: linear-gradient(135deg, #d29922 0%, #b8860b 100%);
-		color: #1a1a1a;
-		font-size: 12px;
-		font-weight: 600;
-		cursor: pointer;
-		transition:
-			transform 0.15s ease,
-			box-shadow 0.15s ease,
-			opacity 0.15s ease;
-	}
-
-	.commit-push-btn:hover:not(:disabled) {
-		transform: translateY(-1px);
-		box-shadow: 0 4px 12px rgba(210, 153, 34, 0.3);
-	}
-
-	.commit-push-btn:active:not(:disabled) {
-		transform: translateY(0);
-	}
-
-	.commit-push-btn:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
-
-	.pr-panel {
-		border-radius: 14px;
-		background: var(--panel);
-		border: 1px solid var(--border);
-		overflow: hidden;
-	}
-
-	.pr-panel-toggle {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		width: 100%;
-		padding: 14px 16px;
-		background: transparent;
-		border: none;
-		cursor: pointer;
-		text-align: left;
-		transition: background 0.15s ease;
-	}
-
-	.pr-panel-toggle:hover {
-		background: rgba(255, 255, 255, 0.03);
-	}
-
-	.pr-panel-toggle-icon {
-		font-size: 12px;
-		color: var(--muted);
-		width: 12px;
-	}
-
-	.pr-title {
-		font-weight: 600;
-		font-size: 14px;
-		color: var(--text);
-	}
-
-	.pr-panel-content {
-		display: grid;
-		grid-template-rows: 0fr;
-		transition: grid-template-rows 0.2s ease;
-	}
-
-	.pr-panel-content.expanded {
-		grid-template-rows: 1fr;
-	}
-
-	.pr-panel-inner {
-		overflow: hidden;
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-		padding: 0 16px 14px;
-	}
-
-	.pr-form-row {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-	}
-
-	.field-inline {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		font-size: 12px;
-		color: var(--muted);
-	}
-
-	.field-inline span {
-		white-space: nowrap;
-	}
-
-	.field-inline input,
-	.field-inline select {
-		background: var(--panel-soft);
-		border: 1px solid var(--border);
-		border-radius: 8px;
-		padding: 6px 10px;
-		color: var(--text);
-		font-size: 13px;
-		font-family: inherit;
-	}
-
-	.field-inline select {
-		cursor: pointer;
-		appearance: none;
-		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238b949e' d='M3 4.5L6 7.5L9 4.5'/%3E%3C/svg%3E");
-		background-repeat: no-repeat;
-		background-position: right 8px center;
-		padding-right: 26px;
-		min-width: 80px;
-	}
-
-	.field-inline .branch-input {
-		width: 120px;
-	}
-
-	.field-separator {
-		color: var(--muted);
-		font-size: 14px;
-	}
-
-	.checkbox-inline {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		font-size: 12px;
-		color: var(--muted);
-		white-space: nowrap;
-	}
-
-	.pr-create-btn {
-		padding: 6px 14px;
-		border-radius: 8px;
-		border: none;
-		background: var(--accent);
-		color: var(--text);
-		font-size: 12px;
-		font-weight: 500;
-		cursor: pointer;
-		white-space: nowrap;
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		transition: opacity 0.15s ease;
-	}
-
-	.pr-create-btn.loading {
-		animation: pr-create-pulse 1.6s ease-in-out infinite;
-	}
-
-	.pr-create-btn:hover:not(:disabled) {
-		opacity: 0.9;
-	}
-
-	.pr-create-btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.pr-create-spinner {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		animation: pr-create-glow 1.6s ease-in-out infinite;
-	}
-
-	.pr-create-spinner-icon {
-		width: 12px;
-		height: 12px;
-		animation: pr-create-spin 0.8s linear infinite;
-	}
-
-	.pr-create-progress {
-		font-size: 12px;
-		color: var(--text);
-		opacity: 0.75;
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 6px 10px;
-		background: var(--panel-soft);
-		border-radius: 8px;
-		border: 1px solid var(--border);
-		border-left: 3px solid var(--accent);
-	}
-
-	@keyframes pr-create-spin {
-		to {
-			transform: rotate(360deg);
-		}
-	}
-
-	@keyframes pr-create-glow {
-		0%,
-		100% {
-			opacity: 0.6;
-		}
-		50% {
-			opacity: 1;
-		}
-	}
-
-	@keyframes pr-create-pulse {
-		0%,
-		100% {
-			box-shadow: 0 0 0 rgba(0, 0, 0, 0);
-		}
-		50% {
-			box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.08);
-		}
-	}
-
-	.info-banner {
-		font-size: 12px;
-		color: var(--muted);
-		padding: 8px 10px;
-		background: var(--panel-soft);
-		border-radius: 8px;
-		display: flex;
-		align-items: center;
-		gap: 8px;
-	}
-
-	.mode-link {
-		font-size: 12px;
-		color: var(--muted);
-		cursor: pointer;
-		background: none;
-		border: none;
-		padding: 0;
-	}
-
-	.mode-link:hover {
-		color: var(--text);
-	}
-
-	@keyframes fadeIn {
-		from {
-			opacity: 0;
-			transform: translateY(-4px);
-		}
-		to {
-			opacity: 1;
-			transform: translateY(0);
-		}
-	}
-
-	/* Error & Success Banners */
-	.error-banner {
-		padding: 10px 12px;
-		border-radius: 8px;
-		background: rgba(248, 81, 73, 0.1);
-		border: 1px solid rgba(248, 81, 73, 0.3);
-		color: #f85149;
-		font-size: 12px;
-	}
-
-	.error-banner.compact,
-	.success-banner.compact {
-		padding: 6px 10px;
-		font-size: 11px;
-	}
-
-	.success-banner {
-		padding: 10px 12px;
-		border-radius: 8px;
-		background: rgba(46, 160, 67, 0.1);
-		border: 1px solid rgba(46, 160, 67, 0.3);
-		color: #3fb950;
-		font-size: 12px;
-		animation: fadeIn 0.2s ease;
-	}
-
 	.diff {
 		display: flex;
 		flex-direction: column;
@@ -1367,612 +690,11 @@
 		padding: 16px;
 	}
 
-	.diff-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		gap: 16px;
-	}
-
-	.title {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
-	.repo-name {
-		font-size: 20px;
-		font-weight: 600;
-	}
-
-	.meta {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		color: var(--muted);
-		font-size: 12px;
-		flex-wrap: wrap;
-	}
-
-	.diffstat {
-		font-weight: 600;
-		display: inline-flex;
-		gap: 8px;
-		align-items: center;
-	}
-
-	.diffstat .add {
-		color: var(--success);
-	}
-
-	.diffstat .del {
-		color: var(--danger);
-	}
-
-	.diffstat .sep {
-		color: var(--muted);
-		margin: 0 -6px;
-	}
-
-	.line-count {
-		font-size: 11px;
-		color: var(--muted);
-		font-weight: 500;
-	}
-
-	.status {
-		font-weight: 600;
-	}
-
-	.dirty {
-		color: var(--warning);
-	}
-
-	.missing {
-		color: var(--danger);
-	}
-
-	.clean {
-		color: var(--success);
-	}
-
-	.unknown {
-		color: var(--muted);
-	}
-
-	.controls {
-		display: flex;
-		gap: 12px;
-		align-items: center;
-	}
-
-	.toggle {
-		display: inline-flex;
-		border: 1px solid var(--border);
-		border-radius: 10px;
-		overflow: hidden;
-		background: var(--panel);
-	}
-
-	.toggle button {
-		background: transparent;
-		border: none;
-		color: var(--muted);
-		padding: 6px 12px;
-		cursor: pointer;
-		font-size: 12px;
-		transition:
-			background var(--transition-fast),
-			color var(--transition-fast);
-	}
-
-	.toggle button:hover:not(.active) {
-		background: rgba(255, 255, 255, 0.04);
-	}
-
-	.toggle button.active {
-		color: var(--text);
-		background: var(--accent-subtle);
-	}
-
-	.close {
-		background: var(--panel);
-		border: 1px solid var(--border);
-		color: var(--text);
-		border-radius: var(--radius-sm);
-		padding: 8px 12px;
-		cursor: pointer;
-		transition:
-			border-color var(--transition-fast),
-			background var(--transition-fast);
-	}
-
-	.close:hover {
-		border-color: var(--accent);
-		background: rgba(255, 255, 255, 0.04);
-	}
-
 	.state {
 		background: var(--panel);
 		border: 1px solid var(--border);
 		border-radius: 16px;
 		padding: 20px;
 		color: var(--muted);
-	}
-
-	.state.compact {
-		padding: 16px;
-		border-radius: 12px;
-		background: var(--panel-soft);
-		border: 1px dashed var(--border);
-		text-align: center;
-	}
-
-	.state.error {
-		color: var(--warning);
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-	}
-
-	.diff-body {
-		display: grid;
-		grid-template-columns: var(--sidebar-width, 280px) 1fr;
-		gap: 8px;
-		flex: 1;
-		min-height: 0;
-		position: relative;
-	}
-
-	.resize-handle {
-		position: absolute;
-		left: calc(var(--sidebar-width, 280px) + 2px);
-		top: 0;
-		bottom: 0;
-		width: 4px;
-		background: transparent;
-		border: none;
-		padding: 0;
-		cursor: col-resize;
-		transition: background var(--transition-fast);
-		z-index: 10;
-		border-radius: 2px;
-	}
-
-	.resize-handle:hover,
-	.resize-handle.resizing {
-		background: var(--accent);
-	}
-
-	.resize-handle::after {
-		content: '';
-		position: absolute;
-		inset: 0;
-		width: 12px;
-		transform: translateX(-4px);
-	}
-
-	.diff-view {
-		background: var(--panel);
-		border: 1px solid var(--border);
-		border-radius: 12px;
-		padding: 16px;
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-		min-height: 0;
-		overflow: hidden;
-	}
-
-	.file-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		font-size: 13px;
-		color: var(--muted);
-		height: 24px;
-	}
-
-	.file-title {
-		display: flex;
-		gap: 8px;
-		align-items: center;
-		color: var(--text);
-		font-weight: 500;
-	}
-
-	.rename {
-		font-size: 11px;
-		color: var(--muted);
-	}
-
-	.diff-renderer {
-		flex: 1;
-		min-height: 0;
-		border-radius: 10px;
-		border: 1px solid var(--border);
-		background: var(--panel-soft);
-		padding: 8px;
-		overflow: hidden;
-		--diffs-dark-bg: var(--panel-soft);
-		--diffs-dark: var(--text);
-		--diffs-dark-addition-color: var(--success);
-		--diffs-dark-deletion-color: var(--danger);
-		--diffs-dark-modified-color: var(--accent);
-		--diffs-font-family: var(--font-mono);
-		--diffs-font-size: 12px;
-		--diffs-header-font-family: var(--font-body);
-		--diffs-gap-block: 8px;
-		--diffs-gap-inline: 10px;
-	}
-
-	diffs-container {
-		display: block;
-		height: 100%;
-		width: 100%;
-		overflow: auto;
-	}
-
-	.ghost {
-		background: rgba(255, 255, 255, 0.02);
-		border: 1px solid var(--border);
-		color: var(--text);
-		padding: 8px 12px;
-		border-radius: var(--radius-md);
-		cursor: pointer;
-		font-size: 12px;
-		transition:
-			border-color var(--transition-fast),
-			background var(--transition-fast);
-	}
-
-	.ghost:hover:not(:disabled) {
-		border-color: var(--accent);
-		background: rgba(255, 255, 255, 0.04);
-	}
-
-	.ghost:active:not(:disabled) {
-		transform: scale(0.98);
-	}
-
-	/* Inline Review Annotations via @pierre/diffs renderAnnotation callback */
-	:global(.diff-annotation-thread) {
-		margin: 8px 0;
-		max-width: 720px;
-		border-radius: 10px;
-		overflow: hidden;
-		border: 1px solid rgba(99, 102, 241, 0.25);
-		border-left: 3px solid #6366f1;
-		animation: fadeSlideIn 0.2s ease;
-	}
-
-	:global(.diff-annotation) {
-		padding: 12px 14px;
-		background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%);
-	}
-
-	:global(.diff-annotation-reply) {
-		background: linear-gradient(135deg, rgba(99, 102, 241, 0.04) 0%, rgba(139, 92, 246, 0.04) 100%);
-		border-top: 1px solid rgba(99, 102, 241, 0.15);
-		padding-left: 28px;
-		position: relative;
-	}
-
-	:global(.diff-annotation-reply::before) {
-		content: '';
-		position: absolute;
-		left: 14px;
-		top: 12px;
-		bottom: 12px;
-		width: 2px;
-		background: rgba(99, 102, 241, 0.3);
-		border-radius: 1px;
-	}
-
-	@keyframes fadeSlideIn {
-		from {
-			opacity: 0;
-			transform: translateY(-4px);
-		}
-		to {
-			opacity: 1;
-			transform: translateY(0);
-		}
-	}
-
-	:global(.diff-annotation-header) {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		margin-bottom: 8px;
-	}
-
-	:global(.diff-annotation-avatar) {
-		width: 24px;
-		height: 24px;
-		border-radius: 50%;
-		background: linear-gradient(135deg, #6366f1 0%, #a78bfa 100%);
-		color: white;
-		font-size: 11px;
-		font-weight: 600;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-	}
-
-	:global(.diff-annotation-reply .diff-annotation-avatar) {
-		width: 20px;
-		height: 20px;
-		font-size: 10px;
-	}
-
-	:global(.diff-annotation-author) {
-		font-size: 12px;
-		font-weight: 600;
-		color: var(--text);
-	}
-
-	:global(.diff-annotation-body) {
-		font-size: 13px;
-		line-height: 1.5;
-		color: var(--text);
-		white-space: pre-wrap;
-		word-break: break-word;
-	}
-
-	:global(.diff-annotation-reply .diff-annotation-body) {
-		font-size: 12px;
-	}
-
-	/* Comment action buttons */
-	:global(.diff-annotation-actions) {
-		display: flex;
-		gap: 4px;
-		margin-left: auto;
-		opacity: 0;
-		transition: opacity 0.15s ease;
-	}
-
-	:global(.diff-annotation:hover .diff-annotation-actions) {
-		opacity: 1;
-	}
-
-	:global(.diff-action-btn) {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 4px;
-		padding: 4px 8px;
-		border: none;
-		border-radius: 6px;
-		background: rgba(255, 255, 255, 0.08);
-		color: var(--muted);
-		font-size: 11px;
-		cursor: pointer;
-		transition: all 0.15s ease;
-	}
-
-	:global(.diff-action-btn:hover) {
-		background: rgba(255, 255, 255, 0.15);
-		color: var(--text);
-	}
-
-	:global(.diff-action-delete:hover) {
-		background: rgba(248, 81, 73, 0.2);
-		color: #f85149;
-	}
-
-	:global(.diff-annotation-footer) {
-		display: flex;
-		gap: 8px;
-		padding: 10px 14px;
-		background: rgba(99, 102, 241, 0.04);
-		border-top: 1px solid rgba(99, 102, 241, 0.15);
-	}
-
-	:global(.diff-action-reply) {
-		color: #6366f1;
-	}
-
-	:global(.diff-action-reply:hover) {
-		background: rgba(99, 102, 241, 0.15);
-		color: #818cf8;
-	}
-
-	:global(.diff-action-resolve) {
-		color: #3fb950;
-	}
-
-	:global(.diff-action-resolve:hover) {
-		background: rgba(46, 160, 67, 0.15);
-		color: #4ade80;
-	}
-
-	/* Inline comment form */
-	:global(.diff-annotation-inline-form) {
-		padding: 12px 14px;
-		background: rgba(99, 102, 241, 0.06);
-		border-top: 1px solid rgba(99, 102, 241, 0.15);
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-	}
-
-	:global(.diff-inline-textarea) {
-		width: 100%;
-		padding: 10px 12px;
-		border: 1px solid var(--border);
-		border-radius: 8px;
-		background: var(--panel);
-		color: var(--text);
-		font-family: inherit;
-		font-size: 13px;
-		line-height: 1.5;
-		resize: vertical;
-		min-height: 80px;
-	}
-
-	:global(.diff-inline-textarea:focus) {
-		outline: none;
-		border-color: var(--accent);
-	}
-
-	:global(.diff-inline-textarea:disabled) {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
-
-	:global(.diff-inline-form-actions) {
-		display: flex;
-		justify-content: flex-end;
-		gap: 8px;
-	}
-
-	:global(.diff-inline-form-actions .btn-ghost) {
-		padding: 6px 12px;
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		background: transparent;
-		color: var(--muted);
-		font-size: 12px;
-		cursor: pointer;
-		transition: all 0.15s ease;
-	}
-
-	:global(.diff-inline-form-actions .btn-ghost:hover:not(:disabled)) {
-		background: rgba(255, 255, 255, 0.05);
-		color: var(--text);
-	}
-
-	:global(.diff-inline-form-actions .btn-primary) {
-		padding: 6px 14px;
-		border: none;
-		border-radius: 6px;
-		background: var(--accent);
-		color: white;
-		font-size: 12px;
-		font-weight: 500;
-		cursor: pointer;
-		transition: all 0.15s ease;
-	}
-
-	:global(.diff-inline-form-actions .btn-primary:hover:not(:disabled)) {
-		opacity: 0.9;
-	}
-
-	:global(.diff-inline-form-actions .btn-primary:disabled),
-	:global(.diff-inline-form-actions .btn-ghost:disabled) {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	/* Resolved thread styles */
-	:global(.diff-annotation-thread.diff-annotation-resolved) {
-		border-color: rgba(46, 160, 67, 0.25);
-		border-left-color: #3fb950;
-	}
-
-	:global(.diff-annotation-thread.diff-annotation-resolved .diff-annotation) {
-		background: linear-gradient(135deg, rgba(46, 160, 67, 0.06) 0%, rgba(46, 160, 67, 0.04) 100%);
-	}
-
-	:global(.diff-annotation-thread.diff-annotation-resolved .diff-annotation-reply) {
-		background: linear-gradient(135deg, rgba(46, 160, 67, 0.03) 0%, rgba(46, 160, 67, 0.02) 100%);
-		border-top-color: rgba(46, 160, 67, 0.15);
-	}
-
-	:global(.diff-annotation-thread.diff-annotation-resolved .diff-annotation-footer) {
-		background: rgba(46, 160, 67, 0.04);
-		border-top-color: rgba(46, 160, 67, 0.15);
-	}
-
-	/* Collapsed header for resolved threads */
-	:global(.diff-annotation-collapsed-header) {
-		display: none;
-		align-items: center;
-		gap: 10px;
-		padding: 10px 14px;
-		background: linear-gradient(135deg, rgba(46, 160, 67, 0.08) 0%, rgba(46, 160, 67, 0.05) 100%);
-		cursor: pointer;
-		transition: background 0.15s ease;
-	}
-
-	:global(.diff-annotation-collapsed-header:hover) {
-		background: linear-gradient(135deg, rgba(46, 160, 67, 0.12) 0%, rgba(46, 160, 67, 0.08) 100%);
-	}
-
-	:global(.diff-annotation-collapsed .diff-annotation-collapsed-header) {
-		display: flex;
-	}
-
-	:global(.diff-annotation-collapsed .diff-annotation-content),
-	:global(.diff-annotation-collapsed .diff-annotation-footer) {
-		display: none;
-	}
-
-	:global(.diff-annotation-collapsed-icon) {
-		font-size: 10px;
-		color: #3fb950;
-		transition: transform 0.15s ease;
-	}
-
-	:global(.diff-annotation-thread:not(.diff-annotation-collapsed) .diff-annotation-collapsed-icon) {
-		transform: rotate(90deg);
-	}
-
-	:global(.diff-annotation-collapsed-badge) {
-		font-size: 10px;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		padding: 2px 8px;
-		border-radius: 999px;
-		background: rgba(46, 160, 67, 0.2);
-		color: #3fb950;
-	}
-
-	:global(.diff-annotation-collapsed-preview) {
-		flex: 1;
-		font-size: 12px;
-		color: var(--muted);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	:global(.diff-annotation-collapsed-count) {
-		font-size: 11px;
-		color: var(--muted);
-		opacity: 0.7;
-	}
-
-	/* Unresolve button style */
-	:global(.diff-action-unresolve) {
-		color: #d29922;
-	}
-
-	:global(.diff-action-unresolve:hover) {
-		background: rgba(210, 153, 34, 0.15);
-		color: #f0b429;
-	}
-
-	/* Line highlight animation for annotation navigation */
-	:global(.highlight-line) {
-		animation: line-highlight 2s ease-out;
-	}
-
-	:global(.highlight-line td) {
-		background: rgba(210, 153, 34, 0.2) !important;
-	}
-
-	@keyframes line-highlight {
-		0% {
-			background: rgba(210, 153, 34, 0.4);
-		}
-		100% {
-			background: transparent;
-		}
 	}
 </style>

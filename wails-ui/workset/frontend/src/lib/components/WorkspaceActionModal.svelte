@@ -1,8 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { get } from 'svelte/store';
-	import { runRepoHooks, trustRepoHooks } from '../api/workspaces';
-	import { getGroup, listAliases, listGroups, openDirectoryDialog } from '../api/settings';
 	import {
 		activeWorkspaceId,
 		clearRepo,
@@ -20,9 +18,7 @@
 		appendHookRuns,
 		beginHookTracking,
 		clearHookTracking,
-		runPendingHookWithState,
 		shouldTrackHookEvent,
-		trustPendingHookWithState,
 		type WorkspaceActionPendingHook,
 	} from '../services/workspaceActionHooks';
 	import { formatWorkspaceActionError } from '../services/workspaceActionErrors';
@@ -48,9 +44,16 @@
 		deriveExistingReposContext,
 		deriveWorkspaceActionContext,
 		getAliasSource,
-		loadWorkspaceActionContext,
 		type WorkspaceActionDirectRepo,
 	} from '../services/workspaceActionContextService';
+	import {
+		archiveWorkspaceAction,
+		browseWorkspaceActionDirectory,
+		loadWorkspaceActionModalContext,
+		renameWorkspaceAction,
+		runWorkspaceActionPendingHook,
+		trustWorkspaceActionPendingHook,
+	} from '../services/workspaceActionModalActions';
 	import Modal from './Modal.svelte';
 	import WorkspaceActionFormContent from './workspace-action/WorkspaceActionFormContent.svelte';
 	import WorkspaceActionHookResults from './workspace-action/WorkspaceActionHookResults.svelte';
@@ -254,43 +257,31 @@
 	const modalSize = $derived(deriveWorkspaceActionModalSize(mode, phase));
 
 	const handleRunPendingHook = async (pending: WorkspaceActionPendingHook): Promise<void> => {
-		await runPendingHookWithState(
-			{
-				pending,
-				pendingHooks,
-				hookRuns,
-				workspaceReferences: [workspace?.id, workspaceId, hookWorkspaceId, activeHookWorkspace],
-				activeHookOperation,
-				getPendingHooks: () => pendingHooks,
-				getHookRuns: () => hookRuns,
-			},
-			{
-				runRepoHooks,
-				formatError: formatWorkspaceActionError,
-				setPendingHooks: (next) => (pendingHooks = next),
-				setHookRuns: (next) => (hookRuns = next),
-			},
-		);
+		await runWorkspaceActionPendingHook({
+			pending,
+			pendingHooks,
+			hookRuns,
+			workspaceReferences: [workspace?.id, workspaceId, hookWorkspaceId, activeHookWorkspace],
+			activeHookOperation,
+			getPendingHooks: () => pendingHooks,
+			getHookRuns: () => hookRuns,
+			setPendingHooks: (next) => (pendingHooks = next),
+			setHookRuns: (next) => (hookRuns = next),
+		});
 	};
 
 	const handleTrustPendingHook = async (pending: WorkspaceActionPendingHook): Promise<void> => {
-		await trustPendingHookWithState(
-			{
-				pending,
-				pendingHooks,
-				getPendingHooks: () => pendingHooks,
-			},
-			{
-				trustRepoHooks,
-				formatError: formatWorkspaceActionError,
-				setPendingHooks: (next) => (pendingHooks = next),
-			},
-		);
+		await trustWorkspaceActionPendingHook({
+			pending,
+			pendingHooks,
+			getPendingHooks: () => pendingHooks,
+			setPendingHooks: (next) => (pendingHooks = next),
+		});
 	};
 
 	const loadContext = async (): Promise<void> => {
 		({ phase, hookResultContext } = resetWorkspaceActionFlow());
-		const context = await loadWorkspaceActionContext(
+		const context = await loadWorkspaceActionModalContext(
 			{
 				mode,
 				workspaceId,
@@ -299,9 +290,6 @@
 			{
 				loadWorkspaces,
 				getWorkspaces: () => get(workspaces),
-				listAliases,
-				listGroups,
-				getGroup,
 			},
 		);
 		workspace = context.workspace;
@@ -382,15 +370,18 @@
 		success = null;
 		warnings = [];
 		try {
-			const result = await workspaceActionMutations.renameWorkspace({
-				workspaceId: workspace.id,
-				workspaceName: nextName,
-			});
-			await loadWorkspaces(true);
-			if (get(activeWorkspaceId) === workspace.id) {
-				selectWorkspace(result.workspaceName);
-			}
-			success = `Renamed to ${result.workspaceName}.`;
+			const workspaceName = await renameWorkspaceAction(
+				{
+					workspaceId: workspace.id,
+					workspaceName: nextName,
+				},
+				{
+					loadWorkspaces,
+					getActiveWorkspaceId: () => get(activeWorkspaceId),
+					selectWorkspace,
+				},
+			);
+			success = `Renamed to ${workspaceName}.`;
 			onClose();
 		} catch (err) {
 			error = formatWorkspaceActionError(err, 'Failed to rename workspace.');
@@ -460,23 +451,23 @@
 		}
 	};
 
-	const selectRepoDirectory = async (
-		defaultDirectory: string,
-		onPathSelected: (path: string) => void,
-	): Promise<void> => {
+	const handleBrowse = async (): Promise<void> => {
 		try {
-			const path = await openDirectoryDialog('Select repo directory', defaultDirectory.trim());
-			if (path) onPathSelected(path);
+			const path = await browseWorkspaceActionDirectory(addSource);
+			if (path) addSource = path;
 		} catch (err) {
 			error = formatWorkspaceActionError(err, 'Failed to open directory picker.');
 		}
 	};
 
-	const handleBrowse = (): Promise<void> =>
-		selectRepoDirectory(addSource, (path) => (addSource = path));
-
-	const handleCreateBrowse = (): Promise<void> =>
-		selectRepoDirectory(primaryInput, (path) => (primaryInput = path));
+	const handleCreateBrowse = async (): Promise<void> => {
+		try {
+			const path = await browseWorkspaceActionDirectory(primaryInput);
+			if (path) primaryInput = path;
+		} catch (err) {
+			error = formatWorkspaceActionError(err, 'Failed to open directory picker.');
+		}
+	};
 
 	const handleArchive = async (): Promise<void> => {
 		if (!workspace) return;
@@ -485,14 +476,17 @@
 		success = null;
 		warnings = [];
 		try {
-			const result = await workspaceActionMutations.archiveWorkspace({
-				workspaceId: workspace.id,
-				reason: archiveReason.trim(),
-			});
-			await loadWorkspaces(true);
-			if (get(activeWorkspaceId) === result.workspaceId) {
-				clearWorkspace();
-			}
+			await archiveWorkspaceAction(
+				{
+					workspaceId: workspace.id,
+					reason: archiveReason.trim(),
+				},
+				{
+					loadWorkspaces,
+					getActiveWorkspaceId: () => get(activeWorkspaceId),
+					clearWorkspace,
+				},
+			);
 			onClose();
 		} catch (err) {
 			error = formatWorkspaceActionError(err, 'Failed to archive workspace.');
