@@ -1,7 +1,7 @@
 import { ClipboardAddon } from '@xterm/addon-clipboard';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
-import type { Readable, Writable } from 'svelte/store';
+import type { Writable } from 'svelte/store';
 import { terminalTransport } from './terminalTransport';
 import { createTerminalInstance } from './terminalRenderer';
 import { createTerminalWebLinksSync } from './terminalWebLinks';
@@ -44,6 +44,9 @@ import {
 import { registerTerminalOscHandlers } from './terminalOscHandlers';
 import { createTerminalFontSizeController } from './terminalFontSizeController';
 import { createTerminalContextRegistry } from './terminalContextRegistry';
+import { createTerminalSessionCoordinator } from './terminalSessionCoordinator';
+import { createTerminalResourceLifecycle } from './terminalResourceLifecycle';
+import { createTerminalServiceExports } from './terminalServiceExports';
 
 export type TerminalViewState = {
 	status: string;
@@ -97,7 +100,6 @@ const ACK_BATCH_BYTES = 32 * 1024;
 const ACK_FLUSH_DELAY_MS = 25;
 const INITIAL_STREAM_CREDIT = 256 * 1024;
 const HEALTH_TIMEOUT_MS = 1200;
-const STARTUP_OUTPUT_TIMEOUT_MS = 2000;
 const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
 let globalsInitialized = false;
 
@@ -179,30 +181,8 @@ const deleteRecordKey = <T>(record: Record<string, T>, id: string): Record<strin
 	return next;
 };
 
-const destroyTerminalState = (id: string): void => {
-	if (!id) return;
-	clearTimeoutMap(bootstrapFetchTimers, id);
-	terminalStreamOrchestrator.clearReattachTimer(id);
-	terminalViewportResizeController.destroy(id);
-	resetSessionState(id);
-	terminalStores.delete(id);
-	terminalOutputBuffer.clear(id);
-	replayAckOrchestrator.destroy(id);
-	bootstrapHandled.delete(id);
-	statsMap.delete(id);
-	pendingInput.delete(id);
-	terminalResizeBridge.clear(id);
-	renderHealth.release(id);
-	lifecycle.deleteState(id);
-	suppressMouseUntil = deleteRecordKey(suppressMouseUntil, id);
-	mouseInputTail = deleteRecordKey(mouseInputTail, id);
-};
-
 const disposeTerminalResources = (id: string): void => {
-	if (!id) return;
-	terminalAttachState.release(id);
-	terminalInstanceManager.dispose(id);
-	destroyTerminalState(id);
+	terminalResourceLifecycle.disposeTerminalResources(id);
 };
 
 const terminalAttachState = createTerminalAttachState({
@@ -304,55 +284,17 @@ const sendInput = (id: string, data: string): void => {
 };
 
 const resetSessionState = (id: string): void => {
-	replayAckOrchestrator.resetSession(id);
-	terminalOutputBuffer.clear(id);
-	bootstrapHandled.delete(id);
-	const bootstrapTimer = bootstrapFetchTimers.get(id);
-	if (bootstrapTimer) {
-		window.clearTimeout(bootstrapTimer);
-	}
-	bootstrapFetchTimers.delete(id);
-	lifecycle.dropHealthCheck(id);
-	renderHealth.clearSession(id);
-	terminalResizeBridge.clear(id);
-	if (mouseInputTail[id]) {
-		mouseInputTail = { ...mouseInputTail, [id]: '' };
-	}
+	terminalResourceLifecycle.resetSessionState(id);
 };
 
 const resetTerminalInstance = (id: string): void => {
-	const handle = terminalHandles.get(id);
-	if (!handle) return;
-	handle.terminal.reset();
-	handle.terminal.clear();
-	handle.terminal.scrollToBottom();
-	handle.fitAddon.fit();
-	terminalKittyController.resizeOverlay(handle);
-	lifecycle.setMode(id, { altScreen: false, mouse: false, mouseSGR: false, mouseEncoding: 'x10' });
-	if (mouseInputTail[id]) {
-		mouseInputTail = { ...mouseInputTail, [id]: '' };
-	}
-	noteMouseSuppress(id, 2500);
-	void terminalRendererAddonState.load(id, handle);
+	terminalResourceLifecycle.resetTerminalInstance(id);
 };
 
 const updateStatsLastOutput = (id: string): void => {
 	updateStats(id, (stats) => {
 		stats.lastOutputAt = Date.now();
 	});
-};
-
-const scheduleStartupTimeout = (id: string): void => {
-	lifecycle.scheduleStartupTimeout(id, {
-		timeoutMs: STARTUP_OUTPUT_TIMEOUT_MS,
-		onTimeout: () => {
-			pendingInput.delete(id);
-		},
-	});
-};
-
-const clearStartupTimeout = (id: string): void => {
-	lifecycle.clearStartupTimeout(id);
 };
 
 const logDebug = (id: string, event: string, details: Record<string, unknown>): void => {
@@ -464,145 +406,35 @@ const captureCpr = (id: string, data: string): void => {
 };
 
 const ensureSessionActive = async (id: string): Promise<void> => {
-	if (lifecycle.hasStarted(id) || lifecycle.hasStartInFlight(id)) return;
-	if (lifecycle.isSessiondAvailable() !== true) return;
-	const workspaceId = getWorkspaceId(id);
-	const terminalId = getTerminalId(id);
-	if (!workspaceId || !terminalId) return;
-	try {
-		const status = await terminalTransport.fetchStatus(workspaceId, terminalId);
-		if (status?.active) {
-			lifecycle.markStarted(id);
-			lifecycle.setStatusAndMessage(id, 'ready', '');
-			setHealth(id, 'ok', 'Session resumed.');
-			lifecycle.setInput(id, true);
-			lifecycle.ensureRendererDefaults(id);
-			emitState(id);
-		}
-	} catch {
-		// Ignore.
-	}
-};
-
-const maybeFetchBootstrap = async (id: string, reason: string): Promise<void> => {
-	if (!id) return;
-	if (bootstrapHandled.get(id)) return;
-	const workspaceId = getWorkspaceId(id);
-	const terminalId = getTerminalId(id);
-	if (!workspaceId || !terminalId) return;
-	try {
-		const payload = await terminalTransport.fetchBootstrap(workspaceId, terminalId);
-		if (bootstrapHandled.get(id)) return;
-		terminalModeBootstrapCoordinator.handleBootstrapPayload(payload);
-		terminalModeBootstrapCoordinator.handleBootstrapDonePayload({ workspaceId, terminalId });
-		logDebug(id, 'bootstrap_fetch', {
-			reason,
-			source: payload.source,
-			snapshotSource: payload.snapshotSource,
-			backlogSource: payload.backlogSource,
-			backlogTruncated: payload.backlogTruncated,
-		});
-	} catch (error) {
-		logDebug(id, 'bootstrap_fetch_failed', { reason, error: String(error) });
-	}
+	await terminalSessionCoordinator.ensureSessionActive(id);
 };
 
 const beginTerminal = async (id: string, quiet = false): Promise<void> => {
-	if (!id || lifecycle.hasStarted(id) || lifecycle.hasStartInFlight(id)) return;
-	const workspaceId = getWorkspaceId(id);
-	const terminalId = getTerminalId(id);
-	if (!workspaceId || !terminalId) return;
-	lifecycle.markStartInFlight(id);
-	resetSessionState(id);
-	bootstrapHandled.set(id, false);
-	replayAckOrchestrator.setReplayState(id, 'replaying');
-	if (!quiet) {
-		lifecycle.setStatusAndMessage(id, 'starting', 'Waiting for shell output…');
-		setHealth(id, 'unknown');
-		lifecycle.setInput(id, false);
-		scheduleStartupTimeout(id);
-		emitState(id);
-	}
-	try {
-		await terminalTransport.start(workspaceId, terminalId);
-		lifecycle.markStarted(id);
-		const queued = pendingInput.get(id);
-		if (queued) {
-			pendingInput.delete(id);
-			await terminalTransport.write(workspaceId, terminalId, queued);
-		}
-		const existingTimer = bootstrapFetchTimers.get(id);
-		if (existingTimer) {
-			window.clearTimeout(existingTimer);
-		}
-		bootstrapFetchTimers.set(
-			id,
-			window.setTimeout(() => {
-				bootstrapFetchTimers.delete(id);
-				if (!bootstrapHandled.get(id)) {
-					void maybeFetchBootstrap(id, 'bootstrap_timeout');
-				}
-			}, 200),
-		);
-	} catch (error) {
-		lifecycle.setStatusAndMessage(id, 'error', String(error));
-		setHealth(id, 'stale', 'Failed to start terminal.');
-		clearStartupTimeout(id);
-		pendingInput.delete(id);
-		const handle = terminalHandles.get(id);
-		handle?.terminal.write(`\r\n[workset] failed to start terminal: ${String(error)}`);
-		emitState(id);
-	} finally {
-		lifecycle.clearStartInFlight(id);
-	}
+	await terminalSessionCoordinator.beginTerminal(id, quiet);
 };
 
 const ensureStream = async (id: string): Promise<void> => {
-	if (!id || lifecycle.hasStartInFlight(id)) return;
-	const workspaceId = getWorkspaceId(id);
-	const terminalId = getTerminalId(id);
-	if (!workspaceId || !terminalId) return;
-	lifecycle.markStartInFlight(id);
-	try {
-		await terminalTransport.start(workspaceId, terminalId);
-		lifecycle.markStarted(id);
-	} catch (error) {
-		logDebug(id, 'ensure_stream_failed', { error: String(error) });
-	} finally {
-		lifecycle.clearStartInFlight(id);
-	}
+	await terminalSessionCoordinator.ensureStream(id);
 };
 
 const loadTerminalDefaults = async (): Promise<void> => {
-	let nextDebugPreference = debugOverlayPreference;
-	try {
-		const settings = await terminalTransport.fetchSettings();
-		const rawPreference = settings?.defaults?.terminalDebugOverlay ?? '';
-		const normalizedPreference = rawPreference.toLowerCase().trim();
-		if (normalizedPreference === 'on' || normalizedPreference === 'off') {
-			nextDebugPreference = normalizedPreference;
-		}
-	} catch {
-		// Keep existing preference on load failure.
-	}
-	debugOverlayPreference = nextDebugPreference;
-	if (debugOverlayPreference === 'off' && typeof localStorage !== 'undefined') {
-		try {
-			localStorage.removeItem('worksetTerminalDebug');
-		} catch {
-			// Ignore storage failures.
-		}
-	}
-	syncDebugEnabled();
+	await terminalSessionCoordinator.loadTerminalDefaults();
 };
 
 const refreshSessiondStatus = async (): Promise<void> => {
-	try {
-		const status = await terminalTransport.fetchSessiondStatus();
-		lifecycle.setSessiondStatus(status?.available ?? false);
-	} catch {
-		lifecycle.setSessiondStatus(false);
-	}
+	await terminalSessionCoordinator.refreshSessiondStatus();
+};
+
+const initTerminal = async (id: string): Promise<void> => {
+	await terminalSessionCoordinator.initTerminal(id, {
+		ensureListeners: () => {
+			terminalEventSubscriptions.ensureListeners();
+		},
+	});
+};
+
+const handleSessiondRestarted = (): void => {
+	terminalSessionCoordinator.handleSessiondRestarted();
 };
 
 const terminalRendererAddonState = createTerminalRendererAddonState({
@@ -709,6 +541,38 @@ const attachTerminal = (
 	return terminalInstanceManager.attach(id, container, active);
 };
 
+const terminalResourceLifecycle = createTerminalResourceLifecycle<TerminalHandle>({
+	clearBootstrapFetchTimer: (id) => clearTimeoutMap(bootstrapFetchTimers, id),
+	clearReattachTimer: (id) => terminalStreamOrchestrator.clearReattachTimer(id),
+	destroyViewportState: (id) => terminalViewportResizeController.destroy(id),
+	clearTerminalStore: (id) => terminalStores.delete(id),
+	clearOutputBuffer: (id) => terminalOutputBuffer.clear(id),
+	destroyReplayState: (id) => replayAckOrchestrator.destroy(id),
+	resetReplaySession: (id) => replayAckOrchestrator.resetSession(id),
+	deleteBootstrapHandled: (id) => bootstrapHandled.delete(id),
+	deleteStats: (id) => statsMap.delete(id),
+	deletePendingInput: (id) => pendingInput.delete(id),
+	clearResizeState: (id) => terminalResizeBridge.clear(id),
+	releaseRenderHealth: (id) => renderHealth.release(id),
+	clearRenderHealthSession: (id) => renderHealth.clearSession(id),
+	deleteLifecycleState: (id) => lifecycle.deleteState(id),
+	dropHealthCheck: (id) => lifecycle.dropHealthCheck(id),
+	clearMouseSuppression: (id) => {
+		suppressMouseUntil = deleteRecordKey(suppressMouseUntil, id);
+	},
+	clearMouseTail: (id) => {
+		if (!mouseInputTail[id]) return;
+		mouseInputTail = { ...mouseInputTail, [id]: '' };
+	},
+	releaseAttachState: (id) => terminalAttachState.release(id),
+	disposeTerminalInstance: (id) => terminalInstanceManager.dispose(id),
+	getHandle: (id) => terminalHandles.get(id),
+	resizeOverlay: (handle) => terminalKittyController.resizeOverlay(handle),
+	setMode: (id, mode) => lifecycle.setMode(id, mode),
+	loadRendererAddon: (id, handle) => terminalRendererAddonState.load(id, handle),
+	noteMouseSuppress,
+});
+
 const terminalModeBootstrapCoordinator = createTerminalModeBootstrapCoordinator<KittyEventPayload>({
 	buildTerminalKey,
 	getContext: (key) => terminalContextRegistry.getContext(key),
@@ -753,21 +617,6 @@ const handleTerminalKittyEvent = (id: string, payload: TerminalKittyPayload): vo
 	replayAckOrchestrator.handleTerminalKitty(id, payload.event);
 };
 
-const handleSessiondRestarted = (): void => {
-	lifecycle.resetSessiondChecked();
-	void (async () => {
-		await refreshSessiondStatus();
-		if (lifecycle.isSessiondAvailable() !== true) return;
-		for (const id of terminalContextRegistry.keys()) {
-			lifecycle.clearSessionFlags(id);
-			resetTerminalInstance(id);
-			resetSessionState(id);
-			noteMouseSuppress(id, 4000);
-			void beginTerminal(id, true);
-		}
-	})();
-};
-
 const terminalEventSubscriptions = createTerminalEventSubscriptions({
 	subscribeEvent,
 	buildTerminalKey,
@@ -781,47 +630,54 @@ const terminalEventSubscriptions = createTerminalEventSubscriptions({
 	onSessiondRestarted: handleSessiondRestarted,
 });
 
-const initTerminal = async (id: string): Promise<void> => {
-	if (!id) return;
-	const token = lifecycle.nextInitToken(id);
-	terminalEventSubscriptions.ensureListeners();
-	if (!lifecycle.isSessiondChecked()) {
-		await refreshSessiondStatus();
-	}
-	const ctx = getContext(id);
-	attachTerminal(id, ctx?.container ?? null, ctx?.active ?? false);
-	let resumed = false;
-	if (lifecycle.isSessiondAvailable() === true) {
+const terminalSessionCoordinator = createTerminalSessionCoordinator({
+	lifecycle,
+	getWorkspaceId,
+	getTerminalId,
+	getContext,
+	attachTerminal,
+	terminalIds: () => terminalContextRegistry.keys(),
+	transport: {
+		fetchStatus: (workspaceId, terminalId) =>
+			terminalTransport.fetchStatus(workspaceId, terminalId),
+		fetchBootstrap: (workspaceId, terminalId) =>
+			terminalTransport.fetchBootstrap(workspaceId, terminalId),
+		start: (workspaceId, terminalId) => terminalTransport.start(workspaceId, terminalId),
+		write: (workspaceId, terminalId, data) =>
+			terminalTransport.write(workspaceId, terminalId, data),
+		fetchSettings: () => terminalTransport.fetchSettings(),
+		fetchSessiondStatus: () => terminalTransport.fetchSessiondStatus(),
+	},
+	setHealth,
+	emitState,
+	pendingInput,
+	bootstrapHandled,
+	bootstrapFetchTimers,
+	replaySetState: replayAckOrchestrator.setReplayState,
+	logDebug,
+	handleBootstrapPayload: terminalModeBootstrapCoordinator.handleBootstrapPayload,
+	handleBootstrapDonePayload: terminalModeBootstrapCoordinator.handleBootstrapDonePayload,
+	resetSessionState,
+	resetTerminalInstance,
+	noteMouseSuppress,
+	writeStartFailureMessage: (id, message) => {
+		const handle = terminalHandles.get(id);
+		handle?.terminal.write(`\r\n[workset] failed to start terminal: ${message}`);
+	},
+	getDebugOverlayPreference: () => debugOverlayPreference,
+	setDebugOverlayPreference: (value) => {
+		debugOverlayPreference = value;
+	},
+	clearLocalDebugPreference: () => {
+		if (typeof localStorage === 'undefined') return;
 		try {
-			const workspaceId = getWorkspaceId(id);
-			const terminalId = getTerminalId(id);
-			if (workspaceId && terminalId) {
-				const status = await terminalTransport.fetchStatus(workspaceId, terminalId);
-				resumed = status?.active ?? false;
-			}
+			localStorage.removeItem('worksetTerminalDebug');
 		} catch {
-			resumed = false;
+			// Ignore storage failures.
 		}
-	}
-	if (resumed) {
-		await beginTerminal(id, true);
-		lifecycle.setInput(id, true);
-		lifecycle.setStatusAndMessage(id, 'ready', '');
-		setHealth(id, 'ok', 'Session resumed.');
-		lifecycle.ensureRendererDefaults(id);
-		emitState(id);
-		return;
-	}
-	if (!lifecycle.isCurrentInitToken(id, token)) return;
-	lifecycle.dropHealthCheck(id);
-	if (!lifecycle.hasStarted(id) && !lifecycle.hasStartInFlight(id)) {
-		lifecycle.setStatusAndMessage(id, 'standby', '');
-		setHealth(id, 'unknown');
-		lifecycle.ensureRendererDefaults(id);
-		lifecycle.setInput(id, false);
-		emitState(id);
-	}
-};
+	},
+	syncDebugEnabled,
+});
 
 const terminalStreamOrchestrator = createTerminalStreamOrchestrator({
 	ensureSessionActive,
@@ -847,133 +703,60 @@ const ensureGlobals = (): void => {
 	});
 };
 
-export const refreshTerminalDefaults = async (): Promise<void> => {
-	await loadTerminalDefaults();
-};
+const terminalServiceExports = createTerminalServiceExports<TerminalViewState, TerminalHandle>({
+	loadTerminalDefaults,
+	buildTerminalKey,
+	ensureStore,
+	syncControllerDeps: {
+		ensureGlobals,
+		buildTerminalKey,
+		ensureContext,
+		getLastWorkspaceId: (key) => terminalContextRegistry.getLastWorkspaceId(key),
+		setLastWorkspaceId: (key, workspaceId) =>
+			terminalContextRegistry.setLastWorkspaceId(key, workspaceId),
+		deleteContext: (key) => terminalContextRegistry.deleteContext(key),
+		attachTerminal,
+		attachResizeObserver: (id, container) =>
+			terminalViewportResizeController.attachResizeObserver(id, container),
+		detachResizeObserver: (id) => terminalViewportResizeController.detachResizeObserver(id),
+		scheduleFitStabilization: (id, reason) =>
+			terminalViewportResizeController.scheduleFitStabilization(id, reason),
+		scheduleReattachCheck: (id, reason) =>
+			terminalStreamOrchestrator.scheduleReattachCheck(id, reason),
+		syncTerminalStream: (id) => terminalStreamOrchestrator.syncTerminalStream(id),
+		fitTerminal: (id, started) => terminalViewportResizeController.fitTerminal(id, started),
+		hasStarted: (id) => lifecycle.hasStarted(id),
+		forceRedraw,
+		getHandle: (id) => terminalHandles.get(id),
+		hasVisibleTerminalContent: (handle) => hasVisibleTerminalContent(handle.terminal),
+		nudgeRedraw: (id, handle) => terminalResizeBridge.nudgeRedraw(id, handle),
+		markDetached: (id) => terminalAttachState.markDetached(id),
+		stopTerminal: (workspaceId, terminalId) => terminalTransport.stop(workspaceId, terminalId),
+		disposeTerminalResources,
+		beginTerminal,
+		requestHealthCheck,
+		focusTerminal: (id) => terminalViewportResizeController.focusTerminal(id),
+		scrollToBottom: (id) => terminalViewportResizeController.scrollToBottom(id),
+		isAtBottom: (id) => terminalViewportResizeController.isAtBottom(id),
+	},
+});
 
-export const getTerminalStore = (
-	workspaceId: string,
-	terminalId: string,
-): Readable<TerminalViewState> => {
-	const key = buildTerminalKey(workspaceId, terminalId);
-	if (!key) {
-		return ensureStore('');
-	}
-	return ensureStore(key);
-};
+export const refreshTerminalDefaults = terminalServiceExports.refreshTerminalDefaults;
+export const getTerminalStore = terminalServiceExports.getTerminalStore;
+export const syncTerminal = terminalServiceExports.syncTerminal;
+export const detachTerminal = terminalServiceExports.detachTerminal;
+export const closeTerminal = terminalServiceExports.closeTerminal;
+export const restartTerminal = terminalServiceExports.restartTerminal;
+export const retryHealthCheck = terminalServiceExports.retryHealthCheck;
+export const focusTerminalInstance = terminalServiceExports.focusTerminalInstance;
+export const scrollTerminalToBottom = terminalServiceExports.scrollTerminalToBottom;
+export const isTerminalAtBottom = terminalServiceExports.isTerminalAtBottom;
 
-export const syncTerminal = (input: {
-	workspaceId: string;
-	workspaceName: string;
-	terminalId: string;
-	container: HTMLDivElement | null;
-	active: boolean;
-}): void => {
-	if (!input.terminalId || !input.workspaceId) return;
-	ensureGlobals();
-	const terminalKey = buildTerminalKey(input.workspaceId, input.terminalId);
-	if (!terminalKey) return;
-	const context = ensureContext({
-		terminalKey,
-		workspaceId: input.workspaceId,
-		workspaceName: input.workspaceName,
-		terminalId: input.terminalId,
-		container: input.container,
-		active: input.active,
-		lastWorkspaceId: terminalContextRegistry.getLastWorkspaceId(terminalKey),
-	});
-	if (context.lastWorkspaceId && context.lastWorkspaceId !== context.workspaceId) {
-		terminalViewportResizeController.scheduleFitStabilization(
-			context.terminalKey,
-			'workspace_switch',
-		);
-		terminalStreamOrchestrator.scheduleReattachCheck(context.terminalKey, 'workspace_switch');
-	}
-	context.lastWorkspaceId = context.workspaceId;
-	if (input.container) {
-		attachTerminal(terminalKey, input.container, input.active);
-		terminalViewportResizeController.attachResizeObserver(terminalKey, input.container);
-		if (input.active) {
-			requestAnimationFrame(() => {
-				terminalViewportResizeController.fitTerminal(
-					terminalKey,
-					lifecycle.hasStarted(terminalKey),
-				);
-				forceRedraw(terminalKey);
-				const handle = terminalHandles.get(terminalKey);
-				if (handle && !hasVisibleTerminalContent(handle.terminal)) {
-					terminalResizeBridge.nudgeRedraw(terminalKey, handle);
-				}
-			});
-		}
-	}
-	terminalStreamOrchestrator.syncTerminalStream(terminalKey);
-};
-
-export const detachTerminal = (workspaceId: string, terminalId: string): void => {
-	const terminalKey = buildTerminalKey(workspaceId, terminalId);
-	if (!terminalKey) return;
-	terminalAttachState.markDetached(terminalKey);
-	terminalViewportResizeController.detachResizeObserver(terminalKey);
-};
-
-export const closeTerminal = async (workspaceId: string, terminalId: string): Promise<void> => {
-	const terminalKey = buildTerminalKey(workspaceId, terminalId);
-	if (!terminalKey) return;
-	try {
-		await terminalTransport.stop(workspaceId, terminalId);
-	} catch {
-		// Ignore failures.
-	}
-	disposeTerminalResources(terminalKey);
-	terminalContextRegistry.deleteContext(terminalKey);
-};
-
-export const restartTerminal = async (workspaceId: string, terminalId: string): Promise<void> => {
-	const terminalKey = buildTerminalKey(workspaceId, terminalId);
-	if (!terminalKey) return;
-	await beginTerminal(terminalKey);
-};
-
-export const retryHealthCheck = (workspaceId: string, terminalId: string): void => {
-	const terminalKey = buildTerminalKey(workspaceId, terminalId);
-	if (!terminalKey) return;
-	requestHealthCheck(terminalKey);
-};
-
-export const focusTerminalInstance = (workspaceId: string, terminalId: string): void => {
-	const terminalKey = buildTerminalKey(workspaceId, terminalId);
-	if (!terminalKey) return;
-	terminalViewportResizeController.focusTerminal(terminalKey);
-};
-
-export const scrollTerminalToBottom = (workspaceId: string, terminalId: string): void => {
-	const terminalKey = buildTerminalKey(workspaceId, terminalId);
-	if (!terminalKey) return;
-	terminalViewportResizeController.scrollToBottom(terminalKey);
-};
-
-export const isTerminalAtBottom = (workspaceId: string, terminalId: string): boolean => {
-	const terminalKey = buildTerminalKey(workspaceId, terminalId);
-	if (!terminalKey) return true;
-	return terminalViewportResizeController.isAtBottom(terminalKey);
-};
-
-export const shutdownTerminalService = (): void => {
-	terminalEventSubscriptions.cleanupListeners();
-};
+export const shutdownTerminalService = (): void => terminalEventSubscriptions.cleanupListeners();
 
 // Font size controls (VS Code style Cmd/Ctrl +/-)
-export const increaseFontSize = (): void => {
-	terminalFontSizeController.increaseFontSize();
-};
-
-export const decreaseFontSize = (): void => {
-	terminalFontSizeController.decreaseFontSize();
-};
-
-export const resetFontSize = (): void => {
-	terminalFontSizeController.resetFontSize();
-};
+export const increaseFontSize = (): void => terminalFontSizeController.increaseFontSize();
+export const decreaseFontSize = (): void => terminalFontSizeController.decreaseFontSize();
+export const resetFontSize = (): void => terminalFontSizeController.resetFontSize();
 
 export const getCurrentFontSize = (): number => terminalFontSizeController.getCurrentFontSize();
