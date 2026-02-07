@@ -30,7 +30,6 @@
 		Alias,
 		GroupSummary,
 		HookExecution,
-		HookProgressEvent,
 		Repo,
 		Workspace,
 	} from '../types';
@@ -41,6 +40,16 @@
 		deriveRepoName,
 		isRepoSource,
 	} from '../names';
+	import {
+		applyHookProgress,
+		appendHookRuns,
+		beginHookTracking,
+		clearHookTracking,
+		handleRunPendingHookCore,
+		handleTrustPendingHookCore,
+		shouldTrackHookEvent,
+		type WorkspaceActionPendingHook,
+	} from '../services/workspaceActionHooks';
 	import {
 		evaluateHookTransition,
 		runArchiveWorkspaceMutation,
@@ -71,17 +80,7 @@
 	let error: string | null = $state(null);
 	let success: string | null = $state(null);
 	let warnings: string[] = $state([]);
-	let pendingHooks: {
-		event: string;
-		repo: string;
-		hooks: string[];
-		status?: string;
-		reason?: string;
-		running?: boolean;
-		runError?: string;
-		trusting?: boolean;
-		trusted?: boolean;
-	}[] = $state([]);
+	let pendingHooks: WorkspaceActionPendingHook[] = $state([]);
 	let hookRuns: HookExecution[] = $state([]);
 	let activeHookOperation: string | null = $state(null);
 	let activeHookWorkspace: string | null = $state(null);
@@ -410,126 +409,43 @@
 		return fallback;
 	};
 
-	const beginHookTracking = (operation: string, workspaceName: string | null): void => {
-		activeHookOperation = operation;
-		activeHookWorkspace = workspaceName;
-		hookRuns = [];
-		pendingHooks = [];
-	};
-
-	const clearHookTracking = (): void => {
-		activeHookOperation = null;
-		activeHookWorkspace = null;
-	};
-
-	const appendHookRuns = (runs: HookExecution[] | undefined): void => {
-		if (!runs || runs.length === 0) {
-			return;
-		}
-		const byKey = new Map<string, HookExecution>();
-		for (const run of hookRuns) {
-			byKey.set(`${run.repo}:${run.event}:${run.id}`, run);
-		}
-		for (const run of runs) {
-			byKey.set(`${run.repo}:${run.event}:${run.id}`, run);
-		}
-		hookRuns = Array.from(byKey.values());
-	};
-
-	const shouldTrackHookEvent = (payload: HookProgressEvent): boolean => {
-		if (!activeHookOperation || !loading) {
-			return false;
-		}
-		if (payload.operation !== activeHookOperation) {
-			return false;
-		}
-		if (
-			activeHookWorkspace &&
-			payload.workspace &&
-			payload.workspace.trim() &&
-			payload.workspace !== activeHookWorkspace
-		) {
-			return false;
-		}
-		return true;
-	};
-
-	const applyHookProgress = (payload: HookProgressEvent): void => {
-		const existingIdx = hookRuns.findIndex(
-			(entry) =>
-				entry.repo === payload.repo && entry.event === payload.event && entry.id === payload.hookId,
+	const handleRunPendingHook = async (pending: WorkspaceActionPendingHook): Promise<void> => {
+		const runState = handleRunPendingHookCore(
+			{
+				pending,
+				pendingHooks,
+				hookRuns,
+				workspaceReferences: [workspace?.id, workspaceId, hookWorkspaceId, activeHookWorkspace],
+				activeHookOperation,
+				getPendingHooks: () => pendingHooks,
+				getHookRuns: () => hookRuns,
+			},
+			{
+				runRepoHooks,
+				formatError,
+			},
 		);
-		const next: HookExecution = {
-			repo: payload.repo,
-			event: payload.event,
-			id: payload.hookId,
-			status:
-				payload.phase === 'finished'
-					? payload.status || (payload.error ? 'failed' : 'ok')
-					: 'running',
-			log_path: payload.logPath,
-		};
-		if (existingIdx >= 0) {
-			hookRuns = hookRuns.map((entry, index) => (index === existingIdx ? next : entry));
-		} else {
-			hookRuns = [...hookRuns, next];
-		}
+		pendingHooks = runState.pendingHooks;
+		hookRuns = runState.hookRuns;
+		const completed = await runState.completion;
+		pendingHooks = completed.pendingHooks;
+		hookRuns = completed.hookRuns;
 	};
 
-	const handleRunPendingHook = async (pending: (typeof pendingHooks)[number]): Promise<void> => {
-		const targetWorkspace =
-			workspace?.id || workspaceId || hookWorkspaceId || activeHookWorkspace || '';
-		if (!targetWorkspace) {
-			pendingHooks = pendingHooks.map((entry) =>
-				entry.repo === pending.repo
-					? { ...entry, running: false, runError: 'Workspace reference unavailable for hook run.' }
-					: entry,
-			);
-			return;
-		}
-		pendingHooks = pendingHooks.map((entry) =>
-			entry.repo === pending.repo ? { ...entry, running: true, runError: undefined } : entry,
+	const handleTrustPendingHook = async (pending: WorkspaceActionPendingHook): Promise<void> => {
+		const trustState = handleTrustPendingHookCore(
+			{
+				pending,
+				pendingHooks,
+				getPendingHooks: () => pendingHooks,
+			},
+			{
+				trustRepoHooks,
+				formatError,
+			},
 		);
-		try {
-			const result = await runRepoHooks(
-				targetWorkspace,
-				pending.repo,
-				pending.event,
-				`${activeHookOperation ?? 'hooks.run'}.ui`,
-			);
-			appendHookRuns(
-				result.results.map((run) => ({
-					event: result.event,
-					repo: result.repo,
-					id: run.id,
-					status: run.status,
-					log_path: run.log_path,
-				})),
-			);
-			pendingHooks = pendingHooks.filter((entry) => entry.repo !== pending.repo);
-		} catch (err) {
-			const message = formatError(err, `Failed to run hooks for ${pending.repo}.`);
-			pendingHooks = pendingHooks.map((entry) =>
-				entry.repo === pending.repo ? { ...entry, running: false, runError: message } : entry,
-			);
-		}
-	};
-
-	const handleTrustPendingHook = async (pending: (typeof pendingHooks)[number]): Promise<void> => {
-		pendingHooks = pendingHooks.map((entry) =>
-			entry.repo === pending.repo ? { ...entry, trusting: true, runError: undefined } : entry,
-		);
-		try {
-			await trustRepoHooks(pending.repo);
-			pendingHooks = pendingHooks.map((entry) =>
-				entry.repo === pending.repo ? { ...entry, trusting: false, trusted: true } : entry,
-			);
-		} catch (err) {
-			const message = formatError(err, `Failed to trust hooks for ${pending.repo}.`);
-			pendingHooks = pendingHooks.map((entry) =>
-				entry.repo === pending.repo ? { ...entry, trusting: false, runError: message } : entry,
-			);
-		}
+		pendingHooks = trustState.pendingHooks;
+		pendingHooks = await trustState.completion;
 	};
 
 	const loadContext = async (): Promise<void> => {
@@ -573,7 +489,12 @@
 		pendingHooks = [];
 		hookRuns = [];
 		hookWorkspaceId = null;
-		beginHookTracking('workspace.create', finalName);
+		({
+			activeHookOperation,
+			activeHookWorkspace,
+			hookRuns,
+			pendingHooks,
+		} = beginHookTracking('workspace.create', finalName));
 		try {
 			const result = await runCreateWorkspaceMutation(
 				{
@@ -589,7 +510,7 @@
 				},
 			);
 
-			appendHookRuns(result.hookRuns);
+			hookRuns = appendHookRuns(hookRuns, result.hookRuns);
 			pendingHooks = result.pendingHooks.map((pending) => ({ ...pending }));
 			hookWorkspaceId = result.workspaceName;
 			await loadWorkspaces(true);
@@ -610,7 +531,7 @@
 			error = formatError(err, 'Failed to create workspace.');
 		} finally {
 			loading = false;
-			clearHookTracking();
+			({ activeHookOperation, activeHookWorkspace } = clearHookTracking());
 		}
 	};
 
@@ -667,7 +588,12 @@
 		pendingHooks = [];
 		hookRuns = [];
 		hookWorkspaceId = workspace.id;
-		beginHookTracking('repo.add', workspace.name);
+		({
+			activeHookOperation,
+			activeHookWorkspace,
+			hookRuns,
+			pendingHooks,
+		} = beginHookTracking('repo.add', workspace.name));
 		try {
 			const result = await runAddItemsMutation(
 				{
@@ -682,7 +608,7 @@
 				},
 			);
 
-			appendHookRuns(result.hookRuns);
+			hookRuns = appendHookRuns(hookRuns, result.hookRuns);
 			pendingHooks = result.pendingHooks.map((pending) => ({ ...pending }));
 
 			await loadWorkspaces(true);
@@ -707,7 +633,7 @@
 			error = formatError(err, 'Failed to add items.');
 		} finally {
 			loading = false;
-			clearHookTracking();
+			({ activeHookOperation, activeHookWorkspace } = clearHookTracking());
 		}
 	};
 
@@ -832,10 +758,10 @@
 
 	onMount(async () => {
 		hookEventUnsubscribe = subscribeHookProgressEvent((payload) => {
-			if (!shouldTrackHookEvent(payload)) {
+			if (!shouldTrackHookEvent(payload, { activeHookOperation, activeHookWorkspace, loading })) {
 				return;
 			}
-			applyHookProgress(payload);
+			hookRuns = applyHookProgress(hookRuns, payload);
 		});
 		await loadContext();
 		await tick();

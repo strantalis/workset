@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (subagent pass 8)
+Last updated: 2026-02-07 (subagent pass 9)
 
 ## Goal
 
@@ -31,11 +31,11 @@ Largest files by LOC right now:
 
 - [x] `#124` Guardrails (must start first)
 - [ ] `#115` FE-DIFF (slice 1 landed)
-- [ ] `#116` FE-WORKSPACE (slice 3 landed)
+- [ ] `#116` FE-WORKSPACE (slice 4 landed)
 - [ ] `#117` FE-TERMINAL (slice 2 landed)
 - [ ] `#118` FE-PLATFORM
 - [x] `#119` BE-SESSIOND (structural splits complete)
-- [ ] `#120` BE-GITHUB (slice 3 landed)
+- [ ] `#120` BE-GITHUB (slice 4 landed)
 - [ ] `#121` BE-TERMEMU
 - [ ] `#122` BE-UPDATER
 - [ ] `#123` TEST-E2E
@@ -146,6 +146,7 @@ Tasks:
 - [x] Extract removal overlay UI into `workspace-action/RemovalOverlay.svelte`.
 - [x] Extract create/add mutation + hook transition logic into `services/workspaceActionService.ts`.
 - [x] Extract rename/archive/remove mutation runners into `services/workspaceActionService.ts`.
+- [x] Extract hook tracking + pending-hook action core into `services/workspaceActionHooks.ts`.
 - [ ] Separate modal state transitions from UI markup.
 - [ ] Extract workspace mutations into dedicated service.
 - [ ] Split large modal sections into components.
@@ -250,6 +251,7 @@ Tasks:
 - [x] Move pure git command/diff helpers into `pkg/worksetapi/github_git_helpers.go`.
 - [x] Separate read vs write helper use-cases into dedicated modules (`github_service_read_helpers.go`, `github_service_write_helpers.go`).
 - [x] Separate synchronous status fetch paths into `github_service_status.go`.
+- [x] Extract mutating operation orchestration entrypoints into `github_service_write.go`.
 - [ ] Add unit tests for each extracted service boundary.
 
 Verification:
@@ -339,6 +341,6 @@ Verification:
 
 ## Immediate Next Actions
 
-1. Run `#120` slice 4: extract operation orchestration paths from `github_service.go`.
-2. Run `#116` slice 4: move hook state machine + pending hook actions out of `WorkspaceActionModal.svelte`.
+1. Run `#120` slice 5: move GraphQL/thread mapping helpers out of `github_service.go`.
+2. Run `#116` slice 5: move context-loading/derivation out of `WorkspaceActionModal.svelte`.
 3. Run `#117` slice 3: remove remaining transport/renderer coupling from `terminalService.ts`.
