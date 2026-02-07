@@ -2,8 +2,6 @@ import { Terminal, type ITheme } from '@xterm/xterm';
 import { ClipboardAddon } from '@xterm/addon-clipboard';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
-import type { WebLinksAddon } from '@xterm/addon-web-links';
-import type { WebglAddon } from '@xterm/addon-webgl';
 import type { Readable, Writable } from 'svelte/store';
 import { terminalTransport } from './terminalTransport';
 import { createTerminalInstance } from './terminalRenderer';
@@ -27,6 +25,10 @@ import {
 } from './terminalEventSubscriptions';
 import { createTerminalModeBootstrapCoordinator } from './terminalModeBootstrapCoordinator';
 import { createTerminalReplayAckOrchestrator } from './terminalReplayAckOrchestrator';
+import {
+	createTerminalInstanceManager,
+	type TerminalInstanceHandle,
+} from './terminalInstanceManager';
 import {
 	createKittyState,
 	createTerminalKittyController,
@@ -73,20 +75,8 @@ type OutputChunk = {
 	bytes: number;
 };
 
-type TerminalHandle = {
-	terminal: Terminal;
-	fitAddon: FitAddon;
-	dataDisposable: { dispose: () => void };
-	binaryDisposable?: { dispose: () => void };
-	container: HTMLDivElement;
-	kittyState: KittyState;
+type TerminalHandle = TerminalInstanceHandle<KittyState> & {
 	kittyOverlay?: KittyOverlay;
-	kittyDisposables?: { dispose: () => void }[];
-	oscDisposables?: { dispose: () => void }[];
-	clipboardAddon?: ClipboardAddon;
-	unicode11Addon?: Unicode11Addon;
-	webLinksAddon?: WebLinksAddon;
-	webglAddon?: WebglAddon;
 };
 
 const terminalHandles = new Map<string, TerminalHandle>();
@@ -376,27 +366,7 @@ const destroyTerminalState = (id: string): void => {
 const disposeTerminalResources = (id: string): void => {
 	if (!id) return;
 	terminalAttachState.release(id);
-	const handle = terminalHandles.get(id);
-	if (handle) {
-		handle.dataDisposable?.dispose();
-		handle.binaryDisposable?.dispose();
-		if (handle.oscDisposables) {
-			for (const disposable of handle.oscDisposables) {
-				disposable.dispose();
-			}
-		}
-		if (handle.kittyDisposables) {
-			for (const disposable of handle.kittyDisposables) {
-				disposable.dispose();
-			}
-		}
-		handle.clipboardAddon?.dispose();
-		handle.webLinksAddon?.dispose();
-		handle.unicode11Addon?.dispose();
-		handle.webglAddon?.dispose();
-		handle.terminal.dispose();
-	}
-	terminalHandles.delete(id);
+	terminalInstanceManager.dispose(id);
 	destroyTerminalState(id);
 };
 
@@ -625,87 +595,6 @@ const fitWithPreservedViewport = (
 	handle.fitAddon.fit();
 	restoreTerminalViewport(handle.terminal, viewport);
 	terminalKittyController.resizeOverlay(handle);
-};
-
-const attachTerminal = (
-	id: string,
-	container: HTMLDivElement | null,
-	active: boolean,
-): TerminalHandle => {
-	let handle = terminalHandles.get(id);
-	if (!handle) {
-		const terminal = createTerminalInstance({
-			fontSize: currentFontSize,
-			getToken,
-		});
-		const fitAddon = new FitAddon();
-		terminal.loadAddon(fitAddon);
-		const unicode11Addon = new Unicode11Addon();
-		terminal.loadAddon(unicode11Addon);
-		terminal.unicode.activeVersion = '11';
-		const clipboardAddon = new ClipboardAddon(createClipboardBase64(), createClipboardProvider());
-		terminal.loadAddon(clipboardAddon);
-		terminal.attachCustomKeyEventHandler((event) => {
-			if (event.key === 'Enter' && event.shiftKey) {
-				lifecycle.setInput(id, true);
-				void beginTerminal(id);
-				sendInput(id, '\x0a');
-				return false;
-			}
-			return true;
-		});
-		const dataDisposable = terminal.onData((data) => {
-			lifecycle.setInput(id, true);
-			void beginTerminal(id);
-			captureCpr(id, data);
-			sendInput(id, data);
-		});
-		const binaryDisposable = terminal.onBinary((data) => {
-			if (!data) return;
-			lifecycle.setInput(id, true);
-			void beginTerminal(id);
-			sendInput(id, data);
-		});
-		terminal.onRender(() => {
-			renderHealth.noteRender(id);
-		});
-		const host = document.createElement('div');
-		host.className = 'terminal-instance';
-		handle = {
-			terminal,
-			fitAddon,
-			dataDisposable,
-			binaryDisposable,
-			container: host,
-			kittyState: createKittyState(),
-			clipboardAddon,
-			unicode11Addon,
-		};
-		terminalHandles.set(id, handle);
-		syncTerminalWebLinks(id);
-		handle.oscDisposables = registerOscHandlers(id, terminal);
-		lifecycle.ensureMode(id);
-	}
-	if (handle.dataDisposable) {
-		handle.dataDisposable.dispose();
-	}
-	if (handle.binaryDisposable) {
-		handle.binaryDisposable.dispose();
-	}
-	handle.dataDisposable = handle.terminal.onData((data) => {
-		lifecycle.setInput(id, true);
-		void beginTerminal(id);
-		captureCpr(id, data);
-		sendInput(id, data);
-	});
-	handle.binaryDisposable = handle.terminal.onBinary((data) => {
-		if (!data) return;
-		lifecycle.setInput(id, true);
-		void beginTerminal(id);
-		sendInput(id, data);
-	});
-	terminalAttachOpenLifecycle.attach({ id, handle, container, active });
-	return handle;
 };
 
 const attachResizeObserver = (id: string, container: HTMLDivElement | null): void => {
@@ -1212,6 +1101,55 @@ const terminalAttachOpenLifecycle = createTerminalAttachOpenLifecycle({
 		terminalAttachState.markAttached(id);
 	},
 });
+
+const terminalInstanceManager = createTerminalInstanceManager<KittyState>({
+	terminalHandles,
+	createTerminalInstance: () =>
+		createTerminalInstance({
+			fontSize: currentFontSize,
+			getToken,
+		}),
+	createFitAddon: () => new FitAddon(),
+	createUnicode11Addon: () => new Unicode11Addon(),
+	createClipboardAddon: () =>
+		new ClipboardAddon(createClipboardBase64(), createClipboardProvider()),
+	createKittyState,
+	syncTerminalWebLinks,
+	registerOscHandlers,
+	ensureMode: (id) => {
+		lifecycle.ensureMode(id);
+	},
+	onShiftEnter: (id) => {
+		lifecycle.setInput(id, true);
+		void beginTerminal(id);
+		sendInput(id, '\x0a');
+	},
+	onData: (id, data) => {
+		lifecycle.setInput(id, true);
+		void beginTerminal(id);
+		captureCpr(id, data);
+		sendInput(id, data);
+	},
+	onBinary: (id, data) => {
+		lifecycle.setInput(id, true);
+		void beginTerminal(id);
+		sendInput(id, data);
+	},
+	onRender: (id) => {
+		renderHealth.noteRender(id);
+	},
+	attachOpen: ({ id, handle, container, active }) => {
+		terminalAttachOpenLifecycle.attach({ id, handle, container, active });
+	},
+});
+
+const attachTerminal = (
+	id: string,
+	container: HTMLDivElement | null,
+	active: boolean,
+): TerminalHandle => {
+	return terminalInstanceManager.attach(id, container, active);
+};
 
 const terminalModeBootstrapCoordinator = createTerminalModeBootstrapCoordinator<KittyEventPayload>({
 	buildTerminalKey,

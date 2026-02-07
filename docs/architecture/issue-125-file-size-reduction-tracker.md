@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (subagent pass 23)
+Last updated: 2026-02-07 (subagent pass 24)
 
 ## Goal
 
@@ -18,9 +18,9 @@ Reduce architecture risk from oversized files by splitting high-complexity modul
 
 Largest files by LOC right now:
 
-- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (3449)
+- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (2984)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2476)
-- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (1515)
+- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (1452)
 - `pkg/termemu/termemu.go` (972)
 - `wails-ui/workset/app_diffs.go` (926)
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
@@ -30,9 +30,9 @@ Largest files by LOC right now:
 ## Parallel Tracks (Issue Map)
 
 - [x] `#124` Guardrails (must start first)
-- [ ] `#115` FE-DIFF (slice 11 landed)
+- [ ] `#115` FE-DIFF (slice 13 landed)
 - [ ] `#116` FE-WORKSPACE (slice 5 landed)
-- [ ] `#117` FE-TERMINAL (slice 13 landed)
+- [ ] `#117` FE-TERMINAL (slice 14 landed)
 - [ ] `#118` FE-PLATFORM (slice 4 landed)
 - [x] `#119` BE-SESSIOND (structural splits complete)
 - [ ] `#120` BE-GITHUB (slice 5 + tests tranche 2 landed)
@@ -126,8 +126,10 @@ Tasks:
 - [x] Keep current public props/events unchanged.
 - [x] Extract diff rendering + scroll/highlight orchestration into `repo-diff/diffRenderController.ts`.
 - [x] Extract PR/status/create orchestration state surface into `repo-diff/prOrchestrationSurface.ts`.
-- [ ] Extract summary/local/branch diff source switching orchestration into a dedicated helper.
-- [ ] Extract checks sidebar rendering state surface from `RepoDiff.svelte` template.
+- [x] Extract summary/local/branch diff source switching orchestration into a dedicated helper.
+  Slice landed: extracted source-switch + branch-ref reload orchestration into `repo-diff/summarySourceController.ts`.
+- [x] Extract checks sidebar rendering state surface from `RepoDiff.svelte` template.
+  Slice landed: extracted checks tab UI + interactions into `repo-diff/RepoDiffChecksSidebar.svelte`.
 
 Verification:
 
@@ -185,6 +187,7 @@ Remaining tasks:
 - [x] Extract reconnect/attach/detach stream orchestration into `terminalStreamOrchestrator.ts`.
 - [ ] Remove remaining renderer/transport coupling from service shell.
   Slices landed: extracted resize/transport coupling into `terminalResizeBridge.ts`; extracted render-health/recovery orchestration into `terminalRenderHealth.ts`; extracted attach/dispose + renderer-addon state handling into `terminalAttachRendererState.ts`.
+  Latest slice landed: extracted Xterm instance attach/dispose wiring into `terminalInstanceManager.ts`.
 - [x] Extract attach/open lifecycle sequencing into a standalone module.
   Slice landed: extracted open/create/connect + retry sequencing into `terminalAttachOpenLifecycle.ts`.
 - [x] Extract event subscription wiring into a standalone module.
