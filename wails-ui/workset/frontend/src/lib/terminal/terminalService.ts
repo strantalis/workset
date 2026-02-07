@@ -43,6 +43,7 @@ import {
 } from './terminalClipboard';
 import { registerTerminalOscHandlers } from './terminalOscHandlers';
 import { createTerminalFontSizeController } from './terminalFontSizeController';
+import { createTerminalContextRegistry } from './terminalContextRegistry';
 
 export type TerminalViewState = {
 	status: string;
@@ -63,24 +64,12 @@ export type TerminalViewState = {
 	};
 };
 
-type TerminalContext = {
-	terminalKey: string;
-	workspaceId: string;
-	workspaceName: string;
-	terminalId: string;
-	container: HTMLDivElement | null;
-	active: boolean;
-	lastWorkspaceId: string;
-};
-
-type TerminalKey = string;
-
 type TerminalHandle = TerminalInstanceHandle<KittyState> & {
 	kittyOverlay?: KittyOverlay;
 };
 
 const terminalHandles = new Map<string, TerminalHandle>();
-const terminalContexts = new Map<string, TerminalContext>();
+const terminalContextRegistry = createTerminalContextRegistry();
 const terminalStores = new TerminalStateStore<TerminalViewState>();
 const DISPOSE_TTL_MS = 10 * 60 * 1000;
 
@@ -112,12 +101,7 @@ const STARTUP_OUTPUT_TIMEOUT_MS = 2000;
 const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
 let globalsInitialized = false;
 
-const buildTerminalKey = (workspaceId: string, terminalId: string): TerminalKey => {
-	const workspace = workspaceId?.trim();
-	const terminal = terminalId?.trim();
-	if (!workspace || !terminal) return '';
-	return `${workspace}::${terminal}`;
-};
+const buildTerminalKey = terminalContextRegistry.buildTerminalKey;
 
 const defaultStats = () => ({
 	bytesIn: 0,
@@ -230,28 +214,10 @@ const terminalAttachState = createTerminalAttachState({
 	clearTimeoutFn: (handle) => window.clearTimeout(handle),
 });
 
-const getContext = (key: TerminalKey): TerminalContext | null => {
-	return terminalContexts.get(key) ?? null;
-};
-
-const ensureContext = (input: TerminalContext): TerminalContext => {
-	const existing = terminalContexts.get(input.terminalKey);
-	if (!existing) {
-		terminalContexts.set(input.terminalKey, input);
-		return input;
-	}
-	const next = { ...existing, ...input, terminalKey: input.terminalKey };
-	terminalContexts.set(input.terminalKey, next);
-	return next;
-};
-
-const getWorkspaceId = (key: TerminalKey): string => {
-	return terminalContexts.get(key)?.workspaceId ?? '';
-};
-
-const getTerminalId = (key: TerminalKey): string => {
-	return terminalContexts.get(key)?.terminalId ?? '';
-};
+const getContext = terminalContextRegistry.getContext;
+const ensureContext = terminalContextRegistry.ensureContext;
+const getWorkspaceId = terminalContextRegistry.getWorkspaceId;
+const getTerminalId = terminalContextRegistry.getTerminalId;
 
 const setHealth = (
 	id: string,
@@ -745,7 +711,7 @@ const attachTerminal = (
 
 const terminalModeBootstrapCoordinator = createTerminalModeBootstrapCoordinator<KittyEventPayload>({
 	buildTerminalKey,
-	getContext: (key) => terminalContexts.get(key) ?? null,
+	getContext: (key) => terminalContextRegistry.getContext(key),
 	logDebug,
 	markInput: (id) => {
 		lifecycle.markInput(id);
@@ -792,7 +758,7 @@ const handleSessiondRestarted = (): void => {
 	void (async () => {
 		await refreshSessiondStatus();
 		if (lifecycle.isSessiondAvailable() !== true) return;
-		for (const id of terminalContexts.keys()) {
+		for (const id of terminalContextRegistry.keys()) {
 			lifecycle.clearSessionFlags(id);
 			resetTerminalInstance(id);
 			resetSessionState(id);
@@ -914,7 +880,7 @@ export const syncTerminal = (input: {
 		terminalId: input.terminalId,
 		container: input.container,
 		active: input.active,
-		lastWorkspaceId: terminalContexts.get(terminalKey)?.lastWorkspaceId ?? '',
+		lastWorkspaceId: terminalContextRegistry.getLastWorkspaceId(terminalKey),
 	});
 	if (context.lastWorkspaceId && context.lastWorkspaceId !== context.workspaceId) {
 		terminalViewportResizeController.scheduleFitStabilization(
@@ -960,7 +926,7 @@ export const closeTerminal = async (workspaceId: string, terminalId: string): Pr
 		// Ignore failures.
 	}
 	disposeTerminalResources(terminalKey);
-	terminalContexts.delete(terminalKey);
+	terminalContextRegistry.deleteContext(terminalKey);
 };
 
 export const restartTerminal = async (workspaceId: string, terminalId: string): Promise<void> => {

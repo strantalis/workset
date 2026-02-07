@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-08 (subagent pass 28)
+Last updated: 2026-02-07 (main-agent pass 29)
 
 ## Goal
 
@@ -14,13 +14,13 @@ Reduce architecture risk from oversized files by splitting high-complexity modul
 - CI blocks regressions on file-size and test/lint failures.
 - Refactors are behavior-preserving and land in small, reversible commits.
 
-## Current Baseline (2026-02-08)
+## Current Baseline (2026-02-07)
 
 Largest files by LOC right now:
 
 - `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (2986)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2278)
-- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (1013)
+- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (979)
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceManager.svelte` (1022)
 - `wails-ui/workset/frontend/src/lib/components/SettingsPanel.svelte` (987)
@@ -33,7 +33,7 @@ Largest files by LOC right now:
 - [x] `#124` Guardrails (must start first)
 - [x] `#115` FE-DIFF (slice 13 landed)
 - [x] `#116` FE-WORKSPACE (slice 7 landed; modal sections split)
-- [ ] `#117` FE-TERMINAL (slice 17 landed)
+- [ ] `#117` FE-TERMINAL (slice 18 landed)
 - [x] `#118` FE-PLATFORM (slice 5 landed; adapter removed)
 - [x] `#119` BE-SESSIOND (structural splits complete)
 - [x] `#120` BE-GITHUB (slice 5 + tests tranche 2 landed)
@@ -195,6 +195,7 @@ Remaining tasks:
   Latest slice landed: extracted viewport/resize/focus lifecycle into `terminalViewportResizeController.ts`.
   Latest slice landed: extracted output queue + backlog flush policy into `terminalOutputBuffer.ts`.
   Latest slice landed: extracted clipboard/runtime clipboard helpers, OSC/theme response handling, and font-size preference control into dedicated modules (`terminalClipboard.ts`, `terminalOscHandlers.ts`, `terminalFontSizeController.ts`).
+  Latest slice landed: extracted terminal context keying/registry ownership into `terminalContextRegistry.ts` and routed service context access through that boundary.
 - [x] Extract attach/open lifecycle sequencing into a standalone module.
   Slice landed: extracted open/create/connect + retry sequencing into `terminalAttachOpenLifecycle.ts`.
 - [x] Extract event subscription wiring into a standalone module.
@@ -378,7 +379,7 @@ Verification:
 - [x] `make check`
 - [x] `go test ./...`
 - [x] File-size policy check passes.
-- [x] No new production file >700 LOC (unless allowlisted).
+- [ ] No production file >700 LOC unless allowlisted (target not reached; current guardrail threshold is 1000).
 
 ## Tracking Notes
 
@@ -388,6 +389,6 @@ Verification:
 
 ## Immediate Next Actions
 
-1. Run `#117` next slice: extract session lifecycle/start/bootstrap orchestration from `terminalService.ts` into a dedicated controller module.
-2. Run `#117` follow-up slice: isolate context/store registry and remaining debug/stat plumbing to move the service toward pure facade wiring.
+1. Decide whether to continue `#117` reduction now (target <700 LOC) or freeze `terminalService.ts` at 979 LOC for this cycle.
+2. Reconcile GitHub issue status/checklists for `#115`-`#123` to match shipped commits.
 3. Run issue closeout pass: verify no regression in `internal/e2e` signing assumptions and finalize `#125` completion checklist.
