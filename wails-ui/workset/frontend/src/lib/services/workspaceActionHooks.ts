@@ -58,6 +58,15 @@ type TrustPendingHookCoreDeps = {
 	formatError: (err: unknown, fallback: string) => string;
 };
 
+type RunPendingHookStateDeps = RunPendingHookCoreDeps & {
+	setPendingHooks: (pendingHooks: WorkspaceActionPendingHook[]) => void;
+	setHookRuns: (hookRuns: HookExecution[]) => void;
+};
+
+type TrustPendingHookStateDeps = TrustPendingHookCoreDeps & {
+	setPendingHooks: (pendingHooks: WorkspaceActionPendingHook[]) => void;
+};
+
 export const beginHookTracking = (
 	operation: string,
 	workspaceName: string | null,
@@ -259,4 +268,26 @@ export const handleTrustPendingHookCore = (
 		pendingHooks: trustingPendingHooks,
 		completion,
 	};
+};
+
+export const runPendingHookWithState = async (
+	input: HandleRunPendingHookCoreInput,
+	deps: RunPendingHookStateDeps,
+): Promise<void> => {
+	const state = handleRunPendingHookCore(input, deps);
+	deps.setPendingHooks(state.pendingHooks);
+	deps.setHookRuns(state.hookRuns);
+	const completed = await state.completion;
+	deps.setPendingHooks(completed.pendingHooks);
+	deps.setHookRuns(completed.hookRuns);
+};
+
+export const trustPendingHookWithState = async (
+	input: HandleTrustPendingHookCoreInput,
+	deps: TrustPendingHookStateDeps,
+): Promise<void> => {
+	const state = handleTrustPendingHookCore(input, deps);
+	deps.setPendingHooks(state.pendingHooks);
+	const completed = await state.completion;
+	deps.setPendingHooks(completed);
 };

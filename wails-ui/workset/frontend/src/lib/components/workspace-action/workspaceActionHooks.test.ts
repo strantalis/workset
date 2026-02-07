@@ -7,7 +7,9 @@ import {
 	clearHookTracking,
 	handleRunPendingHookCore,
 	handleTrustPendingHookCore,
+	runPendingHookWithState,
 	shouldTrackHookEvent,
+	trustPendingHookWithState,
 	type WorkspaceActionPendingHook,
 } from '../../services/workspaceActionHooks';
 
@@ -323,6 +325,72 @@ describe('workspaceActionHooks', () => {
 				trusting: false,
 				runError: 'Failed to trust hooks for repo-b. (formatted)',
 			},
+		]);
+	});
+
+	it('runs pending hook and applies immediate + completed state transitions', async () => {
+		const runRepoHooks = vi.fn(async () => ({
+			event: 'repo.add',
+			repo: 'repo-a',
+			results: [{ id: 'hook-1', status: 'ok', log_path: '/tmp/hook-1.log' }],
+		}));
+		const pendingA = pendingHook('repo-a');
+		const pendingB = pendingHook('repo-b');
+
+		let pendingHooks: WorkspaceActionPendingHook[] = [pendingA, pendingB];
+		let hookRuns: HookExecution[] = [];
+
+		await runPendingHookWithState(
+			{
+				pending: pendingA,
+				pendingHooks,
+				hookRuns,
+				workspaceReferences: ['ws-1'],
+				activeHookOperation: 'repo.add',
+				getPendingHooks: () => pendingHooks,
+				getHookRuns: () => hookRuns,
+			},
+			{
+				runRepoHooks,
+				formatError: (_err, fallback) => fallback,
+				setPendingHooks: (next) => (pendingHooks = next),
+				setHookRuns: (next) => (hookRuns = next),
+			},
+		);
+
+		expect(pendingHooks).toEqual([pendingB]);
+		expect(hookRuns).toEqual([
+			{
+				event: 'repo.add',
+				repo: 'repo-a',
+				id: 'hook-1',
+				status: 'ok',
+				log_path: '/tmp/hook-1.log',
+			},
+		]);
+	});
+
+	it('trusts pending hook and applies immediate + completed state transitions', async () => {
+		const pendingA = pendingHook('repo-a');
+		const pendingB = pendingHook('repo-b');
+		let pendingHooks: WorkspaceActionPendingHook[] = [pendingA, pendingB];
+
+		await trustPendingHookWithState(
+			{
+				pending: pendingA,
+				pendingHooks,
+				getPendingHooks: () => pendingHooks,
+			},
+			{
+				trustRepoHooks: vi.fn(async () => undefined),
+				formatError: (_err, fallback) => fallback,
+				setPendingHooks: (next) => (pendingHooks = next),
+			},
+		);
+
+		expect(pendingHooks).toEqual([
+			{ ...pendingHook('repo-a'), trusting: false, trusted: true },
+			pendingB,
 		]);
 	});
 });

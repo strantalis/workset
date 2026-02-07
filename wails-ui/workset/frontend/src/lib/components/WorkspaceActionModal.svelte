@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, onMount, tick } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { get } from 'svelte/store';
 	import { runRepoHooks, trustRepoHooks } from '../api/workspaces';
 	import { getGroup, listAliases, listGroups, openDirectoryDialog } from '../api/settings';
@@ -20,12 +20,20 @@
 		appendHookRuns,
 		beginHookTracking,
 		clearHookTracking,
-		handleRunPendingHookCore,
-		handleTrustPendingHookCore,
+		runPendingHookWithState,
 		shouldTrackHookEvent,
+		trustPendingHookWithState,
 		type WorkspaceActionPendingHook,
 	} from '../services/workspaceActionHooks';
+	import { formatWorkspaceActionError } from '../services/workspaceActionErrors';
 	import { workspaceActionMutations } from '../services/workspaceActionService';
+	import {
+		addDirectRepoSource,
+		removeDirectRepoByURL,
+		removeSetItem,
+		toggleDirectRepoRegisterByURL,
+		toggleSetItem,
+	} from '../services/workspaceActionSelectionState';
 	import {
 		deriveWorkspaceActionModalSize,
 		deriveWorkspaceActionModalSubtitle,
@@ -43,14 +51,10 @@
 		loadWorkspaceActionContext,
 		type WorkspaceActionDirectRepo,
 	} from '../services/workspaceActionContextService';
-	import Alert from './ui/Alert.svelte';
-	import Button from './ui/Button.svelte';
 	import Modal from './Modal.svelte';
+	import WorkspaceActionFormContent from './workspace-action/WorkspaceActionFormContent.svelte';
 	import WorkspaceActionHookResults from './workspace-action/WorkspaceActionHookResults.svelte';
-	import WorkspaceActionCreateForm from './workspace-action/WorkspaceActionCreateForm.svelte';
-	import WorkspaceActionAddRepoForm from './workspace-action/WorkspaceActionAddRepoForm.svelte';
-	import WorkspaceActionRemoveRepoForm from './workspace-action/WorkspaceActionRemoveRepoForm.svelte';
-	import WorkspaceActionRemoveWorkspaceForm from './workspace-action/WorkspaceActionRemoveWorkspaceForm.svelte';
+	import WorkspaceActionStatusAlerts from './workspace-action/WorkspaceActionStatusAlerts.svelte';
 
 	interface Props {
 		onClose: () => void;
@@ -76,7 +80,6 @@
 	let autoCloseTimer: ReturnType<typeof setTimeout> | null = null;
 	let loading = $state(false);
 
-	// Phase state: 'form' for input, 'hook-results' after successful create/add with hooks
 	let phase = $state<'form' | 'hook-results'>('form');
 	let hookResultContext = $state<{
 		action: 'created' | 'added';
@@ -84,18 +87,13 @@
 		itemCount?: number;
 	} | null>(null);
 
-	// Removal modal state for loading overlay
 	let removing = $state(false);
 	let removalSuccess = $state(false);
 
-	let nameInput: HTMLInputElement | null = $state(null);
+	let primaryInput = $state('');
+	let directRepos: WorkspaceActionDirectRepo[] = $state([]);
+	let customizeName = $state('');
 
-	// Create mode: smart single input
-	let primaryInput = $state(''); // URL, path, or workspace name
-	let directRepos: WorkspaceActionDirectRepo[] = $state([]); // Multiple direct URLs/paths
-	let customizeName = $state(''); // Override for generated name
-
-	// Tabbed interface state
 	type CreateTab = 'direct' | 'repos' | 'groups';
 	let activeTab = $state<CreateTab>('direct');
 	let searchQuery = $state('');
@@ -106,13 +104,11 @@
 	let addSource = $state('');
 	let aliasItems: Alias[] = $state([]);
 	let groupItems: GroupSummary[] = $state([]);
-	let groupDetails: Map<string, string[]> = $state(new Map()); // group name -> repo names
+	let groupDetails: Map<string, string[]> = $state(new Map());
 
-	// Selection state for create mode expanded section and add-repo mode
 	let selectedAliases: Set<string> = $state(new Set());
 	let selectedGroups: Set<string> = $state(new Set());
 
-	// Create mode: derived state
 	const createContext = $derived.by(() =>
 		deriveWorkspaceActionContext({
 			primaryInput,
@@ -133,7 +129,6 @@
 	const totalRepos = $derived(createContext.totalRepos);
 	const selectedItems = $derived(createContext.selectedItems);
 
-	// Add-repo mode: derived state for selected items
 	const addRepoContext = $derived.by(() =>
 		deriveAddRepoContext({
 			addSource,
@@ -144,10 +139,8 @@
 	const addRepoSelectedItems = $derived(addRepoContext.selectedItems);
 	const addRepoTotalItems = $derived(addRepoContext.totalItems);
 
-	// Existing repos in workspace (read-only context for add-repo mode)
 	const existingRepos = $derived(deriveExistingReposContext({ mode, workspace }));
 
-	// Initialize tab based on available items
 	$effect(() => {
 		if (mode === 'create' && aliasItems.length > 0) {
 			activeTab = 'repos';
@@ -156,73 +149,51 @@
 		}
 	});
 
-	function selectAlternative(name: string): void {
+	const selectAlternative = (name: string): void => {
 		customizeName = name;
-	}
+	};
 
-	// Tab helper functions
-	function toggleAlias(name: string): void {
-		if (selectedAliases.has(name)) {
-			selectedAliases.delete(name);
-		} else {
-			selectedAliases.add(name);
-		}
-		selectedAliases = new Set(selectedAliases);
-	}
+	const toggleAlias = (name: string): void => {
+		selectedAliases = toggleSetItem(selectedAliases, name);
+	};
 
-	function toggleGroup(name: string): void {
-		if (selectedGroups.has(name)) {
-			selectedGroups.delete(name);
-		} else {
-			selectedGroups.add(name);
-		}
-		selectedGroups = new Set(selectedGroups);
-	}
+	const toggleGroup = (name: string): void => {
+		selectedGroups = toggleSetItem(selectedGroups, name);
+	};
 
-	function toggleGroupExpand(name: string): void {
-		if (expandedGroups.has(name)) {
-			expandedGroups.delete(name);
-		} else {
-			expandedGroups.add(name);
-		}
-		expandedGroups = new Set(expandedGroups);
-	}
+	const toggleGroupExpand = (name: string): void => {
+		expandedGroups = toggleSetItem(expandedGroups, name);
+	};
 
-	function removeAlias(name: string): void {
-		selectedAliases.delete(name);
-		selectedAliases = new Set(selectedAliases);
-	}
+	const removeAlias = (name: string): void => {
+		selectedAliases = removeSetItem(selectedAliases, name);
+	};
 
-	function removeGroup(name: string): void {
-		selectedGroups.delete(name);
-		selectedGroups = new Set(selectedGroups);
-	}
+	const removeGroup = (name: string): void => {
+		selectedGroups = removeSetItem(selectedGroups, name);
+	};
 
-	function handleTabChange(tab: CreateTab): void {
+	const handleTabChange = (tab: CreateTab): void => {
 		activeTab = tab;
 		searchQuery = '';
-	}
+	};
 
-	function addDirectRepo(): void {
-		const source = primaryInput.trim();
-		if (source && isRepoSource(source) && !directRepos.some((r) => r.url === source)) {
-			directRepos = [...directRepos, { url: source, register: true }];
-			primaryInput = '';
-		}
-	}
+	const addDirectRepo = (): void => {
+		const next = addDirectRepoSource(directRepos, primaryInput, isRepoSource);
+		directRepos = next.directRepos;
+		primaryInput = next.source;
+	};
 
-	function removeDirectRepo(url: string): void {
-		directRepos = directRepos.filter((r) => r.url !== url);
-	}
+	const removeDirectRepo = (url: string): void => {
+		directRepos = removeDirectRepoByURL(directRepos, url);
+	};
 
-	function toggleDirectRepoRegister(url: string): void {
-		directRepos = directRepos.map((r) => (r.url === url ? { ...r, register: !r.register } : r));
-	}
+	const toggleDirectRepoRegister = (url: string): void => {
+		directRepos = toggleDirectRepoRegisterByURL(directRepos, url);
+	};
 
 	let archiveReason = $state('');
 	let removeDeleteWorktree = $state(false);
-	// Note: removeDeleteLocal is disabled in UI due to cross-workspace safety concerns
-	const removeDeleteLocal = $state(false); // eslint-disable-line @typescript-eslint/no-unused-vars
 	let removeDeleteFiles = $state(false);
 	let removeForceDelete = $state(false);
 	let removeConfirmText = $state('');
@@ -282,18 +253,8 @@
 
 	const modalSize = $derived(deriveWorkspaceActionModalSize(mode, phase));
 
-	const formatError = (err: unknown, fallback: string): string => {
-		if (err instanceof Error) return err.message;
-		if (typeof err === 'string') return err;
-		if (err && typeof err === 'object' && 'message' in err) {
-			const message = (err as { message?: string }).message;
-			if (typeof message === 'string') return message;
-		}
-		return fallback;
-	};
-
 	const handleRunPendingHook = async (pending: WorkspaceActionPendingHook): Promise<void> => {
-		const runState = handleRunPendingHookCore(
+		await runPendingHookWithState(
 			{
 				pending,
 				pendingHooks,
@@ -305,18 +266,15 @@
 			},
 			{
 				runRepoHooks,
-				formatError,
+				formatError: formatWorkspaceActionError,
+				setPendingHooks: (next) => (pendingHooks = next),
+				setHookRuns: (next) => (hookRuns = next),
 			},
 		);
-		pendingHooks = runState.pendingHooks;
-		hookRuns = runState.hookRuns;
-		const completed = await runState.completion;
-		pendingHooks = completed.pendingHooks;
-		hookRuns = completed.hookRuns;
 	};
 
 	const handleTrustPendingHook = async (pending: WorkspaceActionPendingHook): Promise<void> => {
-		const trustState = handleTrustPendingHookCore(
+		await trustPendingHookWithState(
 			{
 				pending,
 				pendingHooks,
@@ -324,11 +282,10 @@
 			},
 			{
 				trustRepoHooks,
-				formatError,
+				formatError: formatWorkspaceActionError,
+				setPendingHooks: (next) => (pendingHooks = next),
 			},
 		);
-		pendingHooks = trustState.pendingHooks;
-		pendingHooks = await trustState.completion;
 	};
 
 	const loadContext = async (): Promise<void> => {
@@ -406,7 +363,7 @@
 				autoCloseTimer = setTimeout(() => onClose(), 1500);
 			}
 		} catch (err) {
-			error = formatError(err, 'Failed to create workspace.');
+			error = formatWorkspaceActionError(err, 'Failed to create workspace.');
 		} finally {
 			loading = false;
 			({ activeHookOperation, activeHookWorkspace } = clearHookTracking());
@@ -436,7 +393,7 @@
 			success = `Renamed to ${result.workspaceName}.`;
 			onClose();
 		} catch (err) {
-			error = formatError(err, 'Failed to rename workspace.');
+			error = formatWorkspaceActionError(err, 'Failed to rename workspace.');
 		} finally {
 			loading = false;
 		}
@@ -496,32 +453,30 @@
 				autoCloseTimer = setTimeout(() => onClose(), 1500);
 			}
 		} catch (err) {
-			error = formatError(err, 'Failed to add items.');
+			error = formatWorkspaceActionError(err, 'Failed to add items.');
 		} finally {
 			loading = false;
 			({ activeHookOperation, activeHookWorkspace } = clearHookTracking());
 		}
 	};
 
-	const handleBrowse = async (): Promise<void> => {
+	const selectRepoDirectory = async (
+		defaultDirectory: string,
+		onPathSelected: (path: string) => void,
+	): Promise<void> => {
 		try {
-			const defaultDirectory = addSource.trim();
-			const path = await openDirectoryDialog('Select repo directory', defaultDirectory);
-			if (!path) return;
-			addSource = path;
+			const path = await openDirectoryDialog('Select repo directory', defaultDirectory.trim());
+			if (path) onPathSelected(path);
 		} catch (err) {
-			error = formatError(err, 'Failed to open directory picker.');
+			error = formatWorkspaceActionError(err, 'Failed to open directory picker.');
 		}
 	};
 
-	const handleCreateBrowse = async (): Promise<void> => {
-		try {
-			const path = await openDirectoryDialog('Select repo directory', primaryInput.trim());
-			if (path) primaryInput = path;
-		} catch (err) {
-			error = formatError(err, 'Failed to open directory picker.');
-		}
-	};
+	const handleBrowse = (): Promise<void> =>
+		selectRepoDirectory(addSource, (path) => (addSource = path));
+
+	const handleCreateBrowse = (): Promise<void> =>
+		selectRepoDirectory(primaryInput, (path) => (primaryInput = path));
 
 	const handleArchive = async (): Promise<void> => {
 		if (!workspace) return;
@@ -540,7 +495,7 @@
 			}
 			onClose();
 		} catch (err) {
-			error = formatError(err, 'Failed to archive workspace.');
+			error = formatWorkspaceActionError(err, 'Failed to archive workspace.');
 		} finally {
 			loading = false;
 		}
@@ -574,7 +529,7 @@
 			onClose();
 			void loadWorkspaces(true);
 		} catch (err) {
-			error = formatError(err, 'Failed to remove workspace.');
+			error = formatWorkspaceActionError(err, 'Failed to remove workspace.');
 			removing = false;
 		} finally {
 			loading = false;
@@ -608,7 +563,7 @@
 			await new Promise((resolve) => setTimeout(resolve, 800));
 			onClose();
 		} catch (err) {
-			error = formatError(err, 'Failed to remove repo.');
+			error = formatWorkspaceActionError(err, 'Failed to remove repo.');
 			removing = false;
 		} finally {
 			removeRepoConfirmText = '';
@@ -624,17 +579,11 @@
 			hookRuns = applyHookProgress(hookRuns, payload);
 		});
 		await loadContext();
-		await tick();
-		nameInput?.focus();
 	});
 
 	onDestroy(() => {
 		hookEventUnsubscribe?.();
-		hookEventUnsubscribe = null;
-		if (autoCloseTimer) {
-			clearTimeout(autoCloseTimer);
-			autoCloseTimer = null;
-		}
+		if (autoCloseTimer) clearTimeout(autoCloseTimer);
 	});
 </script>
 
@@ -654,268 +603,97 @@
 			{pendingHooks}
 			onRunPendingHook={handleRunPendingHook}
 			onTrustPendingHook={handleTrustPendingHook}
-			onDone={() => {
-				if (autoCloseTimer) {
-					clearTimeout(autoCloseTimer);
-					autoCloseTimer = null;
-				}
-				onClose();
-			}}
+			onDone={onClose}
 		/>
 	{:else}
-		{#if error}
-			<Alert variant="error">{error}</Alert>
-		{/if}
-		{#if success}
-			<Alert variant="success">{success}</Alert>
-		{/if}
-		{#if warnings.length > 0}
-			<Alert variant="warning">
-				{#each warnings as warning (warning)}
-					<div>{warning}</div>
-				{/each}
-			</Alert>
-		{/if}
-		{#if hookRuns.length > 0}
-			<Alert variant="info">
-				{#each hookRuns as run (`${run.repo}:${run.event}:${run.id}`)}
-					<div>
-						<code>{run.repo}</code> <code>{run.id}</code>: <code>{run.status}</code>
-						{#if run.log_path}
-							(log: <code>{run.log_path}</code>)
-						{/if}
-					</div>
-				{/each}
-			</Alert>
-		{/if}
-		{#if pendingHooks.length > 0}
-			<Alert variant="warning">
-				{#each pendingHooks as pending (`${pending.repo}:${pending.event}`)}
-					<div class="pending-hook-row">
-						<div>
-							{pending.repo} pending hooks: {pending.hooks.join(', ')}
-							{#if pending.trusted}
-								(trusted)
-							{/if}
-						</div>
-						<div class="pending-hook-actions">
-							<Button
-								variant="ghost"
-								size="sm"
-								disabled={pending.running}
-								onclick={() => void handleRunPendingHook(pending)}
-							>
-								{pending.running ? 'Running…' : 'Run now'}
-							</Button>
-							<Button
-								variant="ghost"
-								size="sm"
-								disabled={pending.trusting || pending.trusted}
-								onclick={() => void handleTrustPendingHook(pending)}
-							>
-								{pending.trusting ? 'Trusting…' : pending.trusted ? 'Trusted' : 'Trust'}
-							</Button>
-						</div>
-						{#if pending.runError}
-							<div class="pending-hook-error">{pending.runError}</div>
-						{/if}
-					</div>
-				{/each}
-			</Alert>
-		{/if}
+		<WorkspaceActionStatusAlerts
+			{error}
+			{success}
+			{warnings}
+			{hookRuns}
+			{pendingHooks}
+			onRunPendingHook={handleRunPendingHook}
+			onTrustPendingHook={handleTrustPendingHook}
+		/>
 
-		{#if mode === 'create'}
-			<WorkspaceActionCreateForm
-				{loading}
-				{activeTab}
-				{aliasItems}
-				{groupItems}
-				{searchQuery}
-				{primaryInput}
-				{directRepos}
-				{filteredAliases}
-				{filteredGroups}
-				{selectedAliases}
-				{selectedGroups}
-				{expandedGroups}
-				{groupDetails}
-				{selectedItems}
-				{totalRepos}
-				{customizeName}
-				{generatedName}
-				{alternatives}
-				{finalName}
-				{getAliasSource}
-				{deriveRepoName}
-				{isRepoSource}
-				onTabChange={handleTabChange}
-				onPrimaryInput={(value) => (primaryInput = value)}
-				onSearchQueryInput={(value) => (searchQuery = value)}
-				onAddDirectRepo={addDirectRepo}
-				onBrowsePrimary={handleCreateBrowse}
-				onToggleDirectRepoRegister={toggleDirectRepoRegister}
-				onRemoveDirectRepo={removeDirectRepo}
-				onToggleAlias={toggleAlias}
-				onToggleGroup={toggleGroup}
-				onToggleGroupExpand={toggleGroupExpand}
-				onRemoveAlias={removeAlias}
-				onRemoveGroup={removeGroup}
-				onCustomizeNameInput={(value) => (customizeName = value)}
-				onSelectAlternative={selectAlternative}
-				onSubmit={handleCreate}
-			/>
-		{:else if mode === 'rename'}
-			<div class="form">
-				<label class="field">
-					<span>New name</span>
-					<input
-						bind:this={nameInput}
-						bind:value={renameName}
-						placeholder="acme"
-						autocapitalize="off"
-						autocorrect="off"
-						spellcheck="false"
-					/>
-				</label>
-				<div class="hint">Renaming updates config and workset.yaml. Files stay in place.</div>
-				<Button variant="primary" onclick={handleRename} disabled={loading} class="action-btn">
-					{loading ? 'Renaming…' : 'Rename'}
-				</Button>
-			</div>
-		{:else if mode === 'add-repo'}
-			<WorkspaceActionAddRepoForm
-				{loading}
-				{activeTab}
-				{aliasItems}
-				{groupItems}
-				{searchQuery}
-				{addSource}
-				{filteredAliases}
-				{filteredGroups}
-				{selectedAliases}
-				{selectedGroups}
-				{expandedGroups}
-				{groupDetails}
-				{existingRepos}
-				{addRepoSelectedItems}
-				{addRepoTotalItems}
-				{getAliasSource}
-				onTabChange={handleTabChange}
-				onSearchQueryInput={(value) => (searchQuery = value)}
-				onAddSourceInput={(value) => (addSource = value)}
-				onBrowse={handleBrowse}
-				onToggleAlias={toggleAlias}
-				onToggleGroup={toggleGroup}
-				onToggleGroupExpand={toggleGroupExpand}
-				onRemoveAlias={removeAlias}
-				onRemoveGroup={removeGroup}
-				onSubmit={handleAddItems}
-			/>
-		{:else if mode === 'archive'}
-			<div class="form">
-				<div class="hint">Archiving hides the workspace but keeps files on disk.</div>
-				<label class="field">
-					<span>Reason (optional)</span>
-					<input
-						bind:this={nameInput}
-						bind:value={archiveReason}
-						placeholder="paused"
-						autocapitalize="off"
-						autocorrect="off"
-						spellcheck="false"
-					/>
-				</label>
-				<Button variant="danger" onclick={handleArchive} disabled={loading} class="action-btn">
-					{loading ? 'Archiving…' : 'Archive'}
-				</Button>
-			</div>
-		{:else if mode === 'remove-workspace'}
-			<WorkspaceActionRemoveWorkspaceForm
-				{loading}
-				{removing}
-				{removalSuccess}
-				{removeDeleteFiles}
-				{removeForceDelete}
-				{removeConfirmText}
-				{removeConfirmValid}
-				onToggleDeleteFiles={(checked) => (removeDeleteFiles = checked)}
-				onToggleForceDelete={(checked) => (removeForceDelete = checked)}
-				onConfirmTextInput={(value) => (removeConfirmText = value)}
-				onSubmit={handleRemoveWorkspace}
-			/>
-		{:else if mode === 'remove-repo'}
-			<WorkspaceActionRemoveRepoForm
-				{loading}
-				{removing}
-				{removalSuccess}
-				{removeDeleteWorktree}
-				{removeRepoConfirmRequired}
-				{removeRepoConfirmText}
-				{removeRepoStatusRefreshing}
-				{removeRepoStatus}
-				{removeRepoConfirmValid}
-				onToggleDeleteWorktree={(checked) => (removeDeleteWorktree = checked)}
-				onConfirmTextInput={(value) => (removeRepoConfirmText = value)}
-				onSubmit={handleRemoveRepo}
-			/>
-		{/if}
+		<WorkspaceActionFormContent
+			{mode}
+			{loading}
+			{activeTab}
+			{aliasItems}
+			{groupItems}
+			{searchQuery}
+			{primaryInput}
+			{directRepos}
+			{filteredAliases}
+			{filteredGroups}
+			{selectedAliases}
+			{selectedGroups}
+			{expandedGroups}
+			{groupDetails}
+			{selectedItems}
+			{totalRepos}
+			{customizeName}
+			{generatedName}
+			{alternatives}
+			{finalName}
+			{getAliasSource}
+			{deriveRepoName}
+			{isRepoSource}
+			onCreateTabChange={handleTabChange}
+			onCreatePrimaryInput={(value) => (primaryInput = value)}
+			onCreateSearchQueryInput={(value) => (searchQuery = value)}
+			onCreateAddDirectRepo={addDirectRepo}
+			onCreateBrowsePrimary={handleCreateBrowse}
+			onCreateToggleDirectRepoRegister={toggleDirectRepoRegister}
+			onCreateRemoveDirectRepo={removeDirectRepo}
+			onCreateToggleAlias={toggleAlias}
+			onCreateToggleGroup={toggleGroup}
+			onCreateToggleGroupExpand={toggleGroupExpand}
+			onCreateRemoveAlias={removeAlias}
+			onCreateRemoveGroup={removeGroup}
+			onCreateCustomizeNameInput={(value) => (customizeName = value)}
+			onCreateSelectAlternative={selectAlternative}
+			onCreateSubmit={handleCreate}
+			{renameName}
+			onRenameNameInput={(value) => (renameName = value)}
+			onRenameSubmit={handleRename}
+			{addSource}
+			{existingRepos}
+			{addRepoSelectedItems}
+			{addRepoTotalItems}
+			onAddTabChange={handleTabChange}
+			onAddSearchQueryInput={(value) => (searchQuery = value)}
+			onAddSourceInput={(value) => (addSource = value)}
+			onAddBrowse={handleBrowse}
+			onAddToggleAlias={toggleAlias}
+			onAddToggleGroup={toggleGroup}
+			onAddToggleGroupExpand={toggleGroupExpand}
+			onAddRemoveAlias={removeAlias}
+			onAddRemoveGroup={removeGroup}
+			onAddSubmit={handleAddItems}
+			{archiveReason}
+			onArchiveReasonInput={(value) => (archiveReason = value)}
+			onArchiveSubmit={handleArchive}
+			{removing}
+			{removalSuccess}
+			{removeDeleteFiles}
+			{removeForceDelete}
+			{removeConfirmText}
+			{removeConfirmValid}
+			onRemoveWorkspaceDeleteFilesToggle={(checked) => (removeDeleteFiles = checked)}
+			onRemoveWorkspaceForceDeleteToggle={(checked) => (removeForceDelete = checked)}
+			onRemoveWorkspaceConfirmTextInput={(value) => (removeConfirmText = value)}
+			onRemoveWorkspaceSubmit={handleRemoveWorkspace}
+			{removeDeleteWorktree}
+			{removeRepoConfirmRequired}
+			{removeRepoConfirmText}
+			{removeRepoStatusRefreshing}
+			{removeRepoStatus}
+			{removeRepoConfirmValid}
+			onRemoveRepoDeleteWorktreeToggle={(checked) => (removeDeleteWorktree = checked)}
+			onRemoveRepoConfirmTextInput={(value) => (removeRepoConfirmText = value)}
+			onRemoveRepoSubmit={handleRemoveRepo}
+		/>
 	{/if}
 </Modal>
-
-<style>
-	.form {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-	}
-
-	.field {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		font-size: 12px;
-		color: var(--muted);
-	}
-
-	.field input {
-		background: rgba(255, 255, 255, 0.02);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		color: var(--text);
-		padding: 8px 10px;
-		font-size: 14px;
-		transition:
-			border-color var(--transition-fast),
-			box-shadow var(--transition-fast);
-	}
-
-	.field input:focus {
-		background: rgba(255, 255, 255, 0.04);
-	}
-
-	:global(.action-btn) {
-		width: 100%;
-		margin-top: 8px;
-	}
-
-	.hint {
-		font-size: 12px;
-		color: var(--muted);
-	}
-
-	.pending-hook-row {
-		display: grid;
-		gap: 6px;
-		margin-bottom: 10px;
-	}
-
-	.pending-hook-actions {
-		display: flex;
-		gap: 8px;
-	}
-
-	.pending-hook-error {
-		color: var(--danger);
-		font-size: 12px;
-	}
-</style>

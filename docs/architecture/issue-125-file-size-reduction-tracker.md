@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (main-agent pass 38)
+Last updated: 2026-02-07 (main-agent pass 39)
 
 ## Goal
 
@@ -34,7 +34,7 @@ Largest files by LOC right now:
 
 - [x] `#124` Guardrails (must start first)
 - [ ] `#115` FE-DIFF (slice 16 landed; dead scoped CSS removed after extractions)
-- [ ] `#116` FE-WORKSPACE (slice 10 landed; create-mode panes extracted)
+- [ ] `#116` FE-WORKSPACE (slice 11 landed; modal shell split under 700 LOC)
 - [x] `#117` FE-TERMINAL (slice 20 landed; service now 491 LOC)
 - [x] `#118` FE-PLATFORM (slice 7 landed; settings side effects extracted)
 - [x] `#119` BE-SESSIOND (structural splits complete)
@@ -182,6 +182,8 @@ Tasks:
   Slice landed: extracted create-mode tabs/selection/pending/workspace-name flow into `workspace-action/WorkspaceActionCreateForm.svelte` and wired modal callbacks through a dedicated browse handler.
 - [x] Split create-mode panes into focused components.
   Slice landed: extracted direct/repos/groups/summary panes into `workspace-action/WorkspaceActionCreateDirectTab.svelte`, `workspace-action/WorkspaceActionCreateReposTab.svelte`, `workspace-action/WorkspaceActionCreateGroupsTab.svelte`, and `workspace-action/WorkspaceActionCreateSummaryPanel.svelte` to avoid shifting the monolith into a new oversized file.
+- [x] Split modal alert/form shell composition into dedicated components.
+  Slice landed: extracted non-hook alerts into `workspace-action/WorkspaceActionStatusAlerts.svelte` and mode routing/rename/archive composition into `workspace-action/WorkspaceActionFormContent.svelte`; `WorkspaceActionModal.svelte` is now 698 LOC.
 - [x] Add tests for action-state transitions and failure paths.
 
 Verification:
