@@ -1,10 +1,13 @@
 import { Terminal, type ITerminalOptions, type ITheme } from '@xterm/xterm';
 import { WebLinksAddon } from '@xterm/addon-web-links';
+import { WebglAddon } from '@xterm/addon-webgl';
 
 type TokenResolver = (name: string, fallback: string) => string;
 type TerminalInitOptions = ITerminalOptions & {
 	allowProposedApi?: boolean;
 };
+type RendererMode = 'webgl';
+type RendererType = 'unknown' | 'webgl';
 
 const openHttpsLink = (event: MouseEvent, uri: string, openURL: (url: string) => void): void => {
 	if (!uri) return;
@@ -23,6 +26,50 @@ export const createWebLinksAddon = (openURL: (url: string) => void): WebLinksAdd
 	new WebLinksAddon((event: MouseEvent, uri: string) => {
 		openHttpsLink(event, uri, openURL);
 	});
+
+export const syncWebLinksForMode = (input: {
+	terminal: Terminal;
+	webLinksAddon?: WebLinksAddon;
+	mouseActive: boolean;
+	openURL: (url: string) => void;
+}): WebLinksAddon | undefined => {
+	if (input.mouseActive) {
+		input.webLinksAddon?.dispose();
+		return undefined;
+	}
+	if (input.webLinksAddon) {
+		return input.webLinksAddon;
+	}
+	const addon = createWebLinksAddon(input.openURL);
+	input.terminal.loadAddon(addon);
+	return addon;
+};
+
+export const loadRendererAddon = async (input: {
+	terminal: Terminal;
+	webglAddon?: WebglAddon;
+	setRendererMode: (mode: RendererMode) => void;
+	setRenderer: (renderer: RendererType) => void;
+	onRendererUnavailable: (error: unknown) => void;
+	onComplete: () => void;
+	createWebglAddon?: () => WebglAddon;
+}): Promise<WebglAddon | undefined> => {
+	input.setRendererMode('webgl');
+	let activeAddon = input.webglAddon;
+	try {
+		if (!activeAddon) {
+			const createAddon = input.createWebglAddon ?? (() => new WebglAddon());
+			activeAddon = createAddon();
+			input.terminal.loadAddon(activeAddon);
+		}
+		input.setRenderer('webgl');
+	} catch (error) {
+		input.setRenderer('unknown');
+		input.onRendererUnavailable(error);
+	}
+	input.onComplete();
+	return activeAddon;
+};
 
 export const createTerminalInstance = (input: {
 	fontSize: number;

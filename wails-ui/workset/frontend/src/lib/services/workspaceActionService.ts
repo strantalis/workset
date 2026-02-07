@@ -54,6 +54,52 @@ type AddItemsMutationDeps = {
 	applyGroup: (workspaceId: string, group: string) => Promise<void>;
 };
 
+type RenameWorkspaceMutationInput = {
+	workspaceId: string;
+	workspaceName: string;
+};
+
+type RenameWorkspaceMutationDeps = {
+	renameWorkspace: (workspaceId: string, nextName: string) => Promise<void>;
+};
+
+type ArchiveWorkspaceMutationInput = {
+	workspaceId: string;
+	reason: string;
+};
+
+type ArchiveWorkspaceMutationDeps = {
+	archiveWorkspace: (workspaceId: string, reason: string) => Promise<void>;
+};
+
+type RemoveWorkspaceMutationInput = {
+	workspaceId: string;
+	deleteFiles: boolean;
+	force: boolean;
+};
+
+type RemoveWorkspaceMutationDeps = {
+	removeWorkspace: (
+		workspaceId: string,
+		options: { deleteFiles: boolean; force: boolean },
+	) => Promise<void>;
+};
+
+type RemoveRepoMutationInput = {
+	workspaceId: string;
+	repoName: string;
+	deleteWorktree: boolean;
+};
+
+type RemoveRepoMutationDeps = {
+	removeRepo: (
+		workspaceId: string,
+		repoName: string,
+		deleteWorktree: boolean,
+		forget: boolean,
+	) => Promise<void>;
+};
+
 export type HookTransitionInput = {
 	warnings: string[];
 	pendingHooks: WorkspaceActionPendingHook[];
@@ -77,6 +123,24 @@ export type AddItemsMutationResult = {
 	warnings: string[];
 	pendingHooks: WorkspaceActionPendingHook[];
 	hookRuns: HookExecution[];
+};
+
+export type RenameWorkspaceMutationResult = {
+	workspaceId: string;
+	workspaceName: string;
+};
+
+export type ArchiveWorkspaceMutationResult = {
+	workspaceId: string;
+};
+
+export type RemoveWorkspaceMutationResult = {
+	workspaceId: string;
+};
+
+export type RemoveRepoMutationResult = {
+	workspaceId: string;
+	repoName: string;
 };
 
 const dedupeWarnings = (warnings: string[]): string[] => Array.from(new Set(warnings));
@@ -195,5 +259,46 @@ export const runAddItemsMutation = async (
 		warnings: dedupeWarnings(collectedWarnings),
 		pendingHooks: Array.from(pendingByKey.values()),
 		hookRuns: collectedHookRuns,
+	};
+};
+
+export const runRenameWorkspaceMutation = async (
+	input: RenameWorkspaceMutationInput,
+	deps: RenameWorkspaceMutationDeps,
+): Promise<RenameWorkspaceMutationResult> => {
+	await deps.renameWorkspace(input.workspaceId, input.workspaceName);
+	return {
+		workspaceId: input.workspaceId,
+		workspaceName: input.workspaceName,
+	};
+};
+
+export const runArchiveWorkspaceMutation = async (
+	input: ArchiveWorkspaceMutationInput,
+	deps: ArchiveWorkspaceMutationDeps,
+): Promise<ArchiveWorkspaceMutationResult> => {
+	await deps.archiveWorkspace(input.workspaceId, input.reason);
+	return { workspaceId: input.workspaceId };
+};
+
+export const runRemoveWorkspaceMutation = async (
+	input: RemoveWorkspaceMutationInput,
+	deps: RemoveWorkspaceMutationDeps,
+): Promise<RemoveWorkspaceMutationResult> => {
+	await deps.removeWorkspace(input.workspaceId, {
+		deleteFiles: input.deleteFiles,
+		force: input.force,
+	});
+	return { workspaceId: input.workspaceId };
+};
+
+export const runRemoveRepoMutation = async (
+	input: RemoveRepoMutationInput,
+	deps: RemoveRepoMutationDeps,
+): Promise<RemoveRepoMutationResult> => {
+	await deps.removeRepo(input.workspaceId, input.repoName, input.deleteWorktree, false);
+	return {
+		workspaceId: input.workspaceId,
+		repoName: input.repoName,
 	};
 };

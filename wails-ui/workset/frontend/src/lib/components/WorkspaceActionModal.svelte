@@ -43,8 +43,12 @@
 	} from '../names';
 	import {
 		evaluateHookTransition,
+		runArchiveWorkspaceMutation,
 		runAddItemsMutation,
 		runCreateWorkspaceMutation,
+		runRemoveRepoMutation,
+		runRemoveWorkspaceMutation,
+		runRenameWorkspaceMutation,
 	} from '../services/workspaceActionService';
 	import Alert from './ui/Alert.svelte';
 	import Button from './ui/Button.svelte';
@@ -622,12 +626,20 @@
 		success = null;
 		warnings = [];
 		try {
-			await renameWorkspace(workspace.id, nextName);
+			const result = await runRenameWorkspaceMutation(
+				{
+					workspaceId: workspace.id,
+					workspaceName: nextName,
+				},
+				{
+					renameWorkspace,
+				},
+			);
 			await loadWorkspaces(true);
 			if (get(activeWorkspaceId) === workspace.id) {
-				selectWorkspace(nextName);
+				selectWorkspace(result.workspaceName);
 			}
-			success = `Renamed to ${nextName}.`;
+			success = `Renamed to ${result.workspaceName}.`;
 			onClose();
 		} catch (err) {
 			error = formatError(err, 'Failed to rename workspace.');
@@ -717,9 +729,17 @@
 		success = null;
 		warnings = [];
 		try {
-			await archiveWorkspace(workspace.id, archiveReason.trim());
+			const result = await runArchiveWorkspaceMutation(
+				{
+					workspaceId: workspace.id,
+					reason: archiveReason.trim(),
+				},
+				{
+					archiveWorkspace,
+				},
+			);
 			await loadWorkspaces(true);
-			if (get(activeWorkspaceId) === workspace.id) {
+			if (get(activeWorkspaceId) === result.workspaceId) {
 				clearWorkspace();
 			}
 			onClose();
@@ -743,12 +763,18 @@
 				removing = false;
 				return;
 			}
-			await removeWorkspace(workspaceId, {
-				deleteFiles: removeDeleteFiles,
-				force: removeForceDelete,
-			});
-			workspaces.update((current) => current.filter((entry) => entry.id !== workspaceId));
-			if (get(activeWorkspaceId) === workspaceId) {
+			const result = await runRemoveWorkspaceMutation(
+				{
+					workspaceId,
+					deleteFiles: removeDeleteFiles,
+					force: removeForceDelete,
+				},
+				{
+					removeWorkspace,
+				},
+			);
+			workspaces.update((current) => current.filter((entry) => entry.id !== result.workspaceId));
+			if (get(activeWorkspaceId) === result.workspaceId) {
 				clearWorkspace();
 			}
 			// Show success state before closing
@@ -777,9 +803,18 @@
 				removing = false;
 				return;
 			}
-			await removeRepo(workspace.id, repo.name, removeDeleteWorktree, false);
+			const result = await runRemoveRepoMutation(
+				{
+					workspaceId: workspace.id,
+					repoName: repo.name,
+					deleteWorktree: removeDeleteWorktree,
+				},
+				{
+					removeRepo,
+				},
+			);
 			await loadWorkspaces(true);
-			if (get(activeWorkspaceId) === workspace.id) {
+			if (get(activeWorkspaceId) === result.workspaceId) {
 				clearRepo();
 			}
 			// Show success state before closing

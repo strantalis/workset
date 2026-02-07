@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (subagent pass 7)
+Last updated: 2026-02-07 (subagent pass 8)
 
 ## Goal
 
@@ -19,8 +19,8 @@ Reduce architecture risk from oversized files by splitting high-complexity modul
 Largest files by LOC right now:
 
 - `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (4181)
-- `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2616)
-- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (2296)
+- `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2651)
+- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (2294)
 - `pkg/termemu/termemu.go` (1714)
 - `wails-ui/workset/frontend/src/lib/api.ts` (1312)
 - `pkg/worksetapi/github_service.go` (1295)
@@ -31,8 +31,8 @@ Largest files by LOC right now:
 
 - [x] `#124` Guardrails (must start first)
 - [ ] `#115` FE-DIFF (slice 1 landed)
-- [ ] `#116` FE-WORKSPACE (slice 2 landed)
-- [ ] `#117` FE-TERMINAL (slice 1 landed)
+- [ ] `#116` FE-WORKSPACE (slice 3 landed)
+- [ ] `#117` FE-TERMINAL (slice 2 landed)
 - [ ] `#118` FE-PLATFORM
 - [x] `#119` BE-SESSIOND (structural splits complete)
 - [ ] `#120` BE-GITHUB (slice 3 landed)
@@ -145,6 +145,7 @@ Tasks:
 - [x] Extract hook-results phase UI into `workspace-action/WorkspaceActionHookResults.svelte`.
 - [x] Extract removal overlay UI into `workspace-action/RemovalOverlay.svelte`.
 - [x] Extract create/add mutation + hook transition logic into `services/workspaceActionService.ts`.
+- [x] Extract rename/archive/remove mutation runners into `services/workspaceActionService.ts`.
 - [ ] Separate modal state transitions from UI markup.
 - [ ] Extract workspace mutations into dedicated service.
 - [ ] Split large modal sections into components.
@@ -169,6 +170,7 @@ Status:
 Remaining tasks:
 
 - [x] Move lifecycle FSM to standalone module with explicit state graph.
+- [x] Move renderer addon wiring (WebGL + web-links sync) into `terminalRenderer.ts`.
 - [ ] Remove remaining renderer/transport coupling from service shell.
 - [ ] Add service-level tests for reconnect/attach/detach/stream-release.
 - [ ] Shrink `terminalService.ts` to orchestration-only facade.
@@ -338,5 +340,5 @@ Verification:
 ## Immediate Next Actions
 
 1. Run `#120` slice 4: extract operation orchestration paths from `github_service.go`.
-2. Run `#116` slice 3: move remaining modal state transitions/mutations out of `WorkspaceActionModal.svelte`.
-3. Run `#117` slice 2: remove remaining transport/renderer coupling from `terminalService.ts`.
+2. Run `#116` slice 4: move hook state machine + pending hook actions out of `WorkspaceActionModal.svelte`.
+3. Run `#117` slice 3: remove remaining transport/renderer coupling from `terminalService.ts`.

@@ -2,8 +2,8 @@ import { Terminal, type ITheme } from '@xterm/xterm';
 import { ClipboardAddon } from '@xterm/addon-clipboard';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
-import { WebLinksAddon } from '@xterm/addon-web-links';
-import { WebglAddon } from '@xterm/addon-webgl';
+import type { WebLinksAddon } from '@xterm/addon-web-links';
+import type { WebglAddon } from '@xterm/addon-webgl';
 import type { Readable, Writable } from 'svelte/store';
 import {
 	EVENT_SESSIOND_RESTARTED,
@@ -15,7 +15,7 @@ import {
 	EVENT_TERMINAL_MODES,
 } from '../events';
 import { terminalTransport } from './terminalTransport';
-import { createTerminalInstance, createWebLinksAddon } from './terminalRenderer';
+import { createTerminalInstance, loadRendererAddon, syncWebLinksForMode } from './terminalRenderer';
 import { TerminalStateStore } from './terminalStateStore';
 import { stripMouseReports } from './inputFilter';
 import { createTerminalLifecycle } from './terminalLifecycle';
@@ -385,23 +385,17 @@ const createClipboardBase64 = (): {
 	decodeText: decodeClipboardText,
 });
 
-const syncWebLinksForMode = (id: string): void => {
+const syncTerminalWebLinks = (id: string): void => {
 	const handle = terminalHandles.get(id);
 	if (!handle) return;
-	const mouseActive = lifecycle.getMode(id).mouse;
-	if (mouseActive) {
-		if (handle.webLinksAddon) {
-			handle.webLinksAddon.dispose();
-			handle.webLinksAddon = undefined;
-		}
-		return;
-	}
-	if (!handle.webLinksAddon) {
-		handle.webLinksAddon = createWebLinksAddon((url) => {
+	handle.webLinksAddon = syncWebLinksForMode({
+		terminal: handle.terminal,
+		webLinksAddon: handle.webLinksAddon,
+		mouseActive: lifecycle.getMode(id).mouse,
+		openURL: (url) => {
 			void terminalTransport.openURL(url);
-		});
-		handle.terminal.loadAddon(handle.webLinksAddon);
-	}
+		},
+	});
 };
 
 const getRuntimeClipboard = (): ((text: string) => Promise<boolean>) | null => {
@@ -1087,7 +1081,7 @@ const attachTerminal = (
 			unicode11Addon,
 		};
 		terminalHandles.set(id, handle);
-		syncWebLinksForMode(id);
+		syncTerminalWebLinks(id);
 		handle.oscDisposables = registerOscHandlers(id, terminal);
 		lifecycle.ensureMode(id);
 	}
@@ -1119,7 +1113,7 @@ const attachTerminal = (
 			handle.container.replaceChildren();
 			handle.terminal.open(handle.container);
 			ensureKittyOverlay(handle, id);
-			void loadRendererAddon(handle, id);
+			void loadTerminalRendererAddon(handle, id);
 			if (typeof document !== 'undefined' && document.fonts?.ready) {
 				document.fonts.ready
 					.then(() => {
@@ -1357,7 +1351,7 @@ const resetTerminalInstance = (id: string): void => {
 		mouseInputTail = { ...mouseInputTail, [id]: '' };
 	}
 	noteMouseSuppress(id, 2500);
-	void loadRendererAddon(handle, id);
+	void loadTerminalRendererAddon(handle, id);
 };
 
 const updateStatsLastOutput = (id: string): void => {
@@ -1926,21 +1920,25 @@ const registerOscHandlers = (id: string, terminal: Terminal): { dispose: () => v
 	return disposables;
 };
 
-const loadRendererAddon = async (handle: TerminalHandle, id: string): Promise<void> => {
-	lifecycle.setRendererMode(id, 'webgl');
-	try {
-		if (!handle.webglAddon) {
-			handle.webglAddon = new WebglAddon();
-			handle.terminal.loadAddon(handle.webglAddon);
-		}
-		lifecycle.setRenderer(id, 'webgl');
-	} catch (error) {
-		lifecycle.setRenderer(id, 'unknown');
-		lifecycle.setStatusAndMessage(id, 'error', 'WebGL renderer unavailable.');
-		setHealth(id, 'stale', 'WebGL renderer unavailable.');
-		logDebug(id, 'renderer_webgl_failed', { error: String(error) });
-	}
-	emitState(id);
+const loadTerminalRendererAddon = async (handle: TerminalHandle, id: string): Promise<void> => {
+	handle.webglAddon = await loadRendererAddon({
+		terminal: handle.terminal,
+		webglAddon: handle.webglAddon,
+		setRendererMode: (mode) => {
+			lifecycle.setRendererMode(id, mode);
+		},
+		setRenderer: (renderer) => {
+			lifecycle.setRenderer(id, renderer);
+		},
+		onRendererUnavailable: (error) => {
+			lifecycle.setStatusAndMessage(id, 'error', 'WebGL renderer unavailable.');
+			setHealth(id, 'stale', 'WebGL renderer unavailable.');
+			logDebug(id, 'renderer_webgl_failed', { error: String(error) });
+		},
+		onComplete: () => {
+			emitState(id);
+		},
+	});
 };
 
 const ensureListener = (): void => {
@@ -2013,7 +2011,7 @@ const ensureListener = (): void => {
 				mouseSGR: payload.mouseSGR ?? false,
 				mouseEncoding: payload.mouseEncoding ?? 'x10',
 			});
-			syncWebLinksForMode(id);
+			syncTerminalWebLinks(id);
 		};
 		unsubscribeHandlers.push(subscribeEvent(EVENT_TERMINAL_MODES, handler));
 		listeners.add(EVENT_TERMINAL_MODES);

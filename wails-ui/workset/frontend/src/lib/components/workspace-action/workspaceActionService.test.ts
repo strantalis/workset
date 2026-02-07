@@ -2,8 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import type { HookExecution, RepoAddResponse, WorkspaceCreateResponse } from '../../types';
 import {
 	evaluateHookTransition,
+	runArchiveWorkspaceMutation,
 	runAddItemsMutation,
 	runCreateWorkspaceMutation,
+	runRemoveRepoMutation,
+	runRemoveWorkspaceMutation,
+	runRenameWorkspaceMutation,
 } from '../../services/workspaceActionService';
 
 const buildRepoAddResponse = (overrides: Partial<RepoAddResponse> = {}): RepoAddResponse => ({
@@ -205,5 +209,148 @@ describe('evaluateHookTransition', () => {
 				hookRuns: [{ event: 'repo.add', repo: 'repo-a', id: 'hook-1', status: 'failed' }],
 			}),
 		).toEqual({ hasHookActivity: true, shouldAutoClose: false });
+	});
+});
+
+describe('runRenameWorkspaceMutation', () => {
+	it('renames workspace and returns mutation context', async () => {
+		const renameWorkspace = vi.fn(async () => undefined);
+
+		const result = await runRenameWorkspaceMutation(
+			{
+				workspaceId: 'ws-1',
+				workspaceName: 'renamed',
+			},
+			{ renameWorkspace },
+		);
+
+		expect(renameWorkspace).toHaveBeenCalledTimes(1);
+		expect(renameWorkspace).toHaveBeenCalledWith('ws-1', 'renamed');
+		expect(result).toEqual({ workspaceId: 'ws-1', workspaceName: 'renamed' });
+	});
+
+	it('propagates rename failures', async () => {
+		const renameWorkspace = vi.fn(async () => {
+			throw new Error('rename failed');
+		});
+
+		await expect(
+			runRenameWorkspaceMutation(
+				{
+					workspaceId: 'ws-1',
+					workspaceName: 'renamed',
+				},
+				{ renameWorkspace },
+			),
+		).rejects.toThrow('rename failed');
+	});
+});
+
+describe('runArchiveWorkspaceMutation', () => {
+	it('archives workspace and returns mutation context', async () => {
+		const archiveWorkspace = vi.fn(async () => undefined);
+
+		const result = await runArchiveWorkspaceMutation(
+			{
+				workspaceId: 'ws-1',
+				reason: 'completed',
+			},
+			{ archiveWorkspace },
+		);
+
+		expect(archiveWorkspace).toHaveBeenCalledTimes(1);
+		expect(archiveWorkspace).toHaveBeenCalledWith('ws-1', 'completed');
+		expect(result).toEqual({ workspaceId: 'ws-1' });
+	});
+
+	it('propagates archive failures', async () => {
+		const archiveWorkspace = vi.fn(async () => {
+			throw new Error('archive failed');
+		});
+
+		await expect(
+			runArchiveWorkspaceMutation(
+				{
+					workspaceId: 'ws-1',
+					reason: '',
+				},
+				{ archiveWorkspace },
+			),
+		).rejects.toThrow('archive failed');
+	});
+});
+
+describe('runRemoveWorkspaceMutation', () => {
+	it('removes workspace and returns mutation context', async () => {
+		const removeWorkspace = vi.fn(async () => undefined);
+
+		const result = await runRemoveWorkspaceMutation(
+			{
+				workspaceId: 'ws-1',
+				deleteFiles: true,
+				force: false,
+			},
+			{ removeWorkspace },
+		);
+
+		expect(removeWorkspace).toHaveBeenCalledTimes(1);
+		expect(removeWorkspace).toHaveBeenCalledWith('ws-1', {
+			deleteFiles: true,
+			force: false,
+		});
+		expect(result).toEqual({ workspaceId: 'ws-1' });
+	});
+
+	it('propagates remove workspace failures', async () => {
+		const removeWorkspace = vi.fn(async () => {
+			throw new Error('remove workspace failed');
+		});
+
+		await expect(
+			runRemoveWorkspaceMutation(
+				{
+					workspaceId: 'ws-1',
+					deleteFiles: false,
+					force: true,
+				},
+				{ removeWorkspace },
+			),
+		).rejects.toThrow('remove workspace failed');
+	});
+});
+
+describe('runRemoveRepoMutation', () => {
+	it('removes repo and returns mutation context', async () => {
+		const removeRepo = vi.fn(async () => undefined);
+
+		const result = await runRemoveRepoMutation(
+			{
+				workspaceId: 'ws-1',
+				repoName: 'repo-a',
+				deleteWorktree: true,
+			},
+			{ removeRepo },
+		);
+
+		expect(removeRepo).toHaveBeenCalledTimes(1);
+		expect(removeRepo).toHaveBeenCalledWith('ws-1', 'repo-a', true, false);
+		expect(result).toEqual({ workspaceId: 'ws-1', repoName: 'repo-a' });
+	});
+
+	it('propagates remove repo failures', async () => {
+		const removeRepo = vi.fn(async () => {
+			throw new Error('remove repo failed');
+		});
+
+		await expect(
+			runRemoveRepoMutation(
+				{
+					workspaceId: 'ws-1',
+					repoName: 'repo-a',
+					deleteWorktree: false,
+				},
+				{ removeRepo },
+			),
+		).rejects.toThrow('remove repo failed');
 	});
 });
