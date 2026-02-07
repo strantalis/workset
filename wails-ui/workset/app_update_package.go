@@ -24,6 +24,38 @@ type queuedSymlink struct {
 	target string
 }
 
+type updatePackageSelection struct {
+	AssetURL      string
+	AssetSHA256   string
+	SigningTeamID string
+}
+
+func selectUpdatePackage(release UpdateRelease) (updatePackageSelection, error) {
+	assetURL := strings.TrimSpace(release.Asset.URL)
+	if assetURL == "" {
+		return updatePackageSelection{}, errors.New("update asset URL is required")
+	}
+	if _, err := validateUpdateURL(assetURL); err != nil {
+		return updatePackageSelection{}, fmt.Errorf("update asset URL is invalid: %w", err)
+	}
+
+	assetSHA256 := strings.TrimSpace(release.Asset.SHA256)
+	if assetSHA256 == "" {
+		return updatePackageSelection{}, errors.New("update asset checksum is required")
+	}
+
+	signingTeamID := strings.TrimSpace(release.Signing.TeamID)
+	if signingTeamID == "" {
+		return updatePackageSelection{}, errors.New("update signing team id is required")
+	}
+
+	return updatePackageSelection{
+		AssetURL:      assetURL,
+		AssetSHA256:   assetSHA256,
+		SigningTeamID: signingTeamID,
+	}, nil
+}
+
 func verifySHA256(path, expected string) error {
 	expected = strings.ToLower(strings.TrimSpace(expected))
 	if expected == "" {
