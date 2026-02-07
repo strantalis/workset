@@ -47,6 +47,7 @@
 	import Button from './ui/Button.svelte';
 	import Modal from './Modal.svelte';
 	import WorkspaceActionHookResults from './workspace-action/WorkspaceActionHookResults.svelte';
+	import WorkspaceActionSelectionTabs from './workspace-action/WorkspaceActionSelectionTabs.svelte';
 	import WorkspaceActionRemoveRepoForm from './workspace-action/WorkspaceActionRemoveRepoForm.svelte';
 	import WorkspaceActionRemoveWorkspaceForm from './workspace-action/WorkspaceActionRemoveWorkspaceForm.svelte';
 
@@ -194,6 +195,11 @@
 	function removeGroup(name: string): void {
 		selectedGroups.delete(name);
 		selectedGroups = new Set(selectedGroups);
+	}
+
+	function handleTabChange(tab: CreateTab): void {
+		activeTab = tab;
+		searchQuery = '';
 	}
 
 	function addDirectRepo(): void {
@@ -711,48 +717,12 @@
 		{#if mode === 'create'}
 			<div class="form create-two-column">
 				<div class="column-left">
-					<!-- Tab Bar - only when aliases/groups exist -->
-					{#if aliasItems.length > 0 || groupItems.length > 0}
-						<div class="tab-bar">
-							<button
-								class="tab"
-								class:active={activeTab === 'direct'}
-								type="button"
-								onclick={() => {
-									activeTab = 'direct';
-									searchQuery = '';
-								}}
-							>
-								Direct
-							</button>
-							{#if aliasItems.length > 0}
-								<button
-									class="tab"
-									class:active={activeTab === 'repos'}
-									type="button"
-									onclick={() => {
-										activeTab = 'repos';
-										searchQuery = '';
-									}}
-								>
-									Repos ({aliasItems.length})
-								</button>
-							{/if}
-							{#if groupItems.length > 0}
-								<button
-									class="tab"
-									class:active={activeTab === 'groups'}
-									type="button"
-									onclick={() => {
-										activeTab = 'groups';
-										searchQuery = '';
-									}}
-								>
-									Groups ({groupItems.length})
-								</button>
-							{/if}
-						</div>
-					{/if}
+					<WorkspaceActionSelectionTabs
+						{activeTab}
+						aliasCount={aliasItems.length}
+						groupCount={groupItems.length}
+						onTabChange={handleTabChange}
+					/>
 
 					<!-- Selection Area - Left Column -->
 					<div class="selection-area">
@@ -1017,48 +987,12 @@
 		{:else if mode === 'add-repo'}
 			<div class="form add-two-column">
 				<div class="column-left">
-					<!-- Tab Bar - only when aliases/groups exist -->
-					{#if aliasItems.length > 0 || groupItems.length > 0}
-						<div class="tab-bar">
-							<button
-								class="tab"
-								class:active={activeTab === 'direct'}
-								type="button"
-								onclick={() => {
-									activeTab = 'direct';
-									searchQuery = '';
-								}}
-							>
-								Direct
-							</button>
-							{#if aliasItems.length > 0}
-								<button
-									class="tab"
-									class:active={activeTab === 'repos'}
-									type="button"
-									onclick={() => {
-										activeTab = 'repos';
-										searchQuery = '';
-									}}
-								>
-									Repos ({aliasItems.length})
-								</button>
-							{/if}
-							{#if groupItems.length > 0}
-								<button
-									class="tab"
-									class:active={activeTab === 'groups'}
-									type="button"
-									onclick={() => {
-										activeTab = 'groups';
-										searchQuery = '';
-									}}
-								>
-									Groups ({groupItems.length})
-								</button>
-							{/if}
-						</div>
-					{/if}
+					<WorkspaceActionSelectionTabs
+						{activeTab}
+						aliasCount={aliasItems.length}
+						groupCount={groupItems.length}
+						onTabChange={handleTabChange}
+					/>
 
 					<!-- Selection Area - Left Column -->
 					<div class="selection-area">
@@ -1595,45 +1529,6 @@
 
 	.chip-remove:hover {
 		opacity: 1;
-	}
-
-	/* Tab Bar */
-	.tab-bar {
-		display: flex;
-		gap: 8px;
-		border-bottom: 1px solid var(--border);
-		padding-bottom: 8px;
-	}
-
-	.tab {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		background: transparent;
-		border: none;
-		color: var(--muted);
-		padding: 6px 12px;
-		font-size: 13px;
-		cursor: pointer;
-		border-radius: var(--radius-md);
-		transition: all var(--transition-fast);
-	}
-
-	.tab:hover {
-		color: var(--text);
-		background: rgba(255, 255, 255, 0.05);
-	}
-
-	.tab.active {
-		color: var(--text);
-		background: var(--accent);
-		font-weight: 500;
-	}
-
-	/* Tab Content */
-	.tab-content {
-		max-height: 280px;
-		overflow-y: auto;
 	}
 
 	/* Search */
