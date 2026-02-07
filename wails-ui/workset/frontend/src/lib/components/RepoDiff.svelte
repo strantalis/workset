@@ -78,6 +78,12 @@
 	import { createSummaryController } from './repo-diff/summaryController';
 	import { createRepoDiffWatcherLifecycle } from './repo-diff/watcherLifecycle';
 	import {
+		createSidebarResizeController,
+		REPO_DIFF_DEFAULT_SIDEBAR_WIDTH,
+		REPO_DIFF_MIN_SIDEBAR_WIDTH,
+		REPO_DIFF_SIDEBAR_WIDTH_KEY,
+	} from './repo-diff/sidebarResizeController';
+	import {
 		createRepoDiffLifecycle,
 		type RepoDiffLocalStatusEvent,
 		type RepoDiffSummaryEvent,
@@ -221,25 +227,22 @@
 	let checkAnnotationsLoading: Record<string, boolean> = $state({});
 
 	// Sidebar resize state
-	const SIDEBAR_WIDTH_KEY = 'workset:repoDiff:sidebarWidth';
-	const MIN_SIDEBAR_WIDTH = 200;
-	const DEFAULT_SIDEBAR_WIDTH = 280;
-	let sidebarWidth = $state(DEFAULT_SIDEBAR_WIDTH);
+	let sidebarWidth = $state(REPO_DIFF_DEFAULT_SIDEBAR_WIDTH);
 	let isResizing = $state(false);
 
-	// Load persisted sidebar width on mount
-	onMount(() => {
-		try {
-			const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
-			if (saved) {
-				const parsed = parseInt(saved, 10);
-				if (!isNaN(parsed) && parsed >= MIN_SIDEBAR_WIDTH) {
-					sidebarWidth = parsed;
-				}
-			}
-		} catch {
-			// localStorage unavailable, use default width
-		}
+	const sidebarResizeController = createSidebarResizeController({
+		document,
+		window,
+		storage: localStorage,
+		storageKey: REPO_DIFF_SIDEBAR_WIDTH_KEY,
+		minWidth: REPO_DIFF_MIN_SIDEBAR_WIDTH,
+		getSidebarWidth: () => sidebarWidth,
+		setSidebarWidth: (value) => {
+			sidebarWidth = value;
+		},
+		setIsResizing: (value) => {
+			isResizing = value;
+		},
 	});
 
 	const watcherLifecycle = createRepoDiffWatcherLifecycle({
@@ -301,44 +304,7 @@
 		}
 	};
 
-	// Sidebar resize handlers
-	const startResize = (e: MouseEvent) => {
-		e.preventDefault();
-		isResizing = true;
-		const startX = e.clientX;
-		const startWidth = sidebarWidth;
-
-		const handleMouseMove = (e: MouseEvent) => {
-			const diff = e.clientX - startX;
-			const newWidth = Math.max(MIN_SIDEBAR_WIDTH, startWidth + diff);
-			sidebarWidth = newWidth;
-		};
-
-		const handleMouseUp = () => {
-			isResizing = false;
-			try {
-				localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
-			} catch {
-				// localStorage unavailable, width won't persist
-			}
-			cleanupListeners();
-		};
-
-		const handleBlur = () => {
-			isResizing = false;
-			cleanupListeners();
-		};
-
-		const cleanupListeners = () => {
-			document.removeEventListener('mousemove', handleMouseMove);
-			document.removeEventListener('mouseup', handleMouseUp);
-			window.removeEventListener('blur', handleBlur);
-		};
-
-		document.addEventListener('mousemove', handleMouseMove);
-		document.addEventListener('mouseup', handleMouseUp);
-		window.addEventListener('blur', handleBlur);
-	};
+	const startResize = (event: MouseEvent): void => sidebarResizeController.startResize(event);
 
 	const formatError = (err: unknown, fallback: string): string => {
 		if (err instanceof Error) return err.message;
@@ -828,10 +794,12 @@
 	});
 
 	onMount(() => {
+		sidebarResizeController.loadPersistedWidth();
 		repoDiffLifecycle.mount();
 	});
 
 	onDestroy(() => {
+		sidebarResizeController.destroy();
 		repoDiffLifecycle.destroy();
 	});
 
