@@ -1,4 +1,3 @@
-import { Terminal, type ITheme } from '@xterm/xterm';
 import { ClipboardAddon } from '@xterm/addon-clipboard';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
@@ -38,6 +37,12 @@ import {
 } from './terminalKittyImageController';
 import { createTerminalInputOrchestrator } from './terminalInputOrchestrator';
 import { createTerminalViewportResizeController } from './terminalViewportResizeController';
+import {
+	createTerminalClipboardBase64,
+	createTerminalClipboardProvider,
+} from './terminalClipboard';
+import { registerTerminalOscHandlers } from './terminalOscHandlers';
+import { createTerminalFontSizeController } from './terminalFontSizeController';
 
 export type TerminalViewState = {
 	status: string;
@@ -69,7 +74,6 @@ type TerminalContext = {
 };
 
 type TerminalKey = string;
-type ClipboardSelection = string;
 
 type TerminalHandle = TerminalInstanceHandle<KittyState> & {
 	kittyOverlay?: KittyOverlay;
@@ -79,40 +83,6 @@ const terminalHandles = new Map<string, TerminalHandle>();
 const terminalContexts = new Map<string, TerminalContext>();
 const terminalStores = new TerminalStateStore<TerminalViewState>();
 const DISPOSE_TTL_MS = 10 * 60 * 1000;
-
-// Font size configuration
-const DEFAULT_FONT_SIZE = 13;
-const MIN_FONT_SIZE = 8;
-const MAX_FONT_SIZE = 28;
-const FONT_SIZE_STEP = 1;
-const FONT_SIZE_STORAGE_KEY = 'worksetTerminalFontSize';
-
-const clampFontSize = (value: number): number =>
-	Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, value));
-
-const loadInitialFontSize = (): number => {
-	if (typeof localStorage === 'undefined') return DEFAULT_FONT_SIZE;
-	try {
-		const stored = localStorage.getItem(FONT_SIZE_STORAGE_KEY);
-		if (!stored) return DEFAULT_FONT_SIZE;
-		const parsed = Number.parseInt(stored, 10);
-		if (Number.isNaN(parsed)) return DEFAULT_FONT_SIZE;
-		return clampFontSize(parsed);
-	} catch {
-		return DEFAULT_FONT_SIZE;
-	}
-};
-
-const persistFontSize = (): void => {
-	if (typeof localStorage === 'undefined') return;
-	try {
-		localStorage.setItem(FONT_SIZE_STORAGE_KEY, String(currentFontSize));
-	} catch {
-		// Ignore storage failures.
-	}
-};
-
-let currentFontSize = loadInitialFontSize();
 
 const bootstrapHandled = new Map<string, boolean>();
 const bootstrapFetchTimers = new Map<string, number>();
@@ -139,9 +109,7 @@ const ACK_FLUSH_DELAY_MS = 25;
 const INITIAL_STREAM_CREDIT = 256 * 1024;
 const HEALTH_TIMEOUT_MS = 1200;
 const STARTUP_OUTPUT_TIMEOUT_MS = 2000;
-const MAX_CLIPBOARD_BYTES = 1024 * 1024;
 const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
-const textDecoder = typeof TextDecoder !== 'undefined' ? new TextDecoder() : null;
 let globalsInitialized = false;
 
 const buildTerminalKey = (workspaceId: string, terminalId: string): TerminalKey => {
@@ -174,99 +142,6 @@ const syncDebugEnabled = (): void => {
 	debugEnabled = next;
 	emitAllStates();
 };
-
-const getClipboardPayloadBytes = (value: string): number => {
-	if (!value) return 0;
-	if (textEncoder) {
-		return textEncoder.encode(value).length;
-	}
-	return value.length;
-};
-
-const encodeClipboardText = (value: string): string => {
-	if (!value) return '';
-	if (typeof btoa === 'function') {
-		if (textEncoder) {
-			const bytes = textEncoder.encode(value);
-			let binary = '';
-			for (const byte of bytes) {
-				binary += String.fromCharCode(byte);
-			}
-			return btoa(binary);
-		}
-		try {
-			return btoa(value);
-		} catch {
-			return '';
-		}
-	}
-	return '';
-};
-
-const decodeClipboardText = (value: string): string => {
-	if (!value) return '';
-	const sanitized = value.replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
-	const padding = sanitized.length % 4;
-	const normalized = padding ? sanitized.padEnd(sanitized.length + (4 - padding), '=') : sanitized;
-	try {
-		if (typeof atob === 'function') {
-			const binary = atob(normalized);
-			if (textDecoder) {
-				const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-				return textDecoder.decode(bytes);
-			}
-			return binary;
-		}
-	} catch {
-		// Ignore invalid base64.
-	}
-	return '';
-};
-
-const createClipboardBase64 = (): {
-	encodeText: (data: string) => string;
-	decodeText: (data: string) => string;
-} => ({
-	encodeText: encodeClipboardText,
-	decodeText: decodeClipboardText,
-});
-
-const getRuntimeClipboard = (): ((text: string) => Promise<boolean>) | null => {
-	if (typeof window === 'undefined') return null;
-	const runtime = (
-		window as Window & {
-			runtime?: { ClipboardSetText?: (text: string) => Promise<boolean> };
-		}
-	).runtime;
-	if (!runtime?.ClipboardSetText) return null;
-	return runtime.ClipboardSetText.bind(runtime);
-};
-
-const createClipboardProvider = (): {
-	readText: (selection: ClipboardSelection) => Promise<string>;
-	writeText: (selection: ClipboardSelection, text: string) => Promise<void>;
-} => ({
-	readText: async (_selection) => '',
-	writeText: async (_selection, text) => {
-		if (!text) return;
-		if (getClipboardPayloadBytes(text) > MAX_CLIPBOARD_BYTES) return;
-		const runtimeClipboard = getRuntimeClipboard();
-		if (runtimeClipboard) {
-			try {
-				const ok = await runtimeClipboard(text);
-				if (ok) return;
-			} catch {
-				// Fall back to browser clipboard.
-			}
-		}
-		if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) return;
-		try {
-			await navigator.clipboard.writeText(text);
-		} catch {
-			// Ignore clipboard failures (permissions or missing API).
-		}
-	},
-});
 
 const buildState = (id: string): TerminalViewState => {
 	const stats = statsMap.get(id) ?? defaultStats();
@@ -403,88 +278,6 @@ const countBytes = (data: string): number => {
 		return textEncoder.encode(data).length;
 	}
 	return data.length;
-};
-
-const normalizeHex = (value: string | undefined | null): string | null => {
-	if (typeof value !== 'string') return null;
-	let hex = value.trim();
-	if (!hex) return null;
-	if (hex.startsWith('#')) {
-		hex = hex.slice(1);
-	}
-	if (hex.length === 3) {
-		hex = hex
-			.split('')
-			.map((item) => item + item)
-			.join('');
-	}
-	if (hex.length !== 6) return null;
-	return hex;
-};
-
-const toOscRgb = (value: string | undefined | null): string | null => {
-	const hex = normalizeHex(value);
-	if (!hex) return null;
-	const r = hex.slice(0, 2);
-	const g = hex.slice(2, 4);
-	const b = hex.slice(4, 6);
-	return `rgb:${r}/${g}/${b}`;
-};
-
-const defaultAnsiPalette = [
-	'#000000',
-	'#cd3131',
-	'#0dbc79',
-	'#e5e510',
-	'#2472c8',
-	'#bc3fbc',
-	'#11a8cd',
-	'#e5e5e5',
-	'#666666',
-	'#f14c4c',
-	'#23d18b',
-	'#f5f543',
-	'#3b8eea',
-	'#d670d6',
-	'#29b8db',
-	'#ffffff',
-];
-
-const themePalette = (theme: ITheme): string[] => {
-	return [
-		theme.black ?? defaultAnsiPalette[0],
-		theme.red ?? defaultAnsiPalette[1],
-		theme.green ?? defaultAnsiPalette[2],
-		theme.yellow ?? defaultAnsiPalette[3],
-		theme.blue ?? defaultAnsiPalette[4],
-		theme.magenta ?? defaultAnsiPalette[5],
-		theme.cyan ?? defaultAnsiPalette[6],
-		theme.white ?? defaultAnsiPalette[7],
-		theme.brightBlack ?? defaultAnsiPalette[8],
-		theme.brightRed ?? defaultAnsiPalette[9],
-		theme.brightGreen ?? defaultAnsiPalette[10],
-		theme.brightYellow ?? defaultAnsiPalette[11],
-		theme.brightBlue ?? defaultAnsiPalette[12],
-		theme.brightMagenta ?? defaultAnsiPalette[13],
-		theme.brightCyan ?? defaultAnsiPalette[14],
-		theme.brightWhite ?? defaultAnsiPalette[15],
-	];
-};
-
-const resolveThemeColor = (value: string | undefined, fallback: string): string | null => {
-	return toOscRgb(value ?? fallback);
-};
-
-const resolveAnsiColor = (terminal: Terminal, index: number): string | null => {
-	const theme = terminal.options.theme ?? {};
-	if (index < 16) {
-		const value = themePalette(theme)[index];
-		return value ? toOscRgb(value) : null;
-	}
-	if (index >= 16 && theme.extendedAnsi && theme.extendedAnsi[index - 16]) {
-		return toOscRgb(theme.extendedAnsi[index - 16]);
-	}
-	return null;
 };
 
 const getToken = (name: string, fallback: string): string => {
@@ -846,72 +639,6 @@ const refreshSessiondStatus = async (): Promise<void> => {
 	}
 };
 
-const registerOscHandlers = (id: string, terminal: Terminal): { dispose: () => void }[] => {
-	const disposables: { dispose: () => void }[] = [];
-	const respond = (payload: string): void => {
-		sendInput(id, `\x1b]${payload}\x07`);
-	};
-	disposables.push(
-		terminal.parser.registerOscHandler(10, (data) => {
-			if (data !== '?') return false;
-			const rgb = resolveThemeColor(
-				terminal.options.theme?.foreground,
-				getToken('--text', '#eef3f9'),
-			);
-			if (!rgb) return false;
-			respond(`10;${rgb}`);
-			return true;
-		}),
-	);
-	disposables.push(
-		terminal.parser.registerOscHandler(11, (data) => {
-			if (data !== '?') return false;
-			const rgb = resolveThemeColor(
-				terminal.options.theme?.background,
-				getToken('--panel-strong', '#111c29'),
-			);
-			if (!rgb) return false;
-			respond(`11;${rgb}`);
-			return true;
-		}),
-	);
-	disposables.push(
-		terminal.parser.registerOscHandler(12, (data) => {
-			if (data !== '?') return false;
-			const rgb = resolveThemeColor(
-				terminal.options.theme?.cursor,
-				getToken('--accent', '#2d8cff'),
-			);
-			if (!rgb) return false;
-			respond(`12;${rgb}`);
-			return true;
-		}),
-	);
-	disposables.push(
-		terminal.parser.registerOscHandler(4, (data) => {
-			const parts = data.split(';');
-			if (parts.length < 2 || parts.length % 2 !== 0) return false;
-			const responses: string[] = [];
-			for (let i = 0; i < parts.length; i += 2) {
-				const index = Number.parseInt(parts[i], 10);
-				const query = parts[i + 1];
-				if (!Number.isFinite(index) || query !== '?') {
-					return false;
-				}
-				const rgb = resolveAnsiColor(terminal, index);
-				if (!rgb) return false;
-				responses.push(`4;${index};${rgb}`);
-			}
-			if (responses.length === 0) return false;
-			for (const response of responses) {
-				respond(response);
-			}
-			return true;
-		}),
-	);
-	return disposables;
-};
-
 const terminalRendererAddonState = createTerminalRendererAddonState({
 	setRendererMode: (id, mode) => {
 		lifecycle.setRendererMode(id, mode);
@@ -950,20 +677,37 @@ const terminalAttachOpenLifecycle = createTerminalAttachOpenLifecycle({
 	},
 });
 
+const applyFontSizeToAllTerminals = (fontSize: number): void => {
+	for (const [id, handle] of terminalHandles.entries()) {
+		handle.terminal.options.fontSize = fontSize;
+		// Refit terminal to recalculate dimensions with new font size.
+		try {
+			terminalViewportResizeController.fitTerminal(id, lifecycle.hasStarted(id));
+		} catch {
+			// Ignore fit errors for terminals not attached to DOM.
+		}
+	}
+};
+
+const terminalFontSizeController = createTerminalFontSizeController({
+	onFontSizeChange: applyFontSizeToAllTerminals,
+});
+
 const terminalInstanceManager = createTerminalInstanceManager<KittyState>({
 	terminalHandles,
 	createTerminalInstance: () =>
 		createTerminalInstance({
-			fontSize: currentFontSize,
+			fontSize: terminalFontSizeController.getCurrentFontSize(),
 			getToken,
 		}),
 	createFitAddon: () => new FitAddon(),
 	createUnicode11Addon: () => new Unicode11Addon(),
 	createClipboardAddon: () =>
-		new ClipboardAddon(createClipboardBase64(), createClipboardProvider()),
+		new ClipboardAddon(createTerminalClipboardBase64(), createTerminalClipboardProvider()),
 	createKittyState,
 	syncTerminalWebLinks,
-	registerOscHandlers,
+	registerOscHandlers: (id, terminal) =>
+		registerTerminalOscHandlers(id, terminal, { sendInput, getToken }),
 	ensureMode: (id) => {
 		lifecycle.ensureMode(id);
 	},
@@ -1254,40 +998,16 @@ export const shutdownTerminalService = (): void => {
 };
 
 // Font size controls (VS Code style Cmd/Ctrl +/-)
-const applyFontSizeToAllTerminals = (): void => {
-	for (const [id, handle] of terminalHandles.entries()) {
-		handle.terminal.options.fontSize = currentFontSize;
-		// Refit terminal to recalculate dimensions with new font size.
-		try {
-			terminalViewportResizeController.fitTerminal(id, lifecycle.hasStarted(id));
-		} catch {
-			// Ignore fit errors for terminals not attached to DOM.
-		}
-	}
-};
-
 export const increaseFontSize = (): void => {
-	if (currentFontSize < MAX_FONT_SIZE) {
-		currentFontSize = Math.min(currentFontSize + FONT_SIZE_STEP, MAX_FONT_SIZE);
-		persistFontSize();
-		applyFontSizeToAllTerminals();
-	}
+	terminalFontSizeController.increaseFontSize();
 };
 
 export const decreaseFontSize = (): void => {
-	if (currentFontSize > MIN_FONT_SIZE) {
-		currentFontSize = Math.max(currentFontSize - FONT_SIZE_STEP, MIN_FONT_SIZE);
-		persistFontSize();
-		applyFontSizeToAllTerminals();
-	}
+	terminalFontSizeController.decreaseFontSize();
 };
 
 export const resetFontSize = (): void => {
-	if (currentFontSize !== DEFAULT_FONT_SIZE) {
-		currentFontSize = DEFAULT_FONT_SIZE;
-		persistFontSize();
-		applyFontSizeToAllTerminals();
-	}
+	terminalFontSizeController.resetFontSize();
 };
 
-export const getCurrentFontSize = (): number => currentFontSize;
+export const getCurrentFontSize = (): number => terminalFontSizeController.getCurrentFontSize();
