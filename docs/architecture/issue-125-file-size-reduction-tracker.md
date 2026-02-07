@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (main-agent pass 40)
+Last updated: 2026-02-07 (main-agent pass 41)
 
 ## Goal
 
@@ -20,10 +20,8 @@ Largest files by LOC right now:
 
 - `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (1978)
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
-- `wails-ui/workset/frontend/src/lib/components/settings/sections/SkillManager.svelte` (956)
 - `wails-ui/workset/app_diffs.go` (926)
 - `pkg/sessiond/terminal_filter.go` (889)
-- `wails-ui/workset/frontend/src/lib/components/SettingsPanel.svelte` (873)
 - `wails-ui/workset/frontend/src/lib/components/TerminalLayoutNode.svelte` (847)
 - `wails-ui/workset/repo_diff_watcher.go` (816)
 - `internal/git/cli.go` (795)
@@ -32,13 +30,15 @@ Largest files by LOC right now:
 - `internal/ops/remove.go` (680)
 - `cmd/workset/pr.go` (678)
 - `pkg/sessiond/server.go` (669)
+- `wails-ui/workset/frontend/src/lib/components/settings/sections/SkillManager.svelte` (663)
 - `pkg/worksetapi/github_service_read_helpers_test.go` (662)
+- `wails-ui/workset/app_github.go` (641)
 
 ## Parallel Tracks (Issue Map)
 
 - [x] `#124` Guardrails (must start first)
 - [ ] `#115` FE-DIFF (slice 16 landed; dead scoped CSS removed after extractions)
-- [ ] `#116` FE-WORKSPACE (slice 12 landed; manager/item/add-repo forms decomposed)
+- [ ] `#116` FE-WORKSPACE (slice 13 landed; manager/item/add-repo forms decomposed below 700)
 - [x] `#117` FE-TERMINAL (slice 20 landed; service now 491 LOC)
 - [x] `#118` FE-PLATFORM (slice 7 landed; settings side effects extracted)
 - [x] `#119` BE-SESSIOND (structural splits complete)
@@ -267,6 +267,10 @@ Tasks:
   Slice landed: extracted GitHub auth/review/PR/operations/mapping/user modules under `src/lib/api/github/*`; `src/lib/api/github.ts` is now a 46 LOC export barrel.
 - [x] Extract settings panel side effects into dedicated module.
   Slice landed: moved sessiond restart, terminal-layout reset, and updater orchestration into `components/settings/settingsPanelSideEffects.ts`, reducing `SettingsPanel.svelte` to 873 LOC and adding dedicated tests (`settingsPanelSideEffects.test.ts`).
+- [x] Extract About section into dedicated component.
+  Slice landed: moved about/version/update/link UI into `components/settings/sections/AboutSection.svelte`; `SettingsPanel.svelte` is now 505 LOC.
+- [x] Extract skill detail pane into dedicated component.
+  Slice landed: moved skill create/edit/sync/hint pane into `components/settings/sections/SkillDetailPanel.svelte`; `SkillManager.svelte` is now 663 LOC.
 - [x] Keep backward-compatible imports through adapter layer during migration.
 - [x] Remove adapter after callsites are migrated.
   Slice landed: migrated remaining frontend/test callsites to domain API modules, moved skills API into `api/skills.ts`, and removed the `src/lib/api.ts` compatibility barrel.
@@ -431,5 +435,5 @@ Verification:
 ## Immediate Next Actions
 
 1. Reconcile `#125` and `#116` progress state after pass 40 LOC changes.
-2. Continue remaining non-RepoDiff frontend files over 700 LOC before next `#115` RepoDiff slice.
+2. Continue remaining non-RepoDiff frontend files over 700 LOC (`TerminalWorkspace.svelte`) before next `#115` RepoDiff slice.
 3. Prepare closeout criteria for `#125` once remaining FE tracks are complete.
