@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (subagent pass 2)
+Last updated: 2026-02-07 (subagent pass 3)
 
 ## Goal
 
@@ -18,23 +18,23 @@ Reduce architecture risk from oversized files by splitting high-complexity modul
 
 Largest files by LOC right now:
 
-- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (4219)
-- `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (3016)
-- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (2440)
-- `pkg/sessiond/session.go` (2147)
-- `pkg/worksetapi/github_service.go` (2004)
+- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (4181)
+- `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2676)
+- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (2296)
+- `pkg/worksetapi/github_service.go` (1760)
 - `pkg/termemu/termemu.go` (1714)
 - `wails-ui/workset/frontend/src/lib/api.ts` (1312)
 - `wails-ui/workset/app_updates.go` (1114)
+- `pkg/sessiond/session.go` (1046)
 
 ## Parallel Tracks (Issue Map)
 
 - [x] `#124` Guardrails (must start first)
 - [ ] `#115` FE-DIFF (slice 1 landed)
 - [ ] `#116` FE-WORKSPACE (slice 1 landed)
-- [ ] `#117` FE-TERMINAL
+- [ ] `#117` FE-TERMINAL (slice 1 landed)
 - [ ] `#118` FE-PLATFORM
-- [ ] `#119` BE-SESSIOND (slice 1 landed)
+- [ ] `#119` BE-SESSIOND (slice 2 landed)
 - [ ] `#120` BE-GITHUB (slice 1 landed)
 - [ ] `#121` BE-TERMEMU
 - [ ] `#122` BE-UPDATER
@@ -91,11 +91,11 @@ Tasks:
 - [x] Implement `scripts/check-file-size.sh` (or Go equivalent) with path filters.
 - [x] Add config file for thresholds/allowlist.
 - [x] Add CI job step for policy enforcement.
-- [x] Add local command (`make check-size`).
+- [x] Add local command (`go run ./scripts/guardrails --config guardrails.yml --head-sha "$(git rev-parse HEAD)"`).
 
 Verification:
 
-- [x] `make check-size`
+- [x] `go run ./scripts/guardrails --config guardrails.yml --head-sha "$(git rev-parse HEAD)"`
 - [x] CI run shows failing sample + passing sample.
 
 ## `#115` FE-DIFF
@@ -167,15 +167,15 @@ Status:
 
 Remaining tasks:
 
-- [ ] Move lifecycle FSM to standalone module with explicit state graph.
+- [x] Move lifecycle FSM to standalone module with explicit state graph.
 - [ ] Remove remaining renderer/transport coupling from service shell.
 - [ ] Add service-level tests for reconnect/attach/detach/stream-release.
 - [ ] Shrink `terminalService.ts` to orchestration-only facade.
 
 Verification:
 
-- [ ] `cd wails-ui/workset/frontend && npm run test -- src/lib/terminal/*.test.ts`
-- [ ] `go test ./wails-ui/workset -run "TestTerminalSessionReleaseStream|TestEnsureServiceConcurrent" -count=1`
+- [x] `cd wails-ui/workset/frontend && npm run test -- src/lib/terminal/*.test.ts`
+- [x] `go test ./wails-ui/workset -run "TestTerminalSessionReleaseStream|TestEnsureServiceConcurrent" -count=1`
 
 ## `#118` FE-PLATFORM
 
@@ -216,6 +216,7 @@ Target architecture:
 Tasks:
 
 - [x] Extract terminal filter + protocol parsing/logging block into `pkg/sessiond/terminal_filter.go`.
+- [x] Extract stream/subscriber fanout + credit handling into `pkg/sessiond/stream.go`.
 - [ ] Extract protocol message handling package.
 - [ ] Extract backlog/snapshot logic package.
 - [ ] Extract lifecycle + process supervision package.
@@ -323,8 +324,8 @@ Verification:
 
 - [x] `make check`
 - [x] `go test ./...`
-- [ ] File-size policy check passes.
-- [ ] No new production file >700 LOC (unless allowlisted).
+- [x] File-size policy check passes.
+- [x] No new production file >700 LOC (unless allowlisted).
 
 ## Tracking Notes
 
@@ -334,6 +335,6 @@ Verification:
 
 ## Immediate Next Actions
 
-1. Start `#120` and `#116` in parallel (backend + frontend).
-2. Run second `#119` slice (backlog/persistence extraction) after `#120` setup.
-3. Update this tracker after each merged PR.
+1. Run `#119` slice 3: extract protocol message handling boundary from `session.go`.
+2. Run `#117` slice 2: remove remaining transport/renderer coupling from `terminalService.ts`.
+3. Run `#116` slice 2: separate modal state transitions and add transition/failure-path tests.

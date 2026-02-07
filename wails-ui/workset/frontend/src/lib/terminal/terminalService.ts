@@ -18,6 +18,7 @@ import { terminalTransport } from './terminalTransport';
 import { createTerminalInstance, createWebLinksAddon } from './terminalRenderer';
 import { TerminalStateStore } from './terminalStateStore';
 import { stripMouseReports } from './inputFilter';
+import { createTerminalLifecycle } from './terminalLifecycle';
 import { captureViewportSnapshot, resolveViewportTargetLine } from './viewport';
 
 export type TerminalViewState = {
@@ -251,8 +252,6 @@ const bootstrapHandled = new Map<string, boolean>();
 const bootstrapFetchTimers = new Map<string, number>();
 const focusTimers = new Map<string, number>();
 const lastDims = new Map<string, { cols: number; rows: number }>();
-const startupTimers = new Map<string, number>();
-const startInFlight = new Set<string>();
 const statsMap = new Map<
 	string,
 	{
@@ -265,7 +264,6 @@ const statsMap = new Map<
 >();
 const renderStatsMap = new Map<string, { lastRenderAt: number; renderCount: number }>();
 const pendingInput = new Map<string, string>();
-const pendingHealthCheck = new Map<string, number>();
 const pendingRenderCheck = new Map<string, number>();
 const pendingRedraw = new Set<string>();
 const renderCheckLogged = new Set<string>();
@@ -278,27 +276,12 @@ const fitStabilizers = new Map<string, number>();
 const reattachTimers = new Map<string, number>();
 const resizeObservers = new Map<string, ResizeObserver>();
 const resizeTimers = new Map<string, number>();
-const initTokens = new Map<string, number>();
-const startedSessions = new Set<string>();
 
-let sessiondAvailable: boolean | null = null;
-let sessiondChecked = false;
 let debugEnabled = false;
 let debugOverlayPreference: 'on' | 'off' | '' = '';
 
-let statusMap: Record<string, string> = {};
-let messageMap: Record<string, string> = {};
-let inputMap: Record<string, boolean> = {};
-let healthMap: Record<string, 'unknown' | 'checking' | 'ok' | 'stale'> = {};
-let healthMessageMap: Record<string, string> = {};
 let suppressMouseUntil: Record<string, number> = {};
 let mouseInputTail: Record<string, string> = {};
-let rendererMap: Record<string, 'unknown' | 'webgl'> = {};
-let rendererModeMap: Record<string, 'webgl'> = {};
-let modeMap: Record<
-	string,
-	{ altScreen: boolean; mouse: boolean; mouseSGR: boolean; mouseEncoding: string }
-> = {};
 
 const OUTPUT_FLUSH_BUDGET = 128 * 1024;
 const OUTPUT_BACKLOG_LIMIT = 512 * 1024;
@@ -405,7 +388,7 @@ const createClipboardBase64 = (): {
 const syncWebLinksForMode = (id: string): void => {
 	const handle = terminalHandles.get(id);
 	if (!handle) return;
-	const mouseActive = modeMap[id]?.mouse ?? false;
+	const mouseActive = lifecycle.getMode(id).mouse;
 	if (mouseActive) {
 		if (handle.webLinksAddon) {
 			handle.webLinksAddon.dispose();
@@ -460,15 +443,9 @@ const createClipboardProvider = (): {
 
 const buildState = (id: string): TerminalViewState => {
 	const stats = statsMap.get(id) ?? defaultStats();
+	const lifecycleState = lifecycle.getSnapshot(id);
 	return {
-		status: statusMap[id] ?? '',
-		message: messageMap[id] ?? '',
-		health: healthMap[id] ?? 'unknown',
-		healthMessage: healthMessageMap[id] ?? '',
-		renderer: rendererMap[id] ?? 'unknown',
-		rendererMode: rendererModeMap[id] ?? 'webgl',
-		sessiondAvailable,
-		sessiondChecked,
+		...lifecycleState,
 		debugEnabled,
 		debugStats: { ...stats },
 	};
@@ -485,6 +462,11 @@ const emitState = (id: string): void => {
 const emitAllStates = (): void => {
 	terminalStores.emitAll(buildState);
 };
+
+const lifecycle = createTerminalLifecycle({
+	emitState,
+	emitAllStates,
+});
 
 const subscribeEvent = <T>(event: string, handler: EventHandler<T>): (() => void) =>
 	terminalTransport.onEvent(event, handler);
@@ -537,14 +519,12 @@ const deleteRecordKey = <T>(record: Record<string, T>, id: string): Record<strin
 const destroyTerminalState = (id: string): void => {
 	if (!id) return;
 	clearTimeoutMap(focusTimers, id);
-	clearTimeoutMap(startupTimers, id);
 	clearTimeoutMap(bootstrapFetchTimers, id);
 	clearTimeoutMap(pendingRenderCheck, id);
 	clearTimeoutMap(ackTimers, id);
 	clearTimeoutMap(fitStabilizers, id);
 	clearTimeoutMap(reattachTimers, id);
 	clearTimeoutMap(resizeTimers, id);
-	clearTimeoutMap(pendingHealthCheck, id);
 	resetSessionState(id);
 	terminalStores.delete(id);
 	outputQueues.delete(id);
@@ -562,22 +542,12 @@ const destroyTerminalState = (id: string): void => {
 	pendingAckBytes.delete(id);
 	initialCreditMap.delete(id);
 	initialCreditSent.delete(id);
-	startInFlight.delete(id);
-	startedSessions.delete(id);
-	initTokens.delete(id);
+	lifecycle.deleteState(id);
 	const observer = resizeObservers.get(id);
 	if (observer) {
 		observer.disconnect();
 	}
 	resizeObservers.delete(id);
-	statusMap = deleteRecordKey(statusMap, id);
-	messageMap = deleteRecordKey(messageMap, id);
-	inputMap = deleteRecordKey(inputMap, id);
-	healthMap = deleteRecordKey(healthMap, id);
-	healthMessageMap = deleteRecordKey(healthMessageMap, id);
-	rendererMap = deleteRecordKey(rendererMap, id);
-	rendererModeMap = deleteRecordKey(rendererModeMap, id);
-	modeMap = deleteRecordKey(modeMap, id);
 	suppressMouseUntil = deleteRecordKey(suppressMouseUntil, id);
 	mouseInputTail = deleteRecordKey(mouseInputTail, id);
 };
@@ -638,13 +608,7 @@ const setHealth = (
 	state: 'unknown' | 'checking' | 'ok' | 'stale',
 	message = '',
 ): void => {
-	healthMap = { ...healthMap, [id]: state };
-	if (message) {
-		healthMessageMap = { ...healthMessageMap, [id]: message };
-	} else if (healthMessageMap[id]) {
-		healthMessageMap = { ...healthMessageMap, [id]: '' };
-	}
-	emitState(id);
+	lifecycle.setHealth(id, state, message);
 };
 
 const updateStats = (
@@ -991,12 +955,7 @@ const sendInput = (id: string, data: string): void => {
 	if (shouldSuppressMouseInput(id, data)) {
 		return;
 	}
-	const modes = modeMap[id] ?? {
-		altScreen: false,
-		mouse: false,
-		mouseSGR: false,
-		mouseEncoding: 'x10',
-	};
+	const modes = lifecycle.getMode(id);
 	const mouseResult = stripMouseReports(data, modes, mouseInputTail[id] ?? '');
 	if (mouseResult.tail !== (mouseInputTail[id] ?? '')) {
 		mouseInputTail = { ...mouseInputTail, [id]: mouseResult.tail };
@@ -1006,7 +965,7 @@ const sendInput = (id: string, data: string): void => {
 		return;
 	}
 	void ensureSessionActive(id);
-	if (!startedSessions.has(id)) {
+	if (!lifecycle.hasStarted(id)) {
 		pendingInput.set(id, (pendingInput.get(id) ?? '') + filtered);
 		return;
 	}
@@ -1018,7 +977,7 @@ const sendInput = (id: string, data: string): void => {
 	if (!workspaceId || !terminalId) return;
 	void terminalTransport.write(workspaceId, terminalId, filtered).catch((error: unknown) => {
 		pendingInput.set(id, (pendingInput.get(id) ?? '') + filtered);
-		startedSessions.delete(id);
+		lifecycle.markStopped(id);
 		if (
 			typeof error === 'string' &&
 			(error.includes('session not found') ||
@@ -1093,7 +1052,7 @@ const attachTerminal = (
 		terminal.loadAddon(clipboardAddon);
 		terminal.attachCustomKeyEventHandler((event) => {
 			if (event.key === 'Enter' && event.shiftKey) {
-				inputMap = { ...inputMap, [id]: true };
+				lifecycle.setInput(id, true);
 				void beginTerminal(id);
 				sendInput(id, '\x0a');
 				return false;
@@ -1101,14 +1060,14 @@ const attachTerminal = (
 			return true;
 		});
 		const dataDisposable = terminal.onData((data) => {
-			inputMap = { ...inputMap, [id]: true };
+			lifecycle.setInput(id, true);
 			void beginTerminal(id);
 			captureCpr(id, data);
 			sendInput(id, data);
 		});
 		const binaryDisposable = terminal.onBinary((data) => {
 			if (!data) return;
-			inputMap = { ...inputMap, [id]: true };
+			lifecycle.setInput(id, true);
 			void beginTerminal(id);
 			sendInput(id, data);
 		});
@@ -1130,12 +1089,7 @@ const attachTerminal = (
 		terminalHandles.set(id, handle);
 		syncWebLinksForMode(id);
 		handle.oscDisposables = registerOscHandlers(id, terminal);
-		if (!modeMap[id]) {
-			modeMap = {
-				...modeMap,
-				[id]: { altScreen: false, mouse: false, mouseSGR: false, mouseEncoding: 'x10' },
-			};
-		}
+		lifecycle.ensureMode(id);
 	}
 	if (handle.dataDisposable) {
 		handle.dataDisposable.dispose();
@@ -1144,14 +1098,14 @@ const attachTerminal = (
 		handle.binaryDisposable.dispose();
 	}
 	handle.dataDisposable = handle.terminal.onData((data) => {
-		inputMap = { ...inputMap, [id]: true };
+		lifecycle.setInput(id, true);
 		void beginTerminal(id);
 		captureCpr(id, data);
 		sendInput(id, data);
 	});
 	handle.binaryDisposable = handle.terminal.onBinary((data) => {
 		if (!data) return;
-		inputMap = { ...inputMap, [id]: true };
+		lifecycle.setInput(id, true);
 		void beginTerminal(id);
 		sendInput(id, data);
 	});
@@ -1226,7 +1180,7 @@ const attachResizeObserver = (id: string, container: HTMLDivElement | null): voi
 				resizeTimers.delete(id);
 				const handle = terminalHandles.get(id);
 				if (!handle) return;
-				fitTerminal(id, startedSessions.has(id));
+				fitTerminal(id, lifecycle.hasStarted(id));
 			}, RESIZE_DEBOUNCE_MS),
 		);
 	});
@@ -1279,7 +1233,7 @@ const scheduleFitStabilization = (id: string, reason: string): void => {
 			stableCount = 0;
 		}
 		lastDims.set(id, { cols: dims.cols, rows: dims.rows });
-		fitTerminal(id, startedSessions.has(id));
+		fitTerminal(id, lifecycle.hasStarted(id));
 		if (stableCount < 2 && attempts < 5) {
 			attempts += 1;
 			fitStabilizers.set(id, window.setTimeout(run, 80 + attempts * 30));
@@ -1377,7 +1331,7 @@ const resetSessionState = (id: string): void => {
 		window.clearTimeout(ackTimer);
 	}
 	ackTimers.delete(id);
-	pendingHealthCheck.delete(id);
+	lifecycle.dropHealthCheck(id);
 	const renderTimer = pendingRenderCheck.get(id);
 	if (renderTimer) {
 		window.clearTimeout(renderTimer);
@@ -1398,10 +1352,7 @@ const resetTerminalInstance = (id: string): void => {
 	handle.terminal.scrollToBottom();
 	handle.fitAddon.fit();
 	resizeKittyOverlay(handle);
-	modeMap = {
-		...modeMap,
-		[id]: { altScreen: false, mouse: false, mouseSGR: false, mouseEncoding: 'x10' },
-	};
+	lifecycle.setMode(id, { altScreen: false, mouse: false, mouseSGR: false, mouseEncoding: 'x10' });
 	if (mouseInputTail[id]) {
 		mouseInputTail = { ...mouseInputTail, [id]: '' };
 	}
@@ -1423,29 +1374,16 @@ const noteRender = (id: string): void => {
 };
 
 const scheduleStartupTimeout = (id: string): void => {
-	const existing = startupTimers.get(id);
-	if (existing) {
-		window.clearTimeout(existing);
-	}
-	startupTimers.set(
-		id,
-		window.setTimeout(() => {
-			startupTimers.delete(id);
-			if (startedSessions.has(id)) return;
-			statusMap = { ...statusMap, [id]: 'error' };
-			messageMap = { ...messageMap, [id]: 'Terminal startup timed out.' };
-			setHealth(id, 'stale', 'Terminal startup timed out.');
+	lifecycle.scheduleStartupTimeout(id, {
+		timeoutMs: STARTUP_OUTPUT_TIMEOUT_MS,
+		onTimeout: () => {
 			pendingInput.delete(id);
-			emitState(id);
-		}, STARTUP_OUTPUT_TIMEOUT_MS),
-	);
+		},
+	});
 };
 
 const clearStartupTimeout = (id: string): void => {
-	const timer = startupTimers.get(id);
-	if (!timer) return;
-	window.clearTimeout(timer);
-	startupTimers.delete(id);
+	lifecycle.clearStartupTimeout(id);
 };
 
 const logDebug = (id: string, event: string, details: Record<string, unknown>): void => {
@@ -1543,9 +1481,7 @@ const handleBootstrapPayload = (payload: TerminalBootstrapPayload): void => {
 		logDebug(id, 'bootstrap_duplicate', { source: payload.source ?? 'event' });
 		return;
 	}
-	if (!inputMap[id]) {
-		inputMap = { ...inputMap, [id]: true };
-	}
+	lifecycle.markInput(id);
 	if (payload.safeToReplay === false) {
 		setReplayStateDone(id);
 		bootstrapHandled.set(id, true);
@@ -1594,12 +1530,9 @@ const handleBootstrapDonePayload = (payload: TerminalBootstrapDonePayload): void
 	if (isWorkspaceMismatch(id, workspaceId, terminalId)) return;
 	const pending = pendingReplayOutput.get(id) ?? [];
 	const replayBytes = pending.reduce((sum, chunk) => sum + chunk.bytes, 0);
-	if (!inputMap[id]) {
-		inputMap = { ...inputMap, [id]: true };
-	}
-	if (statusMap[id] !== 'ready') {
-		statusMap = { ...statusMap, [id]: 'ready' };
-		messageMap = { ...messageMap, [id]: '' };
+	lifecycle.markInput(id);
+	if (lifecycle.getStatus(id) !== 'ready') {
+		lifecycle.setStatusAndMessage(id, 'ready', '');
 	}
 	scheduleRenderHealthCheck(id, replayBytes);
 	setReplayStateDone(id);
@@ -1772,20 +1705,7 @@ const scheduleRenderHealthCheck = (id: string, payloadBytes: number): void => {
 };
 
 const requestHealthCheck = (id: string): void => {
-	const existing = pendingHealthCheck.get(id);
-	if (existing) {
-		window.clearTimeout(existing);
-	}
-	setHealth(id, 'checking', 'Checking session health…');
-	pendingHealthCheck.set(
-		id,
-		window.setTimeout(() => {
-			pendingHealthCheck.delete(id);
-			if (!startedSessions.has(id)) {
-				setHealth(id, 'stale', 'Session not active.');
-			}
-		}, HEALTH_TIMEOUT_MS),
-	);
+	lifecycle.requestHealthCheck(id, { timeoutMs: HEALTH_TIMEOUT_MS });
 };
 
 const captureCpr = (id: string, data: string): void => {
@@ -1799,25 +1719,19 @@ const captureCpr = (id: string, data: string): void => {
 };
 
 const ensureSessionActive = async (id: string): Promise<void> => {
-	if (startedSessions.has(id) || startInFlight.has(id)) return;
-	if (sessiondAvailable !== true) return;
+	if (lifecycle.hasStarted(id) || lifecycle.hasStartInFlight(id)) return;
+	if (lifecycle.isSessiondAvailable() !== true) return;
 	const workspaceId = getWorkspaceId(id);
 	const terminalId = getTerminalId(id);
 	if (!workspaceId || !terminalId) return;
 	try {
 		const status = await terminalTransport.fetchStatus(workspaceId, terminalId);
 		if (status?.active) {
-			startedSessions.add(id);
-			statusMap = { ...statusMap, [id]: 'ready' };
-			messageMap = { ...messageMap, [id]: '' };
+			lifecycle.markStarted(id);
+			lifecycle.setStatusAndMessage(id, 'ready', '');
 			setHealth(id, 'ok', 'Session resumed.');
-			inputMap = { ...inputMap, [id]: true };
-			if (!rendererMap[id]) {
-				rendererMap = { ...rendererMap, [id]: 'unknown' };
-			}
-			if (!rendererModeMap[id]) {
-				rendererModeMap = { ...rendererModeMap, [id]: 'webgl' };
-			}
+			lifecycle.setInput(id, true);
+			lifecycle.ensureRendererDefaults(id);
 			emitState(id);
 		}
 	} catch {
@@ -1849,25 +1763,24 @@ const maybeFetchBootstrap = async (id: string, reason: string): Promise<void> =>
 };
 
 const beginTerminal = async (id: string, quiet = false): Promise<void> => {
-	if (!id || startedSessions.has(id) || startInFlight.has(id)) return;
+	if (!id || lifecycle.hasStarted(id) || lifecycle.hasStartInFlight(id)) return;
 	const workspaceId = getWorkspaceId(id);
 	const terminalId = getTerminalId(id);
 	if (!workspaceId || !terminalId) return;
-	startInFlight.add(id);
+	lifecycle.markStartInFlight(id);
 	resetSessionState(id);
 	bootstrapHandled.set(id, false);
 	setReplayState(id, 'replaying');
 	if (!quiet) {
-		statusMap = { ...statusMap, [id]: 'starting' };
-		messageMap = { ...messageMap, [id]: 'Waiting for shell output…' };
+		lifecycle.setStatusAndMessage(id, 'starting', 'Waiting for shell output…');
 		setHealth(id, 'unknown');
-		inputMap = { ...inputMap, [id]: false };
+		lifecycle.setInput(id, false);
 		scheduleStartupTimeout(id);
 		emitState(id);
 	}
 	try {
 		await terminalTransport.start(workspaceId, terminalId);
-		startedSessions.add(id);
+		lifecycle.markStarted(id);
 		const queued = pendingInput.get(id);
 		if (queued) {
 			pendingInput.delete(id);
@@ -1887,8 +1800,7 @@ const beginTerminal = async (id: string, quiet = false): Promise<void> => {
 			}, 200),
 		);
 	} catch (error) {
-		statusMap = { ...statusMap, [id]: 'error' };
-		messageMap = { ...messageMap, [id]: String(error) };
+		lifecycle.setStatusAndMessage(id, 'error', String(error));
 		setHealth(id, 'stale', 'Failed to start terminal.');
 		clearStartupTimeout(id);
 		pendingInput.delete(id);
@@ -1896,23 +1808,23 @@ const beginTerminal = async (id: string, quiet = false): Promise<void> => {
 		handle?.terminal.write(`\r\n[workset] failed to start terminal: ${String(error)}`);
 		emitState(id);
 	} finally {
-		startInFlight.delete(id);
+		lifecycle.clearStartInFlight(id);
 	}
 };
 
 const ensureStream = async (id: string): Promise<void> => {
-	if (!id || startInFlight.has(id)) return;
+	if (!id || lifecycle.hasStartInFlight(id)) return;
 	const workspaceId = getWorkspaceId(id);
 	const terminalId = getTerminalId(id);
 	if (!workspaceId || !terminalId) return;
-	startInFlight.add(id);
+	lifecycle.markStartInFlight(id);
 	try {
 		await terminalTransport.start(workspaceId, terminalId);
-		startedSessions.add(id);
+		lifecycle.markStarted(id);
 	} catch (error) {
 		logDebug(id, 'ensure_stream_failed', { error: String(error) });
 	} finally {
-		startInFlight.delete(id);
+		lifecycle.clearStartInFlight(id);
 	}
 };
 
@@ -1942,12 +1854,9 @@ const loadTerminalDefaults = async (): Promise<void> => {
 const refreshSessiondStatus = async (): Promise<void> => {
 	try {
 		const status = await terminalTransport.fetchSessiondStatus();
-		sessiondAvailable = status?.available ?? false;
+		lifecycle.setSessiondStatus(status?.available ?? false);
 	} catch {
-		sessiondAvailable = false;
-	} finally {
-		sessiondChecked = true;
-		emitAllStates();
+		lifecycle.setSessiondStatus(false);
 	}
 };
 
@@ -2018,17 +1927,16 @@ const registerOscHandlers = (id: string, terminal: Terminal): { dispose: () => v
 };
 
 const loadRendererAddon = async (handle: TerminalHandle, id: string): Promise<void> => {
-	rendererModeMap = { ...rendererModeMap, [id]: 'webgl' };
+	lifecycle.setRendererMode(id, 'webgl');
 	try {
 		if (!handle.webglAddon) {
 			handle.webglAddon = new WebglAddon();
 			handle.terminal.loadAddon(handle.webglAddon);
 		}
-		rendererMap = { ...rendererMap, [id]: 'webgl' };
+		lifecycle.setRenderer(id, 'webgl');
 	} catch (error) {
-		rendererMap = { ...rendererMap, [id]: 'unknown' };
-		statusMap = { ...statusMap, [id]: 'error' };
-		messageMap = { ...messageMap, [id]: 'WebGL renderer unavailable.' };
+		lifecycle.setRenderer(id, 'unknown');
+		lifecycle.setStatusAndMessage(id, 'error', 'WebGL renderer unavailable.');
 		setHealth(id, 'stale', 'WebGL renderer unavailable.');
 		logDebug(id, 'renderer_webgl_failed', { error: String(error) });
 	}
@@ -2044,9 +1952,7 @@ const ensureListener = (): void => {
 			const id = buildTerminalKey(workspaceId, terminalId);
 			if (!id) return;
 			if (isWorkspaceMismatch(id, workspaceId, terminalId)) return;
-			if (!inputMap[id]) {
-				inputMap = { ...inputMap, [id]: true };
-			}
+			lifecycle.markInput(id);
 			const bytes = payload.bytes && payload.bytes > 0 ? payload.bytes : countBytes(payload.data);
 			const replayStateValue = replayState.get(id) ?? 'unknown';
 			const isLive = replayStateValue === 'live';
@@ -2088,40 +1994,7 @@ const ensureListener = (): void => {
 			const id = buildTerminalKey(workspaceId, terminalId);
 			if (!id) return;
 			if (isWorkspaceMismatch(id, workspaceId, terminalId)) return;
-			if (payload.status === 'started') {
-				startedSessions.add(id);
-				statusMap = { ...statusMap, [id]: 'ready' };
-				messageMap = { ...messageMap, [id]: '' };
-				inputMap = { ...inputMap, [id]: true };
-				clearStartupTimeout(id);
-				setHealth(id, 'ok', 'Session started.');
-				emitState(id);
-				return;
-			}
-			if (payload.status === 'closed') {
-				startedSessions.delete(id);
-				statusMap = { ...statusMap, [id]: 'closed' };
-				setHealth(id, 'stale', 'Session closed.');
-				emitState(id);
-				return;
-			}
-			if (payload.status === 'idle') {
-				startedSessions.delete(id);
-				statusMap = { ...statusMap, [id]: 'idle' };
-				setHealth(id, 'unknown');
-				emitState(id);
-				return;
-			}
-			if (payload.status === 'error') {
-				startedSessions.delete(id);
-				statusMap = { ...statusMap, [id]: 'error' };
-				messageMap = {
-					...messageMap,
-					[id]: payload.message ?? 'Terminal error',
-				};
-				setHealth(id, 'stale', payload.message ?? 'Terminal error');
-				emitState(id);
-			}
+			lifecycle.applyLifecyclePayload(id, payload);
 		};
 		unsubscribeHandlers.push(subscribeEvent(EVENT_TERMINAL_LIFECYCLE, handler));
 		listeners.add(EVENT_TERMINAL_LIFECYCLE);
@@ -2134,15 +2007,12 @@ const ensureListener = (): void => {
 			const id = buildTerminalKey(workspaceId, terminalId);
 			if (!id) return;
 			if (isWorkspaceMismatch(id, workspaceId, terminalId)) return;
-			modeMap = {
-				...modeMap,
-				[id]: {
-					altScreen: payload.altScreen ?? false,
-					mouse: payload.mouse ?? false,
-					mouseSGR: payload.mouseSGR ?? false,
-					mouseEncoding: payload.mouseEncoding ?? 'x10',
-				},
-			};
+			lifecycle.setMode(id, {
+				altScreen: payload.altScreen ?? false,
+				mouse: payload.mouse ?? false,
+				mouseSGR: payload.mouseSGR ?? false,
+				mouseEncoding: payload.mouseEncoding ?? 'x10',
+			});
 			syncWebLinksForMode(id);
 		};
 		unsubscribeHandlers.push(subscribeEvent(EVENT_TERMINAL_MODES, handler));
@@ -2171,13 +2041,12 @@ const ensureListener = (): void => {
 	}
 	if (!listeners.has(EVENT_SESSIOND_RESTARTED)) {
 		const handler = (): void => {
-			sessiondChecked = false;
+			lifecycle.resetSessiondChecked();
 			void (async () => {
 				await refreshSessiondStatus();
-				if (sessiondAvailable !== true) return;
+				if (lifecycle.isSessiondAvailable() !== true) return;
 				for (const id of terminalContexts.keys()) {
-					startedSessions.delete(id);
-					startInFlight.delete(id);
+					lifecycle.clearSessionFlags(id);
 					resetTerminalInstance(id);
 					resetSessionState(id);
 					noteMouseSuppress(id, 4000);
@@ -2199,16 +2068,15 @@ const cleanupListeners = (): void => {
 
 const initTerminal = async (id: string): Promise<void> => {
 	if (!id) return;
-	const token = (initTokens.get(id) ?? 0) + 1;
-	initTokens.set(id, token);
+	const token = lifecycle.nextInitToken(id);
 	ensureListener();
-	if (!sessiondChecked) {
+	if (!lifecycle.isSessiondChecked()) {
 		await refreshSessiondStatus();
 	}
 	const ctx = getContext(id);
 	attachTerminal(id, ctx?.container ?? null, ctx?.active ?? false);
 	let resumed = false;
-	if (sessiondAvailable === true) {
+	if (lifecycle.isSessiondAvailable() === true) {
 		try {
 			const workspaceId = getWorkspaceId(id);
 			const terminalId = getTerminalId(id);
@@ -2222,32 +2090,20 @@ const initTerminal = async (id: string): Promise<void> => {
 	}
 	if (resumed) {
 		await beginTerminal(id, true);
-		inputMap = { ...inputMap, [id]: true };
-		statusMap = { ...statusMap, [id]: 'ready' };
-		messageMap = { ...messageMap, [id]: '' };
+		lifecycle.setInput(id, true);
+		lifecycle.setStatusAndMessage(id, 'ready', '');
 		setHealth(id, 'ok', 'Session resumed.');
-		if (!rendererMap[id]) {
-			rendererMap = { ...rendererMap, [id]: 'unknown' };
-		}
-		if (!rendererModeMap[id]) {
-			rendererModeMap = { ...rendererModeMap, [id]: 'webgl' };
-		}
+		lifecycle.ensureRendererDefaults(id);
 		emitState(id);
 		return;
 	}
-	if (token !== initTokens.get(id)) return;
-	pendingHealthCheck.delete(id);
-	if (!startedSessions.has(id) && !startInFlight.has(id)) {
-		statusMap = { ...statusMap, [id]: 'standby' };
-		messageMap = { ...messageMap, [id]: '' };
+	if (!lifecycle.isCurrentInitToken(id, token)) return;
+	lifecycle.dropHealthCheck(id);
+	if (!lifecycle.hasStarted(id) && !lifecycle.hasStartInFlight(id)) {
+		lifecycle.setStatusAndMessage(id, 'standby', '');
 		setHealth(id, 'unknown');
-		if (!rendererMap[id]) {
-			rendererMap = { ...rendererMap, [id]: 'unknown' };
-		}
-		if (!rendererModeMap[id]) {
-			rendererModeMap = { ...rendererModeMap, [id]: 'webgl' };
-		}
-		inputMap = { ...inputMap, [id]: false };
+		lifecycle.ensureRendererDefaults(id);
+		lifecycle.setInput(id, false);
 		emitState(id);
 	}
 };
@@ -2309,7 +2165,7 @@ export const syncTerminal = (input: {
 		attachResizeObserver(terminalKey, input.container);
 		if (input.active) {
 			requestAnimationFrame(() => {
-				fitTerminal(terminalKey, startedSessions.has(terminalKey));
+				fitTerminal(terminalKey, lifecycle.hasStarted(terminalKey));
 				forceRedraw(terminalKey);
 				const handle = terminalHandles.get(terminalKey);
 				if (handle && !hasVisibleContent(handle.terminal)) {
@@ -2322,9 +2178,9 @@ export const syncTerminal = (input: {
 		await initTerminal(terminalKey);
 		const current = terminalContexts.get(terminalKey);
 		if (current?.container) {
-			if (startedSessions.has(terminalKey)) {
+			if (lifecycle.hasStarted(terminalKey)) {
 				void ensureStream(terminalKey);
-			} else if (statusMap[terminalKey] === 'standby') {
+			} else if (lifecycle.getStatus(terminalKey) === 'standby') {
 				await beginTerminal(terminalKey, !current.active);
 			}
 		}
@@ -2406,7 +2262,7 @@ const applyFontSizeToAllTerminals = (): void => {
 		handle.terminal.options.fontSize = currentFontSize;
 		// Refit terminal to recalculate dimensions with new font size.
 		try {
-			fitTerminal(id, startedSessions.has(id));
+			fitTerminal(id, lifecycle.hasStarted(id));
 		} catch {
 			// Ignore fit errors for terminals not attached to DOM.
 		}
