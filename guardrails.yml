@@ -22,8 +22,4 @@ ignore:
   - '**/*.gen.*'
   - '**/*_generated.*'
 
-allowlist:
-  - wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte
-  - wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte
-  - wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte
-  - wails-ui/workset/frontend/src/lib/components/WorkspaceManager.svelte
+allowlist: []
