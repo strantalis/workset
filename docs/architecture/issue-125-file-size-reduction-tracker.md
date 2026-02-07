@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (subagent pass 4)
+Last updated: 2026-02-07 (subagent pass 5)
 
 ## Goal
 
@@ -19,7 +19,7 @@ Reduce architecture risk from oversized files by splitting high-complexity modul
 Largest files by LOC right now:
 
 - `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (4181)
-- `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2676)
+- `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2616)
 - `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (2296)
 - `pkg/worksetapi/github_service.go` (1760)
 - `pkg/termemu/termemu.go` (1714)
@@ -31,10 +31,10 @@ Largest files by LOC right now:
 
 - [x] `#124` Guardrails (must start first)
 - [ ] `#115` FE-DIFF (slice 1 landed)
-- [ ] `#116` FE-WORKSPACE (slice 1 landed)
+- [ ] `#116` FE-WORKSPACE (slice 2 landed)
 - [ ] `#117` FE-TERMINAL (slice 1 landed)
 - [ ] `#118` FE-PLATFORM
-- [ ] `#119` BE-SESSIOND (slice 3 landed)
+- [ ] `#119` BE-SESSIOND (slice 4 landed)
 - [ ] `#120` BE-GITHUB (slice 1 landed)
 - [ ] `#121` BE-TERMEMU
 - [ ] `#122` BE-UPDATER
@@ -144,16 +144,17 @@ Tasks:
 
 - [x] Extract hook-results phase UI into `workspace-action/WorkspaceActionHookResults.svelte`.
 - [x] Extract removal overlay UI into `workspace-action/RemovalOverlay.svelte`.
+- [x] Extract create/add mutation + hook transition logic into `services/workspaceActionService.ts`.
 - [ ] Separate modal state transitions from UI markup.
 - [ ] Extract workspace mutations into dedicated service.
 - [ ] Split large modal sections into components.
-- [ ] Add tests for action-state transitions and failure paths.
+- [x] Add tests for action-state transitions and failure paths.
 
 Verification:
 
 - [x] `cd wails-ui/workset/frontend && npm run test -- src/lib/components/workspace-action/*.test.ts`
-- [ ] `cd wails-ui/workset/frontend && npm run test -- src/lib/components/Workspace*.spec.ts`
-- [ ] `cd wails-ui/workset/frontend && npm run lint`
+- [x] `cd wails-ui/workset/frontend && npm run test -- src/lib/components/Workspace*.spec.ts`
+- [x] `cd wails-ui/workset/frontend && npm run lint`
 
 ## `#117` FE-TERMINAL
 
@@ -218,7 +219,7 @@ Tasks:
 - [x] Extract terminal filter + protocol parsing/logging block into `pkg/sessiond/terminal_filter.go`.
 - [x] Extract stream/subscriber fanout + credit handling into `pkg/sessiond/stream.go`.
 - [x] Extract persistence/snapshot + transcript/recording subsystem into `pkg/sessiond/session_persist.go`.
-- [ ] Extract protocol message handling package.
+- [x] Extract protocol message handling package.
 - [ ] Extract backlog/snapshot logic package.
 - [ ] Extract lifecycle + process supervision package.
 - [ ] Keep public session behavior and API unchanged.
@@ -336,6 +337,6 @@ Verification:
 
 ## Immediate Next Actions
 
-1. Run `#119` slice 4: extract protocol message handling boundary from `session.go`.
-2. Run `#119` slice 5: extract lifecycle/process supervision boundary from `session.go`.
-3. Run `#116` slice 2: separate modal state transitions and add transition/failure-path tests.
+1. Run `#119` slice 5: extract lifecycle/process supervision boundary from `session.go`.
+2. Run `#120` slice 2: split `github_service.go` read and write paths.
+3. Run `#116` slice 3: move remaining modal state transitions/mutations out of `WorkspaceActionModal.svelte`.

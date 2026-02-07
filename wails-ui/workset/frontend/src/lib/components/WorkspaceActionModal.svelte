@@ -41,6 +41,11 @@
 		deriveRepoName,
 		isRepoSource,
 	} from '../names';
+	import {
+		evaluateHookTransition,
+		runAddItemsMutation,
+		runCreateWorkspaceMutation,
+	} from '../services/workspaceActionService';
 	import Alert from './ui/Alert.svelte';
 	import Button from './ui/Button.svelte';
 	import Modal from './Modal.svelte';
@@ -566,62 +571,32 @@
 		hookWorkspaceId = null;
 		beginHookTracking('workspace.create', finalName);
 		try {
-			// Auto-add primaryInput if it's a repo source and not already added
-			const reposToProcess = [...directRepos];
-			const pendingSource = primaryInput.trim();
-			if (
-				pendingSource &&
-				isRepoSource(pendingSource) &&
-				!reposToProcess.some((r) => r.url === pendingSource)
-			) {
-				reposToProcess.push({ url: pendingSource, register: true });
-			}
-
-			const repos: string[] = [];
-
-			// Register direct repos that have register=true, then add by name
-			for (const r of reposToProcess) {
-				const repoName = deriveRepoName(r.url) || r.url;
-				if (r.register) {
-					// Register the repo in global config
-					await registerRepo(repoName, r.url, '', '');
-				}
-				// Use the derived name (or URL if can't derive) - will resolve to registered repo or direct URL
-				repos.push(r.register ? repoName : r.url);
-			}
-
-			// Add any selected aliases
-			for (const alias of selectedAliases) {
-				repos.push(alias);
-			}
-
-			// Groups from selection
-			const groups = Array.from(selectedGroups);
-
-			const result = await createWorkspace(
-				finalName,
-				'',
-				repos.length > 0 ? repos : undefined,
-				groups.length > 0 ? groups : undefined,
+			const result = await runCreateWorkspaceMutation(
+				{
+					finalName,
+					primaryInput,
+					directRepos,
+					selectedAliases,
+					selectedGroups,
+				},
+				{
+					registerRepo,
+					createWorkspace,
+				},
 			);
 
 			appendHookRuns(result.hookRuns);
-			pendingHooks = (result.pendingHooks ?? []).map((pending) => ({ ...pending }));
-			hookWorkspaceId = result.workspace.name;
+			pendingHooks = result.pendingHooks.map((pending) => ({ ...pending }));
+			hookWorkspaceId = result.workspaceName;
 			await loadWorkspaces(true);
-			selectWorkspace(result.workspace.name);
-			const createdWarnings = result.warnings ?? [];
-			if (createdWarnings.length > 0) {
-				warnings = Array.from(new Set(createdWarnings));
-			}
-			const hasHookActivity = warnings.length > 0 || pendingHooks.length > 0 || hookRuns.length > 0;
-			if (hasHookActivity) {
-				success = `Created ${result.workspace.name}.`;
-				hookResultContext = { action: 'created', name: result.workspace.name };
+			selectWorkspace(result.workspaceName);
+			warnings = result.warnings;
+			const transition = evaluateHookTransition({ warnings, pendingHooks, hookRuns });
+			if (transition.hasHookActivity) {
+				success = `Created ${result.workspaceName}.`;
+				hookResultContext = { action: 'created', name: result.workspaceName };
 				phase = 'hook-results';
-				// Auto-close only when everything completed cleanly
-				const allRunsOk = hookRuns.every((r) => r.status === 'ok' || r.status === 'skipped');
-				if (pendingHooks.length === 0 && warnings.length === 0 && allRunsOk) {
+				if (transition.shouldAutoClose) {
 					autoCloseTimer = setTimeout(() => onClose(), 1500);
 				}
 			} else {
@@ -682,60 +657,27 @@
 		hookWorkspaceId = workspace.id;
 		beginHookTracking('repo.add', workspace.name);
 		try {
-			const collectedWarnings: string[] = [];
-			const collectedPending: {
-				event: string;
-				repo: string;
-				hooks: string[];
-				status?: string;
-				reason?: string;
-			}[] = [];
-			const collectedRuns: HookExecution[] = [];
-			// 1. Add direct repo URL if provided
-			if (hasSource) {
-				const result = await addRepo(workspace.id, source, '', '');
-				if (result.warnings?.length) {
-					collectedWarnings.push(...result.warnings);
-				}
-				if (result.pendingHooks?.length) {
-					collectedPending.push(...result.pendingHooks);
-				}
-				if (result.hookRuns?.length) {
-					collectedRuns.push(...result.hookRuns);
-				}
-			}
-			// 2. Add each selected alias
-			for (const alias of selectedAliases) {
-				const result = await addRepo(workspace.id, alias, '', '');
-				if (result.warnings?.length) {
-					collectedWarnings.push(...result.warnings);
-				}
-				if (result.pendingHooks?.length) {
-					collectedPending.push(...result.pendingHooks);
-				}
-				if (result.hookRuns?.length) {
-					collectedRuns.push(...result.hookRuns);
-				}
-			}
-			// 3. Apply each selected group
-			for (const group of selectedGroups) {
-				await applyGroup(workspace.id, group);
-			}
+			const result = await runAddItemsMutation(
+				{
+					workspaceId: workspace.id,
+					source,
+					selectedAliases,
+					selectedGroups,
+				},
+				{
+					addRepo,
+					applyGroup,
+				},
+			);
 
-			appendHookRuns(collectedRuns);
-			const pendingByKey = new Map<string, (typeof pendingHooks)[number]>();
-			for (const pending of collectedPending) {
-				pendingByKey.set(`${pending.repo}:${pending.event}`, { ...pending });
-			}
-			pendingHooks = Array.from(pendingByKey.values());
+			appendHookRuns(result.hookRuns);
+			pendingHooks = result.pendingHooks.map((pending) => ({ ...pending }));
 
 			await loadWorkspaces(true);
-			const itemCount = (hasSource ? 1 : 0) + selectedAliases.size + selectedGroups.size;
-			if (collectedWarnings.length > 0) {
-				warnings = Array.from(new Set(collectedWarnings));
-			}
-			const hasHookActivity = warnings.length > 0 || pendingHooks.length > 0 || hookRuns.length > 0;
-			if (hasHookActivity) {
+			const itemCount = result.itemCount;
+			warnings = result.warnings;
+			const transition = evaluateHookTransition({ warnings, pendingHooks, hookRuns });
+			if (transition.hasHookActivity) {
 				success = `Added ${itemCount} item${itemCount !== 1 ? 's' : ''}.`;
 				hookResultContext = {
 					action: 'added',
@@ -743,9 +685,7 @@
 					itemCount,
 				};
 				phase = 'hook-results';
-				// Auto-close only when everything completed cleanly
-				const allRunsOk = hookRuns.every((r) => r.status === 'ok' || r.status === 'skipped');
-				if (pendingHooks.length === 0 && warnings.length === 0 && allRunsOk) {
+				if (transition.shouldAutoClose) {
 					autoCloseTimer = setTimeout(() => onClose(), 1500);
 				}
 			} else {
