@@ -3,7 +3,7 @@
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
 Last updated: 2026-02-07 (main-agent pass 46)
-Program status: closed; follow-up backend decomposition tracked in `#134`.
+Program status: closed.
 
 ## Goal
 
