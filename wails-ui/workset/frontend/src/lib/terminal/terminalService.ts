@@ -35,6 +35,8 @@ import { createTerminalSessionCoordinator } from './terminalSessionCoordinator';
 import { createTerminalResourceLifecycle } from './terminalResourceLifecycle';
 import { createTerminalServiceExports } from './terminalServiceExports';
 import { createTerminalInstanceOrchestration } from './terminalInstanceOrchestration';
+import { createTerminalDebugState } from './terminalDebugState';
+import { createTerminalMouseState } from './terminalMouseState';
 
 export type TerminalViewState = {
 	status: string;
@@ -78,12 +80,6 @@ const statsMap = new Map<
 >();
 const pendingInput = new Map<string, string>();
 
-let debugEnabled = false;
-let debugOverlayPreference: 'on' | 'off' | '' = '';
-
-let suppressMouseUntil: Record<string, number> = {};
-let mouseInputTail: Record<string, string> = {};
-
 const ACK_BATCH_BYTES = 32 * 1024;
 const ACK_FLUSH_DELAY_MS = 25;
 const INITIAL_STREAM_CREDIT = 256 * 1024;
@@ -101,28 +97,12 @@ const defaultStats = () => ({
 	lastCprAt: 0,
 });
 
-const resolveDebugEnabled = (): boolean => {
-	if (debugOverlayPreference === 'on') return true;
-	if (debugOverlayPreference === 'off') return false;
-	if (typeof localStorage !== 'undefined') {
-		return localStorage.getItem('worksetTerminalDebug') === '1';
-	}
-	return false;
-};
-
-const syncDebugEnabled = (): void => {
-	const next = resolveDebugEnabled();
-	if (next === debugEnabled) return;
-	debugEnabled = next;
-	emitAllStates();
-};
-
 const buildState = (id: string): TerminalViewState => {
 	const stats = statsMap.get(id) ?? defaultStats();
 	const lifecycleState = lifecycle.getSnapshot(id);
 	return {
 		...lifecycleState,
-		debugEnabled,
+		debugEnabled: terminalDebugState.isDebugEnabled(),
 		debugStats: { ...stats },
 	};
 };
@@ -138,6 +118,12 @@ const emitState = (id: string): void => {
 const emitAllStates = (): void => {
 	terminalStores.emitAll(buildState);
 };
+
+const terminalDebugState = createTerminalDebugState({
+	emitAllStates,
+});
+
+const terminalMouseState = createTerminalMouseState();
 
 const lifecycle = createTerminalLifecycle({
 	emitState,
@@ -160,13 +146,6 @@ const clearTimeoutMap = (map: Map<string, number>, id: string): void => {
 	if (!timer) return;
 	window.clearTimeout(timer);
 	map.delete(id);
-};
-
-const deleteRecordKey = <T>(record: Record<string, T>, id: string): Record<string, T> => {
-	if (!Object.prototype.hasOwnProperty.call(record, id)) return record;
-	const next = { ...record };
-	delete next[id];
-	return next;
 };
 
 const disposeTerminalResources = (id: string): void => {
@@ -202,7 +181,7 @@ const updateStats = (
 	const stats = statsMap.get(id) ?? defaultStats();
 	update(stats);
 	statsMap.set(id, stats);
-	if (debugEnabled) {
+	if (terminalDebugState.isDebugEnabled()) {
 		emitState(id);
 	}
 };
@@ -223,26 +202,12 @@ const terminalKittyController = createTerminalKittyController<TerminalHandle>({
 	getHandle: (id) => terminalHandles.get(id),
 });
 
-const noteMouseSuppress = (id: string, durationMs: number): void => {
-	suppressMouseUntil = { ...suppressMouseUntil, [id]: Date.now() + durationMs };
-};
-
-const shouldSuppressMouseInput = (id: string, data: string): boolean => {
-	const until = suppressMouseUntil[id];
-	if (!until || Date.now() >= until) {
-		return false;
-	}
-	return data.includes('\x1b[<');
-};
-
 const terminalInputOrchestrator = createTerminalInputOrchestrator({
-	shouldSuppressMouseInput,
+	shouldSuppressMouseInput: (id, data) => terminalMouseState.shouldSuppressInput(id, data),
 	getMode: (id) => lifecycle.getMode(id),
 	filterMouseReports: stripMouseReports,
-	getMouseTail: (id) => mouseInputTail[id] ?? '',
-	setMouseTail: (id, tail) => {
-		mouseInputTail = { ...mouseInputTail, [id]: tail };
-	},
+	getMouseTail: (id) => terminalMouseState.getTail(id),
+	setMouseTail: (id, tail) => terminalMouseState.setTail(id, tail),
 	ensureSessionActive: (id) => ensureSessionActive(id),
 	hasStarted: (id) => lifecycle.hasStarted(id),
 	appendPendingInput: (id, data) => {
@@ -286,8 +251,8 @@ const updateStatsLastOutput = (id: string): void => {
 };
 
 const logDebug = (id: string, event: string, details: Record<string, unknown>): void => {
-	syncDebugEnabled();
-	if (!debugEnabled) return;
+	terminalDebugState.syncDebugEnabled();
+	if (!terminalDebugState.isDebugEnabled()) return;
 	const workspaceId = getWorkspaceId(id);
 	const terminalId = getTerminalId(id);
 	if (!workspaceId || !terminalId) return;
@@ -495,20 +460,15 @@ const terminalResourceLifecycle = createTerminalResourceLifecycle<TerminalHandle
 	clearRenderHealthSession: (id) => renderHealth.clearSession(id),
 	deleteLifecycleState: (id) => lifecycle.deleteState(id),
 	dropHealthCheck: (id) => lifecycle.dropHealthCheck(id),
-	clearMouseSuppression: (id) => {
-		suppressMouseUntil = deleteRecordKey(suppressMouseUntil, id);
-	},
-	clearMouseTail: (id) => {
-		if (!mouseInputTail[id]) return;
-		mouseInputTail = { ...mouseInputTail, [id]: '' };
-	},
+	clearMouseSuppression: (id) => terminalMouseState.clearSuppression(id),
+	clearMouseTail: (id) => terminalMouseState.clearTail(id),
 	releaseAttachState: (id) => terminalAttachState.release(id),
 	disposeTerminalInstance: (id) => terminalInstanceManager.dispose(id),
 	getHandle: (id) => terminalHandles.get(id),
 	resizeOverlay: (handle) => terminalKittyController.resizeOverlay(handle),
 	setMode: (id, mode) => lifecycle.setMode(id, mode),
 	loadRendererAddon: (id, handle) => terminalRendererAddonState.load(id, handle),
-	noteMouseSuppress,
+	noteMouseSuppress: (id, durationMs) => terminalMouseState.noteSuppress(id, durationMs),
 });
 
 const terminalModeBootstrapCoordinator = createTerminalModeBootstrapCoordinator<KittyEventPayload>({
@@ -597,15 +557,13 @@ const terminalSessionCoordinator = createTerminalSessionCoordinator({
 	handleBootstrapDonePayload: terminalModeBootstrapCoordinator.handleBootstrapDonePayload,
 	resetSessionState,
 	resetTerminalInstance,
-	noteMouseSuppress,
+	noteMouseSuppress: (id, durationMs) => terminalMouseState.noteSuppress(id, durationMs),
 	writeStartFailureMessage: (id, message) => {
 		const handle = terminalHandles.get(id);
 		handle?.terminal.write(`\r\n[workset] failed to start terminal: ${message}`);
 	},
-	getDebugOverlayPreference: () => debugOverlayPreference,
-	setDebugOverlayPreference: (value) => {
-		debugOverlayPreference = value;
-	},
+	getDebugOverlayPreference: () => terminalDebugState.getDebugOverlayPreference(),
+	setDebugOverlayPreference: (value) => terminalDebugState.setDebugOverlayPreference(value),
 	clearLocalDebugPreference: () => {
 		if (typeof localStorage === 'undefined') return;
 		try {
@@ -614,7 +572,7 @@ const terminalSessionCoordinator = createTerminalSessionCoordinator({
 			// Ignore storage failures.
 		}
 	},
-	syncDebugEnabled,
+	syncDebugEnabled: () => terminalDebugState.syncDebugEnabled(),
 });
 
 const terminalStreamOrchestrator = createTerminalStreamOrchestrator({

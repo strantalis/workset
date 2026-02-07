@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (main-agent pass 31)
+Last updated: 2026-02-07 (main-agent pass 32)
 
 ## Goal
 
@@ -23,21 +23,23 @@ Largest files by LOC right now:
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceManager.svelte` (1022)
 - `wails-ui/workset/frontend/src/lib/components/SettingsPanel.svelte` (987)
-- `pkg/termemu/termemu.go` (972)
 - `wails-ui/workset/frontend/src/lib/components/settings/sections/SkillManager.svelte` (956)
 - `wails-ui/workset/app_diffs.go` (926)
-- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (700)
+- `pkg/sessiond/terminal_filter.go` (889)
+- `wails-ui/workset/frontend/src/lib/components/WorkspaceItem.svelte` (876)
+- `wails-ui/workset/frontend/src/lib/components/TerminalLayoutNode.svelte` (847)
+- `wails-ui/workset/repo_diff_watcher.go` (816)
 
 ## Parallel Tracks (Issue Map)
 
 - [x] `#124` Guardrails (must start first)
 - [ ] `#115` FE-DIFF (slice 14 landed; file-list sidebar extracted)
 - [ ] `#116` FE-WORKSPACE (slice 7 landed; modal sections split)
-- [ ] `#117` FE-TERMINAL (slice 18 landed; service now 700 LOC)
+- [ ] `#117` FE-TERMINAL (slice 19 landed; service now 658 LOC)
 - [ ] `#118` FE-PLATFORM (slice 5 landed; adapter removed)
 - [x] `#119` BE-SESSIOND (structural splits complete)
 - [x] `#120` BE-GITHUB (slice 5 + tests tranche 2 landed)
-- [ ] `#121` BE-TERMEMU (structural split landed; LOC target still outstanding)
+- [x] `#121` BE-TERMEMU (extraction landed; `termemu.go` now 221 LOC)
 - [x] `#122` BE-UPDATER (slice 3 landed + orchestration tests)
 - [x] `#123` TEST-E2E (scenario split + fixtures landed)
 
@@ -201,6 +203,7 @@ Remaining tasks:
   Latest slice landed: extracted output queue + backlog flush policy into `terminalOutputBuffer.ts`.
   Latest slice landed: extracted clipboard/runtime clipboard helpers, OSC/theme response handling, and font-size preference control into dedicated modules (`terminalClipboard.ts`, `terminalOscHandlers.ts`, `terminalFontSizeController.ts`).
   Latest slice landed: extracted terminal context keying/registry ownership into `terminalContextRegistry.ts` and routed service context access through that boundary.
+  Latest slice landed: extracted debug-overlay state and mouse suppression/tail state into `terminalDebugState.ts` and `terminalMouseState.ts`.
 - [x] Extract attach/open lifecycle sequencing into a standalone module.
   Slice landed: extracted open/create/connect + retry sequencing into `terminalAttachOpenLifecycle.ts`.
 - [x] Extract event subscription wiring into a standalone module.
@@ -321,7 +324,8 @@ Tasks:
 - [x] Extract state transition engine into `pkg/termemu/state_engine.go`.
 - [x] Extract snapshot renderer/serializer into `pkg/termemu/snapshot_ansi.go` and `pkg/termemu/snapshot_state.go`.
 - [x] Backfill regression tests for escape-sequence edge cases in `pkg/termemu/termemu_test.go`.
-- [ ] Reduce `pkg/termemu/termemu.go` below 700 LOC while preserving parser/state behavior.
+- [x] Reduce `pkg/termemu/termemu.go` below 700 LOC while preserving parser/state behavior.
+  Slice landed: extracted trace/history/tabstop/screen-row/CSI helpers into dedicated files (`trace.go`, `history.go`, `tabstops.go`, `screen_rows.go`, `csi_helpers.go`); `termemu.go` is now 221 LOC.
 
 Verification:
 
@@ -399,6 +403,6 @@ Verification:
 
 ## Immediate Next Actions
 
-1. Decide whether to continue `#117` reduction now (target <700 LOC) or freeze `terminalService.ts` at 979 LOC for this cycle.
-2. Reconcile GitHub issue status/checklists for `#115`-`#123` to match shipped commits.
-3. Run issue closeout pass: verify no regression in `internal/e2e` signing assumptions and finalize `#125` completion checklist.
+1. Continue `#117` reduction toward issue target `<500` (program target met at 658 LOC; issue target still open).
+2. Continue `#118` reduction (`api/github.ts` is still 590 LOC vs `<400` issue target).
+3. Reconcile GitHub issue status/checklists for `#115`-`#123` to match shipped commits.
