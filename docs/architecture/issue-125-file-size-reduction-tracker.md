@@ -18,7 +18,7 @@ Reduce architecture risk from oversized files by splitting high-complexity modul
 
 Largest files by LOC right now:
 
-- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (2608)
+- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (2547)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2173)
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceManager.svelte` (1022)
@@ -133,6 +133,8 @@ Tasks:
   Slice landed: extracted checks tab UI + interactions into `repo-diff/RepoDiffChecksSidebar.svelte`.
 - [x] Extract file-list sidebar rendering state surface from `RepoDiff.svelte` template.
   Slice landed: extracted files/local-pending/checks-tab host into `repo-diff/RepoDiffFileListSidebar.svelte`.
+- [x] Extract auth overlay/modal rendering from `RepoDiff.svelte` template.
+  Slice landed: extracted GitHub auth overlay into `repo-diff/RepoDiffAuthModal.svelte`.
 
 Verification:
 

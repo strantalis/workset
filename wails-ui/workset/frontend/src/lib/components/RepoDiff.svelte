@@ -40,7 +40,6 @@
 		updateRepoDiffWatch,
 		stopRepoDiffWatch,
 	} from '../api/repo-diff';
-	import GitHubLoginModal from './GitHubLoginModal.svelte';
 	import { getPrCreateStageCopy } from '../prCreateProgress';
 	import type { PrCreateStage } from '../prCreateProgress';
 	import { applyRepoDiffSummary, applyRepoLocalStatus } from '../state';
@@ -81,6 +80,7 @@
 		type FileDiffRenderOptions,
 		type FileDiffRendererModule,
 	} from './repo-diff/diffRenderController';
+	import RepoDiffAuthModal from './repo-diff/RepoDiffAuthModal.svelte';
 	import RepoDiffFileListSidebar from './repo-diff/RepoDiffFileListSidebar.svelte';
 
 	/**
@@ -1103,28 +1103,11 @@
 {/if}
 
 {#if authModalOpen}
-	<div
-		class="overlay"
-		role="button"
-		tabindex="0"
-		onclick={handleAuthClose}
-		onkeydown={(event) => {
-			if (event.key === 'Escape') handleAuthClose();
-		}}
-	>
-		<div
-			class="overlay-panel"
-			role="presentation"
-			onclick={(event) => event.stopPropagation()}
-			onkeydown={(event) => event.stopPropagation()}
-		>
-			<GitHubLoginModal
-				notice={authModalMessage}
-				onClose={handleAuthClose}
-				onSuccess={handleAuthSuccess}
-			/>
-		</div>
-	</div>
+	<RepoDiffAuthModal
+		notice={authModalMessage}
+		onClose={handleAuthClose}
+		onSuccess={handleAuthSuccess}
+	/>
 {/if}
 
 <style>
@@ -2542,50 +2525,6 @@
 	:global(.diff-action-unresolve:hover) {
 		background: rgba(210, 153, 34, 0.15);
 		color: #f0b429;
-	}
-
-	.overlay {
-		position: fixed;
-		inset: 0;
-		background: rgba(6, 9, 14, 0.78);
-		display: grid;
-		place-items: center;
-		z-index: 30;
-		padding: 24px;
-		animation: overlayFadeIn var(--transition-normal) ease-out;
-	}
-
-	.overlay-panel {
-		width: 100%;
-		display: flex;
-		justify-content: center;
-		animation: modalSlideIn 200ms ease-out;
-	}
-
-	@keyframes overlayFadeIn {
-		from {
-			opacity: 0;
-		}
-		to {
-			opacity: 1;
-		}
-	}
-
-	@keyframes modalSlideIn {
-		from {
-			opacity: 0;
-			transform: translateY(-8px) scale(0.98);
-		}
-		to {
-			opacity: 1;
-			transform: translateY(0) scale(1);
-		}
-	}
-
-	@media (max-width: 720px) {
-		.overlay {
-			padding: 0;
-		}
 	}
 
 	/* Line highlight animation for annotation navigation */
