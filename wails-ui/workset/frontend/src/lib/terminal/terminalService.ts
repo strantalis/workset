@@ -22,13 +22,10 @@ import {
 import { createTerminalAttachOpenLifecycle } from './terminalAttachOpenLifecycle';
 import {
 	createTerminalEventSubscriptions,
-	type TerminalBootstrapDonePayload,
-	type TerminalBootstrapPayload,
 	type TerminalKittyPayload,
-	type TerminalLifecyclePayload,
-	type TerminalModesPayload,
 	type TerminalPayload,
 } from './terminalEventSubscriptions';
+import { createTerminalModeBootstrapCoordinator } from './terminalModeBootstrapCoordinator';
 
 export type TerminalViewState = {
 	status: string;
@@ -1238,113 +1235,6 @@ const renderHealth = createTerminalRenderHealth({
 	logDebug,
 });
 
-const isWorkspaceMismatch = (
-	key: string,
-	payloadWorkspaceId?: string,
-	payloadTerminalId?: string,
-): boolean => {
-	if (!payloadWorkspaceId || !payloadTerminalId) return false;
-	const context = terminalContexts.get(key);
-	if (!context?.workspaceId || !context.terminalId) return false;
-	if (context.workspaceId === payloadWorkspaceId && context.terminalId === payloadTerminalId) {
-		return false;
-	}
-	logDebug(key, 'workspace_mismatch', {
-		payloadWorkspaceId,
-		payloadTerminalId,
-		contextWorkspaceId: context.workspaceId,
-		contextTerminalId: context.terminalId,
-	});
-	return true;
-};
-
-const setReplayStateDone = (id: string): void => {
-	setReplayState(id, 'live');
-};
-
-const coerceKittySnapshot = (
-	value: TerminalBootstrapPayload['kitty'],
-): KittyEventPayload['snapshot'] | null => {
-	if (!value) return null;
-	const images = Array.isArray(value.images)
-		? (value.images as KittyEventPayload['image'][])
-		: undefined;
-	const placements = Array.isArray(value.placements)
-		? (value.placements as KittyEventPayload['placement'][])
-		: undefined;
-	if (!images && !placements) return null;
-	return { images, placements };
-};
-
-const handleBootstrapPayload = (payload: TerminalBootstrapPayload): void => {
-	const terminalId = payload.terminalId;
-	const workspaceId = payload.workspaceId;
-	if (!terminalId || !workspaceId) return;
-	const id = buildTerminalKey(workspaceId, terminalId);
-	if (!id) return;
-	if (isWorkspaceMismatch(id, workspaceId, terminalId)) return;
-	if (bootstrapHandled.get(id)) {
-		logDebug(id, 'bootstrap_duplicate', { source: payload.source ?? 'event' });
-		return;
-	}
-	lifecycle.markInput(id);
-	if (payload.safeToReplay === false) {
-		setReplayStateDone(id);
-		bootstrapHandled.set(id, true);
-		return;
-	}
-	setReplayState(id, 'replaying');
-	if (payload.snapshot) {
-		enqueueOutput(id, payload.snapshot, countBytes(payload.snapshot));
-	}
-	if (payload.backlog) {
-		enqueueOutput(id, payload.backlog, countBytes(payload.backlog));
-	}
-	const kittySnapshot = coerceKittySnapshot(payload.kitty);
-	if (kittySnapshot) {
-		const kittyEvent: KittyEventPayload = {
-			kind: 'snapshot',
-			snapshot: kittySnapshot,
-		};
-		if (!terminalHandles.has(id)) {
-			const pending = pendingReplayKitty.get(id) ?? [];
-			pending.push(kittyEvent);
-			pendingReplayKitty.set(id, pending);
-		} else {
-			void applyKittyEvent(id, kittyEvent);
-		}
-	}
-	if (payload.backlogTruncated) {
-		setHealth(id, 'ok', 'Backlog truncated; showing latest output.');
-	}
-	initialCreditMap.set(id, payload.initialCredit ?? INITIAL_STREAM_CREDIT);
-	bootstrapHandled.set(id, true);
-	logDebug(id, 'bootstrap', {
-		source: payload.source,
-		snapshotSource: payload.snapshotSource,
-		backlogSource: payload.backlogSource,
-		backlogTruncated: payload.backlogTruncated,
-	});
-};
-
-const handleBootstrapDonePayload = (payload: TerminalBootstrapDonePayload): void => {
-	const terminalId = payload.terminalId;
-	const workspaceId = payload.workspaceId;
-	if (!terminalId || !workspaceId) return;
-	const id = buildTerminalKey(workspaceId, terminalId);
-	if (!id) return;
-	if (isWorkspaceMismatch(id, workspaceId, terminalId)) return;
-	const pending = pendingReplayOutput.get(id) ?? [];
-	const replayBytes = pending.reduce((sum, chunk) => sum + chunk.bytes, 0);
-	lifecycle.markInput(id);
-	if (lifecycle.getStatus(id) !== 'ready') {
-		lifecycle.setStatusAndMessage(id, 'ready', '');
-	}
-	renderHealth.scheduleBootstrapHealthCheck(id, replayBytes);
-	setReplayStateDone(id);
-	emitState(id);
-};
-
 const enqueueOutput = (id: string, data: string, bytes: number): void => {
 	const queue = outputQueues.get(id) ?? { chunks: [], bytes: 0, scheduled: false };
 	queue.chunks.push({ data, bytes });
@@ -1471,8 +1361,8 @@ const maybeFetchBootstrap = async (id: string, reason: string): Promise<void> =>
 	try {
 		const payload = await terminalTransport.fetchBootstrap(workspaceId, terminalId);
 		if (bootstrapHandled.get(id)) return;
-		handleBootstrapPayload(payload);
-		handleBootstrapDonePayload({ workspaceId, terminalId });
+		terminalModeBootstrapCoordinator.handleBootstrapPayload(payload);
+		terminalModeBootstrapCoordinator.handleBootstrapDonePayload({ workspaceId, terminalId });
 		logDebug(id, 'bootstrap_fetch', {
 			reason,
 			source: payload.source,
@@ -1685,6 +1575,41 @@ const terminalAttachOpenLifecycle = createTerminalAttachOpenLifecycle({
 	},
 });
 
+const terminalModeBootstrapCoordinator = createTerminalModeBootstrapCoordinator<KittyEventPayload>({
+	buildTerminalKey,
+	getContext: (key) => terminalContexts.get(key) ?? null,
+	logDebug,
+	markInput: (id) => {
+		lifecycle.markInput(id);
+	},
+	bootstrapHandled,
+	setReplayState,
+	enqueueOutput,
+	countBytes,
+	pendingReplayKitty,
+	hasTerminalHandle: (id) => terminalHandles.has(id),
+	applyKittyEvent,
+	setHealth,
+	initialCreditMap,
+	initialStreamCredit: INITIAL_STREAM_CREDIT,
+	pendingReplayOutput,
+	getStatus: (id) => lifecycle.getStatus(id),
+	setStatusAndMessage: (id, status, message) => {
+		lifecycle.setStatusAndMessage(id, status, message);
+	},
+	scheduleBootstrapHealthCheck: (id, replayBytes) => {
+		renderHealth.scheduleBootstrapHealthCheck(id, replayBytes);
+	},
+	emitState,
+	applyLifecyclePayload: (id, payload) => {
+		lifecycle.applyLifecyclePayload(id, payload);
+	},
+	setMode: (id, mode) => {
+		lifecycle.setMode(id, mode);
+	},
+	syncTerminalWebLinks,
+});
+
 const handleTerminalDataEvent = (id: string, payload: TerminalPayload): void => {
 	lifecycle.markInput(id);
 	const bytes = payload.bytes && payload.bytes > 0 ? payload.bytes : countBytes(payload.data);
@@ -1702,20 +1627,6 @@ const handleTerminalDataEvent = (id: string, payload: TerminalPayload): void => 
 		stats.bytesIn += bytes;
 	});
 	renderHealth.noteOutputActivity(id);
-};
-
-const handleTerminalLifecycleEvent = (id: string, payload: TerminalLifecyclePayload): void => {
-	lifecycle.applyLifecyclePayload(id, payload);
-};
-
-const handleTerminalModesEvent = (id: string, payload: TerminalModesPayload): void => {
-	lifecycle.setMode(id, {
-		altScreen: payload.altScreen ?? false,
-		mouse: payload.mouse ?? false,
-		mouseSGR: payload.mouseSGR ?? false,
-		mouseEncoding: payload.mouseEncoding ?? 'x10',
-	});
-	syncTerminalWebLinks(id);
 };
 
 const handleTerminalKittyEvent = (id: string, payload: TerminalKittyPayload): void => {
@@ -1748,12 +1659,12 @@ const handleSessiondRestarted = (): void => {
 const terminalEventSubscriptions = createTerminalEventSubscriptions({
 	subscribeEvent,
 	buildTerminalKey,
-	isWorkspaceMismatch,
+	isWorkspaceMismatch: terminalModeBootstrapCoordinator.isWorkspaceMismatch,
 	onTerminalData: handleTerminalDataEvent,
-	onTerminalBootstrap: handleBootstrapPayload,
-	onTerminalBootstrapDone: handleBootstrapDonePayload,
-	onTerminalLifecycle: handleTerminalLifecycleEvent,
-	onTerminalModes: handleTerminalModesEvent,
+	onTerminalBootstrap: terminalModeBootstrapCoordinator.handleBootstrapPayload,
+	onTerminalBootstrapDone: terminalModeBootstrapCoordinator.handleBootstrapDonePayload,
+	onTerminalLifecycle: terminalModeBootstrapCoordinator.handleTerminalLifecyclePayload,
+	onTerminalModes: terminalModeBootstrapCoordinator.handleTerminalModesPayload,
 	onTerminalKitty: handleTerminalKittyEvent,
 	onSessiondRestarted: handleSessiondRestarted,
 });

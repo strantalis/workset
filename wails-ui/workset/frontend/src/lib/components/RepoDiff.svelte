@@ -58,15 +58,6 @@
 	import { formatPath } from '../pathUtils';
 	import { getPrCreateStageCopy } from '../prCreateProgress';
 	import type { PrCreateStage } from '../prCreateProgress';
-	import { subscribeRepoDiffEvent } from '../repoDiffService';
-	import { subscribeGitHubOperationEvent } from '../githubOperationService';
-	import {
-		EVENT_REPO_DIFF_LOCAL_STATUS,
-		EVENT_REPO_DIFF_LOCAL_SUMMARY,
-		EVENT_REPO_DIFF_PR_REVIEWS,
-		EVENT_REPO_DIFF_PR_STATUS,
-		EVENT_REPO_DIFF_SUMMARY,
-	} from '../events';
 	import { applyRepoDiffSummary, applyRepoLocalStatus } from '../state';
 	import type { DiffLineAnnotation, ReviewAnnotation } from './repo-diff/annotations';
 	import { buildLineAnnotations } from './repo-diff/annotations';
@@ -86,6 +77,11 @@
 	import { createReviewAnnotationActionsController } from './repo-diff/reviewAnnotationActions';
 	import { createSummaryController } from './repo-diff/summaryController';
 	import { createRepoDiffWatcherLifecycle } from './repo-diff/watcherLifecycle';
+	import {
+		createRepoDiffLifecycle,
+		type RepoDiffLocalStatusEvent,
+		type RepoDiffSummaryEvent,
+	} from './repo-diff/repoDiffLifecycle';
 	import { createCheckSidebarController, getCheckStats } from './repo-diff/checkSidebarController';
 
 	/**
@@ -146,18 +142,6 @@
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		FileDiff: new (options?: FileDiffOptionsBase) => any;
 		parsePatchFiles: (patch: string) => ParsedPatch[];
-	};
-
-	type RepoDiffSummaryEvent = {
-		workspaceId: string;
-		repoId: string;
-		summary: RepoDiffSummary;
-	};
-
-	type RepoDiffLocalStatusEvent = {
-		workspaceId: string;
-		repoId: string;
-		status: RepoLocalStatus;
 	};
 
 	let summary: RepoDiffSummary | null = $state(null);
@@ -258,7 +242,6 @@
 		}
 	});
 
-	let repoDiffUnsubscribers: Array<() => void> = [];
 	const watcherLifecycle = createRepoDiffWatcherLifecycle({
 		startWatch: startRepoDiffWatch,
 		updateWatch: updateRepoDiffWatch,
@@ -799,60 +782,61 @@
 	const loadLocalStatus = (): Promise<void> => prStatusController.loadLocalStatus();
 	const handleRefresh = (): Promise<void> => prStatusController.handleRefresh();
 
-	onMount(() => {
-		repoDiffUnsubscribers = [
-			subscribeGitHubOperationEvent((payload) => {
-				applyGitHubOperationStatus(payload);
-			}),
-			subscribeRepoDiffEvent<RepoDiffSummaryEvent>(EVENT_REPO_DIFF_SUMMARY, (payload) => {
-				if (payload.workspaceId !== workspaceId || payload.repoId !== repoId) return;
-				applySummaryUpdate(payload.summary, 'pr');
-			}),
-			subscribeRepoDiffEvent<RepoDiffSummaryEvent>(EVENT_REPO_DIFF_LOCAL_SUMMARY, (payload) => {
-				if (payload.workspaceId !== workspaceId || payload.repoId !== repoId) return;
-				applySummaryUpdate(payload.summary, 'local');
-				applyRepoDiffSummary(payload.workspaceId, payload.repoId, payload.summary);
-			}),
-			subscribeRepoDiffEvent<RepoDiffLocalStatusEvent>(EVENT_REPO_DIFF_LOCAL_STATUS, (payload) => {
-				if (payload.workspaceId !== workspaceId || payload.repoId !== repoId) return;
-				localStatus = payload.status;
-				if (!payload.status.hasUncommitted) {
-					localSummary = null;
-				}
-				applyRepoLocalStatus(payload.workspaceId, payload.repoId, payload.status);
-			}),
-			subscribeRepoDiffEvent<RepoDiffPrStatusEvent>(EVENT_REPO_DIFF_PR_STATUS, (payload) => {
-				if (payload.workspaceId !== workspaceId || payload.repoId !== repoId) return;
-				prStatus = mapPullRequestStatus(payload.status);
-				prStatusError = null;
-				prStatusLoading = false;
-			}),
-			subscribeRepoDiffEvent<RepoDiffPrReviewsEvent>(EVENT_REPO_DIFF_PR_REVIEWS, (payload) => {
-				if (payload.workspaceId !== workspaceId || payload.repoId !== repoId) return;
-				prReviews = mapPullRequestReviews(payload.comments);
-				prReviewsLoading = false;
-				prReviewsSent = false;
-				if (currentUserId === null) {
-					void loadCurrentUser();
-				}
-			}),
-		];
+	const repoDiffLifecycle = createRepoDiffLifecycle({
+		workspaceId: () => workspaceId,
+		repoId: () => repoId,
+		onGitHubOperationEvent: (payload) => {
+			applyGitHubOperationStatus(payload);
+		},
+		onSummaryEvent: (payload: RepoDiffSummaryEvent) => {
+			applySummaryUpdate(payload.summary, 'pr');
+		},
+		onLocalSummaryEvent: (payload: RepoDiffSummaryEvent) => {
+			applySummaryUpdate(payload.summary, 'local');
+			applyRepoDiffSummary(payload.workspaceId, payload.repoId, payload.summary);
+		},
+		onLocalStatusEvent: (payload: RepoDiffLocalStatusEvent) => {
+			localStatus = payload.status;
+			if (!payload.status.hasUncommitted) {
+				localSummary = null;
+			}
+			applyRepoLocalStatus(payload.workspaceId, payload.repoId, payload.status);
+		},
+		onPrStatusEvent: (payload: RepoDiffPrStatusEvent) => {
+			prStatus = mapPullRequestStatus(payload.status);
+			prStatusError = null;
+			prStatusLoading = false;
+		},
+		onPrReviewsEvent: (payload: RepoDiffPrReviewsEvent) => {
+			prReviews = mapPullRequestReviews(payload.comments);
+			prReviewsLoading = false;
+			prReviewsSent = false;
+			if (currentUserId === null) {
+				void loadCurrentUser();
+			}
+		},
+		loadSummary,
+		loadTrackedPR,
+		loadRemotes,
+		loadLocalStatus,
+		loadLocalSummary,
+		loadGitHubOperationStatuses,
+		cleanupDiff: () => {
+			diffInstance?.cleanUp();
+		},
+		watcherLifecycle,
+	});
 
-		void loadSummary();
-		void loadTrackedPR();
-		void loadRemotes();
-		void loadLocalStatus().then(() => loadLocalSummary());
-		void loadGitHubOperationStatuses();
+	onMount(() => {
+		repoDiffLifecycle.mount();
 	});
 
 	onDestroy(() => {
-		diffInstance?.cleanUp();
-		repoDiffUnsubscribers.forEach((unsubscribe) => unsubscribe());
-		watcherLifecycle.dispose();
+		repoDiffLifecycle.destroy();
 	});
 
 	$effect(() => {
-		watcherLifecycle.syncLifecycle({
+		repoDiffLifecycle.syncWatchLifecycle({
 			workspaceId,
 			repoId,
 			prNumber: parseNumber(prNumberInput),
@@ -887,7 +871,7 @@
 	});
 
 	$effect(() => {
-		watcherLifecycle.syncUpdate({
+		repoDiffLifecycle.syncWatchUpdate({
 			workspaceId,
 			repoId,
 			prNumber: parseNumber(prNumberInput),

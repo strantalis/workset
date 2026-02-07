@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (subagent pass 19)
+Last updated: 2026-02-07 (subagent pass 20)
 
 ## Goal
 
@@ -18,22 +18,22 @@ Reduce architecture risk from oversized files by splitting high-complexity modul
 
 Largest files by LOC right now:
 
-- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (3522)
+- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (3506)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2476)
-- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (1988)
+- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (1899)
 - `pkg/termemu/termemu.go` (972)
 - `wails-ui/workset/app_diffs.go` (926)
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceManager.svelte` (1022)
-- `wails-ui/workset/frontend/src/lib/api.ts` (443)
+- `wails-ui/workset/frontend/src/lib/api.ts` (86)
 
 ## Parallel Tracks (Issue Map)
 
 - [x] `#124` Guardrails (must start first)
-- [ ] `#115` FE-DIFF (slice 7 landed)
+- [ ] `#115` FE-DIFF (slice 8 landed)
 - [ ] `#116` FE-WORKSPACE (slice 5 landed)
-- [ ] `#117` FE-TERMINAL (slice 9 landed)
-- [ ] `#118` FE-PLATFORM (slice 3 landed)
+- [ ] `#117` FE-TERMINAL (slice 10 landed)
+- [ ] `#118` FE-PLATFORM (slice 4 landed)
 - [x] `#119` BE-SESSIOND (structural splits complete)
 - [ ] `#120` BE-GITHUB (slice 5 + tests tranche 2 landed)
 - [ ] `#121` BE-TERMEMU (slice 4 landed)
@@ -121,7 +121,10 @@ Tasks:
 - [x] Extract annotation/reply/edit/delete actions module (`repo-diff/reviewAnnotationActions.ts`).
 - [x] Extract check-sidebar grouping/filtering/summary state into `repo-diff/checkSidebarController.ts`.
 - [x] Extract GitHub operation/auth orchestration into `repo-diff/githubOperationsController.ts`.
-- [ ] Keep current public props/events unchanged.
+- [x] Extract mount/subscription/cleanup orchestration into `repo-diff/repoDiffLifecycle.ts`.
+- [x] Keep current public props/events unchanged.
+- [ ] Extract diff rendering + scroll/highlight orchestration into a dedicated controller.
+- [ ] Extract sidebar resize/persistence lifecycle into a dedicated helper.
 
 Verification:
 
@@ -179,10 +182,12 @@ Remaining tasks:
 - [x] Extract reconnect/attach/detach stream orchestration into `terminalStreamOrchestrator.ts`.
 - [ ] Remove remaining renderer/transport coupling from service shell.
   Slices landed: extracted resize/transport coupling into `terminalResizeBridge.ts`; extracted render-health/recovery orchestration into `terminalRenderHealth.ts`; extracted attach/dispose + renderer-addon state handling into `terminalAttachRendererState.ts`.
-- [ ] Extract attach/open lifecycle sequencing into a standalone module.
+- [x] Extract attach/open lifecycle sequencing into a standalone module.
   Slice landed: extracted open/create/connect + retry sequencing into `terminalAttachOpenLifecycle.ts`.
-- [ ] Extract event subscription wiring into a standalone module.
+- [x] Extract event subscription wiring into a standalone module.
   Slice landed: extracted event registration/routing/cleanup into `terminalEventSubscriptions.ts`.
+- [x] Extract mode/bootstrap coordination into a standalone module.
+  Slice landed: extracted mode/bootstrap handling + mismatch guard into `terminalModeBootstrapCoordinator.ts`.
 - [x] Add service-level tests for reconnect/attach/detach/stream-release (`terminalStreamOrchestrator.test.ts`).
 - [ ] Shrink `terminalService.ts` to orchestration-only facade.
 
@@ -205,15 +210,15 @@ Target architecture:
 
 Tasks:
 
-- [ ] Split monolithic API module into domain entrypoints.
-  Slices landed: extracted updates/app-version domain into `api/updates.ts`; extracted GitHub operations into `api/github.ts`; extracted repo-diff watch/diff APIs into `api/repo-diff.ts`; extracted settings/session/group/alias APIs into `api/settings.ts`, all with compatibility re-exports from `api.ts`.
-- [ ] Keep backward-compatible imports through adapter layer during migration.
+- [x] Split monolithic API module into domain entrypoints.
+  Slices landed: extracted updates/app-version domain into `api/updates.ts`; extracted GitHub operations into `api/github.ts`; extracted repo-diff watch/diff APIs into `api/repo-diff.ts`; extracted settings/session/group/alias APIs into `api/settings.ts`; extracted workspace APIs into `api/workspaces.ts`; extracted terminal/layout APIs into `api/terminal-layout.ts`, all with compatibility re-exports from `api.ts`.
+- [x] Keep backward-compatible imports through adapter layer during migration.
 - [ ] Remove adapter after callsites are migrated.
 
 Verification:
 
-- [ ] `cd wails-ui/workset/frontend && npm run test`
-- [ ] `cd wails-ui/workset/frontend && npm run check`
+- [x] `cd wails-ui/workset/frontend && npm run test`
+- [x] `cd wails-ui/workset/frontend && npm run check`
 
 ## `#119` BE-SESSIOND
 
@@ -357,6 +362,6 @@ Verification:
 
 ## Immediate Next Actions
 
-1. Run `#117` next slice: isolate remaining mode/bootstrap/renderer glue so `terminalService.ts` drops below 1.8k and trends toward facade-only orchestration.
-2. Run `#115` next slice: extract RepoDiff on-mount event subscription/cleanup flow into a lifecycle helper while preserving props/events behavior.
-3. Run `#118` next slice: extract workspace + terminal layout APIs and leave `api.ts` as a thin compatibility barrel.
+1. Run `#117` next slice: extract remaining kitty/image handling and input/retry orchestration from `terminalService.ts` to push toward facade-only orchestration.
+2. Run `#115` next slice: extract diff render/scroll/highlight orchestration and sidebar resize lifecycle from `RepoDiff.svelte`.
+3. Run `#118` decision slice: choose whether to keep `api.ts` compatibility barrel long-term or migrate callsites and remove adapter layer.
