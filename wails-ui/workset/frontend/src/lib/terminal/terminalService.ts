@@ -21,6 +21,7 @@ import { TerminalStateStore } from './terminalStateStore';
 import { stripMouseReports } from './inputFilter';
 import { createTerminalLifecycle } from './terminalLifecycle';
 import { captureViewportSnapshot, resolveViewportTargetLine } from './viewport';
+import { createTerminalStreamOrchestrator } from './terminalStreamOrchestrator';
 
 export type TerminalViewState = {
 	status: string;
@@ -274,7 +275,6 @@ const initialCreditMap = new Map<string, number>();
 const initialCreditSent = new Set<string>();
 const ackTimers = new Map<string, number>();
 const fitStabilizers = new Map<string, number>();
-const reattachTimers = new Map<string, number>();
 const resizeObservers = new Map<string, ResizeObserver>();
 const resizeTimers = new Map<string, number>();
 
@@ -513,7 +513,7 @@ const destroyTerminalState = (id: string): void => {
 	clearTimeoutMap(pendingRenderCheck, id);
 	clearTimeoutMap(ackTimers, id);
 	clearTimeoutMap(fitStabilizers, id);
-	clearTimeoutMap(reattachTimers, id);
+	terminalStreamOrchestrator.clearReattachTimer(id);
 	clearTimeoutMap(resizeTimers, id);
 	resetSessionState(id);
 	terminalStores.delete(id);
@@ -1231,30 +1231,6 @@ const scheduleFitStabilization = (id: string, reason: string): void => {
 	};
 	fitStabilizers.set(id, window.setTimeout(run, 60));
 	logDebug(id, 'fit', { reason });
-};
-
-const scheduleReattachCheck = (id: string, reason: string): void => {
-	const existing = reattachTimers.get(id);
-	if (existing) {
-		window.clearTimeout(existing);
-		reattachTimers.delete(id);
-	}
-	reattachTimers.set(
-		id,
-		window.setTimeout(() => {
-			clearReattachTimer(id);
-			void ensureSessionActive(id);
-		}, 240),
-	);
-	logDebug(id, 'reattach', { reason });
-};
-
-const clearReattachTimer = (id: string): void => {
-	const timer = reattachTimers.get(id);
-	if (timer) {
-		window.clearTimeout(timer);
-		reattachTimers.delete(id);
-	}
 };
 
 const focusTerminal = (id: string): void => {
@@ -2102,6 +2078,18 @@ const initTerminal = async (id: string): Promise<void> => {
 	}
 };
 
+const terminalStreamOrchestrator = createTerminalStreamOrchestrator({
+	ensureSessionActive,
+	initTerminal,
+	getContext,
+	hasStarted: (id) => lifecycle.hasStarted(id),
+	getStatus: (id) => lifecycle.getStatus(id),
+	ensureStream,
+	beginTerminal,
+	emitState,
+	logDebug,
+});
+
 const ensureGlobals = (): void => {
 	if (globalsInitialized) return;
 	globalsInitialized = true;
@@ -2151,7 +2139,7 @@ export const syncTerminal = (input: {
 	});
 	if (context.lastWorkspaceId && context.lastWorkspaceId !== context.workspaceId) {
 		scheduleFitStabilization(context.terminalKey, 'workspace_switch');
-		scheduleReattachCheck(context.terminalKey, 'workspace_switch');
+		terminalStreamOrchestrator.scheduleReattachCheck(context.terminalKey, 'workspace_switch');
 	}
 	context.lastWorkspaceId = context.workspaceId;
 	if (input.container) {
@@ -2168,19 +2156,7 @@ export const syncTerminal = (input: {
 			});
 		}
 	}
-	void (async () => {
-		await initTerminal(terminalKey);
-		const current = terminalContexts.get(terminalKey);
-		if (current?.container) {
-			if (lifecycle.hasStarted(terminalKey)) {
-				void ensureStream(terminalKey);
-			} else if (lifecycle.getStatus(terminalKey) === 'standby') {
-				await beginTerminal(terminalKey, !current.active);
-			}
-		}
-		await ensureSessionActive(terminalKey);
-		emitState(terminalKey);
-	})();
+	terminalStreamOrchestrator.syncTerminalStream(terminalKey);
 };
 
 export const detachTerminal = (workspaceId: string, terminalId: string): void => {
