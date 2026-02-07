@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (main-agent pass 29)
+Last updated: 2026-02-07 (main-agent pass 30)
 
 ## Goal
 
@@ -18,23 +18,23 @@ Reduce architecture risk from oversized files by splitting high-complexity modul
 
 Largest files by LOC right now:
 
-- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (2986)
-- `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2278)
-- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (979)
+- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (2608)
+- `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2173)
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceManager.svelte` (1022)
 - `wails-ui/workset/frontend/src/lib/components/SettingsPanel.svelte` (987)
 - `pkg/termemu/termemu.go` (972)
 - `wails-ui/workset/frontend/src/lib/components/settings/sections/SkillManager.svelte` (956)
 - `wails-ui/workset/app_diffs.go` (926)
+- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (700)
 
 ## Parallel Tracks (Issue Map)
 
 - [x] `#124` Guardrails (must start first)
-- [x] `#115` FE-DIFF (slice 13 landed)
-- [x] `#116` FE-WORKSPACE (slice 7 landed; modal sections split)
-- [ ] `#117` FE-TERMINAL (slice 18 landed)
-- [x] `#118` FE-PLATFORM (slice 5 landed; adapter removed)
+- [ ] `#115` FE-DIFF (slice 14 landed; file-list sidebar extracted)
+- [ ] `#116` FE-WORKSPACE (slice 7 landed; modal sections split)
+- [ ] `#117` FE-TERMINAL (slice 18 landed; service now 700 LOC)
+- [ ] `#118` FE-PLATFORM (slice 5 landed; adapter removed)
 - [x] `#119` BE-SESSIOND (structural splits complete)
 - [x] `#120` BE-GITHUB (slice 5 + tests tranche 2 landed)
 - [x] `#121` BE-TERMEMU (slice 4 landed)
@@ -131,10 +131,13 @@ Tasks:
   Slice landed: extracted source-switch + branch-ref reload orchestration into `repo-diff/summarySourceController.ts`.
 - [x] Extract checks sidebar rendering state surface from `RepoDiff.svelte` template.
   Slice landed: extracted checks tab UI + interactions into `repo-diff/RepoDiffChecksSidebar.svelte`.
+- [x] Extract file-list sidebar rendering state surface from `RepoDiff.svelte` template.
+  Slice landed: extracted files/local-pending/checks-tab host into `repo-diff/RepoDiffFileListSidebar.svelte`.
 
 Verification:
 
 - [x] `cd wails-ui/workset/frontend && npm run test -- src/lib/components/RepoDiff.spec.ts`
+- [x] `cd wails-ui/workset/frontend && npm run test -- src/lib/components/repo-diff/RepoDiffFileListSidebar.spec.ts`
 - [x] `cd wails-ui/workset/frontend && npm run check`
 
 ## `#116` FE-WORKSPACE
