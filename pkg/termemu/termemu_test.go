@@ -216,6 +216,178 @@ func TestTerminalDECRQMModeQuery(t *testing.T) {
 	}
 }
 
+func TestTerminalDSROriginAltInteraction(t *testing.T) {
+	term := New(12, 5)
+	var responses [][]byte
+	term.SetResponder(func(data []byte) {
+		responses = append(responses, append([]byte(nil), data...))
+	})
+
+	term.Write(context.Background(), []byte("\x1b[2;4r\x1b[?6h\x1b[6n"))
+	if len(responses) != 1 {
+		t.Fatalf("expected one response, got %d", len(responses))
+	}
+	if got := string(responses[0]); got != "\x1b[1;1R" {
+		t.Fatalf("unexpected DSR response with origin on: %q", got)
+	}
+
+	responses = nil
+	term.Write(context.Background(), []byte("\x1b[2;3H\x1b[6n"))
+	if len(responses) != 1 {
+		t.Fatalf("expected one response after moving cursor, got %d", len(responses))
+	}
+	if got := string(responses[0]); got != "\x1b[2;3R" {
+		t.Fatalf("unexpected DSR response in origin mode: %q", got)
+	}
+
+	responses = nil
+	term.Write(context.Background(), []byte("\x1b[?1049h"))
+	term.Write(context.Background(), []byte("ab\x1b[6n"))
+	if len(responses) != 1 {
+		t.Fatalf("expected one response in alt screen, got %d", len(responses))
+	}
+	if got := string(responses[0]); got != "\x1b[1;3R" {
+		t.Fatalf("unexpected DSR response in alt screen: %q", got)
+	}
+
+	responses = nil
+	term.Write(context.Background(), []byte("\x1b[?1049l\x1b[6n"))
+	if len(responses) != 1 {
+		t.Fatalf("expected one response after restoring from alt, got %d", len(responses))
+	}
+	if got := string(responses[0]); got != "\x1b[2;3R" {
+		t.Fatalf("unexpected DSR response after alt restore: %q", got)
+	}
+}
+
+func TestTerminalDSRIncompleteAndPrivateIgnored(t *testing.T) {
+	term := New(10, 2)
+	var responses [][]byte
+	term.SetResponder(func(data []byte) {
+		responses = append(responses, append([]byte(nil), data...))
+	})
+
+	term.Write(context.Background(), []byte("\x1b[6"))
+	if len(responses) != 0 {
+		t.Fatalf("expected no response for incomplete DSR, got %d", len(responses))
+	}
+
+	term.Write(context.Background(), []byte("n"))
+	if len(responses) != 1 {
+		t.Fatalf("expected one response when completing DSR, got %d", len(responses))
+	}
+	if got := string(responses[0]); got != "\x1b[1;1R" {
+		t.Fatalf("unexpected split DSR response: %q", got)
+	}
+
+	responses = nil
+	term.Write(context.Background(), []byte("\x1b[?6n\x1b[0n"))
+	if len(responses) != 0 {
+		t.Fatalf("expected no response for unsupported DSR forms, got %d", len(responses))
+	}
+}
+
+func TestTerminalDECRQMMalformedAndIncomplete(t *testing.T) {
+	term := New(10, 2)
+	var responses [][]byte
+	term.SetResponder(func(data []byte) {
+		responses = append(responses, append([]byte(nil), data...))
+	})
+
+	term.Write(context.Background(), []byte("\x1b[?25p"))
+	if len(responses) != 0 {
+		t.Fatalf("expected no response without DECRQM '$', got %d", len(responses))
+	}
+
+	term.Write(context.Background(), []byte("\x1b[?999$p"))
+	if len(responses) != 1 {
+		t.Fatalf("expected one response for unknown DECRQM mode, got %d", len(responses))
+	}
+	if got := string(responses[0]); got != "\x1b[?999;0$y" {
+		t.Fatalf("unexpected DECRQM unknown-mode response: %q", got)
+	}
+
+	responses = nil
+	term.Write(context.Background(), []byte("\x1b[25$p"))
+	if len(responses) != 0 {
+		t.Fatalf("expected no response without private marker, got %d", len(responses))
+	}
+
+	term.Write(context.Background(), []byte("\x1b[?25$"))
+	if len(responses) != 0 {
+		t.Fatalf("expected no response for incomplete DECRQM, got %d", len(responses))
+	}
+	term.Write(context.Background(), []byte("p"))
+	if len(responses) != 1 {
+		t.Fatalf("expected one response when completing DECRQM, got %d", len(responses))
+	}
+	if got := string(responses[0]); got != "\x1b[?25;1$y" {
+		t.Fatalf("unexpected split DECRQM response: %q", got)
+	}
+}
+
+func TestTerminalTabStopsOriginAltInteraction(t *testing.T) {
+	term := New(20, 5)
+	term.Write(context.Background(), []byte("\x1b[2;5r\x1b[?6h\x1b[H\x1b[5G\x1bH"))
+
+	term.Write(context.Background(), []byte("\x1b[?1049h\x1b[H\tX"))
+	altSnap := term.Snapshot()
+	if !altSnap.AltActive {
+		t.Fatalf("expected alt screen to be active")
+	}
+	if got := altSnap.Alt[1].Cells[4].Ch; got != 'X' {
+		t.Fatalf("expected X at custom tab stop in alt screen, got %q", got)
+	}
+
+	term.Write(context.Background(), []byte("\x1b[?1049l\x1b[H\tY"))
+	primarySnap := term.Snapshot()
+	if primarySnap.AltActive {
+		t.Fatalf("expected primary screen to be active")
+	}
+	if got := primarySnap.Primary[1].Cells[4].Ch; got != 'Y' {
+		t.Fatalf("expected Y at custom tab stop after leaving alt, got %q", got)
+	}
+}
+
+func TestTerminalMalformedAndIncompleteEscapeSequences(t *testing.T) {
+	t.Run("incomplete csi is swallowed until final", func(t *testing.T) {
+		term := New(8, 1)
+		term.Write(context.Background(), []byte("ab"))
+		term.Write(context.Background(), []byte("\x1b["))
+		term.Write(context.Background(), []byte("x"))
+		term.Write(context.Background(), []byte("cd"))
+
+		snap := term.Snapshot()
+		if got := snap.Primary[0].Cells[0].Ch; got != 'a' {
+			t.Fatalf("expected a, got %q", got)
+		}
+		if got := snap.Primary[0].Cells[1].Ch; got != 'b' {
+			t.Fatalf("expected b, got %q", got)
+		}
+		if got := snap.Primary[0].Cells[2].Ch; got != 'c' {
+			t.Fatalf("expected c after malformed CSI, got %q", got)
+		}
+		if got := snap.Primary[0].Cells[3].Ch; got != 'd' {
+			t.Fatalf("expected d after malformed CSI, got %q", got)
+		}
+	})
+
+	t.Run("unterminated escape string spans writes", func(t *testing.T) {
+		term := New(8, 1)
+		term.Write(context.Background(), []byte("a\x1bPignored"))
+		term.Write(context.Background(), []byte("still"))
+		term.Write(context.Background(), []byte("\x1b\\b"))
+
+		snap := term.Snapshot()
+		if got := snap.Primary[0].Cells[0].Ch; got != 'a' {
+			t.Fatalf("expected a, got %q", got)
+		}
+		if got := snap.Primary[0].Cells[1].Ch; got != 'b' {
+			t.Fatalf("expected b after terminating escape string, got %q", got)
+		}
+	})
+}
+
 func TestTerminalReplayGoldens(t *testing.T) {
 	cases := []struct {
 		name   string

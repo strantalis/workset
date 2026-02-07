@@ -77,6 +77,11 @@
 		type RepoDiffPrReviewsEvent,
 		type RepoDiffPrStatusEvent,
 	} from './repo-diff/prStatusController';
+	import {
+		createRepoDiffFileController,
+		type BranchDiffRefs,
+		type SummarySource,
+	} from './repo-diff/fileDiffController';
 	import { createSummaryController } from './repo-diff/summaryController';
 	import { createRepoDiffWatcherLifecycle } from './repo-diff/watcherLifecycle';
 
@@ -215,7 +220,7 @@
 	let localSummary: RepoDiffSummary | null = $state(null);
 
 	// Track which source the selected file is from
-	let selectedSource: 'pr' | 'local' = $state('pr');
+	let selectedSource: SummarySource = $state('pr');
 
 	// Sidebar tab: 'files' or 'checks'
 	let sidebarTab: 'files' | 'checks' = $state('files');
@@ -250,9 +255,6 @@
 		}
 	});
 
-	let fileRequest = 0;
-
-	let renderQueued = false;
 	let repoDiffUnsubscribers: Array<() => void> = [];
 	const watcherLifecycle = createRepoDiffWatcherLifecycle({
 		startWatch: startRepoDiffWatch,
@@ -1074,25 +1076,48 @@
 		}
 	};
 
-	const queueRenderDiff = (): void => {
-		if (renderQueued) return;
-		renderQueued = true;
-		requestAnimationFrame(() => {
-			renderQueued = false;
-			renderDiff();
-		});
-	};
-
-	const selectFile = (file: RepoDiffFileSummary, source: 'pr' | 'local' = 'pr'): void => {
-		selected = file;
-		selectedSource = source;
-		void loadFileDiff(file);
-	};
-
 	// Check if we should use branch diff (when PR exists with branches)
-	const useBranchDiff = (): { base: string; head: string } | null => {
+	const useBranchDiff = (): BranchDiffRefs | null => {
 		return resolveBranchRefs(remotes, prStatus?.pullRequest ?? prTracked);
 	};
+
+	const fileDiffController = createRepoDiffFileController({
+		workspaceId: () => workspaceId,
+		repoId: () => repoId,
+		selectedSource: () => selectedSource,
+		useBranchDiff,
+		setSelected: (value) => {
+			selected = value;
+		},
+		setSelectedSource: (value) => {
+			selectedSource = value;
+		},
+		setSelectedDiff: (value) => {
+			selectedDiff = value;
+		},
+		setFileMeta: (value) => {
+			fileMeta = value;
+		},
+		setFileLoading: (value) => {
+			fileLoading = value;
+		},
+		setFileError: (value) => {
+			fileError = value;
+		},
+		ensureRenderer,
+		getDiffModule: () => diffModule,
+		getRendererError: () => rendererError,
+		fetchRepoFileDiff,
+		fetchBranchFileDiff,
+		formatError,
+		requestAnimationFrame,
+		renderDiff,
+	});
+
+	const queueRenderDiff = (): void => fileDiffController.queueRenderDiff();
+
+	const selectFile = (file: RepoDiffFileSummary, source: SummarySource = 'pr'): void =>
+		fileDiffController.selectFile(file, source);
 
 	const shouldSplitLocalPendingSection = $derived.by(
 		() => effectiveMode === 'status' && useBranchDiff() !== null,
@@ -1141,7 +1166,7 @@
 
 	const loadSummary = (): Promise<void> => summaryController.loadSummary();
 	const loadLocalSummary = (): Promise<void> => summaryController.loadLocalSummary();
-	const applySummaryUpdate = (data: RepoDiffSummary, source: 'pr' | 'local'): void =>
+	const applySummaryUpdate = (data: RepoDiffSummary, source: SummarySource): void =>
 		summaryController.applySummaryUpdate(data, source);
 	const prStatusController = createPrStatusController({
 		workspaceId: () => workspaceId,
@@ -1189,65 +1214,6 @@
 	const loadCurrentUser = (): Promise<void> => prStatusController.loadCurrentUser();
 	const loadLocalStatus = (): Promise<void> => prStatusController.loadLocalStatus();
 	const handleRefresh = (): Promise<void> => prStatusController.handleRefresh();
-
-	const loadFileDiff = async (file: RepoDiffFileSummary): Promise<void> => {
-		if (!repoId) return;
-		fileLoading = true;
-		fileError = null;
-		fileMeta = null;
-		selectedDiff = null;
-		const requestId = ++fileRequest;
-
-		if (file.binary) {
-			fileError = 'Binary files are not rendered yet.';
-			fileLoading = false;
-			return;
-		}
-		try {
-			// Use local repo diff for local files, branch diff for PR files
-			const branchRefs = selectedSource === 'local' ? null : useBranchDiff();
-			const response = branchRefs
-				? await fetchBranchFileDiff(
-						workspaceId,
-						repoId,
-						branchRefs.base,
-						branchRefs.head,
-						file.path,
-						file.prevPath ?? '',
-					)
-				: await fetchRepoFileDiff(workspaceId, repoId, file.path, file.prevPath ?? '', file.status);
-			if (requestId !== fileRequest) return;
-			fileMeta = response;
-			if (response.truncated) {
-				const kb = Math.max(1, Math.round(response.totalBytes / 1024));
-				fileError = `Diff too large (${response.totalLines} lines, ${kb} KB).`;
-				return;
-			}
-			if (!response.patch.trim()) {
-				fileError = 'No diff available for this file.';
-				return;
-			}
-			await ensureRenderer();
-			if (!diffModule) {
-				fileError = rendererError ?? 'Diff renderer unavailable.';
-				return;
-			}
-			const parsed = diffModule.parsePatchFiles(response.patch);
-			const fileDiff = parsed[0]?.files?.[0] ?? null;
-			if (!fileDiff) {
-				fileError = 'Unable to parse diff content.';
-				return;
-			}
-			selectedDiff = fileDiff;
-		} catch (err) {
-			if (requestId !== fileRequest) return;
-			fileError = formatError(err, 'Failed to load file diff.');
-		} finally {
-			if (requestId === fileRequest) {
-				fileLoading = false;
-			}
-		}
-	};
 
 	onMount(() => {
 		repoDiffUnsubscribers = [

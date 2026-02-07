@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (subagent pass 15)
+Last updated: 2026-02-07 (subagent pass 16)
 
 ## Goal
 
@@ -18,9 +18,9 @@ Reduce architecture risk from oversized files by splitting high-complexity modul
 
 Largest files by LOC right now:
 
-- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (3972)
+- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (3938)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2476)
-- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (2223)
+- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (2131)
 - `wails-ui/workset/frontend/src/lib/api.ts` (1312)
 - `pkg/termemu/termemu.go` (972)
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
@@ -30,13 +30,13 @@ Largest files by LOC right now:
 ## Parallel Tracks (Issue Map)
 
 - [x] `#124` Guardrails (must start first)
-- [ ] `#115` FE-DIFF (slice 3 landed)
+- [ ] `#115` FE-DIFF (slice 4 landed)
 - [ ] `#116` FE-WORKSPACE (slice 5 landed)
-- [ ] `#117` FE-TERMINAL (slice 5 bridge + tests landed)
+- [ ] `#117` FE-TERMINAL (slice 6 landed)
 - [ ] `#118` FE-PLATFORM
 - [x] `#119` BE-SESSIOND (structural splits complete)
 - [ ] `#120` BE-GITHUB (slice 5 + tests tranche 2 landed)
-- [ ] `#121` BE-TERMEMU (slice 3 landed)
+- [ ] `#121` BE-TERMEMU (slice 4 landed)
 - [ ] `#122` BE-UPDATER (slice 2 landed)
 - [ ] `#123` TEST-E2E
 
@@ -117,7 +117,7 @@ Tasks:
 - [x] Extract watcher lifecycle/start-stop-update orchestration module (`repo-diff/watcherLifecycle.ts`).
 - [x] Extract summary loader/store controller module (`repo-diff/summaryController.ts`).
 - [x] Extract PR status/reviews controller (`repo-diff/prStatusController.ts`).
-- [ ] Extract render queue/selection/file-fetch controller.
+- [x] Extract render queue/selection/file-fetch controller (`repo-diff/fileDiffController.ts`).
 - [ ] Extract annotation/reply/edit/delete actions module.
 - [ ] Keep current public props/events unchanged.
 
@@ -176,7 +176,7 @@ Remaining tasks:
 - [x] Move web-links transport/renderer adapter wiring into `terminalWebLinks.ts`.
 - [x] Extract reconnect/attach/detach stream orchestration into `terminalStreamOrchestrator.ts`.
 - [ ] Remove remaining renderer/transport coupling from service shell.
-  Slice landed: extracted resize/transport coupling into `terminalResizeBridge.ts`.
+  Slices landed: extracted resize/transport coupling into `terminalResizeBridge.ts`; extracted render-health/recovery orchestration into `terminalRenderHealth.ts`.
 - [x] Add service-level tests for reconnect/attach/detach/stream-release (`terminalStreamOrchestrator.test.ts`).
 - [ ] Shrink `terminalService.ts` to orchestration-only facade.
 
@@ -282,7 +282,7 @@ Tasks:
 - [x] Extract parser state machine boundary into `pkg/termemu/parser.go`.
 - [x] Extract state transition engine into `pkg/termemu/state_engine.go`.
 - [x] Extract snapshot renderer/serializer into `pkg/termemu/snapshot_ansi.go` and `pkg/termemu/snapshot_state.go`.
-- [ ] Backfill regression tests for escape-sequence edge cases.
+- [x] Backfill regression tests for escape-sequence edge cases in `pkg/termemu/termemu_test.go`.
 
 Verification:
 
@@ -350,6 +350,6 @@ Verification:
 
 ## Immediate Next Actions
 
-1. Run `#117` slice 5 completion: remove remaining renderer/transport coupling and shrink `terminalService.ts`.
-2. Run `#115` slice 4: extract render queue/selection/file-fetch controller from `RepoDiff.svelte`.
-3. Run `#121` slice 4: backfill additional escape-sequence regression tests.
+1. Run `#117` completion: extract attach/renderer-addon state handling and finalize `terminalService.ts` as orchestration facade.
+2. Run `#115` slice 5: extract annotation/reply/edit/delete actions from `RepoDiff.svelte`.
+3. Run `#118` slice 1: split `api.ts` into domain clients with compatibility adapter.

@@ -1,0 +1,194 @@
+import type { FileDiffMetadata, ParsedPatch } from '@pierre/diffs';
+import { describe, expect, it, vi } from 'vitest';
+import type { RepoDiffFileSummary, RepoFileDiff } from '../../types';
+import {
+	createRepoDiffFileController,
+	type BranchDiffRefs,
+	type SummarySource,
+} from './fileDiffController';
+
+type Deferred<T> = {
+	promise: Promise<T>;
+	resolve: (value: T) => void;
+	reject: (reason?: unknown) => void;
+};
+
+const createDeferred = <T>(): Deferred<T> => {
+	let resolve!: (value: T) => void;
+	let reject!: (reason?: unknown) => void;
+	const promise = new Promise<T>((res, rej) => {
+		resolve = res;
+		reject = rej;
+	});
+	return { promise, resolve, reject };
+};
+
+const buildResponse = (patch: string): RepoFileDiff => ({
+	patch,
+	truncated: false,
+	totalBytes: patch.length,
+	totalLines: 1,
+});
+
+const baseFile: RepoDiffFileSummary = {
+	path: 'src/main.ts',
+	added: 2,
+	removed: 1,
+	status: 'modified',
+};
+
+const createSetup = (
+	branchRefs: BranchDiffRefs | null = { base: 'origin/main', head: 'feature' },
+) => {
+	const state: {
+		selected: RepoDiffFileSummary | null;
+		selectedSource: SummarySource;
+		selectedDiff: FileDiffMetadata | null;
+		fileMeta: RepoFileDiff | null;
+		fileLoading: boolean;
+		fileError: string | null;
+	} = {
+		selected: null,
+		selectedSource: 'pr',
+		selectedDiff: null,
+		fileMeta: null,
+		fileLoading: false,
+		fileError: null,
+	};
+
+	const frames: FrameRequestCallback[] = [];
+	const parsePatchFiles = vi.fn((patch: string) => {
+		const diff = { patch } as unknown as FileDiffMetadata;
+		return [{ files: [diff] } as unknown as ParsedPatch];
+	});
+	const fetchRepoFileDiff = vi.fn(async () => buildResponse('repo-patch'));
+	const fetchBranchFileDiff = vi.fn(async () => buildResponse('branch-patch'));
+	const ensureRenderer = vi.fn(async () => undefined);
+	const renderDiff = vi.fn();
+
+	const controller = createRepoDiffFileController({
+		workspaceId: () => 'ws-1',
+		repoId: () => 'repo-1',
+		selectedSource: () => state.selectedSource,
+		useBranchDiff: () => branchRefs,
+		setSelected: (value) => {
+			state.selected = value;
+		},
+		setSelectedSource: (value) => {
+			state.selectedSource = value;
+		},
+		setSelectedDiff: (value) => {
+			state.selectedDiff = value;
+		},
+		setFileMeta: (value) => {
+			state.fileMeta = value;
+		},
+		setFileLoading: (value) => {
+			state.fileLoading = value;
+		},
+		setFileError: (value) => {
+			state.fileError = value;
+		},
+		ensureRenderer,
+		getDiffModule: () => ({ parsePatchFiles }),
+		getRendererError: () => null,
+		fetchRepoFileDiff,
+		fetchBranchFileDiff,
+		formatError: (error, fallback) => (error instanceof Error ? error.message : fallback),
+		requestAnimationFrame: (callback) => {
+			frames.push(callback);
+			return frames.length;
+		},
+		renderDiff,
+	});
+
+	return {
+		state,
+		frames,
+		parsePatchFiles,
+		fetchRepoFileDiff,
+		fetchBranchFileDiff,
+		ensureRenderer,
+		renderDiff,
+		controller,
+	};
+};
+
+describe('fileDiffController', () => {
+	it('fetches branch diff for PR files and repo diff for local files', async () => {
+		const setup = createSetup();
+
+		setup.state.selectedSource = 'pr';
+		await setup.controller.loadFileDiff(baseFile);
+		expect(setup.fetchBranchFileDiff).toHaveBeenCalledWith(
+			'ws-1',
+			'repo-1',
+			'origin/main',
+			'feature',
+			baseFile.path,
+			'',
+		);
+		expect(setup.fetchRepoFileDiff).not.toHaveBeenCalled();
+
+		setup.fetchBranchFileDiff.mockClear();
+		setup.fetchRepoFileDiff.mockClear();
+
+		setup.state.selectedSource = 'local';
+		await setup.controller.loadFileDiff(baseFile);
+		expect(setup.fetchRepoFileDiff).toHaveBeenCalledWith(
+			'ws-1',
+			'repo-1',
+			baseFile.path,
+			'',
+			baseFile.status,
+		);
+		expect(setup.fetchBranchFileDiff).not.toHaveBeenCalled();
+	});
+
+	it('ignores stale diff responses when a newer file request is active', async () => {
+		const setup = createSetup(null);
+		const first = createDeferred<RepoFileDiff>();
+		const second = createDeferred<RepoFileDiff>();
+
+		setup.fetchRepoFileDiff
+			.mockImplementationOnce(async () => first.promise)
+			.mockImplementationOnce(async () => second.promise);
+
+		setup.state.selectedSource = 'local';
+
+		const firstLoad = setup.controller.loadFileDiff({ ...baseFile, path: 'src/first.ts' });
+		const secondLoad = setup.controller.loadFileDiff({ ...baseFile, path: 'src/second.ts' });
+
+		first.resolve(buildResponse('first-patch'));
+		await firstLoad;
+
+		expect(setup.state.fileMeta).toBeNull();
+		expect(setup.state.selectedDiff).toBeNull();
+		expect(setup.parsePatchFiles).not.toHaveBeenCalled();
+
+		second.resolve(buildResponse('second-patch'));
+		await secondLoad;
+
+		expect(setup.state.fileMeta?.patch).toBe('second-patch');
+		expect((setup.state.selectedDiff as unknown as { patch: string }).patch).toBe('second-patch');
+		expect(setup.parsePatchFiles).toHaveBeenCalledTimes(1);
+		expect(setup.parsePatchFiles).toHaveBeenCalledWith('second-patch');
+		expect(setup.state.fileLoading).toBe(false);
+	});
+
+	it('deduplicates render queue callbacks per animation frame', () => {
+		const setup = createSetup();
+
+		setup.controller.queueRenderDiff();
+		setup.controller.queueRenderDiff();
+
+		expect(setup.frames).toHaveLength(1);
+		expect(setup.renderDiff).not.toHaveBeenCalled();
+
+		setup.frames[0](0);
+		expect(setup.renderDiff).toHaveBeenCalledTimes(1);
+
+		setup.controller.queueRenderDiff();
+		expect(setup.frames).toHaveLength(2);
+	});
+});

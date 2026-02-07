@@ -23,6 +23,7 @@ import { createTerminalLifecycle } from './terminalLifecycle';
 import { captureViewportSnapshot, resolveViewportTargetLine } from './viewport';
 import { createTerminalStreamOrchestrator } from './terminalStreamOrchestrator';
 import { createTerminalResizeBridge } from './terminalResizeBridge';
+import { createTerminalRenderHealth, hasVisibleTerminalContent } from './terminalRenderHealth';
 
 export type TerminalViewState = {
 	status: string;
@@ -265,11 +266,7 @@ const statsMap = new Map<
 		lastCprAt: number;
 	}
 >();
-const renderStatsMap = new Map<string, { lastRenderAt: number; renderCount: number }>();
 const pendingInput = new Map<string, string>();
-const pendingRenderCheck = new Map<string, number>();
-const renderCheckLogged = new Set<string>();
-const reopenAttempted = new Set<string>();
 const pendingAckBytes = new Map<string, number>();
 const initialCreditMap = new Map<string, number>();
 const initialCreditSent = new Set<string>();
@@ -292,8 +289,6 @@ const INITIAL_STREAM_CREDIT = 256 * 1024;
 const RESIZE_DEBOUNCE_MS = 100;
 const HEALTH_TIMEOUT_MS = 1200;
 const STARTUP_OUTPUT_TIMEOUT_MS = 2000;
-const RENDER_CHECK_DELAY_MS = 350;
-const RENDER_RECOVERY_DELAY_MS = 150;
 const MAX_CLIPBOARD_BYTES = 1024 * 1024;
 const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
 const textDecoder = typeof TextDecoder !== 'undefined' ? new TextDecoder() : null;
@@ -510,7 +505,6 @@ const destroyTerminalState = (id: string): void => {
 	if (!id) return;
 	clearTimeoutMap(focusTimers, id);
 	clearTimeoutMap(bootstrapFetchTimers, id);
-	clearTimeoutMap(pendingRenderCheck, id);
 	clearTimeoutMap(ackTimers, id);
 	clearTimeoutMap(fitStabilizers, id);
 	terminalStreamOrchestrator.clearReattachTimer(id);
@@ -524,11 +518,9 @@ const destroyTerminalState = (id: string): void => {
 	bootstrapHandled.delete(id);
 	lastDims.delete(id);
 	statsMap.delete(id);
-	renderStatsMap.delete(id);
 	pendingInput.delete(id);
 	terminalResizeBridge.clear(id);
-	renderCheckLogged.delete(id);
-	reopenAttempted.delete(id);
+	renderHealth.release(id);
 	pendingAckBytes.delete(id);
 	initialCreditMap.delete(id);
 	initialCreditSent.delete(id);
@@ -1062,7 +1054,7 @@ const attachTerminal = (
 			sendInput(id, data);
 		});
 		terminal.onRender(() => {
-			noteRender(id);
+			renderHealth.noteRender(id);
 		});
 		const host = document.createElement('div');
 		host.className = 'terminal-instance';
@@ -1271,12 +1263,7 @@ const resetSessionState = (id: string): void => {
 	}
 	ackTimers.delete(id);
 	lifecycle.dropHealthCheck(id);
-	const renderTimer = pendingRenderCheck.get(id);
-	if (renderTimer) {
-		window.clearTimeout(renderTimer);
-	}
-	pendingRenderCheck.delete(id);
-	renderStatsMap.delete(id);
+	renderHealth.clearSession(id);
 	terminalResizeBridge.clear(id);
 	if (mouseInputTail[id]) {
 		mouseInputTail = { ...mouseInputTail, [id]: '' };
@@ -1303,13 +1290,6 @@ const updateStatsLastOutput = (id: string): void => {
 	updateStats(id, (stats) => {
 		stats.lastOutputAt = Date.now();
 	});
-};
-
-const noteRender = (id: string): void => {
-	const stats = renderStatsMap.get(id) ?? { lastRenderAt: 0, renderCount: 0 };
-	stats.lastRenderAt = Date.now();
-	stats.renderCount += 1;
-	renderStatsMap.set(id, stats);
 };
 
 const scheduleStartupTimeout = (id: string): void => {
@@ -1348,12 +1328,23 @@ const forceRedraw = (id: string): void => {
 	handle.terminal.refresh(0, handle.terminal.rows - 1);
 };
 
-const hasVisibleContent = (terminal: Terminal): boolean => {
-	const buffer = terminal.buffer.active;
-	if (buffer.length === 0) return false;
-	const line = buffer.getLine(buffer.length - 1);
-	return !!line && line.translateToString().trim().length > 0;
-};
+const renderHealth = createTerminalRenderHealth({
+	getHandle: (id) => terminalHandles.get(id),
+	reopenWithPreservedViewport: (id, handle) => {
+		if (!handle.container) return;
+		const viewport = captureTerminalViewport(handle.terminal);
+		handle.terminal.open(handle.container);
+		fitWithPreservedViewport(handle, viewport);
+		terminalResizeBridge.nudgeRedraw(id, handle);
+	},
+	fitWithPreservedViewport: (_id, handle) => {
+		fitWithPreservedViewport(handle);
+	},
+	nudgeRedraw: (id, handle) => {
+		terminalResizeBridge.nudgeRedraw(id, handle);
+	},
+	logDebug,
+});
 
 const isWorkspaceMismatch = (
 	key: string,
@@ -1457,7 +1448,7 @@ const handleBootstrapDonePayload = (payload: TerminalBootstrapDonePayload): void
 	if (lifecycle.getStatus(id) !== 'ready') {
 		lifecycle.setStatusAndMessage(id, 'ready', '');
 	}
-	scheduleRenderHealthCheck(id, replayBytes);
+	renderHealth.scheduleBootstrapHealthCheck(id, replayBytes);
 	setReplayStateDone(id);
 	emitState(id);
 };
@@ -1486,7 +1477,7 @@ const flushOutput = (id: string, scheduled: boolean): void => {
 		if (!chunk) break;
 		budget -= chunk.bytes;
 		handle.terminal.write(chunk.data, () => {
-			noteRender(id);
+			renderHealth.noteRender(id);
 		});
 		updateStatsLastOutput(id);
 	}
@@ -1542,89 +1533,6 @@ const recordAckBytes = (id: string, bytes: number): void => {
 		return;
 	}
 	scheduleAck(id);
-};
-
-const noteRenderStats = (id: string): void => {
-	let stats = renderStatsMap.get(id);
-	if (!stats) {
-		stats = { lastRenderAt: 0, renderCount: 0 };
-		renderStatsMap.set(id, stats);
-	}
-	const now = Date.now();
-	if (now - stats.lastRenderAt > RENDER_CHECK_DELAY_MS) {
-		scheduleRenderCheck(id);
-	}
-};
-
-const scheduleRenderCheck = (id: string): void => {
-	const existing = pendingRenderCheck.get(id);
-	if (existing) {
-		window.clearTimeout(existing);
-	}
-	let stats = renderStatsMap.get(id);
-	if (!stats) {
-		stats = { lastRenderAt: 0, renderCount: 0 };
-		renderStatsMap.set(id, stats);
-	}
-	pendingRenderCheck.set(
-		id,
-		window.setTimeout(() => {
-			pendingRenderCheck.delete(id);
-			const stats = renderStatsMap.get(id) ?? { lastRenderAt: 0, renderCount: 0 };
-			const now = Date.now();
-			if (now - stats.lastRenderAt < RENDER_CHECK_DELAY_MS) return;
-			if (!renderCheckLogged.has(id)) {
-				renderCheckLogged.add(id);
-				logDebug(id, 'render_stall', { lastRenderAt: stats.lastRenderAt });
-			}
-			const handle = terminalHandles.get(id);
-			if (handle?.container && !reopenAttempted.has(id)) {
-				reopenAttempted.add(id);
-				try {
-					const viewport = captureTerminalViewport(handle.terminal);
-					handle.terminal.open(handle.container);
-					fitWithPreservedViewport(handle, viewport);
-					terminalResizeBridge.nudgeRedraw(id, handle);
-				} catch {
-					// Best-effort re-open.
-				}
-			}
-			forceRedraw(id);
-			window.setTimeout(() => {
-				const current = terminalHandles.get(id);
-				if (!current) return;
-				if (!hasVisibleContent(current.terminal)) {
-					terminalResizeBridge.nudgeRedraw(id, current);
-				}
-			}, RENDER_RECOVERY_DELAY_MS);
-		}, RENDER_CHECK_DELAY_MS),
-	);
-};
-
-const scheduleRenderHealthCheck = (id: string, payloadBytes: number): void => {
-	if (!id || payloadBytes <= 0 || pendingRenderCheck.has(id)) return;
-	const startedAt = Date.now();
-	pendingRenderCheck.set(
-		id,
-		window.setTimeout(() => {
-			pendingRenderCheck.delete(id);
-			const handle = terminalHandles.get(id);
-			if (!handle) return;
-			const stats = renderStatsMap.get(id);
-			if (stats && stats.lastRenderAt >= startedAt) return;
-			fitWithPreservedViewport(handle);
-			window.setTimeout(() => {
-				const updated = renderStatsMap.get(id);
-				if (updated && updated.lastRenderAt >= startedAt) return;
-				if (!hasVisibleContent(handle.terminal)) {
-					terminalResizeBridge.nudgeRedraw(id, handle);
-				}
-				logDebug(id, 'render_health_check', {
-					rendered: updated ? updated.lastRenderAt >= startedAt : false,
-				});
-			}, RENDER_RECOVERY_DELAY_MS);
-		}, RENDER_CHECK_DELAY_MS),
-	);
 };
 
 const requestHealthCheck = (id: string): void => {
@@ -1894,7 +1802,7 @@ const ensureListener = (): void => {
 			updateStats(id, (stats) => {
 				stats.bytesIn += bytes;
 			});
-			noteRenderStats(id);
+			renderHealth.noteOutputActivity(id);
 		};
 		unsubscribeHandlers.push(subscribeEvent(EVENT_TERMINAL_DATA, handler));
 		listeners.add(EVENT_TERMINAL_DATA);
@@ -2107,7 +2015,7 @@ export const syncTerminal = (input: {
 				fitTerminal(terminalKey, lifecycle.hasStarted(terminalKey));
 				forceRedraw(terminalKey);
 				const handle = terminalHandles.get(terminalKey);
-				if (handle && !hasVisibleContent(handle.terminal)) {
+				if (handle && !hasVisibleTerminalContent(handle.terminal)) {
 					terminalResizeBridge.nudgeRedraw(terminalKey, handle);
 				}
 			});
