@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (main-agent pass 34)
+Last updated: 2026-02-07 (main-agent pass 35)
 
 ## Goal
 
@@ -18,8 +18,8 @@ Reduce architecture risk from oversized files by splitting high-complexity modul
 
 Largest files by LOC right now:
 
-- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (2547)
-- `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2173)
+- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (2393)
+- `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (1921)
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceManager.svelte` (1022)
 - `wails-ui/workset/frontend/src/lib/components/SettingsPanel.svelte` (987)
@@ -33,8 +33,8 @@ Largest files by LOC right now:
 ## Parallel Tracks (Issue Map)
 
 - [x] `#124` Guardrails (must start first)
-- [ ] `#115` FE-DIFF (slice 14 landed; file-list sidebar extracted)
-- [ ] `#116` FE-WORKSPACE (slice 7 landed; modal sections split)
+- [ ] `#115` FE-DIFF (slice 15 landed; header PR badge extracted)
+- [ ] `#116` FE-WORKSPACE (slice 8 landed; add-repo form extracted)
 - [x] `#117` FE-TERMINAL (slice 20 landed; service now 491 LOC)
 - [x] `#118` FE-PLATFORM (slice 7 landed; settings side effects extracted)
 - [x] `#119` BE-SESSIOND (structural splits complete)
@@ -137,6 +137,8 @@ Tasks:
   Slice landed: extracted files/local-pending/checks-tab host into `repo-diff/RepoDiffFileListSidebar.svelte`.
 - [x] Extract auth overlay/modal rendering from `RepoDiff.svelte` template.
   Slice landed: extracted GitHub auth overlay into `repo-diff/RepoDiffAuthModal.svelte`.
+- [x] Extract header PR badge rendering state surface from `RepoDiff.svelte` template.
+  Slice landed: extracted status-mode PR badge into `repo-diff/RepoDiffHeaderPrBadge.svelte`.
 
 Verification:
 
@@ -172,6 +174,8 @@ Tasks:
   Slice landed: added `workspaceActionMutations` gateway/service boundary in `services/workspaceActionService.ts` and routed modal mutations through it.
 - [x] Split large modal sections into components.
   Slice landed: extracted removal mode sections into `workspace-action/WorkspaceActionRemoveWorkspaceForm.svelte` and `workspace-action/WorkspaceActionRemoveRepoForm.svelte`.
+- [x] Split add-repo mode into a dedicated component.
+  Slice landed: extracted add-repo selection/panel layout into `workspace-action/WorkspaceActionAddRepoForm.svelte`.
 - [x] Add tests for action-state transitions and failure paths.
 
 Verification:

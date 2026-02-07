@@ -48,6 +48,7 @@
 	import Modal from './Modal.svelte';
 	import WorkspaceActionHookResults from './workspace-action/WorkspaceActionHookResults.svelte';
 	import WorkspaceActionSelectionTabs from './workspace-action/WorkspaceActionSelectionTabs.svelte';
+	import WorkspaceActionAddRepoForm from './workspace-action/WorkspaceActionAddRepoForm.svelte';
 	import WorkspaceActionRemoveRepoForm from './workspace-action/WorkspaceActionRemoveRepoForm.svelte';
 	import WorkspaceActionRemoveWorkspaceForm from './workspace-action/WorkspaceActionRemoveWorkspaceForm.svelte';
 
@@ -985,190 +986,34 @@
 				</Button>
 			</div>
 		{:else if mode === 'add-repo'}
-			<div class="form add-two-column">
-				<div class="column-left">
-					<WorkspaceActionSelectionTabs
-						{activeTab}
-						aliasCount={aliasItems.length}
-						groupCount={groupItems.length}
-						onTabChange={handleTabChange}
-					/>
-
-					<!-- Selection Area - Left Column -->
-					<div class="selection-area">
-						{#if activeTab === 'direct'}
-							<label class="field">
-								<span>Repo URL or local path</span>
-								<div class="inline">
-									<input
-										bind:value={addSource}
-										placeholder="git@github.com:org/repo.git"
-										autocapitalize="off"
-										autocorrect="off"
-										spellcheck="false"
-									/>
-									<Button variant="ghost" size="sm" onclick={handleBrowse}>Browse</Button>
-								</div>
-							</label>
-						{:else if activeTab === 'repos'}
-							<div class="field">
-								<div class="inline">
-									<input
-										bind:value={searchQuery}
-										placeholder="Search repos..."
-										class="search-input"
-										autocapitalize="off"
-										autocorrect="off"
-										spellcheck="false"
-									/>
-									{#if searchQuery}
-										<button type="button" class="search-clear" onclick={() => (searchQuery = '')}
-											>Clear</button
-										>
-									{/if}
-								</div>
-								<div class="checkbox-list">
-									{#if filteredAliases.length === 0}
-										<div class="empty-search">No repos match "{searchQuery}"</div>
-									{:else}
-										{#each filteredAliases as alias (alias)}
-											<label class="checkbox-item" class:selected={selectedAliases.has(alias.name)}>
-												<input
-													type="checkbox"
-													checked={selectedAliases.has(alias.name)}
-													onchange={() => toggleAlias(alias.name)}
-												/>
-												<div class="checkbox-content">
-													<span class="checkbox-name">{alias.name}</span>
-													<span class="checkbox-meta">{getAliasSource(alias)}</span>
-												</div>
-											</label>
-										{/each}
-									{/if}
-								</div>
-							</div>
-						{:else if activeTab === 'groups'}
-							<div class="field">
-								<div class="inline">
-									<input
-										bind:value={searchQuery}
-										placeholder="Search groups..."
-										class="search-input"
-										autocapitalize="off"
-										autocorrect="off"
-										spellcheck="false"
-									/>
-									{#if searchQuery}
-										<button type="button" class="search-clear" onclick={() => (searchQuery = '')}
-											>Clear</button
-										>
-									{/if}
-								</div>
-								<div class="group-list">
-									{#if filteredGroups.length === 0}
-										<div class="empty-search">No groups match "{searchQuery}"</div>
-									{:else}
-										{#each filteredGroups as group (group)}
-											<label class="group-card" class:selected={selectedGroups.has(group.name)}>
-												<input
-													type="checkbox"
-													checked={selectedGroups.has(group.name)}
-													onchange={() => toggleGroup(group.name)}
-												/>
-												<div class="group-content">
-													<div class="group-header">
-														<span class="group-name">{group.name}</span>
-														<span class="group-badge"
-															>{group.repo_count} repo{group.repo_count !== 1 ? 's' : ''}</span
-														>
-													</div>
-													{#if group.description}
-														<span class="group-description">{group.description}</span>
-													{/if}
-													<button
-														type="button"
-														class="group-expand"
-														onclick={(e) => {
-															e.preventDefault();
-															toggleGroupExpand(group.name);
-														}}
-													>
-														{expandedGroups.has(group.name) ? '▾ Hide' : '▸ Show'} repos
-													</button>
-													{#if expandedGroups.has(group.name)}
-														<ul class="group-members">
-															{#each groupDetails.get(group.name) || [] as repoName (repoName)}
-																<li>{repoName}</li>
-															{/each}
-														</ul>
-													{/if}
-												</div>
-											</label>
-										{/each}
-									{/if}
-								</div>
-							</div>
-						{/if}
-					</div>
-
-					{#if aliasItems.length === 0 && groupItems.length === 0}
-						<div class="hint">No registered repos or groups configured. Add them in Settings.</div>
-					{/if}
-				</div>
-
-				<div class="column-right">
-					<div class="selection-panel">
-						{#if existingRepos.length > 0}
-							<div class="panel-section existing-section">
-								<span class="panel-label">Already in workspace ({existingRepos.length} repos)</span>
-								<div class="existing-list">
-									{#each existingRepos as repo (repo.name)}
-										<div class="existing-item">
-											<span class="selected-badge existing">repo</span>
-											<span class="selected-name">{repo.name}</span>
-										</div>
-									{/each}
-								</div>
-							</div>
-						{/if}
-
-						<h4 class="panel-title">Selected ({addRepoTotalItems} items)</h4>
-
-						<div class="selected-list">
-							{#if addRepoSelectedItems.length === 0}
-								<div class="empty-selection">No items selected</div>
-							{:else}
-								{#each addRepoSelectedItems as item (item.name)}
-									<div class="selected-item">
-										<span class="selected-badge {item.type}">{item.type}</span>
-										<span class="selected-name">{item.name}</span>
-										<button
-											type="button"
-											class="selected-remove"
-											onclick={() => {
-												if (item.type === 'repo') addSource = '';
-												else if (item.type === 'alias') removeAlias(item.name);
-												else if (item.type === 'group') removeGroup(item.name);
-											}}
-										>
-											×
-										</button>
-									</div>
-								{/each}
-							{/if}
-						</div>
-
-						<Button
-							variant="primary"
-							onclick={handleAddItems}
-							disabled={loading || addRepoTotalItems === 0}
-							class="create-btn"
-						>
-							{loading ? 'Adding…' : 'Add'}
-						</Button>
-					</div>
-				</div>
-			</div>
+			<WorkspaceActionAddRepoForm
+				{loading}
+				{activeTab}
+				{aliasItems}
+				{groupItems}
+				{searchQuery}
+				{addSource}
+				{filteredAliases}
+				{filteredGroups}
+				{selectedAliases}
+				{selectedGroups}
+				{expandedGroups}
+				{groupDetails}
+				{existingRepos}
+				{addRepoSelectedItems}
+				{addRepoTotalItems}
+				{getAliasSource}
+				onTabChange={handleTabChange}
+				onSearchQueryInput={(value) => (searchQuery = value)}
+				onAddSourceInput={(value) => (addSource = value)}
+				onBrowse={handleBrowse}
+				onToggleAlias={toggleAlias}
+				onToggleGroup={toggleGroup}
+				onToggleGroupExpand={toggleGroupExpand}
+				onRemoveAlias={removeAlias}
+				onRemoveGroup={removeGroup}
+				onSubmit={handleAddItems}
+			/>
 		{:else if mode === 'archive'}
 			<div class="form">
 				<div class="hint">Archiving hides the workspace but keeps files on disk.</div>
@@ -1711,68 +1556,6 @@
 		overflow: hidden;
 	}
 
-	/* Two-column add-repo layout */
-	.form.add-two-column {
-		display: grid;
-		grid-template-columns: 1fr 280px;
-		gap: 16px;
-		max-height: 80vh;
-		min-height: 400px;
-		overflow: hidden;
-	}
-
-	.add-two-column .column-left {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-		min-height: 0;
-		overflow: hidden;
-	}
-
-	.add-two-column .column-right {
-		display: flex;
-		flex-direction: column;
-		min-height: 0;
-		overflow: hidden;
-	}
-
-	.add-two-column .checkbox-list,
-	.add-two-column .group-list {
-		max-height: 65vh;
-		min-height: 200px;
-	}
-
-	.add-two-column .checkbox-item {
-		padding: 6px 10px;
-	}
-
-	.add-two-column .checkbox-item input[type='checkbox'] {
-		width: 16px;
-		height: 16px;
-		min-width: 16px;
-		min-height: 16px;
-	}
-
-	.add-two-column .checkbox-name {
-		font-size: 13px;
-	}
-
-	.add-two-column .checkbox-meta {
-		font-size: 11px;
-	}
-
-	.add-two-column .group-card {
-		padding: 8px 10px;
-	}
-
-	.add-two-column .group-name {
-		font-size: 13px;
-	}
-
-	.add-two-column .group-description {
-		font-size: 11px;
-	}
-
 	.column-left {
 		display: flex;
 		flex-direction: column;
@@ -1909,41 +1692,6 @@
 
 	.selected-remove:hover {
 		color: var(--danger, #ef4444);
-	}
-
-	/* Existing repos section - more obvious styling */
-	.existing-section {
-		background: rgba(255, 255, 255, 0.03);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: var(--radius-md);
-		padding: 12px;
-		margin-bottom: 8px;
-	}
-
-	.existing-section .panel-label {
-		font-weight: 600;
-		color: var(--text);
-		font-size: 13px;
-	}
-
-	.existing-list {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-
-	.existing-item {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 4px 0;
-		font-size: 13px;
-		opacity: 0.8;
-	}
-
-	.existing-item .selected-badge {
-		background: rgba(255, 255, 255, 0.15);
-		color: var(--muted);
 	}
 
 	/* Selection area - left column */
