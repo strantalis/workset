@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-08 (subagent pass 27)
+Last updated: 2026-02-08 (subagent pass 28)
 
 ## Goal
 
@@ -19,8 +19,8 @@ Reduce architecture risk from oversized files by splitting high-complexity modul
 Largest files by LOC right now:
 
 - `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (2986)
-- `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2420)
-- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (1293)
+- `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (2278)
+- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts` (1013)
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (1061)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceManager.svelte` (1022)
 - `wails-ui/workset/frontend/src/lib/components/SettingsPanel.svelte` (987)
@@ -32,8 +32,8 @@ Largest files by LOC right now:
 
 - [x] `#124` Guardrails (must start first)
 - [x] `#115` FE-DIFF (slice 13 landed)
-- [ ] `#116` FE-WORKSPACE (slice 6 landed)
-- [ ] `#117` FE-TERMINAL (slice 16 landed)
+- [x] `#116` FE-WORKSPACE (slice 7 landed; modal sections split)
+- [ ] `#117` FE-TERMINAL (slice 17 landed)
 - [x] `#118` FE-PLATFORM (slice 5 landed; adapter removed)
 - [x] `#119` BE-SESSIOND (structural splits complete)
 - [x] `#120` BE-GITHUB (slice 5 + tests tranche 2 landed)
@@ -163,7 +163,8 @@ Tasks:
   Slice landed: extracted modal phase/title/subtitle/size and hook-transition decisions into `services/workspaceActionModalController.ts`.
 - [x] Extract workspace mutations into dedicated service.
   Slice landed: added `workspaceActionMutations` gateway/service boundary in `services/workspaceActionService.ts` and routed modal mutations through it.
-- [ ] Split large modal sections into components.
+- [x] Split large modal sections into components.
+  Slice landed: extracted removal mode sections into `workspace-action/WorkspaceActionRemoveWorkspaceForm.svelte` and `workspace-action/WorkspaceActionRemoveRepoForm.svelte`.
 - [x] Add tests for action-state transitions and failure paths.
 
 Verification:
@@ -193,6 +194,7 @@ Remaining tasks:
   Latest slice landed: extracted Xterm instance attach/dispose wiring into `terminalInstanceManager.ts`.
   Latest slice landed: extracted viewport/resize/focus lifecycle into `terminalViewportResizeController.ts`.
   Latest slice landed: extracted output queue + backlog flush policy into `terminalOutputBuffer.ts`.
+  Latest slice landed: extracted clipboard/runtime clipboard helpers, OSC/theme response handling, and font-size preference control into dedicated modules (`terminalClipboard.ts`, `terminalOscHandlers.ts`, `terminalFontSizeController.ts`).
 - [x] Extract attach/open lifecycle sequencing into a standalone module.
   Slice landed: extracted open/create/connect + retry sequencing into `terminalAttachOpenLifecycle.ts`.
 - [x] Extract event subscription wiring into a standalone module.
@@ -386,6 +388,6 @@ Verification:
 
 ## Immediate Next Actions
 
-1. Run `#117` next slice: extract OSC/theme response handling and clipboard/runtime clipboard helpers out of `terminalService.ts`.
-2. Run `#116` next slice: split large `WorkspaceActionModal.svelte` sections into dedicated per-mode components.
+1. Run `#117` next slice: extract session lifecycle/start/bootstrap orchestration from `terminalService.ts` into a dedicated controller module.
+2. Run `#117` follow-up slice: isolate context/store registry and remaining debug/stat plumbing to move the service toward pure facade wiring.
 3. Run issue closeout pass: verify no regression in `internal/e2e` signing assumptions and finalize `#125` completion checklist.

@@ -46,8 +46,9 @@
 	import Alert from './ui/Alert.svelte';
 	import Button from './ui/Button.svelte';
 	import Modal from './Modal.svelte';
-	import RemovalOverlay from './workspace-action/RemovalOverlay.svelte';
 	import WorkspaceActionHookResults from './workspace-action/WorkspaceActionHookResults.svelte';
+	import WorkspaceActionRemoveRepoForm from './workspace-action/WorkspaceActionRemoveRepoForm.svelte';
+	import WorkspaceActionRemoveWorkspaceForm from './workspace-action/WorkspaceActionRemoveWorkspaceForm.svelte';
 
 	interface Props {
 		onClose: () => void;
@@ -1253,103 +1254,34 @@
 				</Button>
 			</div>
 		{:else if mode === 'remove-workspace'}
-			<div class="form form-removing" class:removing class:success={removalSuccess}>
-				<div class="form-content">
-					<div class="hint hint-intro">Remove workspace registration only by default.</div>
-					<label class="option option-main">
-						<input type="checkbox" bind:checked={removeDeleteFiles} />
-						<span>Also delete workspace files and worktrees</span>
-					</label>
-					{#if removeDeleteFiles}
-						<div class="deletion-options">
-							<div class="hint deletion-hint">
-								Deletes the workspace directory and removes all worktrees.
-							</div>
-							<label class="field">
-								<span>Type DELETE to confirm</span>
-								<input
-									bind:value={removeConfirmText}
-									placeholder="DELETE"
-									autocapitalize="off"
-									autocorrect="off"
-									spellcheck="false"
-								/>
-							</label>
-							<label class="option">
-								<input type="checkbox" bind:checked={removeForceDelete} />
-								<span>Force delete (skip safety checks)</span>
-							</label>
-							{#if removeForceDelete}
-								<Alert variant="warning">
-									Force delete bypasses dirty/unmerged checks and may delete uncommitted work.
-								</Alert>
-							{/if}
-						</div>
-					{/if}
-					<Button
-						variant="danger"
-						onclick={handleRemoveWorkspace}
-						disabled={loading || !removeConfirmValid}
-						class="action-btn"
-					>
-						{loading ? 'Removing…' : 'Remove workspace'}
-					</Button>
-				</div>
-				<RemovalOverlay {removing} {removalSuccess} removingText="Removing workspace…" />
-			</div>
+			<WorkspaceActionRemoveWorkspaceForm
+				{loading}
+				{removing}
+				{removalSuccess}
+				{removeDeleteFiles}
+				{removeForceDelete}
+				{removeConfirmText}
+				{removeConfirmValid}
+				onToggleDeleteFiles={(checked) => (removeDeleteFiles = checked)}
+				onToggleForceDelete={(checked) => (removeForceDelete = checked)}
+				onConfirmTextInput={(value) => (removeConfirmText = value)}
+				onSubmit={handleRemoveWorkspace}
+			/>
 		{:else if mode === 'remove-repo'}
-			<div class="form form-removing" class:removing class:success={removalSuccess}>
-				<div class="form-content">
-					<div class="hint hint-intro">
-						This removes the repo from the workspace config by default.
-					</div>
-					<label class="option option-main">
-						<input type="checkbox" bind:checked={removeDeleteWorktree} />
-						<span>Also delete worktrees for this repo</span>
-					</label>
-					{#if removeRepoConfirmRequired}
-						<div class="deletion-options">
-							<label class="field">
-								<span>Type DELETE to confirm</span>
-								<input
-									bind:value={removeRepoConfirmText}
-									placeholder="DELETE"
-									autocapitalize="off"
-									autocorrect="off"
-									spellcheck="false"
-								/>
-							</label>
-							{#if removeDeleteWorktree}
-								<div class="hint deletion-hint">
-									Destructive deletes are permanent and cannot be undone.
-								</div>
-							{/if}
-							{#if removeRepoStatusRefreshing}
-								<Alert variant="warning">Fetching repo status…</Alert>
-							{:else if removeRepoStatus?.statusKnown === false && removeDeleteWorktree}
-								<Alert variant="warning">
-									Repo status unknown. Destructive deletes may be blocked if the repo is dirty.
-								</Alert>
-							{/if}
-							{#if removeRepoStatus?.dirty && removeDeleteWorktree}
-								<Alert variant="warning">
-									Uncommitted changes detected. Destructive deletes will be blocked until the repo
-									is clean.
-								</Alert>
-							{/if}
-						</div>
-					{/if}
-					<Button
-						variant="danger"
-						onclick={handleRemoveRepo}
-						disabled={loading || !removeRepoConfirmValid}
-						class="action-btn"
-					>
-						{loading ? 'Removing…' : 'Remove repo'}
-					</Button>
-				</div>
-				<RemovalOverlay {removing} {removalSuccess} removingText="Removing repo…" />
-			</div>
+			<WorkspaceActionRemoveRepoForm
+				{loading}
+				{removing}
+				{removalSuccess}
+				{removeDeleteWorktree}
+				{removeRepoConfirmRequired}
+				{removeRepoConfirmText}
+				{removeRepoStatusRefreshing}
+				{removeRepoStatus}
+				{removeRepoConfirmValid}
+				onToggleDeleteWorktree={(checked) => (removeDeleteWorktree = checked)}
+				onConfirmTextInput={(value) => (removeRepoConfirmText = value)}
+				onSubmit={handleRemoveRepo}
+			/>
 		{/if}
 	{/if}
 </Modal>
@@ -1359,41 +1291,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 12px;
-	}
-
-	.form.form-removing {
-		gap: 20px;
-	}
-
-	.deletion-options {
-		background: var(--panel);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		padding: 16px;
-		display: flex;
-		flex-direction: column;
-		gap: 16px;
-		margin-top: 4px;
-	}
-
-	.deletion-options :global(.alert) {
-		margin: 0;
-	}
-
-	.deletion-hint {
-		line-height: 1.5;
-		margin: 0;
-	}
-
-	/* Better spacing for removal modal elements */
-	.hint-intro {
-		margin-bottom: 8px;
-		line-height: 1.5;
-	}
-
-	.option-main {
-		margin-top: 4px;
-		margin-bottom: 4px;
 	}
 
 	.field {
@@ -1433,10 +1330,6 @@
 	:global(.action-btn) {
 		width: 100%;
 		margin-top: 8px;
-	}
-
-	.form-removing :global(.action-btn) {
-		margin-top: 16px;
 	}
 
 	.hint {
@@ -1540,18 +1433,6 @@
 	.suggestion-btn:hover {
 		opacity: 0.8;
 		text-decoration: underline;
-	}
-
-	.option {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		font-size: 13px;
-		color: var(--text);
-	}
-
-	.option input {
-		accent-color: var(--accent);
 	}
 
 	/* Checkbox list styles - clean with subtle dividers */
@@ -1923,29 +1804,6 @@
 
 	.group-members li {
 		margin: 2px 0;
-	}
-
-	/* Removal modal loading overlay styles */
-	.form-removing {
-		position: relative;
-	}
-
-	.form-content {
-		transition:
-			opacity 0.3s ease,
-			filter 0.3s ease;
-	}
-
-	.form-removing.removing .form-content {
-		opacity: 0.4;
-		filter: blur(1px);
-		pointer-events: none;
-	}
-
-	.form-removing.success .form-content {
-		opacity: 0.3;
-		filter: blur(2px);
-		pointer-events: none;
 	}
 
 	/* Two-column create layout */
