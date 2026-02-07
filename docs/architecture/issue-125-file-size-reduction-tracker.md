@@ -2,7 +2,7 @@
 
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
-Last updated: 2026-02-07 (main-agent pass 42)
+Last updated: 2026-02-07 (main-agent pass 43)
 
 ## Goal
 
@@ -21,7 +21,6 @@ Largest files by LOC right now:
 - `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (1978)
 - `wails-ui/workset/app_diffs.go` (926)
 - `pkg/sessiond/terminal_filter.go` (889)
-- `wails-ui/workset/frontend/src/lib/components/TerminalLayoutNode.svelte` (847)
 - `wails-ui/workset/repo_diff_watcher.go` (816)
 - `internal/git/cli.go` (795)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (699)
@@ -33,6 +32,7 @@ Largest files by LOC right now:
 - `wails-ui/workset/frontend/src/lib/components/settings/sections/SkillManager.svelte` (663)
 - `pkg/worksetapi/github_service_read_helpers_test.go` (662)
 - `wails-ui/workset/app_github.go` (641)
+- `pkg/worksetapi/github_provider_cli.go` (628)
 
 ## Parallel Tracks (Issue Map)
 
@@ -243,6 +243,8 @@ Remaining tasks:
 - [x] Shrink `terminalService.ts` to orchestration-only facade (`terminalService.ts` is now 491 LOC).
 - [x] Extract terminal layout-tree/storage helpers from `TerminalWorkspace.svelte`.
   Slice landed: moved layout normalization/tree operations and storage migration helpers into `terminal/terminalLayoutTree.ts` and `terminal/terminalLayoutStorage.ts`; `TerminalWorkspace.svelte` is now 677 LOC.
+- [x] Extract terminal layout node pane UI subcomponents.
+  Slice landed: moved pane tab, pane actions, and split-drop overlay into `TerminalPaneTab.svelte`, `TerminalPaneActions.svelte`, and `TerminalDropZones.svelte`; `TerminalLayoutNode.svelte` is now 563 LOC.
 
 Verification:
 
@@ -437,5 +439,5 @@ Verification:
 ## Immediate Next Actions
 
 1. Reconcile `#125` and `#116` progress state after pass 40 LOC changes.
-2. Continue remaining non-RepoDiff frontend files over 700 LOC (`TerminalLayoutNode.svelte`) before next `#115` RepoDiff slice.
+2. Frontend non-RepoDiff files are now below 700; return to `#115` RepoDiff decomposition.
 3. Prepare closeout criteria for `#125` once remaining FE tracks are complete.
