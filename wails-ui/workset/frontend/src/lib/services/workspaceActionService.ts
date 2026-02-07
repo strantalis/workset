@@ -1,4 +1,16 @@
+import {
+	addRepo as addRepoMutation,
+	archiveWorkspace as archiveWorkspaceMutation,
+	createWorkspace as createWorkspaceMutation,
+	removeRepo as removeRepoMutation,
+	removeWorkspace as removeWorkspaceMutation,
+	renameWorkspace as renameWorkspaceMutation,
+} from '../api/workspaces';
 import { deriveRepoName, isRepoSource } from '../names';
+import {
+	applyGroup as applyGroupMutation,
+	registerRepo as registerRepoMutation,
+} from '../api/settings';
 import type { HookExecution, RepoAddResponse, WorkspaceCreateResponse } from '../types';
 
 export type WorkspaceActionPendingHook = {
@@ -14,7 +26,7 @@ type CreateDirectRepo = {
 	register: boolean;
 };
 
-type CreateWorkspaceMutationInput = {
+export type CreateWorkspaceMutationInput = {
 	finalName: string;
 	primaryInput: string;
 	directRepos: CreateDirectRepo[];
@@ -37,7 +49,7 @@ type CreateWorkspaceMutationDeps = {
 	) => Promise<WorkspaceCreateResponse>;
 };
 
-type AddItemsMutationInput = {
+export type AddItemsMutationInput = {
 	workspaceId: string;
 	source: string;
 	selectedAliases: Iterable<string>;
@@ -54,7 +66,7 @@ type AddItemsMutationDeps = {
 	applyGroup: (workspaceId: string, group: string) => Promise<void>;
 };
 
-type RenameWorkspaceMutationInput = {
+export type RenameWorkspaceMutationInput = {
 	workspaceId: string;
 	workspaceName: string;
 };
@@ -63,7 +75,7 @@ type RenameWorkspaceMutationDeps = {
 	renameWorkspace: (workspaceId: string, nextName: string) => Promise<void>;
 };
 
-type ArchiveWorkspaceMutationInput = {
+export type ArchiveWorkspaceMutationInput = {
 	workspaceId: string;
 	reason: string;
 };
@@ -72,7 +84,7 @@ type ArchiveWorkspaceMutationDeps = {
 	archiveWorkspace: (workspaceId: string, reason: string) => Promise<void>;
 };
 
-type RemoveWorkspaceMutationInput = {
+export type RemoveWorkspaceMutationInput = {
 	workspaceId: string;
 	deleteFiles: boolean;
 	force: boolean;
@@ -85,7 +97,7 @@ type RemoveWorkspaceMutationDeps = {
 	) => Promise<void>;
 };
 
-type RemoveRepoMutationInput = {
+export type RemoveRepoMutationInput = {
 	workspaceId: string;
 	repoName: string;
 	deleteWorktree: boolean;
@@ -143,6 +155,39 @@ export type RemoveRepoMutationResult = {
 	repoName: string;
 };
 
+export type WorkspaceActionMutationGateway = {
+	registerRepo: CreateWorkspaceMutationDeps['registerRepo'];
+	createWorkspace: CreateWorkspaceMutationDeps['createWorkspace'];
+	addRepo: AddItemsMutationDeps['addRepo'];
+	applyGroup: AddItemsMutationDeps['applyGroup'];
+	renameWorkspace: RenameWorkspaceMutationDeps['renameWorkspace'];
+	archiveWorkspace: ArchiveWorkspaceMutationDeps['archiveWorkspace'];
+	removeWorkspace: RemoveWorkspaceMutationDeps['removeWorkspace'];
+	removeRepo: RemoveRepoMutationDeps['removeRepo'];
+};
+
+export type WorkspaceActionMutationService = {
+	createWorkspace: (input: CreateWorkspaceMutationInput) => Promise<CreateWorkspaceMutationResult>;
+	addItems: (input: AddItemsMutationInput) => Promise<AddItemsMutationResult>;
+	renameWorkspace: (input: RenameWorkspaceMutationInput) => Promise<RenameWorkspaceMutationResult>;
+	archiveWorkspace: (
+		input: ArchiveWorkspaceMutationInput,
+	) => Promise<ArchiveWorkspaceMutationResult>;
+	removeWorkspace: (input: RemoveWorkspaceMutationInput) => Promise<RemoveWorkspaceMutationResult>;
+	removeRepo: (input: RemoveRepoMutationInput) => Promise<RemoveRepoMutationResult>;
+};
+
+export const workspaceActionMutationGateway: WorkspaceActionMutationGateway = {
+	registerRepo: registerRepoMutation,
+	createWorkspace: createWorkspaceMutation,
+	addRepo: addRepoMutation,
+	applyGroup: applyGroupMutation,
+	renameWorkspace: renameWorkspaceMutation,
+	archiveWorkspace: archiveWorkspaceMutation,
+	removeWorkspace: removeWorkspaceMutation,
+	removeRepo: removeRepoMutation,
+};
+
 const dedupeWarnings = (warnings: string[]): string[] => Array.from(new Set(warnings));
 
 const normalizePendingHooks = (
@@ -162,6 +207,39 @@ export const evaluateHookTransition = ({
 			hasHookActivity && pendingHooks.length === 0 && warnings.length === 0 && allRunsOk,
 	};
 };
+
+export const createWorkspaceActionMutationService = (
+	gateway: WorkspaceActionMutationGateway = workspaceActionMutationGateway,
+): WorkspaceActionMutationService => ({
+	createWorkspace: (input) =>
+		runCreateWorkspaceMutation(input, {
+			registerRepo: gateway.registerRepo,
+			createWorkspace: gateway.createWorkspace,
+		}),
+	addItems: (input) =>
+		runAddItemsMutation(input, {
+			addRepo: gateway.addRepo,
+			applyGroup: gateway.applyGroup,
+		}),
+	renameWorkspace: (input) =>
+		runRenameWorkspaceMutation(input, {
+			renameWorkspace: gateway.renameWorkspace,
+		}),
+	archiveWorkspace: (input) =>
+		runArchiveWorkspaceMutation(input, {
+			archiveWorkspace: gateway.archiveWorkspace,
+		}),
+	removeWorkspace: (input) =>
+		runRemoveWorkspaceMutation(input, {
+			removeWorkspace: gateway.removeWorkspace,
+		}),
+	removeRepo: (input) =>
+		runRemoveRepoMutation(input, {
+			removeRepo: gateway.removeRepo,
+		}),
+});
+
+export const workspaceActionMutations = createWorkspaceActionMutationService();
 
 export const runCreateWorkspaceMutation = async (
 	input: CreateWorkspaceMutationInput,

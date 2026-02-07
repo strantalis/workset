@@ -1,24 +1,8 @@
 <script lang="ts">
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { get } from 'svelte/store';
-	import {
-		addRepo,
-		archiveWorkspace,
-		createWorkspace,
-		removeRepo,
-		removeWorkspace,
-		renameWorkspace,
-		runRepoHooks,
-		trustRepoHooks,
-	} from '../api/workspaces';
-	import {
-		applyGroup,
-		getGroup,
-		listAliases,
-		listGroups,
-		openDirectoryDialog,
-		registerRepo,
-	} from '../api/settings';
+	import { runRepoHooks, trustRepoHooks } from '../api/workspaces';
+	import { getGroup, listAliases, listGroups, openDirectoryDialog } from '../api/settings';
 	import {
 		activeWorkspaceId,
 		clearRepo,
@@ -41,15 +25,16 @@
 		shouldTrackHookEvent,
 		type WorkspaceActionPendingHook,
 	} from '../services/workspaceActionHooks';
+	import { workspaceActionMutations } from '../services/workspaceActionService';
 	import {
-		evaluateHookTransition,
-		runArchiveWorkspaceMutation,
-		runAddItemsMutation,
-		runCreateWorkspaceMutation,
-		runRemoveRepoMutation,
-		runRemoveWorkspaceMutation,
-		runRenameWorkspaceMutation,
-	} from '../services/workspaceActionService';
+		deriveWorkspaceActionModalSize,
+		deriveWorkspaceActionModalSubtitle,
+		deriveWorkspaceActionModalTitle,
+		resetWorkspaceActionFlow,
+		resolveMutationHookTransition,
+		resolveRemovalState,
+		shouldRefreshRemoveRepoStatus,
+	} from '../services/workspaceActionModalController';
 	import {
 		deriveAddRepoContext,
 		deriveExistingReposContext,
@@ -251,22 +236,22 @@
 	);
 
 	$effect(() => {
-		if (!removeDeleteFiles && removeForceDelete) {
-			removeForceDelete = false;
-		}
-		if (!removeDeleteFiles && removeConfirmText) {
-			removeConfirmText = '';
-		}
-		if (!removeRepoConfirmRequired && removeRepoConfirmText) {
-			removeRepoConfirmText = '';
-		}
-		if (!removeRepoConfirmRequired) {
-			removeRepoStatusRequested = false;
-		}
+		const resolved = resolveRemovalState({
+			removeDeleteFiles,
+			removeForceDelete,
+			removeConfirmText,
+			removeRepoConfirmRequired,
+			removeRepoConfirmText,
+			removeRepoStatusRequested,
+		});
+		removeForceDelete = resolved.removeForceDelete;
+		removeConfirmText = resolved.removeConfirmText;
+		removeRepoConfirmText = resolved.removeRepoConfirmText;
+		removeRepoStatusRequested = resolved.removeRepoStatusRequested;
 	});
 
 	$effect(() => {
-		if (removeRepoConfirmRequired && !removeRepoStatusRequested) {
+		if (shouldRefreshRemoveRepoStatus(removeRepoConfirmRequired, removeRepoStatusRequested)) {
 			removeRepoStatusRequested = true;
 			removeRepoStatusRefreshing = true;
 			void (async () => {
@@ -276,33 +261,18 @@
 		}
 	});
 
-	const modeTitle = $derived(
-		phase === 'hook-results'
-			? 'Hook results'
-			: mode === 'create'
-				? 'Create workspace'
-				: mode === 'rename'
-					? 'Rename workspace'
-					: mode === 'add-repo'
-						? 'Add to workspace'
-						: mode === 'archive'
-							? 'Archive workspace'
-							: mode === 'remove-workspace'
-								? 'Remove workspace'
-								: mode === 'remove-repo'
-									? 'Remove repo'
-									: 'Workspace action',
-	);
+	const modeTitle = $derived(deriveWorkspaceActionModalTitle(mode, phase));
 
 	const modalSubtitle = $derived.by(() => {
-		if (phase === 'hook-results') return hookResultContext?.name ?? '';
-		if (mode === 'create') return '';
-		return workspace?.name ?? '';
+		return deriveWorkspaceActionModalSubtitle({
+			phase,
+			mode,
+			workspaceName: workspace?.name ?? null,
+			hookResultContext,
+		});
 	});
 
-	const modalSize = $derived(
-		phase === 'hook-results' ? 'md' : mode === 'create' || mode === 'add-repo' ? 'wide' : 'md',
-	);
+	const modalSize = $derived(deriveWorkspaceActionModalSize(mode, phase));
 
 	const formatError = (err: unknown, fallback: string): string => {
 		if (err instanceof Error) return err.message;
@@ -354,8 +324,7 @@
 	};
 
 	const loadContext = async (): Promise<void> => {
-		phase = 'form';
-		hookResultContext = null;
+		({ phase, hookResultContext } = resetWorkspaceActionFlow());
 		const context = await loadWorkspaceActionContext(
 			{
 				mode,
@@ -399,19 +368,13 @@
 			finalName,
 		));
 		try {
-			const result = await runCreateWorkspaceMutation(
-				{
-					finalName,
-					primaryInput,
-					directRepos,
-					selectedAliases,
-					selectedGroups,
-				},
-				{
-					registerRepo,
-					createWorkspace,
-				},
-			);
+			const result = await workspaceActionMutations.createWorkspace({
+				finalName,
+				primaryInput,
+				directRepos,
+				selectedAliases,
+				selectedGroups,
+			});
 
 			hookRuns = appendHookRuns(hookRuns, result.hookRuns);
 			pendingHooks = result.pendingHooks.map((pending) => ({ ...pending }));
@@ -419,16 +382,20 @@
 			await loadWorkspaces(true);
 			selectWorkspace(result.workspaceName);
 			warnings = result.warnings;
-			const transition = evaluateHookTransition({ warnings, pendingHooks, hookRuns });
-			if (transition.hasHookActivity) {
-				success = `Created ${result.workspaceName}.`;
-				hookResultContext = { action: 'created', name: result.workspaceName };
-				phase = 'hook-results';
-				if (transition.shouldAutoClose) {
-					autoCloseTimer = setTimeout(() => onClose(), 1500);
-				}
-			} else {
+			const transition = resolveMutationHookTransition({
+				action: 'created',
+				workspaceName: result.workspaceName,
+				warnings,
+				pendingHooks,
+				hookRuns,
+			});
+			success = transition.success;
+			hookResultContext = transition.hookResultContext;
+			phase = transition.phase;
+			if (transition.shouldClose) {
 				onClose();
+			} else if (transition.shouldAutoClose) {
+				autoCloseTimer = setTimeout(() => onClose(), 1500);
 			}
 		} catch (err) {
 			error = formatError(err, 'Failed to create workspace.');
@@ -450,15 +417,10 @@
 		success = null;
 		warnings = [];
 		try {
-			const result = await runRenameWorkspaceMutation(
-				{
-					workspaceId: workspace.id,
-					workspaceName: nextName,
-				},
-				{
-					renameWorkspace,
-				},
-			);
+			const result = await workspaceActionMutations.renameWorkspace({
+				workspaceId: workspace.id,
+				workspaceName: nextName,
+			});
 			await loadWorkspaces(true);
 			if (get(activeWorkspaceId) === workspace.id) {
 				selectWorkspace(result.workspaceName);
@@ -496,18 +458,12 @@
 			workspace.name,
 		));
 		try {
-			const result = await runAddItemsMutation(
-				{
-					workspaceId: workspace.id,
-					source,
-					selectedAliases,
-					selectedGroups,
-				},
-				{
-					addRepo,
-					applyGroup,
-				},
-			);
+			const result = await workspaceActionMutations.addItems({
+				workspaceId: workspace.id,
+				source,
+				selectedAliases,
+				selectedGroups,
+			});
 
 			hookRuns = appendHookRuns(hookRuns, result.hookRuns);
 			pendingHooks = result.pendingHooks.map((pending) => ({ ...pending }));
@@ -515,20 +471,21 @@
 			await loadWorkspaces(true);
 			const itemCount = result.itemCount;
 			warnings = result.warnings;
-			const transition = evaluateHookTransition({ warnings, pendingHooks, hookRuns });
-			if (transition.hasHookActivity) {
-				success = `Added ${itemCount} item${itemCount !== 1 ? 's' : ''}.`;
-				hookResultContext = {
-					action: 'added',
-					name: workspace.name,
-					itemCount,
-				};
-				phase = 'hook-results';
-				if (transition.shouldAutoClose) {
-					autoCloseTimer = setTimeout(() => onClose(), 1500);
-				}
-			} else {
+			const transition = resolveMutationHookTransition({
+				action: 'added',
+				workspaceName: workspace.name,
+				itemCount,
+				warnings,
+				pendingHooks,
+				hookRuns,
+			});
+			success = transition.success;
+			hookResultContext = transition.hookResultContext;
+			phase = transition.phase;
+			if (transition.shouldClose) {
 				onClose();
+			} else if (transition.shouldAutoClose) {
+				autoCloseTimer = setTimeout(() => onClose(), 1500);
 			}
 		} catch (err) {
 			error = formatError(err, 'Failed to add items.');
@@ -556,15 +513,10 @@
 		success = null;
 		warnings = [];
 		try {
-			const result = await runArchiveWorkspaceMutation(
-				{
-					workspaceId: workspace.id,
-					reason: archiveReason.trim(),
-				},
-				{
-					archiveWorkspace,
-				},
-			);
+			const result = await workspaceActionMutations.archiveWorkspace({
+				workspaceId: workspace.id,
+				reason: archiveReason.trim(),
+			});
 			await loadWorkspaces(true);
 			if (get(activeWorkspaceId) === result.workspaceId) {
 				clearWorkspace();
@@ -590,16 +542,11 @@
 				removing = false;
 				return;
 			}
-			const result = await runRemoveWorkspaceMutation(
-				{
-					workspaceId,
-					deleteFiles: removeDeleteFiles,
-					force: removeForceDelete,
-				},
-				{
-					removeWorkspace,
-				},
-			);
+			const result = await workspaceActionMutations.removeWorkspace({
+				workspaceId,
+				deleteFiles: removeDeleteFiles,
+				force: removeForceDelete,
+			});
 			workspaces.update((current) => current.filter((entry) => entry.id !== result.workspaceId));
 			if (get(activeWorkspaceId) === result.workspaceId) {
 				clearWorkspace();
@@ -630,16 +577,11 @@
 				removing = false;
 				return;
 			}
-			const result = await runRemoveRepoMutation(
-				{
-					workspaceId: workspace.id,
-					repoName: repo.name,
-					deleteWorktree: removeDeleteWorktree,
-				},
-				{
-					removeRepo,
-				},
-			);
+			const result = await workspaceActionMutations.removeRepo({
+				workspaceId: workspace.id,
+				repoName: repo.name,
+				deleteWorktree: removeDeleteWorktree,
+			});
 			await loadWorkspaces(true);
 			if (get(activeWorkspaceId) === result.workspaceId) {
 				clearRepo();

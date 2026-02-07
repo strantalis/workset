@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { HookExecution, RepoAddResponse, WorkspaceCreateResponse } from '../../types';
 import {
+	createWorkspaceActionMutationService,
 	evaluateHookTransition,
 	runArchiveWorkspaceMutation,
 	runAddItemsMutation,
@@ -352,5 +353,83 @@ describe('runRemoveRepoMutation', () => {
 				{ removeRepo },
 			),
 		).rejects.toThrow('remove repo failed');
+	});
+});
+
+describe('createWorkspaceActionMutationService', () => {
+	it('routes mutation calls through the dedicated gateway', async () => {
+		const registerRepo = vi.fn(async () => undefined);
+		const createWorkspace = vi.fn(
+			async (): Promise<WorkspaceCreateResponse> => ({
+				workspace: {
+					name: 'alpha',
+					path: '/tmp/alpha',
+					workset: '/tmp/alpha/workset.yaml',
+					branch: 'main',
+					next: 'next',
+				},
+				warnings: [],
+				pendingHooks: [],
+				hookRuns: [],
+			}),
+		);
+		const addRepo = vi.fn(async () => buildRepoAddResponse());
+		const applyGroup = vi.fn(async () => undefined);
+		const renameWorkspace = vi.fn(async () => undefined);
+		const archiveWorkspace = vi.fn(async () => undefined);
+		const removeWorkspace = vi.fn(async () => undefined);
+		const removeRepo = vi.fn(async () => undefined);
+
+		const service = createWorkspaceActionMutationService({
+			registerRepo,
+			createWorkspace,
+			addRepo,
+			applyGroup,
+			renameWorkspace,
+			archiveWorkspace,
+			removeWorkspace,
+			removeRepo,
+		});
+
+		await service.createWorkspace({
+			finalName: 'alpha',
+			primaryInput: '/tmp/repos/alpha',
+			directRepos: [],
+			selectedAliases: new Set(),
+			selectedGroups: new Set(),
+		});
+		await service.addItems({
+			workspaceId: 'ws-1',
+			source: '/tmp/repos/beta',
+			selectedAliases: new Set(['alias-one']),
+			selectedGroups: new Set(['group-one']),
+		});
+		await service.renameWorkspace({
+			workspaceId: 'ws-1',
+			workspaceName: 'renamed',
+		});
+		await service.archiveWorkspace({
+			workspaceId: 'ws-1',
+			reason: 'done',
+		});
+		await service.removeWorkspace({
+			workspaceId: 'ws-1',
+			deleteFiles: false,
+			force: false,
+		});
+		await service.removeRepo({
+			workspaceId: 'ws-1',
+			repoName: 'repo-a',
+			deleteWorktree: false,
+		});
+
+		expect(registerRepo).toHaveBeenCalledTimes(1);
+		expect(createWorkspace).toHaveBeenCalledTimes(1);
+		expect(addRepo).toHaveBeenCalledTimes(2);
+		expect(applyGroup).toHaveBeenCalledTimes(1);
+		expect(renameWorkspace).toHaveBeenCalledTimes(1);
+		expect(archiveWorkspace).toHaveBeenCalledTimes(1);
+		expect(removeWorkspace).toHaveBeenCalledTimes(1);
+		expect(removeRepo).toHaveBeenCalledTimes(1);
 	});
 });
