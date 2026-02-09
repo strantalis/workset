@@ -23,7 +23,7 @@ export type PtySlice = {
   updatePtyModes: (terminalId: string, altScreen: boolean, mouse: boolean) => void;
 };
 
-export const createPtySlice: StateCreator<PtySlice, [], [], PtySlice> = (set, get) => ({
+export const createPtySlice: StateCreator<PtySlice, [], [], PtySlice> = (set, _get) => ({
   ptySessions: {},
 
   allocatePtySession: async (workspaceName, kind) => {

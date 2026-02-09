@@ -17,7 +17,7 @@ import {
 import type { EnvSnapshot, SessiondStatus, CliStatus } from '@/types/diagnostics';
 import type { GitHubRepo, GitHubAccount } from '@/types/github';
 import type { RepoInstance } from '@/types/repo';
-import { LayoutGrid, FolderGit2, Plus, Trash2, Lock, Search, ChevronDown, Check } from 'lucide-react';
+import { LayoutGrid, FolderGit2, Trash2, Lock, Search, ChevronDown, Check } from 'lucide-react';
 import './CommandCenterPage.css';
 
 export function CommandCenterPage() {
@@ -448,7 +448,7 @@ function DiagnosticsSection({ activeWorkspaceName }: { activeWorkspaceName: stri
             action={
               <Button
                 variant="ghost"
-                size="small"
+                size="sm"
                 onClick={handleRestartSessiond}
                 disabled={restarting}
               >
@@ -485,7 +485,7 @@ function DiagnosticsSection({ activeWorkspaceName }: { activeWorkspaceName: stri
             action={
               <Button
                 variant="ghost"
-                size="small"
+                size="sm"
                 onClick={handleReloadEnv}
                 disabled={reloading}
               >

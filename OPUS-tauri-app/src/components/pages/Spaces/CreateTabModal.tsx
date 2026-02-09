@@ -16,7 +16,7 @@ export function CreateTabModal() {
   async function handleCreate(kind: 'terminal' | 'agent') {
     if (!workspaceName) return;
     // TODO: resolve actual workspace cwd from repos
-    const cwd = process.env.HOME ?? '/';
+    const cwd = '/';
     const terminalId = await createPtySession(workspaceName, kind, cwd);
     const tabId = `tab-${Date.now()}`;
     addTab(paneId, {

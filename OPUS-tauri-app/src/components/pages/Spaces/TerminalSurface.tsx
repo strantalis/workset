@@ -40,7 +40,6 @@ export function TerminalSurface({ workspaceName, terminalId }: Props) {
   const updatePtyStatus = useAppStore((s) => s.updatePtyStatus);
   const updatePtyModes = useAppStore((s) => s.updatePtyModes);
   const updateTabTitle = useAppStore((s) => s.updateTabTitle);
-  const workspaces = useAppStore((s) => s.workspaces);
 
   const flushAck = useCallback(() => {
     if (pendingAckRef.current > 0) {

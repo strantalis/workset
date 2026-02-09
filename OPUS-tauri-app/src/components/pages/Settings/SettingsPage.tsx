@@ -148,7 +148,7 @@ function DiagnosticsSection() {
             action={
               <Button
                 variant="ghost"
-                size="small"
+                size="sm"
                 onClick={handleRestartSessiond}
                 disabled={restarting}
               >
@@ -173,7 +173,7 @@ function DiagnosticsSection() {
             action={
               <Button
                 variant="ghost"
-                size="small"
+                size="sm"
                 onClick={handleReloadEnv}
                 disabled={reloading}
               >

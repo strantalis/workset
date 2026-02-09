@@ -16,7 +16,7 @@ export type DiffSlice = {
   fetchFilePatch: (repoPath: string, path: string, prevPath: string | undefined, status: string) => Promise<FilePatch>;
 };
 
-export const createDiffSlice: StateCreator<DiffSlice, [], [], DiffSlice> = (set, get) => ({
+export const createDiffSlice: StateCreator<DiffSlice, [], [], DiffSlice> = (set, _get) => ({
   repoDiffs: {},
 
   loadDiffSummary: async (workspaceName, repo, repoPath) => {
