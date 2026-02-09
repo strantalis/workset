@@ -262,9 +262,9 @@ function RepositoriesSection({
   async function handleAddRepo(repoUrl?: string) {
     let url = repoUrl || newRepoUrl.trim();
     if (!url || !activeWorksetId) return;
-    // Normalize short "org/repo" to full GitHub URL so the Go backend recognizes it
+    // Normalize short "org/repo" to SSH URL so the Go backend recognizes it
     if (!url.includes('://') && !url.includes('@') && !url.startsWith('/') && !url.startsWith('~') && !url.startsWith('.') && url.includes('/')) {
-      url = `https://github.com/${url}`;
+      url = `git@github.com:${url}.git`;
     }
     setRepoLoading(true);
     setShowSuggestions(false);

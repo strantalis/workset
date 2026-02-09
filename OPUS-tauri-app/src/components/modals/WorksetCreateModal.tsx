@@ -165,9 +165,9 @@ export function WorksetCreateModal() {
   async function handleAddRepo(repoUrl?: string) {
     let source = repoUrl || repoInput.trim();
     if (!source) return;
-    // Normalize short "org/repo" to full GitHub URL
+    // Normalize short "org/repo" to SSH URL
     if (!source.includes('://') && !source.includes('@') && !source.startsWith('/') && !source.startsWith('~') && !source.startsWith('.') && source.includes('/')) {
-      source = `https://github.com/${source}`;
+      source = `git@github.com:${source}.git`;
     }
     setAddingRepo(true);
     setRepoError(null);
