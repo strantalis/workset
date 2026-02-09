@@ -1,0 +1,80 @@
+.modal-card--wide {
+  max-width: 480px;
+}
+
+.migration-loading {
+  padding: 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.migration-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.migration-item {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 3px;
+  font-size: 13px;
+}
+
+.migration-item--failed {
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.migration-item__name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.migration-item__state {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: capitalize;
+}
+
+.migration-item__retry {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background var(--transition-fast);
+}
+
+.migration-item__retry:hover {
+  background: var(--surface);
+}
+
+.migration-item__error {
+  width: 100%;
+  font-size: 11px;
+  color: var(--danger, #ef4444);
+  padding-left: 22px;
+}
+
+.migration-icon--success { color: var(--success); }
+.migration-icon--failed { color: var(--danger, #ef4444); }
+.migration-icon--running { color: var(--accent); animation: spin 1s linear infinite; }
+.migration-icon--pending { color: var(--muted); }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

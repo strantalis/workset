@@ -1,0 +1,444 @@
+.command-center {
+  padding: var(--space-5) var(--space-6);
+  overflow-y: auto;
+  width: 100%;
+  height: 100%;
+}
+
+.command-center__header h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 var(--space-5);
+}
+
+.command-center__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.stat-card__icon {
+  color: var(--muted);
+  margin-bottom: var(--space-2);
+}
+
+.stat-card__value {
+  font-size: 24px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+.stat-card__label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: var(--space-1);
+}
+
+.command-center__section {
+  margin-bottom: var(--space-5);
+}
+
+.command-center__section-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 var(--space-3);
+}
+
+/* ─── Composite Search Bar ────────────────────────────────────── */
+
+.repo-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-5);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.repo-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.15);
+}
+
+.repo-search *:focus,
+.repo-search *:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+/* ── Account selector (left portion) ── */
+
+.repo-search__account {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.repo-search__account-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 12px 12px 16px;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--transition-fast);
+}
+
+.repo-search__account-btn:hover {
+  color: var(--accent);
+}
+
+.repo-search__account-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.repo-search__account-chevron {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.repo-search__account-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.repo-search__account-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 160px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  z-index: 60;
+  padding: 4px;
+}
+
+.repo-search__account-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  outline: none;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.repo-search__account-option:hover {
+  background: var(--surface-hover);
+}
+
+.repo-search__account-option svg {
+  color: var(--accent);
+}
+
+/* ── Divider ── */
+
+.repo-search__divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 8px 0;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+/* ── Search input (right portion) ── */
+
+.repo-search__icon {
+  flex-shrink: 0;
+  margin-left: 12px;
+  color: var(--muted);
+  pointer-events: none;
+  opacity: 0.5;
+  transition: color var(--transition-fast), opacity var(--transition-fast);
+}
+
+.repo-search:focus-within .repo-search__icon {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.repo-search__input {
+  flex: 1;
+  padding: 14px 16px 14px 8px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 15px;
+  font-family: var(--font-body);
+  outline: none;
+  min-width: 0;
+}
+
+.repo-search__input::placeholder {
+  color: var(--muted);
+}
+
+.repo-search__input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.repo-search__loading {
+  flex-shrink: 0;
+  padding-right: 14px;
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* ─── Autocomplete Suggestions ────────────────────────────────── */
+
+.repo-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  z-index: 50;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.repo-suggestions__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: inherit;
+  transition: background var(--transition-fast);
+}
+
+.repo-suggestions__item:hover,
+.repo-suggestions__item--selected {
+  background: var(--surface-hover);
+}
+
+.repo-suggestions__icon {
+  color: var(--muted);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.repo-suggestions__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.repo-suggestions__name {
+  font-size: 13px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repo-suggestions__org {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.repo-suggestions__desc {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repo-suggestions__private {
+  color: var(--muted);
+  flex-shrink: 0;
+  margin-top: 3px;
+  opacity: 0.6;
+}
+
+/* ─── Repository List ──────────────────────────────────────────── */
+
+.repo-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.repo-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 16px;
+  transition: background var(--transition-fast);
+}
+
+.repo-row + .repo-row {
+  border-top: 1px solid var(--border);
+}
+
+.repo-row:hover {
+  background: var(--surface-hover);
+}
+
+.repo-row__icon {
+  color: var(--muted);
+  flex-shrink: 0;
+  margin-top: 2px;
+  transition: color var(--transition-fast);
+}
+
+.repo-row:hover .repo-row__icon {
+  color: var(--accent);
+}
+
+.repo-row__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.repo-row__name-line {
+  font-size: 14px;
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repo-row__org {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.repo-row__name {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.repo-row__desc {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repo-row__remove {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  margin-top: -2px;
+  transition: all var(--transition-fast);
+}
+
+.repo-row:hover .repo-row__remove {
+  opacity: 1;
+}
+
+.repo-row__remove:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.command-center__actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+/* Diagnostics */
+.command-center__diagnostics {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.command-center__env-details {
+  margin-top: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.command-center__env-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.command-center__env-row + .command-center__env-row {
+  border-top: 1px solid var(--border);
+}
+
+.command-center__env-label {
+  min-width: 120px;
+  font-weight: 500;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.command-center__env-value {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-center__env-value--wrap {
+  white-space: normal;
+  word-break: break-all;
+}

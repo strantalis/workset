@@ -22,6 +22,8 @@ var (
 	errLoginEnvLast   error
 )
 
+const loginEnvCommandTimeout = 5 * time.Second
+
 // EnsureLoginEnv loads the login-shell environment once per process.
 func EnsureLoginEnv(ctx context.Context) (EnvSnapshotResultJSON, error) {
 	return loadLoginEnv(ctx, false)
@@ -92,11 +94,34 @@ func envMap(env []string) map[string]string {
 	return out
 }
 
-var clearableEnvKeys = []string{"SSH_AUTH_SOCK", "SSH_AGENT_PID", "SSH_ASKPASS", "GIT_SSH_COMMAND"}
+var clearableEnvKeys = []string{
+	"SSH_AUTH_SOCK",
+	"SSH_AGENT_PID",
+	"SSH_ASKPASS",
+	"GIT_ASKPASS",
+	"GIT_SSH_COMMAND",
+	"XDG_CONFIG_HOME",
+	"XDG_STATE_HOME",
+	"XDG_CACHE_HOME",
+}
 
 func shouldOverrideEnvKey(key string) bool {
 	switch key {
-	case "PATH", "SSH_AUTH_SOCK", "SSH_AGENT_PID", "SSH_ASKPASS", "GIT_SSH_COMMAND", "LANG", "LC_ALL", "LC_CTYPE":
+	case "PATH",
+		"HOME",
+		"USER",
+		"LOGNAME",
+		"SSH_AUTH_SOCK",
+		"SSH_AGENT_PID",
+		"SSH_ASKPASS",
+		"GIT_ASKPASS",
+		"GIT_SSH_COMMAND",
+		"XDG_CONFIG_HOME",
+		"XDG_STATE_HOME",
+		"XDG_CACHE_HOME",
+		"LANG",
+		"LC_ALL",
+		"LC_CTYPE":
 		return true
 	default:
 		return strings.HasPrefix(key, "LC_")
@@ -153,7 +178,7 @@ func loadLoginEnv(ctx context.Context, force bool) (EnvSnapshotResultJSON, error
 	shellBase := strings.ToLower(filepath.Base(shell))
 	command := "env"
 	args := shellArgsForMode(shellBase, command, agentShellModeLogin)
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, loginEnvCommandTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, shell, args...)
 	cmd.Env = os.Environ()
