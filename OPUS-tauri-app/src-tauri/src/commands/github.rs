@@ -95,6 +95,10 @@ pub async fn github_auth_status() -> Result<serde_json::Value, ErrorEnvelope> {
             Ok(out) => {
                 let authenticated = out.status.success();
                 let message = if authenticated {
+                    // Configure git to use gh as HTTPS credential helper (idempotent)
+                    let _ = Command::new("gh")
+                        .args(["auth", "setup-git"])
+                        .output();
                     String::from_utf8_lossy(&out.stdout).trim().to_string()
                 } else {
                     String::from_utf8_lossy(&out.stderr).trim().to_string()

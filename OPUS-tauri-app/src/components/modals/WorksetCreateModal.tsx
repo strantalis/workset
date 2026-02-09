@@ -228,7 +228,7 @@ export function WorksetCreateModal() {
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. search-ranking"
+              placeholder="e.g. payments-platform"
               autoFocus
               onKeyDown={(e) => e.key === 'Enter' && handleCreateName()}
             />

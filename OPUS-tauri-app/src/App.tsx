@@ -12,6 +12,9 @@ import { WorksetCreateModal } from '@/components/modals/WorksetCreateModal';
 import { CreateWorkspaceModal } from '@/components/pages/Spaces/CreateWorkspaceModal';
 import { MigrationStatusModal } from '@/components/modals/MigrationStatusModal';
 import { RepoRemoveConfirmModal } from '@/components/modals/RepoRemoveConfirmModal';
+import { CommandPalette } from '@/components/modals/CommandPalette';
+import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts';
+import '@/commands/appCommands';
 
 function MainContent() {
   const activePage = useAppStore((s) => s.activePage);
@@ -31,6 +34,8 @@ export default function App() {
   const activeModal = useAppStore((s) => s.activeModal);
   const activePage = useAppStore((s) => s.activePage);
 
+  useGlobalShortcuts();
+
   useEffect(() => {
     loadWorksets();
   }, [loadWorksets]);
@@ -44,6 +49,7 @@ export default function App() {
         main={<MainContent />}
         rightPanel={activePage === 'spaces' ? <RightPanel /> : undefined}
       />
+      {activeModal?.type === 'command-palette' && <CommandPalette />}
       {activeModal?.type === 'create-workset' && <WorksetCreateModal />}
       {activeModal?.type === 'create-workspace' && <CreateWorkspaceModal />}
       {activeModal?.type === 'migration-status' && <MigrationStatusModal />}
