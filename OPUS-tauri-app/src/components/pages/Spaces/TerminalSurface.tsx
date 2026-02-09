@@ -6,6 +6,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { ClipboardAddon } from '@xterm/addon-clipboard';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { useAppStore } from '@/state/store';
+import { useTerminalTheme } from '@/styles/ThemeProvider';
 import { ptyBootstrap } from '@/api/pty';
 import { onEvent } from '@/api/events';
 import '@xterm/xterm/css/xterm.css';
@@ -20,6 +21,7 @@ type Props = {
 };
 
 export function TerminalSurface({ workspaceName, terminalId }: Props) {
+  const termTheme = useTerminalTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -82,28 +84,7 @@ export function TerminalSurface({ workspaceName, terminalId }: Props) {
       cursorBlink: true,
       scrollback: 10000,
       allowProposedApi: true,
-      theme: {
-        background: '#0a0a0c',
-        foreground: '#ececee',
-        cursor: '#818cf8',
-        selectionBackground: 'rgba(129, 140, 248, 0.3)',
-        black: '#19191b',
-        brightBlack: '#737380',
-        red: '#f87171',
-        brightRed: '#fca5a5',
-        green: '#34d399',
-        brightGreen: '#6ee7b7',
-        yellow: '#fbbf24',
-        brightYellow: '#fde68a',
-        blue: '#818cf8',
-        brightBlue: '#a5b4fc',
-        magenta: '#c084fc',
-        brightMagenta: '#d8b4fe',
-        cyan: '#67e8f9',
-        brightCyan: '#a5f3fc',
-        white: '#ececee',
-        brightWhite: '#ffffff',
-      },
+      theme: termTheme,
     });
 
     const fitAddon = new FitAddon();
@@ -256,6 +237,14 @@ export function TerminalSurface({ workspaceName, terminalId }: Props) {
     };
   }, [workspaceName, terminalId, writePty, resizePty, startPtySession,
       updatePtyStatus, updatePtyModes, updateTabTitle, enqueueOutput, flushAck]);
+
+  // Live-update terminal theme without recreating the PTY session
+  useEffect(() => {
+    const term = terminalRef.current;
+    if (term && openedRef.current) {
+      term.options.theme = termTheme;
+    }
+  }, [termTheme]);
 
   return <div ref={containerRef} className="terminal-surface" />;
 }

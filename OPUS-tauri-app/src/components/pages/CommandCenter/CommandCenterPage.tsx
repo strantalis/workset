@@ -17,7 +17,7 @@ import {
 import type { EnvSnapshot, SessiondStatus, CliStatus } from '@/types/diagnostics';
 import type { GitHubRepo, GitHubAccount } from '@/types/github';
 import type { RepoInstance } from '@/types/repo';
-import { LayoutGrid, Layers, FolderGit2, Plus, Trash2, Lock, Search, ChevronDown, Check } from 'lucide-react';
+import { LayoutGrid, FolderGit2, Plus, Trash2, Lock, Search, ChevronDown, Check } from 'lucide-react';
 import './CommandCenterPage.css';
 
 export function CommandCenterPage() {
@@ -25,8 +25,6 @@ export function CommandCenterPage() {
   const activeWorksetId = useAppStore((s) => s.activeWorksetId);
   const activeWorkspaceName = useAppStore((s) => s.activeWorkspaceName);
   const addWorksetRepo = useAppStore((s) => s.addWorksetRepo);
-  const setActivePage = useAppStore((s) => s.setActivePage);
-  const setCommandCenterSection = useAppStore((s) => s.setCommandCenterSection);
   const openModal = useAppStore((s) => s.openModal);
   const section = useAppStore((s) => s.commandCenterSection);
 
@@ -47,13 +45,6 @@ export function CommandCenterPage() {
       <div className="command-center__header">
         <h2>{activeWorkset.name}</h2>
       </div>
-      {section === 'overview' && (
-        <OverviewSection
-          activeWorkset={activeWorkset}
-          setActivePage={setActivePage}
-          setCommandCenterSection={setCommandCenterSection}
-        />
-      )}
       {section === 'repositories' && (
         <RepositoriesSection
           activeWorkset={activeWorkset}
@@ -66,61 +57,6 @@ export function CommandCenterPage() {
         <DiagnosticsSection activeWorkspaceName={activeWorkspaceName} />
       )}
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Overview
-// ---------------------------------------------------------------------------
-function OverviewSection({
-  activeWorkset,
-  setActivePage,
-  setCommandCenterSection,
-}: {
-  activeWorkset: { name: string; repos: string[]; workspace_ids: string[] };
-  setActivePage: (page: 'spaces') => void;
-  setCommandCenterSection: (section: 'repositories') => void;
-}) {
-  return (
-    <>
-      <div className="command-center__stats">
-        <div className="stat-card">
-          <FolderGit2 size={18} className="stat-card__icon" />
-          <div className="stat-card__value">{activeWorkset.repos.length}</div>
-          <div className="stat-card__label">Repositories</div>
-        </div>
-        <div className="stat-card">
-          <Layers size={18} className="stat-card__icon" />
-          <div className="stat-card__value">{activeWorkset.workspace_ids.length}</div>
-          <div className="stat-card__label">Workspaces</div>
-        </div>
-      </div>
-
-      {activeWorkset.repos.length > 0 && (
-        <div className="command-center__section">
-          <h3 className="command-center__section-title">Repositories</h3>
-          <div className="command-center__repo-list">
-            {activeWorkset.repos.map((repo) => (
-              <div key={repo} className="command-center__repo-item">
-                <FolderGit2 size={14} className="command-center__repo-icon" />
-                <span className="command-center__repo-name">{repo}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="command-center__actions">
-        {activeWorkset.repos.length === 0 && (
-          <Button variant="primary" onClick={() => setCommandCenterSection('repositories')}>
-            <Plus size={14} /> Add Repositories
-          </Button>
-        )}
-        <Button variant="secondary" onClick={() => setActivePage('spaces')}>
-          Go to Spaces
-        </Button>
-      </div>
-    </>
   );
 }
 

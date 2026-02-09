@@ -17,10 +17,6 @@ export function SecondarySidebar() {
         <div className="secondary-sidebar__header">Command Center</div>
         <nav className="secondary-sidebar__nav">
           <button
-            className={`secondary-sidebar__nav-item ${ccSection === 'overview' ? 'active' : ''}`}
-            onClick={() => setCcSection('overview')}
-          >Overview</button>
-          <button
             className={`secondary-sidebar__nav-item ${ccSection === 'repositories' ? 'active' : ''}`}
             onClick={() => setCcSection('repositories')}
           >Repositories</button>
@@ -59,6 +55,10 @@ export function SecondarySidebar() {
           className={`secondary-sidebar__nav-item ${settingsSection === 'app' ? 'active' : ''}`}
           onClick={() => setSettingsSection('app')}
         >App Settings</button>
+        <button
+          className={`secondary-sidebar__nav-item ${settingsSection === 'appearance' ? 'active' : ''}`}
+          onClick={() => setSettingsSection('appearance')}
+        >Appearance</button>
         <button
           className={`secondary-sidebar__nav-item ${settingsSection === 'workset' ? 'active' : ''}`}
           onClick={() => setSettingsSection('workset')}

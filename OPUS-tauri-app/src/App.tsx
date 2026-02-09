@@ -13,6 +13,7 @@ import { CreateWorkspaceModal } from '@/components/pages/Spaces/CreateWorkspaceM
 import { MigrationStatusModal } from '@/components/modals/MigrationStatusModal';
 import { RepoRemoveConfirmModal } from '@/components/modals/RepoRemoveConfirmModal';
 import { CommandPalette } from '@/components/modals/CommandPalette';
+import { ThemeProvider } from '@/styles/ThemeProvider';
 import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts';
 import '@/commands/appCommands';
 
@@ -42,6 +43,7 @@ export default function App() {
 
   return (
     <>
+      <ThemeProvider />
       <AppShell
         chrome={<TopChrome />}
         rail={<IconRail />}

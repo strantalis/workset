@@ -11,6 +11,7 @@ import {
   cliStatus,
 } from '@/api/diagnostics';
 import type { EnvSnapshot, SessiondStatus, CliStatus } from '@/types/diagnostics';
+import { AppearanceSection } from './AppearanceSection';
 import './SettingsPage.css';
 
 export function SettingsPage() {
@@ -20,6 +21,7 @@ export function SettingsPage() {
     <div className="settings-page">
       <h2 className="settings-page__title">Settings</h2>
       {section === 'app' && <AppSettingsSection />}
+      {section === 'appearance' && <AppearanceSection />}
       {section === 'workset' && <WorksetSettingsSection />}
       {section === 'diagnostics' && <DiagnosticsSection />}
     </div>

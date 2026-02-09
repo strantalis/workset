@@ -11,10 +11,15 @@ import {
   ArrowLeft,
   ArrowRight,
   X,
+  GitBranch,
+  Sun,
+  Moon,
+  Palette,
 } from 'lucide-react';
 import { registerCommands } from './registry';
 import { findPane } from './layoutUtils';
 import { useAppStore } from '@/state/store';
+import { themes, getThemeById } from '@/styles/themes';
 
 const store = () => useAppStore.getState();
 
@@ -52,6 +57,19 @@ registerCommands([
     category: 'workset',
     icon: Plus,
     execute: () => store().openModal('create-workset'),
+  },
+
+  {
+    id: 'workset.add-repo',
+    label: 'Add Repository',
+    category: 'workset',
+    icon: GitBranch,
+    when: () => store().activeWorksetId !== null,
+    execute: () => {
+      const s = store();
+      s.setActivePage('command-center');
+      s.setCommandCenterSection('repositories');
+    },
   },
 
   // ── Workspace ───────────────────────────────────────────────
@@ -218,4 +236,43 @@ registerCommands([
       }
     },
   },
+  {
+    id: 'app.toggle-theme',
+    label: 'Toggle Light/Dark Theme',
+    category: 'app',
+    icon: Sun,
+    execute: () => {
+      const s = store();
+      const current = getThemeById(s.activeThemeId);
+      if (!current) return;
+      if (current.group === 'dark') {
+        const firstLight = themes.find((t) => t.group === 'light');
+        if (firstLight) s.setTheme(firstLight.id);
+      } else {
+        const firstDark = themes.find((t) => t.group === 'dark');
+        if (firstDark) s.setTheme(firstDark.id);
+      }
+    },
+  },
+  {
+    id: 'app.appearance-settings',
+    label: 'Open Appearance Settings',
+    category: 'app',
+    icon: Palette,
+    execute: () => {
+      const s = store();
+      s.setActivePage('settings');
+      s.setSettingsSection('appearance');
+    },
+  },
+
+  // ── Individual themes ───────────────────────────────────────
+  ...themes.map((t) => ({
+    id: `theme.${t.id}`,
+    label: `Theme: ${t.name}`,
+    category: 'app' as const,
+    icon: t.group === 'dark' ? Moon : Sun,
+    when: () => store().activeThemeId !== t.id,
+    execute: () => store().setTheme(t.id),
+  })),
 ]);

@@ -1,8 +1,8 @@
 import type { StateCreator } from 'zustand';
 
 export type NavPage = 'command-center' | 'spaces' | 'settings';
-export type CommandCenterSection = 'overview' | 'repositories' | 'diagnostics';
-export type SettingsSection = 'app' | 'workset' | 'diagnostics';
+export type CommandCenterSection = 'repositories' | 'diagnostics';
+export type SettingsSection = 'app' | 'appearance' | 'workset' | 'diagnostics';
 
 export type ModalState = {
   type: string;
@@ -15,20 +15,23 @@ export type UiSlice = {
   settingsSection: SettingsSection;
   rightPanelCollapsed: boolean;
   activeModal: ModalState;
+  activeThemeId: string;
   setActivePage: (page: NavPage) => void;
   setCommandCenterSection: (section: CommandCenterSection) => void;
   setSettingsSection: (section: SettingsSection) => void;
   toggleRightPanel: () => void;
   openModal: (type: string, props?: Record<string, unknown>) => void;
   closeModal: () => void;
+  setTheme: (id: string) => void;
 };
 
 export const createUiSlice: StateCreator<UiSlice> = (set) => ({
   activePage: 'spaces',
-  commandCenterSection: 'overview',
+  commandCenterSection: 'repositories',
   settingsSection: 'app',
   rightPanelCollapsed: false,
   activeModal: null,
+  activeThemeId: 'dark',
 
   setActivePage: (page) => set({ activePage: page }),
   setCommandCenterSection: (section) => set({ commandCenterSection: section }),
@@ -36,4 +39,5 @@ export const createUiSlice: StateCreator<UiSlice> = (set) => ({
   toggleRightPanel: () => set((s) => ({ rightPanelCollapsed: !s.rightPanelCollapsed })),
   openModal: (type, props) => set({ activeModal: { type, props } }),
   closeModal: () => set({ activeModal: null }),
+  setTheme: (id) => set({ activeThemeId: id }),
 });
