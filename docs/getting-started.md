@@ -44,8 +44,8 @@ Workset includes a desktop UI built with Wails (Go backend + Svelte frontend). T
 
 ```bash
 cd wails-ui/workset
-wails dev
-wails build
+wails3 dev
+wails3 package
 ```
 
 You'll need the Wails CLI plus Go and Node.js installed locally.

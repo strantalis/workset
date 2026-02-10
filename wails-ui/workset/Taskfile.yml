@@ -3,6 +3,7 @@ version: "3"
 includes:
   common: ./build/Taskfile.yml
   darwin: ./build/darwin/Taskfile.yml
+  windows: ./build/windows/Taskfile.yml
 
 vars:
   APP_NAME: "workset"

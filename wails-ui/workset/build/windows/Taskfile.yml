@@ -1,0 +1,45 @@
+version: "3"
+
+includes:
+  common: ../Taskfile.yml
+
+tasks:
+  build:helpers:
+    summary: Builds helper binaries required at runtime
+    cmds:
+      - mkdir -p "{{.BIN_DIR}}"
+      - go build -o "{{.BIN_DIR}}/workset-sessiond.exe" "../../cmd/workset-sessiond"
+
+  build:
+    summary: Builds the application for Windows
+    cmds:
+      - task: common:generate:icons
+      - task: build:helpers
+      - task: common:build:frontend
+      - go build {{if .LDFLAGS}}-ldflags "{{.LDFLAGS}}" {{end}}-o "{{.BIN_DIR}}/{{.APP_NAME}}.exe"
+    env:
+      GOOS: windows
+      CGO_ENABLED: 0
+      GOARCH: "{{.ARCH | default ARCH}}"
+
+  build:dev:
+    summary: Builds the application for Windows local development
+    cmds:
+      - task: common:generate:icons
+      - task: build:helpers
+      - task: common:build:frontend:dev
+      - go build -tags dev {{if .LDFLAGS}}-ldflags "{{.LDFLAGS}}" {{end}}-o "{{.BIN_DIR}}/{{.APP_NAME}}.exe"
+    env:
+      GOOS: windows
+      CGO_ENABLED: 0
+      GOARCH: "{{.ARCH | default ARCH}}"
+
+  package:
+    summary: Packages Windows build artifacts
+    deps:
+      - task: build
+
+  run:
+    summary: Runs the built Windows binary
+    cmds:
+      - "{{.BIN_DIR}}/{{.APP_NAME}}.exe"

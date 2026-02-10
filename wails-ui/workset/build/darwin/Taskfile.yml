@@ -17,7 +17,7 @@ tasks:
       - task: common:generate:icons
       - task: build:helpers
       - task common:build:frontend
-      - go build -o {{.BIN_DIR}}/{{.APP_NAME}}
+      - go build {{if .LDFLAGS}}-ldflags "{{.LDFLAGS}}" {{end}}-o {{.BIN_DIR}}/{{.APP_NAME}}
     env:
       GOOS: darwin
       CGO_ENABLED: 1
@@ -36,7 +36,7 @@ tasks:
       - task: common:generate:icons
       - task: build:helpers
       - task common:build:frontend:dev
-      - go build -tags dev -o {{.BIN_DIR}}/{{.APP_NAME}}
+      - go build -tags dev {{if .LDFLAGS}}-ldflags "{{.LDFLAGS}}" {{end}}-o {{.BIN_DIR}}/{{.APP_NAME}}
     env:
       GOOS: darwin
       CGO_ENABLED: 1
