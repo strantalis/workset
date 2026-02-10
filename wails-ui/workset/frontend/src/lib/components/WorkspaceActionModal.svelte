@@ -12,7 +12,7 @@
 	} from '../state';
 	import type { Alias, GroupSummary, HookExecution, Repo, Workspace } from '../types';
 	import { subscribeHookProgressEvent } from '../hookEventService';
-	import { deriveRepoName, isRepoSource } from '../names';
+	import { isRepoSource } from '../names';
 	import {
 		applyHookProgress,
 		appendHookRuns,
@@ -124,12 +124,16 @@
 			selectedGroups,
 		}),
 	);
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const generatedName = $derived(createContext.generatedName);
 	const finalName = $derived(createContext.finalName);
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const alternatives = $derived(createContext.alternatives);
 	const filteredAliases = $derived(createContext.filteredAliases);
 	const filteredGroups = $derived(createContext.filteredGroups);
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const totalRepos = $derived(createContext.totalRepos);
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const selectedItems = $derived(createContext.selectedItems);
 
 	const addRepoContext = $derived.by(() =>
@@ -152,6 +156,7 @@
 		}
 	});
 
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const selectAlternative = (name: string): void => {
 		customizeName = name;
 	};
@@ -181,16 +186,19 @@
 		searchQuery = '';
 	};
 
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const addDirectRepo = (): void => {
 		const next = addDirectRepoSource(directRepos, primaryInput, isRepoSource);
 		directRepos = next.directRepos;
 		primaryInput = next.source;
 	};
 
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const removeDirectRepo = (url: string): void => {
 		directRepos = removeDirectRepoByURL(directRepos, url);
 	};
 
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const toggleDirectRepoRegister = (url: string): void => {
 		directRepos = toggleDirectRepoRegisterByURL(directRepos, url);
 	};
@@ -309,9 +317,10 @@
 		}
 	};
 
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const handleCreate = async (): Promise<void> => {
 		if (!finalName) {
-			error = 'Enter a repo URL, path, or workspace name.';
+			error = 'Enter a repo URL, path, or workset name.';
 			return;
 		}
 		loading = true;
@@ -465,6 +474,7 @@
 		}
 	};
 
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const handleCreateBrowse = async (): Promise<void> => {
 		try {
 			const path = await browseWorkspaceActionDirectory(primaryInput);
@@ -609,7 +619,6 @@
 			{error}
 			{success}
 			{warnings}
-			{hookRuns}
 			{pendingHooks}
 			onRunPendingHook={handleRunPendingHook}
 			onTrustPendingHook={handleTrustPendingHook}
@@ -622,38 +631,13 @@
 			{aliasItems}
 			{groupItems}
 			{searchQuery}
-			{primaryInput}
-			{directRepos}
 			{filteredAliases}
 			{filteredGroups}
 			{selectedAliases}
 			{selectedGroups}
 			{expandedGroups}
 			{groupDetails}
-			{selectedItems}
-			{totalRepos}
-			{customizeName}
-			{generatedName}
-			{alternatives}
-			{finalName}
 			{getAliasSource}
-			{deriveRepoName}
-			{isRepoSource}
-			onCreateTabChange={handleTabChange}
-			onCreatePrimaryInput={(value) => (primaryInput = value)}
-			onCreateSearchQueryInput={(value) => (searchQuery = value)}
-			onCreateAddDirectRepo={addDirectRepo}
-			onCreateBrowsePrimary={handleCreateBrowse}
-			onCreateToggleDirectRepoRegister={toggleDirectRepoRegister}
-			onCreateRemoveDirectRepo={removeDirectRepo}
-			onCreateToggleAlias={toggleAlias}
-			onCreateToggleGroup={toggleGroup}
-			onCreateToggleGroupExpand={toggleGroupExpand}
-			onCreateRemoveAlias={removeAlias}
-			onCreateRemoveGroup={removeGroup}
-			onCreateCustomizeNameInput={(value) => (customizeName = value)}
-			onCreateSelectAlternative={selectAlternative}
-			onCreateSubmit={handleCreate}
 			{renameName}
 			onRenameNameInput={(value) => (renameName = value)}
 			onRenameSubmit={handleRename}
@@ -661,6 +645,7 @@
 			{existingRepos}
 			{addRepoSelectedItems}
 			{addRepoTotalItems}
+			worksetName={workspace?.name ?? ''}
 			onAddTabChange={handleTabChange}
 			onAddSearchQueryInput={(value) => (searchQuery = value)}
 			onAddSourceInput={(value) => (addSource = value)}

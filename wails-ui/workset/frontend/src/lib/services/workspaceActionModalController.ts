@@ -109,13 +109,13 @@ export const deriveWorkspaceActionModalTitle = (
 	phase: WorkspaceActionModalPhase,
 ): string => {
 	if (phase === 'hook-results') return 'Hook results';
-	if (mode === 'create') return 'Create workspace';
-	if (mode === 'rename') return 'Rename workspace';
-	if (mode === 'add-repo') return 'Add to workspace';
-	if (mode === 'archive') return 'Archive workspace';
-	if (mode === 'remove-workspace') return 'Remove workspace';
+	if (mode === 'create') return 'Create workset';
+	if (mode === 'rename') return 'Rename workset';
+	if (mode === 'add-repo') return 'Add to workset';
+	if (mode === 'archive') return 'Archive workset';
+	if (mode === 'remove-workspace') return 'Remove workset';
 	if (mode === 'remove-repo') return 'Remove repo';
-	return 'Workspace action';
+	return 'Workset action';
 };
 
 export const deriveWorkspaceActionModalSubtitle = (input: ModalSubtitleInput): string => {

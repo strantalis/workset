@@ -200,11 +200,6 @@
 		}
 	});
 
-	$effect(() => {
-		if (templateId || templates.length === 0) return;
-		templateId = templates[0].id;
-	});
-
 	/* ── Actions ───────────────────────────────────── */
 	const nextStep = () => {
 		step += 1;

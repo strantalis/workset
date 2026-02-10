@@ -4,12 +4,9 @@
 	import type {
 		ExistingRepoContext,
 		WorkspaceActionAddRepoSelectedItem,
-		WorkspaceActionDirectRepo,
-		WorkspaceActionPreviewItem,
 	} from '../../services/workspaceActionContextService';
 	import Button from '../ui/Button.svelte';
 	import WorkspaceActionAddRepoForm from './WorkspaceActionAddRepoForm.svelte';
-	import WorkspaceActionCreateForm from './WorkspaceActionCreateForm.svelte';
 	import WorkspaceActionRemoveRepoForm from './WorkspaceActionRemoveRepoForm.svelte';
 	import WorkspaceActionRemoveWorkspaceForm from './WorkspaceActionRemoveWorkspaceForm.svelte';
 
@@ -31,38 +28,13 @@
 		aliasItems: Alias[];
 		groupItems: GroupSummary[];
 		searchQuery: string;
-		primaryInput: string;
-		directRepos: WorkspaceActionDirectRepo[];
 		filteredAliases: Alias[];
 		filteredGroups: GroupSummary[];
 		selectedAliases: Set<string>;
 		selectedGroups: Set<string>;
 		expandedGroups: Set<string>;
 		groupDetails: Map<string, string[]>;
-		selectedItems: WorkspaceActionPreviewItem[];
-		totalRepos: number;
-		customizeName: string;
-		generatedName: string | null;
-		alternatives: string[];
-		finalName: string;
 		getAliasSource: (alias: Alias) => string;
-		deriveRepoName: (source: string) => string | null;
-		isRepoSource: (source: string) => boolean;
-		onCreateTabChange: (tab: CreateTab) => void;
-		onCreatePrimaryInput: (value: string) => void;
-		onCreateSearchQueryInput: (value: string) => void;
-		onCreateAddDirectRepo: () => void;
-		onCreateBrowsePrimary: () => void;
-		onCreateToggleDirectRepoRegister: (url: string) => void;
-		onCreateRemoveDirectRepo: (url: string) => void;
-		onCreateToggleAlias: (name: string) => void;
-		onCreateToggleGroup: (name: string) => void;
-		onCreateToggleGroupExpand: (name: string) => void;
-		onCreateRemoveAlias: (name: string) => void;
-		onCreateRemoveGroup: (name: string) => void;
-		onCreateCustomizeNameInput: (value: string) => void;
-		onCreateSelectAlternative: (name: string) => void;
-		onCreateSubmit: () => void;
 
 		renameName: string;
 		onRenameNameInput: (value: string) => void;
@@ -72,6 +44,7 @@
 		existingRepos: ExistingRepoContext[];
 		addRepoSelectedItems: WorkspaceActionAddRepoSelectedItem[];
 		addRepoTotalItems: number;
+		worksetName: string;
 		onAddTabChange: (tab: CreateTab) => void;
 		onAddSearchQueryInput: (value: string) => void;
 		onAddSourceInput: (value: string) => void;
@@ -117,38 +90,13 @@
 		aliasItems,
 		groupItems,
 		searchQuery,
-		primaryInput,
-		directRepos,
 		filteredAliases,
 		filteredGroups,
 		selectedAliases,
 		selectedGroups,
 		expandedGroups,
 		groupDetails,
-		selectedItems,
-		totalRepos,
-		customizeName,
-		generatedName,
-		alternatives,
-		finalName,
 		getAliasSource,
-		deriveRepoName,
-		isRepoSource,
-		onCreateTabChange,
-		onCreatePrimaryInput,
-		onCreateSearchQueryInput,
-		onCreateAddDirectRepo,
-		onCreateBrowsePrimary,
-		onCreateToggleDirectRepoRegister,
-		onCreateRemoveDirectRepo,
-		onCreateToggleAlias,
-		onCreateToggleGroup,
-		onCreateToggleGroupExpand,
-		onCreateRemoveAlias,
-		onCreateRemoveGroup,
-		onCreateCustomizeNameInput,
-		onCreateSelectAlternative,
-		onCreateSubmit,
 
 		renameName,
 		onRenameNameInput,
@@ -158,6 +106,7 @@
 		existingRepos,
 		addRepoSelectedItems,
 		addRepoTotalItems,
+		worksetName,
 		onAddTabChange,
 		onAddSearchQueryInput,
 		onAddSourceInput,
@@ -204,47 +153,7 @@
 	});
 </script>
 
-{#if mode === 'create'}
-	<WorkspaceActionCreateForm
-		{loading}
-		{activeTab}
-		{aliasItems}
-		{groupItems}
-		{searchQuery}
-		{primaryInput}
-		{directRepos}
-		{filteredAliases}
-		{filteredGroups}
-		{selectedAliases}
-		{selectedGroups}
-		{expandedGroups}
-		{groupDetails}
-		{selectedItems}
-		{totalRepos}
-		{customizeName}
-		{generatedName}
-		{alternatives}
-		{finalName}
-		{getAliasSource}
-		{deriveRepoName}
-		{isRepoSource}
-		onTabChange={onCreateTabChange}
-		onPrimaryInput={onCreatePrimaryInput}
-		onSearchQueryInput={onCreateSearchQueryInput}
-		onAddDirectRepo={onCreateAddDirectRepo}
-		onBrowsePrimary={onCreateBrowsePrimary}
-		onToggleDirectRepoRegister={onCreateToggleDirectRepoRegister}
-		onRemoveDirectRepo={onCreateRemoveDirectRepo}
-		onToggleAlias={onCreateToggleAlias}
-		onToggleGroup={onCreateToggleGroup}
-		onToggleGroupExpand={onCreateToggleGroupExpand}
-		onRemoveAlias={onCreateRemoveAlias}
-		onRemoveGroup={onCreateRemoveGroup}
-		onCustomizeNameInput={onCreateCustomizeNameInput}
-		onSelectAlternative={onCreateSelectAlternative}
-		onSubmit={onCreateSubmit}
-	/>
-{:else if mode === 'rename'}
+{#if mode === 'rename'}
 	<div class="form">
 		<label class="field">
 			<span>New name</span>
@@ -280,6 +189,7 @@
 		{existingRepos}
 		{addRepoSelectedItems}
 		{addRepoTotalItems}
+		{worksetName}
 		{getAliasSource}
 		onTabChange={onAddTabChange}
 		onSearchQueryInput={onAddSearchQueryInput}

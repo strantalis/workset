@@ -26,6 +26,7 @@
 		existingRepos: ExistingRepoContext[];
 		addRepoSelectedItems: WorkspaceActionAddRepoSelectedItem[];
 		addRepoTotalItems: number;
+		worksetName: string;
 		getAliasSource: (alias: Alias) => string;
 		onTabChange: (tab: CreateTab) => void;
 		onSearchQueryInput: (value: string) => void;
@@ -55,6 +56,7 @@
 		existingRepos,
 		addRepoSelectedItems,
 		addRepoTotalItems,
+		worksetName,
 		getAliasSource,
 		onTabChange,
 		onSearchQueryInput,
@@ -63,10 +65,14 @@
 		onToggleAlias,
 		onToggleGroup,
 		onToggleGroupExpand,
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		onRemoveAlias,
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		onRemoveGroup,
 		onSubmit,
 	}: Props = $props();
+
+	const existingRepoNames = $derived(new Set(existingRepos.map((r) => r.name)));
 </script>
 
 <div class="form add-two-column">
@@ -105,15 +111,25 @@
 							<div class="empty-search">No repos match "{searchQuery}"</div>
 						{:else}
 							{#each filteredAliases as alias (alias.name)}
-								<label class="checkbox-item" class:selected={selectedAliases.has(alias.name)}>
+								{@const isExisting = existingRepoNames.has(alias.name)}
+								<label
+									class="checkbox-item"
+									class:selected={selectedAliases.has(alias.name)}
+									class:disabled={isExisting}
+									title={isExisting ? 'Already in workset' : undefined}
+								>
 									<input
 										type="checkbox"
-										checked={selectedAliases.has(alias.name)}
-										onchange={() => onToggleAlias(alias.name)}
+										checked={selectedAliases.has(alias.name) || isExisting}
+										disabled={isExisting}
+										onchange={() => !isExisting && onToggleAlias(alias.name)}
 									/>
 									<div class="checkbox-content">
 										<span class="checkbox-name">{alias.name}</span>
 										<span class="checkbox-meta">{getAliasSource(alias)}</span>
+										{#if isExisting}
+											<span class="existing-badge">in workset</span>
+										{/if}
 									</div>
 								</label>
 							{/each}
@@ -144,18 +160,30 @@
 							<div class="empty-search">No groups match "{searchQuery}"</div>
 						{:else}
 							{#each filteredGroups as group (group.name)}
-								<label class="group-card" class:selected={selectedGroups.has(group.name)}>
+								{@const groupRepos = groupDetails.get(group.name) || []}
+								{@const existingCount = groupRepos.filter((r) => existingRepoNames.has(r)).length}
+								{@const allExisting = existingCount === groupRepos.length && groupRepos.length > 0}
+								<label
+									class="group-card"
+									class:selected={selectedGroups.has(group.name)}
+									class:disabled={allExisting}
+									title={allExisting ? 'All repos in this group are already in workset' : undefined}
+								>
 									<input
 										type="checkbox"
 										checked={selectedGroups.has(group.name)}
-										onchange={() => onToggleGroup(group.name)}
+										disabled={allExisting}
+										onchange={() => !allExisting && onToggleGroup(group.name)}
 									/>
 									<div class="group-content">
 										<div class="group-header">
 											<span class="group-name">{group.name}</span>
-											<span class="group-badge"
-												>{group.repo_count} repo{group.repo_count !== 1 ? 's' : ''}</span
-											>
+											<span class="group-badge">
+												{group.repo_count} repo{group.repo_count !== 1 ? 's' : ''}
+												{#if existingCount > 0}
+													<span class="existing-count">({existingCount} in workset)</span>
+												{/if}
+											</span>
 										</div>
 										{#if group.description}
 											<span class="group-description">{group.description}</span>
@@ -172,8 +200,13 @@
 										</button>
 										{#if expandedGroups.has(group.name)}
 											<ul class="group-members">
-												{#each groupDetails.get(group.name) || [] as repoName (repoName)}
-													<li>{repoName}</li>
+												{#each groupRepos as repoName (repoName)}
+													<li class:existing={existingRepoNames.has(repoName)}>
+														{repoName}
+														{#if existingRepoNames.has(repoName)}
+															<span class="existing-tag">in workset</span>
+														{/if}
+													</li>
 												{/each}
 											</ul>
 										{/if}
@@ -194,12 +227,10 @@
 	<div class="column-right">
 		<WorkspaceActionAddRepoSummaryPanel
 			{loading}
+			{worksetName}
 			{existingRepos}
 			{addRepoSelectedItems}
 			{addRepoTotalItems}
-			{onAddSourceInput}
-			{onRemoveAlias}
-			{onRemoveGroup}
 			{onSubmit}
 		/>
 	</div>
@@ -292,6 +323,24 @@
 
 	.checkbox-item.selected {
 		background: rgba(var(--accent-rgb, 59, 130, 246), 0.08);
+	}
+
+	.checkbox-item.disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.checkbox-item.disabled:hover {
+		background: transparent;
+	}
+
+	.existing-badge {
+		font-size: var(--text-xs);
+		color: var(--muted);
+		background: rgba(255, 255, 255, 0.08);
+		padding: 1px 6px;
+		border-radius: 4px;
+		margin-left: auto;
 	}
 
 	.checkbox-item input[type='checkbox'] {
@@ -387,6 +436,35 @@
 
 	.group-card.selected {
 		background: rgba(var(--accent-rgb, 59, 130, 246), 0.08);
+	}
+
+	.group-card.disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.group-card.disabled:hover {
+		background: transparent;
+	}
+
+	.existing-count {
+		color: var(--muted);
+		font-size: var(--text-xs);
+		font-weight: 400;
+	}
+
+	.group-members li.existing {
+		color: var(--muted);
+		opacity: 0.6;
+	}
+
+	.existing-tag {
+		font-size: var(--text-xs);
+		color: var(--muted);
+		background: rgba(255, 255, 255, 0.08);
+		padding: 1px 6px;
+		border-radius: 4px;
+		margin-left: 8px;
 	}
 
 	.group-card input[type='checkbox'] {
@@ -490,8 +568,8 @@
 
 	.form.add-two-column {
 		display: grid;
-		grid-template-columns: 1fr 280px;
-		gap: 16px;
+		grid-template-columns: 1fr 340px;
+		gap: 20px;
 		max-height: 80vh;
 		min-height: 400px;
 		overflow: hidden;

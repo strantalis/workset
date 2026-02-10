@@ -11,7 +11,7 @@ import {
 
 describe('workspaceActionModalController', () => {
 	it('derives modal title, subtitle and size from mode and phase', () => {
-		expect(deriveWorkspaceActionModalTitle('create', 'form')).toBe('Create workspace');
+		expect(deriveWorkspaceActionModalTitle('create', 'form')).toBe('Create workset');
 		expect(deriveWorkspaceActionModalTitle('remove-repo', 'form')).toBe('Remove repo');
 		expect(deriveWorkspaceActionModalTitle('rename', 'hook-results')).toBe('Hook results');
 

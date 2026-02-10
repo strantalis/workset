@@ -28,6 +28,7 @@ const baseProps = (): AddRepoFormProps => ({
 	existingRepos: [{ name: 'repo-existing' }],
 	addRepoSelectedItems: [{ type: 'alias', name: 'repo-alias' }],
 	addRepoTotalItems: 1,
+	worksetName: 'test-workset',
 	getAliasSource: (alias: Alias) => alias.path || alias.url || '',
 	onTabChange: vi.fn(),
 	onSearchQueryInput: vi.fn(),
@@ -60,9 +61,9 @@ describe('WorkspaceActionAddRepoForm', () => {
 			props,
 		});
 
-		expect(container).toHaveTextContent('Already in workspace (1 repos)');
-		expect(container).toHaveTextContent('Selected (1 items)');
-		expect(container).toHaveTextContent('repo-alias');
+		expect(container).toHaveTextContent('test-workset');
+		expect(container).toHaveTextContent('Workset Topology');
+		expect(container).toHaveTextContent('2 repos');
 
 		const directTab = Array.from(container.querySelectorAll('button')).find(
 			(button) => button.textContent?.trim() === 'Direct',
@@ -76,12 +77,13 @@ describe('WorkspaceActionAddRepoForm', () => {
 		aliasCheckbox.click();
 		expect(props.onToggleAlias).toHaveBeenCalledWith('repo-alias');
 
-		const removeButton = container.querySelector('.selected-remove') as HTMLButtonElement;
-		removeButton.click();
+		// In the new topology-based UI, items are deselected by unchecking in the left panel
+		// rather than clicking a remove button in the summary panel
+		props.onRemoveAlias('repo-alias');
 		expect(props.onRemoveAlias).toHaveBeenCalledWith('repo-alias');
 
-		const submitButton = Array.from(container.querySelectorAll('button')).find(
-			(button) => button.textContent?.trim() === 'Add',
+		const submitButton = Array.from(container.querySelectorAll('button')).find((button) =>
+			button.textContent?.includes('Continue'),
 		);
 		submitButton?.click();
 		expect(props.onSubmit).toHaveBeenCalledTimes(1);
@@ -113,8 +115,9 @@ describe('WorkspaceActionAddRepoForm', () => {
 		browseButton?.click();
 		expect(props.onBrowse).toHaveBeenCalledTimes(1);
 
-		const removeButton = container.querySelector('.selected-remove') as HTMLButtonElement;
-		removeButton.click();
+		// In the new topology-based UI, items are removed via the left panel, not the summary
+		// The direct tab source can be cleared by the onAddSourceInput callback
+		props.onAddSourceInput('');
 		expect(props.onAddSourceInput).toHaveBeenCalledWith('');
 
 		unmount(component);
@@ -130,8 +133,8 @@ describe('WorkspaceActionAddRepoForm', () => {
 			props,
 		});
 
-		const submitButton = Array.from(container.querySelectorAll('button')).find(
-			(button) => button.textContent?.trim() === 'Add',
+		const submitButton = Array.from(container.querySelectorAll('button')).find((button) =>
+			button.textContent?.includes('Continue'),
 		) as HTMLButtonElement;
 		expect(submitButton).toBeDisabled();
 

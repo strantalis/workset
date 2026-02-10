@@ -38,6 +38,7 @@
 		activeWorkspaceId: string | null;
 		onSelectWorkspace: (workspaceId: string) => void;
 		onCreateWorkspace: () => void;
+		onAddRepo: (workspaceId: string) => void;
 		onTogglePin: (workspaceId: string, nextPinned: boolean) => void;
 		onToggleArchived: (workspaceId: string, archived: boolean) => void;
 		onOpenPopout: (workspaceId: string) => void;
@@ -51,6 +52,7 @@
 		activeWorkspaceId,
 		onSelectWorkspace,
 		onCreateWorkspace,
+		onAddRepo,
 		onTogglePin,
 		onToggleArchived,
 		onOpenPopout,
@@ -213,6 +215,12 @@
 		event.stopPropagation();
 		closeActionMenu();
 		onToggleArchived(item.id, item.archived);
+	};
+
+	const handleAddRepo = (workspaceId: string, event: MouseEvent): void => {
+		event.stopPropagation();
+		closeActionMenu();
+		onAddRepo(workspaceId);
 	};
 
 	const handleOpenPopout = (workspaceId: string, event: MouseEvent): void => {
@@ -439,6 +447,13 @@
 																</button>
 																<button
 																	type="button"
+																	onclick={(event) => handleAddRepo(item.id, event)}
+																>
+																	<Plus size={13} />
+																	Add repo
+																</button>
+																<button
+																	type="button"
 																	class="item-archive"
 																	class:item-archived={item.archived}
 																	onclick={(event) => handleToggleArchive(item, event)}
@@ -615,6 +630,13 @@
 																<Pin size={13} />
 																Pin to top
 															{/if}
+														</button>
+														<button
+															type="button"
+															onclick={(event) => handleAddRepo(item.id, event)}
+														>
+															<Plus size={13} />
+															Add repo
 														</button>
 														<button
 															type="button"

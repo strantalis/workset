@@ -17,14 +17,10 @@
 	interface Props {
 		workspace: Workspace | null;
 		onOpenWorkspaceTerminal?: (workspaceId: string) => void;
-		onOpenRepoTerminal?: (workspaceId: string, repoId: string) => void;
+		onAddRepo?: (workspaceId: string) => void;
 	}
 
-	const {
-		workspace,
-		onOpenWorkspaceTerminal = () => {},
-		onOpenRepoTerminal = () => {},
-	}: Props = $props();
+	const { workspace, onOpenWorkspaceTerminal = () => {}, onAddRepo = () => {} }: Props = $props();
 
 	// ── Omnibar state ──────────────────────────────────────────
 	let omnibarCommand = $state('');
@@ -171,7 +167,7 @@
 								type="button"
 								class="section-action"
 								title="Add repository"
-								onclick={() => onOpenRepoTerminal(workspace.id, '')}
+								onclick={() => onAddRepo(workspace.id)}
 							>
 								<Plus size={12} />
 							</button>

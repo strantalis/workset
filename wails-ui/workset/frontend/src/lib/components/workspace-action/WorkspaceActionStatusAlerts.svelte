@@ -1,5 +1,4 @@
 <script lang="ts">
-	import type { HookExecution } from '../../types';
 	import type { WorkspaceActionPendingHook } from '../../services/workspaceActionHooks';
 	import Alert from '../ui/Alert.svelte';
 	import Button from '../ui/Button.svelte';
@@ -8,7 +7,6 @@
 		error: string | null;
 		success: string | null;
 		warnings: string[];
-		hookRuns: HookExecution[];
 		pendingHooks: WorkspaceActionPendingHook[];
 		onRunPendingHook: (pending: WorkspaceActionPendingHook) => Promise<void> | void;
 		onTrustPendingHook: (pending: WorkspaceActionPendingHook) => Promise<void> | void;
@@ -18,7 +16,6 @@
 		error,
 		success,
 		warnings,
-		hookRuns,
 		pendingHooks,
 		onRunPendingHook,
 		onTrustPendingHook,
@@ -35,18 +32,6 @@
 	<Alert variant="warning">
 		{#each warnings as warning (warning)}
 			<div>{warning}</div>
-		{/each}
-	</Alert>
-{/if}
-{#if hookRuns.length > 0}
-	<Alert variant="info">
-		{#each hookRuns as run (`${run.repo}:${run.event}:${run.id}`)}
-			<div>
-				<code>{run.repo}</code> <code>{run.id}</code>: <code>{run.status}</code>
-				{#if run.log_path}
-					(log: <code>{run.log_path}</code>)
-				{/if}
-			</div>
 		{/each}
 	</Alert>
 {/if}

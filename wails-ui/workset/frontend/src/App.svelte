@@ -49,6 +49,7 @@
 	import GitHubLoginModal from './lib/components/GitHubLoginModal.svelte';
 	import RepoDiff from './lib/components/RepoDiff.svelte';
 	import SettingsPanel from './lib/components/SettingsPanel.svelte';
+	import WorkspaceActionModal from './lib/components/WorkspaceActionModal.svelte';
 	import CommandPalette, { type AppView } from './lib/components/chrome/CommandPalette.svelte';
 	import ContextBar from './lib/components/chrome/ContextBar.svelte';
 	import CommandCenterView from './lib/components/views/CommandCenterView.svelte';
@@ -79,6 +80,15 @@
 		windowName: string;
 		open: boolean;
 	};
+
+	type WorkspaceActionMode =
+		| 'create'
+		| 'rename'
+		| 'add-repo'
+		| 'archive'
+		| 'remove-workspace'
+		| 'remove-repo'
+		| null;
 
 	type NavItem = {
 		view: AppView;
@@ -138,6 +148,9 @@
 	let prFocusWorkspaceId = $state<string | null>(null);
 	let prFocusRepoId = $state<string | null>(null);
 	let prFocusToken = $state(0);
+	let workspaceActionMode = $state<WorkspaceActionMode>(null);
+	let workspaceActionWorkspaceId = $state<string | null>(null);
+	let workspaceActionRepoName = $state<string | null>(null);
 	let settingsOpen = $state(false);
 	let commandPaletteOpen = $state(false);
 	let authModalOpen = $state(false);
@@ -356,6 +369,30 @@
 		}
 		onboardingError = null;
 		setView('onboarding');
+	};
+
+	const openWorkspaceActionModal = (
+		mode: Exclude<WorkspaceActionMode, null>,
+		workspaceId: string | null = null,
+		repoName: string | null = null,
+	): void => {
+		if (popoutMode) return;
+		workspaceActionMode = mode;
+		workspaceActionWorkspaceId = workspaceId;
+		workspaceActionRepoName = repoName;
+	};
+
+	const closeWorkspaceActionModal = (): void => {
+		workspaceActionMode = null;
+		workspaceActionWorkspaceId = null;
+		workspaceActionRepoName = null;
+	};
+
+	const handleAddRepo = (workspaceId: string): void => {
+		if (fixedWorkspaceId && workspaceId !== fixedWorkspaceId) {
+			return;
+		}
+		openWorkspaceActionModal('add-repo', workspaceId);
 	};
 
 	const handleOnboardingStart = async (
@@ -665,6 +702,7 @@
 							activeWorkspaceId={$activeWorkspaceId}
 							onSelectWorkspace={handleSelectWorkspace}
 							onCreateWorkspace={handleCreateWorkspace}
+							onAddRepo={handleAddRepo}
 							onTogglePin={(workspaceId, nextPinned) =>
 								void toggleWorkspacePin(workspaceId, nextPinned)}
 							onToggleArchived={(workspaceId, archived) =>
@@ -693,7 +731,7 @@
 							<TerminalCockpitView
 								workspace={$activeWorkspace}
 								onOpenWorkspaceTerminal={handleSelectWorkspace}
-								onOpenRepoTerminal={handleSelectRepo}
+								onAddRepo={handleAddRepo}
 							/>
 						{/if}
 					{:else if currentView === 'pr-orchestration'}
@@ -751,6 +789,32 @@
 				onkeydown={(event) => event.stopPropagation()}
 			>
 				<SettingsPanel onClose={() => (settingsOpen = false)} />
+			</div>
+		</div>
+	{/if}
+
+	{#if !popoutMode && workspaceActionMode}
+		<div
+			class="overlay"
+			role="button"
+			tabindex="0"
+			onclick={closeWorkspaceActionModal}
+			onkeydown={(event) => {
+				if (event.key === 'Escape') closeWorkspaceActionModal();
+			}}
+		>
+			<div
+				class="overlay-panel"
+				role="presentation"
+				onclick={(event) => event.stopPropagation()}
+				onkeydown={(event) => event.stopPropagation()}
+			>
+				<WorkspaceActionModal
+					onClose={closeWorkspaceActionModal}
+					mode={workspaceActionMode}
+					workspaceId={workspaceActionWorkspaceId}
+					repoName={workspaceActionRepoName}
+				/>
 			</div>
 		</div>
 	{/if}
