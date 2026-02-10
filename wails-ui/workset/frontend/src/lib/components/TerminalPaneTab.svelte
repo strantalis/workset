@@ -83,7 +83,7 @@
 				onCloseTab(paneId, tab.id);
 			}}
 		>
-			<X size={10} />
+			<X size={14} />
 		</button>
 	{/if}
 </div>
