@@ -157,7 +157,7 @@
 		justify-content: center;
 		width: 22px;
 		height: 22px;
-		margin-left: 4px;
+		margin-left: 8px;
 		color: var(--muted);
 		border: none;
 		background: transparent;
