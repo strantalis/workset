@@ -97,9 +97,13 @@ class NoopAddon {
 }
 
 const runtimeMock = {
-	BrowserOpenURL: vi.fn(),
-	EventsOn: vi.fn(),
-	EventsOff: vi.fn(),
+	Browser: {
+		OpenURL: vi.fn(),
+	},
+	Events: {
+		On: vi.fn(),
+		Off: vi.fn(),
+	},
 };
 
 const appMock = {
@@ -145,8 +149,8 @@ vi.mock('@xterm/addon-webgl', () => ({
 	WebglAddon: NoopAddon,
 }));
 
-vi.mock('../../../wailsjs/runtime/runtime', () => runtimeMock);
-vi.mock('../../../wailsjs/go/main/App', () => appMock);
+vi.mock('@wailsio/runtime', () => runtimeMock);
+vi.mock('../../../bindings/workset/app', () => appMock);
 vi.mock('../api', () => apiMock);
 
 const loadService = async () => import('./terminalService');

@@ -4,7 +4,7 @@ import {
 	GetRepoLocalStatus,
 	StartCommitAndPushAsync,
 	StartCreatePullRequestAsync,
-} from '../../../../wailsjs/go/main/App';
+} from '../../../../bindings/workset/app';
 import { isOperationStatusNotFound, mapGitHubOperationStatus } from './mappers';
 import type {
 	CommitAndPushResult,

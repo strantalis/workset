@@ -4,7 +4,7 @@ import {
 	ListSkills as WailsListSkills,
 	SaveSkill as WailsSaveSkill,
 	SyncSkill as WailsSyncSkill,
-} from '../../../wailsjs/go/main/App';
+} from '../../../bindings/workset/app';
 
 export type SkillInfo = {
 	name: string;

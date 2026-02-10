@@ -29,7 +29,7 @@ import {
 	SetDefaultSetting,
 	UpdateAlias,
 	UpdateGroup,
-} from '../../../wailsjs/go/main/App';
+} from '../../../bindings/workset/app';
 
 export type SessiondStatusResponse = {
 	available: boolean;

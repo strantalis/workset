@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime';
+	import { Browser } from '@wailsio/runtime';
 	import type { FileDiffMetadata, ParsedPatch } from '@pierre/diffs';
 	import type {
 		CheckAnnotation,
@@ -97,7 +97,7 @@
 	import RepoDiffPrPanel from './repo-diff/RepoDiffPrPanel.svelte';
 
 	const validateAndOpenURL = (url: string | undefined | null): void =>
-		openTrustedGitHubURL(url, BrowserOpenURL);
+		openTrustedGitHubURL(url, Browser.OpenURL);
 
 	interface Props {
 		repo: Repo | null;
@@ -662,7 +662,7 @@
 			{getFilteredAnnotations}
 			{reviewCountForFile}
 			{selectFile}
-			onOpenDetailsUrl={(url) => BrowserOpenURL(url)}
+			onOpenDetailsUrl={(url) => Browser.OpenURL(url)}
 			{sidebarWidth}
 			{isResizing}
 			onStartResize={startResize}

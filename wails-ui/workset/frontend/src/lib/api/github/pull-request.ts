@@ -16,7 +16,7 @@ import {
 	GetTrackedPullRequest,
 	ListRemotes,
 	SendPullRequestReviewsToTerminal,
-} from '../../../../wailsjs/go/main/App';
+} from '../../../../bindings/workset/app';
 import {
 	mapCheckAnnotations,
 	mapPullRequest,

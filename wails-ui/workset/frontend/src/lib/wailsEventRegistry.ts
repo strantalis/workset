@@ -1,4 +1,4 @@
-import { EventsOn } from '../../wailsjs/runtime/runtime';
+import { Events } from '@wailsio/runtime';
 
 type EventHandler<T> = (payload: T) => void;
 
@@ -18,7 +18,8 @@ export const subscribeWailsEvent = <T>(event: string, handler: EventHandler<T>):
 	}
 	entry.handlers.add(handler as EventHandler<unknown>);
 	if (!entry.bound) {
-		const unsubscribe = EventsOn(event, (payload: T) => {
+		const unsubscribe = Events.On(event, (payloadEvent) => {
+			const payload = payloadEvent?.data as T;
 			const current = eventRegistry.get(event);
 			if (!current) return;
 			for (const registered of current.handlers) {

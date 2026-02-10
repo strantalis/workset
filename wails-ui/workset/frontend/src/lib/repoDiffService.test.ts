@@ -4,9 +4,11 @@ import { EVENT_REPO_DIFF_SUMMARY } from './events';
 const eventsOn = vi.fn();
 const eventsOff = vi.fn();
 
-vi.mock('../../wailsjs/runtime/runtime', () => ({
-	EventsOn: eventsOn,
-	EventsOff: eventsOff,
+vi.mock('@wailsio/runtime', () => ({
+	Events: {
+		On: eventsOn,
+		Off: eventsOff,
+	},
 }));
 
 const loadService = async () => {

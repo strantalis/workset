@@ -28,9 +28,16 @@ vi.mock('../api/repo-diff', () => ({
 	stopRepoDiffWatch: vi.fn(),
 }));
 
-vi.mock('../../../wailsjs/runtime/runtime', () => ({
-	BrowserOpenURL: vi.fn(),
-}));
+vi.mock('@wailsio/runtime', async () => {
+	const actual = await vi.importActual<typeof import('@wailsio/runtime')>('@wailsio/runtime');
+	return {
+		...actual,
+		Browser: {
+			...actual.Browser,
+			OpenURL: vi.fn(),
+		},
+	};
+});
 
 vi.mock('../repoDiffService', () => ({
 	subscribeRepoDiffEvent: vi.fn(() => () => {}),

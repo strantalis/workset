@@ -12,7 +12,7 @@ import {
 	GetUpdateState,
 	SetUpdatePreferences,
 	StartUpdate,
-} from '../../../wailsjs/go/main/App';
+} from '../../../bindings/workset/app';
 
 export async function fetchAppVersion(): Promise<AppVersion> {
 	return (await GetAppVersion()) as AppVersion;

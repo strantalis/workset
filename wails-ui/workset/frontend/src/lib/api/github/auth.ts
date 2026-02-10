@@ -6,7 +6,7 @@ import {
 	SetGitHubAuthMode,
 	SetGitHubCLIPath,
 	SetGitHubToken,
-} from '../../../../wailsjs/go/main/App';
+} from '../../../../bindings/workset/app';
 
 export async function fetchGitHubAuthStatus(): Promise<GitHubAuthStatus> {
 	return (await GetGitHubAuthStatus()) as GitHubAuthStatus;

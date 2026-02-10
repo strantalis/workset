@@ -8,7 +8,7 @@ import {
 	StartRepoDiffWatch,
 	StopRepoDiffWatch,
 	UpdateRepoDiffWatch,
-} from '../../../wailsjs/go/main/App';
+} from '../../../bindings/workset/app';
 
 export type RepoDiffSnapshot = {
 	patch: string;

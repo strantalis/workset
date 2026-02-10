@@ -1,10 +1,10 @@
-import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime';
+import { Browser } from '@wailsio/runtime';
 import {
 	AckWorkspaceTerminalForWindowName,
 	ResizeWorkspaceTerminalForWindowName,
 	StartWorkspaceTerminalForWindowName,
 	WriteWorkspaceTerminalForWindowName,
-} from '../../../wailsjs/go/main/App';
+} from '../../../bindings/workset/app';
 import { fetchSessiondStatus, fetchSettings, type SessiondStatusResponse } from '../api/settings';
 import {
 	fetchTerminalBootstrap,
@@ -66,6 +66,6 @@ export const terminalTransport: TerminalTransport = {
 	fetchSettings,
 	logDebug: logTerminalDebug,
 	openURL: async (url) => {
-		await BrowserOpenURL(url);
+		await Browser.OpenURL(url);
 	},
 };

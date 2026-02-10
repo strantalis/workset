@@ -10,10 +10,10 @@ import {
 	PreviewRepoHooks,
 	RemoveWorkspace,
 	SetWorkspaceTerminalLayout,
-} from '../../wailsjs/go/main/App';
+} from '../../bindings/workset/app';
 import type { TerminalLayout } from './types';
 
-vi.mock('../../wailsjs/go/main/App', () => ({
+vi.mock('../../bindings/workset/app', () => ({
 	GetWorkspaceTerminalLayout: vi.fn(),
 	ListWorkspaceSnapshots: vi.fn(),
 	PreviewRepoHooks: vi.fn(),

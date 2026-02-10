@@ -14,7 +14,7 @@ import {
 	SetWorkspaceTerminalLayout,
 	StopWorkspaceTerminalForWindowName,
 	WriteWorkspaceTerminalForWindowName,
-} from '../../../wailsjs/go/main/App';
+} from '../../../bindings/workset/app';
 import { getCurrentWindowName } from '../windowContext';
 
 export type TerminalBacklogResponse = {

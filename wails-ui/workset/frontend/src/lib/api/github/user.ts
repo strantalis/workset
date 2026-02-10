@@ -1,4 +1,4 @@
-import { GetCurrentGitHubUser } from '../../../../wailsjs/go/main/App';
+import { GetCurrentGitHubUser } from '../../../../bindings/workset/app';
 import type { GitHubUser } from './types';
 
 export async function fetchCurrentGitHubUser(

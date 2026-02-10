@@ -4,7 +4,7 @@ import {
 	EditReviewComment,
 	ReplyToReviewComment,
 	ResolveReviewThread,
-} from '../../../../wailsjs/go/main/App';
+} from '../../../../bindings/workset/app';
 import { mapCommentResponse } from './mappers';
 import type { PullRequestReviewCommentResponse } from './types';
 

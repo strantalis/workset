@@ -26,7 +26,7 @@ import {
 	TrustRepoHooks,
 	UnarchiveWorkspace,
 	UpdateWorkspaceLastUsed,
-} from '../../../wailsjs/go/main/App';
+} from '../../../bindings/workset/app';
 
 export async function fetchWorkspaces(
 	includeArchived = false,

@@ -13,9 +13,9 @@ import {
 	RestartSessiond,
 	RestartSessiondWithReason,
 	UpdateAlias,
-} from '../../wailsjs/go/main/App';
+} from '../../bindings/workset/app';
 
-vi.mock('../../wailsjs/go/main/App', () => ({
+vi.mock('../../bindings/workset/app', () => ({
 	CreateAlias: vi.fn(),
 	DeleteAlias: vi.fn(),
 	ListAliases: vi.fn(),

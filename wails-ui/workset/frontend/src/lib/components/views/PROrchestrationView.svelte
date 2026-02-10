@@ -18,7 +18,7 @@
 		Upload,
 		XCircle,
 	} from '@lucide/svelte';
-	import { BrowserOpenURL } from '../../../../wailsjs/runtime/runtime';
+	import { Browser } from '@wailsio/runtime';
 	import type {
 		PullRequestCheck,
 		PullRequestCreated,
@@ -530,7 +530,7 @@
 	};
 
 	const openExternalUrl = (url: string | undefined | null): void => {
-		if (url) BrowserOpenURL(url);
+		if (url) Browser.OpenURL(url);
 	};
 
 	// ─── Effects ────────────────────────────────────────────────────────
