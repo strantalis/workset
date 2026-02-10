@@ -347,7 +347,7 @@
 		background: none;
 		border: none;
 		color: var(--text);
-		font-size: 13px;
+		font-size: var(--text-base);
 		outline: none;
 		min-width: 0;
 	}
@@ -384,7 +384,7 @@
 		grid-template-columns: 28px 1fr 28px;
 		align-items: center;
 		gap: var(--space-2);
-		font-size: 12px;
+		font-size: var(--text-sm);
 		font-weight: 600;
 		color: var(--text);
 		padding: 0 var(--space-3) var(--space-3);
@@ -443,7 +443,7 @@
 		border: 1px dashed rgba(255, 255, 255, 0.15);
 		border-radius: var(--radius-md);
 		color: var(--muted);
-		font-size: 13px;
+		font-size: var(--text-base);
 		font-weight: 500;
 		cursor: pointer;
 		transition: all 0.15s ease;
@@ -496,7 +496,7 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-1);
-		font-size: 11px;
+		font-size: var(--text-xs);
 		font-weight: 600;
 		color: var(--muted);
 		text-transform: uppercase;
@@ -510,7 +510,7 @@
 	}
 
 	.section-empty {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 		padding: var(--space-2);
 		border: 1px dashed rgba(255, 255, 255, 0.12);

@@ -481,6 +481,16 @@ export const focusTerminalInstance = terminalServiceExports.focusTerminalInstanc
 export const scrollTerminalToBottom = terminalServiceExports.scrollTerminalToBottom;
 export const isTerminalAtBottom = terminalServiceExports.isTerminalAtBottom;
 
+export const releaseWorkspaceTerminals = (workspaceId: string): void => {
+	const targetWorkspace = workspaceId.trim();
+	if (!targetWorkspace) return;
+	for (const key of terminalContextRegistry.keys()) {
+		if (getWorkspaceId(key) !== targetWorkspace) continue;
+		terminalResourceLifecycle.disposeTerminalResources(key);
+		terminalContextRegistry.deleteContext(key);
+	}
+};
+
 export const shutdownTerminalService = (): void => terminalEventSubscriptions.cleanupListeners();
 
 // Font size controls (VS Code style Cmd/Ctrl +/-)

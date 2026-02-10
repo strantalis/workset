@@ -22,31 +22,34 @@
 	const fields: Field[] = [
 		{
 			id: 'workspace',
-			label: 'Default workspace name',
+			label: 'DEFAULT WORKSET NAME',
 			description: 'Used when a workspace name is not provided.',
 			placeholder: 'acme',
 		},
 		{
 			id: 'remote',
-			label: 'Default remote',
+			label: 'DEFAULT REMOTE',
 			description: 'Primary remote for repos without an alias override.',
 			placeholder: 'origin',
 		},
 		{
 			id: 'baseBranch',
-			label: 'Base branch',
+			label: 'BASE BRANCH',
 			description: 'Fallback branch for repos that do not specify one.',
 			placeholder: 'main',
 		},
 		{
 			id: 'workspaceRoot',
-			label: 'Workspace root',
+			label: 'WORKSPACE ROOT',
 			description: 'Root folder for workspace checkouts.',
 			placeholder: '~/workspaces',
 		},
+	];
+
+	const fullWidthFields: Field[] = [
 		{
 			id: 'repoStoreRoot',
-			label: 'Repo store root',
+			label: 'REPO STORE ROOT',
 			description: 'Local mirror cache for repo cloning.',
 			placeholder: '~/.workset/repos',
 		},
@@ -63,11 +66,29 @@
 </script>
 
 <SettingsSection
-	title="Workspace defaults"
+	title="Workset Defaults"
 	description="Defaults used when creating or importing workspaces."
 >
 	<div class="fields">
 		{#each fields as field (field.id)}
+			<div class="field" class:changed={isChanged(field.id)}>
+				<label for={field.id}>{field.label}</label>
+				<input
+					id={field.id}
+					type="text"
+					placeholder={field.placeholder ?? ''}
+					value={getValue(field.id)}
+					autocapitalize="off"
+					autocorrect="off"
+					spellcheck="false"
+					oninput={(event) => handleInput(field.id, event)}
+				/>
+				<p>{field.description}</p>
+			</div>
+		{/each}
+	</div>
+	<div class="full-width-field">
+		{#each fullWidthFields as field (field.id)}
 			<div class="field" class:changed={isChanged(field.id)}>
 				<label for={field.id}>{field.label}</label>
 				<input
@@ -89,8 +110,16 @@
 <style>
 	.fields {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+		grid-template-columns: repeat(2, 1fr);
 		gap: 16px;
+	}
+
+	.full-width-field {
+		margin-top: 16px;
+	}
+
+	.full-width-field .field {
+		grid-column: 1 / -1;
 	}
 
 	.field {
@@ -106,19 +135,20 @@
 	}
 
 	.field label {
-		font-size: 11px;
+		font-size: var(--text-xs);
+		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
-		color: rgba(255, 255, 255, 0.7);
+		color: var(--muted);
 	}
 
 	.field input {
 		background: var(--panel-strong);
-		border: 1px solid rgba(255, 255, 255, 0.08);
+		border: 1px solid var(--border);
 		color: var(--text);
 		border-radius: var(--radius-md);
 		padding: 10px 12px;
-		font-size: 13px;
+		font-size: var(--text-base);
 		transition:
 			border-color var(--transition-fast),
 			box-shadow var(--transition-fast);
@@ -132,7 +162,7 @@
 
 	.field p {
 		margin: 0;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 </style>

@@ -223,7 +223,7 @@
 	}
 
 	.hint {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
@@ -233,7 +233,7 @@
 		border: 1px solid var(--border);
 		border-radius: var(--radius-md);
 		padding: 8px 10px;
-		font-size: 13px;
+		font-size: var(--text-base);
 		transition:
 			border-color var(--transition-fast),
 			box-shadow var(--transition-fast),
@@ -248,7 +248,7 @@
 		background: transparent;
 		border: none;
 		color: var(--muted);
-		font-size: 12px;
+		font-size: var(--text-sm);
 		cursor: pointer;
 		padding: 4px 8px;
 	}
@@ -260,7 +260,7 @@
 	.empty-search {
 		padding: 20px;
 		text-align: center;
-		font-size: 13px;
+		font-size: var(--text-base);
 		color: var(--muted);
 	}
 
@@ -345,12 +345,12 @@
 
 	.checkbox-name {
 		font-weight: 500;
-		font-size: 14px;
+		font-size: var(--text-md);
 		color: var(--text);
 	}
 
 	.checkbox-meta {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 		white-space: nowrap;
 		overflow: hidden;
@@ -444,12 +444,12 @@
 
 	.group-name {
 		font-weight: 500;
-		font-size: 14px;
+		font-size: var(--text-md);
 		color: var(--text);
 	}
 
 	.group-badge {
-		font-size: 11px;
+		font-size: var(--text-xs);
 		color: var(--muted);
 		background: rgba(255, 255, 255, 0.05);
 		padding: 2px 6px;
@@ -457,12 +457,12 @@
 	}
 
 	.group-description {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
 	.group-expand {
-		font-size: 11px;
+		font-size: var(--text-xs);
 		color: var(--accent);
 		background: transparent;
 		border: none;
@@ -479,7 +479,7 @@
 	.group-members {
 		margin: 6px 0 0 0;
 		padding-left: 16px;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 		list-style: disc;
 	}
@@ -530,11 +530,11 @@
 	}
 
 	.add-two-column .checkbox-name {
-		font-size: 13px;
+		font-size: var(--text-base);
 	}
 
 	.add-two-column .checkbox-meta {
-		font-size: 11px;
+		font-size: var(--text-xs);
 	}
 
 	.add-two-column .group-card {
@@ -542,11 +542,11 @@
 	}
 
 	.add-two-column .group-name {
-		font-size: 13px;
+		font-size: var(--text-base);
 	}
 
 	.add-two-column .group-description {
-		font-size: 11px;
+		font-size: var(--text-xs);
 	}
 
 	.selection-area {

@@ -60,7 +60,7 @@
 		border: none;
 		color: var(--muted);
 		padding: 6px 12px;
-		font-size: 13px;
+		font-size: var(--text-base);
 		cursor: pointer;
 		border-radius: var(--radius-md);
 		transition: all var(--transition-fast);

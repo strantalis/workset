@@ -1,9 +1,9 @@
 import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime';
 import {
-	AckWorkspaceTerminal,
-	ResizeWorkspaceTerminal,
-	StartWorkspaceTerminal,
-	WriteWorkspaceTerminal,
+	AckWorkspaceTerminalForWindowName,
+	ResizeWorkspaceTerminalForWindowName,
+	StartWorkspaceTerminalForWindowName,
+	WriteWorkspaceTerminalForWindowName,
 } from '../../../wailsjs/go/main/App';
 import { fetchSessiondStatus, fetchSettings, type SessiondStatusResponse } from '../api/settings';
 import {
@@ -15,6 +15,7 @@ import {
 	type WorkspaceTerminalStatusResponse,
 } from '../api/terminal-layout';
 import type { SettingsSnapshot } from '../types';
+import { getCurrentWindowName } from '../windowContext';
 import { subscribeWailsEvent } from '../wailsEventRegistry';
 
 export type TerminalTransport = {
@@ -43,16 +44,20 @@ export type TerminalTransport = {
 export const terminalTransport: TerminalTransport = {
 	onEvent: (event, handler) => subscribeWailsEvent(event, handler),
 	start: async (workspaceId, terminalId) => {
-		await StartWorkspaceTerminal(workspaceId, terminalId);
+		const windowName = await getCurrentWindowName();
+		await StartWorkspaceTerminalForWindowName(workspaceId, terminalId, windowName);
 	},
 	write: async (workspaceId, terminalId, data) => {
-		await WriteWorkspaceTerminal(workspaceId, terminalId, data);
+		const windowName = await getCurrentWindowName();
+		await WriteWorkspaceTerminalForWindowName(workspaceId, terminalId, data, windowName);
 	},
 	resize: async (workspaceId, terminalId, cols, rows) => {
-		await ResizeWorkspaceTerminal(workspaceId, terminalId, cols, rows);
+		const windowName = await getCurrentWindowName();
+		await ResizeWorkspaceTerminalForWindowName(workspaceId, terminalId, cols, rows, windowName);
 	},
 	ack: async (workspaceId, terminalId, bytes) => {
-		await AckWorkspaceTerminal(workspaceId, terminalId, bytes);
+		const windowName = await getCurrentWindowName();
+		await AckWorkspaceTerminalForWindowName(workspaceId, terminalId, bytes, windowName);
 	},
 	stop: stopWorkspaceTerminal,
 	fetchStatus: fetchWorkspaceTerminalStatus,

@@ -395,9 +395,8 @@ func (a *App) GetGitHubOperationStatus(input GitHubOperationStatusRequest) (GitH
 	}
 	status, ok := a.ensureGitHubOperationManager().get(key)
 	if !ok {
-		return GitHubOperationStatusPayload{}, worksetapi.NotFoundError{
-			Message: fmt.Sprintf("operation status not found (%s)", opType),
-		}
+		// No active operation is a valid state; return empty payload without error.
+		return GitHubOperationStatusPayload{}, nil
 	}
 	return status, nil
 }

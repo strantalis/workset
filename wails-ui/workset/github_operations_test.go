@@ -111,6 +111,23 @@ func TestGetGitHubOperationStatus(t *testing.T) {
 	}
 }
 
+func TestGetGitHubOperationStatusReturnsEmptyWhenNotFound(t *testing.T) {
+	app := &App{
+		githubOps: newGitHubOperationManager(),
+	}
+	status, err := app.GetGitHubOperationStatus(GitHubOperationStatusRequest{
+		WorkspaceID: "ws-1",
+		RepoID:      "repo-1",
+		Type:        string(GitHubOperationTypeCommitPush),
+	})
+	if err != nil {
+		t.Fatalf("expected no error for missing status, got %v", err)
+	}
+	if status.OperationID != "" {
+		t.Fatalf("expected empty status payload, got %+v", status)
+	}
+}
+
 func TestGitHubOperationManagerEvictsStaleCompletedStatuses(t *testing.T) {
 	now := time.Date(2026, 2, 6, 15, 0, 0, 0, time.UTC)
 	manager := newGitHubOperationManager()

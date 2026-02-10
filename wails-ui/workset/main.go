@@ -2,40 +2,51 @@ package main
 
 import (
 	"embed"
+	"log"
 
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	"github.com/wailsapp/wails/v2/pkg/options/mac"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 //go:embed all:frontend/dist
 var assets embed.FS
 
-func main() {
-	// Create an instance of the app structure
-	app := NewApp()
+//go:embed build/appicon.png
+var appIcon []byte
 
-	// Create application with options
-	err := wails.Run(&options.App{
-		Title:  "workset",
-		Width:  1440,
-		Height: 900,
-		AssetServer: &assetserver.Options{
-			Assets: assets,
+func main() {
+	appService := NewApp()
+
+	app := application.New(application.Options{
+		Name:        "workset",
+		Description: "Workset desktop app",
+		Icon:        appIcon,
+		Services: []application.Service{
+			application.NewService(appService),
 		},
-		BackgroundColour: &options.RGBA{R: 8, G: 16, B: 24, A: 255}, // Solid dark background
-		OnStartup:        app.startup,
-		OnShutdown:       app.shutdown,
-		Mac: &mac.Options{
-			TitleBar:   mac.TitleBarHidden(),
-			Appearance: mac.NSAppearanceNameDarkAqua,
+		Assets: application.AssetOptions{
+			Handler: application.AssetFileServerFS(assets),
 		},
-		Bind: []interface{}{
-			app,
+		Mac: application.MacOptions{
+			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
 	})
-	if err != nil {
-		println("Error:", err.Error())
+	appService.setRuntime(app)
+
+	app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Name:             mainWindowName,
+		Title:            "workset",
+		Width:            1440,
+		Height:           900,
+		URL:              "/",
+		BackgroundColour: application.NewRGB(8, 16, 24),
+		Mac: application.MacWindow{
+			TitleBar:                application.MacTitleBarHiddenInset,
+			InvisibleTitleBarHeight: 50,
+			Backdrop:                application.MacBackdropTranslucent,
+		},
+	})
+
+	if err := app.Run(); err != nil {
+		log.Fatal(err)
 	}
 }

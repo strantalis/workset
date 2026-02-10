@@ -1,3 +1,8 @@
 dist/
 node_modules/
 wailsjs/
+bindings/
+.playwright/
+.playwright-arm64/
+playwright-report/
+test-results/

@@ -1,0 +1,32 @@
+{
+	"extends": ["stylelint-config-standard"],
+	"plugins": ["stylelint-declaration-strict-value"],
+	"rules": {
+		"scale-unlimited/declaration-strict-value": [
+			["/color$/", "background-color", "border-color", "fill", "stroke"],
+			{
+				"ignoreValues": [
+					"transparent",
+					"inherit",
+					"currentColor",
+					"/^var\\(/",
+					"/^color-mix\\(/",
+					"none",
+					"white",
+					"black",
+					"/^#?[0-9a-fA-F]{3,8}$/"
+				],
+				"message": "Use CSS variables for colors instead of hardcoded values"
+			}
+		],
+		"color-no-hex": [
+			true,
+			{
+				"message": "Use CSS variables instead of hex colors",
+				"severity": "warning",
+				"ignore": ["/^\\s*\\/?\\*/"]
+			}
+		]
+	},
+	"ignoreFiles": ["**/node_modules/**", "**/dist/**", "**/wailsjs/**"]
+}

@@ -95,7 +95,7 @@
 
 	.panel-title {
 		margin: 0;
-		font-size: 14px;
+		font-size: var(--text-md);
 		font-weight: 600;
 		color: var(--text);
 		padding-bottom: 8px;
@@ -103,7 +103,7 @@
 	}
 
 	.panel-label {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
@@ -123,7 +123,7 @@
 	}
 
 	.empty-selection {
-		font-size: 13px;
+		font-size: var(--text-base);
 		color: var(--muted);
 		font-style: italic;
 		padding: 12px 0;
@@ -137,11 +137,11 @@
 		padding: 6px 8px;
 		background: rgba(255, 255, 255, 0.03);
 		border-radius: var(--radius-sm);
-		font-size: 13px;
+		font-size: var(--text-base);
 	}
 
 	.selected-badge {
-		font-size: 10px;
+		font-size: var(--text-xs);
 		font-weight: 600;
 		text-transform: uppercase;
 		padding: 2px 6px;
@@ -180,7 +180,7 @@
 		color: var(--muted);
 		cursor: pointer;
 		padding: 0 4px;
-		font-size: 18px;
+		font-size: var(--text-xl);
 		line-height: 1;
 		transition: color var(--transition-fast);
 		flex-shrink: 0;
@@ -201,7 +201,7 @@
 	.existing-section .panel-label {
 		font-weight: 600;
 		color: var(--text);
-		font-size: 13px;
+		font-size: var(--text-base);
 	}
 
 	.existing-list {
@@ -215,7 +215,7 @@
 		align-items: center;
 		gap: 8px;
 		padding: 4px 0;
-		font-size: 13px;
+		font-size: var(--text-base);
 		opacity: 0.8;
 	}
 

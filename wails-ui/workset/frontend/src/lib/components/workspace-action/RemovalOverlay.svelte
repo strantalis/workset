@@ -93,7 +93,7 @@
 	}
 
 	.removal-text {
-		font-size: 14px;
+		font-size: var(--text-md);
 		font-weight: 500;
 		color: var(--text);
 	}

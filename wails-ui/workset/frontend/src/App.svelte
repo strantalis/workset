@@ -1,47 +1,72 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
+	import { fly } from 'svelte/transition';
+	import {
+		ArrowLeft,
+		GitPullRequest,
+		LayoutDashboard,
+		PlusCircle,
+		Settings,
+		Sparkles,
+		Terminal,
+	} from '@lucide/svelte';
 	import {
 		activeRepo,
-		activeRepoId,
 		activeWorkspace,
 		activeWorkspaceId,
 		applyRepoLocalStatus,
 		clearRepo,
 		loadWorkspaces,
 		loadingWorkspaces,
+		refreshWorkspacesStatus,
+		selectRepo,
+		selectWorkspace,
+		toggleWorkspacePin,
 		workspaceError,
 		workspaces,
 	} from './lib/state';
+	import {
+		archiveWorkspace,
+		closeWorkspacePopout,
+		listWorkspacePopouts,
+		openWorkspacePopout,
+		previewRepoHooks,
+		setWorkspaceDescription,
+		unarchiveWorkspace,
+	} from './lib/api/workspaces';
+	import type { RepoLocalStatus } from './lib/api/github';
+	import { fetchGitHubAuthInfo } from './lib/api/github';
+	import {
+		EVENT_REPO_DIFF_LOCAL_STATUS,
+		EVENT_WORKSPACE_POPOUT_CLOSED,
+		EVENT_WORKSPACE_POPOUT_OPENED,
+	} from './lib/events';
+	import { subscribeRepoDiffEvent } from './lib/repoDiffService';
+	import { releaseWorkspaceTerminals } from './lib/terminal/terminalService';
+	import { subscribeWailsEvent } from './lib/wailsEventRegistry';
+	import { startRepoStatusWatch, stopRepoStatusWatch } from './lib/api/repo-diff';
 	import EmptyState from './lib/components/EmptyState.svelte';
 	import GitHubLoginModal from './lib/components/GitHubLoginModal.svelte';
 	import RepoDiff from './lib/components/RepoDiff.svelte';
 	import SettingsPanel from './lib/components/SettingsPanel.svelte';
-	import TerminalWorkspace from './lib/components/TerminalWorkspace.svelte';
-	import WorkspaceActionModal from './lib/components/WorkspaceActionModal.svelte';
-	import WorkspaceTree from './lib/components/WorkspaceTree.svelte';
-	import type { Workspace } from './lib/types';
-	import type { RepoLocalStatus } from './lib/api/github';
-	import { fetchGitHubAuthInfo } from './lib/api/github';
-	import { startRepoStatusWatch, stopRepoStatusWatch } from './lib/api/repo-diff';
-	import { subscribeRepoDiffEvent } from './lib/repoDiffService';
-	import { EVENT_REPO_DIFF_LOCAL_STATUS } from './lib/events';
-
-	// Sidebar resize constraints
-	const MIN_SIDEBAR_WIDTH = 200;
-	const MAX_SIDEBAR_WIDTH = 480;
-	const DEFAULT_SIDEBAR_WIDTH = 280;
-
-	const hasWorkspace = $derived($activeWorkspace !== null);
-	const hasRepo = $derived($activeRepo !== null);
-	const hasWorkspaces = $derived($workspaces.length > 0);
-	let settingsOpen = $state(false);
-	let sidebarCollapsed = $state(false);
-	let sidebarWidth = $state(DEFAULT_SIDEBAR_WIDTH);
-	let isResizingSidebar = $state(false);
-	let actionOpen = $state(false);
-	let authModalOpen = $state(false);
-	let authModalDismissed = $state(false);
-	const repoStatusWatchers = new Map<string, { workspaceId: string; repoId: string }>();
+	import CommandPalette, { type AppView } from './lib/components/chrome/CommandPalette.svelte';
+	import ContextBar from './lib/components/chrome/ContextBar.svelte';
+	import CommandCenterView from './lib/components/views/CommandCenterView.svelte';
+	import OnboardingView, {
+		type OnboardingDraft,
+		type OnboardingStartResult,
+	} from './lib/components/views/OnboardingView.svelte';
+	import PROrchestrationView from './lib/components/views/PROrchestrationView.svelte';
+	import SkillRegistryView from './lib/components/views/SkillRegistryView.svelte';
+	import TerminalCockpitView from './lib/components/views/TerminalCockpitView.svelte';
+	import WorksetHubView from './lib/components/views/WorksetHubView.svelte';
+	import { workspaceActionMutations } from './lib/services/workspaceActionService';
+	import {
+		loadOnboardingCatalog,
+		type RegisteredRepo,
+		type WorksetTemplate,
+	} from './lib/view-models/onboardingViewModel';
+	import { buildShortcutMap, mapWorkspacesToSummaries } from './lib/view-models/worksetViewModel';
 
 	type RepoDiffLocalStatusEvent = {
 		workspaceId: string;
@@ -49,71 +74,104 @@
 		status: RepoLocalStatus;
 	};
 
-	let actionContext: {
-		mode: 'create' | 'rename' | 'add-repo' | 'archive' | 'remove-workspace' | 'remove-repo' | null;
-		workspaceId: string | null;
-		repoName: string | null;
-	} = $state({
-		mode: null,
-		workspaceId: null,
-		repoName: null,
+	type WorkspacePopoutEvent = {
+		workspaceId: string;
+		windowName: string;
+		open: boolean;
+	};
+
+	type NavItem = {
+		view: AppView;
+		label: string;
+		icon: typeof LayoutDashboard;
+	};
+
+	const railNavItems: NavItem[] = [
+		{ view: 'command-center', label: 'Command Center', icon: LayoutDashboard },
+		{ view: 'terminal-cockpit', label: 'Engineering Cockpit', icon: Terminal },
+		{ view: 'pr-orchestration', label: 'PR Orchestration', icon: GitPullRequest },
+		{ view: 'skill-registry', label: 'Skill Registry', icon: Sparkles },
+	];
+	const popoutNavItems: NavItem[] = [
+		{ view: 'command-center', label: 'Command Center', icon: LayoutDashboard },
+		{ view: 'terminal-cockpit', label: 'Engineering Cockpit', icon: Terminal },
+		{ view: 'pr-orchestration', label: 'PR Orchestration', icon: GitPullRequest },
+	];
+
+	const contextViews: AppView[] = [
+		'command-center',
+		'terminal-cockpit',
+		'pr-orchestration',
+		'skill-registry',
+	];
+	const popoutViews = new Set<AppView>(popoutNavItems.map((item) => item.view));
+	const appViews = new Set<AppView>([
+		'workset-hub',
+		'command-center',
+		'terminal-cockpit',
+		'pr-orchestration',
+		'skill-registry',
+		'onboarding',
+	]);
+	const searchParams =
+		typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+	const popoutMode = searchParams?.get('popout') === '1';
+	const requestedWorkspace = searchParams?.get('workspace')?.trim() ?? '';
+	const requestedView = searchParams?.get('view')?.trim() ?? '';
+	const requestedAppView = appViews.has(requestedView as AppView)
+		? (requestedView as AppView)
+		: null;
+	const fixedWorkspaceId = popoutMode && requestedWorkspace !== '' ? requestedWorkspace : null;
+	const initialView: AppView = popoutMode
+		? requestedAppView && popoutViews.has(requestedAppView)
+			? requestedAppView
+			: 'command-center'
+		: (requestedAppView ?? 'workset-hub');
+
+	const repoStatusWatchers = new Map<string, { workspaceId: string; repoId: string }>();
+
+	const hasWorkspace = $derived($activeWorkspace !== null);
+	const hasRepo = $derived($activeRepo !== null);
+	const hasWorkspaces = $derived($workspaces.length > 0);
+
+	let currentView = $state<AppView>(initialView);
+	let prFocusWorkspaceId = $state<string | null>(null);
+	let prFocusRepoId = $state<string | null>(null);
+	let prFocusToken = $state(0);
+	let settingsOpen = $state(false);
+	let commandPaletteOpen = $state(false);
+	let authModalOpen = $state(false);
+	let authModalDismissed = $state(false);
+	let popoutBusy = $state(false);
+	let openPopoutWorkspaces = $state<Record<string, string>>({});
+	let popoutSelectionApplied = $state(false);
+	let onboardingLoading = $state(false);
+	let onboardingBusy = $state(false);
+	let onboardingError = $state<string | null>(null);
+	let onboardingTemplates = $state<WorksetTemplate[]>([]);
+	let onboardingRepoRegistry = $state<RegisteredRepo[]>([]);
+	let onboardingLoaded = $state(false);
+
+	const visibleWorkspaces = $derived.by(() => {
+		if (!fixedWorkspaceId) return $workspaces;
+		return $workspaces.filter((workspace) => workspace.id === fixedWorkspaceId);
 	});
+	const worksetSummaries = $derived.by(() => mapWorkspacesToSummaries(visibleWorkspaces));
+	const shortcutMap = $derived.by(() => buildShortcutMap(visibleWorkspaces));
+	const activeSummary = $derived.by(
+		() => worksetSummaries.find((summary) => summary.id === $activeWorkspaceId) ?? null,
+	);
+	const activeShortcut = $derived.by(() =>
+		$activeWorkspaceId ? shortcutMap.get($activeWorkspaceId) : undefined,
+	);
+	const showContextBar = $derived.by(
+		() => !hasRepo && activeSummary !== null && contextViews.includes(currentView),
+	);
 
-	const openAction = (
-		mode: 'create' | 'rename' | 'add-repo' | 'archive' | 'remove-workspace' | 'remove-repo',
-		workspaceId: string | null,
-		repoName: string | null,
-	): void => {
-		actionContext = { mode, workspaceId, repoName };
-		actionOpen = true;
-	};
-
-	const checkGitHubAuth = async (): Promise<void> => {
-		if (authModalDismissed) return;
-		try {
-			const info = await fetchGitHubAuthInfo();
-			if (!info.status.authenticated) {
-				authModalOpen = true;
-			}
-		} catch (error) {
-			// eslint-disable-next-line no-console
-			console.warn('Unable to check GitHub auth status', error);
-		}
-	};
-
-	const handleAuthClose = (): void => {
-		authModalOpen = false;
-		authModalDismissed = true;
-	};
-
-	const handleAuthSuccess = (): void => {
-		authModalOpen = false;
-		authModalDismissed = true;
-	};
-
-	// Sidebar resize handlers
-	const handleSidebarResizeStart = (event: PointerEvent): void => {
-		if (sidebarCollapsed) return;
-		event.preventDefault();
-		isResizingSidebar = true;
-		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-	};
-
-	const handleSidebarResizeMove = (event: PointerEvent): void => {
-		if (!isResizingSidebar) return;
-		const newWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, event.clientX));
-		sidebarWidth = newWidth;
-	};
-
-	const handleSidebarResizeEnd = (event: PointerEvent): void => {
-		if (!isResizingSidebar) return;
-		isResizingSidebar = false;
-		(event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
-	};
-
-	const updateRepoStatusWatchers = (data: Workspace[]): void => {
+	const updateRepoStatusWatchers = (): void => {
+		if (popoutMode) return;
 		const nextKeys = new Set<string>();
-		for (const workspace of data) {
+		for (const workspace of $workspaces) {
 			if (workspace.archived) continue;
 			for (const repo of workspace.repos) {
 				const key = `${workspace.id}:${repo.id}`;
@@ -127,7 +185,7 @@
 			}
 		}
 
-		for (const [key, entry] of repoStatusWatchers) {
+		for (const [key, entry] of repoStatusWatchers.entries()) {
 			if (nextKeys.has(key)) continue;
 			repoStatusWatchers.delete(key);
 			void stopRepoStatusWatch(entry.workspaceId, entry.repoId).catch(() => {});
@@ -135,149 +193,548 @@
 	};
 
 	const stopAllRepoStatusWatchers = (): void => {
-		for (const entry of repoStatusWatchers.values()) {
-			void stopRepoStatusWatch(entry.workspaceId, entry.repoId).catch(() => {});
+		for (const watcher of repoStatusWatchers.values()) {
+			void stopRepoStatusWatch(watcher.workspaceId, watcher.repoId).catch(() => {});
 		}
 		repoStatusWatchers.clear();
 	};
 
-	const onUnmount = (): void => {
-		stopAllRepoStatusWatchers();
-		repoStatusUnsubscribe?.();
-		repoStatusUnsubscribe = null;
+	const isWorkspacePoppedOut = (workspaceId: string | null | undefined): boolean => {
+		if (!workspaceId) return false;
+		return openPopoutWorkspaces[workspaceId] !== undefined;
+	};
+
+	const updateWorkspacePopoutState = (
+		workspaceId: string,
+		windowName: string,
+		open: boolean,
+	): void => {
+		const id = workspaceId.trim();
+		if (!id) return;
+		if (open) {
+			openPopoutWorkspaces = { ...openPopoutWorkspaces, [id]: windowName };
+			if (!popoutMode) {
+				releaseWorkspaceTerminals(id);
+				if ($activeWorkspaceId === id && currentView === 'terminal-cockpit') {
+					currentView = 'command-center';
+				}
+			}
+			return;
+		}
+		if (openPopoutWorkspaces[id] === undefined) return;
+		const next = { ...openPopoutWorkspaces };
+		delete next[id];
+		openPopoutWorkspaces = next;
+	};
+
+	const loadPopoutState = async (): Promise<void> => {
+		try {
+			const states = await listWorkspacePopouts();
+			const next: Record<string, string> = {};
+			for (const state of states) {
+				if (!state.open || !state.workspaceId) continue;
+				next[state.workspaceId] = state.windowName;
+			}
+			openPopoutWorkspaces = next;
+			if (!popoutMode) {
+				for (const workspaceId of Object.keys(next)) {
+					releaseWorkspaceTerminals(workspaceId);
+				}
+				if ($activeWorkspaceId && next[$activeWorkspaceId] && currentView === 'terminal-cockpit') {
+					currentView = 'command-center';
+				}
+			}
+		} catch {
+			// ignore state probe failures
+		}
+	};
+
+	const checkGitHubAuth = async (): Promise<void> => {
+		if (authModalDismissed) return;
+		try {
+			const info = await fetchGitHubAuthInfo();
+			if (!info.status.authenticated) {
+				authModalOpen = true;
+			}
+		} catch {
+			// ignore auth probe failures
+		}
+	};
+
+	const handleAuthClose = (): void => {
+		authModalOpen = false;
+		authModalDismissed = true;
+	};
+
+	const handleAuthSuccess = (): void => {
+		authModalOpen = false;
+		authModalDismissed = true;
+	};
+
+	const setView = (view: AppView): void => {
+		if (popoutMode && !popoutViews.has(view)) {
+			return;
+		}
+		currentView = view;
+		if (hasRepo) {
+			clearRepo();
+		}
+		if (view === 'onboarding') {
+			void ensureOnboardingCatalog();
+		}
+	};
+
+	const ensureOnboardingCatalog = async (): Promise<void> => {
+		if (onboardingLoading || onboardingLoaded) return;
+		onboardingLoading = true;
+		onboardingError = null;
+		try {
+			const catalog = await loadOnboardingCatalog();
+			onboardingTemplates = catalog.templates;
+			onboardingRepoRegistry = catalog.repoRegistry;
+			onboardingLoaded = true;
+		} catch (error) {
+			onboardingError = error instanceof Error ? error.message : 'Failed to load onboarding data.';
+		} finally {
+			onboardingLoading = false;
+		}
+	};
+
+	const handleSelectWorkspace = (workspaceId: string): void => {
+		if (fixedWorkspaceId && workspaceId !== fixedWorkspaceId) {
+			return;
+		}
+		selectWorkspace(workspaceId);
+		if (currentView === 'workset-hub' || currentView === 'onboarding') {
+			currentView = 'command-center';
+		}
+	};
+
+	const handleSelectWorkspaceFromPalette = (workspaceId: string): void => {
+		if (fixedWorkspaceId && workspaceId !== fixedWorkspaceId) {
+			return;
+		}
+		selectWorkspace(workspaceId);
+		currentView = 'command-center';
+		clearRepo();
+	};
+
+	const handleSelectRepo = (workspaceId: string, repoId: string): void => {
+		if (fixedWorkspaceId && workspaceId !== fixedWorkspaceId) {
+			return;
+		}
+		if ($activeWorkspaceId !== workspaceId) {
+			selectWorkspace(workspaceId);
+		}
+
+		const workspace = $workspaces.find((entry) => entry.id === workspaceId);
+		const repo = workspace?.repos.find((entry) => entry.id === repoId);
+		if (!repo) {
+			return;
+		}
+
+		const hasLocalDiff = repo.dirty || (repo.diff.added ?? 0) > 0 || (repo.diff.removed ?? 0) > 0;
+		if (hasLocalDiff) {
+			prFocusWorkspaceId = null;
+			prFocusRepoId = null;
+			selectRepo(repoId);
+			return;
+		}
+
+		clearRepo();
+		if (repo.trackedPullRequest || (repo.ahead ?? 0) > 0) {
+			prFocusWorkspaceId = workspaceId;
+			prFocusRepoId = repoId;
+			prFocusToken += 1;
+			currentView = 'pr-orchestration';
+		}
+	};
+
+	const handleCreateWorkspace = (): void => {
+		if (popoutMode) {
+			return;
+		}
+		onboardingError = null;
+		setView('onboarding');
+	};
+
+	const handleOnboardingStart = async (
+		draft: OnboardingDraft,
+	): Promise<OnboardingStartResult | void> => {
+		if (onboardingBusy) return;
+		onboardingBusy = true;
+		onboardingError = null;
+		try {
+			const result = await workspaceActionMutations.createWorkspace({
+				finalName: draft.workspaceName,
+				primaryInput: draft.primarySource,
+				directRepos: draft.directRepos,
+				selectedAliases: draft.selectedAliases,
+				selectedGroups: draft.selectedGroups,
+			});
+			if (draft.description) {
+				await setWorkspaceDescription(result.workspaceName, draft.description);
+			}
+			return {
+				workspaceName: result.workspaceName,
+				warnings: result.warnings,
+				pendingHooks: result.pendingHooks,
+				hookRuns: result.hookRuns,
+			};
+		} catch (error) {
+			onboardingError =
+				error instanceof Error ? error.message : 'Failed to create workspace from onboarding.';
+			throw error;
+		} finally {
+			onboardingBusy = false;
+		}
+	};
+
+	const handleOnboardingComplete = async (workspaceName: string): Promise<void> => {
+		await loadWorkspaces(true);
+		selectWorkspace(workspaceName);
+		clearRepo();
+		currentView = 'command-center';
+	};
+
+	const handleOnboardingPreviewHooks = async (source: string): Promise<string[]> => {
+		return previewRepoHooks(source);
+	};
+
+	const handleToggleArchive = async (workspaceId: string, archived: boolean): Promise<void> => {
+		try {
+			if (archived) {
+				await unarchiveWorkspace(workspaceId);
+			} else {
+				await archiveWorkspace(workspaceId, 'Archived from workspace UI');
+			}
+			await refreshWorkspacesStatus(true);
+		} catch {
+			// ignore archive errors; they are surfaced elsewhere
+		}
+	};
+
+	const handleShortcutSwitch = (index: number): void => {
+		if (popoutMode) return;
+		for (const [workspaceId, number] of shortcutMap.entries()) {
+			if (number !== index) continue;
+			handleSelectWorkspace(workspaceId);
+			return;
+		}
+	};
+
+	const handleGlobalKeydown = (event: KeyboardEvent): void => {
+		if (popoutMode) return;
+		if (!(event.metaKey || event.ctrlKey)) return;
+		const key = event.key.toLowerCase();
+		if (key === 'k') {
+			event.preventDefault();
+			commandPaletteOpen = !commandPaletteOpen;
+			return;
+		}
+		if (key >= '1' && key <= '5') {
+			event.preventDefault();
+			handleShortcutSwitch(Number(key));
+		}
 	};
 
 	let repoStatusUnsubscribe: (() => void) | null = null;
+	let popoutOpenedUnsubscribe: (() => void) | null = null;
+	let popoutClosedUnsubscribe: (() => void) | null = null;
+
+	const handleOpenPopout = async (workspaceId: string): Promise<void> => {
+		if (!workspaceId || popoutBusy) return;
+		popoutBusy = true;
+		try {
+			const state = await openWorkspacePopout(workspaceId);
+			updateWorkspacePopoutState(state.workspaceId, state.windowName, state.open);
+		} catch {
+			// ignore popout launch errors in UI
+		} finally {
+			popoutBusy = false;
+		}
+	};
+
+	const handleClosePopout = async (workspaceId: string): Promise<void> => {
+		if (!workspaceId || popoutBusy) return;
+		popoutBusy = true;
+		try {
+			await closeWorkspacePopout(workspaceId);
+			updateWorkspacePopoutState(workspaceId, '', false);
+		} catch {
+			// ignore popout close errors in UI
+		} finally {
+			popoutBusy = false;
+		}
+	};
 
 	onMount(() => {
-		void loadWorkspaces();
-		void checkGitHubAuth();
+		void loadWorkspaces(true);
+		void loadPopoutState();
+		if (!popoutMode) {
+			void checkGitHubAuth();
+		}
 		repoStatusUnsubscribe = subscribeRepoDiffEvent<RepoDiffLocalStatusEvent>(
 			EVENT_REPO_DIFF_LOCAL_STATUS,
 			(payload) => {
 				applyRepoLocalStatus(payload.workspaceId, payload.repoId, payload.status);
 			},
 		);
+		popoutOpenedUnsubscribe = subscribeWailsEvent<WorkspacePopoutEvent>(
+			EVENT_WORKSPACE_POPOUT_OPENED,
+			(payload) => {
+				updateWorkspacePopoutState(payload.workspaceId, payload.windowName, true);
+			},
+		);
+		popoutClosedUnsubscribe = subscribeWailsEvent<WorkspacePopoutEvent>(
+			EVENT_WORKSPACE_POPOUT_CLOSED,
+			(payload) => {
+				updateWorkspacePopoutState(payload.workspaceId, payload.windowName, false);
+			},
+		);
 	});
 
 	onDestroy(() => {
-		onUnmount();
+		stopAllRepoStatusWatchers();
+		repoStatusUnsubscribe?.();
+		repoStatusUnsubscribe = null;
+		popoutOpenedUnsubscribe?.();
+		popoutOpenedUnsubscribe = null;
+		popoutClosedUnsubscribe?.();
+		popoutClosedUnsubscribe = null;
 	});
 
 	$effect(() => {
-		updateRepoStatusWatchers($workspaces);
+		updateRepoStatusWatchers();
+	});
+
+	$effect(() => {
+		if (!fixedWorkspaceId || popoutSelectionApplied || $loadingWorkspaces) return;
+		if ($workspaces.length === 0) return;
+		const target = $workspaces.find(
+			(workspace) => workspace.id === fixedWorkspaceId && !workspace.archived,
+		);
+		if (!target) {
+			popoutSelectionApplied = true;
+			workspaceError.set(`Workspace "${fixedWorkspaceId}" is unavailable for popout mode.`);
+			return;
+		}
+		selectWorkspace(target.id);
+		clearRepo();
+		if (!popoutViews.has(currentView)) {
+			currentView = 'command-center';
+		}
+		popoutSelectionApplied = true;
 	});
 </script>
 
-<div
-	class:collapsed={sidebarCollapsed}
-	class:resizing={isResizingSidebar}
-	class="app"
-	style={sidebarCollapsed ? '' : `--sidebar-width: ${sidebarWidth}px`}
->
-	<aside class:collapsed={sidebarCollapsed} class:repo-view={hasRepo} class="sidebar">
-		{#if !sidebarCollapsed}
-			<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-			<div
-				class="sidebar-resize-handle"
-				class:active={isResizingSidebar}
-				role="separator"
-				tabindex="0"
-				aria-orientation="vertical"
-				aria-valuenow={sidebarWidth}
-				aria-valuemin={MIN_SIDEBAR_WIDTH}
-				aria-valuemax={MAX_SIDEBAR_WIDTH}
-				onpointerdown={handleSidebarResizeStart}
-				onpointermove={handleSidebarResizeMove}
-				onpointerup={handleSidebarResizeEnd}
-				onpointercancel={handleSidebarResizeEnd}
-			></div>
-		{/if}
-		<WorkspaceTree
-			{sidebarCollapsed}
-			onToggleSidebar={() => (sidebarCollapsed = !sidebarCollapsed)}
-			onCreateWorkspace={() => openAction('create', null, null)}
-			onAddRepo={(workspaceId) => openAction('add-repo', workspaceId, null)}
-			onManageWorkspace={(workspaceId, action) => {
-				if (action === 'rename') {
-					openAction('rename', workspaceId, null);
-				} else if (action === 'archive') {
-					openAction('archive', workspaceId, null);
-				} else {
-					openAction('remove-workspace', workspaceId, null);
-				}
-			}}
-			onManageRepo={(workspaceId, repoName, _action) => {
-				openAction('remove-repo', workspaceId, repoName);
-			}}
-		/>
-	</aside>
+<svelte:window onkeydown={handleGlobalKeydown} />
 
-	<div class="main-area">
-		<header class:repo-view={hasRepo} class:no-workspace={!hasWorkspace} class="topbar">
+<div class="app-shell" class:popout={popoutMode}>
+	{#if !popoutMode}
+		<aside class="rail">
 			<button
-				class="icon-button settings-btn"
 				type="button"
+				class="hub-btn"
+				class:active={currentView === 'workset-hub'}
+				onclick={() => setView('workset-hub')}
+				data-tooltip="Workset Hub"
+				aria-label="Workset Hub"
+			>
+				<img src="images/logo.png" alt="Workset" class="hub-icon" />
+			</button>
+
+			<nav class="rail-nav" aria-label="Main">
+				{#each railNavItems as item (item.view)}
+					<button
+						type="button"
+						class="rail-item"
+						class:active={currentView === item.view}
+						onclick={() => setView(item.view)}
+						data-tooltip={item.label}
+						aria-label={item.label}
+					>
+						<item.icon size={18} />
+					</button>
+				{/each}
+			</nav>
+
+			<div class="rail-divider"></div>
+
+			<button
+				type="button"
+				class="rail-item"
+				class:active={currentView === 'onboarding'}
+				onclick={() => setView('onboarding')}
+				data-tooltip="New Workset"
+				aria-label="New Workset"
+			>
+				<PlusCircle size={18} />
+			</button>
+
+			<button
+				type="button"
+				class="rail-item settings"
 				onclick={() => (settingsOpen = true)}
+				data-tooltip="Settings"
 				aria-label="Settings"
 			>
-				<svg viewBox="0 0 24 24" aria-hidden="true">
-					<circle cx="12" cy="12" r="3" />
-					<path
-						d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
-					/>
-				</svg>
+				<Settings size={18} />
 			</button>
-		</header>
+		</aside>
+	{:else}
+		<aside class="rail popout-rail" aria-label="Workspace popout navigation">
+			<nav class="rail-nav" aria-label="Popout views">
+				{#each popoutNavItems as item (item.view)}
+					<button
+						type="button"
+						class="rail-item"
+						class:active={currentView === item.view}
+						onclick={() => setView(item.view)}
+						data-tooltip={item.label}
+						aria-label={item.label}
+					>
+						<item.icon size={18} />
+					</button>
+				{/each}
+			</nav>
 
-		<main class="main">
-			{#if $loadingWorkspaces}
-				<EmptyState title="Loading workspaces" body="Fetching your workspace list." />
-			{:else if $workspaceError}
-				<section class="error">
-					<div class="title">Failed to load workspaces</div>
-					<div class="body">{$workspaceError}</div>
-					<button class="retry" onclick={() => loadWorkspaces()} type="button">Retry</button>
-				</section>
-			{:else if !hasWorkspace}
-				<EmptyState
-					title={hasWorkspaces ? 'Select a workspace' : 'Create your first workspace'}
-					body={hasWorkspaces
-						? 'Choose a workspace from the sidebar, or create a new one with the repos you need.'
-						: 'Workspaces are collections of Git repositories you work on together. Add repos by URL or local path, use registered repos, or apply entire team bundles (groups).'}
-					actionLabel="Create workspace with repos"
-					onAction={() => openAction('create', null, null)}
-					hint={hasWorkspaces ? undefined : 'Add by URL · Use registered repos · Apply groups'}
-					variant="centered"
-				/>
-			{:else}
-				<div class="view-stack">
-					<div class="view-pane" class:active={!hasRepo} aria-hidden={hasRepo}>
-						{#key $activeWorkspaceId}
-							<TerminalWorkspace
-								workspaceId={$activeWorkspace?.id ?? ''}
-								workspaceName={$activeWorkspace?.name ?? 'Workspace'}
-								active={!hasRepo}
+			<button
+				type="button"
+				class="rail-item popout-return-rail"
+				data-tooltip="Return to main window"
+				aria-label="Return to main window"
+				onclick={() => void handleClosePopout($activeWorkspaceId ?? fixedWorkspaceId ?? '')}
+			>
+				<ArrowLeft size={18} />
+			</button>
+		</aside>
+	{/if}
+
+	<section class="shell-main">
+		{#if showContextBar}
+			<ContextBar
+				workset={activeSummary}
+				shortcutNumber={popoutMode ? undefined : activeShortcut}
+				showShortcut={!popoutMode}
+				showPaletteHint={!popoutMode}
+				onOpenHub={() => setView(popoutMode ? 'command-center' : 'workset-hub')}
+				onOpenPalette={() => (commandPaletteOpen = true)}
+			/>
+		{/if}
+
+		<div class="view-shell">
+			{#key currentView}
+				<div class="view-transition" in:fly={{ y: 10, duration: 200 }}>
+					{#if $loadingWorkspaces}
+						<EmptyState
+							title="Loading workspaces"
+							body="Fetching workspace snapshots and local status."
+						/>
+					{:else if $workspaceError}
+						<section class="error">
+							<div class="title">Failed to load workspaces</div>
+							<div class="body">{$workspaceError}</div>
+							<button class="retry" type="button" onclick={() => loadWorkspaces(true)}>Retry</button
+							>
+						</section>
+					{:else if hasRepo}
+						<RepoDiff
+							repo={$activeRepo}
+							workspaceId={$activeWorkspaceId ?? ''}
+							onClose={clearRepo}
+						/>
+					{:else if popoutMode && !hasWorkspace}
+						<EmptyState
+							title="Workspace unavailable"
+							body="The requested workspace for this popout window could not be loaded."
+							variant="centered"
+						/>
+					{:else if !hasWorkspace && !hasWorkspaces && currentView !== 'onboarding'}
+						<EmptyState
+							title="Create your first workspace"
+							body="Workspaces are collections of repositories that move together across branches and PR flow."
+							actionLabel="Create workspace"
+							onAction={handleCreateWorkspace}
+							variant="centered"
+						/>
+					{:else if currentView === 'workset-hub'}
+						<WorksetHubView
+							worksets={worksetSummaries}
+							{shortcutMap}
+							activeWorkspaceId={$activeWorkspaceId}
+							onSelectWorkspace={handleSelectWorkspace}
+							onCreateWorkspace={handleCreateWorkspace}
+							onTogglePin={(workspaceId, nextPinned) =>
+								void toggleWorkspacePin(workspaceId, nextPinned)}
+							onToggleArchived={(workspaceId, archived) =>
+								void handleToggleArchive(workspaceId, archived)}
+							onOpenPopout={handleOpenPopout}
+							onClosePopout={handleClosePopout}
+							{isWorkspacePoppedOut}
+						/>
+					{:else if currentView === 'command-center'}
+						<CommandCenterView
+							workspaces={visibleWorkspaces}
+							activeWorkspaceId={$activeWorkspaceId}
+							onCreateWorkspace={handleCreateWorkspace}
+							onSelectRepo={handleSelectRepo}
+						/>
+					{:else if currentView === 'terminal-cockpit'}
+						{#if !popoutMode && isWorkspacePoppedOut($activeWorkspaceId)}
+							<EmptyState
+								title="Workspace terminal is popped out"
+								body="This workspace terminal is currently controlled by another window. Close the popout to reattach it here."
+								actionLabel="Return To Main Window"
+								onAction={() => void handleClosePopout($activeWorkspaceId ?? '')}
+								variant="centered"
 							/>
-						{/key}
-					</div>
-					{#if hasRepo}
-						<div class="view-pane active" aria-hidden={!hasRepo}>
-							{#key $activeRepoId}
-								<RepoDiff
-									repo={$activeRepo!}
-									workspaceId={$activeWorkspaceId ?? ''}
-									onClose={clearRepo}
-								/>
-							{/key}
-						</div>
+						{:else}
+							<TerminalCockpitView
+								workspace={$activeWorkspace}
+								onOpenWorkspaceTerminal={handleSelectWorkspace}
+								onOpenRepoTerminal={handleSelectRepo}
+							/>
+						{/if}
+					{:else if currentView === 'pr-orchestration'}
+						<PROrchestrationView
+							workspace={$activeWorkspace}
+							focusRepoId={prFocusWorkspaceId === $activeWorkspaceId ? prFocusRepoId : null}
+							focusToken={prFocusWorkspaceId === $activeWorkspaceId ? prFocusToken : 0}
+						/>
+					{:else if currentView === 'skill-registry'}
+						<SkillRegistryView />
+					{:else}
+						<OnboardingView
+							busy={onboardingBusy}
+							catalogLoading={onboardingLoading}
+							errorMessage={onboardingError}
+							templates={onboardingTemplates}
+							repoRegistry={onboardingRepoRegistry}
+							defaultWorkspaceName=""
+							onStart={handleOnboardingStart}
+							onPreviewHooks={handleOnboardingPreviewHooks}
+							onComplete={handleOnboardingComplete}
+							onCancel={() => setView('workset-hub')}
+						/>
 					{/if}
 				</div>
-			{/if}
-		</main>
-	</div>
+			{/key}
+		</div>
+	</section>
 
-	{#if settingsOpen}
+	{#if !popoutMode}
+		<CommandPalette
+			open={commandPaletteOpen}
+			worksets={worksetSummaries}
+			{shortcutMap}
+			onClose={() => (commandPaletteOpen = false)}
+			onSelectView={setView}
+			onSelectWorkset={handleSelectWorkspaceFromPalette}
+		/>
+	{/if}
+
+	{#if !popoutMode && settingsOpen}
 		<div
 			class="overlay"
 			role="button"
@@ -298,33 +755,7 @@
 		</div>
 	{/if}
 
-	{#if actionOpen}
-		<div
-			class="overlay"
-			role="button"
-			tabindex="0"
-			onclick={() => (actionOpen = false)}
-			onkeydown={(event) => {
-				if (event.key === 'Escape') actionOpen = false;
-			}}
-		>
-			<div
-				class="overlay-panel"
-				role="presentation"
-				onclick={(event) => event.stopPropagation()}
-				onkeydown={(event) => event.stopPropagation()}
-			>
-				<WorkspaceActionModal
-					onClose={() => (actionOpen = false)}
-					mode={actionContext.mode}
-					workspaceId={actionContext.workspaceId}
-					repoName={actionContext.repoName}
-				/>
-			</div>
-		</div>
-	{/if}
-
-	{#if authModalOpen}
+	{#if !popoutMode && authModalOpen}
 		<div
 			class="overlay"
 			role="button"
@@ -351,42 +782,47 @@
 </div>
 
 <style>
-	.app {
+	.app-shell {
 		height: 100vh;
 		display: grid;
-		grid-template-columns: var(--sidebar-width, 280px) 1fr;
-		transition: grid-template-columns 160ms ease;
+		grid-template-columns: 96px 1fr;
 		overflow: hidden;
+		background: transparent;
+		position: relative;
 	}
 
-	.app.collapsed {
-		grid-template-columns: 72px 1fr;
+	.app-shell.popout {
+		grid-template-columns: 96px 1fr;
 	}
 
-	.app.resizing {
-		transition: none;
-		user-select: none;
-	}
-
-	.topbar {
+	.rail {
+		--rail-top-clearance: 52px;
 		display: flex;
-		justify-content: flex-end;
+		flex-direction: column;
 		align-items: center;
-		padding: 4px 12px;
-		background: color-mix(in srgb, var(--panel-strong) 80%, var(--panel));
-		--wails-draggable: drag;
+		gap: 14px;
+		padding: 22px 10px;
+		padding-top: var(--rail-top-clearance);
+		padding-left: 14px;
+		background: color-mix(in srgb, var(--panel) 72%, transparent);
+		backdrop-filter: blur(14px);
+		position: relative;
+		z-index: 10;
+		border-right: 1px solid color-mix(in srgb, var(--border) 78%, white);
 	}
 
-	.topbar.no-workspace,
-	.topbar.repo-view {
-		background: var(--bg);
+	.rail button,
+	.rail nav {
+		-webkit-app-region: no-drag;
 	}
 
-	.icon-button {
-		width: 28px;
-		height: 28px;
-		border-radius: var(--radius-sm);
-		border: none;
+	.hub-btn,
+	.rail-item {
+		position: relative;
+		width: 42px;
+		height: 42px;
+		border-radius: 12px;
+		border: 1px solid transparent;
 		background: transparent;
 		color: var(--muted);
 		cursor: pointer;
@@ -394,149 +830,151 @@
 		place-items: center;
 		transition:
 			color var(--transition-fast),
-			background var(--transition-fast);
-		--wails-draggable: no-drag;
+			background var(--transition-fast),
+			border-color var(--transition-fast),
+			transform var(--transition-fast);
 	}
 
-	.icon-button:hover {
-		color: var(--text);
-		background: rgba(255, 255, 255, 0.06);
-	}
-
-	.icon-button svg {
-		width: 16px;
-		height: 16px;
-		stroke: currentColor;
-		stroke-width: 1.6;
-		fill: none;
-	}
-
-	.sidebar {
-		border-right: 1px solid rgba(255, 255, 255, 0.06);
-		padding: 20px 12px;
-		padding-top: 36px; /* Space for traffic lights */
-		background: var(--panel);
-		transition: padding 160ms ease;
-		overflow-y: auto;
-		overflow-x: hidden;
-		min-height: 0;
-		height: 100%;
-		display: flex;
-		flex-direction: column;
-		position: relative;
-		z-index: 100;
-	}
-
-	.app.collapsed .sidebar {
-		padding: 20px 8px;
-		padding-top: 36px;
-	}
-
-	.sidebar.repo-view {
-		background: var(--panel-soft);
-	}
-
-	.sidebar-resize-handle {
-		position: absolute;
-		right: -2px;
-		top: 0;
-		bottom: 0;
-		width: 4px;
-		cursor: col-resize;
-		background: transparent;
-		z-index: 101;
-		transition:
-			background 0.15s ease,
-			width 0.15s ease;
-		touch-action: none;
-	}
-
-	/* Expanded hit area (12px total) for easier grabbing */
-	.sidebar-resize-handle::after {
-		content: '';
-		position: absolute;
-		top: 0;
-		bottom: 0;
-		width: 12px;
-		left: 50%;
-		transform: translateX(-50%);
-	}
-
-	.sidebar-resize-handle:hover,
-	.sidebar-resize-handle:focus,
-	.sidebar-resize-handle.active {
-		background: var(--accent);
-		width: 4px;
-	}
-
-	.sidebar-resize-handle:focus {
-		outline: none;
-	}
-
-	.main-area {
-		display: flex;
-		flex-direction: column;
-		height: 100%;
-		min-height: 0;
-		position: relative;
-		z-index: 1;
-	}
-
-	.main {
+	.hub-btn {
+		color: white;
+		background: color-mix(in srgb, var(--accent) 55%, var(--panel-strong));
+		border-color: color-mix(in srgb, var(--accent) 52%, var(--border));
+		box-shadow: 0 0 20px color-mix(in srgb, var(--accent) 30%, transparent);
 		padding: 0;
-		overflow-x: visible;
-		overflow-y: hidden;
-		background: transparent; /* Let vibrancy show through */
-		display: flex;
-		flex-direction: column;
-		flex: 1;
-		min-height: 0;
+		overflow: visible;
 	}
 
-	.view-stack {
-		position: relative;
-		height: 100%;
-		min-height: 0;
+	.hub-btn.active {
+		transform: translateY(-1px);
 	}
 
-	.view-pane {
+	.hub-btn img {
+		width: 42px;
+		height: 42px;
+		object-fit: cover;
+		border-radius: inherit;
+	}
+
+	.rail [data-tooltip]::after {
+		content: attr(data-tooltip);
 		position: absolute;
-		inset: 0;
-		display: flex;
-		flex-direction: column;
-		min-height: 0;
+		left: calc(100% + 12px);
+		top: 50%;
+		transform: translateY(-50%) translateX(-4px);
 		opacity: 0;
 		pointer-events: none;
-		transition: opacity var(--transition-fast);
+		white-space: nowrap;
+		padding: 6px 9px;
+		border-radius: 8px;
+		border: 1px solid color-mix(in srgb, var(--border) 85%, white);
+		background: color-mix(in srgb, var(--panel-strong) 90%, black);
+		color: var(--text);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		letter-spacing: 0.01em;
+		box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+		transition:
+			opacity var(--transition-fast),
+			transform var(--transition-fast);
+		z-index: 10001;
 	}
 
-	.view-pane.active {
+	.rail [data-tooltip]:hover::after,
+	.rail [data-tooltip]:focus-visible::after {
 		opacity: 1;
-		pointer-events: auto;
+		transform: translateY(-50%) translateX(0);
+	}
+
+	.rail-nav {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		margin-top: 8px;
+	}
+
+	.rail-divider {
+		width: 32px;
+		height: 1px;
+		background: #2a3a4e;
+		margin: 2px 0;
+	}
+
+	.rail-item:hover {
+		color: var(--text);
+		background: color-mix(in srgb, var(--panel-strong) 72%, transparent);
+		border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+	}
+
+	.rail-item.active {
+		color: var(--text);
+		background: color-mix(in srgb, var(--accent) 16%, var(--panel-strong));
+		border-color: color-mix(in srgb, var(--accent) 56%, var(--border));
+	}
+
+	.rail-item.active::before {
+		content: '';
+		position: absolute;
+		left: -11px;
+		top: 50%;
+		transform: translateY(-50%);
+		width: 4px;
+		height: 20px;
+		border-radius: 0 4px 4px 0;
+		background: var(--accent);
+	}
+
+	.settings {
+		margin-top: auto;
+	}
+
+	.popout-rail .rail-nav {
+		margin-top: 0;
+	}
+
+	.popout-return-rail {
+		margin-top: auto;
+	}
+
+	.shell-main {
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+		background: transparent;
+	}
+
+	.view-shell {
+		flex: 1;
+		min-height: 0;
+		overflow: hidden;
+		background: transparent;
+	}
+
+	.view-transition {
+		height: 100%;
 	}
 
 	.error {
-		background: var(--panel);
+		margin: 24px;
+		background: color-mix(in srgb, var(--panel) 88%, transparent);
 		border: 1px solid var(--border);
 		border-radius: 16px;
 		padding: 24px;
-		display: flex;
-		flex-direction: column;
+		display: grid;
 		gap: 12px;
 	}
 
 	.error .title {
-		font-size: 18px;
+		font-size: var(--text-xl);
 		font-weight: 600;
 	}
 
 	.error .body {
 		color: var(--muted);
-		font-size: 14px;
+		font-size: var(--text-md);
 	}
 
 	.retry {
-		align-self: flex-start;
+		justify-self: start;
 		background: var(--accent);
 		border: none;
 		color: #081018;
@@ -544,22 +982,6 @@
 		border-radius: var(--radius-md);
 		font-weight: 600;
 		cursor: pointer;
-		transition:
-			background var(--transition-fast),
-			transform var(--transition-fast);
-	}
-
-	.retry:hover:not(:disabled) {
-		background: color-mix(in srgb, var(--accent) 85%, white);
-	}
-
-	.retry:active:not(:disabled) {
-		transform: scale(0.98);
-	}
-
-	.retry:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
 	}
 
 	.overlay {
@@ -601,9 +1023,19 @@
 		}
 	}
 
-	@media (max-width: 720px) {
-		.overlay {
-			padding: 0;
+	@media (max-width: 860px) {
+		.app-shell {
+			grid-template-columns: 80px 1fr;
+		}
+
+		.rail {
+			--rail-top-clearance: 48px;
+			padding-left: 8px;
+			padding-right: 8px;
+		}
+
+		.rail [data-tooltip]::after {
+			display: none;
 		}
 	}
 </style>

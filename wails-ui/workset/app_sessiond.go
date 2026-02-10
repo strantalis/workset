@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/strantalis/workset/pkg/sessiond"
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func (a *App) getSessiondClient() (*sessiond.Client, error) {
@@ -285,7 +284,7 @@ func (a *App) restartSessiond(reason string) SessiondStatus {
 		if forceSocketRemove {
 			status.Warning = "Session daemon did not shut down cleanly; socket was force removed."
 		}
-		wruntime.EventsEmit(a.ctx, EventSessiondRestarted, status)
+		emitRuntimeEvent(a.ctx, EventSessiondRestarted, status)
 	}
 	logRestartf("restart_done")
 	status := SessiondStatus{Available: true}

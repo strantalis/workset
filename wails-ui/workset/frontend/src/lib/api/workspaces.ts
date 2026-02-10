@@ -4,84 +4,94 @@ import type {
 	Workspace,
 	WorkspaceCreateResponse,
 } from '../types';
-import type { worksetapi } from '../../../wailsjs/go/models';
+import type { WorkspaceRefJSON } from '../../../bindings/github.com/strantalis/workset/pkg/worksetapi/models';
 import {
 	AddRepo,
 	ArchiveWorkspace,
+	CloseWorkspacePopout,
 	CreateWorkspace,
 	ListWorkspaceSnapshots,
+	ListWorkspacePopouts,
+	OpenWorkspacePopout,
 	PinWorkspace,
+	PreviewRepoHooks,
 	ReorderWorkspaces,
 	RemoveRepo,
 	RemoveWorkspace,
 	RenameWorkspace,
 	RunHooks,
 	SetWorkspaceColor,
+	SetWorkspaceDescription,
 	SetWorkspaceExpanded,
 	TrustRepoHooks,
 	UnarchiveWorkspace,
 	UpdateWorkspaceLastUsed,
 } from '../../../wailsjs/go/main/App';
 
-type WorkspaceSnapshot = {
-	id: string;
-	name: string;
-	path: string;
-	createdAt?: string;
-	lastUsed?: string;
-	archived: boolean;
-	archivedAt?: string;
-	archivedReason?: string;
-	repos: RepoSnapshot[];
-	pinned?: boolean;
-	pinOrder?: number;
-	color?: string;
-	expanded?: boolean;
-};
-
-type RepoSnapshot = {
-	id: string;
-	name: string;
-	path: string;
-	remote?: string;
-	defaultBranch?: string;
-	dirty: boolean;
-	missing: boolean;
-	statusKnown: boolean;
-};
-
 export async function fetchWorkspaces(
 	includeArchived = false,
 	includeStatus = false,
 ): Promise<Workspace[]> {
 	const snapshots = await ListWorkspaceSnapshots({ includeArchived, includeStatus });
-	return snapshots.map((workspace: WorkspaceSnapshot) => ({
+
+	const mapped: Workspace[] = snapshots.map((workspace) => ({
 		id: workspace.id,
 		name: workspace.name,
 		path: workspace.path,
 		archived: workspace.archived,
 		archivedAt: workspace.archivedAt,
 		archivedReason: workspace.archivedReason,
-		repos: workspace.repos.map((repo: RepoSnapshot) => ({
+		repos: workspace.repos.map((repo) => ({
 			id: repo.id,
 			name: repo.name,
 			path: repo.path,
 			remote: repo.remote,
 			defaultBranch: repo.defaultBranch,
-			ahead: 0,
-			behind: 0,
 			dirty: repo.dirty,
 			missing: repo.missing,
 			statusKnown: repo.statusKnown,
-			diff: { added: 0, removed: 0 },
-			files: [],
+			currentBranch: repo.currentBranch,
+			ahead: repo.ahead ?? 0,
+			behind: repo.behind ?? 0,
+			trackedPullRequest: repo.trackedPullRequest
+				? {
+						repo: repo.trackedPullRequest.repo,
+						number: repo.trackedPullRequest.number,
+						url: repo.trackedPullRequest.url,
+						title: repo.trackedPullRequest.title,
+						body: repo.trackedPullRequest.body,
+						state: repo.trackedPullRequest.state,
+						draft: repo.trackedPullRequest.draft,
+						baseRepo: repo.trackedPullRequest.baseRepo,
+						baseBranch: repo.trackedPullRequest.baseBranch,
+						headRepo: repo.trackedPullRequest.headRepo,
+						headBranch: repo.trackedPullRequest.headBranch,
+						updatedAt: repo.trackedPullRequest.updatedAt,
+					}
+				: undefined,
+			diff: {
+				added: repo.diff?.added ?? 0,
+				removed: repo.diff?.removed ?? 0,
+			},
+			files: (repo.files ?? []).map((file) => ({
+				path: file.path,
+				added: file.added,
+				removed: file.removed,
+				hunks: [],
+			})),
 		})),
 		pinned: workspace.pinned ?? false,
 		pinOrder: workspace.pinOrder ?? 0,
 		color: workspace.color,
+		description: workspace.description,
 		expanded: workspace.expanded ?? false,
-		lastUsed: workspace.lastUsed ?? workspace.createdAt ?? new Date().toISOString(),
+		lastUsed: workspace.lastUsed ?? workspace.createdAt ?? '',
 	}));
+
+	if (!includeStatus) {
+		return mapped;
+	}
+	return mapped;
 }
 
 export async function createWorkspace(
@@ -116,6 +126,12 @@ export type RemoveWorkspaceOptions = {
 	fetchRemotes?: boolean;
 };
 
+export type WorkspacePopoutState = {
+	workspaceId: string;
+	windowName: string;
+	open: boolean;
+};
+
 export async function removeWorkspace(
 	workspaceId: string,
 	options: RemoveWorkspaceOptions = {},
@@ -146,6 +162,30 @@ export async function trustRepoHooks(repo: string): Promise<void> {
 	await TrustRepoHooks(repo);
 }
 
+export async function previewRepoHooks(source: string, ref = ''): Promise<string[]> {
+	const payload = await PreviewRepoHooks({
+		source,
+		ref: ref.trim() || undefined,
+	});
+	if (!payload.exists || !payload.hooks || payload.hooks.length === 0) {
+		return [];
+	}
+
+	const unique = new Set<string>();
+	for (const hook of payload.hooks) {
+		const id = hook.id?.trim();
+		if (id) {
+			unique.add(id);
+			continue;
+		}
+		const run = hook.run?.map((entry) => entry.trim()).filter((entry) => entry.length > 0) ?? [];
+		if (run.length > 0) {
+			unique.add(run.join(' && '));
+		}
+	}
+	return Array.from(unique);
+}
+
 export async function removeRepo(
 	workspaceId: string,
 	repoName: string,
@@ -162,6 +202,14 @@ export async function pinWorkspace(workspaceId: string, pin: boolean): Promise<W
 
 export async function setWorkspaceColor(workspaceId: string, color: string): Promise<Workspace> {
 	const result = await SetWorkspaceColor(workspaceId, color);
+	return mapWorkspaceRefToWorkspace(result);
+}
+
+export async function setWorkspaceDescription(
+	workspaceId: string,
+	description: string,
+): Promise<Workspace> {
+	const result = await SetWorkspaceDescription(workspaceId, description);
 	return mapWorkspaceRefToWorkspace(result);
 }
 
@@ -182,7 +230,19 @@ export async function updateWorkspaceLastUsed(workspaceId: string): Promise<void
 	await UpdateWorkspaceLastUsed(workspaceId);
 }
 
-function mapWorkspaceRefToWorkspace(ref: worksetapi.WorkspaceRefJSON): Workspace {
+export async function openWorkspacePopout(workspaceId: string): Promise<WorkspacePopoutState> {
+	return OpenWorkspacePopout(workspaceId);
+}
+
+export async function closeWorkspacePopout(workspaceId: string): Promise<void> {
+	await CloseWorkspacePopout(workspaceId);
+}
+
+export async function listWorkspacePopouts(): Promise<WorkspacePopoutState[]> {
+	return ListWorkspacePopouts();
+}
+
+function mapWorkspaceRefToWorkspace(ref: WorkspaceRefJSON): Workspace {
 	return {
 		id: ref.name,
 		name: ref.name,
@@ -194,7 +254,8 @@ function mapWorkspaceRefToWorkspace(ref: worksetapi.WorkspaceRefJSON): Workspace
 		pinned: ref.pinned,
 		pinOrder: ref.pin_order,
 		color: ref.color,
+		description: ref.description,
 		expanded: ref.expanded,
-		lastUsed: ref.last_used ?? ref.created_at ?? new Date().toISOString(),
+		lastUsed: ref.last_used ?? ref.created_at ?? '',
 	};
 }

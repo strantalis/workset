@@ -135,7 +135,7 @@
 	}
 
 	.section-title {
-		font-size: 13px;
+		font-size: var(--text-base);
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
 		color: var(--muted);
@@ -147,7 +147,7 @@
 		align-items: center;
 		gap: 8px;
 		color: var(--muted);
-		font-size: 12px;
+		font-size: var(--text-sm);
 	}
 
 	.workspace-column {
@@ -185,13 +185,13 @@
 	}
 
 	.name {
-		font-size: 15px;
+		font-size: var(--text-md);
 		font-weight: 600;
 	}
 
 	.path,
 	.reason {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
@@ -207,20 +207,20 @@
 
 	.divider {
 		margin-top: 12px;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
 		color: var(--muted);
 	}
 
 	.empty {
-		font-size: 13px;
+		font-size: var(--text-base);
 		color: var(--muted);
 		padding: 8px 0;
 	}
 
 	.note {
-		font-size: 13px;
+		font-size: var(--text-base);
 	}
 
 	.note.error {

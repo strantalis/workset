@@ -96,6 +96,40 @@ func TestCreateWorkspaceDefaultPathSanitizesName(t *testing.T) {
 	}
 }
 
+func TestCreateWorkspaceSpacedNameUsesGitSafeBranch(t *testing.T) {
+	env := newTestEnv(t)
+	local := env.createLocalRepo("repo-a")
+	cfg := env.loadConfig()
+	cfg.Repos = map[string]config.RegisteredRepo{
+		"repo-a": {Path: local},
+	}
+	env.saveConfig(cfg)
+
+	result, err := env.svc.CreateWorkspace(context.Background(), WorkspaceCreateInput{
+		Name:  "my ws",
+		Repos: []string{"repo-a"},
+	})
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if result.Workspace.Name != "my ws" {
+		t.Fatalf("unexpected workspace name: %q", result.Workspace.Name)
+	}
+	if strings.Contains(result.Workspace.Branch, " ") {
+		t.Fatalf("expected git-safe branch without spaces, got %q", result.Workspace.Branch)
+	}
+	if !strings.HasPrefix(result.Workspace.Branch, "my-ws-") {
+		t.Fatalf("expected normalized branch prefix, got %q", result.Workspace.Branch)
+	}
+	state, err := env.svc.workspaces.LoadState(context.Background(), result.Workspace.Path)
+	if err != nil {
+		t.Fatalf("load workspace state: %v", err)
+	}
+	if state.CurrentBranch != result.Workspace.Branch {
+		t.Fatalf("expected state branch %q, got %q", result.Workspace.Branch, state.CurrentBranch)
+	}
+}
+
 func TestCreateWorkspaceValidation(t *testing.T) {
 	env := newTestEnv(t)
 	_, err := env.svc.CreateWorkspace(context.Background(), WorkspaceCreateInput{})

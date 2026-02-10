@@ -248,7 +248,7 @@
 		margin-bottom: -1px;
 		background: transparent;
 		color: var(--muted);
-		font-size: 13px;
+		font-size: var(--text-base);
 		font-weight: 500;
 		cursor: pointer;
 		transition: all 0.15s ease;
@@ -264,7 +264,7 @@
 	}
 
 	.tab-count {
-		font-size: 11px;
+		font-size: var(--text-xs);
 		font-weight: 600;
 		padding: 2px 6px;
 		border-radius: 10px;
@@ -294,7 +294,7 @@
 	}
 
 	.section-title {
-		font-size: 11px;
+		font-size: var(--text-xs);
 		font-weight: 500;
 		color: var(--muted);
 		text-transform: uppercase;
@@ -359,14 +359,14 @@
 	}
 
 	.path {
-		font-size: 13px;
+		font-size: var(--text-base);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
 
 	.rename {
-		font-size: 11px;
+		font-size: var(--text-xs);
 		color: var(--muted);
 	}
 
@@ -375,7 +375,7 @@
 		justify-content: space-between;
 		align-items: center;
 		gap: 8px;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
@@ -387,7 +387,7 @@
 		border-radius: 999px;
 		background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%);
 		border: 1px solid rgba(99, 102, 241, 0.3);
-		font-size: 10px;
+		font-size: var(--text-xs);
 		font-weight: 600;
 		color: #a78bfa;
 	}
@@ -395,7 +395,7 @@
 	.tag {
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
-		font-size: 10px;
+		font-size: var(--text-xs);
 		font-weight: 600;
 	}
 

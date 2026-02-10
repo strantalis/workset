@@ -63,7 +63,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
@@ -79,7 +79,7 @@
 		border: 1px solid var(--border);
 		border-radius: var(--radius-md);
 		padding: 8px 10px;
-		font-size: 13px;
+		font-size: var(--text-base);
 		transition:
 			border-color var(--transition-fast),
 			box-shadow var(--transition-fast),
@@ -94,7 +94,7 @@
 		background: transparent;
 		border: none;
 		color: var(--muted);
-		font-size: 12px;
+		font-size: var(--text-sm);
 		cursor: pointer;
 		padding: 4px 8px;
 	}
@@ -106,7 +106,7 @@
 	.empty-search {
 		padding: 20px;
 		text-align: center;
-		font-size: 13px;
+		font-size: var(--text-base);
 		color: var(--muted);
 	}
 
@@ -192,12 +192,12 @@
 
 	.checkbox-name {
 		font-weight: 500;
-		font-size: 13px;
+		font-size: var(--text-base);
 		color: var(--text);
 	}
 
 	.checkbox-meta {
-		font-size: 11px;
+		font-size: var(--text-xs);
 		color: var(--muted);
 		white-space: nowrap;
 		overflow: hidden;

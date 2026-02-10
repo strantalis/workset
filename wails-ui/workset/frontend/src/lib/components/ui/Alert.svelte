@@ -15,7 +15,7 @@
 
 <style>
 	.alert {
-		font-size: 13px;
+		font-size: var(--text-base);
 	}
 
 	.alert.error {

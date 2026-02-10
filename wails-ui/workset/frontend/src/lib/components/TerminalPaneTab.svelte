@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { Terminal, X } from '@lucide/svelte';
+
 	interface Tab {
 		id: string;
 		title: string;
@@ -69,6 +71,7 @@
 		}
 	}}
 >
+	<span class="tab-prompt"><Terminal size={12} /></span>
 	<span class="tab-label">{tab.title}</span>
 	{#if showClose}
 		<button
@@ -80,14 +83,7 @@
 				onCloseTab(paneId, tab.id);
 			}}
 		>
-			<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-				<path
-					d="M3 3L9 9M9 3L3 9"
-					stroke="currentColor"
-					stroke-width="1.5"
-					stroke-linecap="round"
-				/>
-			</svg>
+			<X size={10} />
 		</button>
 	{/if}
 </div>
@@ -96,52 +92,38 @@
 	.pane-tab {
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
-		padding: 6px 10px 6px 12px;
-		font-size: 12px;
-		font-weight: 500;
+		gap: 5px;
+		padding: 8px 16px;
+		font-size: var(--text-mono-sm);
+		font-family: var(--font-mono);
 		background: transparent;
 		color: var(--muted);
 		cursor: grab;
-		border-radius: 8px;
-		transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+		border: none;
+		border-top: 2px solid transparent;
+		border-right: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+		border-radius: 0;
+		transition:
+			color 0.15s ease,
+			background 0.15s ease,
+			border-color 0.15s ease;
 		white-space: nowrap;
 		position: relative;
-		border: 1px solid transparent;
 	}
 
 	.pane-tab:hover {
 		color: var(--text);
-		background: color-mix(in srgb, var(--panel-strong) 50%, transparent);
-		border-color: var(--border);
+		background: color-mix(in srgb, var(--panel-strong) 40%, transparent);
 	}
 
 	.pane-tab:active {
 		cursor: grabbing;
-		transform: scale(0.98);
 	}
 
 	.pane-tab.active {
-		color: var(--text);
-		background: var(--panel);
-		border-color: var(--border);
-		box-shadow:
-			var(--shadow-sm),
-			inset 0 1px 0 rgba(255, 255, 255, 0.04);
-		z-index: 1;
-	}
-
-	.pane-tab.active::after {
-		content: '';
-		position: absolute;
-		bottom: -5px;
-		left: 50%;
-		transform: translateX(-50%);
-		width: 6px;
-		height: 2px;
-		background: var(--accent);
-		border-radius: 1px;
-		box-shadow: 0 0 8px var(--accent);
+		color: var(--accent);
+		background: var(--bg);
+		border-top-color: var(--accent);
 	}
 
 	.pane-tab.dragging {
@@ -159,36 +141,44 @@
 		border-radius: 1px;
 	}
 
+	.tab-prompt {
+		color: var(--accent);
+		font-weight: 500;
+	}
+
 	.tab-label {
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
 
 	.tab-close {
-		display: flex;
+		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 20px;
-		height: 20px;
-		margin-left: 4px;
+		width: 16px;
+		height: 16px;
+		margin-left: 2px;
 		color: var(--muted);
 		border: none;
 		background: transparent;
-		border-radius: 4px;
+		border-radius: 3px;
 		cursor: pointer;
+		font-size: var(--text-md);
+		line-height: 1;
 		opacity: 0;
 		transition:
-			opacity 0.15s ease,
-			background 0.15s ease,
-			color 0.15s ease;
+			opacity 0.12s ease,
+			background 0.12s ease,
+			color 0.12s ease;
 	}
 
 	.pane-tab:hover .tab-close,
 	.pane-tab.active .tab-close {
-		opacity: 1;
+		opacity: 0.7;
 	}
 
 	.tab-close:hover {
+		opacity: 1;
 		background: color-mix(in srgb, var(--warning) 20%, transparent);
 		color: var(--warning);
 	}

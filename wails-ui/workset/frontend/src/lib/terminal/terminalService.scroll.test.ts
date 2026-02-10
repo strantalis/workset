@@ -103,10 +103,10 @@ const runtimeMock = {
 };
 
 const appMock = {
-	AckWorkspaceTerminal: vi.fn().mockResolvedValue(undefined),
-	ResizeWorkspaceTerminal: vi.fn().mockResolvedValue(undefined),
-	StartWorkspaceTerminal: vi.fn().mockResolvedValue(undefined),
-	WriteWorkspaceTerminal: vi.fn().mockResolvedValue(undefined),
+	AckWorkspaceTerminalForWindowName: vi.fn().mockResolvedValue(undefined),
+	ResizeWorkspaceTerminalForWindowName: vi.fn().mockResolvedValue(undefined),
+	StartWorkspaceTerminalForWindowName: vi.fn().mockResolvedValue(undefined),
+	WriteWorkspaceTerminalForWindowName: vi.fn().mockResolvedValue(undefined),
 };
 
 const apiMock = {

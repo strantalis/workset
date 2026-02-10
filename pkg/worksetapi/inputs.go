@@ -122,3 +122,9 @@ type HooksRunInput struct {
 	Reason    string
 	TrustRepo bool
 }
+
+// RepoHooksPreviewInput describes inputs for repo hook discovery without cloning.
+type RepoHooksPreviewInput struct {
+	Source string
+	Ref    string
+}

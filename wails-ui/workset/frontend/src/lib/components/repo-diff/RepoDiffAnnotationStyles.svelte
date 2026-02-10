@@ -57,7 +57,7 @@
 		border-radius: 50%;
 		background: linear-gradient(135deg, #6366f1 0%, #a78bfa 100%);
 		color: white;
-		font-size: 11px;
+		font-size: var(--text-xs);
 		font-weight: 600;
 		display: flex;
 		align-items: center;
@@ -68,17 +68,17 @@
 	:global(.diff-annotation-reply .diff-annotation-avatar) {
 		width: 20px;
 		height: 20px;
-		font-size: 10px;
+		font-size: var(--text-xs);
 	}
 
 	:global(.diff-annotation-author) {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		font-weight: 600;
 		color: var(--text);
 	}
 
 	:global(.diff-annotation-body) {
-		font-size: 13px;
+		font-size: var(--text-base);
 		line-height: 1.5;
 		color: var(--text);
 		white-space: pre-wrap;
@@ -86,7 +86,7 @@
 	}
 
 	:global(.diff-annotation-reply .diff-annotation-body) {
-		font-size: 12px;
+		font-size: var(--text-sm);
 	}
 
 	/* Comment action buttons */
@@ -112,7 +112,7 @@
 		border-radius: 6px;
 		background: rgba(255, 255, 255, 0.08);
 		color: var(--muted);
-		font-size: 11px;
+		font-size: var(--text-xs);
 		cursor: pointer;
 		transition: all 0.15s ease;
 	}
@@ -171,7 +171,7 @@
 		background: var(--panel);
 		color: var(--text);
 		font-family: inherit;
-		font-size: 13px;
+		font-size: var(--text-base);
 		line-height: 1.5;
 		resize: vertical;
 		min-height: 80px;
@@ -199,7 +199,7 @@
 		border-radius: 6px;
 		background: transparent;
 		color: var(--muted);
-		font-size: 12px;
+		font-size: var(--text-sm);
 		cursor: pointer;
 		transition: all 0.15s ease;
 	}
@@ -215,7 +215,7 @@
 		border-radius: 6px;
 		background: var(--accent);
 		color: white;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		font-weight: 500;
 		cursor: pointer;
 		transition: all 0.15s ease;
@@ -276,7 +276,7 @@
 	}
 
 	:global(.diff-annotation-collapsed-icon) {
-		font-size: 10px;
+		font-size: var(--text-xs);
 		color: #3fb950;
 		transition: transform 0.15s ease;
 	}
@@ -286,7 +286,7 @@
 	}
 
 	:global(.diff-annotation-collapsed-badge) {
-		font-size: 10px;
+		font-size: var(--text-xs);
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
@@ -298,7 +298,7 @@
 
 	:global(.diff-annotation-collapsed-preview) {
 		flex: 1;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -306,7 +306,7 @@
 	}
 
 	:global(.diff-annotation-collapsed-count) {
-		font-size: 11px;
+		font-size: var(--text-xs);
 		color: var(--muted);
 		opacity: 0.7;
 	}

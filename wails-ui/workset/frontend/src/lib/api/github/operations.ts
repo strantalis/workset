@@ -62,6 +62,10 @@ export async function fetchGitHubOperationStatus(
 			type,
 		})) as GitHubOperationStatusResponse;
 
+		if (!result?.operationId || !result?.type || !result?.state || !result?.stage) {
+			return null;
+		}
+
 		return mapGitHubOperationStatus(result);
 	} catch (err) {
 		if (isOperationStatusNotFound(err)) {

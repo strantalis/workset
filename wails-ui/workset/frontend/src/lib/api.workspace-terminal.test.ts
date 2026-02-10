@@ -3,10 +3,11 @@ import {
 	fetchWorkspaceTerminalLayout,
 	persistWorkspaceTerminalLayout,
 } from './api/terminal-layout';
-import { fetchWorkspaces, removeWorkspace } from './api/workspaces';
+import { fetchWorkspaces, previewRepoHooks, removeWorkspace } from './api/workspaces';
 import {
 	GetWorkspaceTerminalLayout,
 	ListWorkspaceSnapshots,
+	PreviewRepoHooks,
 	RemoveWorkspace,
 	SetWorkspaceTerminalLayout,
 } from '../../wailsjs/go/main/App';
@@ -15,6 +16,7 @@ import type { TerminalLayout } from './types';
 vi.mock('../../wailsjs/go/main/App', () => ({
 	GetWorkspaceTerminalLayout: vi.fn(),
 	ListWorkspaceSnapshots: vi.fn(),
+	PreviewRepoHooks: vi.fn(),
 	RemoveWorkspace: vi.fn(),
 	SetWorkspaceTerminalLayout: vi.fn(),
 }));
@@ -40,9 +42,27 @@ describe('workspace + terminal API compatibility exports', () => {
 						path: '/tmp/ws-1/repo-1',
 						remote: 'origin',
 						defaultBranch: 'main',
+						currentBranch: 'feature/redesign',
+						ahead: 3,
+						behind: 1,
 						dirty: true,
 						missing: false,
 						statusKnown: true,
+						diff: { added: 2, removed: 1 },
+						files: [{ path: 'README.md', added: 2, removed: 1 }],
+						trackedPullRequest: {
+							repo: 'repo-1',
+							number: 7,
+							url: 'https://github.com/example/repo-1/pull/7',
+							title: 'Integrate redesign API data',
+							state: 'open',
+							draft: false,
+							baseRepo: 'example/repo-1',
+							baseBranch: 'main',
+							headRepo: 'example/repo-1',
+							headBranch: 'feature/redesign',
+							updatedAt: '2026-02-09T10:00:00.000Z',
+						},
 					},
 				],
 				pinned: true,
@@ -74,13 +94,28 @@ describe('workspace + terminal API compatibility exports', () => {
 						path: '/tmp/ws-1/repo-1',
 						remote: 'origin',
 						defaultBranch: 'main',
-						ahead: 0,
-						behind: 0,
+						currentBranch: 'feature/redesign',
+						ahead: 3,
+						behind: 1,
 						dirty: true,
 						missing: false,
 						statusKnown: true,
-						diff: { added: 0, removed: 0 },
-						files: [],
+						trackedPullRequest: {
+							repo: 'repo-1',
+							number: 7,
+							url: 'https://github.com/example/repo-1/pull/7',
+							title: 'Integrate redesign API data',
+							body: undefined,
+							state: 'open',
+							draft: false,
+							baseRepo: 'example/repo-1',
+							baseBranch: 'main',
+							headRepo: 'example/repo-1',
+							headBranch: 'feature/redesign',
+							updatedAt: '2026-02-09T10:00:00.000Z',
+						},
+						diff: { added: 2, removed: 1 },
+						files: [{ path: 'README.md', added: 2, removed: 1, hunks: [] }],
 					},
 				],
 				pinned: true,
@@ -101,6 +136,26 @@ describe('workspace + terminal API compatibility exports', () => {
 			force: false,
 			fetchRemotes: true,
 		});
+	});
+
+	test('previewRepoHooks maps hook preview payload to hook IDs', async () => {
+		vi.mocked(PreviewRepoHooks).mockResolvedValue({
+			source: 'git@github.com:example/repo.git',
+			exists: true,
+			hooks: [
+				{ id: 'bootstrap', on: ['workspace.create'], run: ['npm install'] },
+				{ id: '', on: ['workspace.create'], run: ['npm run build', 'npm test'] },
+				{ id: 'bootstrap', on: ['workspace.create'], run: ['npm install'] },
+			],
+		} as Awaited<ReturnType<typeof PreviewRepoHooks>>);
+
+		const hooks = await previewRepoHooks('git@github.com:example/repo.git');
+
+		expect(PreviewRepoHooks).toHaveBeenCalledWith({
+			source: 'git@github.com:example/repo.git',
+			ref: undefined,
+		});
+		expect(hooks).toEqual(['bootstrap', 'npm run build && npm test']);
 	});
 
 	test('terminal layout compatibility exports pass through to wails API', async () => {

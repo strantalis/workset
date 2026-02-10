@@ -170,7 +170,7 @@
 	}
 
 	.hint {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 

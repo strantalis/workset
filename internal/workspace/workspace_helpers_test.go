@@ -29,6 +29,28 @@ func TestWorkspaceDirName(t *testing.T) {
 	}
 }
 
+func TestWorkspaceBranchNamePreservesValid(t *testing.T) {
+	name := "fix/ws-test"
+	if got := WorkspaceBranchName(name); got != name {
+		t.Fatalf("expected branch %q, got %q", name, got)
+	}
+}
+
+func TestWorkspaceBranchNameSanitizesInvalid(t *testing.T) {
+	name := "my ws"
+	got := WorkspaceBranchName(name)
+	wantPrefix := "my-ws-"
+	if !strings.HasPrefix(got, wantPrefix) {
+		t.Fatalf("expected branch prefix %q, got %q", wantPrefix, got)
+	}
+	if !strings.HasSuffix(got, shortHash(name)) {
+		t.Fatalf("expected branch suffix %q, got %q", shortHash(name), got)
+	}
+	if strings.Contains(got, " ") {
+		t.Fatalf("expected sanitized branch without spaces, got %q", got)
+	}
+}
+
 func TestWorktreeName(t *testing.T) {
 	name := WorktreeName("feature/one")
 	if !strings.HasPrefix(name, "feature-one-") {

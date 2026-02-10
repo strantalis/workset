@@ -37,14 +37,14 @@
 		border: none;
 		background: transparent;
 		color: var(--text);
-		font-size: 13px;
+		font-size: var(--text-base);
 		text-align: left;
 		cursor: pointer;
 		transition: background var(--transition-fast);
 	}
 
 	.member-header:hover {
-		background: rgba(255, 255, 255, 0.04);
+		background: color-mix(in srgb, var(--text) 4%, transparent);
 	}
 
 	.member-name {

@@ -37,13 +37,13 @@
 	}
 
 	.section-title {
-		font-size: 16px;
+		font-size: var(--text-lg);
 		font-weight: 600;
 		margin: 0;
 	}
 
 	.section-description {
-		font-size: 13px;
+		font-size: var(--text-base);
 		color: var(--muted);
 		margin: 0;
 	}

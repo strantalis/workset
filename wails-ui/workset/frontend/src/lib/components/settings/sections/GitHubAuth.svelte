@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import Alert from '../../ui/Alert.svelte';
 	import Button from '../../ui/Button.svelte';
 	import SettingsSection from '../SettingsSection.svelte';
 	import { toErrorMessage } from '../../../errors';
@@ -151,29 +150,28 @@
 	{#if loading}
 		<div class="state">Loading GitHub status…</div>
 	{:else if error && !info}
-		<Alert variant="error">{error}</Alert>
+		<div class="message error">{error}</div>
 	{:else if info}
+		<!-- Status Card -->
 		<div class="status-card" class:success-pulse={successPulse}>
-			{#if error}
-				<Alert variant="error">{error}</Alert>
-			{/if}
-			{#if authenticated}
-				<Alert variant="success">
-					{#if login}
-						Connected as {login} via {authMode === 'cli' ? 'GitHub CLI' : 'personal access token'}.
-					{:else}
-						GitHub connected via {authMode === 'cli' ? 'GitHub CLI' : 'personal access token'}.
-					{/if}
-				</Alert>
+			{#if authenticated && login}
+				<div class="connected-status">
+					Connected as {login} via {authMode === 'cli' ? 'GitHub CLI' : 'personal access token'}.
+				</div>
+			{:else if authenticated}
+				<div class="connected-status">
+					GitHub connected via {authMode === 'cli' ? 'GitHub CLI' : 'personal access token'}.
+				</div>
 			{:else}
-				<Alert variant="warning">Not connected. Select an auth method below.</Alert>
+				<div class="not-connected-status">Not connected. Select an auth method below.</div>
 			{/if}
+
 			<div class="status-meta">
-				<div>
+				<div class="meta-item">
 					<span class="meta-label">Mode</span>
 					<span class="meta-value">{authMode === 'cli' ? 'GitHub CLI' : 'Personal token'}</span>
 				</div>
-				<div>
+				<div class="meta-item">
 					<span class="meta-label">CLI</span>
 					<span class="meta-value">
 						{#if info.cli.installed}
@@ -184,14 +182,17 @@
 					</span>
 				</div>
 			</div>
-			{#if info.cli.error}
-				<div class="status-note">CLI status error: {info.cli.error}</div>
-			{/if}
-			{#if statusMessage}
-				<div class="status-note">{statusMessage}</div>
-			{/if}
 		</div>
 
+		{#if error}
+			<div class="message error">{error}</div>
+		{/if}
+
+		{#if statusMessage}
+			<div class="message success">{statusMessage}</div>
+		{/if}
+
+		<!-- Mode Toggle -->
 		<div class="mode-toggle">
 			<button
 				class:active={authMode === 'cli'}
@@ -212,65 +213,66 @@
 		</div>
 
 		{#if authMode === 'cli'}
-			<div class="cli-block">
-				<div class="label">Authenticate with GitHub CLI</div>
-				<div class="code">gh auth login</div>
+			<div class="auth-block">
+				<div class="block-header">Authenticate with GitHub CLI</div>
+				<div class="command">gh auth login</div>
 				<p class="instructions">Run the command in your terminal, then refresh status here.</p>
-				<div class="actions">
-					<Button variant="primary" onclick={loadInfo} disabled={saving || loading}>
-						{loading ? 'Checking…' : 'Check status'}
-					</Button>
-				</div>
+				<Button variant="primary" onclick={loadInfo} disabled={saving || loading}>
+					{saving || loading ? 'Checking…' : 'Check status'}
+				</Button>
+
 				{#if !cliInstalled}
-					<Alert variant="warning"
-						>GitHub CLI is not installed. Provide the `gh` binary path to continue.</Alert
-					>
-					<div class="cli-path">
-						<label class="label" for="settings-cli-path">GitHub CLI path</label>
-						<input
-							id="settings-cli-path"
-							class="pat-input"
-							type="text"
-							bind:value={cliPath}
-							placeholder="/Users/you/.nix-profile/bin/gh"
-							spellcheck="false"
-							autocomplete="off"
-							onkeydown={(event) => {
-								if (event.key === 'Enter') void saveCLIPath();
-							}}
-						/>
-						<div class="actions">
-							<Button
-								variant="primary"
-								onclick={saveCLIPath}
-								disabled={saving || cliPath.trim() === ''}
-							>
-								{saving ? 'Saving…' : 'Save path'}
-							</Button>
-							<Button variant="ghost" onclick={browseCLIPath} disabled={saving}>Browse…</Button>
+					<div class="cli-not-installed">
+						<div class="message warning">
+							GitHub CLI is not installed. Provide the `gh` binary path to continue.
+						</div>
+						<div class="cli-path-input">
+							<label class="input-label" for="settings-cli-path">GitHub CLI path</label>
+							<input
+								id="settings-cli-path"
+								type="text"
+								bind:value={cliPath}
+								placeholder="/Users/you/.nix-profile/bin/gh"
+								spellcheck="false"
+								autocomplete="off"
+								onkeydown={(event) => {
+									if (event.key === 'Enter') void saveCLIPath();
+								}}
+							/>
+							<div class="input-actions">
+								<Button
+									variant="primary"
+									onclick={saveCLIPath}
+									disabled={saving || cliPath.trim() === ''}
+								>
+									{saving ? 'Saving…' : 'Save path'}
+								</Button>
+								<Button variant="ghost" onclick={browseCLIPath} disabled={saving}>Browse…</Button>
+							</div>
 						</div>
 					</div>
 				{/if}
 			</div>
 		{:else}
-			<div class="pat-block">
-				<label class="label" for="settings-pat-token">Personal access token</label>
-				<input
-					id="settings-pat-token"
-					class="pat-input"
-					type="password"
-					bind:value={patToken}
-					placeholder="ghp_••••••••••••••••"
-					spellcheck="false"
-					autocomplete="off"
-					onkeydown={(event) => {
-						if (event.key === 'Enter') void savePat();
-					}}
-				/>
+			<div class="auth-block">
+				<div class="input-group">
+					<label class="input-label" for="settings-pat-token">Personal access token</label>
+					<input
+						id="settings-pat-token"
+						type="password"
+						bind:value={patToken}
+						placeholder="ghp_••••••••••••••••"
+						spellcheck="false"
+						autocomplete="off"
+						onkeydown={(event) => {
+							if (event.key === 'Enter') void savePat();
+						}}
+					/>
+				</div>
 				<p class="instructions">
 					Store a token with access to private repos. Workset keeps it in your OS keychain.
 				</p>
-				<div class="actions">
+				<div class="block-actions">
 					<Button variant="primary" onclick={savePat} disabled={saving || patToken.trim() === ''}>
 						{saving ? 'Saving…' : 'Save token'}
 					</Button>
@@ -283,14 +285,14 @@
 
 <style>
 	.state {
-		font-size: 13px;
+		font-size: var(--text-base);
 		color: var(--muted);
 	}
 
 	.status-card {
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
+		gap: 12px;
 		padding: 16px;
 		border-radius: 12px;
 		border: 1px solid var(--border);
@@ -318,27 +320,64 @@
 		}
 	}
 
+	.connected-status {
+		font-size: var(--text-md);
+		color: var(--success);
+		font-weight: 500;
+	}
+
+	.not-connected-status {
+		font-size: var(--text-md);
+		color: var(--warning);
+		font-weight: 500;
+	}
+
 	.status-meta {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-		gap: 8px;
-		font-size: 12px;
-		color: var(--muted);
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 16px;
+		font-size: var(--text-sm);
+	}
+
+	.meta-item {
+		display: flex;
+		align-items: center;
+		gap: 6px;
 	}
 
 	.meta-label {
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
-		margin-right: 6px;
+		color: var(--muted);
+		font-size: var(--text-xs);
+		font-weight: 600;
 	}
 
 	.meta-value {
 		color: var(--text);
+		font-size: var(--text-sm);
 	}
 
-	.status-note {
-		font-size: 12px;
-		color: var(--muted);
+	.message {
+		font-size: var(--text-base);
+		padding: var(--space-2) var(--space-3);
+		border-radius: var(--radius-md);
+	}
+
+	.message.error {
+		background: var(--danger-subtle);
+		color: var(--danger);
+	}
+
+	.message.success {
+		background: var(--success-subtle);
+		color: var(--success);
+	}
+
+	.message.warning {
+		background: var(--warning-subtle);
+		color: var(--warning);
 	}
 
 	.mode-toggle {
@@ -351,10 +390,10 @@
 	.mode-toggle button {
 		border-radius: 10px;
 		border: 1px solid var(--border);
-		background: rgba(255, 255, 255, 0.02);
+		background: color-mix(in srgb, var(--text) 2%, transparent);
 		color: var(--muted);
 		padding: 8px 12px;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		font-weight: 600;
 		cursor: pointer;
 		transition: all 0.15s ease;
@@ -362,8 +401,9 @@
 
 	.mode-toggle button.active {
 		border-color: var(--accent);
-		color: var(--text);
-		box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+		color: white;
+		background: var(--accent);
+		box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 10%, transparent);
 	}
 
 	.mode-toggle button:disabled {
@@ -371,52 +411,96 @@
 		cursor: not-allowed;
 	}
 
-	.cli-block,
-	.pat-block {
+	.auth-block {
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
+		gap: 12px;
 		margin-top: 16px;
-		padding: 16px;
+		padding: 20px;
 		border-radius: 12px;
-		border: 1px solid var(--border);
-		background: rgba(255, 255, 255, 0.02);
+		border: 1px solid var(--border-strong);
+		background: var(--panel-strong);
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 	}
 
-	.label {
-		color: var(--muted);
-		font-size: 12px;
+	.block-header {
+		font-size: var(--text-xs);
+		font-weight: 700;
 		text-transform: uppercase;
-		letter-spacing: 0.08em;
+		letter-spacing: 0.12em;
+		color: var(--muted);
+		margin-bottom: 4px;
 	}
 
-	.code {
-		font-size: 18px;
-		font-weight: 600;
-		letter-spacing: 0.08em;
-		font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+	.command {
+		font-size: var(--text-3xl);
+		font-weight: 700;
+		letter-spacing: 0.02em;
+		font-family: var(--font-mono);
 		color: var(--accent);
+		margin: 4px 0;
 	}
 
 	.instructions {
 		color: var(--text);
-		font-size: 13px;
-		margin: 0;
+		font-size: var(--text-base);
+		margin: 0 0 8px 0;
+		line-height: 1.5;
 	}
 
-	.pat-input {
+	.input-label {
+		display: block;
+		color: var(--muted);
+		font-size: var(--text-sm);
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		margin-bottom: 6px;
+	}
+
+	input[type='text'],
+	input[type='password'] {
 		width: 100%;
 		padding: 10px 12px;
 		border-radius: 10px;
 		border: 1px solid var(--border);
-		background: rgba(10, 10, 10, 0.6);
+		background: var(--panel-strong);
 		color: var(--text);
-		font-size: 13px;
+		font-size: var(--text-mono-base);
+		font-family: var(--font-mono);
+		transition: border-color var(--transition-fast);
 	}
 
-	.actions {
+	input[type='text']:focus,
+	input[type='password']:focus {
+		outline: none;
+		border-color: var(--accent);
+	}
+
+	.input-group {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.block-actions,
+	.input-actions {
 		display: flex;
 		gap: 10px;
 		flex-wrap: wrap;
+	}
+
+	.cli-not-installed {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		margin-top: 12px;
+		padding-top: 12px;
+		border-top: 1px solid var(--border);
+	}
+
+	.cli-path-input {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
 	}
 </style>

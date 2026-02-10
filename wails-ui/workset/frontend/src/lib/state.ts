@@ -37,7 +37,11 @@ export const pinnedWorkspaces = derived(workspaces, ($workspaces) =>
 export const unpinnedWorkspaces = derived(workspaces, ($workspaces) =>
 	$workspaces
 		.filter((w) => !w.pinned && !w.archived)
-		.sort((a, b) => new Date(b.lastUsed).getTime() - new Date(a.lastUsed).getTime()),
+		.sort((a, b) => {
+			const aTs = new Date(a.lastUsed).getTime() || 0;
+			const bTs = new Date(b.lastUsed).getTime() || 0;
+			return bTs - aTs;
+		}),
 );
 
 export function selectWorkspace(workspaceId: string): void {

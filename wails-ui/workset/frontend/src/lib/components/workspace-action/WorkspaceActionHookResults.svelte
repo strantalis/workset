@@ -132,7 +132,7 @@
 
 	.hook-results-heading {
 		margin: 0;
-		font-size: 13px;
+		font-size: var(--text-base);
 		font-weight: 600;
 		color: var(--muted);
 		text-transform: uppercase;
@@ -153,7 +153,7 @@
 		background: var(--panel);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-sm);
-		font-size: 13px;
+		font-size: var(--text-base);
 	}
 
 	.hook-run-repo {
@@ -162,7 +162,7 @@
 	}
 
 	.hook-run-id {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
@@ -171,7 +171,7 @@
 		align-items: center;
 		padding: 2px 8px;
 		border-radius: var(--radius-sm);
-		font-size: 11px;
+		font-size: var(--text-xs);
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.02em;
@@ -199,7 +199,7 @@
 	}
 
 	.hook-run-log {
-		font-size: 11px;
+		font-size: var(--text-xs);
 		color: var(--muted);
 		cursor: help;
 	}
@@ -223,12 +223,12 @@
 
 	.pending-hook-repo {
 		font-weight: 500;
-		font-size: 14px;
+		font-size: var(--text-md);
 		color: var(--text);
 	}
 
 	.pending-hook-names {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
@@ -239,7 +239,7 @@
 
 	.pending-hook-error {
 		color: var(--danger);
-		font-size: 12px;
+		font-size: var(--text-sm);
 	}
 
 	.hook-results-footer {

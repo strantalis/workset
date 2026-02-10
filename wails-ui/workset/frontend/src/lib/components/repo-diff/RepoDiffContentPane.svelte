@@ -172,7 +172,7 @@
 	}
 
 	.line-count {
-		font-size: 11px;
+		font-size: var(--text-xs);
 		color: var(--muted);
 		font-weight: 500;
 	}
@@ -254,7 +254,7 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		font-size: 13px;
+		font-size: var(--text-base);
 		color: var(--muted);
 		height: 24px;
 	}
@@ -268,7 +268,7 @@
 	}
 
 	.rename {
-		font-size: 11px;
+		font-size: var(--text-xs);
 		color: var(--muted);
 	}
 
@@ -286,7 +286,7 @@
 		--diffs-dark-deletion-color: var(--danger);
 		--diffs-dark-modified-color: var(--accent);
 		--diffs-font-family: var(--font-mono);
-		--diffs-font-size: 12px;
+		--diffs-font-size: var(--text-mono-sm);
 		--diffs-header-font-family: var(--font-body);
 		--diffs-gap-block: 8px;
 		--diffs-gap-inline: 10px;
@@ -306,7 +306,7 @@
 		padding: 8px 12px;
 		border-radius: var(--radius-md);
 		cursor: pointer;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		transition:
 			border-color var(--transition-fast),
 			background var(--transition-fast);

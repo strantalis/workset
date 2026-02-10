@@ -81,8 +81,13 @@ export async function runWorkspaceActionPendingHook(
 interface TrustPendingHookActionParams {
 	pending: WorkspaceActionPendingHook;
 	pendingHooks: WorkspaceActionPendingHook[];
+	hookRuns: HookExecution[];
+	workspaceReferences: Array<string | null | undefined>;
+	activeHookOperation: string | null;
 	getPendingHooks: () => WorkspaceActionPendingHook[];
+	getHookRuns: () => HookExecution[];
 	setPendingHooks: (next: WorkspaceActionPendingHook[]) => void;
+	setHookRuns: (next: HookExecution[]) => void;
 }
 
 export async function trustWorkspaceActionPendingHook(
@@ -98,6 +103,36 @@ export async function trustWorkspaceActionPendingHook(
 			trustRepoHooks,
 			formatError: formatWorkspaceActionError,
 			setPendingHooks: params.setPendingHooks,
+		},
+	);
+
+	const trustedPending = params
+		.getPendingHooks()
+		.find(
+			(entry) =>
+				entry.repo === params.pending.repo &&
+				entry.event === params.pending.event &&
+				entry.trusted === true,
+		);
+	if (!trustedPending) {
+		return;
+	}
+
+	await runPendingHookWithState(
+		{
+			pending: trustedPending,
+			pendingHooks: params.getPendingHooks(),
+			hookRuns: params.getHookRuns(),
+			workspaceReferences: params.workspaceReferences,
+			activeHookOperation: params.activeHookOperation,
+			getPendingHooks: params.getPendingHooks,
+			getHookRuns: params.getHookRuns,
+		},
+		{
+			runRepoHooks,
+			formatError: formatWorkspaceActionError,
+			setPendingHooks: params.setPendingHooks,
+			setHookRuns: params.setHookRuns,
 		},
 	);
 }

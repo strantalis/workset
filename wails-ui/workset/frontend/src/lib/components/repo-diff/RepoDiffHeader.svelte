@@ -118,7 +118,7 @@
 	}
 
 	.repo-name {
-		font-size: 20px;
+		font-size: var(--text-2xl);
 		font-weight: 600;
 	}
 
@@ -127,7 +127,7 @@
 		align-items: center;
 		gap: 12px;
 		color: var(--muted);
-		font-size: 12px;
+		font-size: var(--text-sm);
 		flex-wrap: wrap;
 	}
 
@@ -191,7 +191,7 @@
 		color: var(--muted);
 		padding: 6px 12px;
 		cursor: pointer;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		transition:
 			background var(--transition-fast),
 			color var(--transition-fast);
@@ -230,7 +230,7 @@
 		padding: 8px 12px;
 		border-radius: var(--radius-md);
 		cursor: pointer;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		transition:
 			border-color var(--transition-fast),
 			background var(--transition-fast);

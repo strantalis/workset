@@ -14,6 +14,9 @@ const (
 	EventTerminalModes         = "terminal:modes"
 	EventTerminalKitty         = "terminal:kitty"
 
+	EventWorkspacePopoutOpened = "workspace:popout-opened"
+	EventWorkspacePopoutClosed = "workspace:popout-closed"
+
 	EventRepoDiffSummary      = "repodiff:summary"
 	EventRepoDiffLocalSummary = "repodiff:local-summary"
 	EventRepoDiffLocalStatus  = "repodiff:local-status"

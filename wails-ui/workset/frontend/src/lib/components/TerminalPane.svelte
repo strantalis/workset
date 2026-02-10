@@ -257,7 +257,7 @@
 	}
 
 	.title {
-		font-size: 14px;
+		font-size: var(--text-md);
 		font-weight: 500;
 		color: var(--muted);
 	}
@@ -286,7 +286,7 @@
 	}
 
 	.daemon-status {
-		font-size: 11px;
+		font-size: var(--text-xs);
 		color: var(--muted);
 		border: 1px solid var(--border);
 		border-radius: 999px;
@@ -308,7 +308,7 @@
 	}
 
 	.renderer-status {
-		font-size: 11px;
+		font-size: var(--text-xs);
 		color: var(--muted);
 		border: 1px solid var(--border);
 		border-radius: 999px;
@@ -359,7 +359,7 @@
 		border: 1px solid var(--warning-soft);
 		background: var(--warning-subtle);
 		color: var(--text);
-		font-size: 12px;
+		font-size: var(--text-sm);
 	}
 
 	.terminal-status.subtle {
@@ -394,7 +394,7 @@
 	}
 
 	.terminal-debug {
-		font-size: 11px;
+		font-size: var(--text-xs);
 		color: var(--muted);
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));

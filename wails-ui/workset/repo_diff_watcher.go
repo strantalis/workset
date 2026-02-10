@@ -14,7 +14,6 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/strantalis/workset/pkg/worksetapi"
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 const (
@@ -23,7 +22,7 @@ const (
 	repoDiffDebounceWindow    = 400 * time.Millisecond
 )
 
-var repoDiffEmit = wruntime.EventsEmit
+var repoDiffEmit = emitRuntimeEvent
 var repoDiffResolveRepoPath = func(ctx context.Context, app *App, workspaceID, repoID string) (string, error) {
 	return app.resolveRepoPath(ctx, workspaceID, repoID)
 }
@@ -725,13 +724,13 @@ func (w *repoDiffWatch) addWatchRecursive(watcher *fsnotify.Watcher, root string
 		if err != nil {
 			return nil
 		}
-			if entry.IsDir() {
-				if shouldIgnorePath(path) {
-					return filepath.SkipDir
-				}
-				_ = w.addWatchPath(watcher, path)
+		if entry.IsDir() {
+			if shouldIgnorePath(path) {
+				return filepath.SkipDir
 			}
-			return nil
+			_ = w.addWatchPath(watcher, path)
+		}
+		return nil
 	})
 }
 

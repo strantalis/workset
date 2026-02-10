@@ -42,6 +42,11 @@ type HooksRunRequest struct {
 	Reason      string `json:"reason,omitempty"`
 }
 
+type RepoHooksPreviewRequest struct {
+	Source string `json:"source"`
+	Ref    string `json:"ref,omitempty"`
+}
+
 type HooksRunResponse struct {
 	Event   string                   `json:"event"`
 	Repo    string                   `json:"repo"`
@@ -241,6 +246,23 @@ func (a *App) TrustRepoHooks(repoName string) error {
 	return err
 }
 
+func (a *App) PreviewRepoHooks(input RepoHooksPreviewRequest) (worksetapi.RepoHooksPreviewJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	a.ensureService()
+
+	result, err := a.service.PreviewRepoHooks(ctx, worksetapi.RepoHooksPreviewInput{
+		Source: input.Source,
+		Ref:    input.Ref,
+	})
+	if err != nil {
+		return worksetapi.RepoHooksPreviewJSON{}, err
+	}
+	return result.Payload, nil
+}
+
 func (a *App) RemoveRepo(input RepoRemoveRequest) (worksetapi.RepoRemoveResultJSON, error) {
 	ctx := a.ctx
 	if ctx == nil {
@@ -435,6 +457,16 @@ func (a *App) SetWorkspaceColor(workspaceID, color string) (worksetapi.Workspace
 	}
 	a.ensureService()
 	result, _, err := a.service.SetWorkspaceColor(ctx, worksetapi.WorkspaceSelector{Value: workspaceID}, color)
+	return result, err
+}
+
+func (a *App) SetWorkspaceDescription(workspaceID, description string) (worksetapi.WorkspaceRefJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	a.ensureService()
+	result, _, err := a.service.SetWorkspaceDescription(ctx, worksetapi.WorkspaceSelector{Value: workspaceID}, description)
 	return result, err
 }
 

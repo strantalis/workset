@@ -234,7 +234,7 @@
 	}
 
 	.detail-header {
-		font-size: 14px;
+		font-size: var(--text-md);
 		font-weight: 600;
 		color: var(--text);
 		display: flex;
@@ -250,7 +250,7 @@
 	}
 
 	.detail-desc {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		font-weight: 400;
 		color: var(--muted);
 	}
@@ -273,7 +273,7 @@
 	}
 
 	.close-btn:hover {
-		background: rgba(255, 255, 255, 0.08);
+		background: color-mix(in srgb, var(--text) 8%, transparent);
 		color: var(--text);
 	}
 
@@ -286,7 +286,7 @@
 	}
 
 	.sync-label {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
@@ -299,7 +299,7 @@
 		display: flex;
 		align-items: center;
 		gap: 4px;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--text);
 		cursor: pointer;
 	}
@@ -323,18 +323,18 @@
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
 	.field input,
 	.field select {
 		background: var(--panel-strong);
-		border: 1px solid rgba(255, 255, 255, 0.08);
+		border: 1px solid var(--border);
 		color: var(--text);
 		border-radius: var(--radius-md);
 		padding: 10px var(--space-3);
-		font-size: 13px;
+		font-size: var(--text-base);
 		font-family: inherit;
 		transition:
 			border-color var(--transition-fast),
@@ -350,11 +350,11 @@
 
 	.content-editor {
 		background: var(--panel-strong);
-		border: 1px solid rgba(255, 255, 255, 0.08);
+		border: 1px solid var(--border);
 		color: var(--text);
 		border-radius: var(--radius-md);
 		padding: 10px var(--space-3);
-		font-size: 13px;
+		font-size: var(--text-mono-base);
 		font-family: var(--font-mono);
 		resize: vertical;
 		min-height: 120px;
@@ -371,10 +371,10 @@
 
 	.content-preview {
 		background: var(--panel-strong);
-		border: 1px solid rgba(255, 255, 255, 0.08);
+		border: 1px solid var(--border);
 		border-radius: var(--radius-md);
 		padding: 10px var(--space-3);
-		font-size: 13px;
+		font-size: var(--text-mono-base);
 		font-family: var(--font-mono);
 		white-space: pre-wrap;
 		word-break: break-word;
@@ -396,7 +396,7 @@
 	}
 
 	.hint {
-		font-size: 13px;
+		font-size: var(--text-base);
 		color: var(--muted);
 		padding: var(--space-4);
 		text-align: center;

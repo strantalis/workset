@@ -194,7 +194,7 @@
 	}
 
 	.local-changes-text {
-		font-size: 13px;
+		font-size: var(--text-base);
 		font-weight: 500;
 		color: #d29922;
 	}
@@ -205,7 +205,7 @@
 		border: none;
 		background: linear-gradient(135deg, #d29922 0%, #b8860b 100%);
 		color: #1a1a1a;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		font-weight: 600;
 		cursor: pointer;
 		transition:
@@ -253,14 +253,14 @@
 	}
 
 	.pr-panel-toggle-icon {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 		width: 12px;
 	}
 
 	.pr-title {
 		font-weight: 600;
-		font-size: 14px;
+		font-size: var(--text-md);
 		color: var(--text);
 	}
 
@@ -292,7 +292,7 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
@@ -307,7 +307,7 @@
 		border-radius: 8px;
 		padding: 6px 10px;
 		color: var(--text);
-		font-size: 13px;
+		font-size: var(--text-base);
 		font-family: inherit;
 	}
 
@@ -327,14 +327,14 @@
 
 	.field-separator {
 		color: var(--muted);
-		font-size: 14px;
+		font-size: var(--text-md);
 	}
 
 	.checkbox-inline {
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 		white-space: nowrap;
 	}
@@ -345,7 +345,7 @@
 		border: none;
 		background: var(--accent);
 		color: var(--text);
-		font-size: 12px;
+		font-size: var(--text-sm);
 		font-weight: 500;
 		cursor: pointer;
 		white-space: nowrap;
@@ -382,7 +382,7 @@
 	}
 
 	.pr-create-progress {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--text);
 		opacity: 0.75;
 		display: flex;
@@ -422,7 +422,7 @@
 	}
 
 	.info-banner {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 		padding: 8px 10px;
 		background: var(--panel-soft);
@@ -433,7 +433,7 @@
 	}
 
 	.mode-link {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 		cursor: pointer;
 		background: none;
@@ -463,13 +463,13 @@
 		background: rgba(248, 81, 73, 0.1);
 		border: 1px solid rgba(248, 81, 73, 0.3);
 		color: #f85149;
-		font-size: 12px;
+		font-size: var(--text-sm);
 	}
 
 	.error-banner.compact,
 	.success-banner.compact {
 		padding: 6px 10px;
-		font-size: 11px;
+		font-size: var(--text-xs);
 	}
 
 	.success-banner {
@@ -478,7 +478,7 @@
 		background: rgba(46, 160, 67, 0.1);
 		border: 1px solid rgba(46, 160, 67, 0.3);
 		color: #3fb950;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		animation: fadeIn 0.2s ease;
 	}
 </style>

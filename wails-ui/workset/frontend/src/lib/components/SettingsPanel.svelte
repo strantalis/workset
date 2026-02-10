@@ -23,7 +23,6 @@
 	import GitHubAuth from './settings/sections/GitHubAuth.svelte';
 	import AliasManager from './settings/sections/AliasManager.svelte';
 	import GroupManager from './settings/sections/GroupManager.svelte';
-	import SkillManager from './settings/sections/SkillManager.svelte';
 	import AboutSection from './settings/sections/AboutSection.svelte';
 	import Button from './ui/Button.svelte';
 
@@ -68,7 +67,6 @@
 	let activeSection = $state('workspace');
 	let aliasCount = $state(0);
 	let groupCount = $state(0);
-	let skillCount = $state(0);
 	let appVersion = $state<AppVersion | null>(null);
 	let updatePreferences = $state<UpdatePreferences>(DEFAULT_UPDATE_PREFERENCES);
 	let updateState = $state<UpdateState | null>(null);
@@ -203,6 +201,19 @@
 		error = null;
 	};
 
+	const getSectionTitle = (section: string): string => {
+		const titles: Record<string, string> = {
+			workspace: 'Workspace',
+			agent: 'Agent',
+			session: 'Terminal',
+			github: 'GitHub',
+			aliases: 'Repo Catalog',
+			groups: 'Templates',
+			about: 'About',
+		};
+		return titles[section] ?? 'Settings';
+	};
+
 	const handleUpdateChannelChange = async (channel: string): Promise<void> => {
 		updateError = null;
 		const result = await sideEffects.setUpdateChannel(channel);
@@ -267,14 +278,6 @@
 </script>
 
 <div class="panel" role="dialog" aria-modal="true" aria-label="Settings">
-	<header class="header">
-		<div>
-			<div class="title">Settings</div>
-			<div class="subtitle">Configure defaults, repo registry, and groups.</div>
-		</div>
-		<Button variant="ghost" onclick={onClose}>Close</Button>
-	</header>
-
 	{#if loading}
 		<div class="state">Loading settings...</div>
 	{:else if error && !snapshot}
@@ -284,53 +287,50 @@
 		</div>
 	{:else if snapshot}
 		<div class="body">
-			<SettingsSidebar
-				{activeSection}
-				onSelectSection={selectSection}
-				{aliasCount}
-				{groupCount}
-				{skillCount}
-			/>
+			<SettingsSidebar {activeSection} onSelectSection={selectSection} {aliasCount} {groupCount} />
 
 			<div class="content">
-				{#if activeSection === 'workspace'}
-					<WorkspaceDefaults {draft} {baseline} onUpdate={updateField} />
-				{:else if activeSection === 'agent'}
-					<AgentDefaults {draft} {baseline} onUpdate={updateField} />
-				{:else if activeSection === 'session'}
-					<SessionDefaults
-						{draft}
-						{baseline}
-						onUpdate={updateField}
-						onRestartSessiond={handleRestartSessiond}
-						onResetTerminalLayout={handleResetTerminalLayout}
-						{restartingSessiond}
-						{resettingTerminalLayout}
-					/>
-				{:else if activeSection === 'github'}
-					<GitHubAuth />
-				{:else if activeSection === 'aliases'}
-					<AliasManager onAliasCountChange={(count) => (aliasCount = count)} />
-				{:else if activeSection === 'groups'}
-					<GroupManager onGroupCountChange={(count) => (groupCount = count)} />
-				{:else if activeSection === 'skills'}
-					<SkillManager onSkillCountChange={(count) => (skillCount = count)} />
-				{:else if activeSection === 'about'}
-					<AboutSection
-						{appVersion}
-						{updatePreferences}
-						{updateState}
-						{updateCheck}
-						{updateBusy}
-						{updateError}
-						onUpdateChannelChange={handleUpdateChannelChange}
-						onCheckForUpdates={handleCheckForUpdates}
-						onUpdateAndRestart={handleUpdateAndRestart}
-					/>
-				{/if}
+				<header class="content-header">
+					<h2 class="content-title">{getSectionTitle(activeSection)}</h2>
+					<button class="close-btn" onclick={onClose} aria-label="Close settings">×</button>
+				</header>
+				<div class="content-body">
+					{#if activeSection === 'workspace'}
+						<WorkspaceDefaults {draft} {baseline} onUpdate={updateField} />
+					{:else if activeSection === 'agent'}
+						<AgentDefaults {draft} {baseline} onUpdate={updateField} />
+					{:else if activeSection === 'session'}
+						<SessionDefaults
+							{draft}
+							{baseline}
+							onUpdate={updateField}
+							onRestartSessiond={handleRestartSessiond}
+							onResetTerminalLayout={handleResetTerminalLayout}
+							{restartingSessiond}
+							{resettingTerminalLayout}
+						/>
+					{:else if activeSection === 'github'}
+						<GitHubAuth />
+					{:else if activeSection === 'aliases'}
+						<AliasManager onAliasCountChange={(count) => (aliasCount = count)} />
+					{:else if activeSection === 'groups'}
+						<GroupManager onGroupCountChange={(count) => (groupCount = count)} />
+					{:else if activeSection === 'about'}
+						<AboutSection
+							{appVersion}
+							{updatePreferences}
+							{updateState}
+							{updateCheck}
+							{updateBusy}
+							{updateError}
+							onUpdateChannelChange={handleUpdateChannelChange}
+							onCheckForUpdates={handleCheckForUpdates}
+							onUpdateAndRestart={handleUpdateAndRestart}
+						/>
+					{/if}
+				</div>
 			</div>
 		</div>
-
 		<footer class="footer">
 			<div class="meta">
 				<span class="config-label">Config</span>
@@ -358,36 +358,15 @@
 
 <style>
 	.panel {
-		width: min(960px, 94vw);
+		width: min(900px, 94vw);
 		max-height: 86vh;
 		display: flex;
 		flex-direction: column;
-		background: var(--panel-strong);
-		border: 1px solid rgba(255, 255, 255, 0.08);
-		border-radius: 20px;
-		box-shadow: var(--shadow-lg), var(--inset-highlight);
+		background: var(--panel);
+		border: 1px solid var(--border);
+		border-radius: 16px;
+		box-shadow: var(--shadow-lg);
 		overflow: hidden;
-	}
-
-	.header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: var(--space-4);
-		padding: var(--space-5) var(--space-6);
-		border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-	}
-
-	.title {
-		font-size: 20px;
-		font-weight: 600;
-		font-family: var(--font-display);
-	}
-
-	.subtitle {
-		color: var(--muted);
-		font-size: 13px;
-		margin-top: var(--space-1);
 	}
 
 	.state {
@@ -406,57 +385,104 @@
 		display: flex;
 		flex: 1;
 		min-height: 0;
-		padding: var(--space-5) var(--space-6);
-		gap: var(--space-6);
+		background: var(--panel);
 	}
 
 	.content {
 		flex: 1;
 		min-width: 0;
-		overflow-y: auto;
-		padding-right: var(--space-1);
-		scrollbar-width: thin;
-		scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+		display: flex;
+		flex-direction: column;
+		background: var(--bg);
 	}
 
-	.content::-webkit-scrollbar {
+	.content-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-4);
+		padding: 20px 24px;
+		border-bottom: 1px solid var(--border);
+		flex-shrink: 0;
+		background: var(--bg);
+	}
+
+	.content-title {
+		font-size: var(--text-lg);
+		font-weight: 600;
+		font-family: var(--font-display);
+		margin: 0;
+		color: var(--text);
+		letter-spacing: -0.01em;
+	}
+
+	.close-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		border-radius: 6px;
+		border: none;
+		background: transparent;
+		color: var(--subtle);
+		font-size: var(--text-xl);
+		line-height: 1;
+		cursor: pointer;
+		transition: all var(--transition-fast);
+	}
+
+	.close-btn:hover {
+		background: var(--panel-strong);
+		color: var(--text);
+	}
+
+	.content-body {
+		flex: 1;
+		overflow-y: auto;
+		padding: var(--space-5) var(--space-6);
+		background: var(--bg);
+	}
+
+	.content-body::-webkit-scrollbar {
 		width: 6px;
 	}
 
-	.content::-webkit-scrollbar-track {
+	.content-body::-webkit-scrollbar-track {
 		background: transparent;
 	}
 
-	.content::-webkit-scrollbar-thumb {
+	.content-body::-webkit-scrollbar-thumb {
 		background: rgba(255, 255, 255, 0.15);
 		border-radius: 3px;
 	}
 
-	.content::-webkit-scrollbar-thumb:hover {
+	.content-body::-webkit-scrollbar-thumb:hover {
 		background: rgba(255, 255, 255, 0.25);
 	}
 
 	.footer {
 		display: flex;
 		align-items: center;
-		gap: var(--space-3);
+		gap: var(--space-4);
 		padding: var(--space-4) var(--space-6);
-		border-top: 1px solid rgba(255, 255, 255, 0.06);
+		border-top: 1px solid var(--border);
 		background: var(--panel);
-		border-radius: 0;
-		max-height: 100vh;
+		flex-shrink: 0;
 	}
 
 	.config-label {
-		font-size: 11px;
+		font-size: var(--text-xs);
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
 		color: var(--muted);
+		font-weight: 500;
 	}
 
 	.config-path {
-		font-size: 12px;
+		font-size: var(--text-mono-sm);
 		color: var(--text);
+		font-family: var(--font-mono);
 		opacity: 0.7;
 	}
 
@@ -465,7 +491,7 @@
 	}
 
 	.status {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		font-weight: 500;
 		padding: var(--space-1) 10px;
 		border-radius: 999px;

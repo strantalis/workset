@@ -24,4 +24,9 @@ coverage/
 .opencode/
 wails-ui/workset/build/
 wails-ui/workset/frontend/bun.lock
+wails-ui/workset/frontend/playwright-report/
+wails-ui/workset/frontend/test-results/
+wails-ui/workset/frontend/.playwright/
+wails-ui/workset/frontend/.playwright-arm64/
+.playwright-mcp/
 site/

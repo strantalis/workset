@@ -483,7 +483,7 @@
 	}
 
 	.list-count {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
@@ -491,7 +491,7 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 		cursor: pointer;
 		padding: 2px 0;
@@ -518,7 +518,7 @@
 	}
 
 	.scope-header {
-		font-size: 10px;
+		font-size: var(--text-xs);
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
@@ -535,7 +535,7 @@
 		border: none;
 		background: transparent;
 		color: var(--text);
-		font-size: 13px;
+		font-size: var(--text-base);
 		font-family: inherit;
 		text-align: left;
 		border-radius: var(--radius-sm);
@@ -544,11 +544,11 @@
 	}
 
 	.list-item:hover {
-		background: rgba(255, 255, 255, 0.04);
+		background: color-mix(in srgb, var(--text) 4%, transparent);
 	}
 
 	.list-item.active {
-		background: rgba(255, 255, 255, 0.08);
+		background: color-mix(in srgb, var(--text) 8%, transparent);
 	}
 
 	.item-left {
@@ -569,7 +569,7 @@
 	}
 
 	.item-desc {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 		text-overflow: ellipsis;
 		overflow: hidden;
@@ -589,7 +589,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 10px;
+		font-size: var(--text-xs);
 		font-weight: 600;
 		border-radius: var(--radius-sm);
 		border: 1px solid var(--border);
@@ -613,7 +613,7 @@
 		background: var(--panel-strong);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-sm);
-		font-size: 11px;
+		font-size: var(--text-xs);
 		font-weight: 400;
 		color: var(--text);
 		white-space: nowrap;
@@ -628,7 +628,7 @@
 	}
 
 	.message {
-		font-size: 13px;
+		font-size: var(--text-base);
 		padding: var(--space-2) var(--space-3);
 		border-radius: var(--radius-md);
 	}
@@ -658,6 +658,6 @@
 	.empty p {
 		margin: 0;
 		color: var(--muted);
-		font-size: 14px;
+		font-size: var(--text-md);
 	}
 </style>

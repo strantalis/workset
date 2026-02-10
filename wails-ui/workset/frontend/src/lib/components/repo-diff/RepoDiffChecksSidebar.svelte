@@ -229,7 +229,7 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		font-size: 14px;
+		font-size: var(--text-md);
 		font-weight: 600;
 	}
 
@@ -267,7 +267,7 @@
 		gap: 12px;
 		padding: 12px;
 		border-radius: 10px;
-		font-size: 13px;
+		font-size: var(--text-base);
 		transition: background 0.15s ease;
 		border-left: 3px solid transparent;
 		background: transparent;
@@ -335,7 +335,7 @@
 	}
 
 	.check-row .check-duration {
-		font-size: 11px;
+		font-size: var(--text-mono-xs);
 		color: var(--muted);
 		font-family: var(--font-mono);
 		padding: 2px 6px;
@@ -387,7 +387,7 @@
 		gap: 8px;
 		padding: 16px;
 		color: var(--muted);
-		font-size: 12px;
+		font-size: var(--text-sm);
 	}
 
 	.check-annotations-loading .spin {
@@ -397,14 +397,14 @@
 	.check-annotations-empty {
 		padding: 16px;
 		color: var(--muted);
-		font-size: 12px;
+		font-size: var(--text-sm);
 		font-style: italic;
 	}
 
 	.check-annotations-more {
 		padding: 12px 16px;
 		color: var(--muted);
-		font-size: 11px;
+		font-size: var(--text-xs);
 		font-style: italic;
 		text-align: center;
 		border-top: 1px solid var(--panel-border, rgba(255, 255, 255, 0.05));
@@ -444,7 +444,7 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		font-size: 12px;
+		font-size: var(--text-mono-sm);
 		font-family: var(--font-mono);
 		color: var(--accent);
 		background: none;
@@ -466,14 +466,14 @@
 	}
 
 	.check-annotation-title {
-		font-size: 13px;
+		font-size: var(--text-base);
 		font-weight: 600;
 		color: var(--text);
 		margin-bottom: 6px;
 	}
 
 	.check-annotation-message {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 		line-height: 1.6;
 		white-space: pre-wrap;

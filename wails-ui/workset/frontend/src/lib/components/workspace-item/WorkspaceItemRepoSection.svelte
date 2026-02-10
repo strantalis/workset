@@ -196,7 +196,7 @@
 		align-items: center;
 		gap: var(--space-2);
 		padding: 0 var(--space-3) var(--space-1) 44px;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		background: none;
 		border: none;
 		color: inherit;
@@ -223,7 +223,7 @@
 
 	.branch {
 		font-family: var(--font-mono);
-		font-size: 10px;
+		font-size: var(--text-mono-xs);
 		color: var(--muted);
 		opacity: 0.7;
 		overflow: hidden;
@@ -283,7 +283,7 @@
 	}
 
 	.repo-button .repo-name {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		flex: 1;
 	}
 
@@ -362,7 +362,7 @@
 
 	.last-used-inline {
 		margin-left: auto;
-		font-size: 10px;
+		font-size: var(--text-xs);
 		color: var(--muted);
 		opacity: 0.7;
 		white-space: nowrap;

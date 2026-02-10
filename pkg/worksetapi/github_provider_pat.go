@@ -270,6 +270,29 @@ func (c *githubPATClient) GetRepoDefaultBranch(ctx context.Context, owner, repo 
 	return repository.GetDefaultBranch(), nil
 }
 
+func (c *githubPATClient) GetFileContent(ctx context.Context, owner, repo, path, ref string) ([]byte, bool, error) {
+	opts := &github.RepositoryContentGetOptions{}
+	if strings.TrimSpace(ref) != "" {
+		opts.Ref = strings.TrimSpace(ref)
+	}
+
+	file, _, resp, err := c.client.Repositories.GetContents(ctx, owner, repo, path, opts)
+	if err != nil {
+		if isGitHubNotFound(err, resp) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	if file == nil {
+		return nil, false, nil
+	}
+	content, err := file.GetContent()
+	if err != nil {
+		return nil, false, err
+	}
+	return []byte(content), true, nil
+}
+
 func (c *githubPATClient) GetCurrentUser(ctx context.Context) (GitHubUserJSON, []string, error) {
 	user, resp, err := c.client.Users.Get(ctx, "")
 	if err != nil {
@@ -357,6 +380,14 @@ func mapReviewComment(comment *github.PullRequestComment) PullRequestReviewComme
 		InReplyTo:      comment.GetInReplyTo(),
 		ReplyToComment: comment.GetInReplyTo() != 0,
 	}
+}
+
+func isGitHubNotFound(err error, resp *github.Response) bool {
+	if resp != nil && resp.StatusCode == 404 {
+		return true
+	}
+	var ghErr *github.ErrorResponse
+	return errors.As(err, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == 404
 }
 
 func parseGitHubScopes(resp *github.Response) []string {

@@ -100,6 +100,6 @@
 
 	.pending-hook-error {
 		color: var(--danger);
-		font-size: 12px;
+		font-size: var(--text-sm);
 	}
 </style>

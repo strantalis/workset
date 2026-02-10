@@ -151,7 +151,7 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		font-size: 13px;
+		font-size: var(--text-base);
 		color: var(--text);
 	}
 
@@ -163,7 +163,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
@@ -173,7 +173,7 @@
 		border-radius: var(--radius-md);
 		color: var(--text);
 		padding: 8px 10px;
-		font-size: 14px;
+		font-size: var(--text-md);
 	}
 
 	:global(.action-btn) {
@@ -186,7 +186,7 @@
 	}
 
 	.hint {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 </style>

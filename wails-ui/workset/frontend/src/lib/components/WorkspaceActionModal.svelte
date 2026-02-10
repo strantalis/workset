@@ -274,8 +274,13 @@
 		await trustWorkspaceActionPendingHook({
 			pending,
 			pendingHooks,
+			hookRuns,
+			workspaceReferences: [workspace?.id, workspaceId, hookWorkspaceId, activeHookWorkspace],
+			activeHookOperation,
 			getPendingHooks: () => pendingHooks,
+			getHookRuns: () => hookRuns,
 			setPendingHooks: (next) => (pendingHooks = next),
+			setHookRuns: (next) => (hookRuns = next),
 		});
 	};
 

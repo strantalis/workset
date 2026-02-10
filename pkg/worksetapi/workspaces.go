@@ -164,7 +164,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 		Path:    root,
 		Workset: workspace.WorksetFile(root),
 		Branch:  ws.State.CurrentBranch,
-		Next:    fmt.Sprintf("workset repo add -w %s <alias|url>", name),
+		Next:    fmt.Sprintf("workset repo add -w %s <alias|url>", shellArg(name)),
 	}
 
 	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
@@ -492,6 +492,16 @@ func warnOutsideWorkspaceRoot(root, workspaceRoot string) []string {
 		return nil
 	}
 	return []string{fmt.Sprintf("workspace created outside defaults.workspace_root (%s)", absWorkspace)}
+}
+
+func shellArg(value string) string {
+	if value == "" {
+		return shellEscape(value)
+	}
+	if strings.ContainsAny(value, " \t\r\n'\"\\$`!&|;<>()[]{}*?~") {
+		return shellEscape(value)
+	}
+	return value
 }
 
 func workspaceCreateConflict(cfg config.GlobalConfig, name, allowPath string) error {

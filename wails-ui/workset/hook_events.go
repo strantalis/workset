@@ -4,10 +4,9 @@ import (
 	"strings"
 
 	"github.com/strantalis/workset/pkg/worksetapi"
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-var hookEventsEmit = wruntime.EventsEmit
+var hookEventsEmit = emitRuntimeEvent
 
 type HookProgressPayload struct {
 	Operation string `json:"operation,omitempty"`

@@ -160,10 +160,10 @@ func (a *App) AckWorkspaceTerminal(workspaceID, terminalID string, bytes int) er
 	streamID := session.streamID
 	session.mu.Unlock()
 	if client == nil {
-		return fmt.Errorf("terminal not started")
+		return nil
 	}
 	if streamID == "" {
-		return fmt.Errorf("terminal stream not ready")
+		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -188,6 +188,12 @@ func (a *App) GetTerminalBacklog(workspaceID, terminalID string, since int64) (T
 	defer cancel()
 	backlog, err := client.Backlog(ctx, sessionID, since)
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "session not found") {
+			return TerminalBacklogPayload{
+				WorkspaceID: workspaceID,
+				TerminalID:  terminalID,
+			}, nil
+		}
 		return TerminalBacklogPayload{}, err
 	}
 	return TerminalBacklogPayload{
@@ -218,6 +224,12 @@ func (a *App) GetTerminalSnapshot(workspaceID, terminalID string) (TerminalSnaps
 	defer cancel()
 	snap, err := client.Snapshot(ctx, sessionID)
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "session not found") {
+			return TerminalSnapshotPayload{
+				WorkspaceID: workspaceID,
+				TerminalID:  terminalID,
+			}, nil
+		}
 		return TerminalSnapshotPayload{}, err
 	}
 	return TerminalSnapshotPayload{
@@ -247,6 +259,12 @@ func (a *App) GetTerminalBootstrap(workspaceID, terminalID string) (TerminalBoot
 	defer cancel()
 	bootstrap, err := client.Bootstrap(ctx, sessionID)
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "session not found") {
+			return TerminalBootstrapPayload{
+				WorkspaceID: workspaceID,
+				TerminalID:  terminalID,
+			}, nil
+		}
 		return TerminalBootstrapPayload{}, err
 	}
 	backlog := sessiond.BacklogResponse{}

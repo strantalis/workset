@@ -87,13 +87,13 @@
 	}
 
 	.modal-title {
-		font-size: 18px;
+		font-size: var(--text-xl);
 		font-weight: 600;
 		color: var(--text);
 	}
 
 	.modal-subtitle {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 		margin-top: 4px;
 	}

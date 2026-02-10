@@ -10,6 +10,9 @@ export const EVENT_TERMINAL_LIFECYCLE = 'terminal:lifecycle' as const;
 export const EVENT_TERMINAL_MODES = 'terminal:modes' as const;
 export const EVENT_TERMINAL_KITTY = 'terminal:kitty' as const;
 
+export const EVENT_WORKSPACE_POPOUT_OPENED = 'workspace:popout-opened' as const;
+export const EVENT_WORKSPACE_POPOUT_CLOSED = 'workspace:popout-closed' as const;
+
 export const EVENT_REPO_DIFF_SUMMARY = 'repodiff:summary' as const;
 export const EVENT_REPO_DIFF_LOCAL_SUMMARY = 'repodiff:local-summary' as const;
 export const EVENT_REPO_DIFF_LOCAL_STATUS = 'repodiff:local-status' as const;

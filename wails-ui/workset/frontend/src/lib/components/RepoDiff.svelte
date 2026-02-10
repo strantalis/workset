@@ -341,8 +341,8 @@
 		getDiffContainer: () => diffContainer,
 		buildOptions,
 		getLineAnnotations: () => buildLineAnnotations(filteredReviews),
-		requestAnimationFrame,
-		setTimeout,
+		requestAnimationFrame: (callback) => requestAnimationFrame(callback),
+		setTimeout: (callback, delay) => setTimeout(callback, delay),
 	});
 
 	const renderDiff = (): void => diffRenderController.renderDiff();
@@ -368,7 +368,7 @@
 		fetchRepoFileDiff,
 		fetchBranchFileDiff,
 		formatError: formatRepoDiffError,
-		requestAnimationFrame,
+		requestAnimationFrame: (callback) => requestAnimationFrame(callback),
 		renderDiff,
 	});
 
@@ -376,6 +376,14 @@
 
 	const selectFile = (file: RepoDiffFileSummary, source: SummarySource = 'pr'): void =>
 		fileDiffController.selectFile(file, source);
+
+	const reportCheckSidebarError = (message: unknown): void => {
+		if (prStatusError) return;
+		prStatusError =
+			typeof message === 'string' && message.trim().length > 0
+				? message
+				: 'Failed to load check annotations.';
+	};
 
 	const checkSidebarController = createCheckSidebarController({
 		getExpandedCheck: () => expandedCheck,
@@ -394,7 +402,7 @@
 		setPendingScrollLine: (line) => {
 			diffRenderController.setPendingScrollLine(line);
 		},
-		logError: (...args) => console.error(...args),
+		logError: (message) => reportCheckSidebarError(message),
 	});
 
 	const formatDuration = (ms: number): string => checkSidebarController.formatDuration(ms);

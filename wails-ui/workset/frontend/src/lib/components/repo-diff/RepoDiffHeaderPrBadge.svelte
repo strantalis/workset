@@ -78,7 +78,7 @@
 		border-radius: 999px;
 		background: rgba(99, 102, 241, 0.1);
 		border: 1px solid rgba(99, 102, 241, 0.25);
-		font-size: 13px;
+		font-size: var(--text-base);
 		font-weight: 500;
 		cursor: pointer;
 		transition: all 0.15s ease;
@@ -96,7 +96,7 @@
 
 	.pr-badge-state {
 		text-transform: uppercase;
-		font-size: 10px;
+		font-size: var(--text-xs);
 		font-weight: 700;
 		letter-spacing: 0.04em;
 	}
@@ -119,7 +119,7 @@
 	}
 
 	.pr-badge-checks {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		font-weight: 500;
 		display: inline-flex;
 		align-items: center;
@@ -161,7 +161,7 @@
 	}
 
 	.pr-badge-loading {
-		font-size: 13px;
+		font-size: var(--text-base);
 		color: var(--muted);
 	}
 

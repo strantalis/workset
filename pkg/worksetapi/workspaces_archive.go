@@ -79,6 +79,7 @@ func workspaceRefJSON(name string, ref config.WorkspaceRef) WorkspaceRefJSON {
 		Pinned:         ref.Pinned,
 		PinOrder:       ref.PinOrder,
 		Color:          ref.Color,
+		Description:    ref.Description,
 		Expanded:       ref.Expanded,
 	}
 }

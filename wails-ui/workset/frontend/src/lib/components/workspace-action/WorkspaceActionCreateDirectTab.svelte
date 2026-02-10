@@ -89,7 +89,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
@@ -99,7 +99,7 @@
 		border-radius: var(--radius-md);
 		color: var(--text);
 		padding: 8px 10px;
-		font-size: 14px;
+		font-size: var(--text-md);
 		transition:
 			border-color var(--transition-fast),
 			box-shadow var(--transition-fast);
@@ -136,7 +136,7 @@
 		background: var(--panel);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-sm);
-		font-size: 13px;
+		font-size: var(--text-base);
 	}
 
 	.direct-repo-info {
@@ -153,7 +153,7 @@
 	}
 
 	.direct-repo-url {
-		font-size: 11px;
+		font-size: var(--text-xs);
 		color: var(--muted);
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -164,7 +164,7 @@
 		display: flex;
 		align-items: center;
 		gap: 4px;
-		font-size: 11px;
+		font-size: var(--text-xs);
 		color: var(--muted);
 		cursor: pointer;
 		flex-shrink: 0;
@@ -184,7 +184,7 @@
 		color: var(--muted);
 		cursor: pointer;
 		padding: 0 4px;
-		font-size: 18px;
+		font-size: var(--text-xl);
 		line-height: 1;
 		transition: color var(--transition-fast);
 		flex-shrink: 0;

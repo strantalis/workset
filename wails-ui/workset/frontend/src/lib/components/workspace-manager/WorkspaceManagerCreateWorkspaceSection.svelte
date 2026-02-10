@@ -86,7 +86,7 @@
 	}
 
 	.section-title {
-		font-size: 13px;
+		font-size: var(--text-base);
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
 		color: var(--muted);
@@ -104,7 +104,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
@@ -114,7 +114,7 @@
 		border-radius: 10px;
 		color: var(--text);
 		padding: 8px 10px;
-		font-size: 14px;
+		font-size: var(--text-md);
 	}
 
 	.span-2 {
@@ -139,7 +139,7 @@
 	}
 
 	.note {
-		font-size: 13px;
+		font-size: var(--text-base);
 	}
 
 	.note.error {

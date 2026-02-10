@@ -122,7 +122,7 @@
 
 <style>
 	.section-title {
-		font-size: 13px;
+		font-size: var(--text-base);
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
 		color: var(--muted);
@@ -164,12 +164,12 @@
 	}
 
 	.repo-name {
-		font-size: 14px;
+		font-size: var(--text-md);
 		font-weight: 600;
 	}
 
 	.repo-path {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
@@ -183,7 +183,7 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		font-size: 13px;
+		font-size: var(--text-base);
 		color: var(--text);
 	}
 
@@ -199,12 +199,12 @@
 	}
 
 	.hint {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
 	.note {
-		font-size: 13px;
+		font-size: var(--text-base);
 	}
 
 	.note.warning {
@@ -212,7 +212,7 @@
 	}
 
 	.empty {
-		font-size: 13px;
+		font-size: var(--text-base);
 		color: var(--muted);
 		padding: 8px 0;
 	}

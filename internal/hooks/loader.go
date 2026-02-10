@@ -8,10 +8,18 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const repoHooksPath = ".workset/hooks.yaml"
+const RepoHooksPath = ".workset/hooks.yaml"
 
 func RepoHooksFile(repoPath string) string {
-	return filepath.Join(repoPath, repoHooksPath)
+	return filepath.Join(repoPath, RepoHooksPath)
+}
+
+func ParseRepoHooks(data []byte) (File, error) {
+	var cfg File
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return File{}, err
+	}
+	return cfg, nil
 }
 
 func LoadRepoHooks(repoPath string) (File, bool, error) {
@@ -23,8 +31,8 @@ func LoadRepoHooks(repoPath string) (File, bool, error) {
 		}
 		return File{}, false, err
 	}
-	var cfg File
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	cfg, err := ParseRepoHooks(data)
+	if err != nil {
 		return File{}, true, err
 	}
 	return cfg, true, nil

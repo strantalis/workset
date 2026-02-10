@@ -1,5 +1,8 @@
 import type { TerminalLayout, TerminalLayoutPayload } from '../types';
-import type { main } from '../../../wailsjs/go/models';
+import type {
+	TerminalLayout as BoundTerminalLayout,
+	TerminalLayoutRequest as BoundTerminalLayoutRequest,
+} from '../../../bindings/workset/models';
 import {
 	CreateWorkspaceTerminal,
 	GetTerminalBacklog,
@@ -9,8 +12,10 @@ import {
 	GetWorkspaceTerminalStatus,
 	LogTerminalDebug,
 	SetWorkspaceTerminalLayout,
-	StopWorkspaceTerminal,
+	StopWorkspaceTerminalForWindowName,
+	WriteWorkspaceTerminalForWindowName,
 } from '../../../wailsjs/go/main/App';
+import { getCurrentWindowName } from '../windowContext';
 
 export type TerminalBacklogResponse = {
 	workspaceId: string;
@@ -104,14 +109,22 @@ export async function fetchTerminalSnapshot(
 	workspaceId: string,
 	terminalId: string,
 ): Promise<TerminalSnapshotResponse> {
-	return GetTerminalSnapshot(workspaceId, terminalId);
+	const snapshot = await GetTerminalSnapshot(workspaceId, terminalId);
+	return {
+		...snapshot,
+		kitty: snapshot.kitty ?? undefined,
+	};
 }
 
 export async function fetchTerminalBootstrap(
 	workspaceId: string,
 	terminalId: string,
 ): Promise<TerminalBootstrapResponse> {
-	return GetTerminalBootstrap(workspaceId, terminalId);
+	const payload = await GetTerminalBootstrap(workspaceId, terminalId);
+	return {
+		...payload,
+		kitty: payload.kitty ?? undefined,
+	};
 }
 
 export async function logTerminalDebug(
@@ -141,7 +154,8 @@ export async function stopWorkspaceTerminal(
 	workspaceId: string,
 	terminalId: string,
 ): Promise<void> {
-	await StopWorkspaceTerminal(workspaceId, terminalId);
+	const windowName = await getCurrentWindowName();
+	await StopWorkspaceTerminalForWindowName(workspaceId, terminalId, windowName);
 }
 
 export async function fetchWorkspaceTerminalLayout(
@@ -156,6 +170,15 @@ export async function persistWorkspaceTerminalLayout(
 ): Promise<void> {
 	await SetWorkspaceTerminalLayout({
 		workspaceId,
-		layout: layout as unknown as main.TerminalLayout,
-	} as unknown as main.TerminalLayoutRequest);
+		layout: layout as unknown as BoundTerminalLayout,
+	} as unknown as BoundTerminalLayoutRequest);
+}
+
+export async function writeWorkspaceTerminal(
+	workspaceId: string,
+	terminalId: string,
+	data: string,
+): Promise<void> {
+	const windowName = await getCurrentWindowName();
+	await WriteWorkspaceTerminalForWindowName(workspaceId, terminalId, data, windowName);
 }

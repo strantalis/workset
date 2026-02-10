@@ -595,13 +595,14 @@
 		{:else if loading || !layout}
 			<div class="terminal-loading">Preparing terminals…</div>
 		{:else}
-			{@const totalPaneCount = collectPaneIds(layout.root).length}
+			{@const rootNode = layout?.root ?? null}
+			{@const totalPaneCount = rootNode ? collectPaneIds(rootNode).length : 0}
 			<TerminalLayoutNode
-				node={layout.root}
+				node={rootNode}
 				{workspaceId}
 				{workspaceName}
 				{active}
-				focusedPaneId={layout.focusedPaneId}
+				focusedPaneId={layout?.focusedPaneId}
 				{totalPaneCount}
 				{dragState}
 				onFocusPane={handleFocusPane}
@@ -649,7 +650,7 @@
 		gap: 8px;
 		padding: 16px;
 		color: var(--muted);
-		font-size: 12px;
+		font-size: var(--text-sm);
 	}
 
 	.terminal-error {
@@ -665,7 +666,7 @@
 		border: 1px solid var(--border);
 		border-radius: 6px;
 		padding: 6px 12px;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		background: transparent;
 		color: var(--text);
 		cursor: pointer;

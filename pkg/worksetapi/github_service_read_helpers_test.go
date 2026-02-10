@@ -25,6 +25,13 @@ type readHelpersGetCheckRunAnnotationsCall struct {
 	checkRunID int64
 }
 
+type readHelpersGetFileContentCall struct {
+	owner string
+	repo  string
+	path  string
+	ref   string
+}
+
 type readHelpersPRCall struct {
 	owner   string
 	repo    string
@@ -46,12 +53,14 @@ type readHelpersGitHubClient struct {
 	getPullRequestCalls       []readHelpersGetPullRequestCall
 	getRepoDefaultBranchCalls []readHelpersGetRepoDefaultBranchCall
 	getCheckAnnotationsCalls  []readHelpersGetCheckRunAnnotationsCall
+	getFileContentCalls       []readHelpersGetFileContentCall
 	listPullRequestsCalls     []readHelpersPRCall
 	listCheckRunsCalls        []readHelpersCheckRunCall
 
 	getPullRequestFunc         func(ctx context.Context, owner, repo string, number int) (GitHubPullRequest, error)
 	getRepoDefaultBranchFunc   func(ctx context.Context, owner, repo string) (string, error)
 	getCheckRunAnnotationsFunc func(ctx context.Context, owner, repo string, checkRunID int64) ([]CheckAnnotationJSON, error)
+	getFileContentFunc         func(ctx context.Context, owner, repo, path, ref string) ([]byte, bool, error)
 	listPullRequestsFunc       func(ctx context.Context, owner, repo, head, state string, page, perPage int) ([]GitHubPullRequest, int, error)
 	listCheckRunsFunc          func(ctx context.Context, owner, repo, ref string, page, perPage int) ([]PullRequestCheckJSON, int, error)
 }
@@ -154,6 +163,19 @@ func (c *readHelpersGitHubClient) GetReviewThreadID(_ context.Context, _ string)
 
 func (c *readHelpersGitHubClient) ResolveReviewThread(_ context.Context, _ string, _ bool) (bool, error) {
 	return false, nil
+}
+
+func (c *readHelpersGitHubClient) GetFileContent(ctx context.Context, owner, repo, path, ref string) ([]byte, bool, error) {
+	c.getFileContentCalls = append(c.getFileContentCalls, readHelpersGetFileContentCall{
+		owner: owner,
+		repo:  repo,
+		path:  path,
+		ref:   ref,
+	})
+	if c.getFileContentFunc == nil {
+		return nil, false, nil
+	}
+	return c.getFileContentFunc(ctx, owner, repo, path, ref)
 }
 
 type readHelpersGitHubProvider struct {

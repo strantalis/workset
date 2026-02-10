@@ -41,3 +41,16 @@ func TestLoadRepoHooksValid(t *testing.T) {
 		t.Fatalf("unexpected hook id: %s", cfg.Hooks[0].ID)
 	}
 }
+
+func TestParseRepoHooksValid(t *testing.T) {
+	cfg, err := ParseRepoHooks([]byte("hooks:\n  - id: bootstrap\n    on: [worktree.created]\n    run: [\"npm\", \"ci\"]\n"))
+	if err != nil {
+		t.Fatalf("parse repo hooks: %v", err)
+	}
+	if len(cfg.Hooks) != 1 {
+		t.Fatalf("expected 1 hook")
+	}
+	if cfg.Hooks[0].ID != "bootstrap" {
+		t.Fatalf("unexpected hook id: %s", cfg.Hooks[0].ID)
+	}
+}

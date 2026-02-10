@@ -17,6 +17,7 @@ export type Repo = {
 	dirty: boolean;
 	missing: boolean;
 	statusKnown?: boolean;
+	trackedPullRequest?: PullRequestSummary;
 	diff: {
 		added: number;
 		removed: number;
@@ -35,6 +36,7 @@ export type Workspace = {
 	pinned: boolean;
 	pinOrder: number;
 	color?: string;
+	description?: string;
 	expanded: boolean;
 	lastUsed: string;
 };
@@ -315,6 +317,7 @@ export type PullRequestSummary = {
 	baseBranch: string;
 	headRepo: string;
 	headBranch: string;
+	updatedAt?: string;
 	mergeable?: string;
 };
 

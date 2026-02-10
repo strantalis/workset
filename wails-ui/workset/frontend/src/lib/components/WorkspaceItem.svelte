@@ -393,7 +393,7 @@
 	}
 
 	.name {
-		font-size: 13px;
+		font-size: var(--text-base);
 		font-weight: 600;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -404,7 +404,7 @@
 
 	.count {
 		color: var(--muted);
-		font-size: 11px;
+		font-size: var(--text-xs);
 		font-weight: 500;
 		font-variant-numeric: tabular-nums;
 		flex-shrink: 0;
@@ -412,7 +412,7 @@
 	}
 
 	.last-used-header {
-		font-size: 10px;
+		font-size: var(--text-xs);
 		color: var(--muted);
 		opacity: 0.7;
 		white-space: nowrap;
@@ -513,7 +513,7 @@
 	}
 
 	.color-label {
-		font-size: 11px;
+		font-size: var(--text-xs);
 		color: var(--muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
@@ -561,7 +561,7 @@
 		cursor: pointer;
 		width: 100%;
 		text-align: left;
-		font-size: 13px;
+		font-size: var(--text-base);
 		transition: background 0.15s ease;
 		border-radius: var(--radius-sm);
 	}

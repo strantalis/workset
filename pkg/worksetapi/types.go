@@ -28,6 +28,7 @@ type WorkspaceRefJSON struct {
 	Pinned         bool   `json:"pinned"`
 	PinOrder       int    `json:"pin_order"`
 	Color          string `json:"color,omitempty"`
+	Description    string `json:"description,omitempty"`
 	Expanded       bool   `json:"expanded"`
 }
 
@@ -66,21 +67,39 @@ type WorkspaceSnapshotJSON struct {
 	Pinned         bool               `json:"pinned"`
 	PinOrder       int                `json:"pin_order"`
 	Color          string             `json:"color,omitempty"`
+	Description    string             `json:"description,omitempty"`
 	Expanded       bool               `json:"expanded"`
 	Repos          []RepoSnapshotJSON `json:"repos"`
 }
 
 // RepoSnapshotJSON summarizes a workspace repo and optional status.
 type RepoSnapshotJSON struct {
-	Name          string `json:"name"`
-	LocalPath     string `json:"local_path"`
-	Managed       bool   `json:"managed"`
-	RepoDir       string `json:"repo_dir"`
-	Remote        string `json:"remote"`
-	DefaultBranch string `json:"default_branch"`
-	Dirty         bool   `json:"dirty"`
-	Missing       bool   `json:"missing"`
-	StatusKnown   bool   `json:"status_known"`
+	Name               string                          `json:"name"`
+	LocalPath          string                          `json:"local_path"`
+	Managed            bool                            `json:"managed"`
+	RepoDir            string                          `json:"repo_dir"`
+	Remote             string                          `json:"remote"`
+	DefaultBranch      string                          `json:"default_branch"`
+	Dirty              bool                            `json:"dirty"`
+	Missing            bool                            `json:"missing"`
+	StatusKnown        bool                            `json:"status_known"`
+	TrackedPullRequest *TrackedPullRequestSnapshotJSON `json:"tracked_pull_request,omitempty"`
+}
+
+// TrackedPullRequestSnapshotJSON summarizes tracked PR metadata stored in workspace state.
+type TrackedPullRequestSnapshotJSON struct {
+	Repo       string `json:"repo"`
+	Number     int    `json:"number"`
+	URL        string `json:"url"`
+	Title      string `json:"title"`
+	Body       string `json:"body,omitempty"`
+	State      string `json:"state"`
+	Draft      bool   `json:"draft"`
+	BaseRepo   string `json:"base_repo"`
+	BaseBranch string `json:"base_branch"`
+	HeadRepo   string `json:"head_repo"`
+	HeadBranch string `json:"head_branch"`
+	UpdatedAt  string `json:"updated_at,omitempty"`
 }
 
 // WorkspaceCreatedJSON describes the JSON payload for a created workspace.
@@ -171,6 +190,33 @@ type HookPending struct {
 	Hooks  []string
 	Status HookRunStatus
 	Reason string
+}
+
+// RepoHookPreviewJSON describes a single hook definition discovered from source.
+type RepoHookPreviewJSON struct {
+	ID      string   `json:"id"`
+	On      []string `json:"on,omitempty"`
+	Run     []string `json:"run,omitempty"`
+	Cwd     string   `json:"cwd,omitempty"`
+	OnError string   `json:"on_error,omitempty"`
+}
+
+// RepoHooksPreviewJSON is the JSON payload for pre-clone hook discovery.
+type RepoHooksPreviewJSON struct {
+	Source         string                `json:"source"`
+	ResolvedSource string                `json:"resolved_source,omitempty"`
+	Host           string                `json:"host,omitempty"`
+	Owner          string                `json:"owner,omitempty"`
+	Repo           string                `json:"repo,omitempty"`
+	Ref            string                `json:"ref,omitempty"`
+	Exists         bool                  `json:"exists"`
+	Hooks          []RepoHookPreviewJSON `json:"hooks,omitempty"`
+}
+
+// RepoHooksPreviewResult wraps hook preview payload with config metadata.
+type RepoHooksPreviewResult struct {
+	Payload RepoHooksPreviewJSON
+	Config  config.GlobalConfigLoadInfo
 }
 
 // HooksRunResult describes hook execution results.

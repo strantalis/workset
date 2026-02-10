@@ -109,7 +109,7 @@
 
 	.panel-title {
 		margin: 0;
-		font-size: 14px;
+		font-size: var(--text-md);
 		font-weight: 600;
 		color: var(--text);
 		padding-bottom: 8px;
@@ -117,7 +117,7 @@
 	}
 
 	.panel-label {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
@@ -137,7 +137,7 @@
 	}
 
 	.empty-selection {
-		font-size: 13px;
+		font-size: var(--text-base);
 		color: var(--muted);
 		font-style: italic;
 		padding: 12px 0;
@@ -151,7 +151,7 @@
 		padding: 6px 8px;
 		background: rgba(255, 255, 255, 0.03);
 		border-radius: var(--radius-sm);
-		font-size: 13px;
+		font-size: var(--text-base);
 	}
 
 	.selected-item.pending {
@@ -160,13 +160,13 @@
 	}
 
 	.pending-label {
-		font-size: 10px;
+		font-size: var(--text-xs);
 		color: var(--muted);
 		font-style: italic;
 	}
 
 	.selected-badge {
-		font-size: 10px;
+		font-size: var(--text-xs);
 		font-weight: 600;
 		text-transform: uppercase;
 		padding: 2px 6px;
@@ -205,7 +205,7 @@
 		color: var(--muted);
 		cursor: pointer;
 		padding: 0 4px;
-		font-size: 18px;
+		font-size: var(--text-xl);
 		line-height: 1;
 		transition: color var(--transition-fast);
 		flex-shrink: 0;
@@ -217,7 +217,7 @@
 
 	.name-input {
 		width: 100%;
-		font-size: 14px;
+		font-size: var(--text-md);
 		padding: 10px 12px;
 		background: transparent;
 		border: 1px solid var(--border);
@@ -246,7 +246,7 @@
 		color: var(--accent);
 		cursor: pointer;
 		padding: 6px 12px;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		transition: all var(--transition-fast);
 	}
 

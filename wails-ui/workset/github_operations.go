@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/strantalis/workset/pkg/worksetapi"
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type GitHubOperationType string
@@ -291,7 +290,7 @@ func parseGitHubOperationType(raw string) (GitHubOperationType, error) {
 	}
 }
 
-var githubOperationEmit = wruntime.EventsEmit
+var githubOperationEmit = emitRuntimeEvent
 
 func (a *App) ensureGitHubOperationManager() *githubOperationManager {
 	if a.githubOps == nil {

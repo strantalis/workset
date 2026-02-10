@@ -162,9 +162,11 @@
 
 	const handleTabDragStart = (event: DragEvent, tabId: string, index: number): void => {
 		if (!onTabDragStart || !isPane(node)) return;
+		const paneId = node?.id ?? '';
+		if (!paneId) return;
 		event.dataTransfer?.setData('text/plain', tabId);
 		event.dataTransfer!.effectAllowed = 'move';
-		onTabDragStart(node.id, tabId, index);
+		onTabDragStart(paneId, tabId, index);
 	};
 
 	const handleTabDragEnd = (): void => {
@@ -184,14 +186,16 @@
 		if (!dragState || !isPane(node)) return;
 		event.preventDefault();
 		event.dataTransfer!.dropEffect = 'move';
-		dropTargetIndex = node.tabs.length;
+		dropTargetIndex = node?.tabs?.length ?? 0;
 		activeDropZone = 'center';
 	};
 
 	const handleHeaderDrop = (event: DragEvent): void => {
 		event.preventDefault();
 		if (!dragState || !onTabDrop || !isPane(node)) return;
-		onTabDrop(node.id, node.tabs.length);
+		const paneId = node?.id ?? '';
+		if (!paneId) return;
+		onTabDrop(paneId, node?.tabs?.length ?? 0);
 		dropTargetIndex = null;
 		activeDropZone = null;
 	};
@@ -206,17 +210,19 @@
 	const handleBodyDrop = (event: DragEvent): void => {
 		event.preventDefault();
 		if (!dragState || !isPane(node)) return;
+		const paneId = node?.id ?? '';
+		if (!paneId) return;
 
 		if (activeDropZone === 'center' || !activeDropZone) {
 			// Drop as tab
-			onTabDrop?.(node.id, node.tabs.length);
+			onTabDrop?.(paneId, node?.tabs?.length ?? 0);
 		} else if (onTabSplitDrop) {
 			// Split drop
 			const direction: 'row' | 'column' =
 				activeDropZone === 'left' || activeDropZone === 'right' ? 'row' : 'column';
 			const position: 'before' | 'after' =
 				activeDropZone === 'left' || activeDropZone === 'top' ? 'before' : 'after';
-			onTabSplitDrop(node.id, direction, position);
+			onTabSplitDrop(paneId, direction, position);
 		}
 
 		dropTargetIndex = null;
@@ -226,7 +232,9 @@
 	const handleTabDrop = (event: DragEvent, index: number): void => {
 		event.preventDefault();
 		if (!dragState || !onTabDrop || !isPane(node)) return;
-		onTabDrop(node.id, index);
+		const paneId = node?.id ?? '';
+		if (!paneId) return;
+		onTabDrop(paneId, index);
 		dropTargetIndex = null;
 		activeDropZone = null;
 	};
@@ -312,27 +320,33 @@
 			/>
 		</div>
 	</div>
-{:else if node.tabs.length === 0}
+{:else if (node?.tabs?.length ?? 0) === 0}
 	<div class="pane-empty">No terminals</div>
 {:else}
+	{@const paneTabs = node?.tabs ?? []}
+	{@const paneId = node?.id ?? ''}
 	{@const activeTab =
-		node.tabs.find((tab: { id: string }) => tab.id === node.activeTabId) ?? node.tabs[0]}
-	{@const isFocused = focusedPaneId === node.id}
-	{@const isDragTarget = dragState && dragState.sourcePaneId !== node.id}
+		paneTabs.find((tab: { id: string }) => tab.id === node?.activeTabId) ?? paneTabs[0]}
+	{@const activeTabId = activeTab?.id ?? ''}
+	{@const activeTerminalId = activeTab?.terminalId ?? ''}
+	{@const isFocused = focusedPaneId === paneId}
+	{@const isDragTarget = dragState && dragState.sourcePaneId !== paneId}
 	<div
 		class="pane"
 		class:focused={isFocused}
 		class:drag-active={isDragTarget && activeDropZone}
-		data-pane-id={node.id}
+		data-pane-id={paneId}
 		role="button"
 		tabindex="0"
-		onclick={() => onFocusPane(node.id)}
+		onclick={() => paneId && onFocusPane(paneId)}
 		onkeydown={(event) => {
 			if (!shouldHandlePaneKeydown(event)) {
 				return;
 			}
 			event.preventDefault();
-			onFocusPane(node.id);
+			if (paneId) {
+				onFocusPane(paneId);
+			}
 		}}
 		ondragleave={handleDragLeave}
 	>
@@ -345,15 +359,15 @@
 			ondrop={handleHeaderDrop}
 		>
 			<div class="pane-tabs">
-				{#each node.tabs as tab, index (tab.id)}
+				{#each paneTabs as tab, index (tab.id)}
 					<TerminalPaneTab
 						{tab}
-						paneId={node.id}
+						{paneId}
 						{index}
-						isActive={tab.id === activeTab.id}
+						isActive={tab.id === activeTabId}
 						isDragging={dragState?.tabId === tab.id}
 						isDropBefore={dropTargetIndex === index}
-						showClose={totalPaneCount > 1 || node.tabs.length > 1}
+						showClose={totalPaneCount > 1 || paneTabs.length > 1}
 						{onSelectTab}
 						{onCloseTab}
 						onTabDragStart={(event, idx) => handleTabDragStart(event, tab.id, idx)}
@@ -363,7 +377,7 @@
 					/>
 				{/each}
 			</div>
-			<TerminalPaneActions paneId={node.id} {onAddTab} {onSplitPane} />
+			<TerminalPaneActions {paneId} {onAddTab} {onSplitPane} />
 		</div>
 		<div
 			class="pane-body"
@@ -375,13 +389,13 @@
 			<TerminalPane
 				{workspaceId}
 				{workspaceName}
-				terminalId={activeTab.terminalId}
+				terminalId={activeTerminalId}
 				active={isFocused && active}
 				compact={true}
 			/>
 
 			<TerminalDropZones
-				show={Boolean(dragState && dragState.sourcePaneId !== node.id)}
+				show={Boolean(dragState && dragState.sourcePaneId !== paneId)}
 				{activeDropZone}
 			/>
 		</div>
@@ -507,22 +521,24 @@
 	}
 
 	.pane:not(.focused) {
-		opacity: 0.75;
+		opacity: 0.35;
 	}
 
 	.pane:not(.focused):hover,
 	.pane.drag-active {
-		opacity: 0.9;
+		opacity: 0.7;
 		box-shadow: var(--shadow-md);
 	}
 
 	.pane-header {
 		display: flex;
 		align-items: center;
-		padding: 4px 6px;
+		padding: 0 4px;
 		background: color-mix(in srgb, var(--panel-strong) 80%, var(--panel));
 		transition: background 0.2s ease;
 		border-bottom: 1px solid var(--border);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
 	}
 
 	.pane-header.drop-target {
@@ -532,12 +548,12 @@
 	.pane-tabs {
 		display: flex;
 		align-items: center;
-		gap: 4px;
+		gap: 0;
 		flex: 1;
 		min-width: 0;
 		overflow-x: auto;
 		scrollbar-width: none;
-		padding: 0 4px;
+		padding: 0;
 	}
 
 	.pane-tabs::-webkit-scrollbar {
@@ -557,6 +573,6 @@
 		align-items: center;
 		justify-content: center;
 		color: var(--muted);
-		font-size: 12px;
+		font-size: var(--text-sm);
 	}
 </style>

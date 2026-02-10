@@ -28,7 +28,16 @@ export default [
 		},
 	},
 	{
-		ignores: ['wailsjs/', 'dist/', 'node_modules/'],
+		ignores: [
+			'wailsjs/',
+			'bindings/',
+			'dist/',
+			'node_modules/',
+			'.playwright/',
+			'.playwright-arm64/',
+			'playwright-report/',
+			'test-results/',
+		],
 	},
 	{
 		rules: {

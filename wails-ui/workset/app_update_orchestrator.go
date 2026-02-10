@@ -11,8 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type updateOrchestrator struct {
@@ -67,7 +65,7 @@ func (a *App) newUpdateOrchestrator() updateOrchestrator {
 			}
 			go func(ctx context.Context) {
 				time.Sleep(350 * time.Millisecond)
-				wruntime.Quit(ctx)
+				quitRuntime(ctx)
 			}(a.ctx)
 		},
 	}
