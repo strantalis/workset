@@ -335,8 +335,8 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 18px;
-		height: 18px;
+		width: 24px;
+		height: 24px;
 		border: none;
 		border-radius: 4px;
 		background: transparent;

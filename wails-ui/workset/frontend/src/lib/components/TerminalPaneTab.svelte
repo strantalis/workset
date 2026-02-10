@@ -155,9 +155,9 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 16px;
-		height: 16px;
-		margin-left: 2px;
+		width: 22px;
+		height: 22px;
+		margin-left: 4px;
 		color: var(--muted);
 		border: none;
 		background: transparent;
