@@ -169,7 +169,7 @@
 								title="Add repository"
 								onclick={() => onAddRepo(workspace.id)}
 							>
-								<Plus size={16} />
+								<Plus size={20} />
 							</button>
 						</div>
 						<div class="file-tree">
