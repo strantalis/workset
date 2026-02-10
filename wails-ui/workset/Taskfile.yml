@@ -15,6 +15,11 @@ tasks:
     cmds:
       - task: "{{OS}}:build"
 
+  package:
+    summary: Packages a production build of the application
+    cmds:
+      - task: "{{OS}}:package"
+
   build:dev:
     summary: Builds the application for local development
     cmds:

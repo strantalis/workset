@@ -15,6 +15,13 @@ tasks:
       CGO_ENABLED: 1
       GOARCH: "{{.ARCH | default ARCH}}"
 
+  package:
+    summary: Packages the application into a `.app` bundle
+    deps:
+      - task: build
+    cmds:
+      - task: create:app:bundle
+
   build:dev:
     summary: Builds the development binary on macOS
     cmds:
@@ -25,6 +32,32 @@ tasks:
       GOOS: darwin
       CGO_ENABLED: 1
       GOARCH: "{{.ARCH | default ARCH}}"
+
+  create:app:bundle:
+    summary: Creates a `.app` bundle
+    cmds:
+      - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/MacOS"
+      - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources"
+      - cp build/darwin/icons.icns "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources"
+      - |
+        if [ -f build/darwin/Assets.car ]; then
+          cp build/darwin/Assets.car "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources"
+        fi
+      - cp "{{.BIN_DIR}}/{{.APP_NAME}}" "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/MacOS"
+      - cp "build/darwin/Info.plist" "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Info.plist"
+      - task: '{{if eq OS "darwin"}}codesign:adhoc{{else}}codesign:skip{{end}}'
+
+  codesign:adhoc:
+    summary: Ad-hoc signs the app bundle (macOS only)
+    internal: true
+    cmds:
+      - codesign --force --deep --sign - "{{.BIN_DIR}}/{{.APP_NAME}}.app"
+
+  codesign:skip:
+    summary: Skips codesigning when cross-compiling
+    internal: true
+    cmds:
+      - 'echo "Skipping codesign (not available on {{OS}}). Sign the .app on macOS before distribution."'
 
   run:
     summary: Runs the built desktop binary
