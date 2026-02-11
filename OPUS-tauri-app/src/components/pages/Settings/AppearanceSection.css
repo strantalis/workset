@@ -80,3 +80,23 @@
   color: var(--text);
   text-align: center;
 }
+
+.terminal-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  height: 32px;
+}
+
+.terminal-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.terminal-toggle__label {
+  font-size: 13px;
+  color: var(--text);
+}

@@ -15,13 +15,25 @@ import {
   Sun,
   Moon,
   Palette,
+  Columns2,
+  Rows2,
+  PanelLeft,
+  Focus,
 } from 'lucide-react';
 import { registerCommands } from './registry';
-import { findPane } from './layoutUtils';
+import { findPane, collectPaneIds } from './layoutUtils';
 import { useAppStore } from '@/state/store';
 import { themes, getThemeById } from '@/styles/themes';
 
 const store = () => useAppStore.getState();
+
+function focusPaneTerminal(paneId: string) {
+  requestAnimationFrame(() => {
+    const el = document.querySelector(`[data-pane-id="${paneId}"]`);
+    const textarea = el?.querySelector('.xterm-helper-textarea') as HTMLElement | null;
+    textarea?.focus();
+  });
+}
 
 registerCommands([
   // ── Navigation ──────────────────────────────────────────────
@@ -125,11 +137,11 @@ registerCommands([
     shortcut: { modifiers: ['meta'], key: 't' },
     when: () =>
       store().activePage === 'spaces' && store().activeWorkspaceName !== null,
-    execute: async () => {
+    execute: () => {
       const s = store();
       if (!s.activeWorkspaceName) return;
       const paneId = s.focusedPaneId ?? 'main';
-      const terminalId = await s.allocatePtySession(s.activeWorkspaceName, 'terminal');
+      const terminalId = s.allocatePtySession(s.activeWorkspaceName, 'terminal');
       s.addTab(paneId, {
         id: `tab-${Date.now()}`,
         terminal_id: terminalId,
@@ -158,7 +170,7 @@ registerCommands([
       if (!tab) return;
       s.removeTab(paneId, tab.id);
       if (tab.kind !== 'diff') {
-        s.closePtySession(s.activeWorkspaceName, tab.terminal_id);
+        s.closePtySession(tab.terminal_id);
       }
     },
   },
@@ -208,6 +220,115 @@ registerCommands([
       const idx = pane.tabs.findIndex((t) => t.id === pane.active_tab_id);
       const next = (idx + 1) % pane.tabs.length;
       s.setActiveTab(paneId, pane.tabs[next].id);
+    },
+  },
+
+  // ── Panes ─────────────────────────────────────────────────────
+  {
+    id: 'pane.split-right',
+    label: 'Split Pane Right',
+    category: 'terminal',
+    icon: Columns2,
+    shortcut: { modifiers: ['meta'], key: 'd' },
+    when: () =>
+      store().activePage === 'spaces' && store().activeWorkspaceName !== null,
+    execute: () => {
+      const s = store();
+      if (!s.activeWorkspaceName) return;
+      const paneId = s.focusedPaneId ?? 'main';
+      const newPaneId = s.splitPane(paneId, 'row');
+      const terminalId = s.allocatePtySession(s.activeWorkspaceName, 'terminal');
+      s.addTab(newPaneId, {
+        id: `tab-${Date.now()}`,
+        terminal_id: terminalId,
+        title: 'Terminal',
+        kind: 'terminal',
+      });
+    },
+  },
+  {
+    id: 'pane.split-down',
+    label: 'Split Pane Down',
+    category: 'terminal',
+    icon: Rows2,
+    shortcut: { modifiers: ['meta', 'shift'], key: 'd' },
+    when: () =>
+      store().activePage === 'spaces' && store().activeWorkspaceName !== null,
+    execute: () => {
+      const s = store();
+      if (!s.activeWorkspaceName) return;
+      const paneId = s.focusedPaneId ?? 'main';
+      const newPaneId = s.splitPane(paneId, 'column');
+      const terminalId = s.allocatePtySession(s.activeWorkspaceName, 'terminal');
+      s.addTab(newPaneId, {
+        id: `tab-${Date.now()}`,
+        terminal_id: terminalId,
+        title: 'Terminal',
+        kind: 'terminal',
+      });
+    },
+  },
+  {
+    id: 'pane.close',
+    label: 'Close Pane',
+    category: 'terminal',
+    icon: PanelLeft,
+    when: () => {
+      const s = store();
+      if (s.activePage !== 'spaces' || !s.layout) return false;
+      // Can only close if there are splits (not a single root pane)
+      return s.layout.root.kind === 'split';
+    },
+    execute: () => {
+      const s = store();
+      if (!s.layout) return;
+      const paneId = s.focusedPaneId ?? 'main';
+      // Close all PTYs in this pane first
+      const pane = findPane(s.layout.root, paneId);
+      if (pane) {
+        for (const tab of pane.tabs) {
+          if (tab.kind !== 'diff') {
+            s.closePtySession(tab.terminal_id);
+          }
+        }
+      }
+      s.closePane(paneId);
+    },
+  },
+
+  // ── Pane focus navigation ────────────────────────────────────
+  {
+    id: 'pane.focus-next',
+    label: 'Focus Next Pane',
+    category: 'terminal',
+    icon: Focus,
+    shortcut: { modifiers: ['meta', 'alt'], key: 'arrowright' },
+    when: () => store().activePage === 'spaces' && store().layout?.root.kind === 'split',
+    execute: () => {
+      const s = store();
+      if (!s.layout) return;
+      const panes = collectPaneIds(s.layout.root);
+      const idx = panes.indexOf(s.focusedPaneId ?? 'main');
+      const next = panes[(idx + 1) % panes.length];
+      s.setFocusedPane(next);
+      focusPaneTerminal(next);
+    },
+  },
+  {
+    id: 'pane.focus-prev',
+    label: 'Focus Previous Pane',
+    category: 'terminal',
+    icon: Focus,
+    shortcut: { modifiers: ['meta', 'alt'], key: 'arrowleft' },
+    when: () => store().activePage === 'spaces' && store().layout?.root.kind === 'split',
+    execute: () => {
+      const s = store();
+      if (!s.layout) return;
+      const panes = collectPaneIds(s.layout.root);
+      const idx = panes.indexOf(s.focusedPaneId ?? 'main');
+      const next = panes[(idx - 1 + panes.length) % panes.length];
+      s.setFocusedPane(next);
+      focusPaneTerminal(next);
     },
   },
 

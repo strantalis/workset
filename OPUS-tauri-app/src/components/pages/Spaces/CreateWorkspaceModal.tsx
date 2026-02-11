@@ -31,7 +31,7 @@ export function CreateWorkspaceModal() {
 
       // Open an initial terminal tab
       try {
-        const terminalId = await allocatePtySession(wsName, 'terminal');
+        const terminalId = allocatePtySession(wsName, 'terminal');
         addTab('main', {
           id: `tab-${Date.now()}`,
           terminal_id: terminalId,

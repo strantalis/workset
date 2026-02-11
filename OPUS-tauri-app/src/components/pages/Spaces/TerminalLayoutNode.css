@@ -18,9 +18,32 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  position: relative;
 }
 
 .layout-split__divider {
-  background: var(--border);
   flex-shrink: 0;
+  background: var(--border);
+  position: relative;
+  z-index: 1;
+}
+
+.layout-split__divider--row {
+  width: 5px;
+  cursor: col-resize;
+}
+
+.layout-split__divider--col {
+  height: 5px;
+  cursor: row-resize;
+}
+
+.layout-split__divider:hover {
+  background: var(--accent-soft);
+}
+
+.layout-split__drag-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
 }

@@ -1,47 +1,50 @@
 import { invoke } from './invoke';
-import type { PtyCreateResult, BootstrapPayload } from '@/types/pty';
+import { Channel } from '@tauri-apps/api/core';
 import type { TerminalLayout } from '@/types/layout';
 
-export function ptyCreate(): Promise<PtyCreateResult> {
-  return invoke<PtyCreateResult>('pty_create', {});
-}
+// --- New terminal API (portable-pty based) ---
 
-export function ptyStart(
-  workspaceName: string,
+export type PtyEvent =
+  | { type: 'Data'; data: string }
+  | { type: 'Closed'; exit_code: number | null }
+  | { type: 'Error'; message: string };
+
+export function terminalSpawn(
   terminalId: string,
-  kind: 'terminal' | 'agent',
   cwd: string,
+  onEvent: (e: PtyEvent) => void,
 ): Promise<void> {
-  return invoke<void>('pty_start', { workspaceName, terminalId, kind, cwd });
+  const channel = new Channel<PtyEvent>();
+  channel.onmessage = onEvent;
+  return invoke<void>('terminal_spawn', { terminalId, cwd, channel });
 }
 
-export function ptyWrite(workspaceName: string, terminalId: string, data: string): Promise<void> {
-  return invoke<void>('pty_write', { workspaceName, terminalId, data });
-}
-
-export function ptyResize(
-  workspaceName: string,
+export function terminalAttach(
   terminalId: string,
-  cols: number,
-  rows: number,
+  onEvent: (e: PtyEvent) => void,
 ): Promise<void> {
-  return invoke<void>('pty_resize', { workspaceName, terminalId, cols, rows });
+  const channel = new Channel<PtyEvent>();
+  channel.onmessage = onEvent;
+  return invoke<void>('terminal_attach', { terminalId, channel });
 }
 
-export function ptyAck(workspaceName: string, terminalId: string, bytes: number): Promise<void> {
-  return invoke<void>('pty_ack', { workspaceName, terminalId, bytes });
+export function terminalDetach(terminalId: string): Promise<void> {
+  return invoke<void>('terminal_detach', { terminalId });
 }
 
-export function ptyBootstrap(
-  workspaceName: string,
-  terminalId: string,
-): Promise<BootstrapPayload> {
-  return invoke<BootstrapPayload>('pty_bootstrap', { workspaceName, terminalId });
+export function terminalWrite(terminalId: string, data: string): Promise<void> {
+  return invoke<void>('terminal_write', { terminalId, data });
 }
 
-export function ptyStop(workspaceName: string, terminalId: string): Promise<void> {
-  return invoke<void>('pty_stop', { workspaceName, terminalId });
+export function terminalResize(terminalId: string, cols: number, rows: number): Promise<void> {
+  return invoke<void>('terminal_resize', { terminalId, cols, rows });
 }
+
+export function terminalKill(terminalId: string): Promise<void> {
+  return invoke<void>('terminal_kill', { terminalId });
+}
+
+// --- Layout persistence (unchanged) ---
 
 export function layoutGet(workspaceName: string): Promise<TerminalLayout | null> {
   return invoke<TerminalLayout | null>('layout_get', { workspaceName });

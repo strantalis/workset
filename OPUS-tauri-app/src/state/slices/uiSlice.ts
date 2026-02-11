@@ -9,6 +9,13 @@ export type ModalState = {
   props?: Record<string, unknown>;
 } | null;
 
+export type TerminalStyle = {
+  fontFamily: string;
+  fontSize: number;
+  lineHeight: number;
+  cursorBlink: boolean;
+};
+
 export type UiSlice = {
   activePage: NavPage;
   commandCenterSection: CommandCenterSection;
@@ -16,6 +23,7 @@ export type UiSlice = {
   rightPanelCollapsed: boolean;
   activeModal: ModalState;
   activeThemeId: string;
+  terminalStyle: TerminalStyle;
   setActivePage: (page: NavPage) => void;
   setCommandCenterSection: (section: CommandCenterSection) => void;
   setSettingsSection: (section: SettingsSection) => void;
@@ -23,6 +31,7 @@ export type UiSlice = {
   openModal: (type: string, props?: Record<string, unknown>) => void;
   closeModal: () => void;
   setTheme: (id: string) => void;
+  setTerminalStyle: (style: Partial<TerminalStyle>) => void;
 };
 
 export const createUiSlice: StateCreator<UiSlice> = (set) => ({
@@ -32,6 +41,12 @@ export const createUiSlice: StateCreator<UiSlice> = (set) => ({
   rightPanelCollapsed: false,
   activeModal: null,
   activeThemeId: 'dark',
+  terminalStyle: {
+    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: 13,
+    lineHeight: 1.2,
+    cursorBlink: true,
+  },
 
   setActivePage: (page) => set({ activePage: page }),
   setCommandCenterSection: (section) => set({ commandCenterSection: section }),
@@ -40,4 +55,7 @@ export const createUiSlice: StateCreator<UiSlice> = (set) => ({
   openModal: (type, props) => set({ activeModal: { type, props } }),
   closeModal: () => set({ activeModal: null }),
   setTheme: (id) => set({ activeThemeId: id }),
+  setTerminalStyle: (patch) => set((s) => ({
+    terminalStyle: { ...s.terminalStyle, ...patch },
+  })),
 });

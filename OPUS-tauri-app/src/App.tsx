@@ -20,14 +20,19 @@ import '@/commands/appCommands';
 function MainContent() {
   const activePage = useAppStore((s) => s.activePage);
 
-  switch (activePage) {
-    case 'command-center':
-      return <CommandCenterPage />;
-    case 'spaces':
-      return <SpacesPage />;
-    case 'settings':
-      return <SettingsPage />;
-  }
+  return (
+    <>
+      <div style={{ display: activePage === 'command-center' ? 'contents' : 'none' }}>
+        <CommandCenterPage />
+      </div>
+      <div style={{ display: activePage === 'spaces' ? 'contents' : 'none' }}>
+        <SpacesPage />
+      </div>
+      <div style={{ display: activePage === 'settings' ? 'contents' : 'none' }}>
+        <SettingsPage />
+      </div>
+    </>
+  );
 }
 
 export default function App() {

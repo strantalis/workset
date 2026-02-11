@@ -5,6 +5,7 @@ mod jobs;
 mod sessiond;
 mod state;
 mod store;
+mod terminal_manager;
 mod types;
 
 pub fn run() {
@@ -41,6 +42,13 @@ pub fn run() {
             // Layout persistence
             commands::pty::layout_get,
             commands::pty::layout_save,
+            // Terminal (new portable-pty based)
+            commands::terminal::terminal_spawn,
+            commands::terminal::terminal_attach,
+            commands::terminal::terminal_detach,
+            commands::terminal::terminal_write,
+            commands::terminal::terminal_resize,
+            commands::terminal::terminal_kill,
             // Group 6-7: Diff
             commands::diff::diff_summary,
             commands::diff::diff_file_patch,

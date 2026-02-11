@@ -7,17 +7,15 @@ import './CreateTabModal.css';
 export function CreateTabModal() {
   const activeModal = useAppStore((s) => s.activeModal);
   const closeModal = useAppStore((s) => s.closeModal);
-  const createPtySession = useAppStore((s) => s.createPtySession);
+  const allocatePtySession = useAppStore((s) => s.allocatePtySession);
   const addTab = useAppStore((s) => s.addTab);
 
   const paneId = (activeModal?.props?.paneId as string) ?? 'main';
   const workspaceName = (activeModal?.props?.workspaceName as string) ?? '';
 
-  async function handleCreate(kind: 'terminal' | 'agent') {
+  function handleCreate(kind: 'terminal' | 'agent') {
     if (!workspaceName) return;
-    // TODO: resolve actual workspace cwd from repos
-    const cwd = '/';
-    const terminalId = await createPtySession(workspaceName, kind, cwd);
+    const terminalId = allocatePtySession(workspaceName, kind);
     const tabId = `tab-${Date.now()}`;
     addTab(paneId, {
       id: tabId,

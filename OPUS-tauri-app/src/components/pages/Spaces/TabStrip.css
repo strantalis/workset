@@ -32,9 +32,10 @@
   font-size: 12px;
   color: var(--muted);
   white-space: nowrap;
-  cursor: pointer;
+  cursor: grab;
   transition: background var(--transition-fast), color var(--transition-fast);
   flex-shrink: 0;
+  position: relative;
 }
 
 .tab-strip__tab:hover {
@@ -69,6 +70,7 @@
   line-height: 1;
   color: var(--muted);
   opacity: 0;
+  cursor: pointer;
   transition: opacity var(--transition-fast), background var(--transition-fast);
 }
 
@@ -97,4 +99,106 @@
 .tab-strip__add:hover {
   background: var(--surface);
   color: var(--text);
+}
+
+/* Drop indicator line shown during tab drag */
+.tab-strip__drop-line {
+  position: absolute;
+  left: -1px;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.tab-strip__drop-line--end {
+  position: relative;
+  left: auto;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+/* Floating ghost that follows the cursor during tab drag */
+.tab-strip__ghost {
+  position: fixed;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 3px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-active);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10000;
+  opacity: 0.9;
+}
+
+.tab-strip__ghost .tab-strip__icon {
+  opacity: 0.8;
+}
+
+/* Inline rename input */
+.tab-strip__rename-input {
+  width: 90px;
+  height: 20px;
+  padding: 0 4px;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+}
+
+/* Context menu */
+.tab-context-menu {
+  position: fixed;
+  z-index: 10000;
+  min-width: 160px;
+  padding: 4px 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.tab-context-menu button {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  text-align: left;
+  font-size: 12px;
+  color: var(--text);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.tab-context-menu button:hover {
+  background: var(--surface);
+}
+
+.tab-context-menu__separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
+
+/* Body state during tab drag */
+body.tab-dragging {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
+body.tab-dragging * {
+  cursor: grabbing !important;
 }
