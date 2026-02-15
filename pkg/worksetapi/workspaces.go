@@ -50,6 +50,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 	if name == "" {
 		return WorkspaceCreateResult{}, ValidationError{Message: "workspace name required"}
 	}
+	template := strings.TrimSpace(input.Template)
 
 	cfg, info, err := s.loadGlobal(ctx)
 	if err != nil {
@@ -86,7 +87,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 		if err := workspaceCreateConflict(*cfg, name, ""); err != nil {
 			return err
 		}
-		registerWorkspace(cfg, name, root, s.clock())
+		registerWorkspace(cfg, name, root, s.clock(), template)
 		return nil
 	}); err != nil {
 		return WorkspaceCreateResult{}, err
@@ -185,7 +186,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 			}
 			cfg.Repos[aliasName] = alias
 		}
-		registerWorkspace(cfg, name, root, s.clock())
+		registerWorkspace(cfg, name, root, s.clock(), template)
 		return nil
 	}); err != nil {
 		return WorkspaceCreateResult{}, err
@@ -400,7 +401,7 @@ func (s *Service) StatusWorkspace(ctx context.Context, selector WorkspaceSelecto
 
 	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
 		info = loadInfo
-		registerWorkspace(cfg, wsConfig.Name, wsRoot, s.clock())
+		registerWorkspace(cfg, wsConfig.Name, wsRoot, s.clock(), "")
 		return nil
 	}); err != nil {
 		return WorkspaceStatusResult{}, err
@@ -464,7 +465,7 @@ func (s *Service) resolveWorkspace(ctx context.Context, cfg *config.GlobalConfig
 			if existing, ok := cfg.Workspaces[wsConfig.Name]; ok && existing.Path != "" && existing.Path != root {
 				return ConflictError{Message: "workspace name already registered to a different path"}
 			}
-			registerWorkspace(cfg, wsConfig.Name, root, s.clock())
+			registerWorkspace(cfg, wsConfig.Name, root, s.clock(), "")
 			return nil
 		}); err != nil {
 			return "", config.WorkspaceConfig{}, err

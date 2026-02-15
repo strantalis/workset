@@ -25,7 +25,7 @@
 	import { clickOutside } from '../../actions/clickOutside';
 	import type { WorksetSummary } from '../../view-models/worksetViewModel';
 
-	type GroupMode = 'all' | 'template' | 'repo' | 'active';
+	export type WorksetGroupMode = 'all' | 'template' | 'repo' | 'active';
 	type LayoutMode = 'grid' | 'list';
 	type WorksetGroup = {
 		label: string;
@@ -36,6 +36,7 @@
 		worksets: WorksetSummary[];
 		shortcutMap?: Map<string, number>;
 		activeWorkspaceId: string | null;
+		groupMode?: WorksetGroupMode;
 		onSelectWorkspace: (workspaceId: string) => void;
 		onCreateWorkspace: () => void;
 		onAddRepo: (workspaceId: string) => void;
@@ -44,8 +45,10 @@
 		onOpenPopout: (workspaceId: string) => void;
 		onClosePopout: (workspaceId: string) => void;
 		isWorkspacePoppedOut: (workspaceId: string) => boolean;
+		onGroupModeChange?: (groupMode: WorksetGroupMode) => void;
 	}
 
+	const props: Props = $props();
 	const {
 		worksets,
 		shortcutMap,
@@ -58,9 +61,11 @@
 		onOpenPopout,
 		onClosePopout,
 		isWorkspacePoppedOut,
-	}: Props = $props();
+	} = props;
+	const onGroupModeChange = props.onGroupModeChange ?? (() => {});
+	const initialGroupMode = props.groupMode ?? 'active';
 
-	const GROUP_MODES: Array<{ id: GroupMode; label: string; icon: typeof LayoutGrid }> = [
+	const GROUP_MODES: Array<{ id: WorksetGroupMode; label: string; icon: typeof LayoutGrid }> = [
 		{ id: 'all', label: 'All', icon: LayoutGrid },
 		{ id: 'template', label: 'Template', icon: Layers },
 		{ id: 'repo', label: 'Repo', icon: FolderGit2 },
@@ -68,12 +73,15 @@
 	];
 
 	let searchQuery = $state('');
-	let groupMode = $state<GroupMode>('all');
+	let groupMode = $state<WorksetGroupMode>(initialGroupMode);
 	let layoutMode = $state<LayoutMode>('grid');
 	let showArchived = $state(false);
 	let actionMenuFor = $state<string | null>(null);
 
-	const sortWorksets = (items: WorksetSummary[]): WorksetSummary[] =>
+	const sortWorksetsByName = (items: WorksetSummary[]): WorksetSummary[] =>
+		[...items].sort((left, right) => left.label.localeCompare(right.label));
+
+	const sortWorksetsByActivity = (items: WorksetSummary[]): WorksetSummary[] =>
 		[...items].sort((left, right) => {
 			if (left.pinned !== right.pinned) return left.pinned ? -1 : 1;
 			return right.lastActiveTs - left.lastActiveTs;
@@ -100,9 +108,9 @@
 		}
 
 		return [
-			{ label: 'Today', items: sortWorksets(today) },
-			{ label: 'This Week', items: sortWorksets(thisWeek) },
-			{ label: 'Older', items: sortWorksets(older) },
+			{ label: 'Today', items: sortWorksetsByActivity(today) },
+			{ label: 'This Week', items: sortWorksetsByActivity(thisWeek) },
+			{ label: 'Older', items: sortWorksetsByActivity(older) },
 		].filter((group) => group.items.length > 0);
 	};
 
@@ -126,7 +134,15 @@
 
 	const groups = $derived.by<WorksetGroup[]>(() => {
 		if (groupMode === 'all') {
-			return [{ label: '', items: sortWorksets(visible) }];
+			const pinnedItems = visible.filter((item) => item.pinned);
+			if (pinnedItems.length === 0) {
+				return [{ label: '', items: sortWorksetsByName(visible) }];
+			}
+			const unpinnedItems = visible.filter((item) => !item.pinned);
+			return [
+				{ label: 'Pinned', items: sortWorksetsByName(pinnedItems) },
+				{ label: 'Unpinned', items: sortWorksetsByName(unpinnedItems) },
+			];
 		}
 
 		if (groupMode === 'template') {
@@ -138,12 +154,19 @@
 			}
 			return [...templateMap.entries()]
 				.sort(([left], [right]) => left.localeCompare(right))
-				.map(([label, items]) => ({ label, items: sortWorksets(items) }));
+				.map(([label, items]) => ({ label, items: sortWorksetsByName(items) }));
 		}
 
 		if (groupMode === 'repo') {
 			const repoMap = new Map<string, WorksetSummary[]>();
+			const noReposLabel = 'No Repos';
 			for (const item of visible) {
+				if (item.repos.length === 0) {
+					const bucket = repoMap.get(noReposLabel) ?? [];
+					bucket.push(item);
+					repoMap.set(noReposLabel, bucket);
+					continue;
+				}
 				for (const repoName of item.repos) {
 					const bucket = repoMap.get(repoName) ?? [];
 					if (!bucket.some((entry) => entry.id === item.id)) {
@@ -154,11 +177,13 @@
 			}
 			return [...repoMap.entries()]
 				.sort((left, right) => {
+					if (left[0] === noReposLabel && right[0] !== noReposLabel) return 1;
+					if (right[0] === noReposLabel && left[0] !== noReposLabel) return -1;
 					const byCount = right[1].length - left[1].length;
 					if (byCount !== 0) return byCount;
 					return left[0].localeCompare(right[0]);
 				})
-				.map(([label, items]) => ({ label, items: sortWorksets(items) }));
+				.map(([label, items]) => ({ label, items: sortWorksetsByName(items) }));
 		}
 
 		return groupByActivity(visible);
@@ -185,6 +210,11 @@
 	const closeActionMenu = (): void => {
 		actionMenuFor = null;
 		menuClosedAt = Date.now();
+	};
+
+	const updateGroupMode = (next: WorksetGroupMode): void => {
+		groupMode = next;
+		onGroupModeChange(next);
 	};
 
 	const toggleActionMenu = (workspaceId: string, event: MouseEvent): void => {
@@ -292,7 +322,7 @@
 						type="button"
 						class="segment"
 						class:active={groupMode === mode.id}
-						onclick={() => (groupMode = mode.id)}
+						onclick={() => updateGroupMode(mode.id)}
 					>
 						<mode.icon size={13} />
 						{mode.label}

@@ -29,6 +29,7 @@ export type Workspace = {
 	id: string;
 	name: string;
 	path: string;
+	template?: string;
 	archived: boolean;
 	archivedAt?: string;
 	archivedReason?: string;

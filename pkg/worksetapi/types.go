@@ -20,6 +20,7 @@ type WorkspaceSelector struct {
 type WorkspaceRefJSON struct {
 	Name           string `json:"name"`
 	Path           string `json:"path"`
+	Template       string `json:"template,omitempty"`
 	CreatedAt      string `json:"created_at,omitempty"`
 	LastUsed       string `json:"last_used,omitempty"`
 	ArchivedAt     string `json:"archived_at,omitempty"`
@@ -59,6 +60,7 @@ type WorkspaceSnapshotResult struct {
 type WorkspaceSnapshotJSON struct {
 	Name           string             `json:"name"`
 	Path           string             `json:"path"`
+	Template       string             `json:"template,omitempty"`
 	CreatedAt      string             `json:"created_at,omitempty"`
 	LastUsed       string             `json:"last_used,omitempty"`
 	ArchivedAt     string             `json:"archived_at,omitempty"`

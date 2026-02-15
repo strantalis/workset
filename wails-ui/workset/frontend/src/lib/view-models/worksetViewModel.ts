@@ -45,26 +45,9 @@ const getWorkspaceDescription = (workspace: Workspace): string => {
 	return '';
 };
 
-const inferWorkspaceTemplate = (workspace: Workspace): string => {
-	const haystack = `${workspace.name} ${workspace.path} ${workspace.repos
-		.map((repo) => repo.name)
-		.join(' ')}`
-		.toLowerCase()
-		.trim();
-
-	if (/(data|analytics|etl|pipeline|warehouse|lake)/.test(haystack)) {
-		return 'Data Pipeline';
-	}
-
-	if (/(infra|terraform|helm|k8s|kubernetes|platform|service|api|auth|billing)/.test(haystack)) {
-		return 'Platform Service';
-	}
-
-	if (/(design|ui|frontend|component|storybook|token|mobile|ios|android)/.test(haystack)) {
-		return 'Library';
-	}
-
-	return workspace.repos.length >= 4 ? 'Platform Service' : 'Library';
+const normalizeTemplate = (workspace: Workspace): string => {
+	const template = workspace.template?.trim();
+	return template && template.length > 0 ? template : 'Unassigned';
 };
 
 export const mapWorkspaceToSummary = (workspace: Workspace): WorksetSummary => {
@@ -80,7 +63,7 @@ export const mapWorkspaceToSummary = (workspace: Workspace): WorksetSummary => {
 		id: workspace.id,
 		label: workspace.name,
 		description: getWorkspaceDescription(workspace),
-		template: inferWorkspaceTemplate(workspace),
+		template: normalizeTemplate(workspace),
 		repos: workspace.repos.map((repo) => repo.name),
 		branch: getWorkspaceBranch(workspace),
 		repoCount: workspace.repos.length,

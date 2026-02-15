@@ -49,6 +49,7 @@ type GroupMember struct {
 
 type WorkspaceRef struct {
 	Path           string `yaml:"path" json:"path" mapstructure:"path"`
+	Template       string `yaml:"template,omitempty" json:"template,omitempty" mapstructure:"template"`
 	CreatedAt      string `yaml:"created_at,omitempty" json:"created_at,omitempty" mapstructure:"created_at"`
 	LastUsed       string `yaml:"last_used,omitempty" json:"last_used,omitempty" mapstructure:"last_used"`
 	ArchivedAt     string `yaml:"archived_at,omitempty" json:"archived_at,omitempty" mapstructure:"archived_at"`

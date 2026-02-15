@@ -44,6 +44,7 @@ type CreateWorkspaceMutationDeps = {
 	createWorkspace: (
 		name: string,
 		path: string,
+		template?: string,
 		repos?: string[],
 		groups?: string[],
 	) => Promise<WorkspaceCreateResponse>;
@@ -269,9 +270,11 @@ export const runCreateWorkspaceMutation = async (
 	}
 
 	const groups = Array.from(input.selectedGroups);
+	const template = groups.length === 1 ? groups[0] : undefined;
 	const result = await deps.createWorkspace(
 		input.finalName,
 		'',
+		template,
 		repos.length > 0 ? repos : undefined,
 		groups.length > 0 ? groups : undefined,
 	);

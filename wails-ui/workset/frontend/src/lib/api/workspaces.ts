@@ -38,6 +38,7 @@ export async function fetchWorkspaces(
 		id: workspace.id,
 		name: workspace.name,
 		path: workspace.path,
+		template: workspace.template,
 		archived: workspace.archived,
 		archivedAt: workspace.archivedAt,
 		archivedReason: workspace.archivedReason,
@@ -97,12 +98,15 @@ export async function fetchWorkspaces(
 export async function createWorkspace(
 	name: string,
 	path: string,
+	template?: string,
 	aliases?: string[],
 	groups?: string[],
 ): Promise<WorkspaceCreateResponse> {
+	const normalizedTemplate = template?.trim() || undefined;
 	return CreateWorkspace({
 		name,
 		path,
+		template: normalizedTemplate,
 		repos: aliases,
 		groups,
 	});
@@ -247,6 +251,7 @@ function mapWorkspaceRefToWorkspace(ref: WorkspaceRefJSON): Workspace {
 		id: ref.name,
 		name: ref.name,
 		path: ref.path,
+		template: ref.template,
 		archived: ref.archived,
 		archivedAt: ref.archived_at,
 		archivedReason: ref.archived_reason,

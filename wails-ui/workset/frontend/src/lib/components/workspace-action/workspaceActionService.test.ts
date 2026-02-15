@@ -68,6 +68,7 @@ describe('runCreateWorkspaceMutation', () => {
 		expect(createWorkspace).toHaveBeenCalledWith(
 			'alpha',
 			'',
+			'group-one',
 			['first', 'git@github.com:acme/second.git', 'pending', 'alias-one'],
 			['group-one'],
 		);

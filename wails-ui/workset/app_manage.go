@@ -8,10 +8,11 @@ import (
 )
 
 type WorkspaceCreateRequest struct {
-	Name   string   `json:"name"`
-	Path   string   `json:"path"`
-	Repos  []string `json:"repos,omitempty"`
-	Groups []string `json:"groups,omitempty"`
+	Name     string   `json:"name"`
+	Path     string   `json:"path"`
+	Template string   `json:"template,omitempty"`
+	Repos    []string `json:"repos,omitempty"`
+	Groups   []string `json:"groups,omitempty"`
 }
 
 type WorkspaceCreateResponse struct {
@@ -92,10 +93,11 @@ func (a *App) CreateWorkspace(input WorkspaceCreateRequest) (WorkspaceCreateResp
 	a.ensureService()
 
 	result, err := a.service.CreateWorkspace(ctx, worksetapi.WorkspaceCreateInput{
-		Name:   input.Name,
-		Path:   input.Path,
-		Repos:  input.Repos,
-		Groups: input.Groups,
+		Name:     input.Name,
+		Path:     input.Path,
+		Template: input.Template,
+		Repos:    input.Repos,
+		Groups:   input.Groups,
 	})
 	if err != nil {
 		return WorkspaceCreateResponse{}, err

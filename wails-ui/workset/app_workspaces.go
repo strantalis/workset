@@ -10,6 +10,7 @@ type WorkspaceSnapshot struct {
 	ID             string         `json:"id"`
 	Name           string         `json:"name"`
 	Path           string         `json:"path"`
+	Template       string         `json:"template,omitempty"`
 	CreatedAt      string         `json:"createdAt,omitempty"`
 	LastUsed       string         `json:"lastUsed,omitempty"`
 	ArchivedAt     string         `json:"archivedAt,omitempty"`
@@ -163,6 +164,7 @@ func (a *App) ListWorkspaceSnapshots(input WorkspaceSnapshotRequest) ([]Workspac
 			ID:             workspace.Name,
 			Name:           workspace.Name,
 			Path:           workspace.Path,
+			Template:       workspace.Template,
 			CreatedAt:      workspace.CreatedAt,
 			LastUsed:       workspace.LastUsed,
 			ArchivedAt:     workspace.ArchivedAt,

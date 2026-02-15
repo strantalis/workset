@@ -226,7 +226,7 @@ func (s *Service) ApplyGroup(ctx context.Context, input GroupApplyInput) (GroupA
 			}
 			cfg.Repos[name] = alias
 		}
-		registerWorkspace(cfg, wsConfig.Name, wsRoot, s.clock())
+		registerWorkspace(cfg, wsConfig.Name, wsRoot, s.clock(), "")
 		return nil
 	}); err != nil {
 		return GroupApplyResultJSON{}, info, err

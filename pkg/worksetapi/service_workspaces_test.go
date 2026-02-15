@@ -227,7 +227,7 @@ func TestCreateWorkspaceDuplicateNameBlockedDuringAtomicUpdate(t *testing.T) {
 	}
 }
 
-func TestCreateWorkspaceWithGroupRepos(t *testing.T) {
+func TestCreateWorkspaceWithSingleGroupDoesNotInferTemplate(t *testing.T) {
 	env := newTestEnv(t)
 	local := env.createLocalRepo("repo-a")
 	cfg := env.loadConfig()
@@ -256,6 +256,42 @@ func TestCreateWorkspaceWithGroupRepos(t *testing.T) {
 	}
 	if len(wsCfg.Repos) != 1 || wsCfg.Repos[0].Name != "repo-a" {
 		t.Fatalf("expected repo from group")
+	}
+
+	cfg = env.loadConfig()
+	ref, ok := cfg.Workspaces["demo"]
+	if !ok {
+		t.Fatalf("workspace not registered")
+	}
+	if ref.Template != "" {
+		t.Fatalf("did not expect template to be auto-derived from group, got %q", ref.Template)
+	}
+}
+
+func TestCreateWorkspaceStoresTemplateFromInput(t *testing.T) {
+	env := newTestEnv(t)
+	cfg := env.loadConfig()
+	cfg.Repos = map[string]config.RegisteredRepo{
+		"repo-a": {Path: env.createLocalRepo("repo-a")},
+	}
+	env.saveConfig(cfg)
+
+	_, err := env.svc.CreateWorkspace(context.Background(), WorkspaceCreateInput{
+		Name:     "demo",
+		Repos:    []string{"repo-a"},
+		Template: "Manual Template",
+	})
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+
+	cfg = env.loadConfig()
+	ref, ok := cfg.Workspaces["demo"]
+	if !ok {
+		t.Fatalf("workspace not registered")
+	}
+	if ref.Template != "Manual Template" {
+		t.Fatalf("expected template from input, got %q", ref.Template)
 	}
 }
 

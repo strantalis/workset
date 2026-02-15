@@ -60,7 +60,7 @@
 	import PROrchestrationView from './lib/components/views/PROrchestrationView.svelte';
 	import SkillRegistryView from './lib/components/views/SkillRegistryView.svelte';
 	import TerminalCockpitView from './lib/components/views/TerminalCockpitView.svelte';
-	import WorksetHubView from './lib/components/views/WorksetHubView.svelte';
+	import WorksetHubView, { type WorksetGroupMode } from './lib/components/views/WorksetHubView.svelte';
 	import { workspaceActionMutations } from './lib/services/workspaceActionService';
 	import {
 		loadOnboardingCatalog,
@@ -148,6 +148,7 @@
 	let prFocusWorkspaceId = $state<string | null>(null);
 	let prFocusRepoId = $state<string | null>(null);
 	let prFocusToken = $state(0);
+	let worksetHubGroupMode = $state<WorksetGroupMode>('active');
 	let workspaceActionMode = $state<WorkspaceActionMode>(null);
 	let workspaceActionWorkspaceId = $state<string | null>(null);
 	let workspaceActionRepoName = $state<string | null>(null);
@@ -699,9 +700,11 @@
 						<WorksetHubView
 							worksets={worksetSummaries}
 							{shortcutMap}
+							groupMode={worksetHubGroupMode}
 							activeWorkspaceId={$activeWorkspaceId}
 							onSelectWorkspace={handleSelectWorkspace}
 							onCreateWorkspace={handleCreateWorkspace}
+							onGroupModeChange={(value) => (worksetHubGroupMode = value)}
 							onAddRepo={handleAddRepo}
 							onTogglePin={(workspaceId, nextPinned) =>
 								void toggleWorkspacePin(workspaceId, nextPinned)}
