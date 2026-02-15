@@ -364,11 +364,11 @@ func (s *Server) handleAttach(conn net.Conn, line []byte) {
 	if streamID == "" {
 		streamID = newStreamID()
 	}
+	sub := session.subscribe(streamID)
+	defer session.unsubscribe(sub)
 	if err := enc.Encode(StreamMessage{Type: "ready", SessionID: req.SessionID, StreamID: streamID}); err != nil {
 		return
 	}
-	sub := session.subscribe(streamID)
-	defer session.unsubscribe(sub)
 	for event := range sub.ch {
 		if err := enc.Encode(StreamMessage{
 			Type:      "data",
