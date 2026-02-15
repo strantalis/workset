@@ -5,6 +5,10 @@ type TerminalSyncInput = {
 	active: boolean;
 };
 
+type TerminalDetachOptions = {
+	force?: boolean;
+};
+
 type TerminalSyncContext = {
 	terminalKey: string;
 	workspaceId: string;
@@ -277,11 +281,16 @@ export const createTerminalSyncController = (deps: TerminalSyncControllerDepende
 		deps.trace?.(terminalKey, 'sync_terminal_stream_requested', {});
 	};
 
-	const detachTerminal = (workspaceId: string, terminalId: string): void => {
+	const detachTerminal = (
+		workspaceId: string,
+		terminalId: string,
+		options?: TerminalDetachOptions,
+	): void => {
 		const terminalKey = deps.buildTerminalKey(workspaceId, terminalId);
 		if (!terminalKey) return;
+		const force = options?.force === true;
 		const latest = lastSyncState.get(terminalKey);
-		if (latest?.container?.isConnected) {
+		if (!force && latest?.container?.isConnected) {
 			deps.trace?.(terminalKey, 'detach_terminal_skip_stale', {
 				workspaceId,
 				terminalId,
@@ -291,6 +300,7 @@ export const createTerminalSyncController = (deps: TerminalSyncControllerDepende
 		deps.trace?.(terminalKey, 'detach_terminal', {
 			workspaceId,
 			terminalId,
+			force,
 		});
 		requestDetach(terminalKey);
 		// Keep key/workspace/terminal association stable across tab switches so

@@ -51,7 +51,7 @@
 	$effect(() => {
 		if (terminalId === currentTerminalId && workspaceId === currentWorkspaceId) return;
 		if (currentTerminalId && currentWorkspaceId) {
-			detachTerminal(currentWorkspaceId, currentTerminalId);
+			detachTerminal(currentWorkspaceId, currentTerminalId, { force: true });
 		}
 		currentWorkspaceId = workspaceId;
 		currentTerminalId = terminalId;

@@ -374,6 +374,96 @@ describe('terminalSyncController', () => {
 		}
 	});
 
+	it('forces detach when requested even if container is still connected', async () => {
+		const markDetached = vi.fn();
+		const detachResizeObserver = vi.fn();
+		const controller = createTerminalSyncController({
+			ensureGlobals: vi.fn(),
+			buildTerminalKey: (workspaceId, terminalId) => `${workspaceId}::${terminalId}`,
+			ensureContext: (input) => input,
+			deleteContext: vi.fn(),
+			attachTerminal: vi.fn(),
+			attachResizeObserver: vi.fn(),
+			detachResizeObserver,
+			syncTerminalStream: vi.fn(),
+			markDetached,
+			stopTerminal: vi.fn(async () => undefined),
+			disposeTerminalResources: vi.fn(),
+			focusTerminal: vi.fn(),
+			scrollToBottom: vi.fn(),
+			isAtBottom: vi.fn(() => true),
+		});
+		const container = document.createElement('div') as HTMLDivElement;
+		document.body.appendChild(container);
+		try {
+			controller.syncTerminal({
+				workspaceId: 'ws',
+				terminalId: 'term',
+				container,
+				active: true,
+			});
+			await flushMicrotasks();
+			controller.detachTerminal('ws', 'term', { force: true });
+			await flushMicrotasks();
+			expect(markDetached).toHaveBeenCalledWith('ws::term');
+			expect(detachResizeObserver).toHaveBeenCalledWith('ws::term');
+		} finally {
+			container.remove();
+		}
+	});
+
+	it('reattaches terminal after a forced detach on the same connected container', async () => {
+		const attachTerminal = vi.fn();
+		const attachResizeObserver = vi.fn();
+		const syncTerminalStream = vi.fn();
+		const markDetached = vi.fn();
+		const controller = createTerminalSyncController({
+			ensureGlobals: vi.fn(),
+			buildTerminalKey: (workspaceId, terminalId) => `${workspaceId}::${terminalId}`,
+			ensureContext: (input) => input,
+			deleteContext: vi.fn(),
+			attachTerminal,
+			attachResizeObserver,
+			detachResizeObserver: vi.fn(),
+			syncTerminalStream,
+			markDetached,
+			stopTerminal: vi.fn(async () => undefined),
+			disposeTerminalResources: vi.fn(),
+			focusTerminal: vi.fn(),
+			scrollToBottom: vi.fn(),
+			isAtBottom: vi.fn(() => true),
+		});
+		const container = document.createElement('div') as HTMLDivElement;
+		document.body.appendChild(container);
+		try {
+			controller.syncTerminal({
+				workspaceId: 'ws',
+				terminalId: 'term',
+				container,
+				active: true,
+			});
+			await flushMicrotasks();
+
+			controller.detachTerminal('ws', 'term', { force: true });
+			await flushMicrotasks();
+
+			controller.syncTerminal({
+				workspaceId: 'ws',
+				terminalId: 'term',
+				container,
+				active: true,
+			});
+			await flushMicrotasks();
+
+			expect(markDetached).toHaveBeenCalledTimes(1);
+			expect(attachTerminal).toHaveBeenCalledTimes(2);
+			expect(attachResizeObserver).toHaveBeenCalledTimes(2);
+			expect(syncTerminalStream).toHaveBeenCalledTimes(2);
+		} finally {
+			container.remove();
+		}
+	});
+
 	it('disposes and deletes context even if stop fails', async () => {
 		const controller = createTerminalSyncController({
 			ensureGlobals: vi.fn(),
