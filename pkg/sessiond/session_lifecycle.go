@@ -15,13 +15,7 @@ func (s *Session) start(ctx context.Context) error {
 	execName, execArgs := resolveShellCommand()
 	cmd := exec.CommandContext(ctx, execName, execArgs...)
 	cmd.Dir = s.cwd
-	cmd.Env = append(os.Environ(),
-		"TERM=xterm-256color",
-		"WORKSET_WORKSPACE="+s.id,
-		"WORKSET_ROOT="+s.cwd,
-	)
-	cmd.Env = setEnv(cmd.Env, "COLORTERM", "truecolor")
-	cmd.Env = setEnv(cmd.Env, "SHELL", execName)
+	cmd.Env = buildSessionEnv(execName, s.id, s.cwd)
 
 	ptmx, err := startPTY(cmd)
 	if err != nil {
@@ -32,7 +26,6 @@ func (s *Session) start(ctx context.Context) error {
 		return err
 	}
 	s.openRecord()
-	s.restoreSnapshot()
 
 	s.mu.Lock()
 	s.cmd = cmd
@@ -41,14 +34,6 @@ func (s *Session) start(ctx context.Context) error {
 	s.lastActivity = s.startedAt
 	s.mu.Unlock()
 	debugLogf("session_start id=%s cwd=%s", s.id, s.cwd)
-	if s.emu != nil {
-		s.emu.SetResponder(func(resp []byte) {
-			if s.hasSubscribers() {
-				return
-			}
-			_ = s.write(ctx, string(resp))
-		})
-	}
 
 	if s.opts.IdleTimeout > 0 {
 		s.idleTimer = time.AfterFunc(s.opts.IdleTimeout, func() {
@@ -93,7 +78,6 @@ func (s *Session) closeWithReason(reason string) {
 	if recordFile != nil {
 		_ = recordFile.Close()
 	}
-	s.persistSnapshot()
 	if cmd != nil && cmd.Process != nil {
 		_ = cmd.Process.Kill()
 		waitForCommandExit(cmd, 2*time.Second)
@@ -182,4 +166,48 @@ func setEnv(env []string, key, value string) []string {
 		}
 	}
 	return append(env, prefix+value)
+}
+
+func unsetEnv(env []string, key string) []string {
+	prefix := key + "="
+	filtered := env[:0]
+	for _, entry := range env {
+		if strings.HasPrefix(entry, prefix) {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return filtered
+}
+
+func unsetEnvPrefix(env []string, keyPrefix string) []string {
+	filtered := env[:0]
+	for _, entry := range env {
+		key, _, found := strings.Cut(entry, "=")
+		if found && strings.HasPrefix(key, keyPrefix) {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return filtered
+}
+
+func buildSessionEnv(shellPath, workspaceID, cwd string) []string {
+	env := append([]string(nil), os.Environ()...)
+	// Remove host-terminal hints that cause TUIs to emit unsupported graphics
+	// protocols (kitty/iTerm specific) inside xterm.js.
+	env = unsetEnvPrefix(env, "KITTY_")
+	env = unsetEnv(env, "TERM_PROGRAM")
+	env = unsetEnv(env, "TERM_PROGRAM_VERSION")
+	env = unsetEnv(env, "ITERM_SESSION_ID")
+	env = unsetEnv(env, "LC_TERMINAL")
+	env = unsetEnv(env, "LC_TERMINAL_VERSION")
+
+	env = setEnv(env, "TERM", "xterm-256color")
+	env = setEnv(env, "COLORTERM", "truecolor")
+	env = setEnv(env, "TERM_PROGRAM", "workset")
+	env = setEnv(env, "SHELL", shellPath)
+	env = setEnv(env, "WORKSET_WORKSPACE", workspaceID)
+	env = setEnv(env, "WORKSET_ROOT", cwd)
+	return env
 }

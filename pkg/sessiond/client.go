@@ -41,7 +41,11 @@ func (c *Client) Create(ctx context.Context, sessionID, cwd string) (CreateRespo
 }
 
 func (c *Client) Send(ctx context.Context, sessionID, data string) error {
-	return c.call(ctx, "send", SendRequest{SessionID: sessionID, Data: data}, nil)
+	return c.SendWithOwner(ctx, sessionID, data, "")
+}
+
+func (c *Client) SendWithOwner(ctx context.Context, sessionID, data, owner string) error {
+	return c.call(ctx, "send", SendRequest{SessionID: sessionID, Data: data, Owner: owner}, nil)
 }
 
 func (c *Client) Resize(ctx context.Context, sessionID string, cols, rows int) error {
@@ -52,27 +56,19 @@ func (c *Client) Stop(ctx context.Context, sessionID string) error {
 	return c.call(ctx, "stop", StopRequest{SessionID: sessionID}, nil)
 }
 
-func (c *Client) Backlog(ctx context.Context, sessionID string, since int64) (BacklogResponse, error) {
-	var resp BacklogResponse
-	err := c.call(ctx, "backlog", BacklogRequest{SessionID: sessionID, Since: since}, &resp)
-	return resp, err
-}
-
-func (c *Client) Snapshot(ctx context.Context, sessionID string) (SnapshotResponse, error) {
-	var resp SnapshotResponse
-	err := c.call(ctx, "snapshot", SnapshotRequest{SessionID: sessionID}, &resp)
-	return resp, err
-}
-
-func (c *Client) Bootstrap(ctx context.Context, sessionID string) (BootstrapResponse, error) {
-	var resp BootstrapResponse
-	err := c.call(ctx, "bootstrap", BootstrapRequest{SessionID: sessionID}, &resp)
-	return resp, err
-}
-
 func (c *Client) List(ctx context.Context) (ListResponse, error) {
 	var resp ListResponse
 	err := c.call(ctx, "list", struct{}{}, &resp)
+	return resp, err
+}
+
+func (c *Client) SetOwner(ctx context.Context, sessionID, owner string) error {
+	return c.call(ctx, "set_owner", OwnerRequest{SessionID: sessionID, Owner: owner}, nil)
+}
+
+func (c *Client) GetOwner(ctx context.Context, sessionID string) (OwnerResponse, error) {
+	var resp OwnerResponse
+	err := c.call(ctx, "get_owner", OwnerRequest{SessionID: sessionID}, &resp)
 	return resp, err
 }
 
@@ -99,8 +95,6 @@ func (c *Client) Attach(ctx context.Context, sessionID string, since int64, with
 		Type:            "attach",
 		SessionID:       sessionID,
 		StreamID:        streamID,
-		Since:           since,
-		WithBuffer:      withBuffer,
 	}); err != nil {
 		_ = conn.Close()
 		return nil, StreamMessage{}, err
@@ -133,13 +127,6 @@ func (s *Stream) Close() error {
 		return nil
 	}
 	return s.conn.Close()
-}
-
-func (c *Client) Ack(ctx context.Context, sessionID, streamID string, bytes int64) error {
-	if bytes <= 0 {
-		return nil
-	}
-	return c.call(ctx, "ack", AckRequest{SessionID: sessionID, StreamID: streamID, Bytes: bytes}, nil)
 }
 
 func (c *Client) call(ctx context.Context, method string, params any, out any) error {

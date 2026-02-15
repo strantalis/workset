@@ -14,12 +14,6 @@ type RuntimeDeps<THandle extends RuntimeHandle> = {
 			state: 'unknown' | 'checking' | 'ok' | 'stale',
 			message?: string,
 		) => void;
-		requestHealthCheck: (
-			id: string,
-			options: {
-				timeoutMs: number;
-			},
-		) => void;
 	};
 	terminalServiceState: {
 		updateStats: (id: string, update: (stats: TerminalDebugStats) => void) => void;
@@ -42,7 +36,6 @@ type RuntimeDeps<THandle extends RuntimeHandle> = {
 		) => Promise<void> | void;
 	};
 	terminalHandles: Map<string, THandle>;
-	healthTimeoutMs: number;
 };
 
 export const createTerminalServiceRuntime = <THandle extends RuntimeHandle>(
@@ -79,10 +72,11 @@ export const createTerminalServiceRuntime = <THandle extends RuntimeHandle>(
 
 	const logDebug = (id: string, event: string, details: Record<string, unknown>): void => {
 		deps.terminalDebugState.syncDebugEnabled();
-		if (!deps.terminalDebugState.isDebugEnabled()) return;
-		const workspaceId = deps.getWorkspaceId(id);
-		const terminalId = deps.getTerminalId(id);
-		if (!workspaceId || !terminalId) return;
+		const debugEnabled = deps.terminalDebugState.isDebugEnabled();
+		const alwaysLogForInteractiveDev = import.meta.env.DEV && import.meta.env.MODE !== 'test';
+		if (!debugEnabled && !alwaysLogForInteractiveDev) return;
+		const workspaceId = deps.getWorkspaceId(id) || '__missing_workspace__';
+		const terminalId = deps.getTerminalId(id) || '__missing_terminal__';
 		void deps.terminalTransport.logDebug(workspaceId, terminalId, event, JSON.stringify(details));
 	};
 
@@ -92,10 +86,6 @@ export const createTerminalServiceRuntime = <THandle extends RuntimeHandle>(
 		handle.terminal.refresh(0, handle.terminal.rows - 1);
 	};
 
-	const requestHealthCheck = (id: string): void => {
-		deps.lifecycle.requestHealthCheck(id, { timeoutMs: deps.healthTimeoutMs });
-	};
-
 	return {
 		setHealth,
 		updateStats,
@@ -103,6 +93,5 @@ export const createTerminalServiceRuntime = <THandle extends RuntimeHandle>(
 		captureCpr,
 		logDebug,
 		forceRedraw,
-		requestHealthCheck,
 	};
 };

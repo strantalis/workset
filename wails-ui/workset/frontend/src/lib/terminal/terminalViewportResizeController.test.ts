@@ -4,13 +4,9 @@ import {
 	type TerminalViewportResizeHandle,
 } from './terminalViewportResizeController';
 
-type Dimensions = { cols: number; rows: number } | undefined;
-
 const createHandle = (input: {
 	baseY: number;
 	viewportY: number;
-	nextBaseY?: number;
-	nextDimensions?: () => Dimensions;
 }): TerminalViewportResizeHandle => {
 	const buffer = {
 		active: {
@@ -23,16 +19,10 @@ const createHandle = (input: {
 		scrollToBottom: vi.fn(() => {
 			buffer.active.viewportY = buffer.active.baseY;
 		}),
-		scrollToLine: vi.fn((line: number) => {
-			buffer.active.viewportY = line;
-		}),
 		focus: vi.fn(),
 	};
 	const fitAddon: TerminalViewportResizeHandle['fitAddon'] = {
-		fit: vi.fn(() => {
-			buffer.active.baseY = input.nextBaseY ?? input.baseY;
-		}),
-		proposeDimensions: vi.fn(() => input.nextDimensions?.() ?? { cols: 80, rows: 24 }),
+		fit: vi.fn(),
 	};
 	return {
 		terminal,
@@ -79,37 +69,50 @@ describe('terminalViewportResizeController', () => {
 		vi.useRealTimers();
 	});
 
-	it('fits with preserved viewport when user is scrolled up', () => {
-		const handle = createHandle({ baseY: 120, viewportY: 90, nextBaseY: 260 });
+	it('fits terminal and resizes pty in one pass', () => {
+		const id = 'ws::term';
+		const handle = createHandle({ baseY: 10, viewportY: 10 });
+		const resizeToFit = vi.fn();
+		const forceRedraw = vi.fn();
+		const resizeOverlay = vi.fn();
 		const controller = createTerminalViewportResizeController({
-			getHandle: () => handle,
+			getHandle: (key) => (key === id ? handle : undefined),
 			hasStarted: () => true,
-			forceRedraw: vi.fn(),
-			resizeToFit: vi.fn(),
-			resizeOverlay: vi.fn(),
+			forceRedraw,
+			resizeToFit,
+			resizeOverlay,
 		});
 
-		controller.fitWithPreservedViewport(handle);
+		controller.fitTerminal(id, true);
 
 		expect(handle.fitAddon.fit).toHaveBeenCalledTimes(1);
-		expect(handle.terminal.scrollToLine).toHaveBeenCalledWith(90);
-		expect(handle.terminal.scrollToBottom).not.toHaveBeenCalled();
+		expect(resizeOverlay).toHaveBeenCalledWith(handle);
+		expect(forceRedraw).toHaveBeenCalledTimes(1);
+		expect(resizeToFit).toHaveBeenCalledWith(id, handle);
 	});
 
-	it('fits in follow mode at bottom', () => {
-		const handle = createHandle({ baseY: 120, viewportY: 120, nextBaseY: 260 });
+	it('skips fit when terminal host is disconnected or zero-sized', () => {
+		const id = 'ws::term';
+		const handle = createHandle({ baseY: 10, viewportY: 10 });
+		const resizeToFit = vi.fn();
+		const forceRedraw = vi.fn();
+		const resizeOverlay = vi.fn();
+		const hiddenHost = document.createElement('div');
+		handle.terminal.element = { parentElement: hiddenHost };
 		const controller = createTerminalViewportResizeController({
-			getHandle: () => handle,
+			getHandle: (key) => (key === id ? handle : undefined),
 			hasStarted: () => true,
-			forceRedraw: vi.fn(),
-			resizeToFit: vi.fn(),
-			resizeOverlay: vi.fn(),
+			forceRedraw,
+			resizeToFit,
+			resizeOverlay,
 		});
 
-		controller.fitWithPreservedViewport(handle);
+		controller.fitTerminal(id, true);
 
-		expect(handle.terminal.scrollToBottom).toHaveBeenCalledTimes(1);
-		expect(handle.terminal.scrollToLine).not.toHaveBeenCalled();
+		expect(handle.fitAddon.fit).not.toHaveBeenCalled();
+		expect(resizeOverlay).not.toHaveBeenCalled();
+		expect(forceRedraw).not.toHaveBeenCalled();
+		expect(resizeToFit).not.toHaveBeenCalled();
 	});
 
 	it('attaches and detaches resize observers with debounce', () => {
@@ -149,41 +152,6 @@ describe('terminalViewportResizeController', () => {
 		expect(observers[0].disconnectSpy).toHaveBeenCalledTimes(1);
 		vi.runAllTimers();
 		expect(handle.fitAddon.fit).toHaveBeenCalledTimes(1);
-	});
-
-	it('stabilizes fit dimensions with retries and logs reason', () => {
-		const id = 'ws::term';
-		const dimsQueue: Dimensions[] = [
-			undefined,
-			{ cols: 0, rows: 24 },
-			{ cols: 120, rows: 40 },
-			{ cols: 120, rows: 40 },
-			{ cols: 120, rows: 40 },
-		];
-		const handle = createHandle({
-			baseY: 10,
-			viewportY: 10,
-			nextDimensions: () => dimsQueue.shift() ?? { cols: 120, rows: 40 },
-		});
-		const resizeToFit = vi.fn();
-		const forceRedraw = vi.fn();
-		const logDebug = vi.fn();
-		const controller = createTerminalViewportResizeController({
-			getHandle: (key) => (key === id ? handle : undefined),
-			hasStarted: () => true,
-			forceRedraw,
-			resizeToFit,
-			resizeOverlay: vi.fn(),
-			logDebug,
-		});
-
-		controller.scheduleFitStabilization(id, 'open');
-		vi.runAllTimers();
-
-		expect(handle.fitAddon.fit).toHaveBeenCalledTimes(3);
-		expect(forceRedraw).toHaveBeenCalledTimes(3);
-		expect(resizeToFit).toHaveBeenCalledTimes(3);
-		expect(logDebug).toHaveBeenCalledWith(id, 'fit', { reason: 'open' });
 	});
 
 	it('focuses eagerly or with deferred retry and exposes bottom helpers', () => {

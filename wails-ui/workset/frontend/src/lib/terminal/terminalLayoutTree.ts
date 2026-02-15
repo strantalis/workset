@@ -51,6 +51,7 @@ const coerceId = (value: unknown): string => {
 const normalizeTab = (tab: TerminalTab | undefined | null): TerminalTab | null => {
 	if (!tab) return null;
 	if (typeof tab.id !== 'string' || typeof tab.terminalId !== 'string') return null;
+	if (!tab.id.trim() || !tab.terminalId.trim()) return null;
 	const title =
 		typeof tab.title === 'string' && tab.title.trim().length > 0 ? tab.title : 'Terminal';
 	return { id: tab.id, terminalId: tab.terminalId, title };
@@ -270,35 +271,6 @@ export const ensureFocusedPane = (next: TerminalLayout): TerminalLayout => {
 		return next;
 	}
 	return { ...next, focusedPaneId: firstPaneId(next.root) };
-};
-
-export const applyTabFixes = (
-	node: LayoutNode,
-	fixes: Map<string, { terminalId?: string; drop?: boolean }>,
-): LayoutNode | null => {
-	if (node.kind === 'pane') {
-		const tabs = node.tabs
-			.map((tab) => {
-				const fix = fixes.get(tab.id);
-				if (fix?.drop) return null;
-				if (fix?.terminalId) {
-					return { ...tab, terminalId: fix.terminalId };
-				}
-				return tab;
-			})
-			.filter((tab): tab is TerminalTab => tab !== null);
-		if (tabs.length === 0) return null;
-		const activeTabId = tabs.some((tab) => tab.id === node.activeTabId)
-			? node.activeTabId
-			: tabs[0].id;
-		return { ...node, tabs, activeTabId };
-	}
-	const first = applyTabFixes(node.first, fixes);
-	const second = applyTabFixes(node.second, fixes);
-	if (!first && !second) return null;
-	if (!first) return second;
-	if (!second) return first;
-	return { ...node, first, second };
 };
 
 export const buildPanePositions = (

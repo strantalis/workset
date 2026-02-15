@@ -9,10 +9,9 @@
 		Settings2,
 		Terminal,
 	} from '@lucide/svelte';
-	import type { Workspace, TerminalLayout, TerminalLayoutNode } from '../../types';
+	import type { Workspace } from '../../types';
 	import TerminalWorkspace from '../TerminalWorkspace.svelte';
 	import ResizablePanel from '../ui/ResizablePanel.svelte';
-	import { fetchWorkspaceTerminalLayout, writeWorkspaceTerminal } from '../../api/terminal-layout';
 
 	interface Props {
 		workspace: Workspace | null;
@@ -22,116 +21,24 @@
 
 	const { workspace, onOpenWorkspaceTerminal = () => {}, onAddRepo = () => {} }: Props = $props();
 
-	// ── Omnibar state ──────────────────────────────────────────
-	let omnibarCommand = $state('');
-	let broadcastMode = $state(false);
-	let omnibarBusy = $state(false);
-
 	// ── Sidebar state ──────────────────────────────────────────
 	let fileTreeExpanded = $state(true);
 
 	// ── Derived data ───────────────────────────────────────────
 	const repos = $derived(workspace?.repos ?? []);
-
-	// ── Layout helpers for omnibar ─────────────────────────────
-	function collectTerminalIdsFromNode(node: TerminalLayoutNode): string[] {
-		if (node.kind === 'pane') {
-			return (node.tabs ?? []).map((t) => t.terminalId);
-		}
-		return [
-			...(node.first ? collectTerminalIdsFromNode(node.first) : []),
-			...(node.second ? collectTerminalIdsFromNode(node.second) : []),
-		];
-	}
-
-	function getFocusedTerminalId(layout: TerminalLayout): string | null {
-		if (!layout.focusedPaneId) return null;
-
-		const findPaneNode = (node: TerminalLayoutNode, paneId: string): TerminalLayoutNode | null => {
-			if (node.kind === 'pane' && node.id === paneId) return node;
-			if (node.kind === 'split') {
-				return (
-					(node.first ? findPaneNode(node.first, paneId) : null) ??
-					(node.second ? findPaneNode(node.second, paneId) : null)
-				);
-			}
-			return null;
-		};
-
-		const pane = findPaneNode(layout.root, layout.focusedPaneId);
-		if (!pane?.tabs?.length) return null;
-		const tab = pane.tabs.find((t) => t.id === pane.activeTabId) ?? pane.tabs[0];
-		return tab?.terminalId ?? null;
-	}
-
-	// ── Omnibar submit ─────────────────────────────────────────
-	const handleOmnibarSubmit = (event: SubmitEvent): void => {
-		event.preventDefault();
-		void submitOmnibarCommand();
-	};
-
-	const submitOmnibarCommand = async (): Promise<void> => {
-		if (!workspace || !omnibarCommand.trim()) return;
-		omnibarBusy = true;
-		try {
-			const layoutPayload = await fetchWorkspaceTerminalLayout(workspace.id);
-			if (!layoutPayload?.layout?.root) return;
-
-			const command = omnibarCommand + '\r';
-
-			if (broadcastMode) {
-				const ids = collectTerminalIdsFromNode(layoutPayload.layout.root);
-				await Promise.all(ids.map((id) => writeWorkspaceTerminal(workspace.id, id, command)));
-			} else {
-				const id = getFocusedTerminalId(layoutPayload.layout);
-				if (id) {
-					await writeWorkspaceTerminal(workspace.id, id, command);
-				}
-			}
-			omnibarCommand = '';
-		} catch {
-			// omnibar command failure is non-fatal
-		} finally {
-			omnibarBusy = false;
-		}
-	};
 </script>
 
 <div class="cockpit">
 	{#if workspace}
-		<!-- ── CLI indicator + omnibar ────────────────────────── -->
+		<!-- ── CLI indicator + session status ─────────────────── -->
 		<div class="cli-bar">
 			<div class="cli-indicator">
 				<Terminal size={16} />
 				<span>workset-cli</span>
 			</div>
-			<div class="cli-omnibar">
-				<div class="omnibar-wrapper">
-					<span class="omnibar-icon">&gt;</span>
-					<form class="omnibar-form" onsubmit={handleOmnibarSubmit}>
-						<input
-							type="text"
-							bind:value={omnibarCommand}
-							placeholder="Execute in workspace root..."
-							disabled={omnibarBusy}
-						/>
-					</form>
-					<button
-						type="button"
-						class="broadcast-badge"
-						class:active={broadcastMode}
-						onclick={() => (broadcastMode = !broadcastMode)}
-						title={broadcastMode
-							? 'Broadcast mode: ON — commands sent to all terminals'
-							: 'Broadcast mode: OFF — commands sent to focused terminal'}
-					>
-						BROADCAST {broadcastMode ? 'ON' : 'OFF'}
-					</button>
-				</div>
-				<div class="session-indicator">
-					<span class="session-dot"></span>
-					<span>Active Session</span>
-				</div>
+			<div class="session-indicator">
+				<span class="session-dot"></span>
+				<span>Active Session</span>
 			</div>
 		</div>
 
@@ -264,7 +171,7 @@
 		display: flex;
 	}
 
-	/* ── CLI bar (indicator + omnibar) ───────────────────── */
+	/* ── CLI bar (indicator + status) ─────────────────────── */
 	.cli-bar {
 		display: flex;
 		align-items: center;
@@ -286,15 +193,6 @@
 		font-size: var(--text-mono-md);
 		color: var(--muted);
 		flex-shrink: 0;
-		margin-right: 8px;
-	}
-
-	.cli-omnibar {
-		flex: 1;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 10px;
 	}
 
 	/* ── Sidebar ─────────────────────────────────────────── */
@@ -632,84 +530,6 @@
 		min-width: 0;
 	}
 
-	/* ── Omnibar (inside cli-bar) ────────────────────────── */
-	.omnibar-wrapper {
-		flex: 1;
-		max-width: 42rem;
-		margin: 0 auto;
-		height: 32px;
-		border-radius: 6px;
-		border: 1px solid var(--border);
-		background: var(--panel-strong);
-		display: flex;
-		align-items: center;
-		padding: 0 12px;
-		gap: 8px;
-	}
-
-	.omnibar-icon {
-		color: var(--muted);
-		font-family: var(--font-mono);
-		font-size: var(--text-mono-xs);
-		flex-shrink: 0;
-		background: var(--bg);
-		padding: 1px 6px;
-		border-radius: 4px;
-	}
-
-	.omnibar-form {
-		flex: 1;
-		min-width: 0;
-	}
-
-	.omnibar-form input {
-		width: 100%;
-		background: transparent;
-		border: none;
-		color: var(--text);
-		font-family: var(--font-mono);
-		font-size: var(--text-mono-sm);
-		outline: none;
-	}
-
-	.omnibar-form input::placeholder {
-		color: var(--muted);
-		opacity: 0.6;
-	}
-
-	.omnibar-form input:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.broadcast-badge {
-		padding: 2px 8px;
-		border: 1px solid var(--border);
-		border-radius: 4px;
-		background: color-mix(in srgb, var(--panel-strong) 90%, transparent);
-		color: var(--muted);
-		font-size: var(--text-xs);
-		font-weight: 600;
-		letter-spacing: 0.06em;
-		cursor: pointer;
-		flex-shrink: 0;
-		transition:
-			color var(--transition-fast),
-			border-color var(--transition-fast),
-			background var(--transition-fast);
-	}
-
-	.broadcast-badge:hover {
-		color: var(--text);
-		border-color: color-mix(in srgb, var(--border) 90%, white);
-	}
-
-	.broadcast-badge.active {
-		color: var(--warning);
-		border-color: color-mix(in srgb, var(--warning) 50%, var(--border));
-		background: color-mix(in srgb, var(--warning) 12%, transparent);
-	}
-
 	.session-indicator {
 		display: flex;
 		align-items: center;
@@ -718,6 +538,7 @@
 		color: var(--muted);
 		white-space: nowrap;
 		flex-shrink: 0;
+		margin-left: auto;
 	}
 
 	.session-dot {

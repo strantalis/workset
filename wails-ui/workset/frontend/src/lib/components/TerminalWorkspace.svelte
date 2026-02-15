@@ -3,7 +3,6 @@
 	import TerminalLayoutNode from './TerminalLayoutNode.svelte';
 	import {
 		createWorkspaceTerminal,
-		fetchWorkspaceTerminalStatus,
 		fetchWorkspaceTerminalLayout,
 		persistWorkspaceTerminalLayout,
 	} from '../api/terminal-layout';
@@ -21,14 +20,7 @@
 		type ResolvedTerminalKeybindings,
 	} from '../terminal/terminalKeybindings';
 	import {
-		clearLegacyTerminalLayout,
-		loadLegacyTerminalLayout,
-		markLayoutMigrationComplete,
-		shouldRunLayoutMigration,
-	} from '../terminal/terminalLayoutStorage';
-	import {
 		LAYOUT_VERSION,
-		applyTabFixes,
 		buildPane,
 		buildPanePositions,
 		buildTab,
@@ -100,75 +92,6 @@
 		return generateTerminalName(workspaceName, count);
 	};
 
-	const migrateLayoutOnce = async (
-		id: string,
-		layoutToMigrate: TerminalLayout,
-	): Promise<{ layout: TerminalLayout; changed: boolean }> => {
-		if (!shouldRunLayoutMigration(id)) {
-			return { layout: layoutToMigrate, changed: false };
-		}
-		markLayoutMigrationComplete(id);
-		const tabs = collectTabs(layoutToMigrate.root);
-		if (tabs.length === 0) {
-			return { layout: layoutToMigrate, changed: false };
-		}
-		let changed = false;
-		const fixes = new Map<string, { terminalId?: string; drop?: boolean }>();
-		for (const tab of tabs) {
-			if (!tab.terminalId) {
-				fixes.set(tab.id, { drop: true });
-				changed = true;
-				continue;
-			}
-			let shouldReplace = false;
-			try {
-				const status = await fetchWorkspaceTerminalStatus(id, tab.terminalId);
-				if (!status) {
-					continue;
-				}
-				if (status.active) {
-					continue;
-				}
-				if (status.error) {
-					continue;
-				}
-				shouldReplace = true;
-			} catch {
-				continue;
-			}
-			if (!shouldReplace) continue;
-			try {
-				const created = await createWorkspaceTerminal(id);
-				if (created?.terminalId) {
-					fixes.set(tab.id, { terminalId: created.terminalId });
-				} else {
-					fixes.set(tab.id, { drop: true });
-				}
-				changed = true;
-			} catch {
-				fixes.set(tab.id, { drop: true });
-				changed = true;
-			}
-		}
-		if (!changed) {
-			return { layout: layoutToMigrate, changed: false };
-		}
-		const nextRoot = applyTabFixes(layoutToMigrate.root, fixes);
-		if (!nextRoot) {
-			const created = await createWorkspaceTerminal(id);
-			const tab = buildTab(created.terminalId, generateTerminalName(workspaceName, 0));
-			const pane = buildPane(tab);
-			const fresh = ensureFocusedPane({
-				version: LAYOUT_VERSION,
-				root: pane,
-				focusedPaneId: pane.id,
-			});
-			return { layout: fresh, changed: true };
-		}
-		const updated = ensureFocusedPane({ ...layoutToMigrate, root: nextRoot });
-		return { layout: updated, changed: true };
-	};
-
 	const setLayout = (next: TerminalLayout): void => {
 		layout = ensureFocusedPane(next);
 	};
@@ -193,27 +116,7 @@
 			const stored = await loadLayout(targetWorkspaceId);
 			if (token !== initToken || workspaceId !== targetWorkspaceId) return;
 			if (stored) {
-				const migrated = await migrateLayoutOnce(targetWorkspaceId, stored);
-				if (token !== initToken || workspaceId !== targetWorkspaceId) return;
-				if (migrated.changed) {
-					setLayout(migrated.layout);
-					void persistWorkspaceTerminalLayout(targetWorkspaceId, migrated.layout).catch(() => {});
-				} else {
-					setLayout(migrated.layout);
-				}
-				return;
-			}
-			const legacy = loadLegacyTerminalLayout(targetWorkspaceId);
-			if (token !== initToken || workspaceId !== targetWorkspaceId) return;
-			if (legacy) {
-				const migrated = await migrateLayoutOnce(targetWorkspaceId, legacy);
-				if (token !== initToken || workspaceId !== targetWorkspaceId) return;
-				setLayout(migrated.layout);
-				void persistWorkspaceTerminalLayout(targetWorkspaceId, migrated.layout)
-					.then(() => {
-						clearLegacyTerminalLayout(targetWorkspaceId);
-					})
-					.catch(() => {});
+				setLayout(stored);
 				return;
 			}
 			const created = await createWorkspaceTerminal(targetWorkspaceId);

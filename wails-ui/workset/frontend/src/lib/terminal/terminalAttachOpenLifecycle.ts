@@ -14,27 +14,15 @@ export type TerminalAttachOpenHandle = {
 };
 
 type TerminalAttachOpenLifecycleDeps<THandle extends TerminalAttachOpenHandle> = {
-	getHandle: (id: string) => THandle | undefined;
-	ensureOverlay: (handle: THandle, id: string) => void;
-	loadRendererAddon: (id: string, handle: THandle) => void | Promise<void>;
-	fitWithPreservedViewport: (handle: THandle) => void;
-	resizeToFit: (id: string, handle: THandle) => void;
-	scheduleFitStabilization: (id: string, reason: string) => void;
+	fitTerminal: (id: string) => void;
 	flushOutput: (id: string, writeAll: boolean) => void;
 	markAttached: (id: string) => void;
-	resolveFontsReady?: () => Promise<unknown> | undefined;
-};
-
-const resolveFontsReady = (): Promise<unknown> | undefined => {
-	if (typeof document === 'undefined') return undefined;
-	return document.fonts?.ready;
+	nudgeRenderer?: (id: string, handle: THandle, opened: boolean) => void;
 };
 
 export const createTerminalAttachOpenLifecycle = <THandle extends TerminalAttachOpenHandle>(
 	deps: TerminalAttachOpenLifecycleDeps<THandle>,
 ) => {
-	const getFontsReady = deps.resolveFontsReady ?? resolveFontsReady;
-
 	return {
 		attach: (input: {
 			id: string;
@@ -49,28 +37,15 @@ export const createTerminalAttachOpenLifecycle = <THandle extends TerminalAttach
 			}
 			const terminalElement = handle.terminal.element;
 			const needsOpen = !terminalElement || terminalElement.parentElement !== handle.container;
+			const wasActive = handle.container.getAttribute('data-active') === 'true';
 			if (needsOpen) {
 				handle.container.replaceChildren();
 				handle.terminal.open(handle.container);
-				deps.ensureOverlay(handle, id);
-				void deps.loadRendererAddon(id, handle);
-				const fontsReady = getFontsReady();
-				if (fontsReady) {
-					fontsReady
-						.then(() => {
-							const current = deps.getHandle(id);
-							if (!current) return;
-							deps.fitWithPreservedViewport(current);
-							deps.resizeToFit(id, current);
-						})
-						.catch(() => undefined);
-				}
-				deps.scheduleFitStabilization(id, 'open');
 			}
-			handle.container.setAttribute('data-active', 'true');
-			deps.fitWithPreservedViewport(handle);
-			deps.resizeToFit(id, handle);
-			if (active) {
+			handle.container.setAttribute('data-active', active ? 'true' : 'false');
+			deps.fitTerminal(id);
+			deps.nudgeRenderer?.(id, handle, needsOpen);
+			if (active && (needsOpen || !wasActive)) {
 				handle.terminal.focus();
 			}
 			deps.flushOutput(id, false);

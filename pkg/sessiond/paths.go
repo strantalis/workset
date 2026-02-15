@@ -33,14 +33,6 @@ func DefaultRecordDir() (string, error) {
 	return filepath.Join(home, ".workset", "terminal_records"), nil
 }
 
-func DefaultStateDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".workset", "terminal_state"), nil
-}
-
 func sanitizeID(input string) string {
 	trimmed := strings.TrimSpace(input)
 	if trimmed == "" {

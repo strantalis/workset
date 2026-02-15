@@ -1,6 +1,5 @@
-import { ClipboardAddon } from '@xterm/addon-clipboard';
 import { FitAddon } from '@xterm/addon-fit';
-import { Unicode11Addon } from '@xterm/addon-unicode11';
+import { WebglAddon } from '@xterm/addon-webgl';
 import type { Terminal } from '@xterm/xterm';
 import { createTerminalAttachOpenLifecycle } from './terminalAttachOpenLifecycle';
 import { createTerminalFontSizeController } from './terminalFontSizeController';
@@ -8,60 +7,63 @@ import {
 	createTerminalInstanceManager,
 	type TerminalInstanceHandle,
 } from './terminalInstanceManager';
-import {
-	createTerminalClipboardBase64,
-	createTerminalClipboardProvider,
-} from './terminalClipboard';
-import { registerTerminalOscHandlers } from './terminalOscHandlers';
 
-type TerminalInstanceOrchestrationDependencies<
-	TKittyState,
-	THandle extends TerminalInstanceHandle<TKittyState>,
-> = {
-	terminalHandles: Map<string, THandle>;
+type TerminalInstanceOrchestrationDependencies = {
+	terminalHandles: Map<string, TerminalInstanceHandle>;
 	createTerminalInstance: (fontSize: number) => Terminal;
-	createKittyState: () => TKittyState;
-	syncTerminalWebLinks: (id: string) => void;
-	ensureMode: (id: string) => void;
+	setRenderer: (id: string, renderer: 'unknown' | 'webgl') => void;
+	setRendererMode: (id: string, mode: 'webgl') => void;
+	setStatusAndMessage: (id: string, status: string, message: string) => void;
+	setHealth: (id: string, state: 'unknown' | 'checking' | 'ok' | 'stale', message?: string) => void;
+	emitState: (id: string) => void;
 	setInput: (id: string, value: boolean) => void;
-	beginTerminal: (id: string) => Promise<void>;
 	sendInput: (id: string, data: string) => void;
 	captureCpr: (id: string, data: string) => void;
-	noteRender: (id: string) => void;
-	getToken: (name: string, fallback: string) => string;
-	getHandle: (id: string) => THandle | undefined;
 	fitTerminal: (id: string, started: boolean) => void;
 	hasStarted: (id: string) => boolean;
-	ensureOverlay: (id: string) => void;
-	loadRendererAddon: (id: string, handle: THandle) => Promise<void> | void;
-	fitWithPreservedViewport: (handle: THandle) => void;
-	resizeToFit: (id: string, handle: THandle) => void;
-	scheduleFitStabilization: (id: string, reason: string) => void;
 	flushOutput: (id: string, writeAll: boolean) => void;
 	markAttached: (id: string) => void;
 };
 
-export const createTerminalInstanceOrchestration = <
-	TKittyState,
-	THandle extends TerminalInstanceHandle<TKittyState>,
->(
-	deps: TerminalInstanceOrchestrationDependencies<TKittyState, THandle>,
+export const createTerminalInstanceOrchestration = (
+	deps: TerminalInstanceOrchestrationDependencies,
 ) => {
-	const terminalAttachOpenLifecycle = createTerminalAttachOpenLifecycle({
-		getHandle: deps.getHandle,
-		ensureOverlay: (_handle, id) => {
-			deps.ensureOverlay(id);
+	const terminalAttachOpenLifecycle = createTerminalAttachOpenLifecycle<TerminalInstanceHandle>({
+		fitTerminal: (id) => {
+			deps.fitTerminal(id, deps.hasStarted(id));
 		},
-		loadRendererAddon: deps.loadRendererAddon,
-		fitWithPreservedViewport: (handle) => {
-			deps.fitWithPreservedViewport(handle);
-		},
-		resizeToFit: (id, handle) => {
-			deps.resizeToFit(id, handle);
-		},
-		scheduleFitStabilization: deps.scheduleFitStabilization,
 		flushOutput: deps.flushOutput,
 		markAttached: deps.markAttached,
+		nudgeRenderer: (id, handle, opened) => {
+			const refresh = (): void => {
+				const end = Math.max(0, handle.terminal.rows - 1);
+				handle.terminal.refresh(0, end);
+			};
+			const resetAtlas = (): void => {
+				try {
+					handle.webglAddon?.clearTextureAtlas?.();
+				} catch {
+					// Keep rendering even if texture atlas reset is unavailable.
+				}
+			};
+			// Always reset atlas on attach. When panes are detached/re-attached the WebGL
+			// atlas can hold stale glyph quads until the next interaction-triggered redraw.
+			resetAtlas();
+			refresh();
+			window.requestAnimationFrame(() => {
+				deps.fitTerminal(id, deps.hasStarted(id));
+				resetAtlas();
+				refresh();
+				window.setTimeout(
+					() => {
+						deps.fitTerminal(id, deps.hasStarted(id));
+						resetAtlas();
+						refresh();
+					},
+					opened ? 24 : 40,
+				);
+			});
+		},
 	});
 
 	const applyFontSizeToAllTerminals = (fontSize: number): void => {
@@ -79,41 +81,32 @@ export const createTerminalInstanceOrchestration = <
 		onFontSizeChange: applyFontSizeToAllTerminals,
 	});
 
-	const terminalInstanceManager = createTerminalInstanceManager<TKittyState>({
+	const terminalInstanceManager = createTerminalInstanceManager({
 		terminalHandles: deps.terminalHandles,
 		createTerminalInstance: () =>
 			deps.createTerminalInstance(terminalFontSizeController.getCurrentFontSize()),
 		createFitAddon: () => new FitAddon(),
-		createUnicode11Addon: () => new Unicode11Addon(),
-		createClipboardAddon: () =>
-			new ClipboardAddon(createTerminalClipboardBase64(), createTerminalClipboardProvider()),
-		createKittyState: deps.createKittyState,
-		syncTerminalWebLinks: deps.syncTerminalWebLinks,
-		registerOscHandlers: (id, terminal) =>
-			registerTerminalOscHandlers(id, terminal, {
-				sendInput: deps.sendInput,
-				getToken: deps.getToken,
-			}),
-		ensureMode: deps.ensureMode,
-		onShiftEnter: (id) => {
-			deps.setInput(id, true);
-			void deps.beginTerminal(id);
-			deps.sendInput(id, '\x0a');
-		},
+		createWebglAddon: () => new WebglAddon(),
 		onData: (id, data) => {
 			deps.setInput(id, true);
-			void deps.beginTerminal(id);
 			deps.captureCpr(id, data);
 			deps.sendInput(id, data);
 		},
-		onBinary: (id, data) => {
-			deps.setInput(id, true);
-			void deps.beginTerminal(id);
-			deps.sendInput(id, data);
+		onRendererResolved: (id, renderer) => {
+			deps.setRenderer(id, renderer);
+			deps.setRendererMode(id, 'webgl');
+			if (renderer === 'webgl') {
+				deps.setHealth(id, 'ok', 'Session active.');
+			}
+			deps.emitState(id);
 		},
-		onRender: deps.noteRender,
+		onRendererError: (id, message) => {
+			deps.setStatusAndMessage(id, 'error', message);
+			deps.setHealth(id, 'stale', message);
+			deps.emitState(id);
+		},
 		attachOpen: ({ id, handle, container, active }) => {
-			terminalAttachOpenLifecycle.attach({ id, handle: handle as THandle, container, active });
+			terminalAttachOpenLifecycle.attach({ id, handle, container, active });
 		},
 	});
 
@@ -121,8 +114,8 @@ export const createTerminalInstanceOrchestration = <
 		id: string,
 		container: HTMLDivElement | null,
 		active: boolean,
-	): THandle => {
-		return terminalInstanceManager.attach(id, container, active) as THandle;
+	): TerminalInstanceHandle => {
+		return terminalInstanceManager.attach(id, container, active);
 	};
 
 	return {

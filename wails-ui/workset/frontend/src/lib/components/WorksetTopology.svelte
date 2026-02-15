@@ -40,18 +40,18 @@
 		<div class="topo-center-wrapper">
 			<!-- SVG layer for animated connection lines -->
 			<svg class="topo-svg" viewBox="-160 -160 320 320">
-			{#each repoPositions as pos, i (pos.name + '-line')}
-				<line
-					x1="0"
-					y1="0"
-					x2={pos.x}
-					y2={pos.y}
-					class="topo-svg-line"
-					class:highlighted={pos.highlighted}
-					class:dimmed={!pos.highlighted}
-					style="animation-delay: {i * 150}ms"
-				/>
-			{/each}
+				{#each repoPositions as pos, i (pos.name + '-line')}
+					<line
+						x1="0"
+						y1="0"
+						x2={pos.x}
+						y2={pos.y}
+						class="topo-svg-line"
+						class:highlighted={pos.highlighted}
+						class:dimmed={!pos.highlighted}
+						style="animation-delay: {i * 150}ms"
+					/>
+				{/each}
 			</svg>
 
 			<!-- Central hub -->

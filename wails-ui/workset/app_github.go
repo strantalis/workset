@@ -281,10 +281,11 @@ func (a *App) SendPullRequestReviewsToTerminal(input PullRequestReviewsRequest) 
 		}
 		terminalID = created.TerminalID
 	}
-	if err := a.StartWorkspaceTerminal(input.WorkspaceID, terminalID); err != nil {
+	windowName := a.workspaceTerminalOwner(input.WorkspaceID)
+	if err := a.StartWorkspaceTerminalForWindowName(ctx, input.WorkspaceID, terminalID, windowName); err != nil {
 		return err
 	}
-	return a.WriteWorkspaceTerminal(input.WorkspaceID, terminalID, summary)
+	return a.WriteWorkspaceTerminalForWindowName(ctx, input.WorkspaceID, terminalID, summary, windowName)
 }
 
 type CommitAndPushRequest struct {

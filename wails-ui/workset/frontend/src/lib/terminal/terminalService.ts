@@ -1,33 +1,16 @@
 import type { Writable } from 'svelte/store';
 import { terminalTransport } from './terminalTransport';
 import { createTerminalInstance } from './terminalRenderer';
-import { createTerminalWebLinksSync } from './terminalWebLinks';
 import { TerminalStateStore } from './terminalStateStore';
-import { stripMouseReports } from './inputFilter';
 import { createTerminalLifecycle } from './terminalLifecycle';
 import { createTerminalStreamOrchestrator } from './terminalStreamOrchestrator';
 import { createTerminalResizeBridge } from './terminalResizeBridge';
-import { createTerminalRenderHealth, hasVisibleTerminalContent } from './terminalRenderHealth';
-import {
-	createTerminalAttachState,
-	createTerminalRendererAddonState,
-} from './terminalAttachRendererState';
+import { createTerminalAttachState } from './terminalAttachRendererState';
 import {
 	createTerminalEventSubscriptions,
-	type TerminalKittyPayload,
 	type TerminalPayload,
 } from './terminalEventSubscriptions';
-import { createTerminalModeBootstrapCoordinator } from './terminalModeBootstrapCoordinator';
-import { createTerminalReplayAckOrchestrator } from './terminalReplayAckOrchestrator';
 import { type TerminalInstanceHandle } from './terminalInstanceManager';
-import { createTerminalOutputBuffer } from './terminalOutputBuffer';
-import {
-	createKittyState,
-	createTerminalKittyController,
-	type KittyEventPayload,
-	type KittyOverlay,
-	type KittyState,
-} from './terminalKittyImageController';
 import { createTerminalInputOrchestrator } from './terminalInputOrchestrator';
 import { createTerminalViewportResizeController } from './terminalViewportResizeController';
 import { createTerminalContextRegistry } from './terminalContextRegistry';
@@ -36,11 +19,9 @@ import { createTerminalResourceLifecycle } from './terminalResourceLifecycle';
 import { createTerminalServiceExports } from './terminalServiceExports';
 import { createTerminalInstanceOrchestration } from './terminalInstanceOrchestration';
 import { createTerminalDebugState } from './terminalDebugState';
-import { createTerminalMouseState } from './terminalMouseState';
 import {
 	clearLocalTerminalDebugPreference,
 	createTerminalSessionBridge,
-	createTerminalModeBootstrapCoordinatorDeps,
 	createTerminalResourceLifecycleDeps,
 	createTerminalSessionTransport,
 	createTerminalSyncControllerDeps,
@@ -62,31 +43,23 @@ export type TerminalViewState = {
 	debugStats: {
 		bytesIn: number;
 		bytesOut: number;
-		backlog: number;
 		lastOutputAt: number;
 		lastCprAt: number;
 	};
 };
 
-type TerminalHandle = TerminalInstanceHandle<KittyState> & {
-	kittyOverlay?: KittyOverlay;
-};
+type TerminalHandle = TerminalInstanceHandle;
 
 const terminalHandles = new Map<string, TerminalHandle>();
 const terminalContextRegistry = createTerminalContextRegistry();
 const terminalStores = new TerminalStateStore<TerminalViewState>();
 const DISPOSE_TTL_MS = 10 * 60 * 1000;
-
-const ACK_BATCH_BYTES = 32 * 1024;
-const ACK_FLUSH_DELAY_MS = 25;
-const INITIAL_STREAM_CREDIT = 256 * 1024;
-const HEALTH_TIMEOUT_MS = 1200;
-const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
+const STREAM_REORDER_DELAY_MS = 8;
+const STREAM_REORDER_FORCE_FLUSH_THRESHOLD = 24;
 let globalsInitialized = false;
-const terminalServiceState = createTerminalServiceState({
-	textEncoder,
-});
-const { bootstrapHandled, bootstrapFetchTimers, pendingInput } = terminalServiceState;
+const terminalServiceState = createTerminalServiceState();
+const { pendingInput } = terminalServiceState;
+const streamFlushTimers = new Map<string, number>();
 
 const buildTerminalKey = terminalContextRegistry.buildTerminalKey;
 
@@ -108,25 +81,10 @@ const terminalDebugState = createTerminalDebugState({
 	emitAllStates,
 });
 
-const terminalMouseState = createTerminalMouseState();
-
 const lifecycle = createTerminalLifecycle({
 	emitState,
 	emitAllStates,
 });
-
-const syncTerminalWebLinks = createTerminalWebLinksSync({
-	getHandle: (id) => terminalHandles.get(id),
-	isMouseModeActive: (id) => lifecycle.getMode(id).mouse,
-	openURL: (url) => void terminalTransport.openURL(url),
-});
-
-const clearTimeoutMap = (map: Map<string, number>, id: string): void => {
-	const timer = map.get(id);
-	if (!timer) return;
-	window.clearTimeout(timer);
-	map.delete(id);
-};
 
 const terminalAttachState = createTerminalAttachState({
 	disposeAfterMs: DISPOSE_TTL_MS,
@@ -139,7 +97,6 @@ const getContext = terminalContextRegistry.getContext;
 const ensureContext = terminalContextRegistry.ensureContext;
 const getWorkspaceId = terminalContextRegistry.getWorkspaceId;
 const getTerminalId = terminalContextRegistry.getTerminalId;
-const countBytes = terminalServiceState.countBytes;
 
 const runtime = createTerminalServiceRuntime<TerminalHandle>({
 	lifecycle,
@@ -150,15 +107,10 @@ const runtime = createTerminalServiceRuntime<TerminalHandle>({
 	getTerminalId,
 	terminalTransport,
 	terminalHandles,
-	healthTimeoutMs: HEALTH_TIMEOUT_MS,
 });
 
 const getToken = (name: string, fallback: string): string =>
 	getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
-
-const terminalKittyController = createTerminalKittyController<TerminalHandle>({
-	getHandle: (id) => terminalHandles.get(id),
-});
 
 const terminalSessionBridge = createTerminalSessionBridge(
 	() => terminalSessionCoordinator,
@@ -167,19 +119,12 @@ const terminalSessionBridge = createTerminalSessionBridge(
 const {
 	ensureSessionActive,
 	beginTerminal,
-	ensureStream,
 	loadTerminalDefaults,
 	refreshSessiondStatus,
 	initTerminal,
-	handleSessiondRestarted,
 } = terminalSessionBridge;
 
 const terminalInputOrchestrator = createTerminalInputOrchestrator({
-	shouldSuppressMouseInput: (id, data) => terminalMouseState.shouldSuppressInput(id, data),
-	getMode: (id) => lifecycle.getMode(id),
-	filterMouseReports: stripMouseReports,
-	getMouseTail: (id) => terminalMouseState.getTail(id),
-	setMouseTail: (id, tail) => terminalMouseState.setTail(id, tail),
 	ensureSessionActive: (id) => ensureSessionActive(id),
 	hasStarted: (id) => lifecycle.hasStarted(id),
 	appendPendingInput: (id, data) => pendingInput.set(id, (pendingInput.get(id) ?? '') + data),
@@ -189,27 +134,27 @@ const terminalInputOrchestrator = createTerminalInputOrchestrator({
 		}),
 	getWorkspaceId,
 	getTerminalId,
+	isContextActive: (id) => getContext(id)?.active ?? false,
+	isTerminalFocused: (id) => {
+		const handle = terminalHandles.get(id);
+		if (!handle) return false;
+		if (typeof document === 'undefined') return true;
+		const activeElement = document.activeElement;
+		if (!activeElement) return false;
+		return handle.container.contains(activeElement);
+	},
 	write: (workspaceId, terminalId, data) => terminalTransport.write(workspaceId, terminalId, data),
 	markStopped: (id) => lifecycle.markStopped(id),
-	resetTerminalInstance: (id) => resetTerminalInstance(id),
-	beginTerminal: (id, quiet) => beginTerminal(id, quiet),
-	writeFailureMessage: (id, message) => {
-		const handle = terminalHandles.get(id);
-		handle?.terminal.write(`\r\n[workset] write failed: ${message}`);
-	},
+	trace: (id, event, details) => runtime.logDebug(id, event, details),
 });
 
 const sendInput = (id: string, data: string): void => terminalInputOrchestrator.sendInput(id, data);
-const resetSessionState = (id: string): void => terminalResourceLifecycle.resetSessionState(id);
-const resetTerminalInstance = (id: string): void =>
-	terminalResourceLifecycle.resetTerminalInstance(id);
 
 const terminalResizeBridge = createTerminalResizeBridge({
 	getWorkspaceId,
 	getTerminalId,
 	resize: (workspaceId, terminalId, cols, rows) =>
 		terminalTransport.resize(workspaceId, terminalId, cols, rows),
-	logDebug: runtime.logDebug,
 });
 
 const terminalViewportResizeController = createTerminalViewportResizeController<TerminalHandle>({
@@ -217,107 +162,27 @@ const terminalViewportResizeController = createTerminalViewportResizeController<
 	hasStarted: (id) => lifecycle.hasStarted(id),
 	forceRedraw: runtime.forceRedraw,
 	resizeToFit: (id, handle) => terminalResizeBridge.resizeToFit(id, handle),
-	resizeOverlay: (handle) => terminalKittyController.resizeOverlay(handle),
-	logDebug: runtime.logDebug,
+	resizeOverlay: (_handle) => undefined,
 });
 
-const renderHealth = createTerminalRenderHealth({
-	getHandle: (id) => terminalHandles.get(id),
-	reopenWithPreservedViewport: (id, handle) => {
-		if (!handle.container) return;
-		const viewport = terminalViewportResizeController.captureViewport(handle.terminal);
-		handle.terminal.open(handle.container);
-		terminalViewportResizeController.fitWithPreservedViewport(handle, viewport);
-		terminalResizeBridge.nudgeRedraw(id, handle);
-	},
-	fitWithPreservedViewport: (_id, handle) =>
-		terminalViewportResizeController.fitWithPreservedViewport(handle),
-	nudgeRedraw: (id, handle) => terminalResizeBridge.nudgeRedraw(id, handle),
-	logDebug: runtime.logDebug,
-});
-
-const terminalOutputBuffer = createTerminalOutputBuffer({
-	canWrite: (id) => terminalHandles.has(id),
-	writeChunk: (id, data) => {
-		const handle = terminalHandles.get(id);
-		if (!handle) return;
-		handle.terminal.write(data, () => {
-			renderHealth.noteRender(id);
-		});
-	},
-	onChunkFlushed: (id) => runtime.updateStatsLastOutput(id),
-	requestAnimationFrameFn: (callback) => requestAnimationFrame(callback),
-});
-
-const replayAckOrchestrator = createTerminalReplayAckOrchestrator<KittyEventPayload>({
-	enqueueOutput: terminalOutputBuffer.enqueueOutput,
-	flushOutput: terminalOutputBuffer.flushOutput,
-	forceRedraw: runtime.forceRedraw,
-	hasTerminalHandle: (id) => terminalHandles.has(id),
-	applyKittyEvent: (id, event) => terminalKittyController.applyEvent(id, event),
-	getWorkspaceId,
-	getTerminalId,
-	ack: (workspaceId, terminalId, bytes) => terminalTransport.ack(workspaceId, terminalId, bytes),
-	setTimeoutFn: (callback, timeoutMs) => window.setTimeout(callback, timeoutMs),
-	clearTimeoutFn: (handle) => window.clearTimeout(handle),
-	countBytes,
-	recordBytesIn: (id, bytes) =>
-		runtime.updateStats(id, (stats) => {
-			stats.bytesIn += bytes;
-		}),
-	noteOutputActivity: (id) => renderHealth.noteOutputActivity(id),
-	ackBatchBytes: ACK_BATCH_BYTES,
-	ackFlushDelayMs: ACK_FLUSH_DELAY_MS,
-	initialStreamCredit: INITIAL_STREAM_CREDIT,
-});
-
-const terminalRendererAddonState = createTerminalRendererAddonState({
-	setRendererMode: (id, mode) => {
-		lifecycle.setRendererMode(id, mode);
-	},
-	setRenderer: (id, renderer) => {
-		lifecycle.setRenderer(id, renderer);
-	},
-	onRendererUnavailable: (id, error) => {
-		lifecycle.setStatusAndMessage(id, 'error', 'WebGL renderer unavailable.');
-		runtime.setHealth(id, 'stale', 'WebGL renderer unavailable.');
-		runtime.logDebug(id, 'renderer_webgl_failed', { error: String(error) });
-	},
-	onComplete: (id) => {
-		emitState(id);
-	},
-});
-
-const terminalInstanceOrchestration = createTerminalInstanceOrchestration<
-	KittyState,
-	TerminalHandle
->({
+const terminalInstanceOrchestration = createTerminalInstanceOrchestration({
 	terminalHandles,
 	createTerminalInstance: (fontSize) =>
 		createTerminalInstance({
 			fontSize,
 			getToken,
 		}),
-	createKittyState,
-	syncTerminalWebLinks,
-	ensureMode: (id) => lifecycle.ensureMode(id),
+	setRenderer: (id, renderer) => lifecycle.setRenderer(id, renderer),
+	setRendererMode: (id, mode) => lifecycle.setRendererMode(id, mode),
+	setStatusAndMessage: (id, status, message) => lifecycle.setStatusAndMessage(id, status, message),
+	setHealth: (id, state, message) => runtime.setHealth(id, state, message),
+	emitState,
 	setInput: (id, value) => lifecycle.setInput(id, value),
-	beginTerminal: (id) => beginTerminal(id),
 	sendInput,
 	captureCpr: runtime.captureCpr,
-	noteRender: (id) => renderHealth.noteRender(id),
-	getToken,
-	getHandle: (id) => terminalHandles.get(id),
 	fitTerminal: (id, started) => terminalViewportResizeController.fitTerminal(id, started),
 	hasStarted: (id) => lifecycle.hasStarted(id),
-	ensureOverlay: (id) => terminalKittyController.ensureOverlay(id),
-	loadRendererAddon: (id, handle) => terminalRendererAddonState.load(id, handle),
-	fitWithPreservedViewport: (handle) =>
-		terminalViewportResizeController.fitWithPreservedViewport(handle),
-	resizeToFit: (id, handle) => terminalResizeBridge.resizeToFit(id, handle),
-	scheduleFitStabilization: (id, reason) =>
-		terminalViewportResizeController.scheduleFitStabilization(id, reason),
-	flushOutput: terminalOutputBuffer.flushOutput,
+	flushOutput: (id, writeAll) => flushBufferedOutput(id, writeAll),
 	markAttached: (id) => terminalAttachState.markAttached(id),
 });
 
@@ -327,93 +192,244 @@ const attachTerminal = terminalInstanceOrchestration.attachTerminal;
 
 const terminalResourceLifecycle = createTerminalResourceLifecycle<TerminalHandle>(
 	createTerminalResourceLifecycleDeps({
-		bootstrapFetchTimers,
-		clearTimeoutMap,
-		terminalStreamOrchestrator: {
-			clearReattachTimer: (id) => terminalStreamOrchestrator.clearReattachTimer(id),
-		},
 		terminalViewportResizeController,
 		terminalStores,
-		terminalOutputBuffer,
-		replayAckOrchestrator,
-		bootstrapHandled,
 		terminalServiceState,
 		terminalResizeBridge,
-		renderHealth,
 		lifecycle,
-		terminalMouseState,
 		terminalAttachState,
 		terminalInstanceManager,
 		terminalHandles,
-		terminalKittyController,
-		terminalRendererAddonState,
 	}),
 );
 
-const terminalModeBootstrapCoordinator = createTerminalModeBootstrapCoordinator<KittyEventPayload>(
-	createTerminalModeBootstrapCoordinatorDeps({
-		buildTerminalKey,
-		terminalContextRegistry,
-		logDebug: runtime.logDebug,
-		lifecycle,
-		bootstrapHandled,
-		replayAckOrchestrator,
-		terminalOutputBuffer,
-		countBytes,
-		terminalHandles,
-		terminalKittyController,
-		setHealth: runtime.setHealth,
-		initialStreamCredit: INITIAL_STREAM_CREDIT,
-		renderHealth,
-		emitState,
-		syncTerminalWebLinks,
-	}),
-);
+const decodeBase64ToBytes = (value: string | undefined): Uint8Array => {
+	if (!value) return new Uint8Array();
+	if (typeof atob !== 'function') return new Uint8Array();
+	const binary = atob(value);
+	return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+};
+
+const summarizeChunk = (chunk: Uint8Array, limit = 48): Record<string, unknown> => {
+	const max = Math.min(chunk.length, limit);
+	let esc = 0;
+	let c1 = 0;
+	let ctrl = 0;
+	const headHex: string[] = [];
+	for (let i = 0; i < chunk.length; i += 1) {
+		const b = chunk[i];
+		if (b === 0x1b) esc += 1;
+		if (b >= 0x80 && b <= 0x9f) c1 += 1;
+		if (b < 0x20 && b !== 0x0a && b !== 0x0d && b !== 0x09) ctrl += 1;
+		if (i < max) {
+			headHex.push(b.toString(16).padStart(2, '0'));
+		}
+	}
+	return {
+		bytes: chunk.length,
+		esc,
+		c1,
+		ctrl,
+		headHex: headHex.join(' '),
+		truncated: chunk.length > max,
+	};
+};
+
+const resolvePayloadBytes = (payload: TerminalPayload, chunkLength: number): number => {
+	return payload.bytes && payload.bytes > 0 ? payload.bytes : chunkLength;
+};
+
+const writeChunkToHandle = (
+	id: string,
+	handle: TerminalHandle,
+	seq: number,
+	chunk: Uint8Array,
+	bytes: number,
+	source: 'stream' | 'buffer',
+): void => {
+	runtime.logDebug(id, 'frontend_output_chunk', {
+		seq,
+		source,
+		...summarizeChunk(chunk),
+	});
+	runtime.updateStats(id, (stats) => {
+		stats.bytesIn += bytes;
+	});
+	handle.terminal.write(chunk, () => {
+		runtime.updateStatsLastOutput(id);
+	});
+};
+
+const clearStreamFlushTimer = (id: string): void => {
+	const timer = streamFlushTimers.get(id);
+	if (timer === undefined) return;
+	window.clearTimeout(timer);
+	streamFlushTimers.delete(id);
+};
+
+const clearStreamOrderingState = (id: string): void => {
+	clearStreamFlushTimer(id);
+	terminalServiceState.resetOrderedStream(id);
+};
+
+const flushOrderedStreamOutput = (id: string, force: boolean): void => {
+	const handle = terminalHandles.get(id);
+	if (!handle) return;
+	const flushed = terminalServiceState.consumeOrderedStreamChunks(id, {
+		force,
+		minAgeMs: STREAM_REORDER_DELAY_MS,
+	});
+	if (flushed.chunks.length === 0) return;
+	runtime.logDebug(id, 'frontend_output_flush_ordered', {
+		force,
+		chunks: flushed.chunks.length,
+		firstSeq: flushed.chunks[0]?.seq ?? 0,
+		lastSeq: flushed.chunks[flushed.chunks.length - 1]?.seq ?? 0,
+		droppedStaleChunks: flushed.droppedStaleChunks,
+	});
+	for (const item of flushed.chunks) {
+		writeChunkToHandle(id, handle, item.seq, item.chunk, item.bytes, 'stream');
+	}
+};
+
+const scheduleStreamFlush = (id: string): void => {
+	if (streamFlushTimers.has(id)) return;
+	streamFlushTimers.set(
+		id,
+		window.setTimeout(() => {
+			streamFlushTimers.delete(id);
+			flushOrderedStreamOutput(id, true);
+		}, STREAM_REORDER_DELAY_MS),
+	);
+};
+
+const flushBufferedOutput = (id: string, writeAll: boolean): void => {
+	const handle = terminalHandles.get(id);
+	if (!handle) return;
+	const queued = terminalServiceState.consumeBufferedOutput(id);
+	if (queued.length === 0) return;
+	queued.sort((left, right) => left.seq - right.seq);
+	let totalBytes = 0;
+	for (const item of queued) {
+		totalBytes += item.bytes;
+	}
+	runtime.logDebug(id, 'frontend_output_flushed_buffer', {
+		chunks: queued.length,
+		bytes: totalBytes,
+		writeAll,
+	});
+	for (const item of queued) {
+		writeChunkToHandle(id, handle, item.seq, item.chunk, item.bytes, 'buffer');
+	}
+};
+
+const writeTerminalDataDirect = (id: string, payload: TerminalPayload): void => {
+	if (!payload.dataB64 || payload.dataB64.length === 0) return;
+	const chunk = decodeBase64ToBytes(payload.dataB64);
+	if (chunk.length === 0) return;
+
+	const seq = payload.seq ?? 0;
+	const bytes = resolvePayloadBytes(payload, chunk.length);
+	const handle = terminalHandles.get(id);
+	if (!handle) {
+		const buffered = terminalServiceState.bufferOutputChunk(id, {
+			seq,
+			bytes,
+			chunk,
+		});
+		runtime.logDebug(id, 'frontend_output_buffered_no_handle', {
+			seq,
+			...summarizeChunk(chunk),
+			bufferedChunks: buffered.bufferedChunks,
+			bufferedBytes: buffered.bufferedBytes,
+			droppedChunks: buffered.droppedChunks,
+			droppedBytes: buffered.droppedBytes,
+		});
+		if (buffered.droppedChunks > 0) {
+			runtime.logDebug(id, 'frontend_output_dropped_no_handle', {
+				seq,
+				bytes,
+				reason: 'buffer_limit',
+				droppedChunks: buffered.droppedChunks,
+				droppedBytes: buffered.droppedBytes,
+			});
+		}
+		return;
+	}
+	const buffered = terminalServiceState.getBufferedOutputSnapshot(id);
+	if (buffered.bufferedChunks > 0) {
+		flushBufferedOutput(id, false);
+	}
+	const ordered = terminalServiceState.enqueueOrderedStreamChunk(id, {
+		seq,
+		bytes,
+		chunk,
+		receivedAt: Date.now(),
+	});
+	runtime.logDebug(id, 'frontend_output_enqueued_ordered', {
+		seq,
+		queuedChunks: ordered.queuedChunks,
+		queuedBytes: ordered.queuedBytes,
+		droppedStaleChunks: ordered.droppedStaleChunks,
+		droppedDuplicateChunks: ordered.droppedDuplicateChunks,
+	});
+	if (ordered.queuedChunks >= STREAM_REORDER_FORCE_FLUSH_THRESHOLD) {
+		clearStreamFlushTimer(id);
+		flushOrderedStreamOutput(id, true);
+		return;
+	}
+	scheduleStreamFlush(id);
+};
+
+const resetSessionState = (id: string): void => {
+	clearStreamOrderingState(id);
+	terminalResourceLifecycle.resetSessionState(id);
+	const buffered = terminalServiceState.consumeBufferedOutput(id);
+	if (buffered.length === 0) return;
+	let bytes = 0;
+	for (const item of buffered) {
+		bytes += item.bytes;
+	}
+	runtime.logDebug(id, 'frontend_output_drop_on_session_reset', {
+		chunks: buffered.length,
+		bytes,
+	});
+};
 
 const handleTerminalDataEvent = (id: string, payload: TerminalPayload): void => {
 	lifecycle.markInput(id);
-	replayAckOrchestrator.handleTerminalData(id, payload);
+	if (lifecycle.getStatus(id) !== 'ready') {
+		lifecycle.setStatusAndMessage(id, 'ready', '');
+		runtime.setHealth(id, 'ok', 'Session active.');
+		emitState(id);
+	}
+	writeTerminalDataDirect(id, payload);
 };
-const handleTerminalKittyEvent = (id: string, payload: TerminalKittyPayload): void =>
-	replayAckOrchestrator.handleTerminalKitty(id, payload.event);
 
 const terminalEventSubscriptions = createTerminalEventSubscriptions({
 	subscribeEvent: (event, handler) => terminalTransport.onEvent(event, handler),
 	buildTerminalKey,
-	isWorkspaceMismatch: terminalModeBootstrapCoordinator.isWorkspaceMismatch,
+	isWorkspaceMismatch: (id, payloadWorkspaceId, payloadTerminalId) => {
+		const context = getContext(id);
+		if (!context) return true;
+		if (payloadWorkspaceId && context.workspaceId !== payloadWorkspaceId) return true;
+		if (payloadTerminalId && context.terminalId !== payloadTerminalId) return true;
+		return false;
+	},
 	onTerminalData: handleTerminalDataEvent,
-	onTerminalBootstrap: terminalModeBootstrapCoordinator.handleBootstrapPayload,
-	onTerminalBootstrapDone: terminalModeBootstrapCoordinator.handleBootstrapDonePayload,
-	onTerminalLifecycle: terminalModeBootstrapCoordinator.handleTerminalLifecyclePayload,
-	onTerminalModes: terminalModeBootstrapCoordinator.handleTerminalModesPayload,
-	onTerminalKitty: handleTerminalKittyEvent,
-	onSessiondRestarted: handleSessiondRestarted,
 });
 
 const terminalSessionCoordinator = createTerminalSessionCoordinator({
 	lifecycle,
 	getWorkspaceId,
 	getTerminalId,
-	getContext,
-	attachTerminal,
-	terminalIds: () => terminalContextRegistry.keys(),
 	transport: createTerminalSessionTransport(terminalTransport),
 	setHealth: runtime.setHealth,
 	emitState,
 	pendingInput,
-	bootstrapHandled,
-	bootstrapFetchTimers,
-	replaySetState: replayAckOrchestrator.setReplayState,
 	logDebug: runtime.logDebug,
-	handleBootstrapPayload: terminalModeBootstrapCoordinator.handleBootstrapPayload,
-	handleBootstrapDonePayload: terminalModeBootstrapCoordinator.handleBootstrapDonePayload,
 	resetSessionState,
-	resetTerminalInstance,
-	noteMouseSuppress: (id, durationMs) => terminalMouseState.noteSuppress(id, durationMs),
-	writeStartFailureMessage: (id, message) => {
-		const handle = terminalHandles.get(id);
-		handle?.terminal.write(`\r\n[workset] failed to start terminal: ${message}`);
-	},
+	writeStartFailureMessage: () => undefined,
 	getDebugOverlayPreference: () => terminalDebugState.getDebugOverlayPreference(),
 	setDebugOverlayPreference: (value) => terminalDebugState.setDebugOverlayPreference(value),
 	clearLocalDebugPreference: clearLocalTerminalDebugPreference,
@@ -421,15 +437,13 @@ const terminalSessionCoordinator = createTerminalSessionCoordinator({
 });
 
 const terminalStreamOrchestrator = createTerminalStreamOrchestrator({
-	ensureSessionActive,
 	initTerminal,
 	getContext,
-	hasStarted: (id) => lifecycle.hasStarted(id),
-	getStatus: (id) => lifecycle.getStatus(id),
-	ensureStream,
 	beginTerminal,
+	nextSyncToken: (id) => lifecycle.nextInitToken(id),
+	isCurrentSyncToken: (id, token) => lifecycle.isCurrentInitToken(id, token),
 	emitState,
-	logDebug: runtime.logDebug,
+	trace: (id, event, details) => runtime.logDebug(id, event, details),
 });
 
 const ensureGlobals = (): void =>
@@ -445,7 +459,7 @@ const ensureGlobals = (): void =>
 		ensureSessionActive,
 	});
 
-const terminalServiceExports = createTerminalServiceExports<TerminalViewState, TerminalHandle>({
+const terminalServiceExports = createTerminalServiceExports<TerminalViewState>({
 	loadTerminalDefaults,
 	buildTerminalKey,
 	ensureStore,
@@ -453,20 +467,19 @@ const terminalServiceExports = createTerminalServiceExports<TerminalViewState, T
 		ensureGlobals,
 		buildTerminalKey,
 		ensureContext,
+		trace: (id, event, details) => runtime.logDebug(id, event, details),
 		terminalContextRegistry,
 		attachTerminal,
 		terminalViewportResizeController,
 		terminalStreamOrchestrator,
-		lifecycle,
-		forceRedraw: runtime.forceRedraw,
-		terminalHandles,
-		hasVisibleTerminalContent: (handle) => hasVisibleTerminalContent(handle.terminal),
-		terminalResizeBridge,
 		terminalAttachState,
 		terminalTransport,
-		terminalResourceLifecycle,
-		beginTerminal,
-		requestHealthCheck: runtime.requestHealthCheck,
+		terminalResourceLifecycle: {
+			disposeTerminalResources: (id: string) => {
+				clearStreamOrderingState(id);
+				terminalResourceLifecycle.disposeTerminalResources(id);
+			},
+		},
 	}),
 });
 
@@ -475,8 +488,6 @@ export const getTerminalStore = terminalServiceExports.getTerminalStore;
 export const syncTerminal = terminalServiceExports.syncTerminal;
 export const detachTerminal = terminalServiceExports.detachTerminal;
 export const closeTerminal = terminalServiceExports.closeTerminal;
-export const restartTerminal = terminalServiceExports.restartTerminal;
-export const retryHealthCheck = terminalServiceExports.retryHealthCheck;
 export const focusTerminalInstance = terminalServiceExports.focusTerminalInstance;
 export const scrollTerminalToBottom = terminalServiceExports.scrollTerminalToBottom;
 export const isTerminalAtBottom = terminalServiceExports.isTerminalAtBottom;
@@ -486,6 +497,7 @@ export const releaseWorkspaceTerminals = (workspaceId: string): void => {
 	if (!targetWorkspace) return;
 	for (const key of terminalContextRegistry.keys()) {
 		if (getWorkspaceId(key) !== targetWorkspace) continue;
+		clearStreamOrderingState(key);
 		terminalResourceLifecycle.disposeTerminalResources(key);
 		terminalContextRegistry.deleteContext(key);
 	}

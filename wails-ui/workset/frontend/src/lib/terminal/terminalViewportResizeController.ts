@@ -1,7 +1,8 @@
-import { captureViewportSnapshot, resolveViewportTargetLine } from './viewport';
-
 export type TerminalViewportResizeHandle = {
 	terminal: {
+		element?: {
+			parentElement: Element | null;
+		} | null;
 		buffer: {
 			active: {
 				baseY: number;
@@ -9,16 +10,12 @@ export type TerminalViewportResizeHandle = {
 			};
 		};
 		scrollToBottom: () => void;
-		scrollToLine: (line: number) => void;
 		focus: () => void;
 	};
 	fitAddon: {
 		fit: () => void;
-		proposeDimensions: () => { cols: number; rows: number } | undefined;
 	};
 };
-
-type TerminalViewportSnapshot = ReturnType<typeof captureViewportSnapshot>;
 
 type TerminalResizeObserver = {
 	observe: (target: Element) => void;
@@ -31,7 +28,6 @@ type TerminalViewportResizeControllerOptions<T extends TerminalViewportResizeHan
 	forceRedraw: (id: string) => void;
 	resizeToFit: (id: string, handle: T) => void;
 	resizeOverlay: (handle: T) => void;
-	logDebug?: (id: string, event: string, details: Record<string, unknown>) => void;
 	resizeDebounceMs?: number;
 	setTimeoutFn?: (callback: () => void, timeoutMs: number) => number;
 	clearTimeoutFn?: (handle: number) => void;
@@ -41,11 +37,9 @@ type TerminalViewportResizeControllerOptions<T extends TerminalViewportResizeHan
 export const createTerminalViewportResizeController = <T extends TerminalViewportResizeHandle>(
 	options: TerminalViewportResizeControllerOptions<T>,
 ) => {
-	const fitStabilizers = new Map<string, number>();
 	const resizeObservers = new Map<string, TerminalResizeObserver>();
 	const resizeTimers = new Map<string, number>();
 	const focusTimers = new Map<string, number>();
-	const lastDims = new Map<string, { cols: number; rows: number }>();
 	const resizeDebounceMs = options.resizeDebounceMs ?? 100;
 	const setTimeoutFn =
 		options.setTimeoutFn ??
@@ -63,72 +57,29 @@ export const createTerminalViewportResizeController = <T extends TerminalViewpor
 		map.delete(id);
 	};
 
-	const captureViewport = (terminal: T['terminal']): TerminalViewportSnapshot => {
-		const buffer = terminal.buffer.active;
-		return captureViewportSnapshot({
-			baseY: buffer.baseY,
-			viewportY: buffer.viewportY,
-		});
-	};
-
-	const restoreViewport = (terminal: T['terminal'], viewport: TerminalViewportSnapshot): void => {
-		const targetLine = resolveViewportTargetLine(viewport, terminal.buffer.active.baseY);
-		if (targetLine === null) {
-			terminal.scrollToBottom();
-			return;
+	const hasRenderableViewport = (handle: T): boolean => {
+		const parent = handle.terminal.element?.parentElement;
+		if (!parent) {
+			return true;
 		}
-		terminal.scrollToLine(targetLine);
-	};
-
-	const fitWithPreservedViewport = (
-		handle: T,
-		viewport = captureViewport(handle.terminal),
-	): void => {
-		handle.fitAddon.fit();
-		restoreViewport(handle.terminal, viewport);
-		options.resizeOverlay(handle);
+		if (!(parent instanceof HTMLElement)) {
+			return true;
+		}
+		if (!parent.isConnected) {
+			return false;
+		}
+		return parent.clientWidth > 0 && parent.clientHeight > 0;
 	};
 
 	const fitTerminal = (id: string, resizeSession: boolean): void => {
 		const handle = options.getHandle(id);
 		if (!handle) return;
-		fitWithPreservedViewport(handle);
+		if (!hasRenderableViewport(handle)) return;
+		handle.fitAddon.fit();
+		options.resizeOverlay(handle);
 		options.forceRedraw(id);
 		if (!resizeSession) return;
 		options.resizeToFit(id, handle);
-	};
-
-	const scheduleFitStabilization = (id: string, reason: string): void => {
-		clearTimerMap(fitStabilizers, id);
-		let attempts = 0;
-		let stableCount = 0;
-		const run = (): void => {
-			fitStabilizers.delete(id);
-			const handle = options.getHandle(id);
-			if (!handle) return;
-			const dims = handle.fitAddon.proposeDimensions();
-			if (!dims || dims.cols <= 0 || dims.rows <= 0) {
-				attempts += 1;
-				if (attempts < 6) {
-					fitStabilizers.set(id, setTimeoutFn(run, 80 + attempts * 20));
-				}
-				return;
-			}
-			const prev = lastDims.get(id);
-			if (prev && prev.cols === dims.cols && prev.rows === dims.rows) {
-				stableCount += 1;
-			} else {
-				stableCount = 0;
-			}
-			lastDims.set(id, { cols: dims.cols, rows: dims.rows });
-			fitTerminal(id, options.hasStarted(id));
-			if (stableCount < 2 && attempts < 5) {
-				attempts += 1;
-				fitStabilizers.set(id, setTimeoutFn(run, 80 + attempts * 30));
-			}
-		};
-		fitStabilizers.set(id, setTimeoutFn(run, 60));
-		options.logDebug?.(id, 'fit', { reason });
 	};
 
 	const attachResizeObserver = (id: string, container: HTMLDivElement | null): void => {
@@ -147,8 +98,6 @@ export const createTerminalViewportResizeController = <T extends TerminalViewpor
 				id,
 				setTimeoutFn(() => {
 					resizeTimers.delete(id);
-					const handle = options.getHandle(id);
-					if (!handle) return;
 					fitTerminal(id, options.hasStarted(id));
 				}, resizeDebounceMs),
 			);
@@ -199,17 +148,11 @@ export const createTerminalViewportResizeController = <T extends TerminalViewpor
 
 	const destroy = (id: string): void => {
 		clearTimerMap(focusTimers, id);
-		clearTimerMap(fitStabilizers, id);
 		detachResizeObserver(id);
-		lastDims.delete(id);
 	};
 
 	return {
-		captureViewport,
-		restoreViewport,
-		fitWithPreservedViewport,
 		fitTerminal,
-		scheduleFitStabilization,
 		attachResizeObserver,
 		detachResizeObserver,
 		focusTerminal,

@@ -252,15 +252,15 @@
 
 {#if !node}
 	<div class="pane-empty">No terminals</div>
-{:else if !isPane(node)}
+{:else if isSplit(node)}
 	<div
-		class="split {node.direction}"
+		class="split {node?.direction ?? 'row'}"
 		class:dragging-divider={isDraggingDivider}
 		bind:this={splitContainerRef}
 	>
-		<div class="split-child" style={`flex:${node.ratio} 1 0%`}>
+		<div class="split-child" style={`flex:${node?.ratio ?? 0.5} 1 0%`}>
 			<Self
-				node={node.first}
+				node={node?.first ?? null}
 				{workspaceId}
 				{workspaceName}
 				{active}
@@ -287,8 +287,8 @@
 			class:active={isDraggingDivider}
 			role="separator"
 			tabindex="0"
-			aria-orientation={node.direction === 'row' ? 'vertical' : 'horizontal'}
-			aria-valuenow={Math.round(node.ratio * 100)}
+			aria-orientation={(node?.direction ?? 'row') === 'row' ? 'vertical' : 'horizontal'}
+			aria-valuenow={Math.round((node?.ratio ?? 0.5) * 100)}
 			aria-valuemin={15}
 			aria-valuemax={85}
 			onpointerdown={handleDividerPointerDown}
@@ -297,9 +297,9 @@
 			onpointercancel={handleDividerPointerUp}
 			onkeydown={handleDividerKeyDown}
 		></div>
-		<div class="split-child" style={`flex:${1 - node.ratio} 1 0%`}>
+		<div class="split-child" style={`flex:${1 - (node?.ratio ?? 0.5)} 1 0%`}>
 			<Self
-				node={node.second}
+				node={node?.second ?? null}
 				{workspaceId}
 				{workspaceName}
 				{active}
@@ -322,6 +322,8 @@
 	</div>
 {:else if (node?.tabs?.length ?? 0) === 0}
 	<div class="pane-empty">No terminals</div>
+{:else if !isPane(node)}
+	<div class="pane-empty">Terminal layout unavailable</div>
 {:else}
 	{@const paneTabs = node?.tabs ?? []}
 	{@const paneId = node?.id ?? ''}

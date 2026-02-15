@@ -10,9 +10,9 @@ This document describes how the Workset desktop app runs terminals and streams o
 
 - **Wails UI (Svelte + xterm.js)** renders terminal output and captures input.
 - **Wails backend (Go app)** brokers terminal lifecycle and configuration.
-- **`workset-sessiond` daemon** owns PTYs, buffers output, and generates snapshots.
+- **`workset-sessiond` daemon** owns PTYs and streams raw bytes.
 - **Shell process** runs inside the PTY.
-- **Local state** in `~/.workset` for sockets, logs, and snapshots.
+- **Local state** in `~/.workset` for sockets, transcripts, and records.
 
 ```mermaid
 flowchart LR
@@ -25,29 +25,25 @@ flowchart LR
 ## Terminal 101 (glossary)
 
 - **PTY (pseudo-terminal)**: OS-level device pair that makes a process (the shell) think it is talking to a terminal.
-- **Terminal emulator**: Interprets escape sequences (ANSI, CSI, OSC) and maintains screen state. In Workset, this is in `workset-sessiond` (termemu).
-- **Renderer**: Draws the emulator state. In Workset, that is xterm.js in the UI.
-- **Snapshot**: A serialized screen state produced by the daemon for fast UI boot.
-- **Backlog**: Buffered output used when no recent snapshot is available.
+- **Terminal emulator**: Interprets escape sequences (ANSI, CSI, OSC) and maintains screen state. In Workset, this is xterm.js in the UI.
+- **Renderer**: Draws terminal output. In Workset, that is xterm.js.
 - **Alt screen**: A separate screen buffer used by full-screen apps (vim, less). It is not safe to replay as normal output.
-- **Kitty graphics**: Image protocol events parsed by the daemon and rendered by the UI overlay.
 
 ## Source of truth
 
-The daemon is the only component that parses terminal bytes and owns terminal state.
+The shell process and PTY stream are the source of truth.
 
-- `workset-sessiond` parses all escape sequences, updates mode state, and produces snapshots/backlog.
-- The Wails backend forwards structured events and never interprets terminal bytes.
-- The UI renders typed events and does not own terminal protocol parsing.
-  It may respond to limited renderer-level xterm callbacks (for example OSC color queries).
+- `workset-sessiond` forwards PTY output bytes and enforces input ownership.
+- The Wails backend forwards events and does not interpret terminal bytes.
+- The UI renders bytes via xterm.js and captures keyboard input.
 
 ## Session lifecycle
 
 1. The UI asks the Go app to start a terminal (`StartWorkspaceTerminal`).
 2. The Go app ensures `workset-sessiond` is running and sends a `create` request.
 3. `workset-sessiond` spawns the user's shell in a PTY, sets `TERM=xterm-256color` + `COLORTERM=truecolor`, and injects `WORKSET_WORKSPACE` / `WORKSET_ROOT`.
-4. The Go app attaches a stream (`attach`) and receives an initial bootstrap payload (snapshot + backlog).
-5. The UI renders the snapshot, then applies streamed updates.
+4. The Go app attaches a stream (`attach`) and receives a `ready` event followed by live output.
+5. The UI renders streamed output directly in xterm.js.
 
 ## Data flow and backpressure
 
@@ -61,27 +57,20 @@ sequenceDiagram
   UI->>App: StartWorkspaceTerminal(workspaceId, terminalId)
   App->>D: ensure running + create(sessionId, cwd)
   D->>PTY: spawn shell in PTY
-  App->>D: attach(sessionId, since, streamId)
-  D-->>App: bootstrap(snapshot/backlog)
-  App-->>UI: render snapshot
+  App->>D: attach(sessionId, streamId)
+  D-->>App: ready + live data stream
 
   UI->>App: keystrokes
   App->>D: send(data)
   D->>PTY: write
   PTY-->>D: output
-  D-->>App: stream events (data + kitty)
-  App-->>UI: terminal:data + terminal:kitty
-
-  UI->>App: ack(bytes)
-  App->>D: ack(bytes)
+  D-->>App: stream events (data)
+  App-->>UI: terminal:data
 ```
-
-`workset-sessiond` uses a credit-based stream so the UI can acknowledge bytes and prevent unbounded buffering.
 
 ## Persistence and resume
 
-- Session IDs are `workspaceId::terminalId`. Re-using an ID resumes the same terminal stream.
-- `workset-sessiond` maintains a terminal buffer plus periodic snapshots.
+- Session IDs are `workspaceId::terminalId`. Re-using an ID reattaches to the same live PTY while the daemon keeps it running.
 - The app stores terminal mode state under `~/.workset/terminal_state` so it can restore UI state after restart.
 
 ## Config knobs
@@ -93,5 +82,4 @@ sequenceDiagram
 - `WORKSET_SESSIOND_SOCKET` overrides the session daemon socket path (default `~/.workset/sessiond.sock`).
   Wails dev builds use `~/.workset/sessiond-dev.sock` to avoid contention with production.
 
-Protocol logs are written to `~/.workset/terminal_logs/unified_sessiond.log` and
-`~/.workset/terminal_logs/unified_termemu.log` when enabled.
+Protocol logs are written to `~/.workset/terminal_logs/unified_sessiond.log` when enabled.

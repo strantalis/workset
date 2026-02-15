@@ -25,7 +25,6 @@ func startTestServerWithOptions(t *testing.T, mutate func(*Options)) (*Client, f
 	opts.SocketPath = socketPath
 	opts.TranscriptDir = filepath.Join(tmp, "terminal_logs")
 	opts.RecordDir = filepath.Join(tmp, "terminal_records")
-	opts.StateDir = filepath.Join(tmp, "terminal_state")
 	if mutate != nil {
 		mutate(&opts)
 	}

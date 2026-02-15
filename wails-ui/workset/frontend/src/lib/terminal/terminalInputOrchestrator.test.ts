@@ -2,29 +2,31 @@ import { describe, expect, it, vi } from 'vitest';
 import { createTerminalInputOrchestrator } from './terminalInputOrchestrator';
 
 const buildDeps = () => ({
-	shouldSuppressMouseInput: vi.fn(() => false),
-	getMode: vi.fn(() => ({ mouse: false })),
-	filterMouseReports: vi.fn((_data: string, _mode: { mouse: boolean }, _tail: string) => ({
-		filtered: 'input',
-		tail: '',
-	})),
-	getMouseTail: vi.fn(() => ''),
-	setMouseTail: vi.fn(),
 	ensureSessionActive: vi.fn(async () => undefined),
 	hasStarted: vi.fn(() => true),
 	appendPendingInput: vi.fn(),
 	recordOutputBytes: vi.fn(),
 	getWorkspaceId: vi.fn(() => 'ws'),
 	getTerminalId: vi.fn(() => 'term'),
+	isContextActive: vi.fn(() => true),
+	isTerminalFocused: vi.fn(() => true),
 	write: vi.fn(async () => undefined),
 	markStopped: vi.fn(),
-	resetTerminalInstance: vi.fn(),
-	beginTerminal: vi.fn(async () => undefined),
-	writeFailureMessage: vi.fn(),
 });
 
 describe('terminalInputOrchestrator', () => {
-	it('queues filtered input when terminal has not started', () => {
+	it('returns immediately for empty input', () => {
+		const deps = buildDeps();
+		const orchestrator = createTerminalInputOrchestrator(deps);
+
+		orchestrator.sendInput('ws::term', '');
+
+		expect(deps.ensureSessionActive).not.toHaveBeenCalled();
+		expect(deps.appendPendingInput).not.toHaveBeenCalled();
+		expect(deps.write).not.toHaveBeenCalled();
+	});
+
+	it('queues input when terminal has not started', () => {
 		const deps = buildDeps();
 		deps.hasStarted.mockReturnValue(false);
 		const orchestrator = createTerminalInputOrchestrator(deps);
@@ -37,17 +39,18 @@ describe('terminalInputOrchestrator', () => {
 		expect(deps.recordOutputBytes).not.toHaveBeenCalled();
 	});
 
-	it('writes filtered input when terminal is started', () => {
+	it('writes input when terminal is started', () => {
 		const deps = buildDeps();
 		const orchestrator = createTerminalInputOrchestrator(deps);
 
 		orchestrator.sendInput('ws::term', 'input');
 
+		expect(deps.ensureSessionActive).not.toHaveBeenCalled();
 		expect(deps.recordOutputBytes).toHaveBeenCalledWith('ws::term', 5);
 		expect(deps.write).toHaveBeenCalledWith('ws', 'term', 'input');
 	});
 
-	it('recovers session when write fails with a recoverable string error', async () => {
+	it('queues input and marks terminal stopped when write fails', async () => {
 		const deps = buildDeps();
 		deps.write.mockRejectedValue('session not found');
 		const orchestrator = createTerminalInputOrchestrator(deps);
@@ -58,49 +61,93 @@ describe('terminalInputOrchestrator', () => {
 
 		expect(deps.appendPendingInput).toHaveBeenCalledWith('ws::term', 'input');
 		expect(deps.markStopped).toHaveBeenCalledWith('ws::term');
-		expect(deps.resetTerminalInstance).toHaveBeenCalledWith('ws::term');
-		expect(deps.beginTerminal).toHaveBeenCalledWith('ws::term', true);
-		expect(deps.writeFailureMessage).toHaveBeenCalledWith('ws::term', 'session not found');
+		expect(deps.ensureSessionActive).toHaveBeenCalledWith('ws::term');
 	});
 
-	it('does not recover session for non-recoverable errors', async () => {
+	it('drops terminal focus reports so they do not leak into the shell', () => {
 		const deps = buildDeps();
-		deps.write.mockRejectedValue(new Error('write refused'));
-		const orchestrator = createTerminalInputOrchestrator(deps);
+		const trace = vi.fn();
+		const orchestrator = createTerminalInputOrchestrator({
+			...deps,
+			trace,
+		});
 
-		orchestrator.sendInput('ws::term', 'input');
-		await Promise.resolve();
-		await Promise.resolve();
+		orchestrator.sendInput('ws::term', '\x1b[I');
+		orchestrator.sendInput('ws::term', '\x1b[O');
 
-		expect(deps.appendPendingInput).toHaveBeenCalledWith('ws::term', 'input');
-		expect(deps.markStopped).toHaveBeenCalledWith('ws::term');
-		expect(deps.resetTerminalInstance).not.toHaveBeenCalled();
-		expect(deps.beginTerminal).not.toHaveBeenCalled();
-		expect(deps.writeFailureMessage).toHaveBeenCalledWith('ws::term', 'Error: write refused');
-	});
-
-	it('short-circuits when mouse input is suppressed', () => {
-		const deps = buildDeps();
-		deps.shouldSuppressMouseInput.mockReturnValue(true);
-		const orchestrator = createTerminalInputOrchestrator(deps);
-
-		orchestrator.sendInput('ws::term', 'input');
-
-		expect(deps.filterMouseReports).not.toHaveBeenCalled();
-		expect(deps.ensureSessionActive).not.toHaveBeenCalled();
-		expect(deps.write).not.toHaveBeenCalled();
-	});
-
-	it('updates mouse tail even when filtered input is empty', () => {
-		const deps = buildDeps();
-		deps.getMouseTail.mockReturnValue('old-tail');
-		deps.filterMouseReports.mockReturnValue({ filtered: '', tail: 'new-tail' });
-		const orchestrator = createTerminalInputOrchestrator(deps);
-
-		orchestrator.sendInput('ws::term', 'partial');
-
-		expect(deps.setMouseTail).toHaveBeenCalledWith('ws::term', 'new-tail');
 		expect(deps.ensureSessionActive).not.toHaveBeenCalled();
 		expect(deps.appendPendingInput).not.toHaveBeenCalled();
+		expect(deps.recordOutputBytes).not.toHaveBeenCalled();
+		expect(deps.write).not.toHaveBeenCalled();
+		expect(trace).toHaveBeenCalledTimes(2);
+	});
+
+	it('strips focus reports embedded inside normal input chunks', () => {
+		const deps = buildDeps();
+		const orchestrator = createTerminalInputOrchestrator(deps);
+
+		orchestrator.sendInput('ws::term', '\x1b[I\x1b[O\x03');
+
+		expect(deps.recordOutputBytes).toHaveBeenCalledWith('ws::term', 1);
+		expect(deps.write).toHaveBeenCalledWith('ws', 'term', '\x03');
+	});
+
+	it('drops printable input from inactive terminal contexts', () => {
+		const deps = buildDeps();
+		deps.isContextActive.mockReturnValue(false);
+		const trace = vi.fn();
+		const orchestrator = createTerminalInputOrchestrator({
+			...deps,
+			trace,
+		});
+
+		orchestrator.sendInput('ws::term', 'opencode');
+
+		expect(deps.write).not.toHaveBeenCalled();
+		expect(deps.appendPendingInput).not.toHaveBeenCalled();
+		expect(trace).toHaveBeenCalledWith(
+			'ws::term',
+			'frontend_input_drop_inactive_context',
+			expect.objectContaining({ bytes: 8 }),
+		);
+	});
+
+	it('drops control reply sequences from inactive contexts', () => {
+		const deps = buildDeps();
+		deps.isContextActive.mockReturnValue(false);
+		const trace = vi.fn();
+		const withTrace = createTerminalInputOrchestrator({
+			...deps,
+			trace,
+		});
+
+		withTrace.sendInput('ws::term', '\x1b[?1;2c');
+
+		expect(deps.write).not.toHaveBeenCalled();
+		expect(trace).toHaveBeenCalledWith(
+			'ws::term',
+			'frontend_input_drop_inactive_context',
+			expect.objectContaining({ bytes: 7 }),
+		);
+	});
+
+	it('drops printable input from unfocused terminal instances', () => {
+		const deps = buildDeps();
+		deps.isTerminalFocused.mockReturnValue(false);
+		const trace = vi.fn();
+		const orchestrator = createTerminalInputOrchestrator({
+			...deps,
+			trace,
+		});
+
+		orchestrator.sendInput('ws::term', 'opencode');
+
+		expect(deps.write).not.toHaveBeenCalled();
+		expect(deps.appendPendingInput).not.toHaveBeenCalled();
+		expect(trace).toHaveBeenCalledWith(
+			'ws::term',
+			'frontend_input_drop_unfocused_terminal',
+			expect.objectContaining({ bytes: 8 }),
+		);
 	});
 });

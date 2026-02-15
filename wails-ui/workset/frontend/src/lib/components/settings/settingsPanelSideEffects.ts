@@ -30,9 +30,6 @@ import type {
 
 const SESSIOND_RESTART_TIMEOUT_MS = 20000;
 const LAYOUT_VERSION = 1;
-const LEGACY_STORAGE_PREFIX = 'workset:terminal-layout:';
-const MIGRATION_PREFIX = 'workset:terminal-layout:migrated:v';
-const MIGRATION_VERSION = 1;
 
 export const DEFAULT_UPDATE_PREFERENCES: UpdatePreferences = { channel: 'stable', autoCheck: true };
 
@@ -93,16 +90,8 @@ export type SettingsPanelSideEffectDeps = {
 	fetchAppVersion: () => Promise<AppVersion>;
 	fetchUpdatePreferences: () => Promise<UpdatePreferences>;
 	toErrorMessage: (error: unknown, fallback: string) => string;
-	getStorage: () => Storage | null;
 	dispatchLayoutReset: (workspaceId: string) => void;
 	randomUUID?: () => string;
-};
-
-const defaultGetStorage = (): Storage | null => {
-	if (typeof localStorage === 'undefined') {
-		return null;
-	}
-	return localStorage;
 };
 
 const defaultDispatchLayoutReset = (workspaceId: string): void => {
@@ -124,48 +113,6 @@ const resolveId = (randomUUID?: () => string): string => {
 		return crypto.randomUUID();
 	}
 	return `term-${Math.random().toString(36).slice(2)}`;
-};
-
-const loadLegacyLayout = (
-	workspaceId: string,
-	getStorage: () => Storage | null,
-): TerminalLayout | null => {
-	if (!workspaceId) {
-		return null;
-	}
-	const storage = getStorage();
-	if (!storage) {
-		return null;
-	}
-	try {
-		const raw = storage.getItem(`${LEGACY_STORAGE_PREFIX}${workspaceId}`);
-		if (!raw) {
-			return null;
-		}
-		const parsed = JSON.parse(raw) as TerminalLayout;
-		if (!parsed?.root) {
-			return null;
-		}
-		return parsed;
-	} catch {
-		return null;
-	}
-};
-
-const clearLegacyLayout = (workspaceId: string, getStorage: () => Storage | null): void => {
-	if (!workspaceId) {
-		return;
-	}
-	const storage = getStorage();
-	if (!storage) {
-		return;
-	}
-	try {
-		storage.removeItem(`${LEGACY_STORAGE_PREFIX}${workspaceId}`);
-		storage.setItem(`${MIGRATION_PREFIX}${MIGRATION_VERSION}:${workspaceId}`, '1');
-	} catch {
-		// Ignore storage failures.
-	}
 };
 
 export const collectTerminalIds = (node: TerminalLayoutNode | null | undefined): string[] => {
@@ -239,7 +186,6 @@ export const createSettingsPanelSideEffects = (
 		fetchAppVersion: fetchAppVersionApi,
 		fetchUpdatePreferences: fetchUpdatePreferencesApi,
 		toErrorMessage: toErrorMessageApi,
-		getStorage: defaultGetStorage,
 		dispatchLayoutReset: defaultDispatchLayoutReset,
 		...overrides,
 	};
@@ -280,9 +226,9 @@ export const createSettingsPanelSideEffects = (
 				let layoutToStop: TerminalLayout | null = null;
 				try {
 					const payload = await deps.fetchWorkspaceTerminalLayout(workspace.id);
-					layoutToStop = payload?.layout ?? loadLegacyLayout(workspace.id, deps.getStorage);
+					layoutToStop = payload?.layout ?? null;
 				} catch {
-					layoutToStop = loadLegacyLayout(workspace.id, deps.getStorage);
+					layoutToStop = null;
 				}
 
 				await stopSessionsForLayout(workspace.id, layoutToStop, deps.stopWorkspaceTerminal);
@@ -295,7 +241,6 @@ export const createSettingsPanelSideEffects = (
 				);
 
 				await deps.persistWorkspaceTerminalLayout(workspace.id, layout);
-				clearLegacyLayout(workspace.id, deps.getStorage);
 				deps.dispatchLayoutReset(workspace.id);
 
 				return { success: `Terminal layout reset for ${workspace.name}.` };

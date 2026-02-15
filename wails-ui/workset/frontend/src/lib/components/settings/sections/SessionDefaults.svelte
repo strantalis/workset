@@ -75,7 +75,7 @@
 		{
 			id: 'terminalDebugOverlay',
 			label: 'Debug overlay',
-			description: 'Shows terminal debug stats like bytes in/out and backlog.',
+			description: 'Shows terminal debug stats like bytes in/out and CPR timing.',
 			type: 'select',
 			options: [
 				{ label: 'Off', value: 'off' },

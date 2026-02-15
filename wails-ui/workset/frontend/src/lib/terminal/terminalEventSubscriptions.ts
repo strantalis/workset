@@ -1,66 +1,11 @@
-import {
-	EVENT_SESSIOND_RESTARTED,
-	EVENT_TERMINAL_BOOTSTRAP,
-	EVENT_TERMINAL_BOOTSTRAP_DONE,
-	EVENT_TERMINAL_DATA,
-	EVENT_TERMINAL_KITTY,
-	EVENT_TERMINAL_LIFECYCLE,
-	EVENT_TERMINAL_MODES,
-} from '../events';
+import { EVENT_TERMINAL_DATA } from '../events';
 
 export type TerminalPayload = {
 	workspaceId: string;
 	terminalId: string;
-	data: string;
+	dataB64?: string;
 	bytes?: number;
-};
-
-export type TerminalBootstrapPayload = {
-	workspaceId: string;
-	terminalId: string;
-	snapshot?: string;
-	snapshotSource?: string;
-	kitty?: { images?: unknown[]; placements?: unknown[] } | null;
-	backlog?: string;
-	backlogSource?: string;
-	backlogTruncated?: boolean;
-	nextOffset?: number;
-	source?: string;
-	altScreen?: boolean;
-	mouse?: boolean;
-	mouseSGR?: boolean;
-	mouseEncoding?: string;
-	safeToReplay?: boolean;
-	initialCredit?: number;
-};
-
-export type TerminalBootstrapDonePayload = {
-	workspaceId: string;
-	terminalId: string;
-};
-
-export type TerminalLifecyclePayload = {
-	workspaceId: string;
-	terminalId: string;
-	status: string;
-	message?: string;
-};
-
-export type TerminalModesPayload = {
-	workspaceId: string;
-	terminalId: string;
-	altScreen?: boolean;
-	mouse?: boolean;
-	mouseSGR?: boolean;
-	mouseEncoding?: string;
-};
-
-export type TerminalKittyPayload = {
-	workspaceId: string;
-	terminalId: string;
-	event: {
-		kind: string;
-	};
+	seq?: number;
 };
 
 type TerminalScopedPayload = {
@@ -79,12 +24,6 @@ type TerminalEventSubscriptionsDeps = {
 		payloadTerminalId?: string,
 	) => boolean;
 	onTerminalData: (id: string, payload: TerminalPayload) => void;
-	onTerminalBootstrap: (payload: TerminalBootstrapPayload) => void;
-	onTerminalBootstrapDone: (payload: TerminalBootstrapDonePayload) => void;
-	onTerminalLifecycle: (id: string, payload: TerminalLifecyclePayload) => void;
-	onTerminalModes: (id: string, payload: TerminalModesPayload) => void;
-	onTerminalKitty: (id: string, payload: TerminalKittyPayload) => void;
-	onSessiondRestarted: () => void;
 };
 
 const resolveTerminalKey = <T extends TerminalScopedPayload>(
@@ -115,30 +54,6 @@ export const createTerminalEventSubscriptions = (deps: TerminalEventSubscription
 			const id = resolveTerminalKey(deps, payload);
 			if (!id) return;
 			deps.onTerminalData(id, payload);
-		});
-		register<TerminalBootstrapPayload>(EVENT_TERMINAL_BOOTSTRAP, (payload) => {
-			deps.onTerminalBootstrap(payload);
-		});
-		register<TerminalBootstrapDonePayload>(EVENT_TERMINAL_BOOTSTRAP_DONE, (payload) => {
-			deps.onTerminalBootstrapDone(payload);
-		});
-		register<TerminalLifecyclePayload>(EVENT_TERMINAL_LIFECYCLE, (payload) => {
-			const id = resolveTerminalKey(deps, payload);
-			if (!id) return;
-			deps.onTerminalLifecycle(id, payload);
-		});
-		register<TerminalModesPayload>(EVENT_TERMINAL_MODES, (payload) => {
-			const id = resolveTerminalKey(deps, payload);
-			if (!id) return;
-			deps.onTerminalModes(id, payload);
-		});
-		register<TerminalKittyPayload>(EVENT_TERMINAL_KITTY, (payload) => {
-			const id = resolveTerminalKey(deps, payload);
-			if (!id) return;
-			deps.onTerminalKitty(id, payload);
-		});
-		register<void>(EVENT_SESSIOND_RESTARTED, () => {
-			deps.onSessiondRestarted();
 		});
 	};
 

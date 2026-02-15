@@ -19,8 +19,6 @@
 
 	let terminalContainer: HTMLDivElement | null = $state(null);
 	let controller: {
-		restart?: () => Promise<void>;
-		retryHealthCheck?: () => void;
 		focus?: () => void;
 		scrollToBottom?: () => void;
 		checkAtBottom?: () => boolean;
@@ -67,7 +65,6 @@
 		debugStats: {
 			bytesIn: 0,
 			bytesOut: 0,
-			backlog: 0,
 			lastOutputAt: 0,
 			lastCprAt: 0,
 		},
@@ -75,14 +72,6 @@
 
 	const handleStateChange = (state: typeof controllerState): void => {
 		controllerState = state;
-	};
-
-	const restartTerminal = async (): Promise<void> => {
-		await controller?.restart?.();
-	};
-
-	const requestHealthCheck = (): void => {
-		controller?.retryHealthCheck?.();
 	};
 
 	$effect(() => {
@@ -174,7 +163,6 @@
 						<span class="status-message">{activeMessage}</span>
 					{/if}
 				</div>
-				<button class="restart" onclick={restartTerminal} type="button">Restart</button>
 			</div>
 		{/if}
 		{#if activeHealthMessage && activeHealth !== 'ok'}
@@ -182,14 +170,12 @@
 				<div class="status-text">
 					{activeHealthMessage}
 				</div>
-				<button class="restart" type="button" onclick={requestHealthCheck}> Retry check </button>
 			</div>
 		{/if}
 		{#if debugEnabled}
 			<div class="terminal-debug">
 				<div>bytes in: {debugStats.bytesIn}</div>
 				<div>bytes out: {debugStats.bytesOut}</div>
-				<div>backlog: {debugStats.backlog}</div>
 				<div>
 					last output: {debugStats.lastOutputAt
 						? new Date(debugStats.lastOutputAt).toLocaleTimeString()
@@ -372,27 +358,6 @@
 		color: var(--muted);
 	}
 
-	.restart {
-		background: var(--accent);
-		border: none;
-		color: #081018;
-		padding: 6px 10px;
-		border-radius: var(--radius-sm);
-		font-weight: 600;
-		cursor: pointer;
-		transition:
-			background var(--transition-fast),
-			transform var(--transition-fast);
-	}
-
-	.restart:hover:not(:disabled) {
-		background: color-mix(in srgb, var(--accent) 85%, white);
-	}
-
-	.restart:active:not(:disabled) {
-		transform: scale(0.98);
-	}
-
 	.terminal-debug {
 		font-size: var(--text-xs);
 		color: var(--muted);
@@ -466,16 +431,6 @@
 		overflow: hidden;
 	}
 
-	:global(.terminal-instance .kitty-layer) {
-		position: absolute;
-		inset: 0;
-		pointer-events: none;
-	}
-
-	:global(.terminal-instance .kitty-underlay) {
-		z-index: 0;
-	}
-
 	:global(.terminal-instance .xterm) {
 		position: relative;
 		z-index: 1;
@@ -488,10 +443,6 @@
 
 	:global(.terminal-instance .xterm-viewport::-webkit-scrollbar) {
 		display: none;
-	}
-
-	:global(.terminal-instance .kitty-overlay) {
-		z-index: 2;
 	}
 
 	:global(.terminal-instance[data-active='true']) {

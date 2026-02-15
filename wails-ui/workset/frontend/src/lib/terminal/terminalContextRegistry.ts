@@ -1,11 +1,9 @@
 export type TerminalContext = {
 	terminalKey: string;
 	workspaceId: string;
-	workspaceName: string;
 	terminalId: string;
 	container: HTMLDivElement | null;
 	active: boolean;
-	lastWorkspaceId: string;
 };
 
 export const createTerminalContextRegistry = () => {
@@ -41,16 +39,6 @@ export const createTerminalContextRegistry = () => {
 		return terminalContexts.get(key)?.terminalId ?? '';
 	};
 
-	const getLastWorkspaceId = (key: string): string => {
-		return terminalContexts.get(key)?.lastWorkspaceId ?? '';
-	};
-
-	const setLastWorkspaceId = (key: string, workspaceId: string): void => {
-		const existing = terminalContexts.get(key);
-		if (!existing) return;
-		terminalContexts.set(key, { ...existing, lastWorkspaceId: workspaceId });
-	};
-
 	const deleteContext = (key: string): void => {
 		terminalContexts.delete(key);
 	};
@@ -63,8 +51,6 @@ export const createTerminalContextRegistry = () => {
 		ensureContext,
 		getWorkspaceId,
 		getTerminalId,
-		getLastWorkspaceId,
-		setLastWorkspaceId,
 		deleteContext,
 		keys,
 	};

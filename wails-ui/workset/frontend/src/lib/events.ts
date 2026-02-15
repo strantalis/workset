@@ -4,11 +4,6 @@ export const EVENT_GITHUB_OPERATION = 'github:operation' as const;
 export const EVENT_SESSIOND_RESTARTED = 'sessiond:restarted' as const;
 
 export const EVENT_TERMINAL_DATA = 'terminal:data' as const;
-export const EVENT_TERMINAL_BOOTSTRAP = 'terminal:bootstrap' as const;
-export const EVENT_TERMINAL_BOOTSTRAP_DONE = 'terminal:bootstrap_done' as const;
-export const EVENT_TERMINAL_LIFECYCLE = 'terminal:lifecycle' as const;
-export const EVENT_TERMINAL_MODES = 'terminal:modes' as const;
-export const EVENT_TERMINAL_KITTY = 'terminal:kitty' as const;
 
 export const EVENT_WORKSPACE_POPOUT_OPENED = 'workspace:popout-opened' as const;
 export const EVENT_WORKSPACE_POPOUT_CLOSED = 'workspace:popout-closed' as const;

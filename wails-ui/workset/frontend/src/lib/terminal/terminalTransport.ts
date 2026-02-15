@@ -1,19 +1,11 @@
 import { Browser } from '@wailsio/runtime';
 import {
-	AckWorkspaceTerminalForWindowName,
 	ResizeWorkspaceTerminalForWindowName,
 	StartWorkspaceTerminalForWindowName,
 	WriteWorkspaceTerminalForWindowName,
 } from '../../../bindings/workset/app';
 import { fetchSessiondStatus, fetchSettings, type SessiondStatusResponse } from '../api/settings';
-import {
-	fetchTerminalBootstrap,
-	fetchWorkspaceTerminalStatus,
-	logTerminalDebug,
-	stopWorkspaceTerminal,
-	type TerminalBootstrapResponse,
-	type WorkspaceTerminalStatusResponse,
-} from '../api/terminal-layout';
+import { logTerminalDebug, stopWorkspaceTerminal } from '../api/terminal-layout';
 import type { SettingsSnapshot } from '../types';
 import { getCurrentWindowName } from '../windowContext';
 import { subscribeWailsEvent } from '../wailsEventRegistry';
@@ -23,13 +15,7 @@ export type TerminalTransport = {
 	start: (workspaceId: string, terminalId: string) => Promise<void>;
 	write: (workspaceId: string, terminalId: string, data: string) => Promise<void>;
 	resize: (workspaceId: string, terminalId: string, cols: number, rows: number) => Promise<void>;
-	ack: (workspaceId: string, terminalId: string, bytes: number) => Promise<void>;
 	stop: (workspaceId: string, terminalId: string) => Promise<void>;
-	fetchStatus: (
-		workspaceId: string,
-		terminalId: string,
-	) => Promise<WorkspaceTerminalStatusResponse>;
-	fetchBootstrap: (workspaceId: string, terminalId: string) => Promise<TerminalBootstrapResponse>;
 	fetchSessiondStatus: () => Promise<SessiondStatusResponse>;
 	fetchSettings: () => Promise<SettingsSnapshot>;
 	logDebug: (
@@ -55,13 +41,7 @@ export const terminalTransport: TerminalTransport = {
 		const windowName = await getCurrentWindowName();
 		await ResizeWorkspaceTerminalForWindowName(workspaceId, terminalId, cols, rows, windowName);
 	},
-	ack: async (workspaceId, terminalId, bytes) => {
-		const windowName = await getCurrentWindowName();
-		await AckWorkspaceTerminalForWindowName(workspaceId, terminalId, bytes, windowName);
-	},
 	stop: stopWorkspaceTerminal,
-	fetchStatus: fetchWorkspaceTerminalStatus,
-	fetchBootstrap: fetchTerminalBootstrap,
 	fetchSessiondStatus,
 	fetchSettings,
 	logDebug: logTerminalDebug,

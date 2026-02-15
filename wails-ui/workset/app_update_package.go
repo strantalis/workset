@@ -15,9 +15,7 @@ import (
 	"strings"
 )
 
-var (
-	teamIDExpr = regexp.MustCompile(`TeamIdentifier=([A-Z0-9]+)`)
-)
+var teamIDExpr = regexp.MustCompile(`TeamIdentifier=([A-Z0-9]+)`)
 
 type queuedSymlink struct {
 	path   string

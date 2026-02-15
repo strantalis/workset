@@ -1,72 +1,98 @@
-import type { StripResult } from './inputFilter';
-
-type TerminalMouseMode = {
-	mouse: boolean;
-};
-
 type TerminalInputOrchestratorDeps = {
-	shouldSuppressMouseInput: (id: string, data: string) => boolean;
-	getMode: (id: string) => TerminalMouseMode;
-	filterMouseReports: (data: string, mode: TerminalMouseMode, tail: string) => StripResult;
-	getMouseTail: (id: string) => string;
-	setMouseTail: (id: string, tail: string) => void;
 	ensureSessionActive: (id: string) => Promise<void>;
 	hasStarted: (id: string) => boolean;
 	appendPendingInput: (id: string, data: string) => void;
 	recordOutputBytes: (id: string, bytes: number) => void;
 	getWorkspaceId: (id: string) => string;
 	getTerminalId: (id: string) => string;
+	isContextActive?: (id: string) => boolean;
+	isTerminalFocused?: (id: string) => boolean;
 	write: (workspaceId: string, terminalId: string, data: string) => Promise<void>;
 	markStopped: (id: string) => void;
-	resetTerminalInstance: (id: string) => void;
-	beginTerminal: (id: string, quiet?: boolean) => Promise<void>;
-	writeFailureMessage: (id: string, message: string) => void;
-};
-
-const RECOVERY_ERROR_MARKERS = ['session not found', 'terminal not started', 'terminal not found'];
-
-const isRecoverableWriteError = (error: unknown): boolean => {
-	if (typeof error === 'string') {
-		return RECOVERY_ERROR_MARKERS.some((marker) => error.includes(marker));
-	}
-	if (error instanceof Error) {
-		return RECOVERY_ERROR_MARKERS.some((marker) => error.message.includes(marker));
-	}
-	return false;
+	trace?: (id: string, event: string, details: Record<string, unknown>) => void;
 };
 
 export const createTerminalInputOrchestrator = (deps: TerminalInputOrchestratorDeps) => {
+	const FOCUS_REPORT_SEQUENCES = ['\x1b[I', '\x1b[O'] as const;
+
+	const stripFocusReports = (data: string): { sanitized: string; removed: number } => {
+		if (!data.includes('\x1b[')) {
+			return { sanitized: data, removed: 0 };
+		}
+		let sanitized = data;
+		let removed = 0;
+		for (const seq of FOCUS_REPORT_SEQUENCES) {
+			const parts = sanitized.split(seq);
+			if (parts.length <= 1) {
+				continue;
+			}
+			removed += parts.length - 1;
+			sanitized = parts.join('');
+		}
+		return {
+			sanitized,
+			removed,
+		};
+	};
+
+	const hasPrintableText = (value: string): boolean => {
+		for (let index = 0; index < value.length; index += 1) {
+			const code = value.charCodeAt(index);
+			if (code >= 0x20 && code <= 0x7e) {
+				return true;
+			}
+		}
+		return false;
+	};
+
 	const sendInput = (id: string, data: string): void => {
-		if (deps.shouldSuppressMouseInput(id, data)) {
+		if (!data) {
 			return;
 		}
-		const previousTail = deps.getMouseTail(id);
-		const mode = deps.getMode(id);
-		const mouseResult = deps.filterMouseReports(data, mode, previousTail);
-		if (mouseResult.tail !== previousTail) {
-			deps.setMouseTail(id, mouseResult.tail);
+		const stripped = stripFocusReports(data);
+		// Focus in/out reports can flood during mount/re-focus churn and show up as
+		// literal "^[[I/^[[O" in interactive shells. Keep the PTY input path clean.
+		if (stripped.removed > 0) {
+			deps.trace?.(id, 'frontend_input_focus_report_dropped', {
+				bytes: data.length,
+				removed: stripped.removed,
+				preview: data.slice(0, 32),
+			});
+			data = stripped.sanitized;
+			if (!data) {
+				return;
+			}
 		}
-		const filtered = mouseResult.filtered;
-		if (!filtered) {
+		if (deps.isContextActive && !deps.isContextActive(id) && hasPrintableText(data)) {
+			deps.trace?.(id, 'frontend_input_drop_inactive_context', {
+				bytes: data.length,
+				preview: data.slice(0, 24),
+			});
 			return;
 		}
-		void deps.ensureSessionActive(id);
+		if (deps.isTerminalFocused && !deps.isTerminalFocused(id) && hasPrintableText(data)) {
+			deps.trace?.(id, 'frontend_input_drop_unfocused_terminal', {
+				bytes: data.length,
+				preview: data.slice(0, 24),
+			});
+			return;
+		}
 		if (!deps.hasStarted(id)) {
-			deps.appendPendingInput(id, filtered);
+			void deps.ensureSessionActive(id);
+			deps.appendPendingInput(id, data);
+			deps.trace?.(id, 'frontend_input_queued', { bytes: data.length, preview: data.slice(0, 24) });
 			return;
 		}
-		deps.recordOutputBytes(id, filtered.length);
+		deps.recordOutputBytes(id, data.length);
 		const workspaceId = deps.getWorkspaceId(id);
 		const terminalId = deps.getTerminalId(id);
 		if (!workspaceId || !terminalId) return;
-		void deps.write(workspaceId, terminalId, filtered).catch((error: unknown) => {
-			deps.appendPendingInput(id, filtered);
+		deps.trace?.(id, 'frontend_input_write', { bytes: data.length, preview: data.slice(0, 24) });
+		void deps.write(workspaceId, terminalId, data).catch(() => {
+			deps.appendPendingInput(id, data);
 			deps.markStopped(id);
-			if (isRecoverableWriteError(error)) {
-				deps.resetTerminalInstance(id);
-				void deps.beginTerminal(id, true);
-			}
-			deps.writeFailureMessage(id, String(error));
+			void deps.ensureSessionActive(id);
+			deps.trace?.(id, 'frontend_input_write_failed', { bytes: data.length });
 		});
 	};
 

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -14,6 +16,8 @@ var transientTerminalErrorMarkers = []string{
 	"terminal not found",
 	"terminal stream not ready",
 }
+
+var terminalInputSeq atomic.Uint64
 
 func isTransientTerminalCallError(err error) bool {
 	if err == nil {
@@ -59,6 +63,7 @@ func (a *App) claimWorkspaceTerminalOwner(workspaceID, windowName string) {
 	a.popoutMu.Lock()
 	defer a.popoutMu.Unlock()
 	a.terminalOwners[workspaceID] = windowName
+	go a.syncWorkspaceTerminalOwnerToSessiond(workspaceID, windowName)
 }
 
 func (a *App) releaseWorkspaceTerminalOwner(workspaceID, windowName string) {
@@ -71,6 +76,39 @@ func (a *App) releaseWorkspaceTerminalOwner(workspaceID, windowName string) {
 	defer a.popoutMu.Unlock()
 	if current := strings.TrimSpace(a.terminalOwners[workspaceID]); current == "" || current == windowName {
 		a.terminalOwners[workspaceID] = a.mainWindowName
+		go a.syncWorkspaceTerminalOwnerToSessiond(workspaceID, a.mainWindowName)
+	}
+}
+
+func (a *App) syncWorkspaceTerminalOwnerToSessiond(workspaceID, windowName string) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return
+	}
+	windowName = a.normalizeWindowName(windowName)
+	a.terminalMu.Lock()
+	sessions := make([]*terminalSession, 0, len(a.terminals))
+	for _, session := range a.terminals {
+		if session == nil || session.workspaceID != workspaceID {
+			continue
+		}
+		sessions = append(sessions, session)
+	}
+	a.terminalMu.Unlock()
+	for _, session := range sessions {
+		session.mu.Lock()
+		client := session.client
+		sessionID := session.id
+		session.mu.Unlock()
+		if client == nil {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		err := client.SetOwner(ctx, sessionID, windowName)
+		cancel()
+		if err != nil && !isTransientTerminalCallError(err) {
+			continue
+		}
 	}
 }
 
@@ -79,12 +117,7 @@ func (a *App) ensureWorkspaceTerminalOwner(workspaceID, windowName string) error
 	if workspaceID == "" {
 		return fmt.Errorf("workspace id required")
 	}
-	windowName = a.normalizeWindowName(windowName)
-	owner := a.workspaceTerminalOwner(workspaceID)
-	if owner == windowName {
-		return nil
-	}
-	return fmt.Errorf("workspace terminal is owned by window %q (caller %q)", owner, windowName)
+	return nil
 }
 
 func (a *App) allowWorkspaceTerminalStart(workspaceID, windowName string) error {
@@ -93,10 +126,8 @@ func (a *App) allowWorkspaceTerminalStart(workspaceID, windowName string) error 
 		return fmt.Errorf("workspace id required")
 	}
 	windowName = a.normalizeWindowName(windowName)
-	owner := a.workspaceTerminalOwner(workspaceID)
-	if owner != windowName && owner != a.mainWindowName {
-		return fmt.Errorf("workspace terminal is owned by window %q (caller %q)", owner, windowName)
-	}
+	// Window ownership is advisory at the app layer. The start caller becomes the
+	// current owner while session-level ownership converges into sessiond.
 	a.claimWorkspaceTerminalOwner(workspaceID, windowName)
 	return nil
 }
@@ -138,7 +169,11 @@ func (a *App) StartWorkspaceTerminalForWindowName(ctx context.Context, workspace
 	if err := a.allowWorkspaceTerminalStart(workspaceID, windowName); err != nil {
 		return err
 	}
-	return a.StartWorkspaceTerminal(workspaceID, terminalID)
+	if err := a.StartWorkspaceTerminal(workspaceID, terminalID); err != nil {
+		return err
+	}
+	go a.syncWorkspaceTerminalOwnerToSessiond(workspaceID, windowName)
+	return nil
 }
 
 func (a *App) WriteWorkspaceTerminalForWindow(ctx context.Context, workspaceID, terminalID, data string) error {
@@ -150,37 +185,23 @@ func (a *App) WriteWorkspaceTerminalForWindowName(ctx context.Context, workspace
 	if err := a.ensureWorkspaceTerminalOwner(workspaceID, windowName); err != nil {
 		return err
 	}
-	if err := a.WriteWorkspaceTerminal(workspaceID, terminalID, data); err != nil {
-		if !isTransientTerminalCallError(err) {
-			return err
-		}
-		// Best-effort recovery for transient session races (HMR, popout handoff).
-		if startErr := a.StartWorkspaceTerminal(workspaceID, terminalID); startErr != nil {
-			if !isTransientTerminalCallError(startErr) {
-				return startErr
-			}
-			return nil
-		}
-		if retryErr := a.WriteWorkspaceTerminal(workspaceID, terminalID, data); retryErr != nil && !isTransientTerminalCallError(retryErr) {
-			return retryErr
-		}
-	}
-	return nil
-}
-
-func (a *App) AckWorkspaceTerminalForWindow(ctx context.Context, workspaceID, terminalID string, bytes int) error {
-	return a.AckWorkspaceTerminalForWindowName(ctx, workspaceID, terminalID, bytes, "")
-}
-
-func (a *App) AckWorkspaceTerminalForWindowName(ctx context.Context, workspaceID, terminalID string, bytes int, windowName string) error {
-	windowName = a.resolveCallerWindowName(ctx, windowName)
-	if err := a.ensureWorkspaceTerminalOwner(workspaceID, windowName); err != nil {
+	inputSeq := terminalInputSeq.Add(1)
+	logTerminalDebug(TerminalDebugPayload{
+		WorkspaceID: workspaceID,
+		TerminalID:  terminalID,
+		Event:       "app_input_write",
+		Details: fmt.Sprintf(
+			`{"seq":%d,"owner":%q,"summary":%q}`,
+			inputSeq,
+			windowName,
+			summarizeTerminalBytes([]byte(data), 48),
+		),
+	})
+	session, err := a.getTerminal(workspaceID, terminalID)
+	if err != nil {
 		return err
 	}
-	if err := a.AckWorkspaceTerminal(workspaceID, terminalID, bytes); err != nil && !isTransientTerminalCallError(err) {
-		return err
-	}
-	return nil
+	return session.WriteAsOwner(data, windowName)
 }
 
 func (a *App) ResizeWorkspaceTerminalForWindow(ctx context.Context, workspaceID, terminalID string, cols, rows int) error {
@@ -192,7 +213,10 @@ func (a *App) ResizeWorkspaceTerminalForWindowName(ctx context.Context, workspac
 	if err := a.ensureWorkspaceTerminalOwner(workspaceID, windowName); err != nil {
 		return err
 	}
-	if err := a.ResizeWorkspaceTerminal(workspaceID, terminalID, cols, rows); err != nil && !isTransientTerminalCallError(err) {
+	if err := a.ResizeWorkspaceTerminal(workspaceID, terminalID, cols, rows); err != nil {
+		if isTransientTerminalCallError(err) {
+			return nil
+		}
 		return err
 	}
 	return nil

@@ -4,17 +4,17 @@ import {
 	type TerminalSyncControllerDependencies,
 } from './terminalSyncController';
 
-type TerminalServiceExportDependencies<TState, THandle> = {
+type TerminalServiceExportDependencies<TState> = {
 	loadTerminalDefaults: () => Promise<void>;
 	buildTerminalKey: (workspaceId: string, terminalId: string) => string;
 	ensureStore: (id: string) => Writable<TState>;
-	syncControllerDeps: TerminalSyncControllerDependencies<THandle>;
+	syncControllerDeps: TerminalSyncControllerDependencies;
 };
 
-export const createTerminalServiceExports = <TState, THandle>(
-	deps: TerminalServiceExportDependencies<TState, THandle>,
+export const createTerminalServiceExports = <TState>(
+	deps: TerminalServiceExportDependencies<TState>,
 ) => {
-	const syncController = createTerminalSyncController<THandle>(deps.syncControllerDeps);
+	const syncController = createTerminalSyncController(deps.syncControllerDeps);
 
 	const refreshTerminalDefaults = (): Promise<void> => deps.loadTerminalDefaults();
 
@@ -32,8 +32,6 @@ export const createTerminalServiceExports = <TState, THandle>(
 		syncTerminal: syncController.syncTerminal,
 		detachTerminal: syncController.detachTerminal,
 		closeTerminal: syncController.closeTerminal,
-		restartTerminal: syncController.restartTerminal,
-		retryHealthCheck: syncController.retryHealthCheck,
 		focusTerminalInstance: syncController.focusTerminalInstance,
 		scrollTerminalToBottom: syncController.scrollTerminalToBottom,
 		isTerminalAtBottom: syncController.isTerminalAtBottom,

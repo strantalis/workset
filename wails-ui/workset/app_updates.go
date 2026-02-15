@@ -21,9 +21,7 @@ const (
 	updateStatePhaseFailed   = "failed"
 )
 
-var (
-	updateStateMu sync.Mutex
-)
+var updateStateMu sync.Mutex
 
 type UpdateChannel string
 

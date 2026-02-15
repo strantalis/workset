@@ -7,69 +7,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/strantalis/workset/pkg/kitty"
 	"github.com/strantalis/workset/pkg/sessiond"
 )
 
 type TerminalPayload struct {
 	WorkspaceID string `json:"workspaceId"`
 	TerminalID  string `json:"terminalId"`
-	Data        string `json:"data"`
+	DataB64     string `json:"dataB64,omitempty"`
 	Bytes       int    `json:"bytes"`
-}
-
-type TerminalLifecyclePayload struct {
-	WorkspaceID string `json:"workspaceId"`
-	TerminalID  string `json:"terminalId"`
-	Status      string `json:"status"`
-	Message     string `json:"message,omitempty"`
-}
-
-type TerminalKittyPayload struct {
-	WorkspaceID string      `json:"workspaceId"`
-	TerminalID  string      `json:"terminalId"`
-	Event       kitty.Event `json:"event"`
-}
-
-type TerminalBacklogPayload struct {
-	WorkspaceID string `json:"workspaceId"`
-	TerminalID  string `json:"terminalId"`
-	Data        string `json:"data"`
-	NextOffset  int64  `json:"nextOffset"`
-	Truncated   bool   `json:"truncated"`
-	Source      string `json:"source,omitempty"`
-}
-
-type TerminalSnapshotPayload struct {
-	WorkspaceID string          `json:"workspaceId"`
-	TerminalID  string          `json:"terminalId"`
-	Data        string          `json:"data"`
-	Source      string          `json:"source,omitempty"`
-	Kitty       *kitty.Snapshot `json:"kitty,omitempty"`
-}
-
-type TerminalBootstrapPayload struct {
-	WorkspaceID      string          `json:"workspaceId"`
-	TerminalID       string          `json:"terminalId"`
-	Snapshot         string          `json:"snapshot,omitempty"`
-	SnapshotSource   string          `json:"snapshotSource,omitempty"`
-	Kitty            *kitty.Snapshot `json:"kitty,omitempty"`
-	Backlog          string          `json:"backlog,omitempty"`
-	BacklogSource    string          `json:"backlogSource,omitempty"`
-	BacklogTruncated bool            `json:"backlogTruncated,omitempty"`
-	NextOffset       int64           `json:"nextOffset,omitempty"`
-	Source           string          `json:"source,omitempty"`
-	AltScreen        bool            `json:"altScreen,omitempty"`
-	Mouse            bool            `json:"mouse,omitempty"`
-	MouseSGR         bool            `json:"mouseSGR,omitempty"`
-	MouseEncoding    string          `json:"mouseEncoding,omitempty"`
-	SafeToReplay     bool            `json:"safeToReplay,omitempty"`
-	InitialCredit    int64           `json:"initialCredit,omitempty"`
-}
-
-type TerminalBootstrapDonePayload struct {
-	WorkspaceID string `json:"workspaceId"`
-	TerminalID  string `json:"terminalId"`
+	Seq         int64  `json:"seq,omitempty"`
 }
 
 type TerminalStatusPayload struct {
@@ -77,15 +23,6 @@ type TerminalStatusPayload struct {
 	TerminalID  string `json:"terminalId,omitempty"`
 	Active      bool   `json:"active"`
 	Error       string `json:"error,omitempty"`
-}
-
-type TerminalModesPayload struct {
-	WorkspaceID   string `json:"workspaceId"`
-	TerminalID    string `json:"terminalId"`
-	AltScreen     bool   `json:"altScreen"`
-	Mouse         bool   `json:"mouse"`
-	MouseSGR      bool   `json:"mouseSGR"`
-	MouseEncoding string `json:"mouseEncoding"`
 }
 
 type TerminalDebugPayload struct {
@@ -98,25 +35,6 @@ type TerminalDebugPayload struct {
 type TerminalCreatePayload struct {
 	WorkspaceID string `json:"workspaceId"`
 	TerminalID  string `json:"terminalId"`
-}
-
-type terminalState struct {
-	Sessions []terminalStateEntry `json:"sessions"`
-}
-
-type terminalStateEntry struct {
-	WorkspaceID string             `json:"workspaceId"`
-	TerminalID  string             `json:"terminalId,omitempty"`
-	LastActive  time.Time          `json:"lastActive"`
-	Modes       *terminalModeState `json:"modes,omitempty"`
-}
-
-type terminalModeState struct {
-	AltScreen  bool  `json:"altScreen,omitempty"`
-	MouseMask  uint8 `json:"mouseMask,omitempty"`
-	MouseSGR   bool  `json:"mouseSGR,omitempty"`
-	MouseUTF8  bool  `json:"mouseUTF8,omitempty"`
-	MouseURXVT bool  `json:"mouseURXVT,omitempty"`
 }
 
 type terminalStream interface {
@@ -135,14 +53,6 @@ type terminalSession struct {
 	client       *sessiond.Client
 	stream       terminalStream
 	streamCancel context.CancelFunc
-	streamID     string
-	detaching    bool
-
-	altScreen  bool
-	mouseMask  uint8
-	mouseSGR   bool
-	mouseUTF8  bool
-	mouseURXVT bool
 
 	starting bool
 	startErr error
@@ -161,18 +71,7 @@ const terminalSessionSeparator = "::"
 func terminalSessionID(workspaceID, terminalID string) string {
 	workspaceID = strings.TrimSpace(workspaceID)
 	terminalID = strings.TrimSpace(terminalID)
-	if terminalID == "" {
-		return workspaceID
-	}
 	return workspaceID + terminalSessionSeparator + terminalID
-}
-
-func parseTerminalSessionID(sessionID string) (string, string, bool) {
-	parts := strings.SplitN(sessionID, terminalSessionSeparator, 2)
-	if len(parts) == 2 {
-		return parts[0], parts[1], true
-	}
-	return sessionID, "", false
 }
 
 func newTerminalSession(workspaceID, terminalID, path string) *terminalSession {
@@ -217,15 +116,6 @@ func (s *terminalSession) waitReady(ctx context.Context) error {
 	}
 }
 
-func (s *terminalSession) snapshot() (time.Time, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.starting || s.closed || s.client == nil {
-		return time.Time{}, false
-	}
-	return s.lastActivity, true
-}
-
 func (s *terminalSession) bumpActivity() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -239,31 +129,18 @@ func (s *terminalSession) bumpActivity() {
 	}
 }
 
-func (s *terminalSession) mouseEnabled() bool {
-	return s.mouseMask != 0
-}
-
-func (s *terminalSession) mouseEncoding() string {
-	if s.mouseSGR {
-		return "sgr"
-	}
-	if s.mouseURXVT {
-		return "urxvt"
-	}
-	if s.mouseUTF8 {
-		return "utf8"
-	}
-	return "x10"
-}
-
 func (s *terminalSession) Write(data string) error {
+	return s.WriteAsOwner(data, "")
+}
+
+func (s *terminalSession) WriteAsOwner(data, owner string) error {
 	s.mu.Lock()
 	client := s.client
 	s.mu.Unlock()
 	if client != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		err := client.Send(ctx, s.id, data)
+		err := client.SendWithOwner(ctx, s.id, data, owner)
 		if err == nil {
 			s.bumpActivity()
 		}
@@ -299,21 +176,18 @@ func (s *terminalSession) Close() error {
 	return s.CloseWithReason("closed")
 }
 
-func (s *terminalSession) releaseStream(stream terminalStream) (detaching bool, releasedCurrent bool) {
+func (s *terminalSession) releaseStream(stream terminalStream) (releasedCurrent bool) {
 	if stream != nil {
 		_ = stream.Close()
 	}
 	s.mu.Lock()
-	detaching = s.detaching
-	s.detaching = false
 	if s.stream == stream {
 		s.stream = nil
-		s.streamID = ""
 		s.streamCancel = nil
 		releasedCurrent = true
 	}
 	s.mu.Unlock()
-	return detaching, releasedCurrent
+	return releasedCurrent
 }
 
 func (s *terminalSession) CloseWithReason(reason string) error {
@@ -326,7 +200,6 @@ func (s *terminalSession) CloseWithReason(reason string) error {
 		_ = s.stream.Close()
 		s.stream = nil
 	}
-	s.streamID = ""
 	defer s.mu.Unlock()
 	if s.closed {
 		return nil

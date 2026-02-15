@@ -12,14 +12,8 @@
 		onTrustPendingHook: (pending: WorkspaceActionPendingHook) => Promise<void> | void;
 	}
 
-	const {
-		error,
-		success,
-		warnings,
-		pendingHooks,
-		onRunPendingHook,
-		onTrustPendingHook,
-	}: Props = $props();
+	const { error, success, warnings, pendingHooks, onRunPendingHook, onTrustPendingHook }: Props =
+		$props();
 </script>
 
 {#if error}

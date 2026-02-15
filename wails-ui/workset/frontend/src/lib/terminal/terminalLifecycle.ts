@@ -2,13 +2,6 @@ export type TerminalHealthState = 'unknown' | 'checking' | 'ok' | 'stale';
 export type TerminalRendererState = 'unknown' | 'webgl';
 export type TerminalRendererMode = 'webgl';
 
-export type TerminalModesState = {
-	altScreen: boolean;
-	mouse: boolean;
-	mouseSGR: boolean;
-	mouseEncoding: string;
-};
-
 export type TerminalLifecycleSnapshot = {
 	status: string;
 	message: string;
@@ -18,11 +11,6 @@ export type TerminalLifecycleSnapshot = {
 	rendererMode: TerminalRendererMode;
 	sessiondAvailable: boolean | null;
 	sessiondChecked: boolean;
-};
-
-type TerminalLifecyclePayload = {
-	status: string;
-	message?: string;
 };
 
 type StartupTimeoutOptions = {
@@ -39,13 +27,6 @@ type TerminalLifecycleDependencies = {
 	emitAllStates: () => void;
 	setTimeoutFn?: (handler: () => void, timeoutMs: number) => number;
 	clearTimeoutFn?: (timer: number) => void;
-};
-
-const DEFAULT_MODES: TerminalModesState = {
-	altScreen: false,
-	mouse: false,
-	mouseSGR: false,
-	mouseEncoding: 'x10',
 };
 
 const deleteRecordKey = <T>(record: Record<string, T>, id: string): Record<string, T> => {
@@ -75,7 +56,6 @@ export const createTerminalLifecycle = (deps: TerminalLifecycleDependencies) => 
 	let healthMessageMap: Record<string, string> = {};
 	let rendererMap: Record<string, TerminalRendererState> = {};
 	let rendererModeMap: Record<string, TerminalRendererMode> = {};
-	let modeMap: Record<string, TerminalModesState> = {};
 
 	const clearTimeoutMap = (map: Map<string, number>, id: string): void => {
 		const timer = map.get(id);
@@ -132,14 +112,6 @@ export const createTerminalLifecycle = (deps: TerminalLifecycleDependencies) => 
 		markInput: (id: string): void => {
 			if (inputMap[id]) return;
 			inputMap = { ...inputMap, [id]: true };
-		},
-		getMode: (id: string): TerminalModesState => modeMap[id] ?? DEFAULT_MODES,
-		setMode: (id: string, next: TerminalModesState): void => {
-			modeMap = { ...modeMap, [id]: next };
-		},
-		ensureMode: (id: string): void => {
-			if (modeMap[id]) return;
-			modeMap = { ...modeMap, [id]: DEFAULT_MODES };
 		},
 		ensureRendererDefaults: (id: string): void => {
 			if (!rendererMap[id]) {
@@ -226,42 +198,6 @@ export const createTerminalLifecycle = (deps: TerminalLifecycleDependencies) => 
 		clearInitToken: (id: string): void => {
 			initTokens.delete(id);
 		},
-		applyLifecyclePayload: (id: string, payload: TerminalLifecyclePayload): void => {
-			if (payload.status === 'started') {
-				startedSessions.add(id);
-				statusMap = { ...statusMap, [id]: 'ready' };
-				messageMap = { ...messageMap, [id]: '' };
-				inputMap = { ...inputMap, [id]: true };
-				clearStartupTimeout(id);
-				setHealth(id, 'ok', 'Session started.');
-				deps.emitState(id);
-				return;
-			}
-			if (payload.status === 'closed') {
-				startedSessions.delete(id);
-				statusMap = { ...statusMap, [id]: 'closed' };
-				setHealth(id, 'stale', 'Session closed.');
-				deps.emitState(id);
-				return;
-			}
-			if (payload.status === 'idle') {
-				startedSessions.delete(id);
-				statusMap = { ...statusMap, [id]: 'idle' };
-				setHealth(id, 'unknown');
-				deps.emitState(id);
-				return;
-			}
-			if (payload.status === 'error') {
-				startedSessions.delete(id);
-				statusMap = { ...statusMap, [id]: 'error' };
-				messageMap = {
-					...messageMap,
-					[id]: payload.message ?? 'Terminal error',
-				};
-				setHealth(id, 'stale', payload.message ?? 'Terminal error');
-				deps.emitState(id);
-			}
-		},
 		deleteState: (id: string): void => {
 			if (!id) return;
 			clearStartupTimeout(id);
@@ -276,7 +212,6 @@ export const createTerminalLifecycle = (deps: TerminalLifecycleDependencies) => 
 			healthMessageMap = deleteRecordKey(healthMessageMap, id);
 			rendererMap = deleteRecordKey(rendererMap, id);
 			rendererModeMap = deleteRecordKey(rendererModeMap, id);
-			modeMap = deleteRecordKey(modeMap, id);
 		},
 	};
 };

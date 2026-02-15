@@ -3,6 +3,7 @@ package sessiond
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/strantalis/workset/pkg/kitty"
 	"github.com/strantalis/workset/pkg/unifiedlog"
 )
 
@@ -50,12 +50,6 @@ func NewServer(opts Options) *Server {
 			opts.RecordDir = dir
 		}
 	}
-	if opts.StateDir == "" {
-		dir, err := DefaultStateDir()
-		if err == nil {
-			opts.StateDir = dir
-		}
-	}
 	if opts.BufferBytes == 0 {
 		opts.BufferBytes = DefaultOptions().BufferBytes
 	}
@@ -70,18 +64,6 @@ func NewServer(opts Options) *Server {
 	}
 	if opts.IdleTimeout == 0 {
 		opts.IdleTimeout = DefaultOptions().IdleTimeout
-	}
-	if opts.SnapshotInterval == 0 {
-		opts.SnapshotInterval = DefaultOptions().SnapshotInterval
-	}
-	if opts.HistoryLines == 0 {
-		opts.HistoryLines = DefaultOptions().HistoryLines
-	}
-	if opts.StreamCreditTimeout == 0 {
-		opts.StreamCreditTimeout = DefaultOptions().StreamCreditTimeout
-	}
-	if opts.StreamInitialCredit == 0 {
-		opts.StreamInitialCredit = DefaultOptions().StreamInitialCredit
 	}
 	if opts.ProtocolLogEnabled && opts.ProtocolLogger == nil {
 		logger, err := unifiedlog.Open("sessiond", opts.ProtocolLogDir)
@@ -221,7 +203,7 @@ func (s *Server) handleControl(ctx context.Context, conn net.Conn, line []byte) 
 			s.writeError(conn, errors.New("session not found"))
 			return
 		}
-		if err := session.write(ctx, params.Data); err != nil {
+		if err := session.writeForOwner(ctx, params.Data, params.Owner); err != nil {
 			s.writeError(conn, err)
 			return
 		}
@@ -254,69 +236,6 @@ func (s *Server) handleControl(ctx context.Context, conn net.Conn, line []byte) 
 			s.remove(params.SessionID)
 		}
 		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true})
-	case "backlog":
-		var params BacklogRequest
-		if err := json.Unmarshal(req.Params, &params); err != nil {
-			s.writeError(conn, err)
-			return
-		}
-		session := s.get(params.SessionID)
-		if session == nil {
-			s.writeError(conn, errors.New("session not found"))
-			return
-		}
-		backlog, err := session.backlog(params.Since)
-		if err != nil {
-			s.writeError(conn, err)
-			return
-		}
-		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true, Result: backlog})
-	case "snapshot":
-		var params SnapshotRequest
-		if err := json.Unmarshal(req.Params, &params); err != nil {
-			s.writeError(conn, err)
-			return
-		}
-		session := s.get(params.SessionID)
-		if session == nil {
-			s.writeError(conn, errors.New("session not found"))
-			return
-		}
-		snapshot := session.snapshot()
-		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true, Result: snapshot})
-	case "ack":
-		var params AckRequest
-		if err := json.Unmarshal(req.Params, &params); err != nil {
-			s.writeError(conn, err)
-			return
-		}
-		session := s.get(params.SessionID)
-		if session == nil {
-			s.writeError(conn, errors.New("session not found"))
-			return
-		}
-		if err := session.ack(params.StreamID, params.Bytes); err != nil {
-			s.writeError(conn, err)
-			return
-		}
-		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true})
-	case "bootstrap":
-		var params BootstrapRequest
-		if err := json.Unmarshal(req.Params, &params); err != nil {
-			s.writeError(conn, err)
-			return
-		}
-		session := s.get(params.SessionID)
-		if session == nil {
-			s.writeError(conn, errors.New("session not found"))
-			return
-		}
-		bootstrap, err := session.bootstrap()
-		if err != nil {
-			s.writeError(conn, err)
-			return
-		}
-		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true, Result: bootstrap})
 	case "list":
 		s.mu.Lock()
 		snap := make([]*Session, 0, len(s.sessions))
@@ -333,6 +252,43 @@ func (s *Server) handleControl(ctx context.Context, conn net.Conn, line []byte) 
 			logServerf("list_slow count=%d duration=%s", len(sessions), elapsed)
 		}
 		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true, Result: ListResponse{Sessions: sessions}})
+	case "set_owner":
+		var params OwnerRequest
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			s.writeError(conn, err)
+			return
+		}
+		session := s.get(params.SessionID)
+		if session == nil {
+			s.writeError(conn, errors.New("session not found"))
+			return
+		}
+		owner := session.setInputOwner(params.Owner)
+		_ = json.NewEncoder(conn).Encode(ControlResponse{
+			OK: true,
+			Result: OwnerResponse{
+				SessionID: params.SessionID,
+				Owner:     owner,
+			},
+		})
+	case "get_owner":
+		var params OwnerRequest
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			s.writeError(conn, err)
+			return
+		}
+		session := s.get(params.SessionID)
+		if session == nil {
+			s.writeError(conn, errors.New("session not found"))
+			return
+		}
+		_ = json.NewEncoder(conn).Encode(ControlResponse{
+			OK: true,
+			Result: OwnerResponse{
+				SessionID: params.SessionID,
+				Owner:     session.getInputOwner(),
+			},
+		})
 	case "info":
 		exe, err := os.Executable()
 		if err != nil {
@@ -408,129 +364,23 @@ func (s *Server) handleAttach(conn net.Conn, line []byte) {
 	if streamID == "" {
 		streamID = newStreamID()
 	}
-	bootstrap, err := session.bootstrap()
-	if err != nil {
-		_ = enc.Encode(StreamMessage{Type: "error", Error: err.Error()})
-		return
-	}
-	var kittyEvent *kitty.Event
-	if bootstrap.Kitty != nil {
-		kittyEvent = &kitty.Event{Kind: "snapshot", Snapshot: bootstrap.Kitty}
-	}
-	if err := enc.Encode(StreamMessage{
-		Type:             "bootstrap",
-		SessionID:        req.SessionID,
-		StreamID:         streamID,
-		SnapshotSource:   bootstrap.SnapshotSource,
-		BacklogSource:    bootstrap.BacklogSource,
-		BacklogTruncated: bootstrap.BacklogTruncated,
-		NextOffset:       bootstrap.NextOffset,
-		AltScreen:        bootstrap.AltScreen,
-		MouseMask:        bootstrap.MouseMask,
-		Mouse:            bootstrap.Mouse,
-		MouseSGR:         bootstrap.MouseSGR,
-		MouseEncoding:    bootstrap.MouseEncoding,
-		SafeToReplay:     bootstrap.SafeToReplay,
-		InitialCredit:    bootstrap.InitialCredit,
-		Kitty:            kittyEvent,
-	}); err != nil {
-		return
-	}
-	if err := writeBootstrapChunks(enc, req.SessionID, streamID, bootstrap); err != nil {
-		return
-	}
-	if err := enc.Encode(StreamMessage{Type: "bootstrap_done", SessionID: req.SessionID, StreamID: streamID}); err != nil {
+	if err := enc.Encode(StreamMessage{Type: "ready", SessionID: req.SessionID, StreamID: streamID}); err != nil {
 		return
 	}
 	sub := session.subscribe(streamID)
 	defer session.unsubscribe(sub)
 	for event := range sub.ch {
-		switch event.kind {
-		case "data":
-			if !sub.waitForCredit(int64(len(event.data)), session.streamTimeout) {
-				debugLogf("session_stream_timeout id=%s stream=%s", session.id, sub.streamID)
-				return
-			}
-			if err := enc.Encode(StreamMessage{
-				Type:      "data",
-				SessionID: req.SessionID,
-				StreamID:  streamID,
-				Data:      string(event.data),
-				Len:       len(event.data),
-			}); err != nil {
-				return
-			}
-		case "kitty":
-			if event.kitty == nil {
-				continue
-			}
-			if err := enc.Encode(StreamMessage{Type: "kitty", SessionID: req.SessionID, StreamID: streamID, Kitty: event.kitty}); err != nil {
-				return
-			}
-		case "modes":
-			if event.modes == nil {
-				continue
-			}
-			if err := enc.Encode(StreamMessage{
-				Type:      "modes",
-				SessionID: req.SessionID,
-				StreamID:  streamID,
-				AltScreen: event.modes.AltScreen,
-				MouseMask: event.modes.MouseMask,
-				Mouse:     event.modes.MouseMask != 0,
-				MouseSGR:  event.modes.MouseSGR,
-				MouseEncoding: func() string {
-					if event.modes.MouseSGR {
-						return "sgr"
-					}
-					if event.modes.MouseURXVT {
-						return "urxvt"
-					}
-					if event.modes.MouseUTF8 {
-						return "utf8"
-					}
-					return "x10"
-				}(),
-			}); err != nil {
-				return
-			}
+		if err := enc.Encode(StreamMessage{
+			Type:      "data",
+			SessionID: req.SessionID,
+			StreamID:  streamID,
+			DataB64:   base64.StdEncoding.EncodeToString(event),
+			Len:       len(event),
+		}); err != nil {
+			return
 		}
 	}
 	_ = enc.Encode(StreamMessage{Type: "closed", SessionID: req.SessionID, StreamID: streamID})
-}
-
-const bootstrapChunkSize = 64 * 1024
-
-func writeBootstrapChunks(enc *json.Encoder, sessionID, streamID string, bootstrap BootstrapResponse) error {
-	if !bootstrap.SafeToReplay {
-		return nil
-	}
-	data := bootstrap.Snapshot
-	if data == "" {
-		data = bootstrap.Backlog
-	}
-	if data == "" {
-		return nil
-	}
-	buf := []byte(data)
-	for len(buf) > 0 {
-		n := bootstrapChunkSize
-		if len(buf) < n {
-			n = len(buf)
-		}
-		if err := enc.Encode(StreamMessage{
-			Type:      "data",
-			SessionID: sessionID,
-			StreamID:  streamID,
-			Data:      string(buf[:n]),
-			Len:       n,
-			Source:    "bootstrap",
-		}); err != nil {
-			return err
-		}
-		buf = buf[n:]
-	}
-	return nil
 }
 
 func (s *Server) writeError(conn net.Conn, err error) {

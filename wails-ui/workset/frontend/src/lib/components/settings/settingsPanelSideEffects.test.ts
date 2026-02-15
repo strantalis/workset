@@ -56,11 +56,6 @@ describe('settingsPanelSideEffects', () => {
 		const stopWorkspaceTerminal = vi.fn().mockResolvedValue(undefined);
 		const persistWorkspaceTerminalLayout = vi.fn().mockResolvedValue(undefined);
 		const dispatchLayoutReset = vi.fn();
-		const getStorage = () =>
-			({
-				removeItem: vi.fn(),
-				setItem: vi.fn(),
-			}) as unknown as Storage;
 
 		const sideEffects = createSettingsPanelSideEffects({
 			fetchWorkspaceTerminalLayout: vi.fn().mockResolvedValue({
@@ -88,7 +83,6 @@ describe('settingsPanelSideEffects', () => {
 			persistWorkspaceTerminalLayout,
 			generateTerminalName: (workspaceName, index) => `${workspaceName}-${index}`,
 			randomUUID: vi.fn().mockReturnValueOnce('tab-new').mockReturnValueOnce('pane-new'),
-			getStorage,
 			dispatchLayoutReset,
 		});
 

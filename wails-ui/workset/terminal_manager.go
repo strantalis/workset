@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/strantalis/workset/pkg/sessiond"
 )
 
 func (a *App) StartWorkspaceTerminal(workspaceID, terminalID string) error {
@@ -17,6 +16,9 @@ func (a *App) StartWorkspaceTerminal(workspaceID, terminalID string) error {
 		return fmt.Errorf("workspace id required")
 	}
 	terminalID = strings.TrimSpace(terminalID)
+	if terminalID == "" {
+		return fmt.Errorf("terminal id required")
+	}
 	sessionID := terminalSessionID(workspaceID, terminalID)
 
 	ctx := a.ctx
@@ -45,7 +47,7 @@ func (a *App) StartWorkspaceTerminal(workspaceID, terminalID string) error {
 			}
 			existing.mu.Lock()
 			hasSession := existing.client != nil
-			streamActive := existing.stream != nil
+			streamActive := existing.stream != nil || existing.streamCancel != nil
 			existing.mu.Unlock()
 			if hasSession {
 				if streamActive {
@@ -63,20 +65,6 @@ func (a *App) StartWorkspaceTerminal(workspaceID, terminalID string) error {
 		}
 
 		session := newTerminalSession(workspaceID, terminalID, root)
-		var restore terminalModeState
-		var hasRestore bool
-		if a.restoredModes != nil {
-			restore, hasRestore = a.restoredModes[sessionID]
-		}
-		if hasRestore {
-			session.mu.Lock()
-			session.altScreen = restore.AltScreen
-			session.mouseMask = restore.MouseMask
-			session.mouseSGR = restore.MouseSGR
-			session.mouseUTF8 = restore.MouseUTF8
-			session.mouseURXVT = restore.MouseURXVT
-			session.mu.Unlock()
-		}
 		client, err := a.getSessiondClient()
 		if err != nil {
 			a.terminalMu.Unlock()
@@ -105,26 +93,9 @@ func (a *App) StartWorkspaceTerminal(workspaceID, terminalID string) error {
 				delete(a.terminals, sessionID)
 			}
 			a.terminalMu.Unlock()
-			a.emitTerminalLifecycle("error", session, err.Error())
 			return err
 		}
 		a.ensureIdleWatcher(session)
-		if session.resumed {
-			a.emitTerminalLifecycle("started", session, "Session resumed.")
-		} else {
-			a.emitTerminalLifecycle("started", session, "")
-		}
-		emitModes := hasRestore
-		if emitModes {
-			session.mu.Lock()
-			altScreen := session.altScreen
-			mouseEnabled := session.mouseEnabled()
-			mouseSGR := session.mouseSGR
-			mouseEncoding := session.mouseEncoding()
-			session.mu.Unlock()
-			a.emitTerminalModes(session, altScreen, mouseEnabled, mouseSGR, mouseEncoding)
-			_ = a.persistTerminalState()
-		}
 		go a.streamTerminal(session)
 		return nil
 	}
@@ -137,199 +108,6 @@ func (a *App) CreateWorkspaceTerminal(workspaceID string) (TerminalCreatePayload
 	}
 	terminalID := uuid.NewString()
 	return TerminalCreatePayload{WorkspaceID: workspaceID, TerminalID: terminalID}, nil
-}
-
-func (a *App) WriteWorkspaceTerminal(workspaceID, terminalID, data string) error {
-	session, err := a.getTerminal(workspaceID, terminalID)
-	if err != nil {
-		return err
-	}
-	return session.Write(data)
-}
-
-func (a *App) AckWorkspaceTerminal(workspaceID, terminalID string, bytes int) error {
-	if bytes <= 0 {
-		return nil
-	}
-	session, err := a.getTerminal(workspaceID, terminalID)
-	if err != nil {
-		return err
-	}
-	session.mu.Lock()
-	client := session.client
-	streamID := session.streamID
-	session.mu.Unlock()
-	if client == nil {
-		return nil
-	}
-	if streamID == "" {
-		return nil
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	return client.Ack(ctx, session.id, streamID, int64(bytes))
-}
-
-func (a *App) GetTerminalBacklog(workspaceID, terminalID string, since int64) (TerminalBacklogPayload, error) {
-	workspaceID = strings.TrimSpace(workspaceID)
-	if workspaceID == "" {
-		return TerminalBacklogPayload{}, fmt.Errorf("workspace id required")
-	}
-	terminalID = strings.TrimSpace(terminalID)
-	if terminalID == "" {
-		return TerminalBacklogPayload{}, fmt.Errorf("terminal id required")
-	}
-	sessionID := terminalSessionID(workspaceID, terminalID)
-	client, err := a.getSessiondClient()
-	if err != nil {
-		return TerminalBacklogPayload{}, err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	backlog, err := client.Backlog(ctx, sessionID, since)
-	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "session not found") {
-			return TerminalBacklogPayload{
-				WorkspaceID: workspaceID,
-				TerminalID:  terminalID,
-			}, nil
-		}
-		return TerminalBacklogPayload{}, err
-	}
-	return TerminalBacklogPayload{
-		WorkspaceID: workspaceID,
-		TerminalID:  terminalID,
-		Data:        backlog.Data,
-		NextOffset:  backlog.NextOffset,
-		Truncated:   backlog.Truncated,
-		Source:      backlog.Source,
-	}, nil
-}
-
-func (a *App) GetTerminalSnapshot(workspaceID, terminalID string) (TerminalSnapshotPayload, error) {
-	workspaceID = strings.TrimSpace(workspaceID)
-	if workspaceID == "" {
-		return TerminalSnapshotPayload{}, fmt.Errorf("workspace id required")
-	}
-	terminalID = strings.TrimSpace(terminalID)
-	if terminalID == "" {
-		return TerminalSnapshotPayload{}, fmt.Errorf("terminal id required")
-	}
-	sessionID := terminalSessionID(workspaceID, terminalID)
-	client, err := a.getSessiondClient()
-	if err != nil {
-		return TerminalSnapshotPayload{}, err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	snap, err := client.Snapshot(ctx, sessionID)
-	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "session not found") {
-			return TerminalSnapshotPayload{
-				WorkspaceID: workspaceID,
-				TerminalID:  terminalID,
-			}, nil
-		}
-		return TerminalSnapshotPayload{}, err
-	}
-	return TerminalSnapshotPayload{
-		WorkspaceID: workspaceID,
-		TerminalID:  terminalID,
-		Data:        snap.Data,
-		Source:      snap.Source,
-		Kitty:       snap.Kitty,
-	}, nil
-}
-
-func (a *App) GetTerminalBootstrap(workspaceID, terminalID string) (TerminalBootstrapPayload, error) {
-	workspaceID = strings.TrimSpace(workspaceID)
-	if workspaceID == "" {
-		return TerminalBootstrapPayload{}, fmt.Errorf("workspace id required")
-	}
-	terminalID = strings.TrimSpace(terminalID)
-	if terminalID == "" {
-		return TerminalBootstrapPayload{}, fmt.Errorf("terminal id required")
-	}
-	sessionID := terminalSessionID(workspaceID, terminalID)
-	client, err := a.getSessiondClient()
-	if err != nil {
-		return TerminalBootstrapPayload{}, err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	bootstrap, err := client.Bootstrap(ctx, sessionID)
-	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "session not found") {
-			return TerminalBootstrapPayload{
-				WorkspaceID: workspaceID,
-				TerminalID:  terminalID,
-			}, nil
-		}
-		return TerminalBootstrapPayload{}, err
-	}
-	backlog := sessiond.BacklogResponse{}
-	useBacklog := bootstrap.SafeToReplay && bootstrap.Snapshot == ""
-	if useBacklog {
-		if b, err := client.Backlog(ctx, sessionID, 0); err == nil && b.Data != "" {
-			backlog = b
-		} else {
-			useBacklog = false
-		}
-	}
-	a.terminalMu.Lock()
-	session := a.terminals[sessionID]
-	a.terminalMu.Unlock()
-	if session != nil {
-		session.mu.Lock()
-		session.altScreen = bootstrap.AltScreen
-		if bootstrap.MouseMask != 0 {
-			session.mouseMask = bootstrap.MouseMask
-		} else if bootstrap.Mouse {
-			session.mouseMask = 1
-		} else {
-			session.mouseMask = 0
-		}
-		session.mouseSGR = bootstrap.MouseSGR
-		session.mouseUTF8 = bootstrap.MouseEncoding == "utf8"
-		session.mouseURXVT = bootstrap.MouseEncoding == "urxvt"
-		session.mu.Unlock()
-		_ = a.persistTerminalState()
-	}
-	if useBacklog {
-		return TerminalBootstrapPayload{
-			WorkspaceID:      workspaceID,
-			TerminalID:       terminalID,
-			Backlog:          backlog.Data,
-			BacklogSource:    backlog.Source,
-			BacklogTruncated: backlog.Truncated,
-			NextOffset:       backlog.NextOffset,
-			Source:           "sessiond",
-			AltScreen:        bootstrap.AltScreen,
-			Mouse:            bootstrap.Mouse,
-			MouseSGR:         bootstrap.MouseSGR,
-			MouseEncoding:    bootstrap.MouseEncoding,
-			SafeToReplay:     bootstrap.SafeToReplay,
-			InitialCredit:    bootstrap.InitialCredit,
-		}, nil
-	}
-	return TerminalBootstrapPayload{
-		WorkspaceID:      workspaceID,
-		TerminalID:       terminalID,
-		Snapshot:         bootstrap.Snapshot,
-		SnapshotSource:   bootstrap.SnapshotSource,
-		Kitty:            bootstrap.Kitty,
-		Backlog:          bootstrap.Backlog,
-		BacklogSource:    bootstrap.BacklogSource,
-		BacklogTruncated: bootstrap.BacklogTruncated,
-		NextOffset:       bootstrap.NextOffset,
-		Source:           "sessiond",
-		AltScreen:        bootstrap.AltScreen,
-		Mouse:            bootstrap.Mouse,
-		MouseSGR:         bootstrap.MouseSGR,
-		MouseEncoding:    bootstrap.MouseEncoding,
-		SafeToReplay:     bootstrap.SafeToReplay,
-		InitialCredit:    bootstrap.InitialCredit,
-	}, nil
 }
 
 func (a *App) LogTerminalDebug(payload TerminalDebugPayload) {
@@ -354,24 +132,54 @@ func (a *App) GetWorkspaceTerminalStatus(workspaceID, terminalID string) Termina
 		hasSession := !session.closed && session.client != nil
 		session.mu.Unlock()
 		if hasSession {
+			logTerminalDebug(TerminalDebugPayload{
+				WorkspaceID: workspaceID,
+				TerminalID:  terminalID,
+				Event:       "status_active_memory",
+				Details:     "{}",
+			})
 			return TerminalStatusPayload{WorkspaceID: workspaceID, TerminalID: terminalID, Active: true}
 		}
 	}
 	client, err := a.getSessiondClient()
 	if err != nil {
+		logTerminalDebug(TerminalDebugPayload{
+			WorkspaceID: workspaceID,
+			TerminalID:  terminalID,
+			Event:       "status_client_error",
+			Details:     err.Error(),
+		})
 		return TerminalStatusPayload{WorkspaceID: workspaceID, TerminalID: terminalID, Active: false, Error: err.Error()}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	list, err := client.List(ctx)
 	if err != nil {
+		logTerminalDebug(TerminalDebugPayload{
+			WorkspaceID: workspaceID,
+			TerminalID:  terminalID,
+			Event:       "status_list_error",
+			Details:     err.Error(),
+		})
 		return TerminalStatusPayload{WorkspaceID: workspaceID, TerminalID: terminalID, Active: false, Error: err.Error()}
 	}
 	for _, info := range list.Sessions {
 		if info.SessionID == sessionID && info.Running {
+			logTerminalDebug(TerminalDebugPayload{
+				WorkspaceID: workspaceID,
+				TerminalID:  terminalID,
+				Event:       "status_active_sessiond",
+				Details:     "{}",
+			})
 			return TerminalStatusPayload{WorkspaceID: workspaceID, TerminalID: terminalID, Active: true}
 		}
 	}
+	logTerminalDebug(TerminalDebugPayload{
+		WorkspaceID: workspaceID,
+		TerminalID:  terminalID,
+		Event:       "status_inactive",
+		Details:     "{}",
+	})
 	return TerminalStatusPayload{WorkspaceID: workspaceID, TerminalID: terminalID, Active: false}
 }
 
@@ -390,6 +198,14 @@ func (a *App) ResizeWorkspaceTerminal(workspaceID, terminalID string, cols, rows
 }
 
 func (a *App) StopWorkspaceTerminal(workspaceID, terminalID string) error {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return fmt.Errorf("workspace id required")
+	}
+	terminalID = strings.TrimSpace(terminalID)
+	if terminalID == "" {
+		return fmt.Errorf("terminal id required")
+	}
 	a.terminalMu.Lock()
 	sessionID := terminalSessionID(workspaceID, terminalID)
 	session, ok := a.terminals[sessionID]
@@ -409,17 +225,29 @@ func (a *App) StopWorkspaceTerminal(workspaceID, terminalID string) error {
 		cancel()
 	}
 	err := session.CloseWithReason("closed")
-	a.emitTerminalLifecycle("closed", session, "")
-	_ = a.persistTerminalState()
 	return err
 }
 
 func (a *App) getTerminal(workspaceID, terminalID string) (*terminalSession, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return nil, fmt.Errorf("workspace id required")
+	}
+	terminalID = strings.TrimSpace(terminalID)
+	if terminalID == "" {
+		return nil, fmt.Errorf("terminal id required")
+	}
 	a.terminalMu.Lock()
 	sessionID := terminalSessionID(workspaceID, terminalID)
 	session := a.terminals[sessionID]
 	a.terminalMu.Unlock()
 	if session == nil {
+		logTerminalDebug(TerminalDebugPayload{
+			WorkspaceID: workspaceID,
+			TerminalID:  terminalID,
+			Event:       "get_terminal_missing",
+			Details:     fmt.Sprintf(`{"sessionId":"%s"}`, sessionID),
+		})
 		return nil, fmt.Errorf("terminal not found")
 	}
 	ctx := a.ctx
@@ -459,7 +287,7 @@ func (a *App) latestTerminalForWorkspace(workspaceID string) *terminalSession {
 	return selected
 }
 
-func (a *App) invalidateTerminalSessions(reason string) {
+func (a *App) invalidateTerminalSessions(_ string) {
 	a.terminalMu.Lock()
 	sessions := make([]*terminalSession, 0, len(a.terminals))
 	for _, session := range a.terminals {
@@ -471,9 +299,6 @@ func (a *App) invalidateTerminalSessions(reason string) {
 		session.mu.Lock()
 		session.client = nil
 		session.mu.Unlock()
-		if reason != "" {
-			a.emitTerminalLifecycle("error", session, reason)
-		}
 	}
 }
 

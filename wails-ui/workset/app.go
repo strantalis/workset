@@ -23,7 +23,6 @@ type App struct {
 	serviceOnce      sync.Once
 	terminalMu       sync.Mutex
 	terminals        map[string]*terminalSession
-	restoredModes    map[string]terminalModeState
 	sessiondMu       sync.Mutex
 	sessiondClient   *sessiond.Client
 	sessiondStart    *sessiondStartState
@@ -41,7 +40,6 @@ func NewApp() *App {
 		service:          nil,
 		mainWindowName:   mainWindowName,
 		terminals:        map[string]*terminalSession{},
-		restoredModes:    map[string]terminalModeState{},
 		sessiondStart:    &sessiondStartState{},
 		sessiondRestart:  &sessiondRestartState{},
 		repoDiffWatchers: newRepoDiffWatchManager(),
@@ -66,11 +64,9 @@ func (a *App) startup(ctx context.Context) {
 	setSessiondPathFromCwd()
 	ensureSessiondUpToDate(a)
 	ensureSessiondStarted(a)
-	go a.restoreTerminalSessions(ctx)
 }
 
 func (a *App) shutdown(_ context.Context) {
-	_ = a.persistTerminalState()
 	if a.repoDiffWatchers != nil {
 		a.repoDiffWatchers.shutdown()
 	}

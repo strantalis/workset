@@ -19,36 +19,19 @@ const createHandle = (): TerminalAttachOpenHandle => {
 	};
 };
 
-const flushPromises = async (): Promise<void> => {
-	await Promise.resolve();
-	await Promise.resolve();
-};
-
 describe('terminalAttachOpenLifecycle', () => {
-	it('opens terminal, loads renderer addon, and re-fits after fonts are ready', async () => {
+	it('opens terminal and fits/resizes for the attached container', () => {
 		const container = document.createElement('div') as HTMLDivElement;
 		const handle = createHandle();
-		let resolveFonts: (() => void) | undefined;
-		const fontsReady = new Promise<void>((resolve) => {
-			resolveFonts = resolve;
-		});
-		const ensureOverlay = vi.fn();
-		const loadRendererAddon = vi.fn();
-		const fitWithPreservedViewport = vi.fn();
-		const resizeToFit = vi.fn();
-		const scheduleFitStabilization = vi.fn();
+		const fitTerminal = vi.fn();
 		const flushOutput = vi.fn();
 		const markAttached = vi.fn();
+		const nudgeRenderer = vi.fn();
 		const lifecycle = createTerminalAttachOpenLifecycle({
-			getHandle: () => handle,
-			ensureOverlay,
-			loadRendererAddon,
-			fitWithPreservedViewport,
-			resizeToFit,
-			scheduleFitStabilization,
+			fitTerminal,
 			flushOutput,
 			markAttached,
-			resolveFontsReady: () => fontsReady,
+			nudgeRenderer,
 		});
 
 		lifecycle.attach({
@@ -60,20 +43,12 @@ describe('terminalAttachOpenLifecycle', () => {
 
 		expect(container.firstChild).toBe(handle.container);
 		expect(handle.terminal.open).toHaveBeenCalledTimes(1);
-		expect(ensureOverlay).toHaveBeenCalledWith(handle, 'ws::term');
-		expect(loadRendererAddon).toHaveBeenCalledWith('ws::term', handle);
-		expect(scheduleFitStabilization).toHaveBeenCalledWith('ws::term', 'open');
-		expect(fitWithPreservedViewport).toHaveBeenCalledTimes(1);
-		expect(resizeToFit).toHaveBeenCalledTimes(1);
+		expect(fitTerminal).toHaveBeenCalledWith('ws::term');
+		expect(nudgeRenderer).toHaveBeenCalledWith('ws::term', handle, true);
 		expect(handle.terminal.focus).toHaveBeenCalledTimes(1);
 		expect(flushOutput).toHaveBeenCalledWith('ws::term', false);
 		expect(markAttached).toHaveBeenCalledWith('ws::term');
-
-		resolveFonts?.();
-		await flushPromises();
-
-		expect(fitWithPreservedViewport).toHaveBeenCalledTimes(2);
-		expect(resizeToFit).toHaveBeenCalledTimes(2);
+		expect(handle.container.getAttribute('data-active')).toBe('true');
 	});
 
 	it('skips open path when terminal is already opened in host container', () => {
@@ -81,23 +56,15 @@ describe('terminalAttachOpenLifecycle', () => {
 		const handle = createHandle();
 		handle.terminal.element = { parentElement: handle.container };
 		container.replaceChildren(handle.container);
-		const ensureOverlay = vi.fn();
-		const loadRendererAddon = vi.fn();
-		const fitWithPreservedViewport = vi.fn();
-		const resizeToFit = vi.fn();
-		const scheduleFitStabilization = vi.fn();
+		const fitTerminal = vi.fn();
 		const flushOutput = vi.fn();
 		const markAttached = vi.fn();
+		const nudgeRenderer = vi.fn();
 		const lifecycle = createTerminalAttachOpenLifecycle({
-			getHandle: () => handle,
-			ensureOverlay,
-			loadRendererAddon,
-			fitWithPreservedViewport,
-			resizeToFit,
-			scheduleFitStabilization,
+			fitTerminal,
 			flushOutput,
 			markAttached,
-			resolveFontsReady: () => Promise.resolve(),
+			nudgeRenderer,
 		});
 
 		lifecycle.attach({
@@ -108,50 +75,66 @@ describe('terminalAttachOpenLifecycle', () => {
 		});
 
 		expect(handle.terminal.open).not.toHaveBeenCalled();
-		expect(ensureOverlay).not.toHaveBeenCalled();
-		expect(loadRendererAddon).not.toHaveBeenCalled();
-		expect(scheduleFitStabilization).not.toHaveBeenCalled();
 		expect(handle.terminal.focus).not.toHaveBeenCalled();
-		expect(fitWithPreservedViewport).toHaveBeenCalledTimes(1);
-		expect(resizeToFit).toHaveBeenCalledTimes(1);
+		expect(fitTerminal).toHaveBeenCalledWith('ws::term');
+		expect(nudgeRenderer).toHaveBeenCalledWith('ws::term', handle, false);
 		expect(flushOutput).toHaveBeenCalledWith('ws::term', false);
 		expect(markAttached).toHaveBeenCalledWith('ws::term');
+		expect(handle.container.getAttribute('data-active')).toBe('false');
 	});
 
-	it('does not run delayed font fit when terminal handle is gone', async () => {
+	it('focuses once when transitioning inactive to active without reopening', () => {
 		const container = document.createElement('div') as HTMLDivElement;
 		const handle = createHandle();
-		let resolveFonts: (() => void) | undefined;
-		const fontsReady = new Promise<void>((resolve) => {
-			resolveFonts = resolve;
-		});
-		const fitWithPreservedViewport = vi.fn();
-		const resizeToFit = vi.fn();
-		const getHandle = vi.fn(() => undefined);
+		handle.terminal.element = { parentElement: handle.container };
+		handle.container.setAttribute('data-active', 'false');
+		container.replaceChildren(handle.container);
+		const fitTerminal = vi.fn();
+		const flushOutput = vi.fn();
+		const markAttached = vi.fn();
 		const lifecycle = createTerminalAttachOpenLifecycle({
-			getHandle,
-			ensureOverlay: vi.fn(),
-			loadRendererAddon: vi.fn(),
-			fitWithPreservedViewport,
-			resizeToFit,
-			scheduleFitStabilization: vi.fn(),
-			flushOutput: vi.fn(),
-			markAttached: vi.fn(),
-			resolveFontsReady: () => fontsReady,
+			fitTerminal,
+			flushOutput,
+			markAttached,
 		});
 
 		lifecycle.attach({
 			id: 'ws::term',
 			handle,
 			container,
-			active: false,
+			active: true,
 		});
 
-		resolveFonts?.();
-		await flushPromises();
+		expect(handle.terminal.open).not.toHaveBeenCalled();
+		expect(handle.terminal.focus).toHaveBeenCalledTimes(1);
+		expect(handle.container.getAttribute('data-active')).toBe('true');
+	});
 
-		expect(getHandle).toHaveBeenCalledWith('ws::term');
-		expect(fitWithPreservedViewport).toHaveBeenCalledTimes(1);
-		expect(resizeToFit).toHaveBeenCalledTimes(1);
+	it('does not refocus when staying active on container churn', () => {
+		const firstContainer = document.createElement('div') as HTMLDivElement;
+		const secondContainer = document.createElement('div') as HTMLDivElement;
+		const handle = createHandle();
+		handle.terminal.element = { parentElement: handle.container };
+		handle.container.setAttribute('data-active', 'true');
+		firstContainer.replaceChildren(handle.container);
+		const fitTerminal = vi.fn();
+		const flushOutput = vi.fn();
+		const markAttached = vi.fn();
+		const lifecycle = createTerminalAttachOpenLifecycle({
+			fitTerminal,
+			flushOutput,
+			markAttached,
+		});
+
+		lifecycle.attach({
+			id: 'ws::term',
+			handle,
+			container: secondContainer,
+			active: true,
+		});
+
+		expect(secondContainer.firstChild).toBe(handle.container);
+		expect(handle.terminal.open).not.toHaveBeenCalled();
+		expect(handle.terminal.focus).not.toHaveBeenCalled();
 	});
 });

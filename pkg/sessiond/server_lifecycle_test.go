@@ -2,6 +2,7 @@ package sessiond
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net"
 	"os"
@@ -178,6 +179,72 @@ func TestAttachFailsWhenSessionNotRunning(t *testing.T) {
 	<-done
 }
 
+func TestAttachStreamsLiveEvents(t *testing.T) {
+	opts := DefaultOptions()
+	session := newSession(opts, "running-session", "/tmp")
+	session.cmd = &exec.Cmd{}
+	server := &Server{
+		opts:     opts,
+		sessions: map[string]*Session{"running-session": session},
+	}
+
+	clientConn, serverConn := net.Pipe()
+	defer func() {
+		_ = clientConn.Close()
+	}()
+
+	attachLine, err := json.Marshal(AttachRequest{
+		ProtocolVersion: ProtocolVersion,
+		Type:            "attach",
+		SessionID:       "running-session",
+		StreamID:        "running-stream",
+	})
+	if err != nil {
+		t.Fatalf("marshal attach: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() { _ = serverConn.Close() }()
+		server.handleAttach(serverConn, attachLine)
+	}()
+
+	dec := json.NewDecoder(clientConn)
+	var first StreamMessage
+	if err := dec.Decode(&first); err != nil {
+		t.Fatalf("attach ready response: %v", err)
+	}
+	if first.Type != "ready" {
+		t.Fatalf("expected ready, got %+v", first)
+	}
+
+	session.broadcast([]byte("hello"))
+
+	var second StreamMessage
+	if err := dec.Decode(&second); err != nil {
+		t.Fatalf("attach data response: %v", err)
+	}
+	if second.Type != "data" {
+		t.Fatalf("expected data event, got %+v", second)
+	}
+	payload, err := base64.StdEncoding.DecodeString(second.DataB64)
+	if err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if !strings.Contains(string(payload), "hello") {
+		t.Fatalf("expected payload to include terminal content, got %q", string(payload))
+	}
+
+	_ = clientConn.Close()
+	session.closeSubscribers()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("attach handler did not exit")
+	}
+}
+
 func waitForSessionGone(t *testing.T, client *Client, sessionID string, timeout time.Duration) bool {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -214,7 +281,6 @@ func startTestServerWithOptionsAndServer(t *testing.T, mutate func(*Options)) (*
 	opts.SocketPath = socketPath
 	opts.TranscriptDir = filepath.Join(tmp, "terminal_logs")
 	opts.RecordDir = filepath.Join(tmp, "terminal_records")
-	opts.StateDir = filepath.Join(tmp, "terminal_state")
 	if mutate != nil {
 		mutate(&opts)
 	}

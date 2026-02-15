@@ -22,13 +22,16 @@ const (
 	repoDiffDebounceWindow    = 400 * time.Millisecond
 )
 
-var repoDiffEmit = emitRuntimeEvent
-var repoDiffResolveRepoPath = func(ctx context.Context, app *App, workspaceID, repoID string) (string, error) {
-	return app.resolveRepoPath(ctx, workspaceID, repoID)
-}
+var (
+	repoDiffEmit            = emitRuntimeEvent
+	repoDiffResolveRepoPath = func(ctx context.Context, app *App, workspaceID, repoID string) (string, error) {
+		return app.resolveRepoPath(ctx, workspaceID, repoID)
+	}
+)
 var repoDiffResolveRepoAlias = func(workspaceID, repoID string) (string, error) {
 	return resolveRepoAlias(workspaceID, repoID)
 }
+
 var repoDiffRunWatch = func(w *repoDiffWatch) {
 	w.run()
 }

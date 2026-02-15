@@ -1,120 +1,12 @@
 package sessiond
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"time"
-
-	"github.com/strantalis/workset/pkg/kitty"
 )
-
-func (s *Session) restoreSnapshot() {
-	if s.statePath == "" || s.emu == nil {
-		return
-	}
-	data, err := os.ReadFile(s.statePath)
-	if err != nil {
-		return
-	}
-	if err := s.emu.UnmarshalBinary(data); err != nil {
-		return
-	}
-	if s.emu.IsAltScreen() {
-		s.tuiMode = true
-		s.altScreen = true
-	} else {
-		s.tuiMode = false
-		s.altScreen = false
-	}
-	if s.kittyStatePath != "" && s.kittyState != nil {
-		kittyData, err := os.ReadFile(s.kittyStatePath)
-		if err == nil {
-			var snapshot kitty.Snapshot
-			if err := json.Unmarshal(kittyData, &snapshot); err == nil {
-				s.kittyState.Restore(snapshot)
-			}
-		}
-	}
-	if s.modesPath != "" {
-		modesData, err := os.ReadFile(s.modesPath)
-		if err == nil {
-			var modes modeSnapshot
-			if err := json.Unmarshal(modesData, &modes); err == nil {
-				s.mouseMask = modes.MouseMask
-				s.mouseSGR = modes.MouseSGR
-				s.mouseUTF8 = modes.MouseUTF8
-				s.mouseURXVT = modes.MouseURXVT
-				if !s.emu.IsAltScreen() {
-					s.tuiMode = modes.TuiMode
-					s.altScreen = modes.AltScreen
-				}
-			}
-		}
-	}
-}
-
-func (s *Session) maybePersistSnapshot() {
-	if s.snapshotEvery <= 0 || s.statePath == "" || s.emu == nil {
-		return
-	}
-	now := time.Now()
-	if now.Sub(s.lastSnapshot) < s.snapshotEvery {
-		return
-	}
-	s.snapshotMu.Lock()
-	if s.snapshotInFlight {
-		s.snapshotMu.Unlock()
-		return
-	}
-	s.snapshotInFlight = true
-	s.lastSnapshot = now
-	s.snapshotMu.Unlock()
-	go func() {
-		s.persistSnapshot()
-		s.snapshotMu.Lock()
-		s.snapshotInFlight = false
-		s.snapshotMu.Unlock()
-	}()
-}
-
-func (s *Session) persistSnapshot() {
-	if s.statePath == "" || s.emu == nil {
-		return
-	}
-	data, err := s.emu.MarshalBinary()
-	if err != nil {
-		return
-	}
-	if err := os.MkdirAll(filepath.Dir(s.statePath), 0o755); err != nil {
-		return
-	}
-	_ = os.WriteFile(s.statePath, data, 0o644)
-	if s.kittyStatePath != "" && s.kittyState != nil {
-		snapshot := s.kittyState.Snapshot()
-		kittyData, err := json.Marshal(snapshot)
-		if err == nil {
-			_ = os.WriteFile(s.kittyStatePath, kittyData, 0o644)
-		}
-	}
-	if s.modesPath != "" {
-		s.mu.Lock()
-		modes := modeSnapshot{
-			AltScreen:  s.altScreen,
-			MouseMask:  s.mouseMask,
-			MouseSGR:   s.mouseSGR,
-			MouseUTF8:  s.mouseUTF8,
-			MouseURXVT: s.mouseURXVT,
-			TuiMode:    s.tuiMode,
-		}
-		s.mu.Unlock()
-		if modesData, err := json.Marshal(modes); err == nil {
-			_ = os.WriteFile(s.modesPath, modesData, 0o644)
-		}
-	}
-}
 
 func (s *Session) recordOutput(data []byte) {
 	if s.buffer != nil {
