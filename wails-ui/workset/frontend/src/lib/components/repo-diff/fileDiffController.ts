@@ -13,6 +13,7 @@ type RepoDiffFileControllerOptions = {
 	repoId: () => string;
 	selectedSource: () => SummarySource;
 	useBranchDiff: () => BranchDiffRefs | null;
+	ensureBranchRefsLoaded: () => Promise<void>;
 	setSelected: (value: RepoDiffFileSummary | null) => void;
 	setSelectedSource: (value: SummarySource) => void;
 	setSelectedDiff: (value: FileDiffMetadata | null) => void;
@@ -126,7 +127,14 @@ export const createRepoDiffFileController = (options: RepoDiffFileControllerOpti
 		}
 	};
 
-	const selectFile = (file: RepoDiffFileSummary, source: SummarySource = 'pr'): void => {
+	const selectFile = async (file: RepoDiffFileSummary, source: SummarySource = 'pr'): Promise<void> => {
+		if (source === 'pr') {
+			const branchRefs = options.useBranchDiff();
+			if (!branchRefs) {
+				await options.ensureBranchRefsLoaded();
+			}
+		}
+
 		options.setSelected(file);
 		options.setSelectedSource(source);
 		void loadFileDiff(file);

@@ -9,6 +9,7 @@ export type PrListItem = {
 	branch: string;
 	status: 'open' | 'running' | 'blocked';
 	dirty: boolean;
+	hasLocalDiff: boolean;
 	dirtyFiles: number;
 	ahead: number;
 	behind: number;
@@ -29,6 +30,8 @@ const getStatus = (
 export const mapWorkspaceToPrItems = (workspace: Workspace | null): PrListItem[] => {
 	if (!workspace) return [];
 	return workspace.repos.map((repo) => ({
+		// Keep this predicate aligned with App.handleSelectRepo and PROrchestrationView partitioning.
+		hasLocalDiff: repo.dirty || (repo.diff.added ?? 0) > 0 || (repo.diff.removed ?? 0) > 0,
 		id: `${workspace.id}:${repo.id}`,
 		repoId: repo.id,
 		repoName: repo.name,
@@ -51,5 +54,5 @@ export const partitionPrItems = (
 	readyToPR: PrListItem[];
 } => ({
 	active: items.filter((item) => item.status !== 'blocked'),
-	readyToPR: items.filter((item) => item.ahead > 0 || item.dirtyFiles > 0),
+	readyToPR: items.filter((item) => item.ahead > 0 || item.hasLocalDiff),
 });

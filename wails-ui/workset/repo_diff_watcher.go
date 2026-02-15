@@ -27,7 +27,9 @@ var (
 	repoDiffResolveRepoPath = func(ctx context.Context, app *App, workspaceID, repoID string) (string, error) {
 		return app.resolveRepoPath(ctx, workspaceID, repoID)
 	}
+	repoDiffNewWatcher = fsnotify.NewWatcher
 )
+
 var repoDiffResolveRepoAlias = func(workspaceID, repoID string) (string, error) {
 	return resolveRepoAlias(workspaceID, repoID)
 }
@@ -388,12 +390,13 @@ func (w *repoDiffWatch) updatePrInfo(number int, branch string) {
 	if !w.hasFullWatch() {
 		return
 	}
+	trimmedBranch := strings.TrimSpace(branch)
+	if number == 0 && trimmedBranch == "" {
+		return
+	}
 	w.prMu.Lock()
 	w.prNumber = number
-	w.prBranch = strings.TrimSpace(branch)
-	if w.prNumber == 0 && w.prBranch == "" {
-		w.lastPrStatus = nil
-	}
+	w.prBranch = trimmedBranch
 	w.prMu.Unlock()
 	w.enqueuePrRefresh()
 }
@@ -407,10 +410,14 @@ func (w *repoDiffWatch) run() {
 	go w.localPollLoop()
 	go w.prPollLoop()
 
-	watch, err := fsnotify.NewWatcher()
-	if err == nil {
-		_ = w.addWatchRecursive(watch, w.repoPath)
-		go w.fsnotifyLoop(watch)
+	var watch *fsnotify.Watcher
+	if w.hasFullWatch() {
+		createdWatch, err := repoDiffNewWatcher()
+		if err == nil {
+			watch = createdWatch
+			_ = w.addWatchRecursive(watch, w.repoPath)
+			go w.fsnotifyLoop(watch)
+		}
 	}
 
 	<-w.ctx.Done()

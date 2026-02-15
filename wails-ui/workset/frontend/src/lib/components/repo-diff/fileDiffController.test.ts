@@ -65,12 +65,14 @@ const createSetup = (
 	const fetchBranchFileDiff = vi.fn(async () => buildResponse('branch-patch'));
 	const ensureRenderer = vi.fn(async () => undefined);
 	const renderDiff = vi.fn();
+	const ensureBranchRefsLoaded = vi.fn(async () => {});
 
 	const controller = createRepoDiffFileController({
 		workspaceId: () => 'ws-1',
 		repoId: () => 'repo-1',
 		selectedSource: () => state.selectedSource,
 		useBranchDiff: () => branchRefs,
+		ensureBranchRefsLoaded,
 		setSelected: (value) => {
 			state.selected = value;
 		},
@@ -109,6 +111,87 @@ const createSetup = (
 		fetchRepoFileDiff,
 		fetchBranchFileDiff,
 		ensureRenderer,
+		ensureBranchRefsLoaded,
+		renderDiff,
+		controller,
+	};
+};
+
+const createSetupWithCustomBranches = (
+	getBranchRefs: () => BranchDiffRefs | null,
+	ensureBranchRefsLoaded: () => Promise<void>,
+) => {
+	const state: {
+		selected: RepoDiffFileSummary | null;
+		selectedSource: SummarySource;
+		selectedDiff: FileDiffMetadata | null;
+		fileMeta: RepoFileDiff | null;
+		fileLoading: boolean;
+		fileError: string | null;
+	} = {
+		selected: null,
+		selectedSource: 'pr',
+		selectedDiff: null,
+		fileMeta: null,
+		fileLoading: false,
+		fileError: null,
+	};
+
+	const frames: FrameRequestCallback[] = [];
+	const parsePatchFiles = vi.fn((patch: string) => {
+		const diff = { patch } as unknown as FileDiffMetadata;
+		return [{ files: [diff] } as unknown as ParsedPatch];
+	});
+	const fetchRepoFileDiff = vi.fn(async () => buildResponse('repo-patch'));
+	const fetchBranchFileDiff = vi.fn(async () => buildResponse('branch-patch'));
+	const ensureRenderer = vi.fn(async () => undefined);
+	const renderDiff = vi.fn();
+
+	const controller = createRepoDiffFileController({
+		workspaceId: () => 'ws-1',
+		repoId: () => 'repo-1',
+		selectedSource: () => state.selectedSource,
+		useBranchDiff: getBranchRefs,
+		ensureBranchRefsLoaded,
+		setSelected: (value) => {
+			state.selected = value;
+		},
+		setSelectedSource: (value) => {
+			state.selectedSource = value;
+		},
+		setSelectedDiff: (value) => {
+			state.selectedDiff = value;
+		},
+		setFileMeta: (value) => {
+			state.fileMeta = value;
+		},
+		setFileLoading: (value) => {
+			state.fileLoading = value;
+		},
+		setFileError: (value) => {
+			state.fileError = value;
+		},
+		ensureRenderer,
+		getDiffModule: () => ({ parsePatchFiles }),
+		getRendererError: () => null,
+		fetchRepoFileDiff,
+		fetchBranchFileDiff,
+		formatError: (error, fallback) => (error instanceof Error ? error.message : fallback),
+		requestAnimationFrame: (callback) => {
+			frames.push(callback);
+			return frames.length;
+		},
+		renderDiff,
+	});
+
+	return {
+		state,
+		frames,
+		parsePatchFiles,
+		fetchRepoFileDiff,
+		fetchBranchFileDiff,
+		ensureRenderer,
+		ensureBranchRefsLoaded,
 		renderDiff,
 		controller,
 	};
@@ -190,5 +273,63 @@ describe('fileDiffController', () => {
 
 		setup.controller.queueRenderDiff();
 		expect(setup.frames).toHaveLength(2);
+	});
+
+	it('calls ensureBranchRefsLoaded when selecting PR file without branch refs', async () => {
+		const setup = createSetup(null);
+
+		await setup.controller.selectFile(baseFile, 'pr');
+
+		expect(setup.ensureBranchRefsLoaded).toHaveBeenCalled();
+		expect(setup.state.selectedSource).toBe('pr');
+		expect(setup.state.selected).toEqual(baseFile);
+	});
+
+	it('loads repo diff when branch refs remain missing for PR selection', async () => {
+		const setup = createSetup(null);
+
+		await setup.controller.selectFile(baseFile, 'pr');
+
+		expect(setup.fetchRepoFileDiff).toHaveBeenCalledWith(
+			'ws-1',
+			'repo-1',
+			baseFile.path,
+			'',
+			baseFile.status,
+		);
+		expect(setup.fetchBranchFileDiff).not.toHaveBeenCalled();
+	});
+
+	it('selects file after ensureBranchRefsLoaded makes branch refs available', async () => {
+		let branchRefValue: BranchDiffRefs | null = null;
+		const getBranchRefs = () => branchRefValue;
+		const ensureBranchRefsLoaded = vi.fn(async () => {
+			branchRefValue = { base: 'origin/main', head: 'feature' };
+		});
+		const setup = createSetupWithCustomBranches(getBranchRefs, ensureBranchRefsLoaded);
+
+		await setup.controller.selectFile(baseFile, 'pr');
+
+		expect(setup.ensureBranchRefsLoaded).toHaveBeenCalled();
+		expect(setup.state.selected).toEqual(baseFile);
+		expect(setup.state.selectedSource).toBe('pr');
+	});
+
+	it('does not call ensureBranchRefsLoaded when selecting local file', async () => {
+		const setup = createSetup(null);
+
+		await setup.controller.selectFile(baseFile, 'local');
+
+		expect(setup.ensureBranchRefsLoaded).not.toHaveBeenCalled();
+		expect(setup.state.selectedSource).toBe('local');
+	});
+
+	it('does not call ensureBranchRefsLoaded when selecting PR file with branch refs available', async () => {
+		const setup = createSetup({ base: 'origin/main', head: 'feature' });
+
+		await setup.controller.selectFile(baseFile, 'pr');
+
+		expect(setup.ensureBranchRefsLoaded).not.toHaveBeenCalled();
+		expect(setup.state.selectedSource).toBe('pr');
 	});
 });

@@ -19,7 +19,6 @@
 		loadWorkspaces,
 		loadingWorkspaces,
 		refreshWorkspacesStatus,
-		selectRepo,
 		selectWorkspace,
 		toggleWorkspacePin,
 		workspaceError,
@@ -47,7 +46,6 @@
 	import { startRepoStatusWatch, stopRepoStatusWatch } from './lib/api/repo-diff';
 	import EmptyState from './lib/components/EmptyState.svelte';
 	import GitHubLoginModal from './lib/components/GitHubLoginModal.svelte';
-	import RepoDiff from './lib/components/RepoDiff.svelte';
 	import SettingsPanel from './lib/components/SettingsPanel.svelte';
 	import WorkspaceActionModal from './lib/components/WorkspaceActionModal.svelte';
 	import CommandPalette, { type AppView } from './lib/components/chrome/CommandPalette.svelte';
@@ -60,7 +58,9 @@
 	import PROrchestrationView from './lib/components/views/PROrchestrationView.svelte';
 	import SkillRegistryView from './lib/components/views/SkillRegistryView.svelte';
 	import TerminalCockpitView from './lib/components/views/TerminalCockpitView.svelte';
-	import WorksetHubView, { type WorksetGroupMode } from './lib/components/views/WorksetHubView.svelte';
+	import WorksetHubView, {
+		type WorksetGroupMode,
+	} from './lib/components/views/WorksetHubView.svelte';
 	import { workspaceActionMutations } from './lib/services/workspaceActionService';
 	import {
 		loadOnboardingCatalog,
@@ -347,21 +347,11 @@
 			return;
 		}
 
-		const hasLocalDiff = repo.dirty || (repo.diff.added ?? 0) > 0 || (repo.diff.removed ?? 0) > 0;
-		if (hasLocalDiff) {
-			prFocusWorkspaceId = null;
-			prFocusRepoId = null;
-			selectRepo(repoId);
-			return;
-		}
-
 		clearRepo();
-		if (repo.trackedPullRequest || (repo.ahead ?? 0) > 0) {
-			prFocusWorkspaceId = workspaceId;
-			prFocusRepoId = repoId;
-			prFocusToken += 1;
-			currentView = 'pr-orchestration';
-		}
+		prFocusWorkspaceId = workspaceId;
+		prFocusRepoId = repoId;
+		prFocusToken += 1;
+		currentView = 'pr-orchestration';
 	};
 
 	const handleCreateWorkspace = (): void => {
@@ -676,12 +666,6 @@
 							<button class="retry" type="button" onclick={() => loadWorkspaces(true)}>Retry</button
 							>
 						</section>
-					{:else if hasRepo}
-						<RepoDiff
-							repo={$activeRepo}
-							workspaceId={$activeWorkspaceId ?? ''}
-							onClose={clearRepo}
-						/>
 					{:else if popoutMode && !hasWorkspace}
 						<EmptyState
 							title="Workspace unavailable"

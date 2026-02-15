@@ -372,6 +372,81 @@ func TestRepoDiffWatchStopStopsRefreshTimer(t *testing.T) {
 	}
 }
 
+func TestRepoDiffWatchUpdatePrInfoEmptyInputDoesNotClearState(t *testing.T) {
+	watch := &repoDiffWatch{
+		fullRefs: 1,
+		prNumber: 42,
+		prBranch: "feature/foo",
+		lastPrStatus: &worksetapi.PullRequestStatusJSON{
+			Number: 42,
+			State:  "open",
+		},
+	}
+
+	watch.updatePrInfo(0, "")
+
+	if watch.prNumber != 42 {
+		t.Fatalf("expected pr number to remain unchanged, got %d", watch.prNumber)
+	}
+	if watch.prBranch != "feature/foo" {
+		t.Fatalf("expected pr branch to remain unchanged, got %q", watch.prBranch)
+	}
+	if watch.lastPrStatus == nil {
+		t.Fatal("expected last PR status to remain set")
+	}
+}
+
+func TestRepoDiffWatchRunLocalOnlySkipsFsnotify(t *testing.T) {
+	origNewWatcher := repoDiffNewWatcher
+	origGetLocalStatus := repoDiffGetLocalStatus
+	defer func() {
+		repoDiffNewWatcher = origNewWatcher
+		repoDiffGetLocalStatus = origGetLocalStatus
+	}()
+
+	var watcherCreateCount int32
+	repoDiffNewWatcher = func() (*fsnotify.Watcher, error) {
+		atomic.AddInt32(&watcherCreateCount, 1)
+		return fsnotify.NewWatcher()
+	}
+	repoDiffGetLocalStatus = func(_ context.Context, _ *App, _ repoDiffWatchKey, _ string) (worksetapi.RepoLocalStatusJSON, error) {
+		return worksetapi.RepoLocalStatusJSON{
+			HasUncommitted: false,
+			CurrentBranch:  "main",
+		}, nil
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	watch := newRepoDiffWatch(
+		&App{ctx: context.Background()},
+		ctx,
+		cancel,
+		repoDiffWatchKey{workspaceID: "ws-1", repoID: "repo-1"},
+		"repo",
+		t.TempDir(),
+		true,
+	)
+
+	done := make(chan struct{})
+	go func() {
+		watch.run()
+		close(done)
+	}()
+
+	time.Sleep(30 * time.Millisecond)
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for watch to stop")
+	}
+
+	if got := atomic.LoadInt32(&watcherCreateCount); got != 0 {
+		t.Fatalf("expected no fsnotify watcher for local-only run, got %d", got)
+	}
+}
+
 func TestRepoDiffWatchAddWatchRecursiveDedupesPaths(t *testing.T) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {

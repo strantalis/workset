@@ -65,6 +65,13 @@
 		startRepoStatusWatch,
 		stopRepoStatusWatch,
 	} from '../../api/repo-diff';
+	import {
+		buildFileLocalCacheKey,
+		buildFilePrCacheKey,
+		buildSummaryLocalCacheKey,
+		buildSummaryPrCacheKey,
+		repoDiffCache,
+	} from '../../cache/repoDiffCache';
 	import ResizablePanel from '../ui/ResizablePanel.svelte';
 	import { mapWorkspaceToPrItems } from '../../view-models/prViewModel';
 
@@ -103,8 +110,7 @@
 	const partitions = $derived.by(() => {
 		const active = prItems.filter((item) => trackedPrMap.has(item.repoId));
 		const readyToPR = prItems.filter(
-			(item) =>
-				!trackedPrMap.has(item.repoId) && (item.dirty || item.dirtyFiles > 0 || item.ahead > 0),
+			(item) => !trackedPrMap.has(item.repoId) && (item.hasLocalDiff || item.ahead > 0),
 		);
 		return { active, readyToPR };
 	});
@@ -135,6 +141,10 @@
 	let fileDiffError: string | null = $state(null);
 	let activeWatchKey: { wsId: string; repoId: string } | null = $state(null);
 	let activePrBranches: { base: string; head: string } | null = $state(null);
+	let activeFileKey: string | null = $state(null);
+	let diffSummaryRequestId = 0;
+	let localSummaryRequestId = 0;
+	let fileDiffRequestId = 0;
 
 	// ─── Checks ─────────────────────────────────────────────────────────
 	let prStatus: PullRequestStatusResult | null = $state(null);
@@ -163,11 +173,34 @@
 
 	// ─── Derived selectors ──────────────────────────────────────────────
 	const selectedItem = $derived(prItems.find((item) => item.id === selectedItemId) ?? null);
+	const wsId = $derived(workspace?.id ?? '');
+	const selectedRepoId = $derived(selectedItem?.repoId ?? '');
 
 	const selectedRepo = $derived.by(() => {
 		if (!selectedItem || !workspace) return null;
 		return workspace.repos.find((r) => r.id === selectedItem.repoId) ?? null;
 	});
+
+	const selectedFile = $derived.by(() => {
+		const files =
+			selectedSource === 'local' ? (localSummary?.files ?? []) : (diffSummary?.files ?? []);
+		return files[selectedFileIdx] ?? null;
+	});
+
+	const selectedKey = $derived.by(() => {
+		if (!selectedFile) return '';
+		return `${selectedSource}:${selectedFile.path}:${selectedFile.prevPath ?? ''}`;
+	});
+
+	const selectedFilePath = $derived(selectedFile?.path ?? '');
+	const selectedFilePrevPath = $derived(selectedFile?.prevPath ?? '');
+	const selectedFileStatus = $derived(selectedFile?.status ?? '');
+	const selectedFileAdded = $derived(selectedFile?.added ?? 0);
+	const selectedFileRemoved = $derived(selectedFile?.removed ?? 0);
+	const selectedFileBinary = $derived(selectedFile?.binary ?? false);
+	const activePrKey = $derived.by(() =>
+		activePrBranches ? `${activePrBranches.base}:${activePrBranches.head}` : '',
+	);
 
 	const getMode = (): 'active' | 'ready' => viewMode;
 	const isActiveDetail = $derived(getMode() === 'active' && selectedItem != null);
@@ -283,7 +316,7 @@
 	const lineAnnotations: DiffLineAnnotation<ReviewAnnotation>[] = $derived.by(() => {
 		const src = selectedSource;
 		if (src === 'local' || prReviews.length === 0) return [];
-		const file = diffSummary?.files[selectedFileIdx];
+		const file = selectedFile;
 		if (!file) return [];
 		return buildLineAnnotations(prReviews.filter((r) => r.path === file.path));
 	});
@@ -302,6 +335,10 @@
 		selectedSource = 'pr';
 		fileDiffContent = null;
 		fileDiffError = null;
+		activeFileKey = null;
+		diffSummaryRequestId += 1;
+		localSummaryRequestId += 1;
+		fileDiffRequestId += 1;
 		prTitle = '';
 		prBody = '';
 		isDraft = false;
@@ -367,10 +404,21 @@
 	};
 
 	const loadLocalSummary = async (wsId: string, repoId: string): Promise<void> => {
+		const requestId = ++localSummaryRequestId;
+		const cacheKey = buildSummaryLocalCacheKey(wsId, repoId);
+		const cached = repoDiffCache.getSummary(cacheKey);
+		if (cached) {
+			localSummary = cached.value;
+			if (!cached.stale) return;
+		}
 		try {
-			localSummary = await fetchRepoDiffSummary(wsId, repoId);
+			const fetched = await fetchRepoDiffSummary(wsId, repoId);
+			if (requestId !== localSummaryRequestId) return;
+			localSummary = fetched;
+			repoDiffCache.setSummary(cacheKey, fetched);
 		} catch {
-			localSummary = null;
+			if (requestId !== localSummaryRequestId) return;
+			localSummary = cached?.value ?? null;
 		}
 	};
 
@@ -379,24 +427,71 @@
 		repoId: string,
 		pr?: PullRequestCreated,
 	): Promise<void> => {
+		const requestId = ++diffSummaryRequestId;
 		diffSummaryLoading = true;
-		activePrBranches = null;
+		const branches = pr ? { base: pr.baseBranch, head: pr.headBranch } : null;
+		activePrBranches = branches;
+		const cacheKey = branches
+			? buildSummaryPrCacheKey(wsId, repoId, branches.base, branches.head)
+			: buildSummaryLocalCacheKey(wsId, repoId);
+		const cached = repoDiffCache.getSummary(cacheKey);
+		if (cached) {
+			diffSummary = cached.value;
+		}
 		try {
 			await stopActiveWatch();
-			if (pr) {
-				activePrBranches = { base: pr.baseBranch, head: pr.headBranch };
-				diffSummary = await fetchBranchDiffSummary(wsId, repoId, pr.baseBranch, pr.headBranch);
-				void loadLocalSummary(wsId, repoId);
-			} else {
+			if (!branches) {
 				await startRepoStatusWatch(wsId, repoId);
+				if (requestId !== diffSummaryRequestId) return;
 				activeWatchKey = { wsId, repoId };
-				diffSummary = await fetchRepoDiffSummary(wsId, repoId);
+			}
+			if (!cached || cached.stale) {
+				const fetched = branches
+					? await fetchBranchDiffSummary(wsId, repoId, branches.base, branches.head)
+					: await fetchRepoDiffSummary(wsId, repoId);
+				if (requestId !== diffSummaryRequestId) return;
+				diffSummary = fetched;
+				repoDiffCache.setSummary(cacheKey, fetched);
+			}
+			if (branches) {
+				void loadLocalSummary(wsId, repoId);
 			}
 		} catch {
-			diffSummary = null;
+			if (requestId !== diffSummaryRequestId) return;
+			diffSummary = cached?.value ?? null;
 		} finally {
-			diffSummaryLoading = false;
+			if (requestId === diffSummaryRequestId) {
+				diffSummaryLoading = false;
+			}
 		}
+	};
+
+	const buildFileDiffCacheKey = (
+		wsId: string,
+		repoId: string,
+		file: RepoDiffFileSummary,
+		source: 'pr' | 'local',
+	): string => {
+		if (source === 'local') {
+			return buildFileLocalCacheKey(
+				wsId,
+				repoId,
+				file.status ?? '',
+				file.path,
+				file.prevPath ?? '',
+			);
+		}
+		if (activePrBranches) {
+			return buildFilePrCacheKey(
+				wsId,
+				repoId,
+				activePrBranches.base,
+				activePrBranches.head,
+				file.path,
+				file.prevPath ?? '',
+			);
+		}
+		return buildFileLocalCacheKey(wsId, repoId, file.status ?? '', file.path, file.prevPath ?? '');
 	};
 
 	const loadFileDiff = async (
@@ -404,42 +499,53 @@
 		repoId: string,
 		file: RepoDiffFileSummary,
 		source: 'pr' | 'local' = 'pr',
+		fileKey: string,
 	): Promise<void> => {
+		const requestId = ++fileDiffRequestId;
 		fileDiffLoading = true;
 		fileDiffError = null;
-		fileDiffContent = null;
-		try {
-			if (source === 'local') {
-				fileDiffContent = await fetchRepoFileDiff(
-					wsId,
-					repoId,
-					file.path,
-					file.prevPath ?? '',
-					file.status ?? '',
-				);
-			} else if (activePrBranches) {
-				fileDiffContent = await fetchBranchFileDiff(
-					wsId,
-					repoId,
-					activePrBranches.base,
-					activePrBranches.head,
-					file.path,
-					file.prevPath ?? '',
-				);
-			} else {
-				fileDiffContent = await fetchRepoFileDiff(
-					wsId,
-					repoId,
-					file.path,
-					file.prevPath ?? '',
-					file.status ?? '',
-				);
+		const cacheKey = buildFileDiffCacheKey(wsId, repoId, file, source);
+		const cached = repoDiffCache.getFileDiff(cacheKey);
+		if (cached) {
+			fileDiffContent = cached.value;
+			if (!cached.stale) {
+				if (requestId === fileDiffRequestId && activeFileKey === fileKey) {
+					fileDiffLoading = false;
+				}
+				return;
 			}
+		}
+		try {
+			const fetched =
+				source === 'local'
+					? await fetchRepoFileDiff(wsId, repoId, file.path, file.prevPath ?? '', file.status ?? '')
+					: activePrBranches
+						? await fetchBranchFileDiff(
+								wsId,
+								repoId,
+								activePrBranches.base,
+								activePrBranches.head,
+								file.path,
+								file.prevPath ?? '',
+							)
+						: await fetchRepoFileDiff(
+								wsId,
+								repoId,
+								file.path,
+								file.prevPath ?? '',
+								file.status ?? '',
+							);
+			if (requestId !== fileDiffRequestId || activeFileKey !== fileKey) return;
+			fileDiffContent = fetched;
+			repoDiffCache.setFileDiff(cacheKey, fetched);
 		} catch (err) {
+			if (requestId !== fileDiffRequestId || activeFileKey !== fileKey) return;
 			fileDiffError = err instanceof Error ? err.message : 'Failed to load diff';
 			fileDiffContent = null;
 		} finally {
-			fileDiffLoading = false;
+			if (requestId === fileDiffRequestId && activeFileKey === fileKey) {
+				fileDiffLoading = false;
+			}
 		}
 	};
 
@@ -641,14 +747,36 @@
 
 	// Load file diff when selection changes
 	$effect(() => {
-		const files =
-			selectedSource === 'local' ? (localSummary?.files ?? []) : (diffSummary?.files ?? []);
-		const file = files[selectedFileIdx];
-		if (file && workspace && selectedItem) {
-			void loadFileDiff(workspace.id, selectedItem.repoId, file, selectedSource);
+		const currentWsId = wsId;
+		const currentRepoId = selectedRepoId;
+		const key = selectedKey;
+		const path = selectedFilePath;
+		void activePrKey;
+		if (currentWsId !== '' && currentRepoId !== '' && key !== '' && path !== '') {
+			if (activeFileKey !== key) {
+				activeFileKey = key;
+				fileDiffContent = null;
+				fileDiffError = null;
+			}
+			void loadFileDiff(
+				currentWsId,
+				currentRepoId,
+				{
+					path,
+					prevPath: selectedFilePrevPath,
+					status: selectedFileStatus,
+					added: selectedFileAdded,
+					removed: selectedFileRemoved,
+					binary: selectedFileBinary,
+				},
+				selectedSource,
+				key,
+			);
 		} else {
+			activeFileKey = null;
 			fileDiffContent = null;
 			fileDiffError = null;
+			fileDiffLoading = false;
 		}
 	});
 
@@ -669,6 +797,8 @@
 	let diffsModule: DiffsModule | null = $state(null);
 	let diffContainer: HTMLElement | null = $state(null);
 	let diffInstance: FileDiffRenderer<ReviewAnnotation> | null = $state(null);
+	let diffRenderContainer: HTMLElement | null = $state(null);
+	let diffRenderEpoch = 0;
 
 	const buildDiffOptions = (): FileDiffRenderOptions<ReviewAnnotation> => ({
 		theme: 'pierre-dark',
@@ -689,28 +819,66 @@
 		const container = diffContainer;
 		const annotations = lineAnnotations;
 		if (!patch || !container) return;
+		const currentEpoch = ++diffRenderEpoch;
 
 		void ensureDiffsModule().then((mod) => {
+			if (currentEpoch !== diffRenderEpoch) return;
+			if (!container.isConnected) return;
+			if (fileDiffContent?.patch !== patch || diffContainer !== container) {
+				return;
+			}
+
 			const parsed = mod.parsePatchFiles(patch);
 			const fileDiff = parsed[0]?.files?.[0] ?? null;
 			if (!fileDiff) return;
+
+			if (diffRenderContainer !== container) {
+				diffInstance?.cleanUp();
+				diffInstance = null;
+				diffRenderContainer = container;
+			}
 
 			if (!diffInstance) {
 				diffInstance = new mod.FileDiff(buildDiffOptions());
 			} else {
 				diffInstance.setOptions(buildDiffOptions());
 			}
-			diffInstance.render({
-				fileDiff,
-				fileContainer: container,
-				forceRender: true,
-				lineAnnotations: annotations,
-			});
+			if (currentEpoch !== diffRenderEpoch) return;
+			if (!container.isConnected) return;
+			if (fileDiffContent?.patch !== patch || diffContainer !== container) {
+				return;
+			}
+			try {
+				diffInstance.render({
+					fileDiff,
+					fileContainer: container,
+					forceRender: true,
+					lineAnnotations: annotations,
+				});
+			} catch (err) {
+				// Guard against DOM races inside @pierre/diffs when container nodes were replaced.
+				diffInstance?.cleanUp();
+				diffInstance = new mod.FileDiff(buildDiffOptions());
+				try {
+					diffInstance.render({
+						fileDiff,
+						fileContainer: container,
+						forceRender: true,
+						lineAnnotations: annotations,
+					});
+				} catch (innerErr) {
+					const renderErr = innerErr instanceof Error ? innerErr : err;
+					fileDiffError = renderErr instanceof Error ? renderErr.message : 'Failed to render diff.';
+				}
+			}
 		});
+	});
 
+	$effect(() => {
 		return () => {
 			diffInstance?.cleanUp();
 			diffInstance = null;
+			diffRenderContainer = null;
 		};
 	});
 
@@ -1104,12 +1272,7 @@
 													</span>
 												</div>
 												<div class="diff-body">
-													{#if fileDiffLoading}
-														<div class="diff-placeholder">
-															<Loader2 size={20} class="spin" />
-															<p>Loading diff...</p>
-														</div>
-													{:else if fileDiffError}
+													{#if fileDiffError}
 														<div class="diff-placeholder">
 															<AlertCircle size={20} />
 															<p>{fileDiffError}</p>
@@ -1120,14 +1283,27 @@
 															<p>Binary file</p>
 														</div>
 													{:else if fileDiffContent?.patch}
-														<div class="diff-renderer">
-															<diffs-container bind:this={diffContainer}></diffs-container>
+														<div class="diff-renderer-wrap">
+															<div class="diff-renderer">
+																<diffs-container bind:this={diffContainer}></diffs-container>
+															</div>
+															{#if fileDiffLoading}
+																<div class="diff-loading-overlay">
+																	<Loader2 size={18} class="spin" />
+																	<p>Refreshing diff...</p>
+																</div>
+															{/if}
 														</div>
 														{#if fileDiffContent.truncated}
 															<div class="diff-truncated">
 																Diff truncated ({fileDiffContent.totalLines} total lines)
 															</div>
 														{/if}
+													{:else if fileDiffLoading}
+														<div class="diff-placeholder">
+															<Loader2 size={20} class="spin" />
+															<p>Loading diff...</p>
+														</div>
 													{:else}
 														<div class="diff-placeholder">
 															<FileCode size={24} />
@@ -1949,6 +2125,7 @@
 	}
 	.diff-body {
 		min-height: 200px;
+		position: relative;
 	}
 	.diff-placeholder {
 		display: flex;
@@ -1970,6 +2147,9 @@
 		justify-content: center;
 	}
 	/* ── Diff renderer (@pierre/diffs) ───────────────────────── */
+	.diff-renderer-wrap {
+		position: relative;
+	}
 	.diff-renderer {
 		flex: 1;
 		min-height: 0;
@@ -1994,6 +2174,18 @@
 		height: 100%;
 		width: 100%;
 		overflow: auto;
+	}
+	.diff-loading-overlay {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		background: color-mix(in srgb, var(--bg) 78%, transparent);
+		color: var(--text);
+		font-size: var(--text-sm);
+		pointer-events: none;
 	}
 	.diff-truncated {
 		padding: 12px;
