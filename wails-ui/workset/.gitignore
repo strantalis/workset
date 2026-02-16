@@ -3,7 +3,6 @@ workset
 workset.exe
 node_modules
 .task/
-frontend/dist/*
-!frontend/dist/.gitkeep
+frontend/dist/
 frontend/wailsjs/
 frontend/package.json.md5

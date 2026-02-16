@@ -3,9 +3,7 @@
 .modcache/
 .cache/
 dist/
-!wails-ui/workset/frontend/dist/
-wails-ui/workset/frontend/dist/*
-!wails-ui/workset/frontend/dist/.gitkeep
+wails-ui/workset/frontend/dist/
 bin/
 /workset
 go.work.sum

@@ -49,21 +49,19 @@
 	}
 
 	const props: Props = $props();
-	const {
-		worksets,
-		shortcutMap,
-		activeWorkspaceId,
-		onSelectWorkspace,
-		onCreateWorkspace,
-		onAddRepo,
-		onTogglePin,
-		onToggleArchived,
-		onOpenPopout,
-		onClosePopout,
-		isWorkspacePoppedOut,
-	} = props;
+	const worksets = $derived(props.worksets);
+	const shortcutMap = $derived(props.shortcutMap);
+	const activeWorkspaceId = $derived(props.activeWorkspaceId);
+	const onSelectWorkspace = props.onSelectWorkspace;
+	const onCreateWorkspace = props.onCreateWorkspace;
+	const onAddRepo = props.onAddRepo;
+	const onTogglePin = props.onTogglePin;
+	const onToggleArchived = props.onToggleArchived;
+	const onOpenPopout = props.onOpenPopout;
+	const onClosePopout = props.onClosePopout;
+	const isWorkspacePoppedOut = props.isWorkspacePoppedOut;
 	const onGroupModeChange = props.onGroupModeChange ?? (() => {});
-	const initialGroupMode = props.groupMode ?? 'active';
+	const groupModeProp = $derived(props.groupMode ?? 'active');
 
 	const GROUP_MODES: Array<{ id: WorksetGroupMode; label: string; icon: typeof LayoutGrid }> = [
 		{ id: 'all', label: 'All', icon: LayoutGrid },
@@ -73,10 +71,17 @@
 	];
 
 	let searchQuery = $state('');
-	let groupMode = $state<WorksetGroupMode>(initialGroupMode);
+	let groupMode = $state<WorksetGroupMode>('active');
 	let layoutMode = $state<LayoutMode>('grid');
 	let showArchived = $state(false);
 	let actionMenuFor = $state<string | null>(null);
+	let groupModeInitialized = false;
+
+	$effect(() => {
+		if (groupModeInitialized) return;
+		groupMode = groupModeProp;
+		groupModeInitialized = true;
+	});
 
 	const sortWorksetsByName = (items: WorksetSummary[]): WorksetSummary[] =>
 		[...items].sort((left, right) => left.label.localeCompare(right.label));

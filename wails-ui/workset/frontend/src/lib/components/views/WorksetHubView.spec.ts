@@ -127,6 +127,30 @@ describe('WorksetHubView', () => {
 		expect(allModeTitles).toEqual(['pinned-workspace', 'regular-workspace']);
 	});
 
+	test('reacts to prop updates after a workspace becomes pinned', async () => {
+		const initialWorkset = buildWorkset({
+			id: 'ws-pin',
+			label: 'pin-me',
+			pinned: false,
+		});
+		const { getByRole, queryByRole, rerender } = render(WorksetHubView, {
+			props: {
+				...baseProps(vi.fn()),
+				worksets: [initialWorkset],
+			},
+		});
+
+		await fireEvent.click(getByRole('button', { name: 'All' }));
+		expect(queryByRole('heading', { level: 2, name: 'Pinned' })).toBeNull();
+
+		await rerender({
+			...baseProps(vi.fn()),
+			worksets: [{ ...initialWorkset, pinned: true }],
+		});
+
+		expect(getByRole('heading', { level: 2, name: 'Pinned' })).toBeTruthy();
+	});
+
 	test('sorts template groups alphabetically without heuristic labels', async () => {
 		const { getByRole, getAllByRole } = render(WorksetHubView, {
 			props: {
@@ -148,7 +172,9 @@ describe('WorksetHubView', () => {
 
 		await fireEvent.click(getByRole('button', { name: 'Template' }));
 		getByRole('heading', { level: 2, name: /Unassigned/i });
-		const templateModeTitles = getAllByRole('heading', { level: 3 }).map((node) => node.textContent);
+		const templateModeTitles = getAllByRole('heading', { level: 3 }).map(
+			(node) => node.textContent,
+		);
 		expect(templateModeTitles).toEqual(['alpha', 'zeta']);
 	});
 
