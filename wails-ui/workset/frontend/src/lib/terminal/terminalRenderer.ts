@@ -15,6 +15,10 @@ export const createTerminalInstance = (input: {
 	const initOptions: ITerminalOptions = {
 		rescaleOverlappingGlyphs: true,
 		scrollback: 4000,
+		scrollbar: {
+			showScrollbar: false,
+			width: 0,
+		},
 		fontFamily: fontMono,
 		fontWeight: '400',
 		fontWeightBold: '600',

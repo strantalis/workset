@@ -439,10 +439,17 @@
 	:global(.terminal-instance .xterm-viewport) {
 		background: transparent;
 		scrollbar-width: none;
+		-ms-overflow-style: none;
 	}
 
 	:global(.terminal-instance .xterm-viewport::-webkit-scrollbar) {
-		display: none;
+		width: 0;
+		height: 0;
+	}
+
+	:global(.terminal-instance .xterm-scrollable-element > .xterm-scrollbar) {
+		display: none !important;
+		overflow: hidden;
 	}
 
 	:global(.terminal-instance[data-active='true']) {
