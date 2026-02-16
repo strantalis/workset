@@ -21,6 +21,7 @@
 	import { toErrorMessage } from '../../../errors';
 	import SettingsSection from '../SettingsSection.svelte';
 	import Button from '../../ui/Button.svelte';
+	import { deriveRepoName, looksLikeUrl } from '../../../names';
 
 	interface Props {
 		onAliasCountChange: (count: number) => void;
@@ -60,6 +61,26 @@
 	const filteredAliases = $derived(
 		aliases.filter((a) => a.name.toLowerCase().includes(searchQuery.toLowerCase())),
 	);
+
+	$effect((): void => {
+		if (isEditing || !isRegistering) {
+			return;
+		}
+
+		if (formName.trim()) {
+			return;
+		}
+
+		const source = formSource.trim();
+		if (!source || !looksLikeUrl(source)) {
+			return;
+		}
+
+		const derivedName = deriveRepoName(source);
+		if (derivedName) {
+			formName = derivedName;
+		}
+	});
 
 	const handleCancel = (): void => {
 		isRegistering = false;
