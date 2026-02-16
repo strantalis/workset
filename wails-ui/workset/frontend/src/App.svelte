@@ -60,6 +60,7 @@
 	import TerminalCockpitView from './lib/components/views/TerminalCockpitView.svelte';
 	import WorksetHubView, {
 		type WorksetGroupMode,
+		type WorksetLayoutMode,
 	} from './lib/components/views/WorksetHubView.svelte';
 	import { workspaceActionMutations } from './lib/services/workspaceActionService';
 	import {
@@ -68,6 +69,12 @@
 		type WorksetTemplate,
 	} from './lib/view-models/onboardingViewModel';
 	import { buildShortcutMap, mapWorkspacesToSummaries } from './lib/view-models/worksetViewModel';
+	import {
+		readWorksetHubGroupMode,
+		readWorksetHubLayoutMode,
+		persistWorksetHubGroupMode,
+		persistWorksetHubLayoutMode,
+	} from './lib/worksetHubPreferences';
 
 	type RepoDiffLocalStatusEvent = {
 		workspaceId: string;
@@ -148,7 +155,8 @@
 	let prFocusWorkspaceId = $state<string | null>(null);
 	let prFocusRepoId = $state<string | null>(null);
 	let prFocusToken = $state(0);
-	let worksetHubGroupMode = $state<WorksetGroupMode>('active');
+	let worksetHubGroupMode = $state<WorksetGroupMode>(readWorksetHubGroupMode());
+	let worksetHubLayoutMode = $state<WorksetLayoutMode>(readWorksetHubLayoutMode());
 	let workspaceActionMode = $state<WorkspaceActionMode>(null);
 	let workspaceActionWorkspaceId = $state<string | null>(null);
 	let workspaceActionRepoName = $state<string | null>(null);
@@ -537,6 +545,16 @@
 	});
 
 	$effect(() => {
+		if (typeof localStorage === 'undefined') return;
+		persistWorksetHubLayoutMode(worksetHubLayoutMode);
+	});
+
+	$effect(() => {
+		if (typeof localStorage === 'undefined') return;
+		persistWorksetHubGroupMode(worksetHubGroupMode);
+	});
+
+	$effect(() => {
 		if (!fixedWorkspaceId || popoutSelectionApplied || $loadingWorkspaces) return;
 		if ($workspaces.length === 0) return;
 		const target = $workspaces.find(
@@ -685,10 +703,12 @@
 							worksets={worksetSummaries}
 							{shortcutMap}
 							groupMode={worksetHubGroupMode}
+							layoutMode={worksetHubLayoutMode}
 							activeWorkspaceId={$activeWorkspaceId}
 							onSelectWorkspace={handleSelectWorkspace}
 							onCreateWorkspace={handleCreateWorkspace}
 							onGroupModeChange={(value) => (worksetHubGroupMode = value)}
+							onLayoutModeChange={(value) => (worksetHubLayoutMode = value)}
 							onAddRepo={handleAddRepo}
 							onTogglePin={(workspaceId, nextPinned) =>
 								void toggleWorkspacePin(workspaceId, nextPinned)}

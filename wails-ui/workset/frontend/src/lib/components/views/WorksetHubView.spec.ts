@@ -54,6 +54,49 @@ describe('WorksetHubView', () => {
 		expect(onAddRepo).toHaveBeenCalledWith('ws-1');
 	});
 
+	test('starts in list layout when list layout prop is provided', () => {
+		const { getByRole } = render(WorksetHubView, {
+			props: {
+				...baseProps(vi.fn()),
+				layoutMode: 'list',
+			},
+		});
+
+		const listButton = getByRole('button', { name: 'List layout' });
+		const gridButton = getByRole('button', { name: 'Grid layout' });
+
+		expect(listButton).toHaveClass('active');
+		expect(gridButton).not.toHaveClass('active');
+	});
+
+	test('invokes layout mode change callback when layout button is clicked', async () => {
+		const onLayoutModeChange = vi.fn<(layoutMode: 'grid' | 'list') => void>();
+		const { getByRole } = render(WorksetHubView, {
+			props: {
+				...baseProps(vi.fn()),
+				onLayoutModeChange,
+			},
+		});
+
+		await fireEvent.click(getByRole('button', { name: 'List layout' }));
+
+		expect(onLayoutModeChange).toHaveBeenCalledWith('list');
+	});
+
+	test('invokes group mode callback when group button is clicked', async () => {
+		const onGroupModeChange = vi.fn<(groupMode: 'all' | 'template' | 'repo' | 'active') => void>();
+		const { getByRole } = render(WorksetHubView, {
+			props: {
+				...baseProps(vi.fn()),
+				onGroupModeChange,
+			},
+		});
+
+		await fireEvent.click(getByRole('button', { name: 'Template' }));
+
+		expect(onGroupModeChange).toHaveBeenCalledWith('template');
+	});
+
 	test('opens add-repo action from list menu', async () => {
 		const onAddRepo = vi.fn<(workspaceId: string) => void>();
 		const { getByRole } = render(WorksetHubView, {

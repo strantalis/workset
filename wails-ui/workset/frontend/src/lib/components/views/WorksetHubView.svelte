@@ -26,7 +26,7 @@
 	import type { WorksetSummary } from '../../view-models/worksetViewModel';
 
 	export type WorksetGroupMode = 'all' | 'template' | 'repo' | 'active';
-	type LayoutMode = 'grid' | 'list';
+	export type WorksetLayoutMode = 'grid' | 'list';
 	type WorksetGroup = {
 		label: string;
 		items: WorksetSummary[];
@@ -46,6 +46,8 @@
 		onClosePopout: (workspaceId: string) => void;
 		isWorkspacePoppedOut: (workspaceId: string) => boolean;
 		onGroupModeChange?: (groupMode: WorksetGroupMode) => void;
+		layoutMode?: WorksetLayoutMode;
+		onLayoutModeChange?: (layoutMode: WorksetLayoutMode) => void;
 	}
 
 	const props: Props = $props();
@@ -61,7 +63,9 @@
 	const onClosePopout = props.onClosePopout;
 	const isWorkspacePoppedOut = props.isWorkspacePoppedOut;
 	const onGroupModeChange = props.onGroupModeChange ?? (() => {});
+	const onLayoutModeChange = props.onLayoutModeChange ?? (() => {});
 	const groupModeProp = $derived(props.groupMode ?? 'active');
+	const layoutModeProp = $derived(props.layoutMode ?? 'grid');
 
 	const GROUP_MODES: Array<{ id: WorksetGroupMode; label: string; icon: typeof LayoutGrid }> = [
 		{ id: 'all', label: 'All', icon: LayoutGrid },
@@ -72,15 +76,22 @@
 
 	let searchQuery = $state('');
 	let groupMode = $state<WorksetGroupMode>('active');
-	let layoutMode = $state<LayoutMode>('grid');
+	let layoutMode = $state<WorksetLayoutMode>('grid');
 	let showArchived = $state(false);
 	let actionMenuFor = $state<string | null>(null);
 	let groupModeInitialized = false;
+	let layoutModeInitialized = false;
 
 	$effect(() => {
 		if (groupModeInitialized) return;
 		groupMode = groupModeProp;
 		groupModeInitialized = true;
+	});
+
+	$effect(() => {
+		if (layoutModeInitialized) return;
+		layoutMode = layoutModeProp;
+		layoutModeInitialized = true;
 	});
 
 	const sortWorksetsByName = (items: WorksetSummary[]): WorksetSummary[] =>
@@ -222,6 +233,11 @@
 		onGroupModeChange(next);
 	};
 
+	const updateLayoutMode = (next: WorksetLayoutMode): void => {
+		layoutMode = next;
+		onLayoutModeChange(next);
+	};
+
 	const toggleActionMenu = (workspaceId: string, event: MouseEvent): void => {
 		event.stopPropagation();
 		// Guard against clickOutside (capture phase) closing + toggle reopening in the same event cycle
@@ -340,7 +356,7 @@
 					type="button"
 					class="segment icon"
 					class:active={layoutMode === 'grid'}
-					onclick={() => (layoutMode = 'grid')}
+					onclick={() => updateLayoutMode('grid')}
 					aria-label="Grid layout"
 				>
 					<LayoutGrid size={14} />
@@ -349,7 +365,7 @@
 					type="button"
 					class="segment icon"
 					class:active={layoutMode === 'list'}
-					onclick={() => (layoutMode = 'list')}
+					onclick={() => updateLayoutMode('list')}
 					aria-label="List layout"
 				>
 					<List size={14} />
