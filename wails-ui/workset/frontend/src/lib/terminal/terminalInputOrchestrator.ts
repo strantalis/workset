@@ -45,6 +45,83 @@ export const createTerminalInputOrchestrator = (deps: TerminalInputOrchestratorD
 		return false;
 	};
 
+	const hasMouseSequence = (value: string): boolean => {
+		// Legacy X10 mouse reports: ESC [ M Cb Cx Cy
+		// Keep these ungated even when focus/context state is stale during popout handoffs.
+		for (
+			let sequenceStart = value.indexOf('\x1b[M');
+			sequenceStart !== -1;
+			sequenceStart = value.indexOf('\x1b[M', sequenceStart + 1)
+		) {
+			if (sequenceStart + 6 <= value.length) {
+				return true;
+			}
+		}
+
+		// Rxvt mouse mode reports: ESC [ Cb ; Cx ; Cy M
+		for (
+			let sequenceStart = value.indexOf('\x1b[');
+			sequenceStart !== -1;
+			sequenceStart = value.indexOf('\x1b[', sequenceStart + 1)
+		) {
+			let index = sequenceStart + 2;
+			let separators = 0;
+			let digitsInSegment = 0;
+			while (index < value.length) {
+				const code = value.charCodeAt(index);
+				if (code >= 0x30 && code <= 0x39) {
+					digitsInSegment += 1;
+					index += 1;
+					continue;
+				}
+				const char = value[index];
+				if (char === ';') {
+					if (digitsInSegment === 0 || separators >= 2) break;
+					separators += 1;
+					digitsInSegment = 0;
+					index += 1;
+					continue;
+				}
+				if (char === 'M' && separators === 2 && digitsInSegment > 0) {
+					return true;
+				}
+				break;
+			}
+		}
+
+		if (!value.includes('\x1b[<')) return false;
+		for (
+			let sequenceStart = value.indexOf('\x1b[<');
+			sequenceStart !== -1;
+			sequenceStart = value.indexOf('\x1b[<', sequenceStart + 1)
+		) {
+			let index = sequenceStart + 3;
+			let separators = 0;
+			let digitsInSegment = 0;
+			while (index < value.length) {
+				const code = value.charCodeAt(index);
+				if (code >= 0x30 && code <= 0x39) {
+					digitsInSegment += 1;
+					index += 1;
+					continue;
+				}
+				const char = value[index];
+				if (char === ';') {
+					if (digitsInSegment === 0 || separators >= 2) break;
+					separators += 1;
+					digitsInSegment = 0;
+					index += 1;
+					continue;
+				}
+				if ((char === 'm' || char === 'M') && separators === 2 && digitsInSegment > 0) {
+					return true;
+				}
+				break;
+			}
+		}
+		return false;
+	};
+
 	const sendInput = (id: string, data: string): void => {
 		if (!data) {
 			return;
@@ -63,14 +140,16 @@ export const createTerminalInputOrchestrator = (deps: TerminalInputOrchestratorD
 				return;
 			}
 		}
-		if (deps.isContextActive && !deps.isContextActive(id) && hasPrintableText(data)) {
+		const printableInput = hasPrintableText(data);
+		const shouldGatePrintableInput = printableInput && !hasMouseSequence(data);
+		if (deps.isContextActive && !deps.isContextActive(id) && shouldGatePrintableInput) {
 			deps.trace?.(id, 'frontend_input_drop_inactive_context', {
 				bytes: data.length,
 				preview: data.slice(0, 24),
 			});
 			return;
 		}
-		if (deps.isTerminalFocused && !deps.isTerminalFocused(id) && hasPrintableText(data)) {
+		if (deps.isTerminalFocused && !deps.isTerminalFocused(id) && shouldGatePrintableInput) {
 			deps.trace?.(id, 'frontend_input_drop_unfocused_terminal', {
 				bytes: data.length,
 				preview: data.slice(0, 24),

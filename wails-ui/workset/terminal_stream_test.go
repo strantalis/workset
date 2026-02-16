@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -29,6 +30,37 @@ func (s *stubTerminalStream) ID() string {
 
 func (s *stubTerminalStream) Close() error {
 	atomic.AddInt32(&s.closeCalls, 1)
+	return nil
+}
+
+type blockingTerminalStream struct {
+	id         string
+	closed     chan struct{}
+	closeOnce  sync.Once
+	closeCalls int32
+}
+
+func newBlockingTerminalStream(id string) *blockingTerminalStream {
+	return &blockingTerminalStream{
+		id:     id,
+		closed: make(chan struct{}),
+	}
+}
+
+func (s *blockingTerminalStream) Next(_ *sessiond.StreamMessage) error {
+	<-s.closed
+	return errors.New("stream closed")
+}
+
+func (s *blockingTerminalStream) ID() string {
+	return s.id
+}
+
+func (s *blockingTerminalStream) Close() error {
+	atomic.AddInt32(&s.closeCalls, 1)
+	s.closeOnce.Do(func() {
+		close(s.closed)
+	})
 	return nil
 }
 
@@ -100,5 +132,65 @@ func TestStreamTerminalPreventsConcurrentDuplicateAttach(t *testing.T) {
 	case <-done1:
 	case <-time.After(2 * time.Second):
 		t.Fatal("first streamTerminal call did not exit")
+	}
+}
+
+func TestStreamTerminalStaleCloseDoesNotClearClient(t *testing.T) {
+	originalAttach := attachSessionStream
+	t.Cleanup(func() {
+		attachSessionStream = originalAttach
+	})
+
+	app := NewApp()
+	session := newTerminalSession("ws", "term", "/tmp")
+	session.client = &sessiond.Client{}
+	session.markReady(nil)
+
+	staleStream := newBlockingTerminalStream("stream-stale")
+	attachSessionStream = func(
+		_ *sessiond.Client,
+		_ context.Context,
+		_ string,
+		_ int64,
+		_ bool,
+		_ string,
+	) (terminalStream, sessiond.StreamMessage, error) {
+		return staleStream, sessiond.StreamMessage{Type: "ready"}, nil
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		app.streamTerminal(session)
+	}()
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		session.mu.Lock()
+		attached := session.stream == staleStream
+		session.mu.Unlock()
+		if attached {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	session.mu.Lock()
+	session.stream = &stubTerminalStream{id: "stream-replacement"}
+	session.mu.Unlock()
+
+	_ = staleStream.Close()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected stale stream goroutine to exit")
+	}
+
+	session.mu.Lock()
+	client := session.client
+	session.mu.Unlock()
+	if client == nil {
+		t.Fatal("expected stale stream close to preserve active session client")
 	}
 }

@@ -127,7 +127,10 @@ export const createRepoDiffFileController = (options: RepoDiffFileControllerOpti
 		}
 	};
 
-	const selectFile = async (file: RepoDiffFileSummary, source: SummarySource = 'pr'): Promise<void> => {
+	const selectFile = async (
+		file: RepoDiffFileSummary,
+		source: SummarySource = 'pr',
+	): Promise<void> => {
 		if (source === 'pr') {
 			const branchRefs = options.useBranchDiff();
 			if (!branchRefs) {

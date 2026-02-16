@@ -150,4 +150,44 @@ describe('terminalInputOrchestrator', () => {
 			expect.objectContaining({ bytes: 8 }),
 		);
 	});
+
+	it('allows mouse wheel sequences even when context is inactive', () => {
+		const deps = buildDeps();
+		deps.isContextActive.mockReturnValue(false);
+		const orchestrator = createTerminalInputOrchestrator(deps);
+
+		orchestrator.sendInput('ws::term', '\x1b[<65;40;28M');
+
+		expect(deps.write).toHaveBeenCalledWith('ws', 'term', '\x1b[<65;40;28M');
+	});
+
+	it('allows mouse wheel sequences even when terminal focus state is stale', () => {
+		const deps = buildDeps();
+		deps.isTerminalFocused.mockReturnValue(false);
+		const orchestrator = createTerminalInputOrchestrator(deps);
+
+		orchestrator.sendInput('ws::term', '\x1b[<64;40;28M');
+
+		expect(deps.write).toHaveBeenCalledWith('ws', 'term', '\x1b[<64;40;28M');
+	});
+
+	it('allows legacy X10 mouse sequences even when terminal focus state is stale', () => {
+		const deps = buildDeps();
+		deps.isTerminalFocused.mockReturnValue(false);
+		const orchestrator = createTerminalInputOrchestrator(deps);
+
+		orchestrator.sendInput('ws::term', '\x1b[Mabc');
+
+		expect(deps.write).toHaveBeenCalledWith('ws', 'term', '\x1b[Mabc');
+	});
+
+	it('allows rxvt mouse sequences even when terminal focus state is stale', () => {
+		const deps = buildDeps();
+		deps.isTerminalFocused.mockReturnValue(false);
+		const orchestrator = createTerminalInputOrchestrator(deps);
+
+		orchestrator.sendInput('ws::term', '\x1b[64;40;28M');
+
+		expect(deps.write).toHaveBeenCalledWith('ws', 'term', '\x1b[64;40;28M');
+	});
 });

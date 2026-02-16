@@ -139,7 +139,8 @@ const terminalInputOrchestrator = createTerminalInputOrchestrator({
 		const handle = terminalHandles.get(id);
 		if (!handle) return false;
 		if (typeof document === 'undefined') return true;
-		const activeElement = document.activeElement;
+		const ownerDocument = handle.container.ownerDocument;
+		const activeElement = ownerDocument?.activeElement ?? document.activeElement;
 		if (!activeElement) return false;
 		return handle.container.contains(activeElement);
 	},
@@ -184,6 +185,7 @@ const terminalInstanceOrchestration = createTerminalInstanceOrchestration({
 	hasStarted: (id) => lifecycle.hasStarted(id),
 	flushOutput: (id, writeAll) => flushBufferedOutput(id, writeAll),
 	markAttached: (id) => terminalAttachState.markAttached(id),
+	traceAttach: (id, event, details) => runtime.logDebug(id, event, details),
 });
 
 const terminalFontSizeController = terminalInstanceOrchestration.terminalFontSizeController;
@@ -434,7 +436,23 @@ const terminalSessionCoordinator = createTerminalSessionCoordinator({
 	setDebugOverlayPreference: (value) => terminalDebugState.setDebugOverlayPreference(value),
 	clearLocalDebugPreference: clearLocalTerminalDebugPreference,
 	syncDebugEnabled: () => terminalDebugState.syncDebugEnabled(),
+	onSessionReady: (id) => {
+		terminalViewportResizeController.fitTerminal(id, true);
+		window.setTimeout(() => {
+			terminalViewportResizeController.fitTerminal(id, true);
+		}, 64);
+	},
 });
+
+const runFocusRefit = (id: string): void => {
+	// Use a deterministic two-pass refit on focus regain:
+	// 1) immediate pass if viewport is already renderable
+	// 2) next-frame pass after pending layout settles
+	terminalViewportResizeController.fitTerminal(id, lifecycle.hasStarted(id));
+	window.requestAnimationFrame(() => {
+		terminalViewportResizeController.fitTerminal(id, lifecycle.hasStarted(id));
+	});
+};
 
 const terminalStreamOrchestrator = createTerminalStreamOrchestrator({
 	initTerminal,
@@ -456,7 +474,14 @@ const ensureGlobals = (): void =>
 		refreshSessiondStatus,
 		onFocus: (callback) => window.addEventListener('focus', callback),
 		forEachAttached: (callback) => terminalAttachState.forEachAttached(callback),
-		ensureSessionActive,
+		ensureSessionActive: async (id) => {
+			try {
+				await ensureSessionActive(id);
+			} finally {
+				// Refit after focus regain so popout->main handoff does not need manual resize.
+				runFocusRefit(id);
+			}
+		},
 	});
 
 const terminalServiceExports = createTerminalServiceExports<TerminalViewState>({

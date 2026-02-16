@@ -30,6 +30,7 @@ func TestTerminalSessionReleaseStreamClosesAndClearsCurrent(t *testing.T) {
 	stream := &fakeTerminalStream{id: "stream-1"}
 	session.stream = stream
 	session.streamCancel = func() {}
+	session.streamOwner = "main"
 
 	releasedCurrent := session.releaseStream(stream)
 
@@ -44,6 +45,9 @@ func TestTerminalSessionReleaseStreamClosesAndClearsCurrent(t *testing.T) {
 	}
 	if session.streamCancel != nil {
 		t.Fatalf("expected stream cancel cleared")
+	}
+	if session.streamOwner != "" {
+		t.Fatalf("expected stream owner cleared, got %q", session.streamOwner)
 	}
 }
 

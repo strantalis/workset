@@ -23,6 +23,7 @@ var terminalOutputSeq atomic.Uint64
 
 func (a *App) streamTerminal(session *terminalSession) {
 	ctx, cancel := context.WithCancel(context.Background())
+	streamOwner := a.workspaceTerminalOwner(session.workspaceID)
 	session.mu.Lock()
 	if session.streamCancel != nil || session.stream != nil {
 		session.mu.Unlock()
@@ -32,11 +33,13 @@ func (a *App) streamTerminal(session *terminalSession) {
 	// Claim the stream slot before attaching so concurrent calls can't
 	// establish duplicate sessiond streams for the same terminal.
 	session.streamCancel = cancel
+	session.streamOwner = streamOwner
 	client := session.client
 	session.mu.Unlock()
 	if client == nil {
 		session.mu.Lock()
 		session.streamCancel = nil
+		session.streamOwner = ""
 		session.mu.Unlock()
 		cancel()
 		return
@@ -46,12 +49,14 @@ func (a *App) streamTerminal(session *terminalSession) {
 	if err != nil {
 		session.mu.Lock()
 		session.streamCancel = nil
+		session.streamOwner = ""
 		session.client = nil
 		session.mu.Unlock()
 		return
 	}
 	session.mu.Lock()
 	session.stream = stream
+	session.streamOwner = streamOwner
 	session.mu.Unlock()
 	defer func() {
 		if !session.releaseStream(stream) {
@@ -109,7 +114,11 @@ func (a *App) streamTerminal(session *terminalSession) {
 		var msg sessiond.StreamMessage
 		if err := stream.Next(&msg); err != nil {
 			session.mu.Lock()
-			session.client = nil
+			// Ignore terminal stream shutdown from stale streams during ownership
+			// handoff; only the active stream can invalidate the session client.
+			if session.stream == stream {
+				session.client = nil
+			}
 			session.mu.Unlock()
 			break
 		}

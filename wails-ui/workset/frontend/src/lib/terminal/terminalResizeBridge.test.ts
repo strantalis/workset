@@ -70,4 +70,23 @@ describe('terminalResizeBridge', () => {
 
 		expect(resize).toHaveBeenCalledTimes(2);
 	});
+
+	it('retries identical dimensions after a failed resize', async () => {
+		const resize = vi
+			.fn()
+			.mockRejectedValueOnce(new Error('terminal not started'))
+			.mockResolvedValue(undefined);
+		const bridge = createTerminalResizeBridge({
+			getWorkspaceId: () => 'ws',
+			getTerminalId: () => 'term',
+			resize,
+		});
+		const { handle } = createHandle(120, 40);
+
+		bridge.resizeToFit('ws::term', handle);
+		await Promise.resolve();
+		bridge.resizeToFit('ws::term', handle);
+
+		expect(resize).toHaveBeenCalledTimes(2);
+	});
 });

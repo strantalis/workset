@@ -61,8 +61,18 @@ func (a *App) claimWorkspaceTerminalOwner(workspaceID, windowName string) {
 	}
 	windowName = a.normalizeWindowName(windowName)
 	a.popoutMu.Lock()
-	defer a.popoutMu.Unlock()
+	previous := strings.TrimSpace(a.terminalOwners[workspaceID])
+	if previous == "" {
+		previous = a.mainWindowName
+	}
 	a.terminalOwners[workspaceID] = windowName
+	a.popoutMu.Unlock()
+	logTerminalDebug(TerminalDebugPayload{
+		WorkspaceID: workspaceID,
+		TerminalID:  "__owner__",
+		Event:       "owner_claim",
+		Details:     fmt.Sprintf(`{"from":%q,"to":%q}`, previous, windowName),
+	})
 	go a.syncWorkspaceTerminalOwnerToSessiond(workspaceID, windowName)
 }
 
@@ -73,9 +83,24 @@ func (a *App) releaseWorkspaceTerminalOwner(workspaceID, windowName string) {
 	}
 	windowName = a.normalizeWindowName(windowName)
 	a.popoutMu.Lock()
-	defer a.popoutMu.Unlock()
-	if current := strings.TrimSpace(a.terminalOwners[workspaceID]); current == "" || current == windowName {
+	rawCurrent := strings.TrimSpace(a.terminalOwners[workspaceID])
+	current := rawCurrent
+	if current == "" {
+		current = a.mainWindowName
+	}
+	released := false
+	if rawCurrent == "" || rawCurrent == windowName {
 		a.terminalOwners[workspaceID] = a.mainWindowName
+		released = true
+	}
+	a.popoutMu.Unlock()
+	if released {
+		logTerminalDebug(TerminalDebugPayload{
+			WorkspaceID: workspaceID,
+			TerminalID:  "__owner__",
+			Event:       "owner_release",
+			Details:     fmt.Sprintf(`{"from":%q,"to":%q,"caller":%q}`, current, a.mainWindowName, windowName),
+		})
 		go a.syncWorkspaceTerminalOwnerToSessiond(workspaceID, a.mainWindowName)
 	}
 }
@@ -106,8 +131,40 @@ func (a *App) syncWorkspaceTerminalOwnerToSessiond(workspaceID, windowName strin
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		err := client.SetOwner(ctx, sessionID, windowName)
 		cancel()
+		if err == nil {
+			logTerminalDebug(TerminalDebugPayload{
+				WorkspaceID: workspaceID,
+				TerminalID:  session.terminalID,
+				Event:       "owner_sync_sessiond",
+				Details:     fmt.Sprintf(`{"owner":%q,"sessionId":%q,"ok":true}`, windowName, sessionID),
+			})
+		}
 		if err != nil && !isTransientTerminalCallError(err) {
+			logTerminalDebug(TerminalDebugPayload{
+				WorkspaceID: workspaceID,
+				TerminalID:  session.terminalID,
+				Event:       "owner_sync_sessiond",
+				Details: fmt.Sprintf(
+					`{"owner":%q,"sessionId":%q,"ok":false,"transient":false,"error":%q}`,
+					windowName,
+					sessionID,
+					err.Error(),
+				),
+			})
 			continue
+		}
+		if err != nil {
+			logTerminalDebug(TerminalDebugPayload{
+				WorkspaceID: workspaceID,
+				TerminalID:  session.terminalID,
+				Event:       "owner_sync_sessiond",
+				Details: fmt.Sprintf(
+					`{"owner":%q,"sessionId":%q,"ok":false,"transient":true,"error":%q}`,
+					windowName,
+					sessionID,
+					err.Error(),
+				),
+			})
 		}
 	}
 }
@@ -166,14 +223,127 @@ func (a *App) StartWorkspaceTerminalForWindow(ctx context.Context, workspaceID, 
 
 func (a *App) StartWorkspaceTerminalForWindowName(ctx context.Context, workspaceID, terminalID, windowName string) error {
 	windowName = a.resolveCallerWindowName(ctx, windowName)
+	currentOwner := a.workspaceTerminalOwner(workspaceID)
+	logTerminalDebug(TerminalDebugPayload{
+		WorkspaceID: workspaceID,
+		TerminalID:  terminalID,
+		Event:       "owner_start_request",
+		Details:     fmt.Sprintf(`{"caller":%q,"currentOwner":%q}`, windowName, currentOwner),
+	})
 	if err := a.allowWorkspaceTerminalStart(workspaceID, windowName); err != nil {
 		return err
 	}
 	if err := a.StartWorkspaceTerminal(workspaceID, terminalID); err != nil {
 		return err
 	}
+	a.restartTerminalStreamForHandoff(workspaceID, terminalID, currentOwner, windowName)
 	go a.syncWorkspaceTerminalOwnerToSessiond(workspaceID, windowName)
 	return nil
+}
+
+func (a *App) restartTerminalStreamForHandoff(workspaceID, terminalID, previousOwner, nextOwner string) {
+	session, err := a.getTerminal(workspaceID, terminalID)
+	if err != nil {
+		logTerminalDebug(TerminalDebugPayload{
+			WorkspaceID: workspaceID,
+			TerminalID:  terminalID,
+			Event:       "owner_stream_replay_skip",
+			Details: fmt.Sprintf(
+				`{"from":%q,"to":%q,"reason":"lookup_failed","error":%q}`,
+				previousOwner,
+				nextOwner,
+				err.Error(),
+			),
+		})
+		return
+	}
+	session.mu.Lock()
+	currentStream := session.stream
+	currentCancel := session.streamCancel
+	currentStreamOwner := strings.TrimSpace(session.streamOwner)
+	if currentStreamOwner == "" {
+		currentStreamOwner = a.mainWindowName
+	}
+	if currentStream == nil {
+		if currentCancel != nil {
+			if currentStreamOwner == nextOwner {
+				session.mu.Unlock()
+				logTerminalDebug(TerminalDebugPayload{
+					WorkspaceID: workspaceID,
+					TerminalID:  terminalID,
+					Event:       "owner_stream_replay_skip",
+					Details: fmt.Sprintf(
+						`{"from":%q,"to":%q,"reason":"stream_attach_in_flight_owner_match"}`,
+						currentStreamOwner,
+						nextOwner,
+					),
+				})
+				return
+			}
+			session.streamCancel = nil
+			session.streamOwner = ""
+			session.mu.Unlock()
+			currentCancel()
+			logTerminalDebug(TerminalDebugPayload{
+				WorkspaceID: workspaceID,
+				TerminalID:  terminalID,
+				Event:       "owner_stream_replay_restart",
+				Details: fmt.Sprintf(
+					`{"from":%q,"to":%q,"reason":"stream_attach_in_flight"}`,
+					currentStreamOwner,
+					nextOwner,
+				),
+			})
+			go a.streamTerminal(session)
+			return
+		}
+		session.mu.Unlock()
+		logTerminalDebug(TerminalDebugPayload{
+			WorkspaceID: workspaceID,
+			TerminalID:  terminalID,
+			Event:       "owner_stream_replay_restart",
+			Details: fmt.Sprintf(
+				`{"from":%q,"to":%q,"reason":"stream_inactive"}`,
+				currentStreamOwner,
+				nextOwner,
+			),
+		})
+		go a.streamTerminal(session)
+		return
+	}
+	if currentStreamOwner == nextOwner {
+		session.mu.Unlock()
+		logTerminalDebug(TerminalDebugPayload{
+			WorkspaceID: workspaceID,
+			TerminalID:  terminalID,
+			Event:       "owner_stream_replay_skip",
+			Details: fmt.Sprintf(
+				`{"from":%q,"to":%q,"reason":"stream_owner_match"}`,
+				currentStreamOwner,
+				nextOwner,
+			),
+		})
+		return
+	}
+	session.stream = nil
+	session.streamCancel = nil
+	session.streamOwner = ""
+	session.mu.Unlock()
+	if currentCancel != nil {
+		currentCancel()
+	}
+	_ = currentStream.Close()
+	logTerminalDebug(TerminalDebugPayload{
+		WorkspaceID: workspaceID,
+		TerminalID:  terminalID,
+		Event:       "owner_stream_replay_restart",
+		Details: fmt.Sprintf(
+			`{"from":%q,"to":%q}`,
+			currentStreamOwner,
+			nextOwner,
+		),
+	})
+	go a.streamTerminal(session)
 }
 
 func (a *App) WriteWorkspaceTerminalForWindow(ctx context.Context, workspaceID, terminalID, data string) error {
@@ -182,6 +352,15 @@ func (a *App) WriteWorkspaceTerminalForWindow(ctx context.Context, workspaceID, 
 
 func (a *App) WriteWorkspaceTerminalForWindowName(ctx context.Context, workspaceID, terminalID, data, windowName string) error {
 	windowName = a.resolveCallerWindowName(ctx, windowName)
+	currentOwner := a.workspaceTerminalOwner(workspaceID)
+	if currentOwner != windowName {
+		logTerminalDebug(TerminalDebugPayload{
+			WorkspaceID: workspaceID,
+			TerminalID:  terminalID,
+			Event:       "owner_write_mismatch",
+			Details:     fmt.Sprintf(`{"caller":%q,"currentOwner":%q}`, windowName, currentOwner),
+		})
+	}
 	if err := a.ensureWorkspaceTerminalOwner(workspaceID, windowName); err != nil {
 		return err
 	}
@@ -210,11 +389,28 @@ func (a *App) ResizeWorkspaceTerminalForWindow(ctx context.Context, workspaceID,
 
 func (a *App) ResizeWorkspaceTerminalForWindowName(ctx context.Context, workspaceID, terminalID string, cols, rows int, windowName string) error {
 	windowName = a.resolveCallerWindowName(ctx, windowName)
+	currentOwner := a.workspaceTerminalOwner(workspaceID)
+	if currentOwner != windowName {
+		logTerminalDebug(TerminalDebugPayload{
+			WorkspaceID: workspaceID,
+			TerminalID:  terminalID,
+			Event:       "owner_resize_mismatch",
+			Details: fmt.Sprintf(
+				`{"caller":%q,"currentOwner":%q,"cols":%d,"rows":%d}`,
+				windowName,
+				currentOwner,
+				cols,
+				rows,
+			),
+		})
+	}
 	if err := a.ensureWorkspaceTerminalOwner(workspaceID, windowName); err != nil {
 		return err
 	}
 	if err := a.ResizeWorkspaceTerminal(workspaceID, terminalID, cols, rows); err != nil {
-		if isTransientTerminalCallError(err) {
+		// Resize calls race attach/start during window handoff. Treat "terminal not started"
+		// as transient so frontend fit retries can recover silently.
+		if strings.Contains(strings.ToLower(err.Error()), "terminal not started") {
 			return nil
 		}
 		return err

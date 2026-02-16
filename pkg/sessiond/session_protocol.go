@@ -22,6 +22,7 @@ func (s *Session) handleProtocolOutput(ctx context.Context, raw []byte) {
 	if len(sanitized) == 0 {
 		return
 	}
+	s.trackTerminalModes(sanitized)
 	s.logProtocol(ctx, "out", sanitized)
 	s.mu.Lock()
 	s.bumpActivityLocked()

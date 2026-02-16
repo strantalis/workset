@@ -44,6 +44,7 @@ type TerminalCoordinatorDependencies = {
 	setDebugOverlayPreference: (value: 'on' | 'off' | '') => void;
 	clearLocalDebugPreference: () => void;
 	syncDebugEnabled: () => void;
+	onSessionReady?: (id: string) => void;
 };
 
 export const createTerminalSessionCoordinator = (deps: TerminalCoordinatorDependencies) => {
@@ -87,6 +88,7 @@ export const createTerminalSessionCoordinator = (deps: TerminalCoordinatorDepend
 				deps.lifecycle.setStatusAndMessage(id, 'ready', '');
 				deps.setHealth(id, 'ok', 'Session active.');
 				deps.lifecycle.ensureRendererDefaults(id);
+				deps.onSessionReady?.(id);
 				deps.emitState(id);
 				log(id, 'session_begin_reassert_ok', { quiet });
 				return;
@@ -127,6 +129,7 @@ export const createTerminalSessionCoordinator = (deps: TerminalCoordinatorDepend
 			deps.lifecycle.setStatusAndMessage(id, 'ready', '');
 			deps.setHealth(id, 'ok', 'Session active.');
 			deps.lifecycle.ensureRendererDefaults(id);
+			deps.onSessionReady?.(id);
 			log(id, 'session_begin_transport_ok', {});
 			const queued = deps.pendingInput.get(id);
 			if (queued) {

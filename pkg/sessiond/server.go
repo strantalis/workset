@@ -364,10 +364,36 @@ func (s *Server) handleAttach(conn net.Conn, line []byte) {
 	if streamID == "" {
 		streamID = newStreamID()
 	}
+	var replay []byte
+	// Snapshot buffered output before subscribing while the output lock is held
+	// so newly attached viewers can reconstruct terminal mode/state.
+	session.outputMu.Lock()
+	prefix := session.modeReplayPrefixLocked()
+	if session.buffer != nil {
+		replay, _, _ = session.buffer.ReadSince(0)
+	}
+	if len(prefix) > 0 {
+		withPrefix := make([]byte, 0, len(prefix)+len(replay))
+		withPrefix = append(withPrefix, prefix...)
+		withPrefix = append(withPrefix, replay...)
+		replay = withPrefix
+	}
 	sub := session.subscribe(streamID)
+	session.outputMu.Unlock()
 	defer session.unsubscribe(sub)
 	if err := enc.Encode(StreamMessage{Type: "ready", SessionID: req.SessionID, StreamID: streamID}); err != nil {
 		return
+	}
+	if len(replay) > 0 {
+		if err := enc.Encode(StreamMessage{
+			Type:      "data",
+			SessionID: req.SessionID,
+			StreamID:  streamID,
+			DataB64:   base64.StdEncoding.EncodeToString(replay),
+			Len:       len(replay),
+		}); err != nil {
+			return
+		}
 	}
 	for event := range sub.ch {
 		if err := enc.Encode(StreamMessage{

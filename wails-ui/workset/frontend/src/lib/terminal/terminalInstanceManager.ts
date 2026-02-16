@@ -51,9 +51,25 @@ export const createTerminalInstanceManager = (deps: TerminalInstanceManagerDeps)
 				const terminal = deps.createTerminalInstance();
 				const fitAddon = deps.createFitAddon();
 				terminal.loadAddon(fitAddon);
-				const dataDisposable = terminal.onData((data) => {
+				terminal.attachCustomWheelEventHandler((event) => {
+					// Delegate wheel semantics to xterm so alternate-screen TUIs
+					// keep receiving native wheel/mouse behavior.
+					event.preventDefault();
+					event.stopPropagation();
+					return true;
+				});
+				const onDataDisposable = terminal.onData((data) => {
 					deps.onData(id, data);
 				});
+				const onBinaryDisposable = terminal.onBinary((data) => {
+					deps.onData(id, data);
+				});
+				const dataDisposable: Disposable = {
+					dispose: () => {
+						onDataDisposable.dispose();
+						onBinaryDisposable.dispose();
+					},
+				};
 				const createHost = deps.createHostContainer ?? createDefaultHostContainer;
 				handle = {
 					terminal,

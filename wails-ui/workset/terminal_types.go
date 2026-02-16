@@ -53,6 +53,7 @@ type terminalSession struct {
 	client       *sessiond.Client
 	stream       terminalStream
 	streamCancel context.CancelFunc
+	streamOwner  string
 
 	starting bool
 	startErr error
@@ -184,6 +185,7 @@ func (s *terminalSession) releaseStream(stream terminalStream) (releasedCurrent 
 	if s.stream == stream {
 		s.stream = nil
 		s.streamCancel = nil
+		s.streamOwner = ""
 		releasedCurrent = true
 	}
 	s.mu.Unlock()
@@ -200,6 +202,7 @@ func (s *terminalSession) CloseWithReason(reason string) error {
 		_ = s.stream.Close()
 		s.stream = nil
 	}
+	s.streamOwner = ""
 	defer s.mu.Unlock()
 	if s.closed {
 		return nil

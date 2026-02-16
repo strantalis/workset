@@ -23,6 +23,7 @@ type TerminalInstanceOrchestrationDependencies = {
 	hasStarted: (id: string) => boolean;
 	flushOutput: (id: string, writeAll: boolean) => void;
 	markAttached: (id: string) => void;
+	traceAttach?: (id: string, event: string, details: Record<string, unknown>) => void;
 };
 
 export const createTerminalInstanceOrchestration = (
@@ -34,6 +35,7 @@ export const createTerminalInstanceOrchestration = (
 		},
 		flushOutput: deps.flushOutput,
 		markAttached: deps.markAttached,
+		traceAttach: deps.traceAttach,
 		nudgeRenderer: (id, handle, opened) => {
 			const refresh = (): void => {
 				const end = Math.max(0, handle.terminal.rows - 1);

@@ -5,6 +5,7 @@ const createCoordinator = (input?: {
 	start?: () => Promise<void>;
 	write?: () => Promise<void>;
 	pendingInput?: Map<string, string>;
+	onSessionReady?: (id: string) => void;
 }) => {
 	const started = new Set<string>();
 	const startInFlight = new Set<string>();
@@ -53,6 +54,7 @@ const createCoordinator = (input?: {
 		setDebugOverlayPreference: vi.fn(),
 		clearLocalDebugPreference: vi.fn(),
 		syncDebugEnabled: vi.fn(),
+		onSessionReady: input?.onSessionReady,
 	});
 
 	return {
@@ -124,5 +126,14 @@ describe('terminalSessionCoordinator', () => {
 				quiet: false,
 			}),
 		);
+	});
+
+	it('notifies when session becomes ready', async () => {
+		const onSessionReady = vi.fn();
+		const { coordinator } = createCoordinator({ onSessionReady });
+
+		await coordinator.beginTerminal('ws::term');
+
+		expect(onSessionReady).toHaveBeenCalledWith('ws::term');
 	});
 });

@@ -22,6 +22,12 @@ class MockTerminal {
 	public focus = vi.fn();
 	public clear = vi.fn();
 	public reset = vi.fn();
+	public attachCustomWheelEventHandler = vi.fn((handler: (event: WheelEvent) => boolean) => {
+		this.customWheelEventHandler = handler;
+	});
+	public customWheelEventHandler: ((event: WheelEvent) => boolean) | null = null;
+	public onDataCallback: ((data: string) => void) | null = null;
+	public onBinaryCallback: ((data: string) => void) | null = null;
 
 	constructor(options: Record<string, unknown>) {
 		this.options = options;
@@ -32,11 +38,13 @@ class MockTerminal {
 		addon.activate?.(this);
 	}
 
-	onData(): { dispose: () => void } {
+	onData(callback: (data: string) => void): { dispose: () => void } {
+		this.onDataCallback = callback;
 		return { dispose: () => undefined };
 	}
 
-	onBinary(): { dispose: () => void } {
+	onBinary(callback: (data: string) => void): { dispose: () => void } {
+		this.onBinaryCallback = callback;
 		return { dispose: () => undefined };
 	}
 
@@ -46,6 +54,14 @@ class MockTerminal {
 
 	open(container: HTMLElement): void {
 		this.element = { parentElement: container };
+	}
+
+	emitData(data: string): void {
+		this.onDataCallback?.(data);
+	}
+
+	emitBinary(data: string): void {
+		this.onBinaryCallback?.(data);
 	}
 }
 
@@ -160,5 +176,132 @@ describe('terminalService resize flow', () => {
 		expect(createdTerminals).toHaveLength(1);
 		const terminal = createdTerminals[0];
 		expect(terminal.scrollToBottom).not.toHaveBeenCalled();
+	});
+
+	it('attaches a custom wheel handler that consumes browser scroll', async () => {
+		const service = await loadService();
+		const container = document.createElement('div') as HTMLDivElement;
+
+		service.syncTerminal({
+			workspaceId: 'ws',
+			terminalId: 'term',
+			container,
+			active: true,
+		});
+		await vi.waitFor(() => {
+			expect(appMock.StartWorkspaceTerminalForWindowName).toHaveBeenCalled();
+		});
+
+		expect(createdTerminals).toHaveLength(1);
+		const terminal = createdTerminals[0];
+		expect(terminal.attachCustomWheelEventHandler).toHaveBeenCalledTimes(1);
+		expect(terminal.customWheelEventHandler).toBeTypeOf('function');
+
+		const preventDefault = vi.fn();
+		const stopPropagation = vi.fn();
+		const handled = terminal.customWheelEventHandler?.({
+			preventDefault,
+			stopPropagation,
+		} as unknown as WheelEvent);
+		expect(handled).toBe(true);
+		expect(preventDefault).toHaveBeenCalledTimes(1);
+		expect(stopPropagation).toHaveBeenCalledTimes(1);
+	});
+
+	it('forwards wheel input after attaching terminal host in another document', async () => {
+		const service = await loadService();
+		const container = document.createElement('div') as HTMLDivElement;
+
+		service.syncTerminal({
+			workspaceId: 'ws',
+			terminalId: 'term',
+			container,
+			active: true,
+		});
+		await vi.waitFor(() => {
+			expect(appMock.StartWorkspaceTerminalForWindowName).toHaveBeenCalled();
+		});
+
+		expect(createdTerminals).toHaveLength(1);
+		const terminal = createdTerminals[0];
+
+		const popoutDocument = document.implementation.createHTMLDocument('popout');
+		const popoutContainer = popoutDocument.createElement('div') as HTMLDivElement;
+		Object.defineProperty(popoutDocument, 'activeElement', {
+			get: () => popoutContainer.firstElementChild,
+			configurable: true,
+		});
+
+		service.syncTerminal({
+			workspaceId: 'ws',
+			terminalId: 'term',
+			container: popoutContainer,
+			active: true,
+		});
+		await Promise.resolve();
+
+		expect(popoutContainer.firstElementChild).toBeTruthy();
+		expect(popoutContainer.firstElementChild?.ownerDocument).toBe(popoutDocument);
+		expect(terminal.onDataCallback).toBeTypeOf('function');
+
+		terminal.emitData('\x1b[<64;10;10M');
+		await vi.waitFor(() => {
+			expect(appMock.WriteWorkspaceTerminalForWindowName).toHaveBeenCalledWith(
+				'ws',
+				'term',
+				'\x1b[<64;10;10M',
+				expect.any(String),
+			);
+		});
+	});
+
+	it('refits attached terminals on window focus so handoff does not require manual resize', async () => {
+		const service = await loadService();
+		const container = document.createElement('div') as HTMLDivElement;
+		const widthDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
+		const heightDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
+		Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+			configurable: true,
+			get() {
+				return this.isConnected ? 800 : 0;
+			},
+		});
+		Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+			configurable: true,
+			get() {
+				return this.isConnected ? 400 : 0;
+			},
+		});
+		const restoreClientMetrics = (): void => {
+			if (widthDescriptor) {
+				Object.defineProperty(HTMLElement.prototype, 'clientWidth', widthDescriptor);
+			}
+			if (heightDescriptor) {
+				Object.defineProperty(HTMLElement.prototype, 'clientHeight', heightDescriptor);
+			}
+		};
+		try {
+			service.syncTerminal({
+				workspaceId: 'ws',
+				terminalId: 'term',
+				container,
+				active: true,
+			});
+			await vi.waitFor(() => {
+				expect(appMock.StartWorkspaceTerminalForWindowName).toHaveBeenCalled();
+			});
+			await vi.runAllTimersAsync();
+			expect(appMock.ResizeWorkspaceTerminalForWindowName).not.toHaveBeenCalled();
+			appMock.ResizeWorkspaceTerminalForWindowName.mockClear();
+
+			document.body.appendChild(container);
+			window.dispatchEvent(new Event('focus'));
+			await vi.runAllTimersAsync();
+
+			expect(appMock.ResizeWorkspaceTerminalForWindowName.mock.calls.length).toBeGreaterThan(0);
+		} finally {
+			container.remove();
+			restoreClientMetrics();
+		}
 	});
 });

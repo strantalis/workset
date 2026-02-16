@@ -47,6 +47,8 @@ type Session struct {
 	protocolPendingEsc bool
 	debugInputSeq      atomic.Uint64
 	debugOutputSeq     atomic.Uint64
+	modeState          terminalModeState
+	modeParser         terminalModeParser
 }
 
 func newSession(opts Options, id, cwd string) *Session {
