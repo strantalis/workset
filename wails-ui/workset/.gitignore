@@ -5,4 +5,5 @@ node_modules
 .task/
 frontend/dist/
 frontend/wailsjs/
+frontend/bindings/
 frontend/package.json.md5
