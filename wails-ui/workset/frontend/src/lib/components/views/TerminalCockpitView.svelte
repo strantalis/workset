@@ -1,6 +1,7 @@
 <script lang="ts">
 	import {
 		ChevronDown,
+		ChevronLeft,
 		ChevronRight,
 		FileTerminal,
 		Folder,
@@ -24,6 +25,14 @@
 	// ── Sidebar state ──────────────────────────────────────────
 	let fileTreeExpanded = $state(true);
 
+	const COLLAPSED_KEY = 'workset:terminal-cockpit:sidebarCollapsed';
+	let sidebarCollapsed = $state(localStorage.getItem(COLLAPSED_KEY) === 'true');
+
+	function toggleSidebar() {
+		sidebarCollapsed = !sidebarCollapsed;
+		localStorage.setItem(COLLAPSED_KEY, String(sidebarCollapsed));
+	}
+
 	// ── Derived data ───────────────────────────────────────────
 	const repos = $derived(workspace?.repos ?? []);
 </script>
@@ -44,108 +53,140 @@
 
 		<!-- ── Main area: sidebar + terminal ──────────────────── -->
 		<div class="cockpit-body">
-			<ResizablePanel
-				direction="horizontal"
-				initialRatio={0.2}
-				minRatio={0.12}
-				maxRatio={0.4}
-				storageKey="workset:terminal-cockpit:sidebarRatio"
-			>
-				<!-- Sidebar (first panel) -->
-				<aside class="sidebar">
-					<!-- CURRENT WORKSET section -->
-					<div class="section">
-						<div class="section-header">CURRENT WORKSET</div>
-						<button
-							type="button"
-							class="workset-item active"
-							onclick={() => onOpenWorkspaceTerminal(workspace.id)}
-						>
-							<span class="workset-icon"><FileTerminal size={13} /></span>
-							<span class="workset-label">{workspace.name}</span>
-						</button>
-					</div>
-
-					<!-- FILE SYSTEM section -->
-					<div class="section file-section">
-						<div class="section-header">
-							<span>FILE SYSTEM</span>
+			{#if sidebarCollapsed}
+				<!-- Collapsed sidebar strip -->
+				<aside class="sidebar-collapsed">
+					<button
+						type="button"
+						class="collapse-btn"
+						aria-label="Expand sidebar"
+						title="Expand sidebar"
+						onclick={toggleSidebar}
+					>
+						<ChevronLeft size={14} />
+					</button>
+				</aside>
+				<!-- Terminal area (full width) -->
+				<div class="terminal-area">
+					<TerminalWorkspace workspaceId={workspace.id} workspaceName={workspace.name} />
+				</div>
+			{:else}
+				<ResizablePanel
+					direction="horizontal"
+					initialRatio={0.2}
+					minRatio={0.12}
+					maxRatio={0.4}
+					storageKey="workset:terminal-cockpit:sidebarRatio"
+				>
+					<!-- Sidebar (first panel) -->
+					<aside class="sidebar">
+						<!-- Collapse button -->
+						<div class="sidebar-header">
 							<button
 								type="button"
-								class="section-action"
-								title="Add repository"
-								onclick={() => onAddRepo(workspace.id)}
+								class="collapse-btn"
+								aria-label="Collapse sidebar"
+								title="Collapse sidebar"
+								onclick={toggleSidebar}
 							>
-								<Plus size={20} />
+								<ChevronLeft size={14} />
 							</button>
 						</div>
-						<div class="file-tree">
-							{#if repos.length === 0}
-								<div class="tree-empty">No repositories</div>
-							{:else}
-								<!-- Workspace root node -->
+
+						<!-- CURRENT WORKSET section -->
+						<div class="section">
+							<div class="section-header">CURRENT WORKSET</div>
+							<button
+								type="button"
+								class="workset-item active"
+								onclick={() => onOpenWorkspaceTerminal(workspace.id)}
+							>
+								<span class="workset-icon"><FileTerminal size={13} /></span>
+								<span class="workset-label">{workspace.name}</span>
+							</button>
+						</div>
+
+						<!-- FILE SYSTEM section -->
+						<div class="section file-section">
+							<div class="section-header">
+								<span>FILE SYSTEM</span>
 								<button
 									type="button"
-									class="tree-root"
-									onclick={() => (fileTreeExpanded = !fileTreeExpanded)}
+									class="section-action"
+									title="Add repository"
+									onclick={() => onAddRepo(workspace.id)}
 								>
-									{#if fileTreeExpanded}
-										<ChevronDown size={12} />
-										<FolderOpen size={13} />
-									{:else}
-										<ChevronRight size={12} />
-										<Folder size={13} />
-									{/if}
-									<span class="tree-root-name">{workspace.name}</span>
+									<Plus size={20} />
 								</button>
-								{#if fileTreeExpanded}
-									<div class="tree-children">
-										{#each repos as repo (repo.id)}
-											<div class="tree-repo" title={repo.path || repo.name}>
-												<Folder size={12} />
-												<span class="tree-repo-name">{repo.name}</span>
-												{#if repo.missing || repo.dirty}
-													<span class="repo-status-dot warning"></span>
-												{/if}
-											</div>
-										{/each}
-									</div>
+							</div>
+							<div class="file-tree">
+								{#if repos.length === 0}
+									<div class="tree-empty">No repositories</div>
+								{:else}
+									<!-- Workspace root node -->
+									<button
+										type="button"
+										class="tree-root"
+										onclick={() => (fileTreeExpanded = !fileTreeExpanded)}
+									>
+										{#if fileTreeExpanded}
+											<ChevronDown size={12} />
+											<FolderOpen size={13} />
+										{:else}
+											<ChevronRight size={12} />
+											<Folder size={13} />
+										{/if}
+										<span class="tree-root-name">{workspace.name}</span>
+									</button>
+									{#if fileTreeExpanded}
+										<div class="tree-children">
+											{#each repos as repo (repo.id)}
+												<div class="tree-repo" title={repo.path || repo.name}>
+													<Folder size={12} />
+													<span class="tree-repo-name">{repo.name}</span>
+													{#if repo.missing || repo.dirty}
+														<span class="repo-status-dot warning"></span>
+													{/if}
+												</div>
+											{/each}
+										</div>
+									{/if}
 								{/if}
-							{/if}
+							</div>
 						</div>
-					</div>
 
-					<!-- ENV + Config section -->
-					<div class="section env-section">
-						<div class="env-row">
-							<span class="env-label">ENV</span>
-							<button type="button" class="env-selector" disabled title="Coming soon">
-								<span class="env-dot"></span>
-								<span>Development (coming soon)</span>
-								<ChevronDown size={10} />
+						<!-- ENV + Config section -->
+						<div class="section env-section">
+							<div class="env-row">
+								<span class="env-label">ENV</span>
+								<button type="button" class="env-selector" disabled title="Coming soon">
+									<span class="env-dot"></span>
+									<span>Development (coming soon)</span>
+									<ChevronDown size={10} />
+								</button>
+							</div>
+							<div class="sync-row">
+								<span>Auto-Sync</span>
+								<label class="toggle" title="Coming soon">
+									<input type="checkbox" checked disabled />
+									<span class="toggle-track"></span>
+								</label>
+							</div>
+							<button type="button" class="config-btn" disabled title="Coming soon">
+								<Settings2 size={12} />
+								<span>Advanced Config (coming soon)</span>
 							</button>
 						</div>
-						<div class="sync-row">
-							<span>Auto-Sync</span>
-							<label class="toggle" title="Coming soon">
-								<input type="checkbox" checked disabled />
-								<span class="toggle-track"></span>
-							</label>
-						</div>
-						<button type="button" class="config-btn" disabled title="Coming soon">
-							<Settings2 size={12} />
-							<span>Advanced Config (coming soon)</span>
-						</button>
-					</div>
-				</aside>
+					</aside>
 
-				{#snippet second()}
-					<!-- Terminal area (second panel) -->
-					<div class="terminal-area">
-						<TerminalWorkspace workspaceId={workspace.id} workspaceName={workspace.name} />
-					</div>
-				{/snippet}
-			</ResizablePanel>
+					{#snippet second()}
+						<!-- Terminal area (second panel) -->
+						<div class="terminal-area">
+							<TerminalWorkspace workspaceId={workspace.id} workspaceName={workspace.name} />
+						</div>
+					{/snippet}
+				</ResizablePanel>
+			{/if}
 		</div>
 	{:else}
 		<div class="empty-state">
@@ -204,6 +245,54 @@
 		background: color-mix(in srgb, var(--panel) 85%, transparent);
 		backdrop-filter: blur(12px);
 		-webkit-backdrop-filter: blur(12px);
+	}
+
+	.sidebar-header {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		padding: 4px 8px;
+		flex-shrink: 0;
+	}
+
+	.collapse-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 24px;
+		height: 24px;
+		border: none;
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--muted);
+		cursor: pointer;
+		transition:
+			color var(--transition-fast),
+			background var(--transition-fast);
+		opacity: 0.6;
+	}
+
+	.collapse-btn:hover {
+		color: var(--text);
+		background: color-mix(in srgb, var(--panel-strong) 80%, transparent);
+		opacity: 1;
+	}
+
+	.sidebar-collapsed {
+		width: 40px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		padding-top: 4px;
+		background: color-mix(in srgb, var(--panel) 85%, transparent);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		border-right: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+		flex-shrink: 0;
+	}
+
+	.sidebar-collapsed .collapse-btn :global(svg) {
+		transform: rotate(180deg);
 	}
 
 	.section {
