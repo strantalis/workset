@@ -120,3 +120,32 @@ func TestShortHash(t *testing.T) {
 		t.Fatalf("unexpected short hash for demo: %q", shortHash("demo"))
 	}
 }
+
+func TestIsGitSafeBranchName(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		expect bool
+	}{
+		{name: "valid simple", input: "feature/one", expect: true},
+		{name: "valid underscore and dash", input: "fix/ws_test-123", expect: true},
+		{name: "empty", input: "", expect: false},
+		{name: "leading slash", input: "/feature", expect: false},
+		{name: "double slash", input: "feature//one", expect: false},
+		{name: "dot dot", input: "feature..one", expect: false},
+		{name: "contains at brace", input: "feature@{1}", expect: false},
+		{name: "part starts dot", input: "feature/.hidden", expect: false},
+		{name: "part ends lock", input: "feature/topic.lock", expect: false},
+		{name: "contains space", input: "feature one", expect: false},
+		{name: "contains invalid rune", input: "feature:one", expect: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := isGitSafeBranchName(tc.input)
+			if got != tc.expect {
+				t.Fatalf("isGitSafeBranchName(%q) = %v, want %v", tc.input, got, tc.expect)
+			}
+		})
+	}
+}

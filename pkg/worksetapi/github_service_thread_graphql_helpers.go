@@ -16,12 +16,58 @@ type threadInfo struct {
 	IsResolved bool
 }
 
+type graphQLReviewThreadsResponse struct {
+	Data struct {
+		Repository struct {
+			PullRequest struct {
+				ReviewThreads struct {
+					PageInfo struct {
+						HasNextPage bool   `json:"hasNextPage"`
+						EndCursor   string `json:"endCursor"`
+					} `json:"pageInfo"`
+					Nodes []struct {
+						ID         string `json:"id"`
+						IsResolved bool   `json:"isResolved"`
+						Comments   struct {
+							Nodes []struct {
+								ID string `json:"id"`
+							} `json:"nodes"`
+						} `json:"comments"`
+					} `json:"nodes"`
+				} `json:"reviewThreads"`
+			} `json:"pullRequest"`
+		} `json:"repository"`
+	} `json:"data"`
+	Errors []struct {
+		Message string `json:"message"`
+	} `json:"errors"`
+}
+
+const reviewThreadsQuery = `query($owner: String!, $repo: String!, $number: Int!, $after: String) {
+	repository(owner: $owner, name: $repo) {
+		pullRequest(number: $number) {
+			reviewThreads(first: 100, after: $after) {
+				pageInfo {
+					hasNextPage
+					endCursor
+				}
+				nodes {
+					id
+					isResolved
+					comments(first: 100) {
+						nodes {
+							id
+						}
+					}
+				}
+			}
+		}
+	}
+}`
+
 // graphQLResolveThread calls the GitHub GraphQL API to resolve/unresolve a thread by node ID.
 func graphQLResolveThread(ctx context.Context, token, host, threadID string, resolve bool) (bool, error) {
-	endpoint := "https://api.github.com/graphql"
-	if host != "" && host != defaultGitHubHost {
-		endpoint = fmt.Sprintf("https://%s/api/graphql", host)
-	}
+	endpoint := graphQLEndpoint(host)
 
 	mutation := "resolveReviewThread"
 	if !resolve {
@@ -98,131 +144,118 @@ func graphQLResolveThread(ctx context.Context, token, host, threadID string, res
 
 // graphQLReviewThreadMap fetches review threads for a PR and maps comment node IDs to thread info.
 func graphQLReviewThreadMap(ctx context.Context, token, host, owner, repo string, number int) (map[string]threadInfo, error) {
-	endpoint := "https://api.github.com/graphql"
-	if host != "" && host != defaultGitHubHost {
-		endpoint = fmt.Sprintf("https://%s/api/graphql", host)
-	}
+	endpoint := graphQLEndpoint(host)
 
 	threadMap := make(map[string]threadInfo)
 	var cursor *string
 
 	for {
-		query := `query($owner: String!, $repo: String!, $number: Int!, $after: String) {
-			repository(owner: $owner, name: $repo) {
-				pullRequest(number: $number) {
-					reviewThreads(first: 100, after: $after) {
-						pageInfo {
-							hasNextPage
-							endCursor
-						}
-						nodes {
-							id
-							isResolved
-							comments(first: 100) {
-								nodes {
-									id
-								}
-							}
-						}
-					}
-				}
-			}
-		}`
-
-		variables := map[string]any{
-			"owner":  owner,
-			"repo":   repo,
-			"number": number,
-			"after":  cursor,
-		}
-
-		payload := map[string]any{
-			"query":     query,
-			"variables": variables,
-		}
-		body, err := json.Marshal(payload)
+		page, err := fetchReviewThreadsPage(ctx, endpoint, token, owner, repo, number, cursor)
 		if err != nil {
 			return nil, err
 		}
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-		if err != nil {
-			return nil, err
-		}
-		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("Content-Type", "application/json")
+		addThreadsToCommentMap(threadMap, page)
 
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return nil, err
-		}
-		respBody, err := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		if err != nil {
-			return nil, err
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			return nil, ValidationError{Message: "GraphQL request failed: " + string(respBody)}
-		}
-
-		var result struct {
-			Data struct {
-				Repository struct {
-					PullRequest struct {
-						ReviewThreads struct {
-							PageInfo struct {
-								HasNextPage bool   `json:"hasNextPage"`
-								EndCursor   string `json:"endCursor"`
-							} `json:"pageInfo"`
-							Nodes []struct {
-								ID         string `json:"id"`
-								IsResolved bool   `json:"isResolved"`
-								Comments   struct {
-									Nodes []struct {
-										ID string `json:"id"`
-									} `json:"nodes"`
-								} `json:"comments"`
-							} `json:"nodes"`
-						} `json:"reviewThreads"`
-					} `json:"pullRequest"`
-				} `json:"repository"`
-			} `json:"data"`
-			Errors []struct {
-				Message string `json:"message"`
-			} `json:"errors"`
-		}
-
-		if err := json.Unmarshal(respBody, &result); err != nil {
-			return nil, err
-		}
-
-		if len(result.Errors) > 0 {
-			return nil, ValidationError{Message: result.Errors[0].Message}
-		}
-
-		for _, thread := range result.Data.Repository.PullRequest.ReviewThreads.Nodes {
-			for _, comment := range thread.Comments.Nodes {
-				if comment.ID != "" && thread.ID != "" {
-					threadMap[comment.ID] = threadInfo{
-						ThreadID:   thread.ID,
-						IsResolved: thread.IsResolved,
-					}
-				}
-			}
-		}
-
-		if !result.Data.Repository.PullRequest.ReviewThreads.PageInfo.HasNextPage {
-			break
-		}
-		next := result.Data.Repository.PullRequest.ReviewThreads.PageInfo.EndCursor
-		if strings.TrimSpace(next) == "" {
+		next, ok := nextReviewThreadCursor(page)
+		if !ok {
 			break
 		}
 		cursor = &next
 	}
 
 	return threadMap, nil
+}
+
+func graphQLEndpoint(host string) string {
+	endpoint := "https://api.github.com/graphql"
+	if host != "" && host != defaultGitHubHost {
+		endpoint = fmt.Sprintf("https://%s/api/graphql", host)
+	}
+	return endpoint
+}
+
+func fetchReviewThreadsPage(ctx context.Context, endpoint, token, owner, repo string, number int, cursor *string) (graphQLReviewThreadsResponse, error) {
+	payload := map[string]any{
+		"query": reviewThreadsQuery,
+		"variables": map[string]any{
+			"owner":  owner,
+			"repo":   repo,
+			"number": number,
+			"after":  cursor,
+		},
+	}
+	body, err := doGraphQLRequest(ctx, endpoint, token, payload)
+	if err != nil {
+		return graphQLReviewThreadsResponse{}, err
+	}
+
+	var page graphQLReviewThreadsResponse
+	if err := json.Unmarshal(body, &page); err != nil {
+		return graphQLReviewThreadsResponse{}, err
+	}
+	if len(page.Errors) > 0 {
+		return graphQLReviewThreadsResponse{}, ValidationError{Message: page.Errors[0].Message}
+	}
+	return page, nil
+}
+
+func doGraphQLRequest(ctx context.Context, endpoint, token string, payload any) ([]byte, error) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, ValidationError{Message: "GraphQL request failed: " + string(respBody)}
+	}
+	return respBody, nil
+}
+
+func addThreadsToCommentMap(threadMap map[string]threadInfo, page graphQLReviewThreadsResponse) {
+	for _, thread := range page.Data.Repository.PullRequest.ReviewThreads.Nodes {
+		if thread.ID == "" {
+			continue
+		}
+		for _, comment := range thread.Comments.Nodes {
+			if comment.ID == "" {
+				continue
+			}
+			threadMap[comment.ID] = threadInfo{
+				ThreadID:   thread.ID,
+				IsResolved: thread.IsResolved,
+			}
+		}
+	}
+}
+
+func nextReviewThreadCursor(page graphQLReviewThreadsResponse) (string, bool) {
+	pageInfo := page.Data.Repository.PullRequest.ReviewThreads.PageInfo
+	if !pageInfo.HasNextPage {
+		return "", false
+	}
+	next := strings.TrimSpace(pageInfo.EndCursor)
+	if next == "" {
+		return "", false
+	}
+	return next, true
 }
 
 // graphQLGetThreadID fetches the thread ID for a comment node ID by querying through the PR.

@@ -35,58 +35,107 @@ func (s *Session) trackTerminalModes(data []byte) {
 func (s *Session) consumeModeByte(b byte) {
 	switch s.modeParser.state {
 	case modeParserGround:
-		if b == 0x1b {
-			s.modeParser.state = modeParserEsc
-		}
+		s.consumeModeGroundByte(b)
 	case modeParserEsc:
-		if b == '[' {
-			s.modeParser.state = modeParserCSI
-			s.modeParser.privateCSI = false
-			s.modeParser.params = s.modeParser.params[:0]
-			s.modeParser.current = 0
-			s.modeParser.hasCurrent = false
-			return
-		}
-		if b == 0x1b {
-			s.modeParser.state = modeParserEsc
-			return
-		}
-		s.resetModeParser()
+		s.consumeModeEscByte(b)
 	case modeParserCSI:
-		if b == '?' && !s.modeParser.privateCSI && len(s.modeParser.params) == 0 && !s.modeParser.hasCurrent {
-			s.modeParser.privateCSI = true
-			return
-		}
-		if b >= '0' && b <= '9' {
-			s.modeParser.current = (s.modeParser.current * 10) + int(b-'0')
-			s.modeParser.hasCurrent = true
-			return
-		}
-		if b == ';' {
-			if s.modeParser.hasCurrent {
-				s.modeParser.params = append(s.modeParser.params, s.modeParser.current)
-				s.modeParser.current = 0
-				s.modeParser.hasCurrent = false
-			}
-			return
-		}
-		if (b == 'h' || b == 'l') && s.modeParser.privateCSI {
-			if s.modeParser.hasCurrent {
-				s.modeParser.params = append(s.modeParser.params, s.modeParser.current)
-			}
-			enabled := b == 'h'
-			for _, param := range s.modeParser.params {
-				s.applyPrivateMode(param, enabled)
-			}
-			s.resetModeParser()
-			return
-		}
-		if b == 0x1b {
-			s.modeParser.state = modeParserEsc
-			return
-		}
+		s.consumeModeCSIByte(b)
+	}
+}
+
+func (s *Session) consumeModeGroundByte(b byte) {
+	if b == 0x1b {
+		s.modeParser.state = modeParserEsc
+	}
+}
+
+func (s *Session) consumeModeEscByte(b byte) {
+	switch b {
+	case '[':
+		s.startModeCSI()
+	case 0x1b:
+		s.modeParser.state = modeParserEsc
+	default:
 		s.resetModeParser()
 	}
+}
+
+func (s *Session) consumeModeCSIByte(b byte) {
+	if s.consumePrivateCSIPrefix(b) {
+		return
+	}
+	if s.consumeCSIDigit(b) {
+		return
+	}
+	if s.consumeCSISeparator(b) {
+		return
+	}
+	if s.consumePrivateCSIToggle(b) {
+		return
+	}
+	if b == 0x1b {
+		s.modeParser.state = modeParserEsc
+		return
+	}
+	s.resetModeParser()
+}
+
+func (s *Session) consumePrivateCSIPrefix(b byte) bool {
+	if b != '?' {
+		return false
+	}
+	if s.modeParser.privateCSI || len(s.modeParser.params) > 0 || s.modeParser.hasCurrent {
+		return false
+	}
+	s.modeParser.privateCSI = true
+	return true
+}
+
+func (s *Session) consumeCSIDigit(b byte) bool {
+	if b < '0' || b > '9' {
+		return false
+	}
+	s.modeParser.current = (s.modeParser.current * 10) + int(b-'0')
+	s.modeParser.hasCurrent = true
+	return true
+}
+
+func (s *Session) consumeCSISeparator(b byte) bool {
+	if b != ';' {
+		return false
+	}
+	s.appendCurrentModeParam()
+	return true
+}
+
+func (s *Session) consumePrivateCSIToggle(b byte) bool {
+	if (b != 'h' && b != 'l') || !s.modeParser.privateCSI {
+		return false
+	}
+	s.appendCurrentModeParam()
+	enabled := b == 'h'
+	for _, param := range s.modeParser.params {
+		s.applyPrivateMode(param, enabled)
+	}
+	s.resetModeParser()
+	return true
+}
+
+func (s *Session) appendCurrentModeParam() {
+	if !s.modeParser.hasCurrent {
+		return
+	}
+	s.modeParser.params = append(s.modeParser.params, s.modeParser.current)
+	s.modeParser.current = 0
+	s.modeParser.hasCurrent = false
+}
+
+func (s *Session) startModeCSI() {
+	s.modeParser.state = modeParserCSI
+	s.modeParser.privateCSI = false
+	s.modeParser.params = s.modeParser.params[:0]
+	s.modeParser.current = 0
+	s.modeParser.hasCurrent = false
 }
 
 func (s *Session) applyPrivateMode(param int, enabled bool) {

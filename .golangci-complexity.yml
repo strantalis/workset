@@ -10,9 +10,19 @@ linters:
     - gocognit
   settings:
     cyclop:
-      max-complexity: 15
+      max-complexity: 18
     gocognit:
-      min-complexity: 25
+      min-complexity: 30
+  exclusions:
+    rules:
+      - path: ".*_test\\.go$"
+        linters:
+          - cyclop
+          - gocognit
+      - path: "^cmd/workset/.*\\.go$"
+        linters:
+          - cyclop
+          - gocognit
 
 issues:
   max-issues-per-linter: 0

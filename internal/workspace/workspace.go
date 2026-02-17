@@ -366,37 +366,55 @@ func sanitizeWorkspaceBranchName(name string) string {
 }
 
 func isGitSafeBranchName(name string) bool {
-	if name == "" || name == "@" || strings.HasPrefix(name, "-") {
+	if hasInvalidGitBranchShape(name) {
 		return false
 	}
-	if strings.HasPrefix(name, "/") || strings.HasSuffix(name, "/") || strings.Contains(name, "//") {
+	if hasInvalidGitBranchParts(strings.Split(name, "/")) {
 		return false
-	}
-	if strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".") {
-		return false
-	}
-	if strings.Contains(name, "..") || strings.Contains(name, "@{") {
-		return false
-	}
-	parts := strings.Split(name, "/")
-	for _, part := range parts {
-		if part == "" {
-			return false
-		}
-		if strings.HasPrefix(part, ".") || strings.HasSuffix(part, ".lock") {
-			return false
-		}
 	}
 	for _, r := range name {
-		if r < 32 || r == 127 || unicode.IsSpace(r) {
-			return false
-		}
-		switch r {
-		case '~', '^', ':', '?', '*', '[', '\\':
+		if isInvalidGitBranchRune(r) {
 			return false
 		}
 	}
 	return true
+}
+
+func hasInvalidGitBranchShape(name string) bool {
+	if name == "" || name == "@" || strings.HasPrefix(name, "-") {
+		return true
+	}
+	if strings.HasPrefix(name, "/") || strings.HasSuffix(name, "/") || strings.Contains(name, "//") {
+		return true
+	}
+	if strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".") {
+		return true
+	}
+	return strings.Contains(name, "..") || strings.Contains(name, "@{")
+}
+
+func hasInvalidGitBranchParts(parts []string) bool {
+	for _, part := range parts {
+		if part == "" {
+			return true
+		}
+		if strings.HasPrefix(part, ".") || strings.HasSuffix(part, ".lock") {
+			return true
+		}
+	}
+	return false
+}
+
+func isInvalidGitBranchRune(r rune) bool {
+	if r < 32 || r == 127 || unicode.IsSpace(r) {
+		return true
+	}
+	switch r {
+	case '~', '^', ':', '?', '*', '[', '\\':
+		return true
+	default:
+		return false
+	}
 }
 
 func shortHash(input string) string {

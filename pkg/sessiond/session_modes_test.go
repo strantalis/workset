@@ -51,3 +51,51 @@ func TestModeReplayPrefixParsesSplitCSI(t *testing.T) {
 		t.Fatalf("expected split CSI mode to be tracked, got %q", got)
 	}
 }
+
+func TestModeReplayPrefixParsesMultiplePrivateModes(t *testing.T) {
+	session := newSession(DefaultOptions(), "mode-state-multi", "/tmp")
+
+	session.handleProtocolOutput(context.Background(), []byte("\x1b[?1002;1006h"))
+
+	session.outputMu.Lock()
+	got := string(session.modeReplayPrefixLocked())
+	session.outputMu.Unlock()
+	if !strings.Contains(got, "\x1b[?1002h") {
+		t.Fatalf("expected mouse1002 enable in replay prefix, got %q", got)
+	}
+	if !strings.Contains(got, "\x1b[?1006h") {
+		t.Fatalf("expected mouse1006 enable in replay prefix, got %q", got)
+	}
+}
+
+func TestModeReplayPrefixResetsOnUnknownCSICommand(t *testing.T) {
+	session := newSession(DefaultOptions(), "mode-state-reset", "/tmp")
+
+	session.handleProtocolOutput(context.Background(), []byte("\x1b[?1006x\x1b[?1002h"))
+
+	session.outputMu.Lock()
+	got := string(session.modeReplayPrefixLocked())
+	session.outputMu.Unlock()
+	if strings.Contains(got, "\x1b[?1006h") {
+		t.Fatalf("did not expect unknown command sequence to enable 1006, got %q", got)
+	}
+	if !strings.Contains(got, "\x1b[?1002h") {
+		t.Fatalf("expected parser to recover and track 1002, got %q", got)
+	}
+}
+
+func TestModeReplayPrefixHandlesEscapeInsideCSI(t *testing.T) {
+	session := newSession(DefaultOptions(), "mode-state-escape", "/tmp")
+
+	session.handleProtocolOutput(context.Background(), []byte("\x1b[?1006\x1b[?1003h"))
+
+	session.outputMu.Lock()
+	got := string(session.modeReplayPrefixLocked())
+	session.outputMu.Unlock()
+	if strings.Contains(got, "\x1b[?1006h") {
+		t.Fatalf("did not expect interrupted sequence to enable 1006, got %q", got)
+	}
+	if !strings.Contains(got, "\x1b[?1003h") {
+		t.Fatalf("expected parser to switch to new CSI after escape, got %q", got)
+	}
+}
