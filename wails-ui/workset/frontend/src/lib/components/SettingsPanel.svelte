@@ -116,6 +116,8 @@
 		const shouldRefreshTerminalDefaults = updates.some(
 			(field) => field.id === 'terminalDebugOverlay',
 		);
+		const shouldRestartSessiond = updates.some((field) => field.id === 'terminalProtocolLog');
+		const statusMessage = updates.length === 1 ? 'Saved 1 change.' : `Saved ${updates.length} changes.`;
 
 		if (updates.length === 0) {
 			success = 'No changes to save.';
@@ -136,10 +138,21 @@
 
 		if (!error) {
 			baseline = { ...draft };
-			success = `Saved ${updates.length} change${updates.length === 1 ? '' : 's'}.`;
 			if (shouldRefreshTerminalDefaults) {
 				const { refreshTerminalDefaults } = await import('../terminal/terminalService');
 				await refreshTerminalDefaults();
+			}
+			if (shouldRestartSessiond) {
+				const restartResult = await sideEffects.restartSessiond();
+				if (restartResult.error) {
+					error = `Saved settings, but failed to restart session daemon for terminal protocol logging: ${restartResult.error}`;
+				} else if (restartResult.success) {
+					success = `${statusMessage} ${restartResult.success}`;
+				}
+			}
+
+			if (!error && !success) {
+				success = statusMessage;
 			}
 		}
 
