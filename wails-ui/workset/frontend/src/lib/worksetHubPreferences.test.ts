@@ -65,4 +65,3 @@ describe('worksetHubPreferences', () => {
 		expect(localStorage.getItem(WORKSET_HUB_GROUP_MODE_KEY)).toBe('template');
 	});
 });
-

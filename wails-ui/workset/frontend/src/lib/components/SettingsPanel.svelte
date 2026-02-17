@@ -117,7 +117,8 @@
 			(field) => field.id === 'terminalDebugOverlay',
 		);
 		const shouldRestartSessiond = updates.some((field) => field.id === 'terminalProtocolLog');
-		const statusMessage = updates.length === 1 ? 'Saved 1 change.' : `Saved ${updates.length} changes.`;
+		const statusMessage =
+			updates.length === 1 ? 'Saved 1 change.' : `Saved ${updates.length} changes.`;
 
 		if (updates.length === 0) {
 			success = 'No changes to save.';

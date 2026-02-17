@@ -34,4 +34,3 @@ export const persistWorksetHubGroupMode = (value: WorksetGroupMode): void => {
 	if (typeof localStorage === 'undefined') return;
 	localStorage.setItem(WORKSET_HUB_GROUP_MODE_KEY, value);
 };
-
