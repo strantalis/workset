@@ -56,6 +56,7 @@
 		FileDiffRenderer,
 		FileDiffRendererModule,
 	} from '../repo-diff/diffRenderController';
+	import { buildDiffRenderOptions } from '../repo-diff/diffRenderOptions';
 	import RepoDiffAnnotationStyles from '../repo-diff/RepoDiffAnnotationStyles.svelte';
 	import {
 		fetchBranchDiffSummary,
@@ -800,13 +801,10 @@
 	let diffRenderContainer: HTMLElement | null = $state(null);
 	let diffRenderEpoch = 0;
 
-	const buildDiffOptions = (): FileDiffRenderOptions<ReviewAnnotation> => ({
-		theme: 'pierre-dark',
-		themeType: 'dark',
-		diffStyle: 'split',
-		diffIndicators: 'bars',
-		renderAnnotation: (a) => annotationController.renderAnnotation(a),
-	});
+	const buildDiffOptions = (
+		container: HTMLElement | null = diffContainer,
+	): FileDiffRenderOptions<ReviewAnnotation> =>
+		buildDiffRenderOptions(container?.clientWidth, (a) => annotationController.renderAnnotation(a));
 
 	const ensureDiffsModule = async (): Promise<DiffsModule> => {
 		if (diffsModule) return diffsModule;
@@ -839,9 +837,9 @@
 			}
 
 			if (!diffInstance) {
-				diffInstance = new mod.FileDiff(buildDiffOptions());
+				diffInstance = new mod.FileDiff(buildDiffOptions(container));
 			} else {
-				diffInstance.setOptions(buildDiffOptions());
+				diffInstance.setOptions(buildDiffOptions(container));
 			}
 			if (currentEpoch !== diffRenderEpoch) return;
 			if (!container.isConnected) return;
@@ -858,7 +856,7 @@
 			} catch (err) {
 				// Guard against DOM races inside @pierre/diffs when container nodes were replaced.
 				diffInstance?.cleanUp();
-				diffInstance = new mod.FileDiff(buildDiffOptions());
+				diffInstance = new mod.FileDiff(buildDiffOptions(container));
 				try {
 					diffInstance.render({
 						fileDiff,
@@ -2028,6 +2026,7 @@
 	/* ── Tab content ──────────────────────────────────────────── */
 	.tab-content {
 		flex: 1;
+		min-width: 0;
 		overflow: hidden;
 		display: flex;
 		flex-direction: column;
@@ -2036,6 +2035,7 @@
 	/* ── Files Tab ────────────────────────────────────────────── */
 	.files-panel {
 		flex: 1;
+		min-width: 0;
 		display: flex;
 		overflow: hidden;
 	}
@@ -2103,14 +2103,30 @@
 
 	.fp-diff {
 		flex: 1;
-		overflow-y: auto;
+		min-width: 0;
+		min-height: 0;
+		overflow: hidden;
 		padding: 16px;
+		display: flex;
+		flex-direction: column;
 	}
 	.diff-card {
 		border: 1px solid var(--border);
 		border-radius: 8px;
 		overflow: hidden;
 		background: var(--bg);
+		min-width: 0;
+		min-height: 0;
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+	}
+	.diff-body {
+		min-height: 200px;
+		min-width: 0;
+		flex: 1;
+		position: relative;
+		overflow: hidden;
 	}
 	.diff-header {
 		display: flex;
@@ -2122,10 +2138,6 @@
 		font-size: var(--text-mono-sm);
 		font-family: var(--font-mono);
 		color: var(--muted);
-	}
-	.diff-body {
-		min-height: 200px;
-		position: relative;
 	}
 	.diff-placeholder {
 		display: flex;
@@ -2149,10 +2161,16 @@
 	/* ── Diff renderer (@pierre/diffs) ───────────────────────── */
 	.diff-renderer-wrap {
 		position: relative;
+		min-width: 0;
+		min-height: 0;
+		height: 100%;
+		overflow: hidden;
 	}
 	.diff-renderer {
 		flex: 1;
 		min-height: 0;
+		min-width: 0;
+		height: 100%;
 		border-radius: 10px;
 		border: 1px solid var(--border);
 		background: var(--bg);
