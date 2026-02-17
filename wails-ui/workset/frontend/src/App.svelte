@@ -664,6 +664,17 @@
 				shortcutNumber={popoutMode ? undefined : activeShortcut}
 				showShortcut={!popoutMode}
 				showPaletteHint={!popoutMode}
+				showPopoutToggle={!popoutMode && !!$activeWorkspaceId}
+				workspacePoppedOut={isWorkspacePoppedOut($activeWorkspaceId)}
+				onTogglePopout={() => {
+					const workspaceId = $activeWorkspaceId;
+					if (!workspaceId) return;
+					if (isWorkspacePoppedOut(workspaceId)) {
+						void handleClosePopout(workspaceId);
+						return;
+					}
+					void handleOpenPopout(workspaceId);
+				}}
 				onOpenHub={() => setView(popoutMode ? 'command-center' : 'workset-hub')}
 				onOpenPalette={() => (commandPaletteOpen = true)}
 			/>

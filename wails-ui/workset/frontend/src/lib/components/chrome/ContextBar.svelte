@@ -1,5 +1,7 @@
 <script lang="ts">
 	import {
+		ArrowLeft,
+		ArrowUpRight,
 		Command,
 		ChevronRight,
 		GitBranch,
@@ -14,6 +16,9 @@
 		shortcutNumber?: number;
 		showShortcut?: boolean;
 		showPaletteHint?: boolean;
+		showPopoutToggle?: boolean;
+		workspacePoppedOut?: boolean;
+		onTogglePopout?: () => void;
 		onOpenHub: () => void;
 		onOpenPalette?: () => void;
 	}
@@ -23,6 +28,9 @@
 		shortcutNumber,
 		showShortcut = true,
 		showPaletteHint = true,
+		showPopoutToggle = false,
+		workspacePoppedOut = false,
+		onTogglePopout,
 		onOpenHub,
 		onOpenPalette,
 	}: Props = $props();
@@ -73,8 +81,25 @@
 		</div>
 	{/if}
 
+	<div class="spacer"></div>
+	{#if showPopoutToggle}
+		<button
+			type="button"
+			class="popout-action"
+			aria-label={workspacePoppedOut ? 'Return workspace to main window' : 'Open workspace popout'}
+			title={workspacePoppedOut ? 'Return to main window' : 'Open workspace popout'}
+			onclick={() => onTogglePopout?.()}
+		>
+			{#if workspacePoppedOut}
+				<ArrowLeft size={14} />
+				<span>Return</span>
+			{:else}
+				<ArrowUpRight size={14} />
+				<span>Popout</span>
+			{/if}
+		</button>
+	{/if}
 	{#if showPaletteHint}
-		<div class="spacer"></div>
 		<button type="button" class="palette-hint" onclick={() => onOpenPalette?.()}>
 			<kbd class="shortcut"><Command size={9} />K</kbd>
 			<span>Command palette</span>
@@ -120,7 +145,8 @@
 	}
 
 	.workset-link,
-	.palette-hint {
+	.palette-hint,
+	.popout-action {
 		-webkit-app-region: no-drag;
 	}
 
@@ -229,6 +255,24 @@
 		color: var(--muted);
 		font-size: var(--text-xs);
 		cursor: pointer;
+	}
+
+	.popout-action {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		background: transparent;
+		border: 1px solid transparent;
+		border-radius: 8px;
+		padding: 3px 8px;
+		color: var(--muted);
+		font-size: var(--text-xs);
+		cursor: pointer;
+	}
+
+	.popout-action:hover {
+		border-color: var(--border);
+		color: var(--text);
 	}
 
 	.palette-hint:hover {

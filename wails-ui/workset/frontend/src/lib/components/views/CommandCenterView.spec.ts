@@ -84,7 +84,8 @@ describe('CommandCenterView', () => {
 					currentBranch: 'main',
 					defaultBranch: 'main',
 					files: [],
-					trackedPullRequest: null,
+					diff: { added: 0, removed: 0 },
+					trackedPullRequest: undefined,
 				},
 			],
 		});
@@ -115,7 +116,8 @@ describe('CommandCenterView', () => {
 					currentBranch: 'main',
 					defaultBranch: 'main',
 					files: [],
-					trackedPullRequest: null,
+					diff: { added: 0, removed: 0 },
+					trackedPullRequest: undefined,
 				},
 			],
 		});
