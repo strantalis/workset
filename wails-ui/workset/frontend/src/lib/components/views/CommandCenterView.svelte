@@ -27,6 +27,7 @@
 		activeWorkspaceId: string | null;
 		onCreateWorkspace?: () => void;
 		onSelectRepo?: (workspaceId: string, repoId: string) => void;
+		onAddRepo?: (workspaceId: string) => void;
 	}
 
 	const {
@@ -34,6 +35,7 @@
 		activeWorkspaceId,
 		onCreateWorkspace = () => {},
 		onSelectRepo,
+		onAddRepo = () => {},
 	}: Props = $props();
 
 	type DiffsModule = typeof import('@pierre/diffs');
@@ -346,23 +348,36 @@
 		<section class="empty-card">
 			<h2>No repos linked</h2>
 			<p>Add repositories to this workspace to track branch health and drift.</p>
+			<button type="button" class="cta" onclick={() => onAddRepo(activeWorkspaceId ?? '')}>
+				<Plus size={15} /> Add Repo
+			</button>
 		</section>
 	{:else}
 		<!-- Repo grid panel -->
 		<div class="repo-panel">
 			<div class="panel-toolbar">
 				<span class="panel-title">{activeWorkspaceName}</span>
-				<label class="panel-search">
-					<Search size={14} />
-					<input
-						type="text"
-						bind:value={repoSearch}
-						placeholder="Filter repos..."
-						autocapitalize="off"
-						autocorrect="off"
-						spellcheck="false"
-					/>
-				</label>
+				<div class="panel-actions">
+					<button
+						type="button"
+						class="add-repo-btn"
+						onclick={() => onAddRepo(activeWorkspaceId ?? '')}
+					>
+						<Plus size={14} />
+						Add Repo
+					</button>
+					<label class="panel-search">
+						<Search size={14} />
+						<input
+							type="text"
+							bind:value={repoSearch}
+							placeholder="Filter repos..."
+							autocapitalize="off"
+							autocorrect="off"
+							spellcheck="false"
+						/>
+					</label>
+				</div>
 			</div>
 
 			<div class="panel-content">
@@ -716,6 +731,33 @@
 		font-size: var(--text-base);
 		font-weight: 500;
 		color: var(--text);
+	}
+
+	.panel-actions {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+
+	.add-repo-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 6px 12px;
+		border-radius: 6px;
+		border: 1px solid var(--border);
+		background: var(--panel-strong);
+		color: var(--text);
+		font-size: var(--text-sm);
+		font-weight: 500;
+		cursor: pointer;
+		transition: all var(--transition-fast);
+	}
+
+	.add-repo-btn:hover {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: white;
 	}
 
 	.panel-search {
@@ -1075,10 +1117,12 @@
 		border: 1px solid var(--border);
 		border-radius: 12px;
 		padding: 28px;
-		display: grid;
-		gap: 10px;
-		justify-items: start;
-		align-content: start;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		text-align: center;
+		gap: 12px;
 	}
 
 	.empty-card h2 {

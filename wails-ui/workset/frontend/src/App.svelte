@@ -724,6 +724,7 @@
 							activeWorkspaceId={$activeWorkspaceId}
 							onCreateWorkspace={handleCreateWorkspace}
 							onSelectRepo={handleSelectRepo}
+							onAddRepo={handleAddRepo}
 						/>
 					{:else if currentView === 'terminal-cockpit'}
 						{#if !popoutMode && isWorkspacePoppedOut($activeWorkspaceId)}
