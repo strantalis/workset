@@ -82,8 +82,8 @@ func (a *App) OpenWorkspacePopout(workspaceID string) (WorkspacePopoutPayload, e
 	window := a.runtimeApp.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:             windowName,
 		Title:            fmt.Sprintf("workset - %s", workspaceID),
-		Width:            1440,
-		Height:           900,
+		Width:            defaultWindowWidth,
+		Height:           defaultWindowHeight,
 		BackgroundColour: application.NewRGB(8, 16, 24),
 		URL:              "/?" + values.Encode(),
 		Mac: application.MacWindow{

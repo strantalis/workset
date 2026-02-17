@@ -13,6 +13,11 @@ var assets embed.FS
 //go:embed build/appicon.png
 var appIcon []byte
 
+const (
+	defaultWindowWidth  = 1600
+	defaultWindowHeight = 1000
+)
+
 func main() {
 	appService := NewApp()
 
@@ -35,8 +40,8 @@ func main() {
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:             mainWindowName,
 		Title:            "workset",
-		Width:            1440,
-		Height:           900,
+		Width:            defaultWindowWidth,
+		Height:           defaultWindowHeight,
 		URL:              "/",
 		BackgroundColour: application.NewRGB(8, 16, 24),
 		Mac: application.MacWindow{
