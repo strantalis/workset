@@ -216,6 +216,7 @@ func EnsureRunning(ctx context.Context) (*Client, error) {
 type StartOptions struct {
 	ProtocolLogEnabled bool
 	ProtocolLogDir     string
+	IdleTimeout        string
 }
 
 func EnsureRunningWithOptions(ctx context.Context, opts StartOptions) (*Client, error) {
@@ -294,13 +295,7 @@ func startDaemon(_ context.Context, socketPath string, opts StartOptions) error 
 	if err != nil {
 		return err
 	}
-	args := []string{"--socket", socketPath}
-	if opts.ProtocolLogEnabled {
-		args = append(args, "--verbose")
-		if strings.TrimSpace(opts.ProtocolLogDir) != "" {
-			args = append(args, "--protocol-log-dir", opts.ProtocolLogDir)
-		}
-	}
+	args := buildSessiondCommandArgs(socketPath, opts)
 	cmd := exec.Command(bin, args...)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
@@ -319,6 +314,20 @@ func startDaemon(_ context.Context, socketPath string, opts StartOptions) error 
 		_ = cmd.Wait()
 	}()
 	return nil
+}
+
+func buildSessiondCommandArgs(socketPath string, opts StartOptions) []string {
+	args := []string{"--socket", socketPath}
+	if opts.ProtocolLogEnabled {
+		args = append(args, "--verbose")
+		if strings.TrimSpace(opts.ProtocolLogDir) != "" {
+			args = append(args, "--protocol-log-dir", opts.ProtocolLogDir)
+		}
+	}
+	if timeout := strings.TrimSpace(opts.IdleTimeout); timeout != "" {
+		args = append(args, "--idle-timeout", timeout)
+	}
+	return args
 }
 
 func shutdownRequest(source, reason string) ShutdownRequest {

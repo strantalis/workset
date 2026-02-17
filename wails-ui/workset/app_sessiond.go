@@ -54,6 +54,9 @@ func (a *App) getSessiondClientInternal(waitForRestart bool) (*sessiond.Client, 
 		if envTruthy(cfg.Defaults.TerminalProtocolLog) {
 			startOpts.ProtocolLogEnabled = true
 		}
+		if timeout := strings.TrimSpace(cfg.Defaults.TerminalIdleTimeout); timeout != "" {
+			startOpts.IdleTimeout = timeout
+		}
 	}
 	client, err := sessiond.EnsureRunningWithOptions(ctx, startOpts)
 	if err != nil {
