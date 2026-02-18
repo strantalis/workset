@@ -4,6 +4,7 @@
 		ArrowUpRight,
 		Box,
 		CheckCircle2,
+		ChevronLeft,
 		ChevronRight,
 		Circle,
 		ExternalLink,
@@ -171,6 +172,29 @@
 	let commitPushError: string | null = $state(null);
 	let commitPushSuccess = $state(false);
 	let commitPushSuccessTimer: ReturnType<typeof setTimeout> | null = null;
+	const SIDEBAR_COLLAPSED_KEY = 'workset:pr-orchestration:sidebarCollapsed';
+	const readSidebarCollapsed = (): boolean => {
+		try {
+			return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
+		} catch {
+			return false;
+		}
+	};
+	const persistSidebarCollapsed = (collapsed: boolean): void => {
+		try {
+			localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed));
+		} catch {
+			// ignore storage failures
+		}
+	};
+	let sidebarCollapsed = $state(readSidebarCollapsed());
+	const canCollapseSidebar = $derived(selectedItemId !== null);
+
+	const toggleSidebar = (): void => {
+		if (!sidebarCollapsed && !canCollapseSidebar) return;
+		sidebarCollapsed = !sidebarCollapsed;
+		persistSidebarCollapsed(sidebarCollapsed);
+	};
 
 	// ─── Derived selectors ──────────────────────────────────────────────
 	const selectedItem = $derived(prItems.find((item) => item.id === selectedItemId) ?? null);
@@ -746,6 +770,14 @@
 		activeTab = 'files';
 	});
 
+	$effect(() => {
+		if (selectedItemId !== null || !sidebarCollapsed) {
+			return;
+		}
+		sidebarCollapsed = false;
+		persistSidebarCollapsed(false);
+	});
+
 	// Load file diff when selection changes
 	$effect(() => {
 		const currentWsId = wsId;
@@ -924,643 +956,676 @@
 			<p>No repositories in this workspace</p>
 		</div>
 	{:else}
-		<ResizablePanel
-			direction="horizontal"
-			initialRatio={0.3}
-			minRatio={0.22}
-			maxRatio={0.42}
-			storageKey="workset:pr-orchestration:sidebarRatio"
-		>
-			<!-- ═══════════════════ LEFT PANEL ═══════════════════ -->
-			<aside class="sidebar">
-				<!-- Workset Header -->
-				<div class="ws-header">
-					<div class="ws-eyebrow">Current Workset</div>
-					<div class="ws-badge">
-						<Box size={14} class="ws-badge-icon" />
-						<span class="ws-badge-name">{workspace.name}</span>
-					</div>
-				</div>
+		{#snippet detailPanel()}
+			<main class="detail">
+				{#if isActiveDetail && selectedItem && workspace}
+					<!-- ── Active PR Detail ── -->
 
-				<!-- Tab Switcher -->
-				<div class="mode-switch">
-					<button
-						type="button"
-						class="ms-btn"
-						class:active={viewMode === 'active'}
-						onclick={() => (viewMode = 'active')}
-					>
-						<GitPullRequest size={14} />
-						Active PRs
-						<span class="ms-count">{activeCount}</span>
-					</button>
-					<button
-						type="button"
-						class="ms-btn"
-						class:active={viewMode === 'ready'}
-						onclick={() => (viewMode = 'ready')}
-					>
-						<Upload size={14} class={viewMode === 'ready' ? 'text-green' : ''} />
-						Ready to PR
-						{#if readyCount > 0}
-							<span class="ms-count ready">{readyCount}</span>
+					<!-- PR Header -->
+					<div class="pr-header">
+						<div class="prh-left">
+							<div class="prh-title-row">
+								<span class="prh-repo-tag">{selectedItem.repoName}</span>
+								<h1 class="prh-title">
+									{trackedPrMap.get(selectedItem.repoId)?.title ?? selectedItem.title}
+								</h1>
+							</div>
+							<div class="prh-meta">
+								{#if trackedPr}
+									<span class="prh-status">
+										<Circle size={10} class="prh-status-dot" />
+										{trackedPr.state === 'open' ? 'Open' : trackedPr.state}
+									</span>
+								{/if}
+								<span class="prh-branch">
+									<GitBranch size={10} />
+									<span>{selectedItem.branch}</span>
+								</span>
+								<span>{selectedItem.updatedAtLabel}</span>
+							</div>
+						</div>
+						{#if trackedPr}
+							<a
+								href={trackedPr.url}
+								class="prh-action-link"
+								onclick={(e) => {
+									e.preventDefault();
+									openExternalUrl(trackedPr?.url);
+								}}
+							>
+								<ExternalLink size={14} />
+								View on GitHub
+							</a>
+						{:else if trackedPrLoading}
+							<span class="prh-loading"><Loader2 size={14} class="spin" /></span>
 						{/if}
-					</button>
-				</div>
+					</div>
 
-				<!-- List -->
-				<div class="list">
-					{#if viewMode === 'active'}
-						{#if partitions.active.length > 0}
-							{#each partitions.active as item (item.id)}
+					<!-- Push Status Bar -->
+					{#if pushStatusVisible}
+						<div class="pr-push-bar">
+							<div class="psb-stats">
+								{#if commitPushSuccess}
+									<span class="psb-stat psb-success">
+										<CheckCircle2 size={12} />
+										Pushed successfully
+									</span>
+								{:else if commitPushError}
+									<span class="psb-stat psb-error">
+										<AlertCircle size={12} />
+										{commitPushError}
+									</span>
+								{:else if repoLocalStatus && (repoLocalStatus.ahead > 0 || repoLocalStatus.hasUncommitted)}
+									{#if repoLocalStatus.ahead > 0}
+										<span class="psb-stat">
+											<GitCommit size={12} />
+											{repoLocalStatus.ahead} unpushed commit{repoLocalStatus.ahead !== 1
+												? 's'
+												: ''}
+										</span>
+									{/if}
+									{#if repoLocalStatus.hasUncommitted}
+										<span class="psb-stat">
+											<FileCode size={12} />
+											{localSummary?.files.length ?? '?'} dirty file{(localSummary?.files.length ??
+												0) !== 1
+												? 's'
+												: ''}
+										</span>
+									{/if}
+								{:else}
+									<span class="psb-stat psb-up-to-date">
+										<CheckCircle2 size={12} />
+										Up to date
+									</span>
+								{/if}
+							</div>
+							<button
+								type="button"
+								class="psb-push-btn"
+								disabled={pushDisabled}
+								onclick={() => void handlePushToPr()}
+							>
+								{#if commitPushLoading}
+									<Loader2 size={14} class="spin" />
+									{commitPushStageLabel ?? 'Pushing...'}
+								{:else}
+									<Upload size={14} />
+									Push to PR
+								{/if}
+							</button>
+						</div>
+					{/if}
+
+					<!-- Tab Bar -->
+					<div class="tab-bar">
+						<button
+							type="button"
+							class="tab-btn"
+							class:active={activeTab === 'files'}
+							onclick={() => (activeTab = 'files')}
+						>
+							<FileCode size={14} />
+							Files Changed
+							<span class="tab-count">{filesForDetail.length || selectedItem.dirtyFiles}</span>
+						</button>
+						<button
+							type="button"
+							class="tab-btn"
+							class:active={activeTab === 'checks'}
+							onclick={() => (activeTab = 'checks')}
+						>
+							{#if checkStats.total === 0}
+								<Circle size={14} class="text-muted" />
+							{:else if checkStats.failed > 0}
+								<XCircle size={14} class="text-red" />
+							{:else if checkStats.pending > 0}
+								<Loader2 size={14} class="text-yellow spin" />
+							{:else}
+								<CheckCircle2 size={14} class="text-green" />
+							{/if}
+							Checks
+							<span class="tab-count">{checkStats.total || ''}</span>
+						</button>
+						{#if unresolvedCount > 0}
+							<span class="tab-review-badge">
+								<MessageSquare size={12} />
+								{unresolvedCount} unresolved
+							</span>
+						{/if}
+					</div>
+
+					<!-- Tab Content -->
+					<div class="tab-content">
+						{#if activeTab === 'files'}
+							<!-- ── Files Tab ── -->
+							<div class="files-panel">
+								<div class="fp-sidebar">
+									<div class="fp-sidebar-head">
+										{shouldSplitLocalPendingSection ? 'PR Files' : 'Changed Files'}
+									</div>
+									<div class="fp-file-list">
+										{#if diffSummaryLoading}
+											<div class="fp-loading">Loading files...</div>
+										{:else if (diffSummary?.files.length ?? 0) > 0}
+											{#each diffSummary?.files ?? [] as file, i (file.path)}
+												<button
+													type="button"
+													class="fp-file"
+													class:active={selectedSource === 'pr' && i === selectedFileIdx}
+													onclick={() => {
+														selectedSource = 'pr';
+														selectedFileIdx = i;
+													}}
+												>
+													<FileCode size={14} />
+													<span class="fp-file-name">{file.path}</span>
+												</button>
+											{/each}
+										{:else if !shouldSplitLocalPendingSection && selectedRepo}
+											{#each selectedRepo.files as file, i (file.path)}
+												<button
+													type="button"
+													class="fp-file"
+													class:active={selectedSource === 'pr' && i === selectedFileIdx}
+													onclick={() => {
+														selectedSource = 'pr';
+														selectedFileIdx = i;
+													}}
+												>
+													<FileCode size={14} />
+													<span class="fp-file-name">{file.path}</span>
+												</button>
+											{/each}
+										{:else if !shouldSplitLocalPendingSection}
+											<div class="fp-loading">No files</div>
+										{/if}
+									</div>
+									{#if shouldSplitLocalPendingSection}
+										<div class="fp-divider"></div>
+										<div class="fp-sidebar-head fp-local-head">Local Pending Changes</div>
+										<div class="fp-file-list">
+											{#each localSummary?.files ?? [] as file, i (file.path)}
+												<button
+													type="button"
+													class="fp-file"
+													class:active={selectedSource === 'local' && i === selectedFileIdx}
+													onclick={() => {
+														selectedSource = 'local';
+														selectedFileIdx = i;
+													}}
+												>
+													<FileCode size={14} />
+													<span class="fp-file-name">{file.path}</span>
+												</button>
+											{/each}
+										</div>
+									{/if}
+								</div>
+								<div class="fp-diff">
+									{#if filesForDetail[selectedFileIdx]}
+										{@const activeFile = filesForDetail[selectedFileIdx]}
+										<div class="diff-card">
+											<div class="diff-header">
+												<span>{activeFile.path}</span>
+												<span>
+													{#if activeFile.added > 0}<span class="text-green"
+															>+{activeFile.added}</span
+														>{/if}
+													{#if activeFile.removed > 0}
+														<span class="text-red">-{activeFile.removed}</span>{/if}
+												</span>
+											</div>
+											<div class="diff-body">
+												{#if fileDiffError}
+													<div class="diff-placeholder">
+														<AlertCircle size={20} />
+														<p>{fileDiffError}</p>
+													</div>
+												{:else if fileDiffContent?.binary}
+													<div class="diff-placeholder">
+														<FileCode size={24} />
+														<p>Binary file</p>
+													</div>
+												{:else if fileDiffContent?.patch}
+													<div class="diff-renderer-wrap">
+														<div class="diff-renderer">
+															<diffs-container bind:this={diffContainer}></diffs-container>
+														</div>
+														{#if fileDiffLoading}
+															<div class="diff-loading-overlay">
+																<Loader2 size={18} class="spin" />
+																<p>Refreshing diff...</p>
+															</div>
+														{/if}
+													</div>
+													{#if fileDiffContent.truncated}
+														<div class="diff-truncated">
+															Diff truncated ({fileDiffContent.totalLines} total lines)
+														</div>
+													{/if}
+												{:else if fileDiffLoading}
+													<div class="diff-placeholder">
+														<Loader2 size={20} class="spin" />
+														<p>Loading diff...</p>
+													</div>
+												{:else}
+													<div class="diff-placeholder">
+														<FileCode size={24} />
+														<p>No diff content</p>
+													</div>
+												{/if}
+											</div>
+										</div>
+									{:else}
+										<div class="diff-placeholder full">
+											<FileCode size={24} />
+											<p>Select a file to view its diff</p>
+										</div>
+									{/if}
+								</div>
+							</div>
+						{:else if activeTab === 'checks'}
+							<!-- ── Checks Tab ── -->
+							<div class="checks-panel">
+								<div class="checks-max">
+									{#if prStatusLoading}
+										<div class="panel-loading">
+											<Loader2 size={20} class="spin" />
+											<span>Loading checks...</span>
+										</div>
+									{:else if !prStatus || prStatus.checks.length === 0}
+										<div class="panel-loading">
+											<CheckCircle2 size={32} />
+											<span>No checks available</span>
+											<button type="button" class="ghost-btn" onclick={loadChecks}>
+												<RefreshCw size={12} /> Refresh checks
+											</button>
+										</div>
+									{:else}
+										<div class="checks-header-row">
+											<h2>Checks</h2>
+											<button type="button" class="ghost-btn" onclick={loadChecks}>
+												<RefreshCw size={12} /> Refresh checks
+											</button>
+										</div>
+										<div class="checks-list">
+											{#each prStatus.checks as check (check.name)}
+												{@const iconType = getCheckIcon(check)}
+												<div class="ck-row">
+													<div class="ck-circle {iconType}">
+														{#if iconType === 'success'}<CheckCircle2 size={16} />
+														{:else if iconType === 'failure'}<XCircle size={16} />
+														{:else}<Loader2 size={16} class="spin" />
+														{/if}
+													</div>
+													<div class="ck-info">
+														<div class="ck-name-row">
+															<h3>{check.name}</h3>
+														</div>
+														<p class="ck-dur">
+															{#if check.conclusion === 'success'}Completed in {formatCheckDuration(
+																	check,
+																)}
+															{:else if check.status === 'in_progress'}Running for {formatCheckDuration(
+																	check,
+																)}...
+															{:else}Pending
+															{/if}
+														</p>
+													</div>
+													<div class="ck-actions">
+														<button type="button" class="ck-action" title="View Logs">
+															<Terminal size={14} />
+														</button>
+														{#if check.detailsUrl}
+															<button
+																type="button"
+																class="ck-action"
+																title="View on Provider"
+																onclick={() => openExternalUrl(check.detailsUrl)}
+															>
+																<ExternalLink size={14} />
+															</button>
+														{/if}
+													</div>
+												</div>
+											{/each}
+										</div>
+									{/if}
+								</div>
+							</div>
+						{/if}
+					</div>
+				{:else if isReadyDetail && selectedItem && workspace}
+					<!-- ── Ready to PR Detail ── -->
+					<div class="ready-detail">
+						<!-- Header -->
+						<div class="rd-header">
+							<div class="rd-icon">
+								<Upload size={18} />
+							</div>
+							<div class="rd-info">
+								<h1>{selectedItem.repoName}</h1>
+								<div class="rd-branch-row">
+									<GitBranch size={11} class="text-green" />
+									<span class="rd-branch">{selectedItem.branch}</span>
+									<ArrowUpRight size={10} class="rd-arrow" />
+									<span class="rd-base">{selectedRepo?.defaultBranch ?? 'main'}</span>
+								</div>
+							</div>
+						</div>
+
+						<div class="rd-stats">
+							<span class="rd-stat">
+								<GitCommit size={12} class="text-blue" />
+								<strong>{selectedItem.ahead}</strong> commit{selectedItem.ahead !== 1 ? 's' : ''} ahead
+								of main
+							</span>
+							<span class="rd-stat">
+								<FileCode size={12} />
+								<strong>{filesForDetail.length || selectedItem.dirtyFiles}</strong>
+								file{(filesForDetail.length || selectedItem.dirtyFiles) !== 1 ? 's' : ''}
+							</span>
+							{#if totalAdd > 0}<span class="text-green">+{totalAdd}</span>{/if}
+							{#if totalDel > 0}<span class="text-red">-{totalDel}</span>{/if}
+						</div>
+					</div>
+
+					<!-- Content -->
+					<div class="rd-content">
+						<div class="rd-max">
+							{#if prCreated}
+								<div class="rd-success">
+									<div class="rd-success-icon">
+										<CheckCircle2 size={32} />
+									</div>
+									<h2>Pull Request Created</h2>
+									<p>
+										{isDraft ? 'Draft PR' : 'PR'} for
+										<span class="mono text-green">{selectedItem.branch}</span>
+										is now open on <span class="text-white">{selectedItem.repoName}</span>
+									</p>
+									<button
+										type="button"
+										class="ghost-btn"
+										onclick={() => openExternalUrl(trackedPr?.url)}
+									>
+										<ExternalLink size={14} />
+										View on GitHub
+									</button>
+								</div>
+							{:else}
+								<!-- PR Title -->
+								<div class="form-field">
+									<label class="form-label" for="pr-title-input">
+										PR Title
+										{#if prTextGenerating}
+											<span class="form-generating"
+												><Loader2 size={12} class="spin" /> Generating…</span
+											>
+										{/if}
+									</label>
+									<div class="form-input-wrap" class:shimmer={prTextGenerating && !prTitle}>
+										<input
+											id="pr-title-input"
+											type="text"
+											class="form-input"
+											bind:value={prTitle}
+											placeholder={prTextGenerating ? '' : 'Enter PR title...'}
+										/>
+									</div>
+								</div>
+
+								<!-- PR Body -->
+								<div class="form-field">
+									<label class="form-label" for="pr-body-input">
+										Description <span class="form-optional">(optional)</span>
+										{#if prTextGenerating && prTitle && !prBody}
+											<span class="form-generating"
+												><Loader2 size={12} class="spin" /> Generating…</span
+											>
+										{/if}
+									</label>
+									<div class="form-input-wrap" class:shimmer={prTextGenerating && !prBody}>
+										<textarea
+											id="pr-body-input"
+											class="form-textarea"
+											rows={4}
+											bind:value={prBody}
+											placeholder={prTextGenerating ? '' : 'Describe the changes in this PR...'}
+										></textarea>
+									</div>
+								</div>
+
+								<!-- Files changed summary -->
+								<div class="form-field">
+									<span class="form-label">Files Changed</span>
+									<div class="rd-file-list">
+										{#if filesForDetail.length > 0}
+											{#each filesForDetail as file (file.path)}
+												<div class="rd-file-row">
+													<FileCode size={13} />
+													<span class="rd-file-name">{file.path}</span>
+													<span class="text-green text-xs mono">+{file.added}</span>
+													{#if file.removed > 0}<span class="text-red text-xs mono"
+															>-{file.removed}</span
+														>{/if}
+												</div>
+											{/each}
+										{:else if selectedRepo}
+											{#each selectedRepo.files as file (file.path)}
+												<div class="rd-file-row">
+													<FileCode size={13} />
+													<span class="rd-file-name">{file.path}</span>
+													<span class="text-green text-xs mono">+{file.added}</span>
+													{#if file.removed > 0}<span class="text-red text-xs mono"
+															>-{file.removed}</span
+														>{/if}
+												</div>
+											{/each}
+										{:else}
+											<div class="rd-file-row"><span>No files detected</span></div>
+										{/if}
+									</div>
+								</div>
+
+								<!-- Actions -->
+								<div class="rd-actions">
+									<label class="rd-draft-toggle">
+										<input type="checkbox" bind:checked={isDraft} />
+										<span>Create as draft</span>
+									</label>
+									<button
+										type="button"
+										class="rd-create-btn"
+										disabled={!prTitle.trim() || isCreating}
+										onclick={() => void handleCreatePr()}
+									>
+										{#if isCreating}
+											<Loader2 size={16} class="spin" /> Creating...
+										{:else}
+											<GitPullRequest size={16} />
+											{isDraft ? 'Create Draft PR' : 'Create Pull Request'}
+										{/if}
+									</button>
+								</div>
+							{/if}
+						</div>
+					</div>
+				{:else}
+					<!-- ── Empty Detail ── -->
+					<div class="empty-state">
+						{#if viewMode === 'active'}
+							<GitPullRequest size={48} />
+							<p>Select a PR to view details</p>
+						{:else}
+							<Upload size={48} />
+							<p>Select a branch to create a PR</p>
+						{/if}
+					</div>
+				{/if}
+			</main>
+		{/snippet}
+
+		{#if sidebarCollapsed}
+			<div class="sidebar-collapsed-layout">
+				<aside class="sidebar-collapsed">
+					<button
+						type="button"
+						class="sidebar-toggle-btn expanded"
+						aria-label="Expand sidebar"
+						title="Expand sidebar"
+						onclick={toggleSidebar}
+					>
+						<ChevronRight size={14} />
+					</button>
+				</aside>
+				{@render detailPanel()}
+			</div>
+		{:else}
+			<ResizablePanel
+				direction="horizontal"
+				initialRatio={0.3}
+				minRatio={0.22}
+				maxRatio={0.42}
+				storageKey="workset:pr-orchestration:sidebarRatio"
+			>
+				<!-- ═══════════════════ LEFT PANEL ═══════════════════ -->
+				<aside class="sidebar">
+					<!-- Workset Header -->
+					<div class="ws-header">
+						<div class="ws-header-top">
+							<div class="ws-eyebrow">Current Workset</div>
+							<button
+								type="button"
+								class="sidebar-toggle-btn"
+								class:disabled={!canCollapseSidebar}
+								aria-label="Collapse sidebar"
+								title={canCollapseSidebar ? 'Collapse sidebar' : 'Select an item to collapse'}
+								disabled={!canCollapseSidebar}
+								onclick={toggleSidebar}
+							>
+								<ChevronLeft size={14} />
+							</button>
+						</div>
+						<div class="ws-badge">
+							<Box size={14} class="ws-badge-icon" />
+							<span class="ws-badge-name">{workspace.name}</span>
+						</div>
+					</div>
+
+					<!-- Tab Switcher -->
+					<div class="mode-switch">
+						<button
+							type="button"
+							class="ms-btn"
+							class:active={viewMode === 'active'}
+							onclick={() => (viewMode = 'active')}
+						>
+							<GitPullRequest size={14} />
+							Active PRs
+							<span class="ms-count">{activeCount}</span>
+						</button>
+						<button
+							type="button"
+							class="ms-btn"
+							class:active={viewMode === 'ready'}
+							onclick={() => (viewMode = 'ready')}
+						>
+							<Upload size={14} class={viewMode === 'ready' ? 'text-green' : ''} />
+							Ready to PR
+							{#if readyCount > 0}
+								<span class="ms-count ready">{readyCount}</span>
+							{/if}
+						</button>
+					</div>
+
+					<!-- List -->
+					<div class="list">
+						{#if viewMode === 'active'}
+							{#if partitions.active.length > 0}
+								{#each partitions.active as item (item.id)}
+									{@const isActive = item.id === selectedItemId}
+									<button
+										type="button"
+										class="list-item"
+										class:active={isActive}
+										onclick={() => selectItem(item.id)}
+									>
+										<div class="li-top">
+											<h3 class="li-title" class:bright={isActive}>
+												{trackedPrMap.get(item.repoId)?.title ?? item.title}
+											</h3>
+											{#if isActive}<ChevronRight size={14} class="li-chevron" />{/if}
+										</div>
+										<div class="li-meta">
+											<span class="li-repo">{item.repoName}</span>
+											<span class="li-sep">·</span>
+											<span
+												class:li-passing={item.status === 'open'}
+												class:li-running={item.status === 'running'}
+												class:li-blocked={item.status === 'blocked'}
+											>
+												{item.status}
+											</span>
+											{#if item.dirtyFiles > 0}
+												<span class="li-sep">·</span>
+												<span class="li-warn">
+													<MessageSquare size={8} />
+													{item.dirtyFiles}
+												</span>
+											{/if}
+										</div>
+									</button>
+								{/each}
+							{:else}
+								<div class="list-empty">
+									<CheckCircle2 size={24} />
+									<p>No active PRs</p>
+								</div>
+							{/if}
+						{:else if partitions.readyToPR.length > 0}
+							{#each partitions.readyToPR as item (item.id)}
 								{@const isActive = item.id === selectedItemId}
 								<button
 									type="button"
 									class="list-item"
-									class:active={isActive}
+									class:active-ready={isActive}
 									onclick={() => selectItem(item.id)}
 								>
 									<div class="li-top">
-										<h3 class="li-title" class:bright={isActive}>
-											{trackedPrMap.get(item.repoId)?.title ?? item.title}
-										</h3>
-										{#if isActive}<ChevronRight size={14} class="li-chevron" />{/if}
+										<h3 class="li-title" class:bright={isActive}>{item.repoName}</h3>
+										{#if isActive}<ChevronRight size={14} class="li-chevron-green" />{/if}
+									</div>
+									<div class="li-branch-row">
+										<GitBranch size={11} class="text-green" />
+										<span class="li-branch-name">{item.branch}</span>
 									</div>
 									<div class="li-meta">
-										<span class="li-repo">{item.repoName}</span>
-										<span class="li-sep">·</span>
-										<span
-											class:li-passing={item.status === 'open'}
-											class:li-running={item.status === 'running'}
-											class:li-blocked={item.status === 'blocked'}
-										>
-											{item.status}
+										<span class="li-commits">
+											<ArrowUpRight size={10} class="text-blue" />
+											{item.ahead} commit{item.ahead !== 1 ? 's' : ''} ahead
 										</span>
-										{#if item.dirtyFiles > 0}
-											<span class="li-sep">·</span>
-											<span class="li-warn">
-												<MessageSquare size={8} />
-												{item.dirtyFiles}
-											</span>
-										{/if}
+										<span class="text-green">+{item.dirtyFiles}</span>
+										<span class="li-time">{item.updatedAtLabel}</span>
 									</div>
 								</button>
 							{/each}
 						{:else}
 							<div class="list-empty">
 								<CheckCircle2 size={24} />
-								<p>No active PRs</p>
+								<p>All branches have PRs</p>
 							</div>
 						{/if}
-					{:else if partitions.readyToPR.length > 0}
-						{#each partitions.readyToPR as item (item.id)}
-							{@const isActive = item.id === selectedItemId}
-							<button
-								type="button"
-								class="list-item"
-								class:active-ready={isActive}
-								onclick={() => selectItem(item.id)}
-							>
-								<div class="li-top">
-									<h3 class="li-title" class:bright={isActive}>{item.repoName}</h3>
-									{#if isActive}<ChevronRight size={14} class="li-chevron-green" />{/if}
-								</div>
-								<div class="li-branch-row">
-									<GitBranch size={11} class="text-green" />
-									<span class="li-branch-name">{item.branch}</span>
-								</div>
-								<div class="li-meta">
-									<span class="li-commits">
-										<ArrowUpRight size={10} class="text-blue" />
-										{item.ahead} commit{item.ahead !== 1 ? 's' : ''} ahead
-									</span>
-									<span class="text-green">+{item.dirtyFiles}</span>
-									<span class="li-time">{item.updatedAtLabel}</span>
-								</div>
-							</button>
-						{/each}
-					{:else}
-						<div class="list-empty">
-							<CheckCircle2 size={24} />
-							<p>All branches have PRs</p>
-						</div>
-					{/if}
-				</div>
-			</aside>
+					</div>
+				</aside>
 
-			<!-- ═══════════════════ RIGHT PANEL ═══════════════════ -->
-			{#snippet second()}
-				<main class="detail">
-					{#if isActiveDetail && selectedItem && workspace}
-						<!-- ── Active PR Detail ── -->
-
-						<!-- PR Header -->
-						<div class="pr-header">
-							<div class="prh-left">
-								<div class="prh-title-row">
-									<span class="prh-repo-tag">{selectedItem.repoName}</span>
-									<h1 class="prh-title">
-										{trackedPrMap.get(selectedItem.repoId)?.title ?? selectedItem.title}
-									</h1>
-								</div>
-								<div class="prh-meta">
-									{#if trackedPr}
-										<span class="prh-status">
-											<Circle size={10} class="prh-status-dot" />
-											{trackedPr.state === 'open' ? 'Open' : trackedPr.state}
-										</span>
-									{/if}
-									<span class="prh-branch">
-										<GitBranch size={10} />
-										<span>{selectedItem.branch}</span>
-									</span>
-									<span>{selectedItem.updatedAtLabel}</span>
-								</div>
-							</div>
-							{#if trackedPr}
-								<a
-									href={trackedPr.url}
-									class="prh-action-link"
-									onclick={(e) => {
-										e.preventDefault();
-										openExternalUrl(trackedPr?.url);
-									}}
-								>
-									<ExternalLink size={14} />
-									View on GitHub
-								</a>
-							{:else if trackedPrLoading}
-								<span class="prh-loading"><Loader2 size={14} class="spin" /></span>
-							{/if}
-						</div>
-
-						<!-- Push Status Bar -->
-						{#if pushStatusVisible}
-							<div class="pr-push-bar">
-								<div class="psb-stats">
-									{#if commitPushSuccess}
-										<span class="psb-stat psb-success">
-											<CheckCircle2 size={12} />
-											Pushed successfully
-										</span>
-									{:else if commitPushError}
-										<span class="psb-stat psb-error">
-											<AlertCircle size={12} />
-											{commitPushError}
-										</span>
-									{:else if repoLocalStatus && (repoLocalStatus.ahead > 0 || repoLocalStatus.hasUncommitted)}
-										{#if repoLocalStatus.ahead > 0}
-											<span class="psb-stat">
-												<GitCommit size={12} />
-												{repoLocalStatus.ahead} unpushed commit{repoLocalStatus.ahead !== 1
-													? 's'
-													: ''}
-											</span>
-										{/if}
-										{#if repoLocalStatus.hasUncommitted}
-											<span class="psb-stat">
-												<FileCode size={12} />
-												{localSummary?.files.length ?? '?'} dirty file{(localSummary?.files
-													.length ?? 0) !== 1
-													? 's'
-													: ''}
-											</span>
-										{/if}
-									{:else}
-										<span class="psb-stat psb-up-to-date">
-											<CheckCircle2 size={12} />
-											Up to date
-										</span>
-									{/if}
-								</div>
-								<button
-									type="button"
-									class="psb-push-btn"
-									disabled={pushDisabled}
-									onclick={() => void handlePushToPr()}
-								>
-									{#if commitPushLoading}
-										<Loader2 size={14} class="spin" />
-										{commitPushStageLabel ?? 'Pushing...'}
-									{:else}
-										<Upload size={14} />
-										Push to PR
-									{/if}
-								</button>
-							</div>
-						{/if}
-
-						<!-- Tab Bar -->
-						<div class="tab-bar">
-							<button
-								type="button"
-								class="tab-btn"
-								class:active={activeTab === 'files'}
-								onclick={() => (activeTab = 'files')}
-							>
-								<FileCode size={14} />
-								Files Changed
-								<span class="tab-count">{filesForDetail.length || selectedItem.dirtyFiles}</span>
-							</button>
-							<button
-								type="button"
-								class="tab-btn"
-								class:active={activeTab === 'checks'}
-								onclick={() => (activeTab = 'checks')}
-							>
-								{#if checkStats.total === 0}
-									<Circle size={14} class="text-muted" />
-								{:else if checkStats.failed > 0}
-									<XCircle size={14} class="text-red" />
-								{:else if checkStats.pending > 0}
-									<Loader2 size={14} class="text-yellow spin" />
-								{:else}
-									<CheckCircle2 size={14} class="text-green" />
-								{/if}
-								Checks
-								<span class="tab-count">{checkStats.total || ''}</span>
-							</button>
-							{#if unresolvedCount > 0}
-								<span class="tab-review-badge">
-									<MessageSquare size={12} />
-									{unresolvedCount} unresolved
-								</span>
-							{/if}
-						</div>
-
-						<!-- Tab Content -->
-						<div class="tab-content">
-							{#if activeTab === 'files'}
-								<!-- ── Files Tab ── -->
-								<div class="files-panel">
-									<div class="fp-sidebar">
-										<div class="fp-sidebar-head">
-											{shouldSplitLocalPendingSection ? 'PR Files' : 'Changed Files'}
-										</div>
-										<div class="fp-file-list">
-											{#if diffSummaryLoading}
-												<div class="fp-loading">Loading files...</div>
-											{:else if (diffSummary?.files.length ?? 0) > 0}
-												{#each diffSummary?.files ?? [] as file, i (file.path)}
-													<button
-														type="button"
-														class="fp-file"
-														class:active={selectedSource === 'pr' && i === selectedFileIdx}
-														onclick={() => {
-															selectedSource = 'pr';
-															selectedFileIdx = i;
-														}}
-													>
-														<FileCode size={14} />
-														<span class="fp-file-name">{file.path}</span>
-													</button>
-												{/each}
-											{:else if !shouldSplitLocalPendingSection && selectedRepo}
-												{#each selectedRepo.files as file, i (file.path)}
-													<button
-														type="button"
-														class="fp-file"
-														class:active={selectedSource === 'pr' && i === selectedFileIdx}
-														onclick={() => {
-															selectedSource = 'pr';
-															selectedFileIdx = i;
-														}}
-													>
-														<FileCode size={14} />
-														<span class="fp-file-name">{file.path}</span>
-													</button>
-												{/each}
-											{:else if !shouldSplitLocalPendingSection}
-												<div class="fp-loading">No files</div>
-											{/if}
-										</div>
-										{#if shouldSplitLocalPendingSection}
-											<div class="fp-divider"></div>
-											<div class="fp-sidebar-head fp-local-head">Local Pending Changes</div>
-											<div class="fp-file-list">
-												{#each localSummary?.files ?? [] as file, i (file.path)}
-													<button
-														type="button"
-														class="fp-file"
-														class:active={selectedSource === 'local' && i === selectedFileIdx}
-														onclick={() => {
-															selectedSource = 'local';
-															selectedFileIdx = i;
-														}}
-													>
-														<FileCode size={14} />
-														<span class="fp-file-name">{file.path}</span>
-													</button>
-												{/each}
-											</div>
-										{/if}
-									</div>
-									<div class="fp-diff">
-										{#if filesForDetail[selectedFileIdx]}
-											{@const activeFile = filesForDetail[selectedFileIdx]}
-											<div class="diff-card">
-												<div class="diff-header">
-													<span>{activeFile.path}</span>
-													<span>
-														{#if activeFile.added > 0}<span class="text-green"
-																>+{activeFile.added}</span
-															>{/if}
-														{#if activeFile.removed > 0}
-															<span class="text-red">-{activeFile.removed}</span>{/if}
-													</span>
-												</div>
-												<div class="diff-body">
-													{#if fileDiffError}
-														<div class="diff-placeholder">
-															<AlertCircle size={20} />
-															<p>{fileDiffError}</p>
-														</div>
-													{:else if fileDiffContent?.binary}
-														<div class="diff-placeholder">
-															<FileCode size={24} />
-															<p>Binary file</p>
-														</div>
-													{:else if fileDiffContent?.patch}
-														<div class="diff-renderer-wrap">
-															<div class="diff-renderer">
-																<diffs-container bind:this={diffContainer}></diffs-container>
-															</div>
-															{#if fileDiffLoading}
-																<div class="diff-loading-overlay">
-																	<Loader2 size={18} class="spin" />
-																	<p>Refreshing diff...</p>
-																</div>
-															{/if}
-														</div>
-														{#if fileDiffContent.truncated}
-															<div class="diff-truncated">
-																Diff truncated ({fileDiffContent.totalLines} total lines)
-															</div>
-														{/if}
-													{:else if fileDiffLoading}
-														<div class="diff-placeholder">
-															<Loader2 size={20} class="spin" />
-															<p>Loading diff...</p>
-														</div>
-													{:else}
-														<div class="diff-placeholder">
-															<FileCode size={24} />
-															<p>No diff content</p>
-														</div>
-													{/if}
-												</div>
-											</div>
-										{:else}
-											<div class="diff-placeholder full">
-												<FileCode size={24} />
-												<p>Select a file to view its diff</p>
-											</div>
-										{/if}
-									</div>
-								</div>
-							{:else if activeTab === 'checks'}
-								<!-- ── Checks Tab ── -->
-								<div class="checks-panel">
-									<div class="checks-max">
-										{#if prStatusLoading}
-											<div class="panel-loading">
-												<Loader2 size={20} class="spin" />
-												<span>Loading checks...</span>
-											</div>
-										{:else if !prStatus || prStatus.checks.length === 0}
-											<div class="panel-loading">
-												<CheckCircle2 size={32} />
-												<span>No checks available</span>
-												<button type="button" class="ghost-btn" onclick={loadChecks}>
-													<RefreshCw size={12} /> Refresh checks
-												</button>
-											</div>
-										{:else}
-											<div class="checks-header-row">
-												<h2>Checks</h2>
-												<button type="button" class="ghost-btn" onclick={loadChecks}>
-													<RefreshCw size={12} /> Refresh checks
-												</button>
-											</div>
-											<div class="checks-list">
-												{#each prStatus.checks as check (check.name)}
-													{@const iconType = getCheckIcon(check)}
-													<div class="ck-row">
-														<div class="ck-circle {iconType}">
-															{#if iconType === 'success'}<CheckCircle2 size={16} />
-															{:else if iconType === 'failure'}<XCircle size={16} />
-															{:else}<Loader2 size={16} class="spin" />
-															{/if}
-														</div>
-														<div class="ck-info">
-															<div class="ck-name-row">
-																<h3>{check.name}</h3>
-															</div>
-															<p class="ck-dur">
-																{#if check.conclusion === 'success'}Completed in {formatCheckDuration(
-																		check,
-																	)}
-																{:else if check.status === 'in_progress'}Running for {formatCheckDuration(
-																		check,
-																	)}...
-																{:else}Pending
-																{/if}
-															</p>
-														</div>
-														<div class="ck-actions">
-															<button type="button" class="ck-action" title="View Logs">
-																<Terminal size={14} />
-															</button>
-															{#if check.detailsUrl}
-																<button
-																	type="button"
-																	class="ck-action"
-																	title="View on Provider"
-																	onclick={() => openExternalUrl(check.detailsUrl)}
-																>
-																	<ExternalLink size={14} />
-																</button>
-															{/if}
-														</div>
-													</div>
-												{/each}
-											</div>
-										{/if}
-									</div>
-								</div>
-							{/if}
-						</div>
-					{:else if isReadyDetail && selectedItem && workspace}
-						<!-- ── Ready to PR Detail ── -->
-						<div class="ready-detail">
-							<!-- Header -->
-							<div class="rd-header">
-								<div class="rd-icon">
-									<Upload size={18} />
-								</div>
-								<div class="rd-info">
-									<h1>{selectedItem.repoName}</h1>
-									<div class="rd-branch-row">
-										<GitBranch size={11} class="text-green" />
-										<span class="rd-branch">{selectedItem.branch}</span>
-										<ArrowUpRight size={10} class="rd-arrow" />
-										<span class="rd-base">{selectedRepo?.defaultBranch ?? 'main'}</span>
-									</div>
-								</div>
-							</div>
-
-							<div class="rd-stats">
-								<span class="rd-stat">
-									<GitCommit size={12} class="text-blue" />
-									<strong>{selectedItem.ahead}</strong> commit{selectedItem.ahead !== 1 ? 's' : ''} ahead
-									of main
-								</span>
-								<span class="rd-stat">
-									<FileCode size={12} />
-									<strong>{filesForDetail.length || selectedItem.dirtyFiles}</strong>
-									file{(filesForDetail.length || selectedItem.dirtyFiles) !== 1 ? 's' : ''}
-								</span>
-								{#if totalAdd > 0}<span class="text-green">+{totalAdd}</span>{/if}
-								{#if totalDel > 0}<span class="text-red">-{totalDel}</span>{/if}
-							</div>
-						</div>
-
-						<!-- Content -->
-						<div class="rd-content">
-							<div class="rd-max">
-								{#if prCreated}
-									<div class="rd-success">
-										<div class="rd-success-icon">
-											<CheckCircle2 size={32} />
-										</div>
-										<h2>Pull Request Created</h2>
-										<p>
-											{isDraft ? 'Draft PR' : 'PR'} for
-											<span class="mono text-green">{selectedItem.branch}</span>
-											is now open on <span class="text-white">{selectedItem.repoName}</span>
-										</p>
-										<button
-											type="button"
-											class="ghost-btn"
-											onclick={() => openExternalUrl(trackedPr?.url)}
-										>
-											<ExternalLink size={14} />
-											View on GitHub
-										</button>
-									</div>
-								{:else}
-									<!-- PR Title -->
-									<div class="form-field">
-										<label class="form-label" for="pr-title-input">
-											PR Title
-											{#if prTextGenerating}
-												<span class="form-generating"
-													><Loader2 size={12} class="spin" /> Generating…</span
-												>
-											{/if}
-										</label>
-										<div class="form-input-wrap" class:shimmer={prTextGenerating && !prTitle}>
-											<input
-												id="pr-title-input"
-												type="text"
-												class="form-input"
-												bind:value={prTitle}
-												placeholder={prTextGenerating ? '' : 'Enter PR title...'}
-											/>
-										</div>
-									</div>
-
-									<!-- PR Body -->
-									<div class="form-field">
-										<label class="form-label" for="pr-body-input">
-											Description <span class="form-optional">(optional)</span>
-											{#if prTextGenerating && prTitle && !prBody}
-												<span class="form-generating"
-													><Loader2 size={12} class="spin" /> Generating…</span
-												>
-											{/if}
-										</label>
-										<div class="form-input-wrap" class:shimmer={prTextGenerating && !prBody}>
-											<textarea
-												id="pr-body-input"
-												class="form-textarea"
-												rows={4}
-												bind:value={prBody}
-												placeholder={prTextGenerating ? '' : 'Describe the changes in this PR...'}
-											></textarea>
-										</div>
-									</div>
-
-									<!-- Files changed summary -->
-									<div class="form-field">
-										<span class="form-label">Files Changed</span>
-										<div class="rd-file-list">
-											{#if filesForDetail.length > 0}
-												{#each filesForDetail as file (file.path)}
-													<div class="rd-file-row">
-														<FileCode size={13} />
-														<span class="rd-file-name">{file.path}</span>
-														<span class="text-green text-xs mono">+{file.added}</span>
-														{#if file.removed > 0}<span class="text-red text-xs mono"
-																>-{file.removed}</span
-															>{/if}
-													</div>
-												{/each}
-											{:else if selectedRepo}
-												{#each selectedRepo.files as file (file.path)}
-													<div class="rd-file-row">
-														<FileCode size={13} />
-														<span class="rd-file-name">{file.path}</span>
-														<span class="text-green text-xs mono">+{file.added}</span>
-														{#if file.removed > 0}<span class="text-red text-xs mono"
-																>-{file.removed}</span
-															>{/if}
-													</div>
-												{/each}
-											{:else}
-												<div class="rd-file-row"><span>No files detected</span></div>
-											{/if}
-										</div>
-									</div>
-
-									<!-- Actions -->
-									<div class="rd-actions">
-										<label class="rd-draft-toggle">
-											<input type="checkbox" bind:checked={isDraft} />
-											<span>Create as draft</span>
-										</label>
-										<button
-											type="button"
-											class="rd-create-btn"
-											disabled={!prTitle.trim() || isCreating}
-											onclick={() => void handleCreatePr()}
-										>
-											{#if isCreating}
-												<Loader2 size={16} class="spin" /> Creating...
-											{:else}
-												<GitPullRequest size={16} />
-												{isDraft ? 'Create Draft PR' : 'Create Pull Request'}
-											{/if}
-										</button>
-									</div>
-								{/if}
-							</div>
-						</div>
-					{:else}
-						<!-- ── Empty Detail ── -->
-						<div class="empty-state">
-							{#if viewMode === 'active'}
-								<GitPullRequest size={48} />
-								<p>Select a PR to view details</p>
-							{:else}
-								<Upload size={48} />
-								<p>Select a branch to create a PR</p>
-							{/if}
-						</div>
-					{/if}
-				</main>
-			{/snippet}
-		</ResizablePanel>
+				{#snippet second()}
+					{@render detailPanel()}
+				{/snippet}
+			</ResizablePanel>
+		{/if}
 	{/if}
 	<RepoDiffAnnotationStyles />
 </div>
@@ -1589,6 +1654,22 @@
 	}
 
 	/* ── Sidebar ──────────────────────────────────────────────── */
+	.sidebar-collapsed-layout {
+		flex: 1;
+		display: flex;
+		min-height: 0;
+		min-width: 0;
+	}
+	.sidebar-collapsed {
+		width: 42px;
+		flex-shrink: 0;
+		display: flex;
+		justify-content: center;
+		padding-top: 10px;
+		background: color-mix(in srgb, var(--panel) 85%, transparent);
+		border-right: 1px solid var(--border);
+		backdrop-filter: blur(16px);
+	}
 	.sidebar {
 		flex: 1;
 		display: flex;
@@ -1603,6 +1684,16 @@
 		padding: 12px;
 		border-bottom: 1px solid var(--border);
 	}
+	.ws-header-top {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		margin-bottom: 6px;
+	}
+	.ws-header-top .ws-eyebrow {
+		margin-bottom: 0;
+	}
 	.ws-eyebrow {
 		font-size: var(--text-xs);
 		font-weight: 700;
@@ -1610,6 +1701,29 @@
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
 		margin-bottom: 6px;
+	}
+	.sidebar-toggle-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 24px;
+		height: 24px;
+		padding: 0;
+		border: 1px solid transparent;
+		border-radius: 6px;
+		background: transparent;
+		color: var(--muted);
+		cursor: pointer;
+		transition: all 150ms;
+	}
+	.sidebar-toggle-btn:hover:not(.disabled) {
+		color: var(--text);
+		background: color-mix(in srgb, var(--panel-strong) 65%, transparent);
+		border-color: var(--border);
+	}
+	.sidebar-toggle-btn.disabled {
+		cursor: not-allowed;
+		opacity: 0.45;
 	}
 	.ws-badge {
 		display: flex;
