@@ -49,7 +49,7 @@
 		"@wailsio/runtime": "^3.0.0-alpha.79",
 		"@xterm/addon-fit": "^0.12.0-beta.155",
 		"@xterm/addon-webgl": "^0.20.0-beta.154",
-		"@xterm/xterm": "^6.1.0-beta.155",
+		"@xterm/xterm": "^6.1.0-beta.165",
 		"dompurify": "^3.3.1",
 		"marked": "^17.0.1"
 	}
