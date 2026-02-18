@@ -119,7 +119,16 @@ export const createTerminalViewportResizeController = <T extends TerminalViewpor
 		if (!id) return;
 		const handle = options.getHandle(id);
 		if (handle) {
+			fitTerminal(id, options.hasStarted(id));
 			handle.terminal.focus();
+			clearTimerMap(focusTimers, id);
+			focusTimers.set(
+				id,
+				setTimeoutFn(() => {
+					focusTimers.delete(id);
+					fitTerminal(id, options.hasStarted(id));
+				}, 0),
+			);
 			return;
 		}
 		if (focusTimers.has(id)) return;
@@ -128,7 +137,9 @@ export const createTerminalViewportResizeController = <T extends TerminalViewpor
 			setTimeoutFn(() => {
 				focusTimers.delete(id);
 				const current = options.getHandle(id);
-				current?.terminal.focus();
+				if (!current) return;
+				fitTerminal(id, options.hasStarted(id));
+				current.terminal.focus();
 			}, 0),
 		);
 	};
