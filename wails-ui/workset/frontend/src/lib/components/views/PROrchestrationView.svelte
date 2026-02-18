@@ -90,6 +90,14 @@
 		formatCheckDuration,
 		getCheckIcon,
 	} from './prOrchestrationHelpers';
+	import {
+		commitPushStageLabel as formatCommitPushStageLabel,
+		mapPrStatusEventToStatus,
+		mapPrStatusEventToTrackedPr,
+		persistSidebarCollapsed,
+		readSidebarCollapsed,
+		type RepoDiffPrStatusEvent,
+	} from './prOrchestrationView.helpers';
 
 	interface Props {
 		workspace: Workspace | null;
@@ -97,50 +105,13 @@
 		focusToken?: number;
 	}
 
-	type RepoDiffPrStatusEvent = {
-		workspaceId: string;
-		repoId: string;
-		status: {
-			pullRequest: {
-				repo: string;
-				number: number;
-				url: string;
-				title: string;
-				state: string;
-				draft: boolean;
-				base_repo: string;
-				base_branch: string;
-				head_repo: string;
-				head_branch: string;
-				mergeable?: string;
-			};
-			checks: Array<{
-				name: string;
-				status: string;
-				conclusion?: string;
-				details_url?: string;
-				started_at?: string;
-				completed_at?: string;
-				check_run_id?: number;
-			}>;
-		};
-	};
-
 	const { workspace, focusRepoId = null, focusToken = 0 }: Props = $props();
 
 	// ─── Derived workspace data ──────────────────────────────────────────
 	const prItems = $derived(mapWorkspaceToPrItems(workspace));
 
 	// ─── Tracked PR map (drives active/ready partition) ────────────────
-	let trackedPrMap: Map<string, PullRequestCreated> = $state(new Map());
-
-	$effect(() => {
-		if (workspace) {
-			trackedPrMap = buildTrackedPrMap(workspace);
-		} else {
-			trackedPrMap = new Map();
-		}
-	});
+	let trackedPrMap: Map<string, PullRequestCreated> = $derived(buildTrackedPrMap(workspace));
 
 	const partitions = $derived.by(() => {
 		const active = prItems.filter((item) => trackedPrMap.has(item.repoId));
@@ -208,21 +179,6 @@
 	let commitPushError: string | null = $state(null);
 	let commitPushSuccess = $state(false);
 	let commitPushSuccessTimer: ReturnType<typeof setTimeout> | null = null;
-	const SIDEBAR_COLLAPSED_KEY = 'workset:pr-orchestration:sidebarCollapsed';
-	const readSidebarCollapsed = (): boolean => {
-		try {
-			return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
-		} catch {
-			return false;
-		}
-	};
-	const persistSidebarCollapsed = (collapsed: boolean): void => {
-		try {
-			localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed));
-		} catch {
-			// ignore storage failures
-		}
-	};
 	let sidebarCollapsed = $state(readSidebarCollapsed());
 	const canCollapseSidebar = $derived(selectedItemId !== null);
 
@@ -295,16 +251,7 @@
 		return !s.hasUncommitted && s.ahead === 0;
 	});
 
-	const commitPushStageLabel = $derived.by(() => {
-		const labels: Record<string, string> = {
-			queued: 'Queuing...',
-			generating_message: 'Generating commit message...',
-			staging: 'Staging files...',
-			committing: 'Committing...',
-			pushing: 'Pushing...',
-		};
-		return commitPushStage ? (labels[commitPushStage] ?? 'Processing...') : null;
-	});
+	const commitPushStageLabel = $derived(formatCommitPushStageLabel(commitPushStage));
 
 	// ─── Annotation actions controller ──────────────────────────────────
 	const annotationController = createReviewAnnotationActionsController({
@@ -708,46 +655,6 @@
 		if (url) Browser.OpenURL(url);
 	};
 
-	const mapPrStatusEventToTrackedPr = (payload: RepoDiffPrStatusEvent): PullRequestCreated => ({
-		repo: payload.status.pullRequest.repo,
-		number: payload.status.pullRequest.number,
-		url: payload.status.pullRequest.url,
-		title: payload.status.pullRequest.title,
-		state: payload.status.pullRequest.state,
-		draft: payload.status.pullRequest.draft,
-		baseRepo: payload.status.pullRequest.base_repo,
-		baseBranch: payload.status.pullRequest.base_branch,
-		headRepo: payload.status.pullRequest.head_repo,
-		headBranch: payload.status.pullRequest.head_branch,
-	});
-
-	const applyPrStatusEvent = (payload: RepoDiffPrStatusEvent): void => {
-		prStatus = {
-			pullRequest: {
-				repo: payload.status.pullRequest.repo,
-				number: payload.status.pullRequest.number,
-				url: payload.status.pullRequest.url,
-				title: payload.status.pullRequest.title,
-				state: payload.status.pullRequest.state,
-				draft: payload.status.pullRequest.draft,
-				baseRepo: payload.status.pullRequest.base_repo,
-				baseBranch: payload.status.pullRequest.base_branch,
-				headRepo: payload.status.pullRequest.head_repo,
-				headBranch: payload.status.pullRequest.head_branch,
-				mergeable: payload.status.pullRequest.mergeable,
-			},
-			checks: (payload.status.checks ?? []).map((check) => ({
-				name: check.name,
-				status: check.status,
-				conclusion: check.conclusion,
-				detailsUrl: check.details_url,
-				startedAt: check.started_at,
-				completedAt: check.completed_at,
-				checkRunId: check.check_run_id,
-			})),
-		};
-	};
-
 	const reconcileTrackedPrState = async (wsId: string, repoId: string): Promise<void> => {
 		if (trackedPrReconcileInFlight) return;
 		trackedPrReconcileInFlight = true;
@@ -851,7 +758,7 @@
 			(payload) => {
 				if (!workspace || !selectedItem) return;
 				if (payload.workspaceId !== workspace.id || payload.repoId !== selectedItem.repoId) return;
-				applyPrStatusEvent(payload);
+				prStatus = mapPrStatusEventToStatus(payload);
 				const nextState = payload.status.pullRequest.state.trim().toLowerCase();
 				if (nextState === 'open') {
 					const tracked = mapPrStatusEventToTrackedPr(payload);
@@ -1072,7 +979,6 @@
 	});
 
 	// ─── Helpers ────────────────────────────────────────────────────────
-
 	const filesForDetail = $derived.by(() => {
 		const src = selectedSource;
 		return src === 'local' ? (localSummary?.files ?? []) : (diffSummary?.files ?? []);

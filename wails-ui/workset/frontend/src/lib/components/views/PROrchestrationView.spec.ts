@@ -300,4 +300,4 @@ describe('PROrchestrationView sidebar collapse', () => {
 		});
 		expect(await findByText('No active PRs')).toBeInTheDocument();
 	});
-	});
+});
