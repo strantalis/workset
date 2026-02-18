@@ -30,7 +30,6 @@ func TestCompareVersions(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := compareVersions(tc.left, tc.right)
@@ -108,6 +107,56 @@ func TestSanitizeSymlinkTarget(t *testing.T) {
 	}
 	if _, err := sanitizeSymlinkTarget(absRoot, linkPath, "../../../../outside"); err == nil {
 		t.Fatalf("expected escaping symlink target to fail")
+	}
+}
+
+func TestBundlePathFromExecutable(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		path    string
+		want    string
+		wantErr string
+	}{
+		{
+			name: "valid app bundle executable path",
+			path: filepath.Join("Applications", "Workset.app", "Contents", "MacOS", "workset"),
+			want: filepath.Join("Applications", "Workset.app"),
+		},
+		{
+			name:    "missing app bundle marker",
+			path:    filepath.Join("usr", "local", "bin", "workset"),
+			wantErr: "not running from a macOS app bundle",
+		},
+		{
+			name:    "marker present but parent is not app bundle",
+			path:    filepath.Join("tmp", "Workset", "Contents", "MacOS", "workset"),
+			wantErr: "resolved bundle path is invalid",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := bundlePathFromExecutable(tc.path)
+			if tc.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q", tc.wantErr)
+				}
+				if !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("expected error containing %q, got %v", tc.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("bundlePathFromExecutable returned error: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("bundlePathFromExecutable(%q) = %q, want %q", tc.path, got, tc.want)
+			}
+		})
 	}
 }
 
