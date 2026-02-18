@@ -25,7 +25,7 @@ func TestHandleProtocolOutputForwardsText(t *testing.T) {
 	}
 }
 
-func TestHandleProtocolOutputDropsKittyAPC(t *testing.T) {
+func TestHandleProtocolOutputForwardsKittyAPC(t *testing.T) {
 	session := newSession(DefaultOptions(), "single-pipeline-kitty", "")
 	sub := session.subscribe("stream-test")
 	defer session.unsubscribe(sub)
@@ -35,8 +35,11 @@ func TestHandleProtocolOutputDropsKittyAPC(t *testing.T) {
 
 	select {
 	case event := <-sub.ch:
-		t.Fatalf("expected kitty APC bytes to be dropped, got %x", event)
-	case <-time.After(200 * time.Millisecond):
+		if !bytes.Equal(event, kittyAPC) {
+			t.Fatalf("expected kitty APC bytes to pass through, got %x", event)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected stream event")
 	}
 }
 
@@ -77,7 +80,7 @@ func TestHandleProtocolOutputForwardsUTF8ContinuationBytes(t *testing.T) {
 	}
 }
 
-func TestHandleProtocolOutputStripsKittyAPC7Bit(t *testing.T) {
+func TestHandleProtocolOutputForwardsKittyAPC7Bit(t *testing.T) {
 	session := newSession(DefaultOptions(), "single-pipeline-kitty-strip-7bit", "")
 	sub := session.subscribe("stream-test")
 	defer session.unsubscribe(sub)
@@ -87,16 +90,15 @@ func TestHandleProtocolOutputStripsKittyAPC7Bit(t *testing.T) {
 
 	select {
 	case event := <-sub.ch:
-		want := []byte("AB")
-		if !bytes.Equal(event, want) {
-			t.Fatalf("expected kitty APC to be stripped, got %q (%x)", string(event), event)
+		if !bytes.Equal(event, raw) {
+			t.Fatalf("expected kitty APC bytes to pass through, got %q (%x)", string(event), event)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("expected stream event")
 	}
 }
 
-func TestHandleProtocolOutputStripsKittyAPCAcrossChunks(t *testing.T) {
+func TestHandleProtocolOutputForwardsKittyAPCAcrossChunks(t *testing.T) {
 	session := newSession(DefaultOptions(), "single-pipeline-kitty-strip-chunks", "")
 	sub := session.subscribe("stream-test")
 	defer session.unsubscribe(sub)
@@ -107,10 +109,14 @@ func TestHandleProtocolOutputStripsKittyAPCAcrossChunks(t *testing.T) {
 
 	first := <-sub.ch
 	second := <-sub.ch
-	if string(first) != "A" {
-		t.Fatalf("expected first chunk to retain prefix, got %q", string(first))
+	third := <-sub.ch
+	if string(first) != "A\x1b_" {
+		t.Fatalf("expected first chunk to pass through APC prefix, got %q", string(first))
 	}
-	if string(second) != "B" {
-		t.Fatalf("expected second chunk to retain suffix, got %q", string(second))
+	if string(second) != "Gi=31;AAAA" {
+		t.Fatalf("expected second chunk to pass through APC payload, got %q", string(second))
+	}
+	if string(third) != "\x1b\\B" {
+		t.Fatalf("expected third chunk to retain APC terminator and suffix, got %q", string(third))
 	}
 }

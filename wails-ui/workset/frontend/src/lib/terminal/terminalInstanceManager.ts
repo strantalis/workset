@@ -7,11 +7,17 @@ type WebglAddonLike = ITerminalAddon & {
 	onContextLoss?: (listener: () => void) => Disposable;
 	clearTextureAtlas?: () => void;
 };
+type SearchAddonLike = ITerminalAddon;
+type WebLinksAddonLike = ITerminalAddon;
+type ImageAddonLike = ITerminalAddon;
 
 export type TerminalInstanceHandle = {
 	terminal: Terminal;
 	fitAddon: FitAddon;
 	webglAddon?: WebglAddonLike;
+	searchAddon?: SearchAddonLike;
+	webLinksAddon?: WebLinksAddonLike;
+	imageAddon?: ImageAddonLike;
 	webglContextLossDisposable?: Disposable;
 	webglInitFailed?: boolean;
 	webglInitError?: string;
@@ -25,6 +31,9 @@ type TerminalInstanceManagerDeps = {
 	createTerminalInstance: () => Terminal;
 	createFitAddon: () => FitAddon;
 	createWebglAddon: () => WebglAddonLike;
+	createSearchAddon: () => SearchAddonLike;
+	createWebLinksAddon: () => WebLinksAddonLike;
+	createImageAddon: () => ImageAddonLike;
 	createHostContainer?: () => HTMLDivElement;
 	onData: (id: string, data: string) => void;
 	onRendererResolved?: (id: string, renderer: TerminalRenderer) => void;
@@ -50,7 +59,13 @@ export const createTerminalInstanceManager = (deps: TerminalInstanceManagerDeps)
 			if (!handle) {
 				const terminal = deps.createTerminalInstance();
 				const fitAddon = deps.createFitAddon();
+				const searchAddon = deps.createSearchAddon();
+				const webLinksAddon = deps.createWebLinksAddon();
+				const imageAddon = deps.createImageAddon();
 				terminal.loadAddon(fitAddon);
+				terminal.loadAddon(searchAddon);
+				terminal.loadAddon(webLinksAddon);
+				terminal.loadAddon(imageAddon);
 				terminal.attachCustomWheelEventHandler((event) => {
 					// Delegate wheel semantics to xterm so alternate-screen TUIs
 					// keep receiving native wheel/mouse behavior.
@@ -74,6 +89,9 @@ export const createTerminalInstanceManager = (deps: TerminalInstanceManagerDeps)
 				handle = {
 					terminal,
 					fitAddon,
+					searchAddon,
+					webLinksAddon,
+					imageAddon,
 					renderer: 'unknown',
 					dataDisposable,
 					container: createHost(),
@@ -117,6 +135,9 @@ export const createTerminalInstanceManager = (deps: TerminalInstanceManagerDeps)
 			handle.dataDisposable?.dispose();
 			handle.webglContextLossDisposable?.dispose();
 			handle.webglAddon?.dispose();
+			handle.searchAddon?.dispose();
+			handle.webLinksAddon?.dispose();
+			handle.imageAddon?.dispose();
 			handle.terminal.dispose();
 			deps.terminalHandles.delete(id);
 		},

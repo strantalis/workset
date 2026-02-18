@@ -48,6 +48,9 @@ describe('terminalInstanceManager', () => {
 		});
 		const createTerminalInstance = vi.fn(() => terminal);
 		const fitAddon = { fit: vi.fn(), proposeDimensions: vi.fn() };
+		const searchAddon = { activate: vi.fn(), dispose: vi.fn() };
+		const webLinksAddon = { activate: vi.fn(), dispose: vi.fn() };
+		const imageAddon = { activate: vi.fn(), dispose: vi.fn() };
 		const webglAddon = {
 			activate: vi.fn(),
 			dispose: vi.fn(),
@@ -61,6 +64,12 @@ describe('terminalInstanceManager', () => {
 			createTerminalInstance: () =>
 				castHandleField<TerminalInstanceHandle['terminal']>(createTerminalInstance()),
 			createFitAddon: () => castHandleField<TerminalInstanceHandle['fitAddon']>(fitAddon),
+			createSearchAddon: () =>
+				castHandleField<NonNullable<TerminalInstanceHandle['searchAddon']>>(searchAddon),
+			createWebLinksAddon: () =>
+				castHandleField<NonNullable<TerminalInstanceHandle['webLinksAddon']>>(webLinksAddon),
+			createImageAddon: () =>
+				castHandleField<NonNullable<TerminalInstanceHandle['imageAddon']>>(imageAddon),
 			createWebglAddon: () =>
 				castHandleField<NonNullable<TerminalInstanceHandle['webglAddon']>>(webglAddon),
 			onData,
@@ -73,7 +82,10 @@ describe('terminalInstanceManager', () => {
 
 		expect(createTerminalInstance).toHaveBeenCalledTimes(1);
 		expect(terminal.loadAddon).toHaveBeenNthCalledWith(1, fitAddon);
-		expect(terminal.loadAddon).toHaveBeenNthCalledWith(2, webglAddon);
+		expect(terminal.loadAddon).toHaveBeenNthCalledWith(2, searchAddon);
+		expect(terminal.loadAddon).toHaveBeenNthCalledWith(3, webLinksAddon);
+		expect(terminal.loadAddon).toHaveBeenNthCalledWith(4, imageAddon);
+		expect(terminal.loadAddon).toHaveBeenNthCalledWith(5, webglAddon);
 		expect(terminal.attachCustomWheelEventHandler).toHaveBeenCalledTimes(1);
 		expect(terminal.onData).toHaveBeenCalledTimes(1);
 		expect(terminal.onBinary).toHaveBeenCalledTimes(1);
@@ -108,6 +120,21 @@ describe('terminalInstanceManager', () => {
 					fit: vi.fn(),
 					proposeDimensions: vi.fn(),
 				}),
+			createSearchAddon: () =>
+				castHandleField<NonNullable<TerminalInstanceHandle['searchAddon']>>({
+					activate: vi.fn(),
+					dispose: vi.fn(),
+				}),
+			createWebLinksAddon: () =>
+				castHandleField<NonNullable<TerminalInstanceHandle['webLinksAddon']>>({
+					activate: vi.fn(),
+					dispose: vi.fn(),
+				}),
+			createImageAddon: () =>
+				castHandleField<NonNullable<TerminalInstanceHandle['imageAddon']>>({
+					activate: vi.fn(),
+					dispose: vi.fn(),
+				}),
 			createWebglAddon: () =>
 				castHandleField<NonNullable<TerminalInstanceHandle['webglAddon']>>({
 					dispose: vi.fn(),
@@ -125,7 +152,7 @@ describe('terminalInstanceManager', () => {
 		expect(createTerminalInstance).toHaveBeenCalledTimes(1);
 		expect(terminal.onData).toHaveBeenCalledTimes(1);
 		expect(terminal.onBinary).toHaveBeenCalledTimes(1);
-		expect(terminal.loadAddon).toHaveBeenCalledTimes(2);
+		expect(terminal.loadAddon).toHaveBeenCalledTimes(5);
 		expect(dataDisposables[0].dispose).not.toHaveBeenCalled();
 		expect(binaryDisposables[0].dispose).not.toHaveBeenCalled();
 	});
@@ -149,6 +176,21 @@ describe('terminalInstanceManager', () => {
 				castHandleField<TerminalInstanceHandle['fitAddon']>({
 					fit: vi.fn(),
 					proposeDimensions: vi.fn(),
+				}),
+			createSearchAddon: () =>
+				castHandleField<NonNullable<TerminalInstanceHandle['searchAddon']>>({
+					activate: vi.fn(),
+					dispose: vi.fn(),
+				}),
+			createWebLinksAddon: () =>
+				castHandleField<NonNullable<TerminalInstanceHandle['webLinksAddon']>>({
+					activate: vi.fn(),
+					dispose: vi.fn(),
+				}),
+			createImageAddon: () =>
+				castHandleField<NonNullable<TerminalInstanceHandle['imageAddon']>>({
+					activate: vi.fn(),
+					dispose: vi.fn(),
 				}),
 			createWebglAddon: () => {
 				throw new Error('webgl unavailable');
@@ -183,6 +225,21 @@ describe('terminalInstanceManager', () => {
 			terminalHandles,
 			createTerminalInstance: () => castHandleField<TerminalInstanceHandle['terminal']>(vi.fn()),
 			createFitAddon: () => castHandleField<TerminalInstanceHandle['fitAddon']>(vi.fn()),
+			createSearchAddon: () =>
+				castHandleField<NonNullable<TerminalInstanceHandle['searchAddon']>>({
+					activate: vi.fn(),
+					dispose: vi.fn(),
+				}),
+			createWebLinksAddon: () =>
+				castHandleField<NonNullable<TerminalInstanceHandle['webLinksAddon']>>({
+					activate: vi.fn(),
+					dispose: vi.fn(),
+				}),
+			createImageAddon: () =>
+				castHandleField<NonNullable<TerminalInstanceHandle['imageAddon']>>({
+					activate: vi.fn(),
+					dispose: vi.fn(),
+				}),
 			createWebglAddon: () =>
 				castHandleField<NonNullable<TerminalInstanceHandle['webglAddon']>>({
 					dispose: vi.fn(),

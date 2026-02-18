@@ -32,53 +32,5 @@ func (s *Session) handleProtocolOutput(ctx context.Context, raw []byte) {
 }
 
 func (s *Session) sanitizeProtocolOutput(raw []byte) []byte {
-	if len(raw) == 0 {
-		return raw
-	}
-
-	out := make([]byte, 0, len(raw))
-
-	for _, b := range raw {
-		if s.protocolInAPC {
-			if s.protocolAPCEsc {
-				s.protocolAPCEsc = false
-				if b == '\\' || b == 0x9c {
-					s.protocolInAPC = false
-					continue
-				}
-				if b == 0x1b {
-					s.protocolAPCEsc = true
-				}
-				continue
-			}
-			if b == 0x1b {
-				s.protocolAPCEsc = true
-				continue
-			}
-			if b == 0x9c {
-				s.protocolInAPC = false
-			}
-			continue
-		}
-
-		if s.protocolPendingEsc {
-			s.protocolPendingEsc = false
-			if b == '_' {
-				// 7-bit APC start (kitty graphics): drop until ST.
-				s.protocolInAPC = true
-				s.protocolAPCEsc = false
-				continue
-			}
-			out = append(out, 0x1b)
-		}
-
-		if b == 0x1b {
-			// Keep ESC pending so we can detect APC start across chunk boundaries.
-			s.protocolPendingEsc = true
-			continue
-		}
-		out = append(out, b)
-	}
-
-	return out
+	return raw
 }

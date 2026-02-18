@@ -1,5 +1,8 @@
 import { FitAddon } from '@xterm/addon-fit';
+import { ImageAddon } from '@xterm/addon-image';
+import { SearchAddon } from '@xterm/addon-search';
 import { WebglAddon } from '@xterm/addon-webgl';
+import { WebLinksAddon } from '@xterm/addon-web-links';
 import type { Terminal } from '@xterm/xterm';
 import { createTerminalAttachOpenLifecycle } from './terminalAttachOpenLifecycle';
 import { createTerminalFontSizeController } from './terminalFontSizeController';
@@ -88,6 +91,9 @@ export const createTerminalInstanceOrchestration = (
 		createTerminalInstance: () =>
 			deps.createTerminalInstance(terminalFontSizeController.getCurrentFontSize()),
 		createFitAddon: () => new FitAddon(),
+		createSearchAddon: () => new SearchAddon(),
+		createWebLinksAddon: () => new WebLinksAddon(),
+		createImageAddon: () => new ImageAddon(),
 		createWebglAddon: () => new WebglAddon(),
 		onData: (id, data) => {
 			deps.setInput(id, true);
