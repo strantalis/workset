@@ -192,4 +192,32 @@ describe('terminalViewportResizeController', () => {
 		expect(controller.isAtBottom('ws::term')).toBe(true);
 		expect(controller.isAtBottom('missing')).toBe(true);
 	});
+
+	it('does not let refit timers suppress focus retry scheduling', () => {
+		const forceRedraw = vi.fn();
+		const resizeToFit = vi.fn();
+		const state: { handle?: TerminalViewportResizeHandle } = {};
+		const controller = createTerminalViewportResizeController({
+			getHandle: () => state.handle,
+			hasStarted: () => true,
+			forceRedraw,
+			resizeToFit,
+			resizeOverlay: vi.fn(),
+		});
+
+		const first = createHandle({ baseY: 5, viewportY: 5 });
+		const second = createHandle({ baseY: 8, viewportY: 6 });
+		state.handle = first;
+		controller.focusTerminal('ws::term');
+		expect(first.terminal.focus).toHaveBeenCalledTimes(1);
+
+		// Simulate pane churn where a second focus request lands while handle is unavailable.
+		state.handle = undefined;
+		controller.focusTerminal('ws::term');
+		state.handle = second;
+
+		vi.runAllTimers();
+		expect(second.terminal.focus).toHaveBeenCalledTimes(1);
+		expect(second.fitAddon.fit).toHaveBeenCalledTimes(2);
+	});
 });
