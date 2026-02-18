@@ -16,7 +16,7 @@ tasks:
       - task: common:generate:icons
       - task: build:helpers
       - task: common:build:frontend
-      - go build {{if .LDFLAGS}}-ldflags "{{.LDFLAGS}}" {{end}}-o "{{.BIN_DIR}}/{{.APP_NAME}}.exe"
+      - go build -tags production {{if .LDFLAGS}}-ldflags "{{.LDFLAGS}}" {{end}}-o "{{.BIN_DIR}}/{{.APP_NAME}}.exe"
     env:
       GOOS: windows
       CGO_ENABLED: 0
