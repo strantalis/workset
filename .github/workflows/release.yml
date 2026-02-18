@@ -20,6 +20,7 @@ on:
         type: boolean
 
 permissions:
+  actions: write
   contents: write
   id-token: write
   attestations: write
@@ -327,6 +328,27 @@ jobs:
             xcrun stapler staple "$app"
             rm -f "$zip_path"
           done
+      - name: Build update ZIP and metadata
+        shell: bash
+        env:
+          TAG: ${{ needs.prepare-alpha.outputs.alpha_version }}
+          SIGNING_ENABLED: ${{ steps.signing.outputs.enabled }}
+        run: |
+          set -euo pipefail
+          app="wails-ui/workset/bin/workset.app"
+          update_zip="wails-ui/workset/bin/workset-${TAG}-macos-update.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$app" "$update_zip"
+          sha="$(shasum -a 256 "$update_zip" | awk '{print $1}')"
+          printf '%s  %s\n' "$sha" "$(basename "$update_zip")" > "${update_zip}.sha256"
+          team_id="UNSIGNED"
+          if [ "${SIGNING_ENABLED}" = "true" ]; then
+            team_id="$(codesign -dv --verbose=4 "$app" 2>&1 | awk -F= '/^TeamIdentifier=/{print $2; exit}')"
+            if [ -z "$team_id" ]; then
+              echo "Failed to resolve TeamIdentifier from signed app."
+              exit 1
+            fi
+          fi
+          printf '%s\n' "$team_id" > "${update_zip}.teamid"
       - name: Build DMG
         shell: bash
         env:
@@ -400,7 +422,25 @@ jobs:
         with:
           tag_name: ${{ needs.prepare-alpha.outputs.alpha_version }}
           prerelease: true
-          files: wails-ui/workset/bin/workset-${{ needs.prepare-alpha.outputs.alpha_version }}-macos.dmg
+          files: |
+            wails-ui/workset/bin/workset-${{ needs.prepare-alpha.outputs.alpha_version }}-macos.dmg
+            wails-ui/workset/bin/workset-${{ needs.prepare-alpha.outputs.alpha_version }}-macos-update.zip
+            wails-ui/workset/bin/workset-${{ needs.prepare-alpha.outputs.alpha_version }}-macos-update.zip.sha256
+            wails-ui/workset/bin/workset-${{ needs.prepare-alpha.outputs.alpha_version }}-macos-update.zip.teamid
+      - name: Trigger docs publish workflow
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          payload=$(printf '{"ref":"%s"}' "${DEFAULT_BRANCH:-main}")
+          curl -fsSL -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            "https://api.github.com/repos/${REPOSITORY}/actions/workflows/docs.yml/dispatches" \
+            -d "$payload"
 
   wails-windows-alpha:
     needs: [prepare-alpha, alpha-release]
@@ -663,6 +703,27 @@ jobs:
             xcrun stapler staple "$app"
             rm -f "$zip_path"
           done
+      - name: Build update ZIP and metadata
+        shell: bash
+        env:
+          TAG: ${{ needs.stable-release.outputs.tag }}
+          SIGNING_ENABLED: ${{ steps.signing.outputs.enabled }}
+        run: |
+          set -euo pipefail
+          app="wails-ui/workset/bin/workset.app"
+          update_zip="wails-ui/workset/bin/workset-${TAG}-macos-update.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$app" "$update_zip"
+          sha="$(shasum -a 256 "$update_zip" | awk '{print $1}')"
+          printf '%s  %s\n' "$sha" "$(basename "$update_zip")" > "${update_zip}.sha256"
+          team_id="UNSIGNED"
+          if [ "${SIGNING_ENABLED}" = "true" ]; then
+            team_id="$(codesign -dv --verbose=4 "$app" 2>&1 | awk -F= '/^TeamIdentifier=/{print $2; exit}')"
+            if [ -z "$team_id" ]; then
+              echo "Failed to resolve TeamIdentifier from signed app."
+              exit 1
+            fi
+          fi
+          printf '%s\n' "$team_id" > "${update_zip}.teamid"
       - name: Build DMG
         shell: bash
         env:
@@ -736,7 +797,25 @@ jobs:
         with:
           tag_name: ${{ needs.stable-release.outputs.tag }}
           prerelease: false
-          files: wails-ui/workset/bin/workset-${{ needs.stable-release.outputs.tag }}-macos.dmg
+          files: |
+            wails-ui/workset/bin/workset-${{ needs.stable-release.outputs.tag }}-macos.dmg
+            wails-ui/workset/bin/workset-${{ needs.stable-release.outputs.tag }}-macos-update.zip
+            wails-ui/workset/bin/workset-${{ needs.stable-release.outputs.tag }}-macos-update.zip.sha256
+            wails-ui/workset/bin/workset-${{ needs.stable-release.outputs.tag }}-macos-update.zip.teamid
+      - name: Trigger docs publish workflow
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          payload=$(printf '{"ref":"%s"}' "${DEFAULT_BRANCH:-main}")
+          curl -fsSL -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            "https://api.github.com/repos/${REPOSITORY}/actions/workflows/docs.yml/dispatches" \
+            -d "$payload"
 
   wails-windows-stable:
     needs: stable-release

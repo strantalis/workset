@@ -59,6 +59,8 @@ Security and rollback boundaries:
 
 ### Manifest helper script
 
+Release automation publishes `updates/{stable,alpha}.json` to `workset.dev`. You can still generate a manifest manually for local testing:
+
 Use `scripts/generate_update_manifest.sh` to create channel manifests:
 
 ```bash
@@ -69,7 +71,7 @@ scripts/generate_update_manifest.sh \
   --sha256 <sha256> \
   --team-id <apple-team-id> \
   --notes-url https://github.com/strantalis/workset/releases/tag/v0.3.0 \
-  --output updates/stable.json
+  --output docs/updates/stable.json
 ```
 
 ## Terminal settings

@@ -49,6 +49,7 @@ plugins:
   - gen-files:
       scripts:
         - scripts/gen_releases.py
+        - scripts/gen_update_manifests.py
 
 nav:
   - Home: index.md
