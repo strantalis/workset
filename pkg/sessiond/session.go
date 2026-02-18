@@ -21,31 +21,31 @@ type Session struct {
 	pty  *os.File
 	opts Options
 
-	mu                 sync.Mutex
-	outputMu           sync.Mutex
-	buffer             *terminalBuffer
-	transcriptPath     string
-	transcriptFile     *os.File
-	transcriptSize     int64
-	recordPath         string
-	recordFile         *os.File
-	recordEnabled      bool
-	recordMu           sync.Mutex
-	protocolLog        *unifiedlog.Logger
-	startedAt          time.Time
-	lastActivity       time.Time
-	idleTimer          *time.Timer
-	closed             bool
-	closeReason        string
-	inputOwner         string
-	onClose            func(*Session)
-	subscribers        map[*subscriber]struct{}
-	streams            map[string]*subscriber
-	subscribersMu      sync.Mutex
-	debugInputSeq      atomic.Uint64
-	debugOutputSeq     atomic.Uint64
-	modeState          terminalModeState
-	modeParser         terminalModeParser
+	mu             sync.Mutex
+	outputMu       sync.Mutex
+	buffer         *terminalBuffer
+	transcriptPath string
+	transcriptFile *os.File
+	transcriptSize int64
+	recordPath     string
+	recordFile     *os.File
+	recordEnabled  bool
+	recordMu       sync.Mutex
+	protocolLog    *unifiedlog.Logger
+	startedAt      time.Time
+	lastActivity   time.Time
+	idleTimer      *time.Timer
+	closed         bool
+	closeReason    string
+	inputOwner     string
+	onClose        func(*Session)
+	subscribers    map[*subscriber]struct{}
+	streams        map[string]*subscriber
+	subscribersMu  sync.Mutex
+	debugInputSeq  atomic.Uint64
+	debugOutputSeq atomic.Uint64
+	modeState      terminalModeState
+	modeParser     terminalModeParser
 }
 
 func newSession(opts Options, id, cwd string) *Session {
