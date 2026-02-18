@@ -1,0 +1,20 @@
+# Temporary allowlist for pre-existing frontend complexity hotspots in PR #147.
+# Keep this list narrow and remove entries as files are decomposed.
+
+src/lib/components/TerminalLayoutNode.svelte
+src/lib/components/TerminalWorkspace.svelte
+src/lib/components/repo-diff/fileDiffController.ts
+src/lib/components/repo-diff/githubOperationsController.ts
+src/lib/components/repo-diff/reviewAnnotationActions.ts
+src/lib/components/ui/Select.svelte
+src/lib/components/views/OnboardingView.svelte
+src/lib/components/views/PROrchestrationView.svelte
+src/lib/services/workspaceActionContextService.ts
+src/lib/state.ts
+src/lib/terminal/terminalAttachOpenLifecycle.ts
+src/lib/terminal/terminalInputOrchestrator.ts
+src/lib/terminal/terminalLayoutTree.ts
+src/lib/terminal/terminalSessionCoordinator.ts
+src/lib/terminal/terminalStreamOrchestrator.ts
+src/lib/terminal/terminalSyncController.ts
+src/lib/view-models/prViewModel.ts
