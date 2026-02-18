@@ -76,7 +76,11 @@ func (s *Service) recordPullRequest(ctx context.Context, resolution repoResoluti
 	}
 }
 
-func (s *Service) clearTrackedPullRequest(ctx context.Context, resolution repoResolution) {
+func (s *Service) clearTrackedPullRequestIfMatchingNumber(
+	ctx context.Context,
+	resolution repoResolution,
+	number int,
+) {
 	state, err := s.workspaces.LoadState(ctx, resolution.WorkspaceRoot)
 	if err != nil {
 		if s.logf != nil {
@@ -87,7 +91,8 @@ func (s *Service) clearTrackedPullRequest(ctx context.Context, resolution repoRe
 	if len(state.PullRequests) == 0 {
 		return
 	}
-	if _, ok := state.PullRequests[resolution.Repo.Name]; !ok {
+	tracked, ok := state.PullRequests[resolution.Repo.Name]
+	if !ok || tracked.Number != number {
 		return
 	}
 	delete(state.PullRequests, resolution.Repo.Name)

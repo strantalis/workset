@@ -73,7 +73,7 @@ func (s *Service) reconcileTrackedPullRequest(
 		})
 		return
 	}
-	s.clearTrackedPullRequest(ctx, resolution)
+	s.clearTrackedPullRequestIfMatchingNumber(ctx, resolution, pr.Number)
 }
 
 // GetCheckAnnotations returns annotations for a specific check run.

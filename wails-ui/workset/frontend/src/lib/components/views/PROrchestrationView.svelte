@@ -757,6 +757,11 @@
 			if (selectedRepoId === repoId) {
 				await loadRepoLocalStatus(wsId, repoId);
 				await loadDiffSummary(wsId, repoId, trackedPrMap.get(repoId));
+				return;
+			}
+			if (activeWatchKey?.wsId === wsId && activeWatchKey.repoId === repoId) {
+				activePrBranches = null;
+				await stopActiveWatch();
 			}
 		} finally {
 			trackedPrReconcileInFlight = false;

@@ -192,6 +192,77 @@ func TestGetPullRequestStatusClearsTrackedPullRequestWhenNotOpen(t *testing.T) {
 	}
 }
 
+func TestGetPullRequestStatusKeepsTrackedPullRequestWhenClosedStatusForDifferentNumber(t *testing.T) {
+	env, root, repoPath := setupGitHubServiceRepo(t)
+	ctx := context.Background()
+	resolution, err := env.svc.resolveRepo(ctx, RepoSelectionInput{
+		Workspace: WorkspaceSelector{Value: root},
+		Repo:      "repo-a",
+	})
+	if err != nil {
+		t.Fatalf("resolveRepo: %v", err)
+	}
+	env.svc.recordPullRequest(ctx, resolution, PullRequestCreatedJSON{
+		Repo:       "repo-a",
+		Number:     41,
+		URL:        "https://github.com/head-org/head-repo/pull/41",
+		Title:      "Still open",
+		State:      "open",
+		BaseRepo:   "head-org/head-repo",
+		BaseBranch: "main",
+		HeadRepo:   "head-org/head-repo",
+		HeadBranch: "feature/topic",
+	})
+	env.git.remoteURLs[repoPath] = map[string][]string{
+		"origin": {"git@github.com:head-org/head-repo.git"},
+	}
+	env.git.remoteExists[repoPath] = map[string]bool{
+		"upstream": false,
+	}
+	client := &readHelpersGitHubClient{
+		getPullRequestFunc: func(_ context.Context, owner, repo string, number int) (GitHubPullRequest, error) {
+			if owner != "head-org" || repo != "head-repo" || number != 42 {
+				t.Fatalf("unexpected pull request lookup: owner=%s repo=%s number=%d", owner, repo, number)
+			}
+			return GitHubPullRequest{
+				Number:  42,
+				URL:     "https://github.com/head-org/head-repo/pull/42",
+				Title:   "Merged other PR",
+				State:   "closed",
+				BaseRef: "main",
+				HeadRef: "feature/another",
+			}, nil
+		},
+	}
+	env.svc.github = &readHelpersGitHubProvider{client: client}
+
+	result, err := env.svc.GetPullRequestStatus(ctx, PullRequestStatusInput{
+		Workspace: WorkspaceSelector{Value: root},
+		Repo:      "repo-a",
+		Number:    42,
+	})
+	if err != nil {
+		t.Fatalf("GetPullRequestStatus: %v", err)
+	}
+	if result.PullRequest.Number != 42 || result.PullRequest.State != "closed" {
+		t.Fatalf("unexpected pull request status: %+v", result.PullRequest)
+	}
+
+	tracked, err := env.svc.GetTrackedPullRequest(ctx, PullRequestTrackedInput{
+		Workspace: WorkspaceSelector{Value: root},
+		Repo:      "repo-a",
+	})
+	if err != nil {
+		t.Fatalf("GetTrackedPullRequest: %v", err)
+	}
+	if !tracked.Payload.Found {
+		t.Fatalf("expected tracked pull request to remain")
+	}
+	if tracked.Payload.PullRequest.Number != 41 {
+		t.Fatalf("expected tracked PR #41 to remain, got #%d", tracked.Payload.PullRequest.Number)
+	}
+}
+
 func TestGetPullRequestStatusRefreshesTrackedPullRequestWhenOpen(t *testing.T) {
 	env, root, repoPath := setupGitHubServiceRepo(t)
 	ctx := context.Background()
