@@ -42,9 +42,6 @@ type Session struct {
 	subscribers        map[*subscriber]struct{}
 	streams            map[string]*subscriber
 	subscribersMu      sync.Mutex
-	protocolInAPC      bool
-	protocolAPCEsc     bool
-	protocolPendingEsc bool
 	debugInputSeq      atomic.Uint64
 	debugOutputSeq     atomic.Uint64
 	modeState          terminalModeState

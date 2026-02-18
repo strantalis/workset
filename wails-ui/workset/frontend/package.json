@@ -47,9 +47,12 @@
 		"@lucide/svelte": "^0.563.1",
 		"@pierre/diffs": "^1.0.8",
 		"@wailsio/runtime": "^3.0.0-alpha.79",
-		"@xterm/addon-fit": "^0.12.0-beta.155",
-		"@xterm/addon-webgl": "^0.20.0-beta.154",
-		"@xterm/xterm": "^6.1.0-beta.155",
+		"@xterm/addon-fit": "^0.12.0-beta.165",
+		"@xterm/addon-image": "^0.10.0-beta.165",
+		"@xterm/addon-search": "^0.17.0-beta.165",
+		"@xterm/addon-web-links": "^0.13.0-beta.165",
+		"@xterm/addon-webgl": "^0.20.0-beta.164",
+		"@xterm/xterm": "^6.1.0-beta.165",
 		"dompurify": "^3.3.1",
 		"marked": "^17.0.1"
 	}

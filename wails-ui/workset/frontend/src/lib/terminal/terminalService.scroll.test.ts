@@ -107,6 +107,24 @@ vi.mock('@xterm/xterm', () => ({
 vi.mock('@xterm/addon-fit', () => ({
 	FitAddon: MockFitAddon,
 }));
+vi.mock('@xterm/addon-image', () => ({
+	ImageAddon: class MockImageAddon {
+		activate(): void {}
+		dispose(): void {}
+	},
+}));
+vi.mock('@xterm/addon-search', () => ({
+	SearchAddon: class MockSearchAddon {
+		activate(): void {}
+		dispose(): void {}
+	},
+}));
+vi.mock('@xterm/addon-web-links', () => ({
+	WebLinksAddon: class MockWebLinksAddon {
+		activate(): void {}
+		dispose(): void {}
+	},
+}));
 
 vi.mock('@wailsio/runtime', () => runtimeMock);
 vi.mock('../../../bindings/workset/app', () => appMock);
