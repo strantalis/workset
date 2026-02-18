@@ -64,9 +64,14 @@
 		fetchBranchFileDiff,
 		fetchRepoDiffSummary,
 		fetchRepoFileDiff,
+		startRepoDiffWatch,
 		startRepoStatusWatch,
+		stopRepoDiffWatch,
 		stopRepoStatusWatch,
 	} from '../../api/repo-diff';
+	import { EVENT_REPO_DIFF_PR_STATUS } from '../../events';
+	import { subscribeRepoDiffEvent } from '../../repoDiffService';
+	import { refreshWorkspacesStatus } from '../../state';
 	import {
 		buildFileLocalCacheKey,
 		buildFilePrCacheKey,
@@ -91,6 +96,35 @@
 		focusRepoId?: string | null;
 		focusToken?: number;
 	}
+
+	type RepoDiffPrStatusEvent = {
+		workspaceId: string;
+		repoId: string;
+		status: {
+			pullRequest: {
+				repo: string;
+				number: number;
+				url: string;
+				title: string;
+				state: string;
+				draft: boolean;
+				base_repo: string;
+				base_branch: string;
+				head_repo: string;
+				head_branch: string;
+				mergeable?: string;
+			};
+			checks: Array<{
+				name: string;
+				status: string;
+				conclusion?: string;
+				details_url?: string;
+				started_at?: string;
+				completed_at?: string;
+				check_run_id?: number;
+			}>;
+		};
+	};
 
 	const { workspace, focusRepoId = null, focusToken = 0 }: Props = $props();
 
@@ -141,13 +175,14 @@
 	let fileDiffContent: RepoFileDiff | null = $state(null);
 	let fileDiffLoading = $state(false);
 	let fileDiffError: string | null = $state(null);
-	let activeWatchKey: { wsId: string; repoId: string } | null = $state(null);
+	let activeWatchKey: { wsId: string; repoId: string; mode: 'local' | 'pr' } | null = $state(null);
 	let activePrBranches: { base: string; head: string } | null = $state(null);
 	let activeFileKey: string | null = $state(null);
 	let lastDiffSummaryTargetKey: string | null = $state(null);
 	let diffSummaryRequestId = 0;
 	let localSummaryRequestId = 0;
 	let fileDiffRequestId = 0;
+	let trackedPrReconcileInFlight = false;
 
 	// ─── Checks ─────────────────────────────────────────────────────────
 	let prStatus: PullRequestStatusResult | null = $state(null);
@@ -418,10 +453,14 @@
 
 	const stopActiveWatch = async (): Promise<void> => {
 		if (activeWatchKey) {
-			const { wsId, repoId } = activeWatchKey;
+			const { wsId, repoId, mode } = activeWatchKey;
 			activeWatchKey = null;
 			try {
-				await stopRepoStatusWatch(wsId, repoId);
+				if (mode === 'pr') {
+					await stopRepoDiffWatch(wsId, repoId);
+				} else {
+					await stopRepoStatusWatch(wsId, repoId);
+				}
 			} catch {
 				/* ignore */
 			}
@@ -469,7 +508,11 @@
 			if (!branches) {
 				await startRepoStatusWatch(wsId, repoId);
 				if (requestId !== diffSummaryRequestId) return;
-				activeWatchKey = { wsId, repoId };
+				activeWatchKey = { wsId, repoId, mode: 'local' };
+			} else {
+				await startRepoDiffWatch(wsId, repoId, pr?.number, pr?.headBranch || branches.head);
+				if (requestId !== diffSummaryRequestId) return;
+				activeWatchKey = { wsId, repoId, mode: 'pr' };
 			}
 			if (!cached || cached.stale) {
 				const fetched = branches
@@ -665,6 +708,61 @@
 		if (url) Browser.OpenURL(url);
 	};
 
+	const mapPrStatusEventToTrackedPr = (payload: RepoDiffPrStatusEvent): PullRequestCreated => ({
+		repo: payload.status.pullRequest.repo,
+		number: payload.status.pullRequest.number,
+		url: payload.status.pullRequest.url,
+		title: payload.status.pullRequest.title,
+		state: payload.status.pullRequest.state,
+		draft: payload.status.pullRequest.draft,
+		baseRepo: payload.status.pullRequest.base_repo,
+		baseBranch: payload.status.pullRequest.base_branch,
+		headRepo: payload.status.pullRequest.head_repo,
+		headBranch: payload.status.pullRequest.head_branch,
+	});
+
+	const applyPrStatusEvent = (payload: RepoDiffPrStatusEvent): void => {
+		prStatus = {
+			pullRequest: {
+				repo: payload.status.pullRequest.repo,
+				number: payload.status.pullRequest.number,
+				url: payload.status.pullRequest.url,
+				title: payload.status.pullRequest.title,
+				state: payload.status.pullRequest.state,
+				draft: payload.status.pullRequest.draft,
+				baseRepo: payload.status.pullRequest.base_repo,
+				baseBranch: payload.status.pullRequest.base_branch,
+				headRepo: payload.status.pullRequest.head_repo,
+				headBranch: payload.status.pullRequest.head_branch,
+				mergeable: payload.status.pullRequest.mergeable,
+			},
+			checks: (payload.status.checks ?? []).map((check) => ({
+				name: check.name,
+				status: check.status,
+				conclusion: check.conclusion,
+				detailsUrl: check.details_url,
+				startedAt: check.started_at,
+				completedAt: check.completed_at,
+				checkRunId: check.check_run_id,
+			})),
+		};
+	};
+
+	const reconcileTrackedPrState = async (wsId: string, repoId: string): Promise<void> => {
+		if (trackedPrReconcileInFlight) return;
+		trackedPrReconcileInFlight = true;
+		try {
+			await loadTrackedPr(wsId, repoId);
+			await refreshWorkspacesStatus(true);
+			if (selectedRepoId === repoId) {
+				await loadRepoLocalStatus(wsId, repoId);
+				await loadDiffSummary(wsId, repoId, trackedPrMap.get(repoId));
+			}
+		} finally {
+			trackedPrReconcileInFlight = false;
+		}
+	};
+
 	// ─── Effects ────────────────────────────────────────────────────────
 
 	$effect(() => {
@@ -743,9 +841,50 @@
 	});
 
 	$effect(() => {
+		const unsub = subscribeRepoDiffEvent<RepoDiffPrStatusEvent>(
+			EVENT_REPO_DIFF_PR_STATUS,
+			(payload) => {
+				if (!workspace || !selectedItem) return;
+				if (payload.workspaceId !== workspace.id || payload.repoId !== selectedItem.repoId) return;
+				applyPrStatusEvent(payload);
+				const nextState = payload.status.pullRequest.state.trim().toLowerCase();
+				if (nextState === 'open') {
+					const tracked = mapPrStatusEventToTrackedPr(payload);
+					trackedPr = tracked;
+					const nextMap = new Map(trackedPrMap);
+					nextMap.set(selectedItem.repoId, tracked);
+					trackedPrMap = nextMap;
+					return;
+				}
+
+				const nextMap = new Map(trackedPrMap);
+				const hadTracked = nextMap.delete(selectedItem.repoId);
+				trackedPrMap = nextMap;
+				trackedPr = null;
+				if (hadTracked) {
+					void reconcileTrackedPrState(workspace.id, selectedItem.repoId);
+				}
+			},
+		);
+		return unsub;
+	});
+
+	$effect(() => {
 		if (selectedItemId && !prItems.find((i) => i.id === selectedItemId)) {
 			selectedItemId = null;
 		}
+	});
+
+	$effect(() => {
+		const id = selectedItemId;
+		if (!id) return;
+		const visibleInMode =
+			viewMode === 'active'
+				? partitions.active.some((item) => item.id === id)
+				: partitions.readyToPR.some((item) => item.id === id);
+		if (visibleInMode) return;
+		selectedItemId = null;
+		activeTab = 'files';
 	});
 
 	$effect(() => {

@@ -75,3 +75,23 @@ func (s *Service) recordPullRequest(ctx context.Context, resolution repoResoluti
 		s.logf("workset: unable to save workspace state for PR tracking: %v", err)
 	}
 }
+
+func (s *Service) clearTrackedPullRequest(ctx context.Context, resolution repoResolution) {
+	state, err := s.workspaces.LoadState(ctx, resolution.WorkspaceRoot)
+	if err != nil {
+		if s.logf != nil {
+			s.logf("workset: unable to load workspace state for PR untracking: %v", err)
+		}
+		return
+	}
+	if len(state.PullRequests) == 0 {
+		return
+	}
+	if _, ok := state.PullRequests[resolution.Repo.Name]; !ok {
+		return
+	}
+	delete(state.PullRequests, resolution.Repo.Name)
+	if err := s.workspaces.SaveState(ctx, resolution.WorkspaceRoot, state); err != nil && s.logf != nil {
+		s.logf("workset: unable to save workspace state for PR untracking: %v", err)
+	}
+}

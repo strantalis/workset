@@ -247,4 +247,57 @@ describe('PROrchestrationView sidebar collapse', () => {
 			);
 		});
 	});
+
+	test('reconciles tracked state when PR status updates to closed', async () => {
+		vi.mocked(repoDiffService.subscribeRepoDiffEvent).mockImplementation(() => () => {});
+		vi.mocked(githubApi.fetchTrackedPullRequest)
+			.mockResolvedValueOnce(trackedPr)
+			.mockResolvedValueOnce(null);
+
+		const workspace = buildWorkspace();
+		const { getByText, findByText } = render(PROrchestrationView, {
+			props: { workspace },
+		});
+
+		const listRow = getByText('repo-one').closest('button');
+		expect(listRow).toBeTruthy();
+		await fireEvent.click(listRow!);
+
+		await waitFor(() => {
+			expect(vi.mocked(githubApi.fetchTrackedPullRequest)).toHaveBeenCalled();
+		});
+		const prStatusHandler = vi.mocked(repoDiffService.subscribeRepoDiffEvent).mock.calls[0]?.[1] as
+			| ((payload: unknown) => void)
+			| undefined;
+		if (!prStatusHandler) {
+			throw new Error('Expected PR status handler to be registered');
+		}
+		prStatusHandler({
+			workspaceId: 'ws-1',
+			repoId: 'repo-1',
+			status: {
+				pullRequest: {
+					repo: 'repo-one',
+					number: 42,
+					url: 'https://github.com/octo/repo-one/pull/42',
+					title: 'Test PR title',
+					state: 'closed',
+					draft: false,
+					base_repo: 'octo/repo-one',
+					base_branch: 'main',
+					head_repo: 'octo/repo-one',
+					head_branch: 'feature/sidebar-collapse',
+				},
+				checks: [],
+			},
+		});
+
+		await waitFor(() => {
+			expect(state.refreshWorkspacesStatus).toHaveBeenCalledWith(true);
+		});
+		await waitFor(() => {
+			expect(vi.mocked(repoDiffApi.stopRepoDiffWatch)).toHaveBeenCalledWith('ws-1', 'repo-1');
+		});
+		expect(await findByText('No active PRs')).toBeInTheDocument();
+	});
 });

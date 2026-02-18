@@ -3,6 +3,7 @@ package worksetapi
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // GetPullRequestStatus returns the PR summary and checks.
@@ -21,6 +22,7 @@ func (s *Service) GetPullRequestStatus(ctx context.Context, input PullRequestSta
 			mergeable = "conflicts"
 		}
 	}
+	s.reconcileTrackedPullRequest(ctx, resolution, pr, baseInfo, headInfo)
 
 	checks, err := s.listCheckRuns(ctx, client, baseInfo, pr)
 	if err != nil {
@@ -46,6 +48,32 @@ func (s *Service) GetPullRequestStatus(ctx context.Context, input PullRequestSta
 		Checks:      checks,
 		Config:      resolution.ConfigInfo,
 	}, nil
+}
+
+func (s *Service) reconcileTrackedPullRequest(
+	ctx context.Context,
+	resolution repoResolution,
+	pr GitHubPullRequest,
+	baseInfo remoteInfo,
+	headInfo remoteInfo,
+) {
+	if strings.EqualFold(pr.State, "open") {
+		s.recordPullRequest(ctx, resolution, PullRequestCreatedJSON{
+			Repo:       resolution.Repo.Name,
+			Number:     pr.Number,
+			URL:        pr.URL,
+			Title:      pr.Title,
+			Body:       pr.Body,
+			Draft:      pr.Draft,
+			State:      pr.State,
+			BaseRepo:   fmt.Sprintf("%s/%s", baseInfo.Owner, baseInfo.Repo),
+			BaseBranch: pr.BaseRef,
+			HeadRepo:   fmt.Sprintf("%s/%s", headInfo.Owner, headInfo.Repo),
+			HeadBranch: pr.HeadRef,
+		})
+		return
+	}
+	s.clearTrackedPullRequest(ctx, resolution)
 }
 
 // GetCheckAnnotations returns annotations for a specific check run.
