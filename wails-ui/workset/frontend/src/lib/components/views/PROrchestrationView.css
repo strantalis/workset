@@ -958,7 +958,7 @@ diffs-container {
 	border-color: var(--accent-soft);
 }
 .form-textarea {
-	resize: none;
+	resize: vertical;
 }
 
 .rd-file-list {
