@@ -37,6 +37,7 @@
 		fetchRepoLocalStatus,
 		fetchTrackedPullRequest,
 		generatePullRequestText,
+		listRemotes,
 		replyToReviewComment,
 		resolveReviewThread,
 		startCommitAndPushAsync,
@@ -74,6 +75,7 @@
 		buildSummaryPrCacheKey,
 		repoDiffCache,
 	} from '../../cache/repoDiffCache';
+	import { resolveBranchRefs } from '../../diff/branchRefs';
 	import ResizablePanel from '../ui/ResizablePanel.svelte';
 	import { mapWorkspaceToPrItems } from '../../view-models/prViewModel';
 
@@ -144,6 +146,7 @@
 	let activeWatchKey: { wsId: string; repoId: string } | null = $state(null);
 	let activePrBranches: { base: string; head: string } | null = $state(null);
 	let activeFileKey: string | null = $state(null);
+	let lastDiffSummaryTargetKey: string | null = $state(null);
 	let diffSummaryRequestId = 0;
 	let localSummaryRequestId = 0;
 	let fileDiffRequestId = 0;
@@ -348,6 +351,33 @@
 
 	// ─── Actions ────────────────────────────────────────────────────────
 
+	const buildDiffTargetKey = (
+		wsId: string,
+		repoId: string,
+		pr?: PullRequestCreated,
+	): string =>
+		pr
+			? `${wsId}:${repoId}:pr:${pr.number}:${pr.baseRepo}:${pr.baseBranch}:${pr.headRepo}:${pr.headBranch}`
+			: `${wsId}:${repoId}:local`;
+
+	const resolvePrBranches = async (
+		wsId: string,
+		repoId: string,
+		pr: PullRequestCreated,
+	): Promise<{ base: string; head: string } | null> => {
+		if (!pr.baseBranch || !pr.headBranch) {
+			return null;
+		}
+
+		const fallback = { base: pr.baseBranch, head: pr.headBranch };
+		try {
+			const remotes = await listRemotes(wsId, repoId);
+			return resolveBranchRefs(remotes, pr) ?? fallback;
+		} catch {
+			return fallback;
+		}
+	};
+
 	const selectItem = (itemId: string): void => {
 		selectedItemId = itemId;
 		activeTab = 'files';
@@ -361,6 +391,8 @@
 		fileDiffContent = null;
 		fileDiffError = null;
 		activeFileKey = null;
+		activePrBranches = null;
+		lastDiffSummaryTargetKey = null;
 		diffSummaryRequestId += 1;
 		localSummaryRequestId += 1;
 		fileDiffRequestId += 1;
@@ -380,8 +412,6 @@
 		if (item && workspace) {
 			void loadTrackedPr(workspace.id, item.repoId);
 			void loadRepoLocalStatus(workspace.id, item.repoId);
-			const pr = trackedPrMap.get(item.repoId);
-			void loadDiffSummary(workspace.id, item.repoId, pr);
 			if (viewMode === 'ready') {
 				void loadSuggestedPrText(workspace.id, item.repoId);
 			}
@@ -454,7 +484,8 @@
 	): Promise<void> => {
 		const requestId = ++diffSummaryRequestId;
 		diffSummaryLoading = true;
-		const branches = pr ? { base: pr.baseBranch, head: pr.headBranch } : null;
+		const branches = pr ? await resolvePrBranches(wsId, repoId, pr) : null;
+		if (requestId !== diffSummaryRequestId) return;
 		activePrBranches = branches;
 		const cacheKey = branches
 			? buildSummaryPrCacheKey(wsId, repoId, branches.base, branches.head)
@@ -665,6 +696,20 @@
 	};
 
 	// ─── Effects ────────────────────────────────────────────────────────
+
+	$effect(() => {
+		const currentWsId = wsId;
+		const currentRepoId = selectedRepoId;
+		if (!selectedItem || currentWsId === '' || currentRepoId === '') {
+			return;
+		}
+		const targetKey = buildDiffTargetKey(currentWsId, currentRepoId, trackedPr ?? undefined);
+		if (targetKey === lastDiffSummaryTargetKey) {
+			return;
+		}
+		lastDiffSummaryTargetKey = targetKey;
+		void loadDiffSummary(currentWsId, currentRepoId, trackedPr ?? undefined);
+	});
 
 	$effect(() => {
 		if (activeTab === 'checks' && !prStatus && !prStatusLoading && selectedItem) {

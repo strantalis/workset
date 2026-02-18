@@ -15,6 +15,7 @@ vi.mock('../../api/github', () => ({
 	fetchRepoLocalStatus: vi.fn(),
 	fetchTrackedPullRequest: vi.fn(),
 	generatePullRequestText: vi.fn(),
+	listRemotes: vi.fn(),
 	replyToReviewComment: vi.fn(),
 	resolveReviewThread: vi.fn(),
 	startCommitAndPushAsync: vi.fn(),
@@ -135,6 +136,9 @@ describe('PROrchestrationView sidebar collapse', () => {
 			title: '',
 			body: '',
 		});
+		vi.mocked(githubApi.listRemotes).mockResolvedValue([
+			{ name: 'origin', owner: 'octo', repo: 'repo-one' },
+		]);
 		vi.mocked(githubApi.createPullRequest).mockResolvedValue(trackedPr);
 		vi.mocked(githubApi.replyToReviewComment).mockResolvedValue({
 			id: 1,
@@ -223,4 +227,25 @@ describe('PROrchestrationView sidebar collapse', () => {
 		expect(getByText('Active PRs')).toBeInTheDocument();
 		expect(container.querySelector('.sidebar')).toBeInTheDocument();
 	});
+
+	test('uses remote-qualified refs when loading tracked PR summary', async () => {
+		const workspace = buildWorkspace();
+		const { getByText } = render(PROrchestrationView, {
+			props: { workspace },
+		});
+
+		const listRow = getByText('repo-one').closest('button');
+		expect(listRow).toBeTruthy();
+		await fireEvent.click(listRow!);
+
+		await waitFor(() => {
+			expect(repoDiffApi.fetchBranchDiffSummary).toHaveBeenCalledWith(
+				'ws-1',
+				'repo-1',
+				'origin/main',
+				'origin/feature/sidebar-collapse',
+			);
+		});
+	});
+
 });
