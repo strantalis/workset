@@ -395,6 +395,13 @@
 		openWorkspaceActionModal('add-repo', workspaceId);
 	};
 
+	const handleRemoveWorkspace = (workspaceId: string): void => {
+		if (fixedWorkspaceId && workspaceId !== fixedWorkspaceId) {
+			return;
+		}
+		openWorkspaceActionModal('remove-workspace', workspaceId);
+	};
+
 	const handleOnboardingStart = async (
 		draft: OnboardingDraft,
 	): Promise<OnboardingStartResult | void> => {
@@ -722,6 +729,7 @@
 							onGroupModeChange={(value) => (worksetHubGroupMode = value)}
 							onLayoutModeChange={(value) => (worksetHubLayoutMode = value)}
 							onAddRepo={handleAddRepo}
+							onRemoveWorkspace={handleRemoveWorkspace}
 							onTogglePin={(workspaceId, nextPinned) =>
 								void toggleWorkspacePin(workspaceId, nextPinned)}
 							onToggleArchived={(workspaceId, archived) =>

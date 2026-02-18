@@ -30,6 +30,7 @@ const baseProps = (onAddRepo: (workspaceId: string) => void) => ({
 	onSelectWorkspace: vi.fn(),
 	onCreateWorkspace: vi.fn(),
 	onAddRepo,
+	onRemoveWorkspace: vi.fn(),
 	onTogglePin: vi.fn(),
 	onToggleArchived: vi.fn(),
 	onOpenPopout: vi.fn(),
@@ -52,6 +53,21 @@ describe('WorksetHubView', () => {
 		await fireEvent.click(getByRole('button', { name: 'Add repo' }));
 
 		expect(onAddRepo).toHaveBeenCalledWith('ws-1');
+	});
+
+	test('opens remove-workspace action from grid menu', async () => {
+		const onRemoveWorkspace = vi.fn<(workspaceId: string) => void>();
+		const { getByRole } = render(WorksetHubView, {
+			props: {
+				...baseProps(vi.fn()),
+				onRemoveWorkspace,
+			},
+		});
+
+		await fireEvent.click(getByRole('button', { name: 'Workset actions' }));
+		await fireEvent.click(getByRole('button', { name: 'Delete workset' }));
+
+		expect(onRemoveWorkspace).toHaveBeenCalledWith('ws-1');
 	});
 
 	test('starts in list layout when list layout prop is provided', () => {
@@ -108,6 +124,22 @@ describe('WorksetHubView', () => {
 		await fireEvent.click(getByRole('button', { name: 'Add repo' }));
 
 		expect(onAddRepo).toHaveBeenCalledWith('ws-1');
+	});
+
+	test('opens remove-workspace action from list menu', async () => {
+		const onRemoveWorkspace = vi.fn<(workspaceId: string) => void>();
+		const { getByRole } = render(WorksetHubView, {
+			props: {
+				...baseProps(vi.fn()),
+				onRemoveWorkspace,
+			},
+		});
+
+		await fireEvent.click(getByRole('button', { name: 'List layout' }));
+		await fireEvent.click(getByRole('button', { name: 'Workset actions' }));
+		await fireEvent.click(getByRole('button', { name: 'Delete workset' }));
+
+		expect(onRemoveWorkspace).toHaveBeenCalledWith('ws-1');
 	});
 
 	test('keeps all-mode order stable instead of activity-sorting', async () => {
