@@ -205,7 +205,7 @@ jobs:
         with:
           go-version-file: wails-ui/workset/go.mod
       - name: Set up Node
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        uses: actions/setup-node@d02c89dce7e1ba9ef629ce0680989b3a1cc72edb # v6.2.0
         with:
           node-version: "24"
       - name: Install create-dmg
@@ -415,7 +415,7 @@ jobs:
         with:
           go-version-file: wails-ui/workset/go.mod
       - name: Set up Node
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        uses: actions/setup-node@d02c89dce7e1ba9ef629ce0680989b3a1cc72edb # v6.2.0
         with:
           node-version: "24"
       - name: Install Wails3 CLI
@@ -492,7 +492,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Set up Node
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        uses: actions/setup-node@d02c89dce7e1ba9ef629ce0680989b3a1cc72edb # v6.2.0
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
@@ -541,7 +541,7 @@ jobs:
         with:
           go-version-file: wails-ui/workset/go.mod
       - name: Set up Node
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        uses: actions/setup-node@d02c89dce7e1ba9ef629ce0680989b3a1cc72edb # v6.2.0
         with:
           node-version: "24"
       - name: Install create-dmg
@@ -751,7 +751,7 @@ jobs:
         with:
           go-version-file: wails-ui/workset/go.mod
       - name: Set up Node
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        uses: actions/setup-node@d02c89dce7e1ba9ef629ce0680989b3a1cc72edb # v6.2.0
         with:
           node-version: "24"
       - name: Install Wails3 CLI
