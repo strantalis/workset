@@ -7,6 +7,8 @@ import * as githubApi from '../../api/github';
 import * as repoDiffApi from '../../api/repo-diff';
 import * as githubReviewApi from '../../api/github/review';
 import * as githubUserApi from '../../api/github/user';
+import * as repoDiffService from '../../repoDiffService';
+import * as state from '../../state';
 
 vi.mock('../../api/github', () => ({
 	createPullRequest: vi.fn(),
@@ -26,7 +28,9 @@ vi.mock('../../api/repo-diff', () => ({
 	fetchBranchFileDiff: vi.fn(),
 	fetchRepoDiffSummary: vi.fn(),
 	fetchRepoFileDiff: vi.fn(),
+	startRepoDiffWatch: vi.fn(),
 	startRepoStatusWatch: vi.fn(),
+	stopRepoDiffWatch: vi.fn(),
 	stopRepoStatusWatch: vi.fn(),
 }));
 
@@ -43,11 +47,23 @@ vi.mock('../../githubOperationService', () => ({
 	subscribeGitHubOperationEvent: vi.fn(() => () => {}),
 }));
 
-vi.mock('@wailsio/runtime', () => ({
-	Browser: {
-		OpenURL: vi.fn(),
-	},
+vi.mock('../../repoDiffService', () => ({
+	subscribeRepoDiffEvent: vi.fn(() => () => {}),
 }));
+
+vi.mock('../../state', () => ({
+	refreshWorkspacesStatus: vi.fn(async () => {}),
+}));
+
+vi.mock('@wailsio/runtime', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('@wailsio/runtime')>();
+	return {
+		...actual,
+		Browser: {
+			OpenURL: vi.fn(),
+		},
+	};
+});
 
 const trackedPr: PullRequestCreated = {
 	repo: 'repo-one',
@@ -161,7 +177,9 @@ describe('PROrchestrationView sidebar collapse', () => {
 		vi.mocked(repoDiffApi.fetchRepoDiffSummary).mockResolvedValue(emptySummary);
 		vi.mocked(repoDiffApi.fetchBranchFileDiff).mockResolvedValue(emptyDiff);
 		vi.mocked(repoDiffApi.fetchRepoFileDiff).mockResolvedValue(emptyDiff);
+		vi.mocked(repoDiffApi.startRepoDiffWatch).mockResolvedValue(true);
 		vi.mocked(repoDiffApi.startRepoStatusWatch).mockResolvedValue(true);
+		vi.mocked(repoDiffApi.stopRepoDiffWatch).mockResolvedValue(true);
 		vi.mocked(repoDiffApi.stopRepoStatusWatch).mockResolvedValue(true);
 
 		vi.mocked(githubReviewApi.deleteReviewComment).mockResolvedValue(undefined);

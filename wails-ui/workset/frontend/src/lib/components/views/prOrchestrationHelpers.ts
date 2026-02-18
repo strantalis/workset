@@ -15,9 +15,7 @@ export type ReviewThread = {
 	outdated: boolean;
 };
 
-export const buildTrackedPrMap = (
-	workspace: Workspace | null,
-): Map<string, PullRequestCreated> => {
+export const buildTrackedPrMap = (workspace: Workspace | null): Map<string, PullRequestCreated> => {
 	const nextMap = new Map<string, PullRequestCreated>();
 	if (!workspace) return nextMap;
 	for (const repo of workspace.repos) {

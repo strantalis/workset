@@ -3,9 +3,11 @@ import type {
 	PullRequestCreated,
 	PullRequestReviewComment,
 	PullRequestStatusResult,
+	RepoDiffFileSummary,
 	Workspace,
 } from '../../types';
 import type { GitHubOperationStage } from '../../api/github';
+import { buildFileLocalCacheKey, buildFilePrCacheKey } from '../../cache/repoDiffCache';
 
 export type RepoDiffPrStatusEvent = {
 	workspaceId: string;
@@ -44,6 +46,10 @@ export type PullRequestReviewThread = {
 	resolved: boolean;
 	outdated: boolean;
 };
+
+type ViewMode = 'active' | 'ready';
+type PrListItemRef = { id: string };
+type PrBranches = { base: string; head: string };
 
 const SIDEBAR_COLLAPSED_KEY = 'workset:pr-orchestration:sidebarCollapsed';
 
@@ -165,6 +171,105 @@ export const mapPrStatusEventToStatus = (
 		checkRunId: check.check_run_id,
 	})),
 });
+
+export const applyPrStatusEvent = (
+	payload: RepoDiffPrStatusEvent,
+	repoId: string,
+	trackedPrMap: Map<string, PullRequestCreated>,
+): {
+	prStatus: PullRequestStatusResult;
+	trackedPr: PullRequestCreated | null;
+	trackedPrMap: Map<string, PullRequestCreated>;
+	shouldReconcileTrackedPr: boolean;
+} => {
+	const prStatus = mapPrStatusEventToStatus(payload);
+	const nextState = payload.status.pullRequest.state.trim().toLowerCase();
+	if (nextState === 'open') {
+		const trackedPr = mapPrStatusEventToTrackedPr(payload);
+		const nextMap = new Map(trackedPrMap);
+		nextMap.set(repoId, trackedPr);
+		return { prStatus, trackedPr, trackedPrMap: nextMap, shouldReconcileTrackedPr: false };
+	}
+
+	const nextMap = new Map(trackedPrMap);
+	const shouldReconcileTrackedPr = nextMap.delete(repoId);
+	return {
+		prStatus,
+		trackedPr: null,
+		trackedPrMap: nextMap,
+		shouldReconcileTrackedPr,
+	};
+};
+
+export const shouldClearSelectedItem = (
+	selectedItemId: string | null,
+	viewMode: ViewMode,
+	allItems: PrListItemRef[],
+	activeItems: PrListItemRef[],
+	readyItems: PrListItemRef[],
+): boolean => {
+	if (!selectedItemId) return false;
+	if (!allItems.some((item) => item.id === selectedItemId)) return true;
+	const visibleItems = viewMode === 'active' ? activeItems : readyItems;
+	return !visibleItems.some((item) => item.id === selectedItemId);
+};
+
+export const buildFileDiffCacheKeyForSource = (
+	wsId: string,
+	repoId: string,
+	file: RepoDiffFileSummary,
+	source: 'pr' | 'local',
+	activePrBranches: PrBranches | null,
+): string => {
+	if (source === 'local') {
+		return buildFileLocalCacheKey(wsId, repoId, file.status ?? '', file.path, file.prevPath ?? '');
+	}
+	if (activePrBranches) {
+		return buildFilePrCacheKey(
+			wsId,
+			repoId,
+			activePrBranches.base,
+			activePrBranches.head,
+			file.path,
+			file.prevPath ?? '',
+		);
+	}
+	return buildFileLocalCacheKey(wsId, repoId, file.status ?? '', file.path, file.prevPath ?? '');
+};
+
+export const createTrackedPrStateReconciler = (deps: {
+	loadTrackedPr: (wsId: string, repoId: string) => Promise<void>;
+	refreshWorkspacesStatus: () => Promise<void>;
+	getSelectedRepoId: () => string;
+	loadRepoLocalStatus: (wsId: string, repoId: string) => Promise<void>;
+	loadDiffSummary: (wsId: string, repoId: string, pr?: PullRequestCreated) => Promise<void>;
+	getTrackedPr: (repoId: string) => PullRequestCreated | undefined;
+	getActiveWatchKey: () => { wsId: string; repoId: string } | null;
+	clearActivePrBranches: () => void;
+	stopActiveWatch: () => Promise<void>;
+}): ((wsId: string, repoId: string) => Promise<void>) => {
+	let inFlight = false;
+	return async (wsId: string, repoId: string): Promise<void> => {
+		if (inFlight) return;
+		inFlight = true;
+		try {
+			await deps.loadTrackedPr(wsId, repoId);
+			await deps.refreshWorkspacesStatus();
+			if (deps.getSelectedRepoId() === repoId) {
+				await deps.loadRepoLocalStatus(wsId, repoId);
+				await deps.loadDiffSummary(wsId, repoId, deps.getTrackedPr(repoId));
+				return;
+			}
+			const activeWatchKey = deps.getActiveWatchKey();
+			if (activeWatchKey?.wsId === wsId && activeWatchKey.repoId === repoId) {
+				deps.clearActivePrBranches();
+				await deps.stopActiveWatch();
+			}
+		} finally {
+			inFlight = false;
+		}
+	};
+};
 
 export const getCheckIcon = (check: PullRequestCheck): string => {
 	if (check.conclusion === 'success') return 'success';

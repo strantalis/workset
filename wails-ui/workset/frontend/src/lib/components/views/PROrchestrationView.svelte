@@ -73,8 +73,6 @@
 	import { subscribeRepoDiffEvent } from '../../repoDiffService';
 	import { refreshWorkspacesStatus } from '../../state';
 	import {
-		buildFileLocalCacheKey,
-		buildFilePrCacheKey,
 		buildSummaryLocalCacheKey,
 		buildSummaryPrCacheKey,
 		repoDiffCache,
@@ -91,11 +89,13 @@
 		getCheckIcon,
 	} from './prOrchestrationHelpers';
 	import {
+		applyPrStatusEvent,
+		buildFileDiffCacheKeyForSource,
 		commitPushStageLabel as formatCommitPushStageLabel,
-		mapPrStatusEventToStatus,
-		mapPrStatusEventToTrackedPr,
+		createTrackedPrStateReconciler,
 		persistSidebarCollapsed,
 		readSidebarCollapsed,
+		shouldClearSelectedItem,
 		type RepoDiffPrStatusEvent,
 	} from './prOrchestrationView.helpers';
 
@@ -153,7 +153,6 @@
 	let diffSummaryRequestId = 0;
 	let localSummaryRequestId = 0;
 	let fileDiffRequestId = 0;
-	let trackedPrReconcileInFlight = false;
 
 	// ─── Checks ─────────────────────────────────────────────────────────
 	let prStatus: PullRequestStatusResult | null = $state(null);
@@ -219,9 +218,8 @@
 		activePrBranches ? `${activePrBranches.base}:${activePrBranches.head}` : '',
 	);
 
-	const getMode = (): 'active' | 'ready' => viewMode;
-	const isActiveDetail = $derived(getMode() === 'active' && selectedItem != null);
-	const isReadyDetail = $derived(getMode() === 'ready' && selectedItem != null);
+	const isActiveDetail = $derived.by(() => viewMode === 'active' && selectedItem != null);
+	const isReadyDetail = $derived.by(() => viewMode === 'ready' && selectedItem != null);
 
 	const checkStats = $derived(buildCheckStats(prStatus));
 	const reviewThreads = $derived(buildReviewThreads(prReviews));
@@ -482,34 +480,6 @@
 		}
 	};
 
-	const buildFileDiffCacheKey = (
-		wsId: string,
-		repoId: string,
-		file: RepoDiffFileSummary,
-		source: 'pr' | 'local',
-	): string => {
-		if (source === 'local') {
-			return buildFileLocalCacheKey(
-				wsId,
-				repoId,
-				file.status ?? '',
-				file.path,
-				file.prevPath ?? '',
-			);
-		}
-		if (activePrBranches) {
-			return buildFilePrCacheKey(
-				wsId,
-				repoId,
-				activePrBranches.base,
-				activePrBranches.head,
-				file.path,
-				file.prevPath ?? '',
-			);
-		}
-		return buildFileLocalCacheKey(wsId, repoId, file.status ?? '', file.path, file.prevPath ?? '');
-	};
-
 	const loadFileDiff = async (
 		wsId: string,
 		repoId: string,
@@ -520,7 +490,7 @@
 		const requestId = ++fileDiffRequestId;
 		fileDiffLoading = true;
 		fileDiffError = null;
-		const cacheKey = buildFileDiffCacheKey(wsId, repoId, file, source);
+		const cacheKey = buildFileDiffCacheKeyForSource(wsId, repoId, file, source, activePrBranches);
 		const cached = repoDiffCache.getFileDiff(cacheKey);
 		if (cached) {
 			fileDiffContent = cached.value;
@@ -651,29 +621,20 @@
 		}
 	};
 
-	const openExternalUrl = (url: string | undefined | null): void => {
-		if (url) Browser.OpenURL(url);
-	};
+	const openExternalUrl = (url: string | undefined | null): void =>
+		void (url && Browser.OpenURL(url));
 
-	const reconcileTrackedPrState = async (wsId: string, repoId: string): Promise<void> => {
-		if (trackedPrReconcileInFlight) return;
-		trackedPrReconcileInFlight = true;
-		try {
-			await loadTrackedPr(wsId, repoId);
-			await refreshWorkspacesStatus(true);
-			if (selectedRepoId === repoId) {
-				await loadRepoLocalStatus(wsId, repoId);
-				await loadDiffSummary(wsId, repoId, trackedPrMap.get(repoId));
-				return;
-			}
-			if (activeWatchKey?.wsId === wsId && activeWatchKey.repoId === repoId) {
-				activePrBranches = null;
-				await stopActiveWatch();
-			}
-		} finally {
-			trackedPrReconcileInFlight = false;
-		}
-	};
+	const reconcileTrackedPrState = createTrackedPrStateReconciler({
+		loadTrackedPr,
+		refreshWorkspacesStatus: () => refreshWorkspacesStatus(true),
+		getSelectedRepoId: () => selectedRepoId,
+		loadRepoLocalStatus,
+		loadDiffSummary,
+		getTrackedPr: (repoId) => trackedPrMap.get(repoId),
+		getActiveWatchKey: () => activeWatchKey,
+		clearActivePrBranches: () => (activePrBranches = null),
+		stopActiveWatch,
+	});
 
 	// ─── Effects ────────────────────────────────────────────────────────
 
@@ -758,22 +719,11 @@
 			(payload) => {
 				if (!workspace || !selectedItem) return;
 				if (payload.workspaceId !== workspace.id || payload.repoId !== selectedItem.repoId) return;
-				prStatus = mapPrStatusEventToStatus(payload);
-				const nextState = payload.status.pullRequest.state.trim().toLowerCase();
-				if (nextState === 'open') {
-					const tracked = mapPrStatusEventToTrackedPr(payload);
-					trackedPr = tracked;
-					const nextMap = new Map(trackedPrMap);
-					nextMap.set(selectedItem.repoId, tracked);
-					trackedPrMap = nextMap;
-					return;
-				}
-
-				const nextMap = new Map(trackedPrMap);
-				const hadTracked = nextMap.delete(selectedItem.repoId);
-				trackedPrMap = nextMap;
-				trackedPr = null;
-				if (hadTracked) {
+				const next = applyPrStatusEvent(payload, selectedItem.repoId, trackedPrMap);
+				prStatus = next.prStatus;
+				trackedPr = next.trackedPr;
+				trackedPrMap = next.trackedPrMap;
+				if (next.shouldReconcileTrackedPr) {
 					void reconcileTrackedPrState(workspace.id, selectedItem.repoId);
 				}
 			},
@@ -782,19 +732,17 @@
 	});
 
 	$effect(() => {
-		if (selectedItemId && !prItems.find((i) => i.id === selectedItemId)) {
-			selectedItemId = null;
+		if (
+			!shouldClearSelectedItem(
+				selectedItemId,
+				viewMode,
+				prItems,
+				partitions.active,
+				partitions.readyToPR,
+			)
+		) {
+			return;
 		}
-	});
-
-	$effect(() => {
-		const id = selectedItemId;
-		if (!id) return;
-		const visibleInMode =
-			viewMode === 'active'
-				? partitions.active.some((item) => item.id === id)
-				: partitions.readyToPR.some((item) => item.id === id);
-		if (visibleInMode) return;
 		selectedItemId = null;
 		activeTab = 'files';
 	});
