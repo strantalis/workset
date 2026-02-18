@@ -32,7 +32,10 @@ func UpdateAgentsFile(root string, cfg config.WorkspaceConfig, state State) erro
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return err
 	}
-	return os.WriteFile(ClaudeFile(root), []byte(content), 0o644)
+	// Keep CLAUDE.md as a best-effort mirror so AGENTS.md generation does not
+	// fail if the mirror path is unwritable or otherwise invalid.
+	_ = os.WriteFile(ClaudeFile(root), []byte(content), 0o644)
+	return nil
 }
 
 func renderAgentsContent(path, section string) (string, error) {
