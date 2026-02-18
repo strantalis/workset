@@ -247,5 +247,4 @@ describe('PROrchestrationView sidebar collapse', () => {
 			);
 		});
 	});
-
 });

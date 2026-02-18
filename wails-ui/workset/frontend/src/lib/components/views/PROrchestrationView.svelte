@@ -21,7 +21,6 @@
 	} from '@lucide/svelte';
 	import { Browser } from '@wailsio/runtime';
 	import type {
-		PullRequestCheck,
 		PullRequestCreated,
 		PullRequestReviewComment,
 		PullRequestStatusResult,
@@ -78,6 +77,14 @@
 	import { resolveBranchRefs } from '../../diff/branchRefs';
 	import ResizablePanel from '../ui/ResizablePanel.svelte';
 	import { mapWorkspaceToPrItems } from '../../view-models/prViewModel';
+	import {
+		buildCheckStats,
+		buildDiffTargetKey,
+		buildReviewThreads,
+		buildTrackedPrMap,
+		formatCheckDuration,
+		getCheckIcon,
+	} from './prOrchestrationHelpers';
 
 	interface Props {
 		workspace: Workspace | null;
@@ -93,19 +100,9 @@
 	// ─── Tracked PR map (drives active/ready partition) ────────────────
 	let trackedPrMap: Map<string, PullRequestCreated> = $state(new Map());
 
-	const loadTrackedPrMap = (ws: Workspace): void => {
-		const nextMap = new Map<string, PullRequestCreated>();
-		for (const repo of ws.repos) {
-			if (repo.trackedPullRequest) {
-				nextMap.set(repo.id, repo.trackedPullRequest);
-			}
-		}
-		trackedPrMap = nextMap;
-	};
-
 	$effect(() => {
 		if (workspace) {
-			loadTrackedPrMap(workspace);
+			trackedPrMap = buildTrackedPrMap(workspace);
 		} else {
 			trackedPrMap = new Map();
 		}
@@ -235,41 +232,8 @@
 	const isActiveDetail = $derived(getMode() === 'active' && selectedItem != null);
 	const isReadyDetail = $derived(getMode() === 'ready' && selectedItem != null);
 
-	const checkStats = $derived.by(() => {
-		const checks = prStatus?.checks ?? [];
-		let passed = 0;
-		let failed = 0;
-		let pending = 0;
-		for (const c of checks) {
-			if (c.conclusion === 'success') passed++;
-			else if (c.conclusion === 'failure') failed++;
-			else pending++;
-		}
-		return { passed, failed, pending, total: checks.length };
-	});
-
-	const reviewThreads = $derived.by(() => {
-		const threadMap = new Map<string, PullRequestReviewComment[]>();
-		for (const comment of prReviews) {
-			const key = comment.threadId ?? `single-${comment.id}`;
-			const arr = threadMap.get(key) ?? [];
-			arr.push(comment);
-			threadMap.set(key, arr);
-		}
-		return Array.from(threadMap.entries())
-			.map(([id, comments]) => ({
-				id,
-				comments: comments.sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? '')),
-				path: comments[0]?.path ?? '',
-				line: comments[0]?.line,
-				resolved: comments[0]?.resolved ?? false,
-				outdated: comments[0]?.outdated ?? false,
-			}))
-			.sort((a, b) => {
-				if (a.resolved !== b.resolved) return a.resolved ? 1 : -1;
-				return a.path.localeCompare(b.path);
-			});
-	});
+	const checkStats = $derived(buildCheckStats(prStatus));
+	const reviewThreads = $derived(buildReviewThreads(prReviews));
 
 	const unresolvedCount = $derived(reviewThreads.filter((t) => !t.resolved).length);
 
@@ -351,15 +315,6 @@
 	});
 
 	// ─── Actions ────────────────────────────────────────────────────────
-
-	const buildDiffTargetKey = (
-		wsId: string,
-		repoId: string,
-		pr?: PullRequestCreated,
-	): string =>
-		pr
-			? `${wsId}:${repoId}:pr:${pr.number}:${pr.baseRepo}:${pr.baseBranch}:${pr.headRepo}:${pr.headBranch}`
-			: `${wsId}:${repoId}:local`;
 
 	const resolvePrBranches = async (
 		wsId: string,
@@ -973,24 +928,6 @@
 	});
 
 	// ─── Helpers ────────────────────────────────────────────────────────
-
-	const getCheckIcon = (check: PullRequestCheck): string => {
-		if (check.conclusion === 'success') return 'success';
-		if (check.conclusion === 'failure') return 'failure';
-		if (check.status === 'in_progress' || check.status === 'queued') return 'running';
-		return 'pending';
-	};
-
-	const formatCheckDuration = (check: PullRequestCheck): string => {
-		if (!check.startedAt || !check.completedAt) {
-			if (check.status === 'in_progress' || check.status === 'queued') return 'Running...';
-			return 'Pending';
-		}
-		const ms = new Date(check.completedAt).getTime() - new Date(check.startedAt).getTime();
-		if (ms < 1000) return `${ms}ms`;
-		if (ms < 60000) return `${Math.round(ms / 1000)}s`;
-		return `${Math.round(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`;
-	};
 
 	const filesForDetail = $derived.by(() => {
 		const src = selectedSource;
