@@ -30,6 +30,10 @@
 		onCheckForUpdates,
 		onUpdateAndRestart,
 	}: Props = $props();
+	const COMMIT_DISPLAY_LENGTH = 12;
+
+	const shortCommit = (commit: string): string =>
+		commit.length > COMMIT_DISPLAY_LENGTH ? commit.slice(0, COMMIT_DISPLAY_LENGTH) : commit;
 
 	const copyVersionInfo = async (): Promise<void> => {
 		const versionText = `Workset ${appVersion?.version}${appVersion?.dirty ? '+dirty' : ''} (${appVersion?.commit || 'unknown'})`;
@@ -86,7 +90,9 @@
 			{#if appVersion.commit}
 				<div class="version-row">
 					<span class="row-label">Commit</span>
-					<span class="row-value">{appVersion.commit}</span>
+					<span class="row-value commit-hash" title={appVersion.commit}
+						>{shortCommit(appVersion.commit)}</span
+					>
 				</div>
 			{/if}
 			<div class="version-row">
@@ -235,6 +241,13 @@
 		font-size: var(--text-mono-md);
 		font-family: var(--font-mono);
 		color: var(--text);
+	}
+
+	.commit-hash {
+		max-width: 12ch;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.row-value-with-action {

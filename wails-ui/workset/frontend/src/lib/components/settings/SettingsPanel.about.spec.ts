@@ -158,6 +158,32 @@ describe('SettingsPanel About Section', () => {
 		expect(getByText('def456')).toBeInTheDocument();
 	});
 
+	test('truncates long commit hash for display while keeping full value in title', async () => {
+		vi.mocked(api.fetchSettings).mockResolvedValue({
+			configPath: '/test/config.yaml',
+			defaults: buildDefaults(),
+		});
+
+		const longCommit = '5e8f013aa0e9305c47cdacfb6b77bc6784c128f6';
+		vi.mocked(api.fetchAppVersion).mockResolvedValue({
+			version: '1.2.3',
+			commit: longCommit,
+			dirty: false,
+		});
+
+		const { getByText, queryByText } = render(SettingsPanel, {
+			props: {
+				onClose: mockOnClose,
+			},
+		});
+
+		await waitForLoadingAndClickAbout(getByText, queryByText);
+
+		const commitText = getByText('5e8f013aa0e9');
+		expect(commitText).toBeInTheDocument();
+		expect(commitText).toHaveAttribute('title', longCommit);
+	});
+
 	test('displays version as dev when version is dev', async () => {
 		vi.mocked(api.fetchSettings).mockResolvedValue({
 			configPath: '/test/config.yaml',

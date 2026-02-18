@@ -214,7 +214,9 @@ jobs:
       - name: Install Wails3 CLI
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha.70
       - name: Build Wails app
-        run: wails3 package LDFLAGS='-s -w -X main.appVersion=${{ needs.prepare-alpha.outputs.alpha_version }} -X main.appCommit=${{ github.sha }}'
+        env:
+          LDFLAGS: "-s -w -X main.appVersion=${{ needs.prepare-alpha.outputs.alpha_version }} -X main.appCommit=${{ github.sha }}"
+        run: wails3 package
         working-directory: wails-ui/workset
       - name: Signing status
         id: signing
@@ -461,7 +463,9 @@ jobs:
       - name: Install Wails3 CLI
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha.70
       - name: Build Wails app
-        run: wails3 package LDFLAGS='-s -w -X main.appVersion=${{ needs.prepare-alpha.outputs.alpha_version }} -X main.appCommit=${{ github.sha }}'
+        env:
+          LDFLAGS: "-s -w -X main.appVersion=${{ needs.prepare-alpha.outputs.alpha_version }} -X main.appCommit=${{ github.sha }}"
+        run: wails3 package
         working-directory: wails-ui/workset
       - name: Rename artifacts
         shell: pwsh
@@ -589,7 +593,9 @@ jobs:
       - name: Install Wails3 CLI
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha.70
       - name: Build Wails app
-        run: wails3 package LDFLAGS='-s -w -X main.appVersion=${{ needs.stable-release.outputs.tag }} -X main.appCommit=${{ github.sha }}'
+        env:
+          LDFLAGS: "-s -w -X main.appVersion=${{ needs.stable-release.outputs.tag }} -X main.appCommit=${{ github.sha }}"
+        run: wails3 package
         working-directory: wails-ui/workset
       - name: Signing status
         id: signing
@@ -836,7 +842,9 @@ jobs:
       - name: Install Wails3 CLI
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha.70
       - name: Build Wails app
-        run: wails3 package LDFLAGS='-s -w -X main.appVersion=${{ needs.stable-release.outputs.tag }} -X main.appCommit=${{ github.sha }}'
+        env:
+          LDFLAGS: "-s -w -X main.appVersion=${{ needs.stable-release.outputs.tag }} -X main.appCommit=${{ github.sha }}"
+        run: wails3 package
         working-directory: wails-ui/workset
       - name: Rename artifacts
         shell: pwsh
