@@ -16,8 +16,11 @@
 		removeWorkspace,
 		renameWorkspace,
 		unarchiveWorkspace,
-	} from '../api';
+	} from '../api/workspaces';
 	import type { Repo, Workspace } from '../types';
+	import WorkspaceManagerCreateWorkspaceSection from './workspace-manager/WorkspaceManagerCreateWorkspaceSection.svelte';
+	import WorkspaceManagerRepoListSection from './workspace-manager/WorkspaceManagerRepoListSection.svelte';
+	import WorkspaceManagerWorkspaceList from './workspace-manager/WorkspaceManagerWorkspaceList.svelte';
 
 	interface Props {
 		onClose: () => void;
@@ -326,161 +329,35 @@
 		<button class="ghost" type="button" onclick={onClose}>Close</button>
 	</header>
 
-	<section class="create">
-		<div class="section-title">Create workspace</div>
-		<div class="form-grid">
-			<label class="field">
-				<span>Name</span>
-				<input
-					placeholder="acme"
-					bind:this={createInput}
-					bind:value={createName}
-					autocapitalize="off"
-					autocorrect="off"
-					spellcheck="false"
-					onkeydown={(event) => {
-						if (event.key === 'Enter') void handleCreate();
-					}}
-				/>
-			</label>
-			<label class="field span-2">
-				<span>Path (optional)</span>
-				<input
-					placeholder="~/workspaces/acme"
-					bind:value={createPath}
-					autocapitalize="off"
-					autocorrect="off"
-					spellcheck="false"
-					onkeydown={(event) => {
-						if (event.key === 'Enter') void handleCreate();
-					}}
-				/>
-			</label>
-		</div>
-		<div class="inline-actions">
-			<button class="primary" type="button" onclick={handleCreate} disabled={creating}>
-				{creating ? 'Creating…' : 'Create workspace'}
-			</button>
-			{#if createError}
-				<div class="note error">{createError}</div>
-			{:else if createSuccess}
-				<div class="note success">{createSuccess}</div>
-			{/if}
-		</div>
-	</section>
+	<WorkspaceManagerCreateWorkspaceSection
+		{createName}
+		{createPath}
+		{createError}
+		{createSuccess}
+		{creating}
+		onCreateNameChange={(value) => (createName = value)}
+		onCreatePathChange={(value) => (createPath = value)}
+		onCreateInputChange={(input) => (createInput = input)}
+		onCreate={() => void handleCreate()}
+	/>
 
 	<section class="list">
-		<div class="list-header">
-			<div class="section-title">Workspace list</div>
-			<label class="toggle">
-				<input type="checkbox" bind:checked={showArchived} />
-				<span>Show archived</span>
-			</label>
-		</div>
-		{#if workspaceError}
-			<div class="note error">{workspaceError}</div>
-		{/if}
-
 		<div class="list-grid">
-			<div class="workspace-column">
-				{#if activeWorkspaces.length === 0}
-					<div class="empty">No active workspaces yet.</div>
-				{/if}
-				{#each activeWorkspaces as workspace (workspace.id)}
-					<div class:active={workspace.id === selectedWorkspaceId} class="workspace-card">
-						<button
-							class="select"
-							type="button"
-							onclick={() => selectManagerWorkspace(workspace.id)}
-						>
-							<div class="name">{workspace.name}</div>
-							<div class="path">{workspace.path}</div>
-						</button>
-						<div class="card-actions">
-							<button class="ghost" type="button" onclick={() => selectWorkspace(workspace.id)}>
-								Open
-							</button>
-							<button class="ghost" type="button" onclick={() => handleArchive(workspace)}>
-								Archive
-							</button>
-							{#if confirmWorkspaceRemove === workspace.id}
-								<button
-									class="danger"
-									type="button"
-									onclick={() => handleRemoveWorkspace(workspace)}
-								>
-									Confirm remove
-								</button>
-								<button class="ghost" type="button" onclick={() => (confirmWorkspaceRemove = null)}>
-									Cancel
-								</button>
-							{:else}
-								<button
-									class="ghost"
-									type="button"
-									onclick={() => (confirmWorkspaceRemove = workspace.id)}
-								>
-									Remove
-								</button>
-							{/if}
-						</div>
-					</div>
-				{/each}
-
-				{#if showArchived}
-					<div class="divider">Archived</div>
-					{#if archivedWorkspaces.length === 0}
-						<div class="empty">No archived workspaces.</div>
-					{/if}
-					{#each archivedWorkspaces as workspace (workspace.id)}
-						<div
-							class:active={workspace.id === selectedWorkspaceId}
-							class="workspace-card archived"
-						>
-							<button
-								class="select"
-								type="button"
-								onclick={() => selectManagerWorkspace(workspace.id)}
-							>
-								<div class="name">{workspace.name}</div>
-								<div class="path">{workspace.path}</div>
-								{#if workspace.archivedReason}
-									<div class="reason">{workspace.archivedReason}</div>
-								{/if}
-							</button>
-							<div class="card-actions">
-								<button class="ghost" type="button" onclick={() => handleUnarchive(workspace)}>
-									Unarchive
-								</button>
-								{#if confirmWorkspaceRemove === workspace.id}
-									<button
-										class="danger"
-										type="button"
-										onclick={() => handleRemoveWorkspace(workspace)}
-									>
-										Confirm remove
-									</button>
-									<button
-										class="ghost"
-										type="button"
-										onclick={() => (confirmWorkspaceRemove = null)}
-									>
-										Cancel
-									</button>
-								{:else}
-									<button
-										class="ghost"
-										type="button"
-										onclick={() => (confirmWorkspaceRemove = workspace.id)}
-									>
-										Remove
-									</button>
-								{/if}
-							</div>
-						</div>
-					{/each}
-				{/if}
-			</div>
+			<WorkspaceManagerWorkspaceList
+				{showArchived}
+				{workspaceError}
+				{activeWorkspaces}
+				{archivedWorkspaces}
+				{selectedWorkspaceId}
+				{confirmWorkspaceRemove}
+				onShowArchivedChange={(value) => (showArchived = value)}
+				onSelectWorkspace={selectManagerWorkspace}
+				onOpenWorkspace={selectWorkspace}
+				onArchiveWorkspace={(workspace) => void handleArchive(workspace)}
+				onUnarchiveWorkspace={(workspace) => void handleUnarchive(workspace)}
+				onConfirmRemoveWorkspace={(workspaceId) => (confirmWorkspaceRemove = workspaceId)}
+				onRemoveWorkspace={(workspace) => void handleRemoveWorkspace(workspace)}
+			/>
 
 			<div class="details-column">
 				{#if selectedWorkspace}
@@ -584,88 +461,18 @@
 							<div class="hint">Removes only update the workset config. Files stay on disk.</div>
 						</div>
 
-						<div class="repo-list">
-							<div class="section-title">Repos</div>
-							{#if selectedWorkspace.repos.length === 0}
-								<div class="empty">No repos configured yet.</div>
-							{/if}
-							{#each selectedWorkspace.repos as repo (repo.name)}
-								<div class:active={repo.name === selectedRepoName} class="repo-row">
-									<button
-										class="repo-select"
-										type="button"
-										onclick={() => (selectedRepoName = repo.name)}
-									>
-										<div class="repo-name">{repo.name}</div>
-										<div class="repo-path">{repo.path}</div>
-									</button>
-									<div class="card-actions">
-										{#if confirmRepoRemove?.repoName === repo.name}
-											<div class="remove-options">
-												<label class="option">
-													<input type="checkbox" bind:checked={removeRepoDeleteWorktree} />
-													<span>Also delete worktrees for this repo</span>
-												</label>
-												<label class="option">
-													<input type="checkbox" bind:checked={removeRepoDeleteLocal} />
-													<span>Also delete local cache for this repo</span>
-												</label>
-												{#if removeRepoDeleteWorktree || removeRepoDeleteLocal}
-													<div class="hint">
-														Destructive deletes are permanent and cannot be undone.
-													</div>
-												{/if}
-												{#if repo.statusKnown === false && (removeRepoDeleteWorktree || removeRepoDeleteLocal)}
-													<div class="note warning">
-														Repo status is still loading. Destructive deletes may be blocked if the
-														repo is dirty.
-													</div>
-												{/if}
-												{#if repo.dirty && (removeRepoDeleteWorktree || removeRepoDeleteLocal)}
-													<div class="note warning">
-														Uncommitted changes detected. Destructive deletes will be blocked until
-														the repo is clean.
-													</div>
-												{/if}
-											</div>
-											<button
-												class="danger"
-												type="button"
-												onclick={() => handleRemoveRepo(selectedWorkspace, repo)}
-											>
-												Confirm remove
-											</button>
-											<button
-												class="ghost"
-												type="button"
-												onclick={() => {
-													confirmRepoRemove = null;
-													removeRepoDeleteWorktree = false;
-													removeRepoDeleteLocal = false;
-												}}
-											>
-												Cancel
-											</button>
-										{:else}
-											<button
-												class="ghost"
-												type="button"
-												onclick={() => {
-													confirmRepoRemove = {
-														workspaceId: selectedWorkspace.id,
-														repoName: repo.name,
-													};
-													removeRepoDeleteWorktree = false;
-													removeRepoDeleteLocal = false;
-												}}
-											>
-												Remove
-											</button>
-										{/if}
-									</div>
-								</div>
-							{/each}
-						</div>
+						<WorkspaceManagerRepoListSection
+							{selectedWorkspace}
+							{selectedRepoName}
+							{confirmRepoRemove}
+							{removeRepoDeleteWorktree}
+							{removeRepoDeleteLocal}
+							onSelectRepoName={(repoName) => (selectedRepoName = repoName)}
+							onConfirmRepoRemove={(value) => (confirmRepoRemove = value)}
+							onRemoveRepoDeleteWorktreeChange={(value) => (removeRepoDeleteWorktree = value)}
+							onRemoveRepoDeleteLocalChange={(value) => (removeRepoDeleteLocal = value)}
+							onRemoveRepo={(workspace, repo) => void handleRemoveRepo(workspace, repo)}
+						/>
 					</div>
 				{:else}
 					<div class="details-card empty">
@@ -700,13 +507,13 @@
 	}
 
 	.title {
-		font-size: 20px;
+		font-size: var(--text-2xl);
 		font-weight: 600;
 	}
 
 	.subtitle {
 		color: var(--muted);
-		font-size: 13px;
+		font-size: var(--text-base);
 	}
 
 	.ghost {
@@ -728,16 +535,6 @@
 		cursor: pointer;
 	}
 
-	.danger {
-		background: rgba(255, 107, 107, 0.12);
-		border: 1px solid rgba(255, 107, 107, 0.5);
-		color: #ff9a9a;
-		padding: 6px 12px;
-		border-radius: 8px;
-		cursor: pointer;
-	}
-
-	.create,
 	.list {
 		background: var(--panel);
 		border: 1px solid var(--border);
@@ -746,7 +543,7 @@
 	}
 
 	.section-title {
-		font-size: 13px;
+		font-size: var(--text-base);
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
 		color: var(--muted);
@@ -764,7 +561,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
@@ -774,7 +571,7 @@
 		border-radius: 10px;
 		color: var(--text);
 		padding: 8px 10px;
-		font-size: 14px;
+		font-size: var(--text-md);
 	}
 
 	.span-2 {
@@ -789,7 +586,7 @@
 	}
 
 	.note {
-		font-size: 13px;
+		font-size: var(--text-base);
 	}
 
 	.note.error {
@@ -804,40 +601,6 @@
 		color: var(--warning);
 	}
 
-	.option {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		font-size: 13px;
-		color: var(--text);
-	}
-
-	.option input {
-		accent-color: var(--accent);
-	}
-
-	.remove-options {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		margin-bottom: 6px;
-	}
-
-	.list-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 16px;
-	}
-
-	.toggle {
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		color: var(--muted);
-		font-size: 12px;
-	}
-
 	.list-grid {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
@@ -845,68 +608,10 @@
 		margin-top: 16px;
 	}
 
-	.workspace-column,
 	.details-column {
 		display: flex;
 		flex-direction: column;
 		gap: 12px;
-	}
-
-	.workspace-card {
-		border: 1px solid var(--border);
-		border-radius: 14px;
-		padding: 12px;
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-		background: var(--panel-soft);
-	}
-
-	.workspace-card.archived {
-		border-style: dashed;
-		opacity: 0.8;
-	}
-
-	.workspace-card.active {
-		border-color: var(--accent);
-		box-shadow: inset 0 0 0 1px rgba(45, 140, 255, 0.35);
-	}
-
-	.select {
-		background: none;
-		border: none;
-		text-align: left;
-		cursor: pointer;
-		color: inherit;
-	}
-
-	.name {
-		font-size: 15px;
-		font-weight: 600;
-	}
-
-	.path,
-	.reason {
-		font-size: 12px;
-		color: var(--muted);
-	}
-
-	.reason {
-		margin-top: 6px;
-	}
-
-	.card-actions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
-	}
-
-	.divider {
-		margin-top: 12px;
-		font-size: 12px;
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
-		color: var(--muted);
 	}
 
 	.details-card {
@@ -932,12 +637,12 @@
 	}
 
 	.details-title {
-		font-size: 18px;
+		font-size: var(--text-xl);
 		font-weight: 600;
 	}
 
 	.details-sub {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
@@ -946,62 +651,23 @@
 		border: 1px solid var(--border);
 		border-radius: 999px;
 		padding: 4px 10px;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
-	.repo-add,
-	.repo-list {
+	.repo-add {
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
 	}
 
 	.hint {
-		font-size: 12px;
-		color: var(--muted);
-	}
-
-	.repo-row {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		border: 1px solid var(--border);
-		border-radius: 12px;
-		padding: 10px 12px;
-		background: rgba(6, 12, 18, 0.4);
-	}
-
-	.repo-row.active {
-		border-color: var(--accent);
-		box-shadow: inset 0 0 0 1px rgba(45, 140, 255, 0.35);
-	}
-
-	.repo-select {
-		flex: 1;
-		background: none;
-		border: none;
-		color: inherit;
-		text-align: left;
-		cursor: pointer;
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-
-	.repo-name {
-		font-size: 14px;
-		font-weight: 600;
-	}
-
-	.repo-path {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
 	.empty {
-		font-size: 13px;
+		font-size: var(--text-base);
 		color: var(--muted);
 		padding: 8px 0;
 	}

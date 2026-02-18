@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/strantalis/workset/internal/config"
 )
@@ -139,7 +140,7 @@ func Init(root, name string, defaults config.Defaults) (Workspace, error) {
 		return Workspace{}, err
 	}
 
-	branch := name
+	branch := WorkspaceBranchName(name)
 	if branch == "" {
 		branch = defaults.BaseBranch
 	}
@@ -167,7 +168,7 @@ func Load(root string, defaults config.Defaults) (Workspace, error) {
 	state, err := loadState(root)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			branch := cfg.Name
+			branch := WorkspaceBranchName(cfg.Name)
 			if branch == "" {
 				branch = defaults.BaseBranch
 			}
@@ -180,8 +181,12 @@ func Load(root string, defaults config.Defaults) (Workspace, error) {
 		}
 	}
 
-	if cfg.Name != "" && state.CurrentBranch != cfg.Name && !UseBranchDirs(root) {
-		state = State{CurrentBranch: cfg.Name}
+	desiredBranch := WorkspaceBranchName(cfg.Name)
+	if desiredBranch == "" {
+		desiredBranch = defaults.BaseBranch
+	}
+	if desiredBranch != "" && state.CurrentBranch != desiredBranch && !UseBranchDirs(root) {
+		state = State{CurrentBranch: desiredBranch}
 		if err := saveState(root, state); err != nil {
 			return Workspace{}, err
 		}
@@ -260,6 +265,26 @@ func WorkspaceDirName(name string) string {
 	return dir
 }
 
+// WorkspaceBranchName derives a git-safe branch name from the workspace name.
+// Valid git branch names are preserved as-is to avoid changing existing behavior.
+func WorkspaceBranchName(name string) string {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return ""
+	}
+	if isGitSafeBranchName(trimmed) {
+		return trimmed
+	}
+	sanitized := sanitizeWorkspaceBranchName(trimmed)
+	if sanitized == "" {
+		return "workspace-" + shortHash(trimmed)
+	}
+	if sanitized == trimmed {
+		return sanitized
+	}
+	return sanitized + "-" + shortHash(trimmed)
+}
+
 func BranchNameFromDir(name string) string {
 	if name == "" {
 		return ""
@@ -310,6 +335,86 @@ func sanitizeWorktreeName(branch string) string {
 		return "branch"
 	}
 	return s
+}
+
+func sanitizeWorkspaceBranchName(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '/':
+			b.WriteRune(r)
+		case unicode.IsSpace(r):
+			b.WriteByte('-')
+		default:
+			b.WriteByte('-')
+		}
+	}
+	candidate := strings.Trim(b.String(), "/-")
+	if candidate == "" {
+		return ""
+	}
+	rawParts := strings.Split(candidate, "/")
+	parts := make([]string, 0, len(rawParts))
+	for _, part := range rawParts {
+		part = strings.Trim(part, "-")
+		if part == "" {
+			continue
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, "/")
+}
+
+func isGitSafeBranchName(name string) bool {
+	if hasInvalidGitBranchShape(name) {
+		return false
+	}
+	if hasInvalidGitBranchParts(strings.Split(name, "/")) {
+		return false
+	}
+	for _, r := range name {
+		if isInvalidGitBranchRune(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func hasInvalidGitBranchShape(name string) bool {
+	if name == "" || name == "@" || strings.HasPrefix(name, "-") {
+		return true
+	}
+	if strings.HasPrefix(name, "/") || strings.HasSuffix(name, "/") || strings.Contains(name, "//") {
+		return true
+	}
+	if strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".") {
+		return true
+	}
+	return strings.Contains(name, "..") || strings.Contains(name, "@{")
+}
+
+func hasInvalidGitBranchParts(parts []string) bool {
+	for _, part := range parts {
+		if part == "" {
+			return true
+		}
+		if strings.HasPrefix(part, ".") || strings.HasSuffix(part, ".lock") {
+			return true
+		}
+	}
+	return false
+}
+
+func isInvalidGitBranchRune(r rune) bool {
+	if r < 32 || r == 127 || unicode.IsSpace(r) {
+		return true
+	}
+	switch r {
+	case '~', '^', ':', '?', '*', '[', '\\':
+		return true
+	default:
+		return false
+	}
 }
 
 func shortHash(input string) string {

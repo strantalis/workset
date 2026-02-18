@@ -53,7 +53,7 @@ func TestAppHookObserverEmitsProgress(t *testing.T) {
 		Error:     "boom",
 	})
 
-	if eventName != "hooks:progress" {
+	if eventName != EventHooksProgress {
 		t.Fatalf("unexpected event: %s", eventName)
 	}
 	if payload.Operation != "workspace.create" {

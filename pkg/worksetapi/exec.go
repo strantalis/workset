@@ -50,7 +50,7 @@ func (s *Service) Exec(ctx context.Context, input ExecInput) error {
 
 	if wsName != "" {
 		if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, _ config.GlobalConfigLoadInfo) error {
-			registerWorkspace(cfg, wsName, root, s.clock())
+			registerWorkspace(cfg, wsName, root, s.clock(), "")
 			return nil
 		}); err != nil {
 			return err

@@ -1,10 +1,6 @@
 package sessiond
 
-import (
-	"encoding/json"
-
-	"github.com/strantalis/workset/pkg/kitty"
-)
+import "encoding/json"
 
 const ProtocolVersion = 2
 
@@ -33,6 +29,7 @@ type CreateResponse struct {
 type SendRequest struct {
 	SessionID string `json:"sessionId"`
 	Data      string `json:"data"`
+	Owner     string `json:"owner,omitempty"`
 }
 
 type ResizeRequest struct {
@@ -45,25 +42,6 @@ type StopRequest struct {
 	SessionID string `json:"sessionId"`
 }
 
-type BacklogRequest struct {
-	SessionID string `json:"sessionId"`
-	Since     int64  `json:"since"`
-}
-
-type SnapshotRequest struct {
-	SessionID string `json:"sessionId"`
-}
-
-type BootstrapRequest struct {
-	SessionID string `json:"sessionId"`
-}
-
-type AckRequest struct {
-	SessionID string `json:"sessionId"`
-	StreamID  string `json:"streamId"`
-	Bytes     int64  `json:"bytes"`
-}
-
 type ShutdownRequest struct {
 	Source     string `json:"source,omitempty"`
 	Reason     string `json:"reason,omitempty"`
@@ -71,43 +49,14 @@ type ShutdownRequest struct {
 	Executable string `json:"executable,omitempty"`
 }
 
-type BacklogResponse struct {
-	SessionID  string `json:"sessionId"`
-	Data       string `json:"data"`
-	NextOffset int64  `json:"nextOffset"`
-	Truncated  bool   `json:"truncated"`
-	Source     string `json:"source,omitempty"`
+type OwnerRequest struct {
+	SessionID string `json:"sessionId"`
+	Owner     string `json:"owner"`
 }
 
-type SnapshotResponse struct {
-	SessionID     string          `json:"sessionId"`
-	Data          string          `json:"data"`
-	Source        string          `json:"source,omitempty"`
-	Kitty         *kitty.Snapshot `json:"kitty,omitempty"`
-	AltScreen     bool            `json:"altScreen,omitempty"`
-	MouseMask     uint8           `json:"mouseMask,omitempty"`
-	Mouse         bool            `json:"mouse,omitempty"`
-	MouseSGR      bool            `json:"mouseSGR,omitempty"`
-	MouseEncoding string          `json:"mouseEncoding,omitempty"`
-	SafeToReplay  bool            `json:"safeToReplay,omitempty"`
-}
-
-type BootstrapResponse struct {
-	SessionID        string          `json:"sessionId"`
-	Snapshot         string          `json:"snapshot"`
-	SnapshotSource   string          `json:"snapshotSource,omitempty"`
-	Kitty            *kitty.Snapshot `json:"kitty,omitempty"`
-	Backlog          string          `json:"backlog,omitempty"`
-	NextOffset       int64           `json:"nextOffset,omitempty"`
-	BacklogTruncated bool            `json:"backlogTruncated,omitempty"`
-	BacklogSource    string          `json:"backlogSource,omitempty"`
-	AltScreen        bool            `json:"altScreen,omitempty"`
-	MouseMask        uint8           `json:"mouseMask,omitempty"`
-	Mouse            bool            `json:"mouse,omitempty"`
-	MouseSGR         bool            `json:"mouseSGR,omitempty"`
-	MouseEncoding    string          `json:"mouseEncoding,omitempty"`
-	SafeToReplay     bool            `json:"safeToReplay,omitempty"`
-	InitialCredit    int64           `json:"initialCredit,omitempty"`
+type OwnerResponse struct {
+	SessionID string `json:"sessionId"`
+	Owner     string `json:"owner"`
 }
 
 type SessionInfo struct {
@@ -127,8 +76,6 @@ type AttachRequest struct {
 	Type            string `json:"type"`
 	SessionID       string `json:"sessionId"`
 	StreamID        string `json:"streamId,omitempty"`
-	Since           int64  `json:"since"`
-	WithBuffer      bool   `json:"withBuffer"`
 }
 
 type InfoResponse struct {
@@ -137,24 +84,10 @@ type InfoResponse struct {
 }
 
 type StreamMessage struct {
-	Type             string       `json:"type"`
-	SessionID        string       `json:"sessionId,omitempty"`
-	StreamID         string       `json:"streamId,omitempty"`
-	Data             string       `json:"data,omitempty"`
-	Len              int          `json:"len,omitempty"`
-	NextOffset       int64        `json:"nextOffset,omitempty"`
-	Truncated        bool         `json:"truncated,omitempty"`
-	Source           string       `json:"source,omitempty"`
-	SnapshotSource   string       `json:"snapshotSource,omitempty"`
-	BacklogSource    string       `json:"backlogSource,omitempty"`
-	BacklogTruncated bool         `json:"backlogTruncated,omitempty"`
-	AltScreen        bool         `json:"altScreen,omitempty"`
-	MouseMask        uint8        `json:"mouseMask,omitempty"`
-	Mouse            bool         `json:"mouse,omitempty"`
-	MouseSGR         bool         `json:"mouseSGR,omitempty"`
-	MouseEncoding    string       `json:"mouseEncoding,omitempty"`
-	SafeToReplay     bool         `json:"safeToReplay,omitempty"`
-	InitialCredit    int64        `json:"initialCredit,omitempty"`
-	Kitty            *kitty.Event `json:"kitty,omitempty"`
-	Error            string       `json:"error,omitempty"`
+	Type      string `json:"type"`
+	SessionID string `json:"sessionId,omitempty"`
+	StreamID  string `json:"streamId,omitempty"`
+	DataB64   string `json:"dataB64,omitempty"`
+	Len       int    `json:"len,omitempty"`
+	Error     string `json:"error,omitempty"`
 }

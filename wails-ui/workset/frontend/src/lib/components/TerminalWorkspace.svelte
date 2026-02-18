@@ -3,17 +3,11 @@
 	import TerminalLayoutNode from './TerminalLayoutNode.svelte';
 	import {
 		createWorkspaceTerminal,
-		fetchWorkspaceTerminalStatus,
 		fetchWorkspaceTerminalLayout,
-		fetchSettings,
 		persistWorkspaceTerminalLayout,
-	} from '../api';
+	} from '../api/terminal-layout';
+	import { fetchSettings } from '../api/settings';
 	import { generateTerminalName } from '../names';
-	import type {
-		TerminalLayout as TerminalLayoutType,
-		TerminalLayoutNode as TerminalLayoutNodeType,
-		TerminalLayoutTab as TerminalLayoutTabType,
-	} from '../types';
 	import {
 		closeTerminal,
 		decreaseFontSize,
@@ -25,6 +19,27 @@
 		resolveTerminalKeybindings,
 		type ResolvedTerminalKeybindings,
 	} from '../terminal/terminalKeybindings';
+	import {
+		LAYOUT_VERSION,
+		buildPane,
+		buildPanePositions,
+		buildTab,
+		collectPaneIds,
+		collectTabs,
+		ensureFocusedPane,
+		findAdjacentPane,
+		findPane,
+		moveTab,
+		newId,
+		normalizeLayout,
+		removePane,
+		splitPane,
+		updatePane,
+		updateSplitRatio,
+		type LayoutNode,
+		type PaneNode,
+		type TerminalLayout,
+	} from '../terminal/terminalLayoutTree';
 
 	interface Props {
 		workspaceId: string;
@@ -34,32 +49,7 @@
 
 	const { workspaceId, workspaceName, active = true }: Props = $props();
 
-	type TerminalTab = TerminalLayoutTabType;
-	type PaneNode = Omit<TerminalLayoutNodeType, 'kind' | 'tabs' | 'activeTabId'> & {
-		kind: 'pane';
-		tabs: TerminalTab[];
-		activeTabId: string;
-	};
-	type SplitNode = Omit<
-		TerminalLayoutNodeType,
-		'kind' | 'first' | 'second' | 'direction' | 'ratio'
-	> & {
-		kind: 'split';
-		first: LayoutNode;
-		second: LayoutNode;
-		direction: 'row' | 'column';
-		ratio: number;
-	};
-	type LayoutNode = PaneNode | SplitNode;
-	type TerminalLayout = Omit<TerminalLayoutType, 'root'> & {
-		root: LayoutNode;
-		focusedPaneId?: string;
-	};
-	const LAYOUT_VERSION = 1;
-	const MIGRATION_VERSION = 1;
 	const SAVE_DEBOUNCE_MS = 300;
-	const LEGACY_STORAGE_PREFIX = 'workset:terminal-layout:';
-	const MIGRATION_PREFIX = 'workset:terminal-layout:migrated:v';
 
 	let layout = $state<TerminalLayout | null>(null);
 	let initError = $state('');
@@ -68,104 +58,6 @@
 	let pendingLayout: TerminalLayout | null = null;
 	let pendingWorkspaceId = '';
 	let resolvedKeybindings: ResolvedTerminalKeybindings = resolveTerminalKeybindings();
-
-	const migrationKey = (id: string): string => `${MIGRATION_PREFIX}${MIGRATION_VERSION}:${id}`;
-
-	const shouldRunMigration = (id: string): boolean => {
-		if (!id || typeof localStorage === 'undefined') return false;
-		try {
-			return localStorage.getItem(migrationKey(id)) !== '1';
-		} catch {
-			return false;
-		}
-	};
-
-	const markMigrationComplete = (id: string): void => {
-		if (!id || typeof localStorage === 'undefined') return;
-		try {
-			localStorage.setItem(migrationKey(id), '1');
-		} catch {
-			// Ignore storage failures.
-		}
-	};
-
-	const coerceId = (value: unknown): string => {
-		if (typeof value === 'string' && value.trim()) return value;
-		return newId();
-	};
-
-	const normalizeTab = (tab: TerminalTab | undefined | null): TerminalTab | null => {
-		if (!tab) return null;
-		if (typeof tab.id !== 'string' || typeof tab.terminalId !== 'string') return null;
-		const title =
-			typeof tab.title === 'string' && tab.title.trim().length > 0 ? tab.title : 'Terminal';
-		return { id: tab.id, terminalId: tab.terminalId, title };
-	};
-
-	const normalizeNode = (node: TerminalLayoutNodeType | null | undefined): LayoutNode | null => {
-		if (!node || typeof node !== 'object') return null;
-		if (node.kind === 'pane') {
-			const tabs = Array.isArray(node.tabs)
-				? node.tabs.map(normalizeTab).filter((tab): tab is TerminalTab => tab !== null)
-				: [];
-			if (tabs.length === 0) return null;
-			const activeTabId =
-				typeof node.activeTabId === 'string' && tabs.some((tab) => tab.id === node.activeTabId)
-					? node.activeTabId
-					: tabs[0].id;
-			return {
-				id: coerceId(node.id),
-				kind: 'pane',
-				tabs,
-				activeTabId,
-			};
-		}
-		if (node.kind === 'split') {
-			const first = normalizeNode(node.first);
-			const second = normalizeNode(node.second);
-			if (!first && !second) return null;
-			if (!first) return second;
-			if (!second) return first;
-			const direction =
-				node.direction === 'row' || node.direction === 'column' ? node.direction : 'row';
-			const ratio =
-				typeof node.ratio === 'number' &&
-				Number.isFinite(node.ratio) &&
-				node.ratio > 0 &&
-				node.ratio < 1
-					? node.ratio
-					: 0.5;
-			return {
-				id: coerceId(node.id),
-				kind: 'split',
-				direction,
-				ratio,
-				first,
-				second,
-			};
-		}
-		return null;
-	};
-
-	const normalizeLayout = (
-		candidate: TerminalLayoutType | null | undefined,
-	): TerminalLayout | null => {
-		if (!candidate || candidate.version !== LAYOUT_VERSION) return null;
-		const root = normalizeNode(candidate.root);
-		if (!root) return null;
-		return {
-			version: LAYOUT_VERSION,
-			root,
-			focusedPaneId: candidate.focusedPaneId,
-		};
-	};
-
-	const newId = (): string => {
-		if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-			return crypto.randomUUID();
-		}
-		return `term-${Math.random().toString(36).slice(2)}`;
-	};
 
 	const scheduleSaveLayout = (next: TerminalLayout): void => {
 		if (!workspaceId) return;
@@ -185,29 +77,6 @@
 		}, SAVE_DEBOUNCE_MS);
 	};
 
-	const legacyStorageKey = (id: string): string => `${LEGACY_STORAGE_PREFIX}${id}`;
-
-	const clearLegacyLayout = (id: string): void => {
-		if (!id || typeof localStorage === 'undefined') return;
-		try {
-			localStorage.removeItem(legacyStorageKey(id));
-		} catch {
-			// Ignore storage failures.
-		}
-	};
-
-	const loadLegacyLayout = (id: string): TerminalLayout | null => {
-		if (!id || typeof localStorage === 'undefined') return null;
-		try {
-			const raw = localStorage.getItem(legacyStorageKey(id));
-			if (!raw) return null;
-			const parsed = JSON.parse(raw) as TerminalLayout;
-			return normalizeLayout(parsed);
-		} catch {
-			return null;
-		}
-	};
-
 	const loadLayout = async (id: string): Promise<TerminalLayout | null> => {
 		if (!id) return null;
 		try {
@@ -218,269 +87,9 @@
 		}
 	};
 
-	const collectTabs = (node: LayoutNode, tabs: TerminalTab[] = []): TerminalTab[] => {
-		if (node.kind === 'pane') {
-			return tabs.concat(node.tabs);
-		}
-		collectTabs(node.first, tabs);
-		collectTabs(node.second, tabs);
-		return tabs;
-	};
-
-	const collectPaneIds = (node: LayoutNode, ids: string[] = []): string[] => {
-		if (node.kind === 'pane') {
-			ids.push(node.id);
-			return ids;
-		}
-		collectPaneIds(node.first, ids);
-		collectPaneIds(node.second, ids);
-		return ids;
-	};
-
-	const findPane = (node: LayoutNode, paneId: string): PaneNode | null => {
-		if (node.kind === 'pane') {
-			return node.id === paneId ? node : null;
-		}
-		return findPane(node.first, paneId) || findPane(node.second, paneId);
-	};
-
-	const updatePane = (
-		node: LayoutNode,
-		paneId: string,
-		updater: (pane: PaneNode) => PaneNode,
-	): LayoutNode => {
-		if (node.kind === 'pane') {
-			return node.id === paneId ? updater(node) : node;
-		}
-		const first = updatePane(node.first, paneId, updater);
-		const second = updatePane(node.second, paneId, updater);
-		if (first === node.first && second === node.second) {
-			return node;
-		}
-		return { ...node, first, second };
-	};
-
-	const splitPane = (
-		node: LayoutNode,
-		paneId: string,
-		direction: 'row' | 'column',
-		pane: PaneNode,
-	): LayoutNode => {
-		if (node.kind === 'pane') {
-			if (node.id !== paneId) {
-				return node;
-			}
-			return {
-				id: newId(),
-				kind: 'split',
-				direction,
-				ratio: 0.5,
-				first: node,
-				second: pane,
-			};
-		}
-		const first = splitPane(node.first, paneId, direction, pane);
-		const second = splitPane(node.second, paneId, direction, pane);
-		if (first === node.first && second === node.second) {
-			return node;
-		}
-		return { ...node, first, second };
-	};
-
-	const removePane = (node: LayoutNode, paneId: string): LayoutNode | null => {
-		if (node.kind === 'pane') {
-			return node.id === paneId ? null : node;
-		}
-		const first = removePane(node.first, paneId);
-		const second = removePane(node.second, paneId);
-		if (!first && !second) return null;
-		if (!first) return second;
-		if (!second) return first;
-		return { ...node, first, second };
-	};
-
-	const updateSplitRatio = (node: LayoutNode, splitId: string, ratio: number): LayoutNode => {
-		if (node.kind === 'pane') return node;
-		if (node.id === splitId) {
-			return { ...node, ratio };
-		}
-		const first = updateSplitRatio(node.first, splitId, ratio);
-		const second = updateSplitRatio(node.second, splitId, ratio);
-		if (first === node.first && second === node.second) return node;
-		return { ...node, first, second };
-	};
-
-	const moveTab = (
-		node: LayoutNode,
-		sourcePaneId: string,
-		targetPaneId: string,
-		tabId: string,
-		targetIndex: number,
-	): LayoutNode => {
-		// Find the tab in source pane
-		const sourcePane = findPane(node, sourcePaneId);
-		if (!sourcePane) return node;
-		const tab = sourcePane.tabs.find((t) => t.id === tabId);
-		if (!tab) return node;
-
-		// If same pane, just reorder
-		if (sourcePaneId === targetPaneId) {
-			return updatePane(node, sourcePaneId, (pane) => {
-				const tabs = pane.tabs.filter((t) => t.id !== tabId);
-				tabs.splice(targetIndex, 0, tab);
-				return { ...pane, tabs };
-			});
-		}
-
-		// Remove from source
-		let updated = updatePane(node, sourcePaneId, (pane) => ({
-			...pane,
-			tabs: pane.tabs.filter((t) => t.id !== tabId),
-			activeTabId:
-				pane.activeTabId === tabId
-					? (pane.tabs.find((t) => t.id !== tabId)?.id ?? pane.activeTabId)
-					: pane.activeTabId,
-		}));
-
-		// Add to target
-		updated = updatePane(updated, targetPaneId, (pane) => {
-			const tabs = [...pane.tabs];
-			tabs.splice(targetIndex, 0, tab);
-			return { ...pane, tabs, activeTabId: tab.id };
-		});
-
-		return updated;
-	};
-
-	const firstPaneId = (node: LayoutNode): string => {
-		if (node.kind === 'pane') return node.id;
-		return firstPaneId(node.first);
-	};
-
 	const nextTitle = (node: LayoutNode): string => {
 		const count = collectTabs(node).length;
 		return generateTerminalName(workspaceName, count);
-	};
-
-	const buildTab = (terminalId: string, title: string): TerminalTab => ({
-		id: newId(),
-		terminalId,
-		title,
-	});
-
-	const buildPane = (tab: TerminalTab): PaneNode => ({
-		id: newId(),
-		kind: 'pane',
-		tabs: [tab],
-		activeTabId: tab.id,
-	});
-
-	const ensureFocusedPane = (next: TerminalLayout): TerminalLayout => {
-		if (!next.focusedPaneId) {
-			return { ...next, focusedPaneId: firstPaneId(next.root) };
-		}
-		if (collectPaneIds(next.root).includes(next.focusedPaneId)) {
-			return next;
-		}
-		return { ...next, focusedPaneId: firstPaneId(next.root) };
-	};
-
-	const applyTabFixes = (
-		node: LayoutNode,
-		fixes: Map<string, { terminalId?: string; drop?: boolean }>,
-	): LayoutNode | null => {
-		if (node.kind === 'pane') {
-			const tabs = node.tabs
-				.map((tab) => {
-					const fix = fixes.get(tab.id);
-					if (fix?.drop) return null;
-					if (fix?.terminalId) {
-						return { ...tab, terminalId: fix.terminalId };
-					}
-					return tab;
-				})
-				.filter((tab): tab is TerminalTab => tab !== null);
-			if (tabs.length === 0) return null;
-			const activeTabId = tabs.some((tab) => tab.id === node.activeTabId)
-				? node.activeTabId
-				: tabs[0].id;
-			return { ...node, tabs, activeTabId };
-		}
-		const first = applyTabFixes(node.first, fixes);
-		const second = applyTabFixes(node.second, fixes);
-		if (!first && !second) return null;
-		if (!first) return second;
-		if (!second) return first;
-		return { ...node, first, second };
-	};
-
-	const migrateLayoutOnce = async (
-		id: string,
-		layoutToMigrate: TerminalLayout,
-	): Promise<{ layout: TerminalLayout; changed: boolean }> => {
-		if (!shouldRunMigration(id)) {
-			return { layout: layoutToMigrate, changed: false };
-		}
-		markMigrationComplete(id);
-		const tabs = collectTabs(layoutToMigrate.root);
-		if (tabs.length === 0) {
-			return { layout: layoutToMigrate, changed: false };
-		}
-		let changed = false;
-		const fixes = new Map<string, { terminalId?: string; drop?: boolean }>();
-		for (const tab of tabs) {
-			if (!tab.terminalId) {
-				fixes.set(tab.id, { drop: true });
-				changed = true;
-				continue;
-			}
-			let shouldReplace = false;
-			try {
-				const status = await fetchWorkspaceTerminalStatus(id, tab.terminalId);
-				if (!status) {
-					continue;
-				}
-				if (status.active) {
-					continue;
-				}
-				if (status.error) {
-					continue;
-				}
-				shouldReplace = true;
-			} catch {
-				continue;
-			}
-			if (!shouldReplace) continue;
-			try {
-				const created = await createWorkspaceTerminal(id);
-				if (created?.terminalId) {
-					fixes.set(tab.id, { terminalId: created.terminalId });
-				} else {
-					fixes.set(tab.id, { drop: true });
-				}
-				changed = true;
-			} catch {
-				fixes.set(tab.id, { drop: true });
-				changed = true;
-			}
-		}
-		if (!changed) {
-			return { layout: layoutToMigrate, changed: false };
-		}
-		const nextRoot = applyTabFixes(layoutToMigrate.root, fixes);
-		if (!nextRoot) {
-			const created = await createWorkspaceTerminal(id);
-			const tab = buildTab(created.terminalId, generateTerminalName(workspaceName, 0));
-			const pane = buildPane(tab);
-			const fresh = ensureFocusedPane({
-				version: LAYOUT_VERSION,
-				root: pane,
-				focusedPaneId: pane.id,
-			});
-			return { layout: fresh, changed: true };
-		}
-		const updated = ensureFocusedPane({ ...layoutToMigrate, root: nextRoot });
-		return { layout: updated, changed: true };
 	};
 
 	const setLayout = (next: TerminalLayout): void => {
@@ -507,27 +116,7 @@
 			const stored = await loadLayout(targetWorkspaceId);
 			if (token !== initToken || workspaceId !== targetWorkspaceId) return;
 			if (stored) {
-				const migrated = await migrateLayoutOnce(targetWorkspaceId, stored);
-				if (token !== initToken || workspaceId !== targetWorkspaceId) return;
-				if (migrated.changed) {
-					setLayout(migrated.layout);
-					void persistWorkspaceTerminalLayout(targetWorkspaceId, migrated.layout).catch(() => {});
-				} else {
-					setLayout(migrated.layout);
-				}
-				return;
-			}
-			const legacy = loadLegacyLayout(targetWorkspaceId);
-			if (token !== initToken || workspaceId !== targetWorkspaceId) return;
-			if (legacy) {
-				const migrated = await migrateLayoutOnce(targetWorkspaceId, legacy);
-				if (token !== initToken || workspaceId !== targetWorkspaceId) return;
-				setLayout(migrated.layout);
-				void persistWorkspaceTerminalLayout(targetWorkspaceId, migrated.layout)
-					.then(() => {
-						clearLegacyLayout(targetWorkspaceId);
-					})
-					.catch(() => {});
+				setLayout(stored);
 				return;
 			}
 			const created = await createWorkspaceTerminal(targetWorkspaceId);
@@ -751,76 +340,6 @@
 		dragState = null;
 	};
 
-	// Keyboard navigation helpers
-	type PanePosition = {
-		id: string;
-		x: number;
-		y: number;
-		w: number;
-		h: number;
-	};
-
-	const buildPanePositions = (
-		node: LayoutNode,
-		x = 0,
-		y = 0,
-		w = 1,
-		h = 1,
-		positions: PanePosition[] = [],
-	): PanePosition[] => {
-		if (node.kind === 'pane') {
-			positions.push({ id: node.id, x, y, w, h });
-			return positions;
-		}
-		const { direction, ratio, first, second } = node;
-		if (direction === 'row') {
-			buildPanePositions(first, x, y, w * ratio, h, positions);
-			buildPanePositions(second, x + w * ratio, y, w * (1 - ratio), h, positions);
-		} else {
-			buildPanePositions(first, x, y, w, h * ratio, positions);
-			buildPanePositions(second, x, y + h * ratio, w, h * (1 - ratio), positions);
-		}
-		return positions;
-	};
-
-	const findAdjacentPane = (
-		currentId: string,
-		direction: 'up' | 'down' | 'left' | 'right',
-		positions: PanePosition[],
-	): string | null => {
-		const current = positions.find((p) => p.id === currentId);
-		if (!current) return null;
-
-		const cx = current.x + current.w / 2;
-		const cy = current.y + current.h / 2;
-
-		let candidates = positions.filter((p) => p.id !== currentId);
-
-		// Filter by direction
-		if (direction === 'left') {
-			candidates = candidates.filter((p) => p.x + p.w <= current.x + 0.01);
-		} else if (direction === 'right') {
-			candidates = candidates.filter((p) => p.x >= current.x + current.w - 0.01);
-		} else if (direction === 'up') {
-			candidates = candidates.filter((p) => p.y + p.h <= current.y + 0.01);
-		} else {
-			candidates = candidates.filter((p) => p.y >= current.y + current.h - 0.01);
-		}
-
-		if (candidates.length === 0) return null;
-
-		// Find closest by center distance
-		const axis = direction === 'left' || direction === 'right' ? 'y' : 'x';
-		const center = axis === 'x' ? cx : cy;
-		candidates.sort((a, b) => {
-			const aCtr = axis === 'x' ? a.x + a.w / 2 : a.y + a.h / 2;
-			const bCtr = axis === 'x' ? b.x + b.w / 2 : b.y + b.h / 2;
-			return Math.abs(aCtr - center) - Math.abs(bCtr - center);
-		});
-
-		return candidates[0].id;
-	};
-
 	const handleWorkspaceKeydown = (event: KeyboardEvent): void => {
 		if (!layout) return;
 		const action = matchTerminalKeybinding(event, resolvedKeybindings);
@@ -979,13 +498,14 @@
 		{:else if loading || !layout}
 			<div class="terminal-loading">Preparing terminals…</div>
 		{:else}
-			{@const totalPaneCount = collectPaneIds(layout.root).length}
+			{@const rootNode = layout?.root ?? null}
+			{@const totalPaneCount = rootNode ? collectPaneIds(rootNode).length : 0}
 			<TerminalLayoutNode
-				node={layout.root}
+				node={rootNode}
 				{workspaceId}
 				{workspaceName}
 				{active}
-				focusedPaneId={layout.focusedPaneId}
+				focusedPaneId={layout?.focusedPaneId}
 				{totalPaneCount}
 				{dragState}
 				onFocusPane={handleFocusPane}
@@ -1033,7 +553,7 @@
 		gap: 8px;
 		padding: 16px;
 		color: var(--muted);
-		font-size: 12px;
+		font-size: var(--text-sm);
 	}
 
 	.terminal-error {
@@ -1049,7 +569,7 @@
 		border: 1px solid var(--border);
 		border-radius: 6px;
 		padding: 6px 12px;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		background: transparent;
 		color: var(--text);
 		cursor: pointer;

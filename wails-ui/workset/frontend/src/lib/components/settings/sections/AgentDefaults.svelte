@@ -6,7 +6,12 @@
 	import SettingsSection from '../SettingsSection.svelte';
 	import Select from '../../ui/Select.svelte';
 	import Button from '../../ui/Button.svelte';
-	import { checkAgentStatus, openFileDialog, reloadLoginEnv, setAgentCLIPath } from '../../../api';
+	import {
+		checkAgentStatus,
+		openFileDialog,
+		reloadLoginEnv,
+		setAgentCLIPath,
+	} from '../../../api/settings';
 
 	type FieldId = SettingsDefaultField;
 
@@ -29,12 +34,12 @@
 	const fields: Field[] = [
 		{
 			id: 'agent',
-			label: 'Preferred agent',
+			label: 'PREFERRED AGENT',
 			description:
 				'Used for PR title/description generation and commit messages; also the default coding agent for the terminal launcher.',
 			type: 'select',
 			options: [
-				{ label: 'Codex', value: 'codex' },
+				{ label: 'Codex (Default)', value: 'codex' },
 				{ label: 'Claude Code', value: 'claude' },
 				{ label: 'OpenCode', value: 'opencode' },
 				{ label: 'Pi', value: 'pi' },
@@ -43,21 +48,10 @@
 		},
 		{
 			id: 'agentModel',
-			label: 'Agent model override',
+			label: 'AGENT MODEL OVERRIDE',
 			description:
 				'Optional model for PR and commit message generation only. Leave blank to use the agent default.',
 			type: 'text',
-		},
-		{
-			id: 'agentLaunch',
-			label: 'Agent launch mode',
-			description:
-				'Auto uses a shell and PTY fallback. Strict requires an agent path with directory separators.',
-			type: 'select',
-			options: [
-				{ label: 'Auto', value: 'auto' },
-				{ label: 'Strict', value: 'strict' },
-			],
 		},
 	];
 
@@ -161,10 +155,10 @@
 </script>
 
 <SettingsSection
-	title="Agent defaults"
+	title="Agent Configuration"
 	description="Choose which assistant Workset uses for generation tasks."
 >
-	<div class="fields">
+	<div class="fields-row">
 		{#each fields as field (field.id)}
 			<div class="field" class:changed={isChanged(field.id)}>
 				<label for={field.id}>{field.label}</label>
@@ -181,7 +175,7 @@
 						class="agent-input"
 						type="text"
 						value={getValue(field.id)}
-						placeholder="gpt-5.1-codex-mini"
+						placeholder="e.g. gpt-4-0125-preview"
 						spellcheck="false"
 						autocomplete="off"
 						oninput={(event) => {
@@ -190,82 +184,96 @@
 						}}
 					/>
 				{/if}
-				{#if field.id === 'agent'}
-					<div class="agent-path">
-						<label class="agent-label" for="agent-cli-path">Agent CLI path</label>
-						<input
-							id="agent-cli-path"
-							class="agent-input"
-							type="text"
-							bind:value={cliPath}
-							placeholder="/Users/you/.local/bin/agent"
-							spellcheck="false"
-							autocomplete="off"
-							onkeydown={(event) => {
-								if (event.key === 'Enter') void saveCLIPath();
-							}}
-						/>
-						<div class="agent-actions">
-							<Button
-								variant="primary"
-								size="sm"
-								onclick={saveCLIPath}
-								disabled={savingPath || cliPath.trim() === ''}
-							>
-								{savingPath ? 'Saving…' : 'Save path'}
-							</Button>
-							<Button variant="ghost" size="sm" onclick={browseCLIPath} disabled={savingPath}>
-								Browse…
-							</Button>
-							<Button variant="ghost" size="sm" onclick={checkStatus} disabled={checking}>
-								{checking ? 'Checking…' : 'Check status'}
-							</Button>
-						</div>
-						{#if status}
-							<span class="agent-status" class:ok={status.installed} class:bad={!status.installed}>
-								{#if status.installed}
-									Found{status.path ? ` · ${status.path}` : ''}
-								{:else}
-									Not detected
-								{/if}
-							</span>
-						{/if}
-						{#if status?.error}
-							<div class="agent-note warning">{status.error}</div>
-						{/if}
-						{#if statusError}
-							<div class="agent-note error">{statusError}</div>
-						{/if}
-						<div class="agent-env">
-							<div class="agent-actions">
-								<Button variant="ghost" size="sm" onclick={reloadEnv} disabled={envReloading}>
-									{envReloading ? 'Reloading…' : 'Reload environment'}
-								</Button>
-							</div>
-							<div class="agent-note">
-								Reloads PATH and SSH agent variables from your login shell without restarting the
-								app.
-							</div>
-							{#if envMessage}
-								<div class="agent-note ok">{envMessage}</div>
-							{/if}
-							{#if envError}
-								<div class="agent-note error">{envError}</div>
-							{/if}
-						</div>
-					</div>
-				{/if}
 				<p>{field.description}</p>
 			</div>
 		{/each}
 	</div>
+
+	<div class="cli-section">
+		<label class="cli-label" for="agent-cli-path">AGENT CLI PATH</label>
+		<div class="cli-input-row">
+			<input
+				id="agent-cli-path"
+				class="agent-input cli-input"
+				type="text"
+				bind:value={cliPath}
+				placeholder="/Users/you/.local/bin/agent"
+				spellcheck="false"
+				autocomplete="off"
+				onkeydown={(event) => {
+					if (event.key === 'Enter') void saveCLIPath();
+				}}
+			/>
+			<Button variant="ghost" size="sm" onclick={browseCLIPath} disabled={savingPath}>
+				Browse…
+			</Button>
+			{#if status?.installed}
+				<span class="valid-badge">
+					<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+						<path
+							d="M2 6L5 9L10 3"
+							stroke="currentColor"
+							stroke-width="1.5"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
+					</svg>
+					Valid
+				</span>
+			{/if}
+		</div>
+		{#if status}
+			<span class="cli-status" class:ok={status.installed} class:bad={!status.installed}>
+				{#if status.installed}
+					CLI {status.path ? `· ${status.path}` : 'installed'}
+				{:else}
+					Not detected
+				{/if}
+			</span>
+		{/if}
+		{#if status?.error}
+			<div class="cli-note warning">{status.error}</div>
+		{/if}
+		{#if statusError}
+			<div class="cli-note error">{statusError}</div>
+		{/if}
+	</div>
+
+	<div class="reload-card">
+		<div class="reload-header">
+			<svg width="16" height="16" viewBox="0 0 16 16" fill="none" class="reload-icon">
+				<path
+					d="M8 2V5M8 11V14M2 8H5M11 8H14"
+					stroke="currentColor"
+					stroke-width="1.5"
+					stroke-linecap="round"
+				/>
+			</svg>
+			<span class="reload-title">Reload Environment</span>
+		</div>
+		<p class="reload-description">
+			Reloads PATH and SSH agent variables from your login shell without restarting the app.
+		</p>
+		<div class="reload-actions">
+			<Button variant="ghost" size="sm" onclick={reloadEnv} disabled={envReloading}>
+				{envReloading ? 'Reloading…' : 'Reload Env'}
+			</Button>
+		</div>
+		{#if envMessage}
+			<div class="cli-note ok">{envMessage}</div>
+		{/if}
+		{#if envError}
+			<div class="cli-note error">{envError}</div>
+		{/if}
+	</div>
 </SettingsSection>
 
 <style>
-	.fields {
+	.fields-row {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+		grid-template-columns: repeat(2, 1fr);
 		gap: 16px;
+		margin-bottom: 24px;
 	}
 
 	.field {
@@ -281,29 +289,42 @@
 	}
 
 	.field label {
-		font-size: 11px;
+		font-size: var(--text-xs);
+		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
-		color: rgba(255, 255, 255, 0.7);
+		color: var(--muted);
 	}
 
 	.field p {
 		margin: 0;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
-	.agent-path {
+	.cli-section {
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
+		margin-bottom: 24px;
 	}
 
-	.agent-label {
-		font-size: 11px;
+	.cli-label {
+		font-size: var(--text-xs);
+		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
-		color: rgba(255, 255, 255, 0.7);
+		color: var(--muted);
+	}
+
+	.cli-input-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.cli-input {
+		flex: 1;
 	}
 
 	.agent-input {
@@ -312,7 +333,7 @@
 		border-radius: var(--radius-md);
 		padding: 8px 10px;
 		color: inherit;
-		font-size: 13px;
+		font-size: var(--text-base);
 		transition:
 			border-color var(--transition-fast),
 			box-shadow var(--transition-fast);
@@ -324,47 +345,80 @@
 		box-shadow: 0 0 0 1px var(--accent);
 	}
 
-	.agent-actions {
+	.valid-badge {
 		display: flex;
-		flex-wrap: wrap;
 		align-items: center;
-		gap: 8px;
+		gap: 4px;
+		font-size: var(--text-sm);
+		font-weight: 500;
+		color: rgba(131, 206, 164, 0.9);
 	}
 
-	.agent-env {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
-	.agent-status {
-		font-size: 12px;
+	.cli-status {
+		font-size: var(--text-sm);
 		color: var(--muted);
 		word-break: break-all;
 	}
 
-	.agent-status.ok {
+	.cli-status.ok {
 		color: rgba(131, 206, 164, 0.9);
 	}
 
-	.agent-status.bad {
+	.cli-status.bad {
 		color: rgba(255, 161, 136, 0.9);
 	}
 
-	.agent-note {
-		font-size: 12px;
+	.cli-note {
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
-	.agent-note.warning {
+	.cli-note.warning {
 		color: rgba(255, 200, 122, 0.9);
 	}
 
-	.agent-note.ok {
+	.cli-note.ok {
 		color: rgba(131, 206, 164, 0.9);
 	}
 
-	.agent-note.error {
+	.cli-note.error {
 		color: rgba(255, 140, 140, 0.9);
+	}
+
+	.reload-card {
+		background: var(--panel-strong);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		padding: 16px;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.reload-header {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.reload-icon {
+		color: var(--text);
+		opacity: 0.8;
+	}
+
+	.reload-title {
+		font-size: var(--text-md);
+		font-weight: 500;
+		color: var(--text);
+	}
+
+	.reload-description {
+		margin: 0;
+		font-size: var(--text-sm);
+		color: var(--muted);
+	}
+
+	.reload-actions {
+		margin-top: 8px;
 	}
 </style>

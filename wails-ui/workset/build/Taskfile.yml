@@ -1,0 +1,60 @@
+version: "3"
+
+tasks:
+  install:frontend:deps:
+    summary: Install frontend dependencies
+    dir: frontend
+    sources:
+      - package.json
+      - package-lock.json
+    generates:
+      - node_modules
+    cmds:
+      - npm install
+
+  generate:bindings:
+    summary: Generates frontend bindings
+    deps:
+      - task: install:frontend:deps
+    sources:
+      - "**/*.go"
+      - go.mod
+      - go.sum
+      - frontend/bindings/**/*
+    generates:
+      - frontend/bindings/**/*
+    cmds:
+      - wails3 generate bindings -clean=true -ts
+
+  build:frontend:
+    summary: Build frontend assets
+    dir: frontend
+    deps:
+      - task: generate:bindings
+    cmds:
+      - npm run build
+
+  build:frontend:dev:
+    summary: Build frontend assets for development
+    dir: frontend
+    deps:
+      - task: generate:bindings
+    cmds:
+      - npm run build:dev
+
+  generate:icons:
+    summary: Generate platform icon assets from build/appicon.png
+    dir: build
+    sources:
+      - appicon.png
+    generates:
+      - darwin/icons.icns
+      - windows/icon.ico
+    cmds:
+      - wails3 generate icons -input appicon.png -macfilename darwin/icons.icns -windowsfilename windows/icon.ico
+
+  dev:frontend:
+    summary: Runs Vite dev server
+    dir: frontend
+    cmds:
+      - npm run dev -- --port {{.VITE_PORT | default 9245}} --strictPort

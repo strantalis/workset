@@ -226,7 +226,7 @@
 		color: var(--text);
 		border-radius: var(--radius-md);
 		padding: 10px 12px;
-		font-size: 13px;
+		font-size: var(--text-base);
 		font-family: inherit;
 		text-align: left;
 		cursor: pointer;
@@ -311,7 +311,7 @@
 		padding: 8px 12px;
 		border-radius: var(--radius-sm);
 		cursor: pointer;
-		font-size: 13px;
+		font-size: var(--text-base);
 		font-family: inherit;
 		transition: background var(--transition-fast);
 	}

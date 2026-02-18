@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { EVENT_REPO_DIFF_SUMMARY } from './events';
 
 const eventsOn = vi.fn();
 const eventsOff = vi.fn();
 
-vi.mock('../../wailsjs/runtime/runtime', () => ({
-	EventsOn: eventsOn,
-	EventsOff: eventsOff,
+vi.mock('@wailsio/runtime', () => ({
+	Events: {
+		On: eventsOn,
+		Off: eventsOff,
+	},
 }));
 
 const loadService = async () => {
@@ -25,7 +28,7 @@ describe('subscribeRepoDiffEvent', () => {
 		eventsOn.mockImplementation(() => unsubscribe);
 
 		const { subscribeRepoDiffEvent } = await loadService();
-		const stop = subscribeRepoDiffEvent('repodiff:summary', () => {});
+		const stop = subscribeRepoDiffEvent(EVENT_REPO_DIFF_SUMMARY, () => {});
 		expect(eventsOn).toHaveBeenCalledTimes(1);
 
 		stop();
@@ -38,8 +41,8 @@ describe('subscribeRepoDiffEvent', () => {
 		eventsOn.mockImplementation(() => unsubscribe);
 
 		const { subscribeRepoDiffEvent } = await loadService();
-		const stopA = subscribeRepoDiffEvent('repodiff:summary', () => {});
-		const stopB = subscribeRepoDiffEvent('repodiff:summary', () => {});
+		const stopA = subscribeRepoDiffEvent(EVENT_REPO_DIFF_SUMMARY, () => {});
+		const stopB = subscribeRepoDiffEvent(EVENT_REPO_DIFF_SUMMARY, () => {});
 
 		stopA();
 		expect(unsubscribe).not.toHaveBeenCalled();

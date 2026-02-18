@@ -4,10 +4,9 @@ import (
 	"strings"
 
 	"github.com/strantalis/workset/pkg/worksetapi"
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-var hookEventsEmit = wruntime.EventsEmit
+var hookEventsEmit = emitRuntimeEvent
 
 type HookProgressPayload struct {
 	Operation string `json:"operation,omitempty"`
@@ -44,7 +43,7 @@ func (o appHookObserver) OnHookProgress(progress worksetapi.HookProgress) {
 	if progress.Error != "" {
 		payload.Error = progress.Error
 	}
-	hookEventsEmit(o.app.ctx, "hooks:progress", payload)
+	hookEventsEmit(o.app.ctx, EventHooksProgress, payload)
 }
 
 func hookOperation(reason string) string {

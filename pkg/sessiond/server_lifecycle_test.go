@@ -2,6 +2,7 @@ package sessiond
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net"
 	"os"
@@ -178,6 +179,222 @@ func TestAttachFailsWhenSessionNotRunning(t *testing.T) {
 	<-done
 }
 
+func TestAttachStreamsLiveEvents(t *testing.T) {
+	opts := DefaultOptions()
+	session := newSession(opts, "running-session", "/tmp")
+	session.cmd = &exec.Cmd{}
+	server := &Server{
+		opts:     opts,
+		sessions: map[string]*Session{"running-session": session},
+	}
+
+	clientConn, serverConn := net.Pipe()
+	defer func() {
+		_ = clientConn.Close()
+	}()
+
+	attachLine, err := json.Marshal(AttachRequest{
+		ProtocolVersion: ProtocolVersion,
+		Type:            "attach",
+		SessionID:       "running-session",
+		StreamID:        "running-stream",
+	})
+	if err != nil {
+		t.Fatalf("marshal attach: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() { _ = serverConn.Close() }()
+		server.handleAttach(serverConn, attachLine)
+	}()
+
+	dec := json.NewDecoder(clientConn)
+	var first StreamMessage
+	if err := dec.Decode(&first); err != nil {
+		t.Fatalf("attach ready response: %v", err)
+	}
+	if first.Type != "ready" {
+		t.Fatalf("expected ready, got %+v", first)
+	}
+
+	session.broadcast([]byte("hello"))
+
+	var second StreamMessage
+	if err := dec.Decode(&second); err != nil {
+		t.Fatalf("attach data response: %v", err)
+	}
+	if second.Type != "data" {
+		t.Fatalf("expected data event, got %+v", second)
+	}
+	payload, err := base64.StdEncoding.DecodeString(second.DataB64)
+	if err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if !strings.Contains(string(payload), "hello") {
+		t.Fatalf("expected payload to include terminal content, got %q", string(payload))
+	}
+
+	_ = clientConn.Close()
+	session.closeSubscribers()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("attach handler did not exit")
+	}
+}
+
+func TestAttachReplaysBufferedEvents(t *testing.T) {
+	opts := DefaultOptions()
+	session := newSession(opts, "running-session", "/tmp")
+	session.cmd = &exec.Cmd{}
+	session.recordOutput([]byte("\x1b[?1049h\x1b[?1002h"))
+	server := &Server{
+		opts:     opts,
+		sessions: map[string]*Session{"running-session": session},
+	}
+
+	clientConn, serverConn := net.Pipe()
+	defer func() {
+		_ = clientConn.Close()
+	}()
+
+	attachLine, err := json.Marshal(AttachRequest{
+		ProtocolVersion: ProtocolVersion,
+		Type:            "attach",
+		SessionID:       "running-session",
+		StreamID:        "running-stream",
+	})
+	if err != nil {
+		t.Fatalf("marshal attach: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() { _ = serverConn.Close() }()
+		server.handleAttach(serverConn, attachLine)
+	}()
+
+	dec := json.NewDecoder(clientConn)
+	var first StreamMessage
+	if err := dec.Decode(&first); err != nil {
+		t.Fatalf("attach ready response: %v", err)
+	}
+	if first.Type != "ready" {
+		t.Fatalf("expected ready, got %+v", first)
+	}
+
+	var second StreamMessage
+	if err := dec.Decode(&second); err != nil {
+		t.Fatalf("attach replay response: %v", err)
+	}
+	if second.Type != "data" {
+		t.Fatalf("expected data replay event, got %+v", second)
+	}
+	payload, err := base64.StdEncoding.DecodeString(second.DataB64)
+	if err != nil {
+		t.Fatalf("decode replay payload: %v", err)
+	}
+	if got := string(payload); !strings.Contains(got, "\x1b[?1049h") || !strings.Contains(got, "\x1b[?1002h") {
+		t.Fatalf("expected replay payload to include buffered terminal modes, got %q", got)
+	}
+
+	_ = clientConn.Close()
+	session.closeSubscribers()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("attach handler did not exit")
+	}
+}
+
+func TestAttachReplaysTerminalModesAfterBufferRollover(t *testing.T) {
+	opts := DefaultOptions()
+	opts.BufferBytes = 64 * 1024
+	session := newSession(opts, "running-session", "/tmp")
+	session.cmd = &exec.Cmd{}
+
+	// Enable alt screen + mouse tracking once, then emit enough output to evict
+	// those setup bytes from the ring buffer.
+	session.handleProtocolOutput(
+		context.Background(),
+		[]byte("\x1b[?1049h\x1b[?1002h\x1b[?1006h"+strings.Repeat("x", 96*1024)),
+	)
+	session.handleProtocolOutput(context.Background(), []byte("tail"))
+
+	session.outputMu.Lock()
+	buffered, _, _ := session.buffer.ReadSince(0)
+	session.outputMu.Unlock()
+	if strings.Contains(string(buffered), "\x1b[?1049h") || strings.Contains(string(buffered), "\x1b[?1002h") || strings.Contains(string(buffered), "\x1b[?1006h") {
+		t.Fatalf("expected ring buffer to roll over setup modes, got %q", string(buffered))
+	}
+
+	server := &Server{
+		opts:     opts,
+		sessions: map[string]*Session{"running-session": session},
+	}
+
+	clientConn, serverConn := net.Pipe()
+	defer func() {
+		_ = clientConn.Close()
+	}()
+
+	attachLine, err := json.Marshal(AttachRequest{
+		ProtocolVersion: ProtocolVersion,
+		Type:            "attach",
+		SessionID:       "running-session",
+		StreamID:        "running-stream",
+	})
+	if err != nil {
+		t.Fatalf("marshal attach: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() { _ = serverConn.Close() }()
+		server.handleAttach(serverConn, attachLine)
+	}()
+
+	dec := json.NewDecoder(clientConn)
+	var first StreamMessage
+	if err := dec.Decode(&first); err != nil {
+		t.Fatalf("attach ready response: %v", err)
+	}
+	if first.Type != "ready" {
+		t.Fatalf("expected ready, got %+v", first)
+	}
+
+	var second StreamMessage
+	if err := dec.Decode(&second); err != nil {
+		t.Fatalf("attach replay response: %v", err)
+	}
+	if second.Type != "data" {
+		t.Fatalf("expected data replay event, got %+v", second)
+	}
+	payload, err := base64.StdEncoding.DecodeString(second.DataB64)
+	if err != nil {
+		t.Fatalf("decode replay payload: %v", err)
+	}
+	got := string(payload)
+	if !strings.Contains(got, "\x1b[?1049h") || !strings.Contains(got, "\x1b[?1002h") || !strings.Contains(got, "\x1b[?1006h") {
+		t.Fatalf("expected replay payload to include synthesized terminal modes, got %q", got)
+	}
+	if !strings.Contains(got, "tail") {
+		t.Fatalf("expected replay payload to include latest buffered output, got %q", got)
+	}
+
+	_ = clientConn.Close()
+	session.closeSubscribers()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("attach handler did not exit")
+	}
+}
+
 func waitForSessionGone(t *testing.T, client *Client, sessionID string, timeout time.Duration) bool {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -214,7 +431,6 @@ func startTestServerWithOptionsAndServer(t *testing.T, mutate func(*Options)) (*
 	opts.SocketPath = socketPath
 	opts.TranscriptDir = filepath.Join(tmp, "terminal_logs")
 	opts.RecordDir = filepath.Join(tmp, "terminal_records")
-	opts.StateDir = filepath.Join(tmp, "terminal_state")
 	if mutate != nil {
 		mutate(&opts)
 	}

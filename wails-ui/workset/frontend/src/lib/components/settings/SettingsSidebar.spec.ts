@@ -56,8 +56,8 @@ describe('SettingsSidebar', () => {
 		expect(getByText('GitHub')).toBeInTheDocument();
 
 		// LIBRARY items
-		expect(getByText('Repo Registry')).toBeInTheDocument();
-		expect(getByText('Groups')).toBeInTheDocument();
+		expect(getByText('Repo Catalog')).toBeInTheDocument();
+		expect(getByText('Templates')).toBeInTheDocument();
 
 		// INFO items
 		expect(getByText('About')).toBeInTheDocument();

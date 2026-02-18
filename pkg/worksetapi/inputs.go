@@ -2,10 +2,11 @@ package worksetapi
 
 // WorkspaceCreateInput describes inputs for CreateWorkspace.
 type WorkspaceCreateInput struct {
-	Name   string
-	Path   string
-	Groups []string
-	Repos  []string
+	Name     string
+	Path     string
+	Template string
+	Groups   []string
+	Repos    []string
 }
 
 // WorkspaceDeleteInput describes inputs for DeleteWorkspace.
@@ -121,4 +122,10 @@ type HooksRunInput struct {
 	Event     string
 	Reason    string
 	TrustRepo bool
+}
+
+// RepoHooksPreviewInput describes inputs for repo hook discovery without cloning.
+type RepoHooksPreviewInput struct {
+	Source string
+	Ref    string
 }

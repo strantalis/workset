@@ -40,6 +40,27 @@
 	--success-soft: color-mix(in srgb, var(--success) 30%, transparent);
 	--success-rgb: 134, 196, 66;
 
+	/* Status colors (GitHub-style) */
+	--status-success: #3fb950;
+	--status-error: #f85149;
+	--status-pending: #d29922;
+	--status-neutral: #8b949e;
+	--status-info: #58a6ff;
+
+	/* Semantic additions */
+	--subtle: #6b7f95;
+	--border-strong: #2a3a4e;
+	--yellow: #f59e0b;
+	--purple: #8b8aed;
+
+	/* Annotation colors */
+	--annotation-start: #6366f1;
+	--annotation-end: #a78bfa;
+
+	/* Text on accent backgrounds */
+	--on-accent: #081018;
+	--on-dark: #0a0f14;
+
 	/* Standardized radii */
 	--radius-sm: 8px;
 	--radius-md: 10px;
@@ -48,6 +69,22 @@
 	/* Transition timing */
 	--transition-fast: 120ms ease;
 	--transition-normal: 160ms ease;
+
+	/* Typography scale */
+	--text-xs: 12px;
+	--text-sm: 13px;
+	--text-base: 14px;
+	--text-md: 15px;
+	--text-lg: 17px;
+	--text-xl: 19px;
+	--text-2xl: 21px;
+	--text-3xl: 26px;
+
+	/* Monospace typography scale */
+	--text-mono-xs: 12px;
+	--text-mono-sm: 13px;
+	--text-mono-base: 14px;
+	--text-mono-md: 15px;
 
 	/* Spacing tokens */
 	--space-1: 4px;

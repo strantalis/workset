@@ -48,6 +48,7 @@ type GitHubClient interface {
 	ReviewThreadMap(ctx context.Context, owner, repo string, number int) (map[string]threadInfo, error)
 	GetReviewThreadID(ctx context.Context, commentNodeID string) (string, error)
 	ResolveReviewThread(ctx context.Context, threadID string, resolve bool) (bool, error)
+	GetFileContent(ctx context.Context, owner, repo, path, ref string) ([]byte, bool, error)
 }
 
 // GitHubPullRequest captures the fields used by Workset.

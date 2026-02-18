@@ -62,7 +62,7 @@
 		overflow: hidden;
 		border-radius: var(--radius-md);
 		cursor: pointer;
-		font-size: 13px;
+		font-size: var(--text-base);
 		font-family: inherit;
 		transition:
 			background var(--transition-fast),
@@ -94,7 +94,7 @@
 	}
 
 	.btn.primary .ripple {
-		background: rgba(0, 0, 0, 0.15);
+		background: rgba(255, 255, 255, 0.25);
 	}
 
 	@keyframes rippleExpand {
@@ -115,7 +115,7 @@
 
 	.btn.sm {
 		padding: 6px 10px;
-		font-size: 12px;
+		font-size: var(--text-sm);
 	}
 
 	/* Ghost variant */
@@ -134,7 +134,7 @@
 	.btn.primary {
 		background: var(--accent);
 		border: none;
-		color: #081018;
+		color: white;
 		font-weight: 600;
 		box-shadow:
 			var(--shadow-sm),

@@ -1,5 +1,8 @@
 <script lang="ts">
+	import TerminalDropZones from './TerminalDropZones.svelte';
 	import TerminalPane from './TerminalPane.svelte';
+	import TerminalPaneActions from './TerminalPaneActions.svelte';
+	import TerminalPaneTab from './TerminalPaneTab.svelte';
 	import Self from './TerminalLayoutNode.svelte';
 	import { shouldHandlePaneKeydown } from './terminalLayoutKeydown';
 
@@ -159,9 +162,11 @@
 
 	const handleTabDragStart = (event: DragEvent, tabId: string, index: number): void => {
 		if (!onTabDragStart || !isPane(node)) return;
+		const paneId = node?.id ?? '';
+		if (!paneId) return;
 		event.dataTransfer?.setData('text/plain', tabId);
 		event.dataTransfer!.effectAllowed = 'move';
-		onTabDragStart(node.id, tabId, index);
+		onTabDragStart(paneId, tabId, index);
 	};
 
 	const handleTabDragEnd = (): void => {
@@ -181,14 +186,16 @@
 		if (!dragState || !isPane(node)) return;
 		event.preventDefault();
 		event.dataTransfer!.dropEffect = 'move';
-		dropTargetIndex = node.tabs.length;
+		dropTargetIndex = node?.tabs?.length ?? 0;
 		activeDropZone = 'center';
 	};
 
 	const handleHeaderDrop = (event: DragEvent): void => {
 		event.preventDefault();
 		if (!dragState || !onTabDrop || !isPane(node)) return;
-		onTabDrop(node.id, node.tabs.length);
+		const paneId = node?.id ?? '';
+		if (!paneId) return;
+		onTabDrop(paneId, node?.tabs?.length ?? 0);
 		dropTargetIndex = null;
 		activeDropZone = null;
 	};
@@ -203,17 +210,19 @@
 	const handleBodyDrop = (event: DragEvent): void => {
 		event.preventDefault();
 		if (!dragState || !isPane(node)) return;
+		const paneId = node?.id ?? '';
+		if (!paneId) return;
 
 		if (activeDropZone === 'center' || !activeDropZone) {
 			// Drop as tab
-			onTabDrop?.(node.id, node.tabs.length);
+			onTabDrop?.(paneId, node?.tabs?.length ?? 0);
 		} else if (onTabSplitDrop) {
 			// Split drop
 			const direction: 'row' | 'column' =
 				activeDropZone === 'left' || activeDropZone === 'right' ? 'row' : 'column';
 			const position: 'before' | 'after' =
 				activeDropZone === 'left' || activeDropZone === 'top' ? 'before' : 'after';
-			onTabSplitDrop(node.id, direction, position);
+			onTabSplitDrop(paneId, direction, position);
 		}
 
 		dropTargetIndex = null;
@@ -223,7 +232,9 @@
 	const handleTabDrop = (event: DragEvent, index: number): void => {
 		event.preventDefault();
 		if (!dragState || !onTabDrop || !isPane(node)) return;
-		onTabDrop(node.id, index);
+		const paneId = node?.id ?? '';
+		if (!paneId) return;
+		onTabDrop(paneId, index);
 		dropTargetIndex = null;
 		activeDropZone = null;
 	};
@@ -241,15 +252,15 @@
 
 {#if !node}
 	<div class="pane-empty">No terminals</div>
-{:else if !isPane(node)}
+{:else if isSplit(node)}
 	<div
-		class="split {node.direction}"
+		class="split {node?.direction ?? 'row'}"
 		class:dragging-divider={isDraggingDivider}
 		bind:this={splitContainerRef}
 	>
-		<div class="split-child" style={`flex:${node.ratio} 1 0%`}>
+		<div class="split-child" style={`flex:${node?.ratio ?? 0.5} 1 0%`}>
 			<Self
-				node={node.first}
+				node={node?.first ?? null}
 				{workspaceId}
 				{workspaceName}
 				{active}
@@ -276,8 +287,8 @@
 			class:active={isDraggingDivider}
 			role="separator"
 			tabindex="0"
-			aria-orientation={node.direction === 'row' ? 'vertical' : 'horizontal'}
-			aria-valuenow={Math.round(node.ratio * 100)}
+			aria-orientation={(node?.direction ?? 'row') === 'row' ? 'vertical' : 'horizontal'}
+			aria-valuenow={Math.round((node?.ratio ?? 0.5) * 100)}
 			aria-valuemin={15}
 			aria-valuemax={85}
 			onpointerdown={handleDividerPointerDown}
@@ -286,9 +297,9 @@
 			onpointercancel={handleDividerPointerUp}
 			onkeydown={handleDividerKeyDown}
 		></div>
-		<div class="split-child" style={`flex:${1 - node.ratio} 1 0%`}>
+		<div class="split-child" style={`flex:${1 - (node?.ratio ?? 0.5)} 1 0%`}>
 			<Self
-				node={node.second}
+				node={node?.second ?? null}
 				{workspaceId}
 				{workspaceName}
 				{active}
@@ -309,27 +320,35 @@
 			/>
 		</div>
 	</div>
-{:else if node.tabs.length === 0}
+{:else if (node?.tabs?.length ?? 0) === 0}
 	<div class="pane-empty">No terminals</div>
+{:else if !isPane(node)}
+	<div class="pane-empty">Terminal layout unavailable</div>
 {:else}
+	{@const paneTabs = node?.tabs ?? []}
+	{@const paneId = node?.id ?? ''}
 	{@const activeTab =
-		node.tabs.find((tab: { id: string }) => tab.id === node.activeTabId) ?? node.tabs[0]}
-	{@const isFocused = focusedPaneId === node.id}
-	{@const isDragTarget = dragState && dragState.sourcePaneId !== node.id}
+		paneTabs.find((tab: { id: string }) => tab.id === node?.activeTabId) ?? paneTabs[0]}
+	{@const activeTabId = activeTab?.id ?? ''}
+	{@const activeTerminalId = activeTab?.terminalId ?? ''}
+	{@const isFocused = focusedPaneId === paneId}
+	{@const isDragTarget = dragState && dragState.sourcePaneId !== paneId}
 	<div
 		class="pane"
 		class:focused={isFocused}
 		class:drag-active={isDragTarget && activeDropZone}
-		data-pane-id={node.id}
+		data-pane-id={paneId}
 		role="button"
 		tabindex="0"
-		onclick={() => onFocusPane(node.id)}
+		onclick={() => paneId && onFocusPane(paneId)}
 		onkeydown={(event) => {
 			if (!shouldHandlePaneKeydown(event)) {
 				return;
 			}
 			event.preventDefault();
-			onFocusPane(node.id);
+			if (paneId) {
+				onFocusPane(paneId);
+			}
 		}}
 		ondragleave={handleDragLeave}
 	>
@@ -342,114 +361,25 @@
 			ondrop={handleHeaderDrop}
 		>
 			<div class="pane-tabs">
-				{#each node.tabs as tab, index (tab.id)}
-					<div
-						class="pane-tab"
-						class:active={tab.id === activeTab.id}
-						class:dragging={dragState?.tabId === tab.id}
-						class:drop-before={dropTargetIndex === index}
-						role="button"
-						tabindex="0"
-						draggable="true"
-						ondragstart={(e) => handleTabDragStart(e, tab.id, index)}
-						ondragend={handleTabDragEnd}
-						ondragover={(e) => {
-							handleTabDragOver(e, index);
-							e.stopPropagation();
-						}}
-						ondrop={(e) => {
-							handleTabDrop(e, index);
-							e.stopPropagation();
-						}}
-						onclick={() => onSelectTab(node.id, tab.id)}
-						onauxclick={(event) => {
-							// Middle-click to close tab (VS Code style)
-							if (event.button === 1) {
-								event.preventDefault();
-								onCloseTab(node.id, tab.id);
-							}
-						}}
-						onkeydown={(event) => {
-							if (event.key === 'Enter' || event.key === ' ') {
-								event.preventDefault();
-								onSelectTab(node.id, tab.id);
-							}
-						}}
-					>
-						<span class="tab-label">{tab.title}</span>
-						{#if totalPaneCount > 1 || node.tabs.length > 1}
-							<button
-								type="button"
-								class="tab-close"
-								title="Close tab"
-								onclick={(event) => {
-									event.stopPropagation();
-									onCloseTab(node.id, tab.id);
-								}}
-							>
-								<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-									<path
-										d="M3 3L9 9M9 3L3 9"
-										stroke="currentColor"
-										stroke-width="1.5"
-										stroke-linecap="round"
-									/>
-								</svg>
-							</button>
-						{/if}
-					</div>
+				{#each paneTabs as tab, index (tab.id)}
+					<TerminalPaneTab
+						{tab}
+						{paneId}
+						{index}
+						isActive={tab.id === activeTabId}
+						isDragging={dragState?.tabId === tab.id}
+						isDropBefore={dropTargetIndex === index}
+						showClose={totalPaneCount > 1 || paneTabs.length > 1}
+						{onSelectTab}
+						{onCloseTab}
+						onTabDragStart={(event, idx) => handleTabDragStart(event, tab.id, idx)}
+						onTabDragEnd={handleTabDragEnd}
+						onTabDragOver={handleTabDragOver}
+						onTabDrop={handleTabDrop}
+					/>
 				{/each}
 			</div>
-			<div class="pane-actions">
-				<button type="button" class="action-btn" title="New tab" onclick={() => onAddTab(node.id)}>
-					<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-						<path
-							d="M7 2v10M2 7h10"
-							stroke="currentColor"
-							stroke-width="1.5"
-							stroke-linecap="round"
-						/>
-					</svg>
-				</button>
-				<button
-					type="button"
-					class="action-btn"
-					title="Split vertical"
-					onclick={() => onSplitPane(node.id, 'row')}
-				>
-					<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-						<rect
-							x="1"
-							y="2"
-							width="12"
-							height="10"
-							rx="1.5"
-							stroke="currentColor"
-							stroke-width="1.2"
-						/>
-						<path d="M7 2v10" stroke="currentColor" stroke-width="1.2" />
-					</svg>
-				</button>
-				<button
-					type="button"
-					class="action-btn"
-					title="Split horizontal"
-					onclick={() => onSplitPane(node.id, 'column')}
-				>
-					<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-						<rect
-							x="1"
-							y="2"
-							width="12"
-							height="10"
-							rx="1.5"
-							stroke="currentColor"
-							stroke-width="1.2"
-						/>
-						<path d="M1 7h12" stroke="currentColor" stroke-width="1.2" />
-					</svg>
-				</button>
-			</div>
+			<TerminalPaneActions {paneId} {onAddTab} {onSplitPane} />
 		</div>
 		<div
 			class="pane-body"
@@ -461,20 +391,15 @@
 			<TerminalPane
 				{workspaceId}
 				{workspaceName}
-				terminalId={activeTab.terminalId}
+				terminalId={activeTerminalId}
 				active={isFocused && active}
 				compact={true}
 			/>
 
-			{#if dragState && dragState.sourcePaneId !== node.id}
-				<div class="drop-zones">
-					<div class="drop-zone left" class:active={activeDropZone === 'left'}></div>
-					<div class="drop-zone right" class:active={activeDropZone === 'right'}></div>
-					<div class="drop-zone top" class:active={activeDropZone === 'top'}></div>
-					<div class="drop-zone bottom" class:active={activeDropZone === 'bottom'}></div>
-					<div class="drop-zone center" class:active={activeDropZone === 'center'}></div>
-				</div>
-			{/if}
+			<TerminalDropZones
+				show={Boolean(dragState && dragState.sourcePaneId !== paneId)}
+				{activeDropZone}
+			/>
 		</div>
 	</div>
 {/if}
@@ -598,22 +523,24 @@
 	}
 
 	.pane:not(.focused) {
-		opacity: 0.75;
+		opacity: 0.35;
 	}
 
 	.pane:not(.focused):hover,
 	.pane.drag-active {
-		opacity: 0.9;
+		opacity: 0.7;
 		box-shadow: var(--shadow-md);
 	}
 
 	.pane-header {
 		display: flex;
 		align-items: center;
-		padding: 4px 6px;
+		padding: 0 4px;
 		background: color-mix(in srgb, var(--panel-strong) 80%, var(--panel));
 		transition: background 0.2s ease;
 		border-bottom: 1px solid var(--border);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
 	}
 
 	.pane-header.drop-target {
@@ -623,116 +550,16 @@
 	.pane-tabs {
 		display: flex;
 		align-items: center;
-		gap: 4px;
+		gap: 0;
 		flex: 1;
 		min-width: 0;
 		overflow-x: auto;
 		scrollbar-width: none;
-		padding: 0 4px;
+		padding: 0;
 	}
 
 	.pane-tabs::-webkit-scrollbar {
 		display: none;
-	}
-
-	.pane-tab {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		padding: 6px 10px 6px 12px;
-		font-size: 12px;
-		font-weight: 500;
-		background: transparent;
-		color: var(--muted);
-		cursor: grab;
-		border-radius: 8px;
-		transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-		white-space: nowrap;
-		position: relative;
-		border: 1px solid transparent;
-	}
-
-	.pane-tab:hover {
-		color: var(--text);
-		background: color-mix(in srgb, var(--panel-strong) 50%, transparent);
-		border-color: var(--border);
-	}
-
-	.pane-tab:active {
-		cursor: grabbing;
-		transform: scale(0.98);
-	}
-
-	.pane-tab.active {
-		color: var(--text);
-		background: var(--panel);
-		border-color: var(--border);
-		box-shadow:
-			var(--shadow-sm),
-			inset 0 1px 0 rgba(255, 255, 255, 0.04);
-		z-index: 1;
-	}
-
-	.pane-tab.active::after {
-		content: '';
-		position: absolute;
-		bottom: -5px;
-		left: 50%;
-		transform: translateX(-50%);
-		width: 6px;
-		height: 2px;
-		background: var(--accent);
-		border-radius: 1px;
-		box-shadow: 0 0 8px var(--accent);
-	}
-
-	.pane-tab.dragging {
-		opacity: 0.4;
-	}
-
-	.pane-tab.drop-before::before {
-		content: '';
-		position: absolute;
-		left: 0;
-		top: 6px;
-		bottom: 6px;
-		width: 2px;
-		background: var(--accent);
-		border-radius: 1px;
-	}
-
-	.tab-label {
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.tab-close {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 20px;
-		height: 20px;
-		margin-left: 4px;
-		color: var(--muted);
-		border: none;
-		background: transparent;
-		border-radius: 4px;
-		cursor: pointer;
-		opacity: 0;
-		transition:
-			opacity 0.15s ease,
-			background 0.15s ease,
-			color 0.15s ease;
-	}
-
-	.pane-tab:hover .tab-close,
-	.pane-tab.active .tab-close {
-		opacity: 1;
-	}
-
-	.tab-close:hover {
-		background: color-mix(in srgb, var(--warning) 20%, transparent);
-		color: var(--warning);
 	}
 
 	.pane-body {
@@ -748,100 +575,6 @@
 		align-items: center;
 		justify-content: center;
 		color: var(--muted);
-		font-size: 12px;
-	}
-
-	/* Drop zone overlays */
-	.drop-zones {
-		position: absolute;
-		inset: 0;
-		pointer-events: none;
-		z-index: 10;
-	}
-
-	.drop-zone {
-		position: absolute;
-		background: color-mix(in srgb, var(--accent) 10%, transparent);
-		border: 1px solid transparent;
-		border-radius: 8px;
-		opacity: 0;
-		transition:
-			opacity 0.15s ease,
-			border-color 0.15s ease;
-		backdrop-filter: blur(2px);
-	}
-
-	.drop-zone.active {
-		opacity: 1;
-		border-color: var(--accent);
-		background: color-mix(in srgb, var(--accent) 15%, transparent);
-	}
-
-	.drop-zone.left {
-		left: 4px;
-		top: 4px;
-		bottom: 4px;
-		width: calc(25% - 4px);
-	}
-
-	.drop-zone.right {
-		right: 4px;
-		top: 4px;
-		bottom: 4px;
-		width: calc(25% - 4px);
-	}
-
-	.drop-zone.top {
-		left: 4px;
-		right: 4px;
-		top: 4px;
-		height: calc(25% - 4px);
-	}
-
-	.drop-zone.bottom {
-		left: 4px;
-		right: 4px;
-		bottom: 4px;
-		height: calc(25% - 4px);
-	}
-
-	.drop-zone.center {
-		left: 30%;
-		right: 30%;
-		top: 30%;
-		bottom: 30%;
-	}
-	.pane-actions {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		padding: 0 8px 0 4px;
-		margin-left: auto;
-	}
-
-	.action-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 28px;
-		height: 28px;
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		background: var(--panel);
-		color: var(--muted);
-		cursor: pointer;
-		transition: all 0.15s ease;
-		box-shadow: var(--shadow-sm);
-	}
-
-	.action-btn:hover {
-		background: var(--panel-strong);
-		color: var(--text);
-		border-color: var(--accent);
-	}
-
-	.action-btn:active {
-		transform: scale(0.95);
-		box-shadow: none;
+		font-size: var(--text-sm);
 	}
 </style>

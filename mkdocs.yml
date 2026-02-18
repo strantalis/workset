@@ -62,4 +62,5 @@ nav:
   - Templates: templates.md
   - Architecture:
       - Terminal: architecture/terminal.md
+      - Terminal Ownership Simplification Plan: architecture/terminal-ownership-simplification-plan.md
   - Releases: releases/index.md

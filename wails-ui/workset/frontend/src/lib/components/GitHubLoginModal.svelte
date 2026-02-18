@@ -4,13 +4,13 @@
 	import Button from './ui/Button.svelte';
 	import { onMount } from 'svelte';
 	import type { GitHubAuthInfo, GitHubAuthStatus } from '../types';
+	import { openFileDialog } from '../api/settings';
 	import {
 		fetchGitHubAuthInfo,
-		openFileDialog,
 		setGitHubAuthMode,
 		setGitHubCLIPath,
 		setGitHubToken,
-	} from '../api';
+	} from '../api/github';
 
 	interface Props {
 		onClose?: () => void;
@@ -256,7 +256,7 @@
 		background: rgba(255, 255, 255, 0.02);
 		color: var(--muted);
 		padding: 8px 12px;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		font-weight: 600;
 		cursor: pointer;
 		transition: all 0.15s ease;
@@ -280,13 +280,13 @@
 
 	.label {
 		color: var(--muted);
-		font-size: 12px;
+		font-size: var(--text-sm);
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
 	}
 
 	.code {
-		font-size: 18px;
+		font-size: var(--text-xl);
 		font-weight: 600;
 		letter-spacing: 0.08em;
 		font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
@@ -306,12 +306,12 @@
 		border: 1px solid var(--border);
 		background: rgba(10, 10, 10, 0.6);
 		color: var(--text);
-		font-size: 13px;
+		font-size: var(--text-base);
 	}
 
 	.instructions {
 		color: var(--text);
-		font-size: 13px;
+		font-size: var(--text-base);
 	}
 
 	.actions {

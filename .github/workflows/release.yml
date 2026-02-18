@@ -210,19 +210,10 @@ jobs:
           node-version: "24"
       - name: Install create-dmg
         run: npm install -g create-dmg@8.0.0
-      - name: Install Wails
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
-      - name: Compute build metadata
-        id: build_meta
-        shell: bash
-        run: |
-          set -euo pipefail
-          tag="${{ needs.prepare-alpha.outputs.alpha_version }}"
-          version="${tag#v}"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "commit=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - name: Install Wails3 CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha.70
       - name: Build Wails app
-        run: wails build -platform darwin/universal -trimpath -ldflags "-s -w -X main.appVersion=${{ steps.build_meta.outputs.version }} -X main.appCommit=${{ steps.build_meta.outputs.commit }}"
+        run: wails3 package LDFLAGS='-s -w -X main.appVersion=${{ needs.prepare-alpha.outputs.alpha_version }} -X main.appCommit=${{ github.sha }}'
         working-directory: wails-ui/workset
       - name: Signing status
         id: signing
@@ -274,7 +265,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          dir="wails-ui/workset/build/bin"
+          dir="wails-ui/workset/bin"
           apps=("$dir"/*.app)
           if [ ${#apps[@]} -eq 0 ]; then
             echo "No .app bundles found in $dir"
@@ -306,7 +297,7 @@ jobs:
           KEY_PATH: ${{ runner.temp }}/notary_api_key.p8
         run: |
           set -euo pipefail
-          dir="wails-ui/workset/build/bin"
+          dir="wails-ui/workset/bin"
           key="$RUNNER_TEMP/notary_api_key.p8"
           python3 - <<'PY'
           import base64, os
@@ -342,7 +333,7 @@ jobs:
           TAG: ${{ needs.prepare-alpha.outputs.alpha_version }}
         run: |
           set -euo pipefail
-          app="wails-ui/workset/build/bin/workset.app"
+          app="wails-ui/workset/bin/workset.app"
           out="$RUNNER_TEMP/dmg"
           rm -rf "$out"
           mkdir -p "$out"
@@ -354,7 +345,7 @@ jobs:
             ls -la "$out"
             exit 1
           fi
-          mv "${dmgs[0]}" "wails-ui/workset/build/bin/workset-${TAG}-macos.dmg"
+          mv "${dmgs[0]}" "wails-ui/workset/bin/workset-${TAG}-macos.dmg"
       - name: Codesign DMG
         if: steps.signing.outputs.enabled == 'true'
         shell: bash
@@ -362,7 +353,7 @@ jobs:
           TAG: ${{ needs.prepare-alpha.outputs.alpha_version }}
         run: |
           set -euo pipefail
-          dmg="wails-ui/workset/build/bin/workset-${TAG}-macos.dmg"
+          dmg="wails-ui/workset/bin/workset-${TAG}-macos.dmg"
           identity=$(security find-identity -v -p codesigning | awk -F\" '/Developer ID Application/ {print $2; exit}')
           if [ -z "$identity" ]; then
             echo "Developer ID Application identity not found"
@@ -387,7 +378,7 @@ jobs:
           with open(os.environ["KEY_PATH"], "wb") as f:
               f.write(base64.b64decode(data))
           PY
-          dmg="wails-ui/workset/build/bin/workset-${TAG}-macos.dmg"
+          dmg="wails-ui/workset/bin/workset-${TAG}-macos.dmg"
           result=$(xcrun notarytool submit "$dmg" \
             --key "$RUNNER_TEMP/notary_api_key.p8" \
             --key-id "$MACOS_NOTARY_KEY_ID" \
@@ -409,7 +400,7 @@ jobs:
         with:
           tag_name: ${{ needs.prepare-alpha.outputs.alpha_version }}
           prerelease: true
-          files: wails-ui/workset/build/bin/workset-${{ needs.prepare-alpha.outputs.alpha_version }}-macos.dmg
+          files: wails-ui/workset/bin/workset-${{ needs.prepare-alpha.outputs.alpha_version }}-macos.dmg
 
   wails-windows-alpha:
     needs: [prepare-alpha, alpha-release]
@@ -427,33 +418,28 @@ jobs:
         uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version: "24"
-      - name: Install Wails
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
-      - name: Compute build metadata
-        id: build_meta
-        shell: pwsh
-        run: |
-          $tag = "${{ needs.prepare-alpha.outputs.alpha_version }}"
-          $version = $tag -replace '^v', ''
-          "version=$version" >> $env:GITHUB_OUTPUT
-          "commit=${{ github.sha }}" >> $env:GITHUB_OUTPUT
+      - name: Install Wails3 CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha.70
       - name: Build Wails app
-        run: wails build -trimpath -ldflags "-s -w -X main.appVersion=${{ steps.build_meta.outputs.version }} -X main.appCommit=${{ steps.build_meta.outputs.commit }}"
+        run: wails3 package LDFLAGS='-s -w -X main.appVersion=${{ needs.prepare-alpha.outputs.alpha_version }} -X main.appCommit=${{ github.sha }}'
         working-directory: wails-ui/workset
       - name: Rename artifacts
         shell: pwsh
         run: |
           $tag = "${{ needs.prepare-alpha.outputs.alpha_version }}"
           $os = "windows"
-          $dir = "wails-ui/workset/build/bin"
+          $dir = "wails-ui/workset/bin"
           if (-not (Test-Path $dir)) {
             Write-Error "Missing build output directory: $dir"
             exit 1
           }
           Get-ChildItem -Path $dir | ForEach-Object {
             $ext = $_.Extension
-            if ($ext -eq ".exe") {
+            if ($_.Name -eq "workset.exe") {
               $newName = "workset-$tag-$os.exe"
+            } elseif ($ext -eq ".exe") {
+              $base = $_.BaseName
+              $newName = "$base-$tag-$os.exe"
             } else {
               $newName = "workset-$tag-$os-$($_.Name)"
             }
@@ -464,7 +450,7 @@ jobs:
         with:
           tag_name: ${{ needs.prepare-alpha.outputs.alpha_version }}
           prerelease: true
-          files: wails-ui/workset/build/bin/*
+          files: wails-ui/workset/bin/*
 
   stable-release:
     needs: determine
@@ -560,19 +546,10 @@ jobs:
           node-version: "24"
       - name: Install create-dmg
         run: npm install -g create-dmg@8.0.0
-      - name: Install Wails
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
-      - name: Compute build metadata
-        id: build_meta
-        shell: bash
-        run: |
-          set -euo pipefail
-          tag="${{ needs.stable-release.outputs.tag }}"
-          version="${tag#v}"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "commit=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - name: Install Wails3 CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha.70
       - name: Build Wails app
-        run: wails build -platform darwin/universal -trimpath -ldflags "-s -w -X main.appVersion=${{ steps.build_meta.outputs.version }} -X main.appCommit=${{ steps.build_meta.outputs.commit }}"
+        run: wails3 package LDFLAGS='-s -w -X main.appVersion=${{ needs.stable-release.outputs.tag }} -X main.appCommit=${{ github.sha }}'
         working-directory: wails-ui/workset
       - name: Signing status
         id: signing
@@ -624,7 +601,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          dir="wails-ui/workset/build/bin"
+          dir="wails-ui/workset/bin"
           apps=("$dir"/*.app)
           if [ ${#apps[@]} -eq 0 ]; then
             echo "No .app bundles found in $dir"
@@ -656,7 +633,7 @@ jobs:
           KEY_PATH: ${{ runner.temp }}/notary_api_key.p8
         run: |
           set -euo pipefail
-          dir="wails-ui/workset/build/bin"
+          dir="wails-ui/workset/bin"
           key="$RUNNER_TEMP/notary_api_key.p8"
           python3 - <<'PY'
           import base64, os
@@ -692,7 +669,7 @@ jobs:
           TAG: ${{ needs.stable-release.outputs.tag }}
         run: |
           set -euo pipefail
-          app="wails-ui/workset/build/bin/workset.app"
+          app="wails-ui/workset/bin/workset.app"
           out="$RUNNER_TEMP/dmg"
           rm -rf "$out"
           mkdir -p "$out"
@@ -704,7 +681,7 @@ jobs:
             ls -la "$out"
             exit 1
           fi
-          mv "${dmgs[0]}" "wails-ui/workset/build/bin/workset-${TAG}-macos.dmg"
+          mv "${dmgs[0]}" "wails-ui/workset/bin/workset-${TAG}-macos.dmg"
       - name: Codesign DMG
         if: steps.signing.outputs.enabled == 'true'
         shell: bash
@@ -712,7 +689,7 @@ jobs:
           TAG: ${{ needs.stable-release.outputs.tag }}
         run: |
           set -euo pipefail
-          dmg="wails-ui/workset/build/bin/workset-${TAG}-macos.dmg"
+          dmg="wails-ui/workset/bin/workset-${TAG}-macos.dmg"
           identity=$(security find-identity -v -p codesigning | awk -F\" '/Developer ID Application/ {print $2; exit}')
           if [ -z "$identity" ]; then
             echo "Developer ID Application identity not found"
@@ -737,7 +714,7 @@ jobs:
           with open(os.environ["KEY_PATH"], "wb") as f:
               f.write(base64.b64decode(data))
           PY
-          dmg="wails-ui/workset/build/bin/workset-${TAG}-macos.dmg"
+          dmg="wails-ui/workset/bin/workset-${TAG}-macos.dmg"
           result=$(xcrun notarytool submit "$dmg" \
             --key "$RUNNER_TEMP/notary_api_key.p8" \
             --key-id "$MACOS_NOTARY_KEY_ID" \
@@ -759,7 +736,7 @@ jobs:
         with:
           tag_name: ${{ needs.stable-release.outputs.tag }}
           prerelease: false
-          files: wails-ui/workset/build/bin/workset-${{ needs.stable-release.outputs.tag }}-macos.dmg
+          files: wails-ui/workset/bin/workset-${{ needs.stable-release.outputs.tag }}-macos.dmg
 
   wails-windows-stable:
     needs: stable-release
@@ -777,33 +754,28 @@ jobs:
         uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version: "24"
-      - name: Install Wails
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
-      - name: Compute build metadata
-        id: build_meta
-        shell: pwsh
-        run: |
-          $tag = "${{ needs.stable-release.outputs.tag }}"
-          $version = $tag -replace '^v', ''
-          "version=$version" >> $env:GITHUB_OUTPUT
-          "commit=${{ github.sha }}" >> $env:GITHUB_OUTPUT
+      - name: Install Wails3 CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha.70
       - name: Build Wails app
-        run: wails build -trimpath -ldflags "-s -w -X main.appVersion=${{ steps.build_meta.outputs.version }} -X main.appCommit=${{ steps.build_meta.outputs.commit }}"
+        run: wails3 package LDFLAGS='-s -w -X main.appVersion=${{ needs.stable-release.outputs.tag }} -X main.appCommit=${{ github.sha }}'
         working-directory: wails-ui/workset
       - name: Rename artifacts
         shell: pwsh
         run: |
           $tag = "${{ needs.stable-release.outputs.tag }}"
           $os = "windows"
-          $dir = "wails-ui/workset/build/bin"
+          $dir = "wails-ui/workset/bin"
           if (-not (Test-Path $dir)) {
             Write-Error "Missing build output directory: $dir"
             exit 1
           }
           Get-ChildItem -Path $dir | ForEach-Object {
             $ext = $_.Extension
-            if ($ext -eq ".exe") {
+            if ($_.Name -eq "workset.exe") {
               $newName = "workset-$tag-$os.exe"
+            } elseif ($ext -eq ".exe") {
+              $base = $_.BaseName
+              $newName = "$base-$tag-$os.exe"
             } else {
               $newName = "workset-$tag-$os-$($_.Name)"
             }
@@ -814,4 +786,4 @@ jobs:
         with:
           tag_name: ${{ needs.stable-release.outputs.tag }}
           prerelease: false
-          files: wails-ui/workset/build/bin/*
+          files: wails-ui/workset/bin/*

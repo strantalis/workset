@@ -23,13 +23,4 @@ ignore:
   - '**/*_generated.*'
 
 allowlist:
-  - wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte
-  - wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte
-  - wails-ui/workset/frontend/src/lib/terminal/terminalService.ts
-  - pkg/sessiond/session.go
-  - pkg/worksetapi/github_service.go
-  - pkg/termemu/termemu.go
-  - wails-ui/workset/frontend/src/lib/api.ts
-  - wails-ui/workset/app_updates.go
-  - wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte
-  - wails-ui/workset/frontend/src/lib/components/WorkspaceManager.svelte
+  - wails-ui/workset/frontend/src/lib/components/views/PROrchestrationView.svelte

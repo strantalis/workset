@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/strantalis/workset/pkg/sessiond"
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func (a *App) getSessiondClient() (*sessiond.Client, error) {
@@ -54,6 +53,9 @@ func (a *App) getSessiondClientInternal(waitForRestart bool) (*sessiond.Client, 
 	if cfg, _, cfgErr := svc.GetConfig(ctx); cfgErr == nil {
 		if envTruthy(cfg.Defaults.TerminalProtocolLog) {
 			startOpts.ProtocolLogEnabled = true
+		}
+		if timeout := strings.TrimSpace(cfg.Defaults.TerminalIdleTimeout); timeout != "" {
+			startOpts.IdleTimeout = timeout
 		}
 	}
 	client, err := sessiond.EnsureRunningWithOptions(ctx, startOpts)
@@ -285,7 +287,7 @@ func (a *App) restartSessiond(reason string) SessiondStatus {
 		if forceSocketRemove {
 			status.Warning = "Session daemon did not shut down cleanly; socket was force removed."
 		}
-		wruntime.EventsEmit(a.ctx, "sessiond:restarted", status)
+		emitRuntimeEvent(a.ctx, EventSessiondRestarted, status)
 	}
 	logRestartf("restart_done")
 	status := SessiondStatus{Available: true}

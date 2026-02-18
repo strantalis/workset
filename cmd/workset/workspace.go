@@ -38,10 +38,10 @@ func newCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "new",
 		Usage:     "Create a new workspace in a new directory",
-		ArgsUsage: "<name>",
+		ArgsUsage: "<name...>",
 		Flags:     flags,
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			name := strings.TrimSpace(cmd.Args().First())
+			name := strings.TrimSpace(strings.Join(cmd.Args().Slice(), " "))
 			if name == "" {
 				return usageError(ctx, cmd, "workspace name required")
 			}
@@ -118,7 +118,13 @@ func newCommand() *cli.Command {
 				if handledHooks[pending.Repo] {
 					continue
 				}
-				_, _ = fmt.Fprintf(os.Stderr, "warning: repo %s hooks pending approval; run `workset hooks run -w %s %s` to execute\n", pending.Repo, result.Workspace.Name, pending.Repo)
+				_, _ = fmt.Fprintf(
+					os.Stderr,
+					"warning: repo %s hooks pending approval; run `workset hooks run -w %s %s` to execute\n",
+					pending.Repo,
+					shellQuoteArg(result.Workspace.Name),
+					shellQuoteArg(pending.Repo),
+				)
 			}
 			if mode.JSON {
 				return output.WriteJSON(commandWriter(cmd), struct {

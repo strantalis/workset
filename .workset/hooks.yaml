@@ -6,6 +6,6 @@ hooks:
     on_error: warn
   - id: generate-wails-bindings
     on: [worktree.created]
-    run: ["wails", "generate", "module"]
+    run: ["wails3", "generate", "bindings"]
     cwd: "{repo.path}/wails-ui/workset"
     on_error: warn

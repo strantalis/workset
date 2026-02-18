@@ -185,7 +185,7 @@ func (s *Service) applyRecoverCandidates(cfg *config.GlobalConfig, candidates []
 			}
 			continue
 		}
-		registerWorkspace(cfg, candidate.name, candidate.root, now)
+		registerWorkspace(cfg, candidate.name, candidate.root, now, "")
 		result.recovered = append(result.recovered, candidate.name)
 		result.configChanged = true
 		if rebuildRepos {

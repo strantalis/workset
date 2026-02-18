@@ -38,7 +38,7 @@ func (s *Service) ListRepos(ctx context.Context, selector WorkspaceSelector) (Re
 
 	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
 		info = loadInfo
-		registerWorkspace(cfg, wsConfig.Name, wsRoot, s.clock())
+		registerWorkspace(cfg, wsConfig.Name, wsRoot, s.clock(), "")
 		return nil
 	}); err != nil {
 		return RepoListResult{}, err
@@ -162,7 +162,7 @@ func (s *Service) AddRepo(ctx context.Context, input RepoAddInput) (RepoAddResul
 			cfg.Repos = map[string]config.RegisteredRepo{}
 		}
 		cfg.Repos[name] = alias
-		registerWorkspace(cfg, wsConfig.Name, wsRoot, s.clock())
+		registerWorkspace(cfg, wsConfig.Name, wsRoot, s.clock(), "")
 		return nil
 	}); err != nil {
 		return RepoAddResult{}, err
@@ -311,7 +311,7 @@ func (s *Service) RemoveRepo(ctx context.Context, input RepoRemoveInput) (RepoRe
 
 	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
 		info = loadInfo
-		registerWorkspace(cfg, wsConfig.Name, wsRoot, s.clock())
+		registerWorkspace(cfg, wsConfig.Name, wsRoot, s.clock(), "")
 		return nil
 	}); err != nil {
 		return RepoRemoveResult{}, err

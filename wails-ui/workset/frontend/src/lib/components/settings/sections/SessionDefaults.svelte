@@ -75,7 +75,7 @@
 		{
 			id: 'terminalDebugOverlay',
 			label: 'Debug overlay',
-			description: 'Shows terminal debug stats like bytes in/out and backlog.',
+			description: 'Shows terminal debug stats like bytes in/out and CPR timing.',
 			type: 'select',
 			options: [
 				{ label: 'Off', value: 'off' },
@@ -193,7 +193,7 @@
 	}
 
 	.compact-field label {
-		font-size: 13px;
+		font-size: var(--text-base);
 		color: var(--text);
 		min-width: 140px;
 		flex-shrink: 0;
@@ -214,11 +214,11 @@
 	.compact-field input {
 		width: 100px;
 		background: var(--panel-strong);
-		border: 1px solid rgba(255, 255, 255, 0.08);
+		border: 1px solid var(--border);
 		color: var(--text);
 		border-radius: var(--radius-md);
 		padding: 8px 12px;
-		font-size: 13px;
+		font-size: var(--text-base);
 		transition:
 			border-color var(--transition-fast),
 			box-shadow var(--transition-fast);
@@ -231,7 +231,7 @@
 	}
 
 	.hint {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
@@ -243,7 +243,7 @@
 		padding: 10px 14px;
 		border-radius: 10px;
 		border: 1px dashed var(--border);
-		background: rgba(255, 255, 255, 0.02);
+		background: color-mix(in srgb, var(--text) 2%, transparent);
 	}
 
 	.sessiond-actions .hint {
@@ -256,7 +256,7 @@
 		color: var(--text);
 		border-radius: var(--radius-md);
 		padding: 6px 12px;
-		font-size: 12px;
+		font-size: var(--text-sm);
 		cursor: pointer;
 		white-space: nowrap;
 		display: inline-flex;

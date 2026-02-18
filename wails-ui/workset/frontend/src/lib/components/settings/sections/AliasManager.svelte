@@ -1,16 +1,27 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import {
+		Plus,
+		Search,
+		ChevronDown,
+		Loader2,
+		Copy,
+		Trash2,
+		FolderOpen,
+		Pencil,
+	} from '@lucide/svelte';
+	import {
 		createAlias,
 		deleteAlias,
 		listAliases,
 		openDirectoryDialog,
 		updateAlias,
-	} from '../../../api';
+	} from '../../../api/settings';
 	import type { Alias } from '../../../types';
 	import { toErrorMessage } from '../../../errors';
 	import SettingsSection from '../SettingsSection.svelte';
 	import Button from '../../ui/Button.svelte';
+	import { deriveRepoName, looksLikeUrl } from '../../../names';
 
 	interface Props {
 		onAliasCountChange: (count: number) => void;
@@ -19,16 +30,24 @@
 	const { onAliasCountChange }: Props = $props();
 
 	let aliases: Alias[] = $state([]);
-	let selectedAlias: Alias | null = $state(null);
-	let isNew = $state(false);
 	let loading = $state(false);
 	let error: string | null = $state(null);
 	let success: string | null = $state(null);
 
+	// Registration/edit form state
+	let isRegistering = $state(false);
+	let isEditing = $state(false);
+	let editingName = $state('');
 	let formName = $state('');
 	let formSource = $state('');
-	let formRemote = $state('');
-	let formBranch = $state('');
+	let formRemote = $state('origin');
+	let formBranch = $state('main');
+	let advancedOpen = $state(false);
+	let detecting = $state(false);
+
+	// Search and copy state
+	let searchQuery = $state('');
+	let copiedId: string | null = $state(null);
 
 	const loadAliases = async (): Promise<void> => {
 		try {
@@ -39,35 +58,51 @@
 		}
 	};
 
-	const selectAlias = (alias: Alias): void => {
-		selectedAlias = alias;
-		isNew = false;
+	const filteredAliases = $derived(
+		aliases.filter((a) => a.name.toLowerCase().includes(searchQuery.toLowerCase())),
+	);
+
+	$effect((): void => {
+		if (isEditing || !isRegistering) {
+			return;
+		}
+
+		if (formName.trim()) {
+			return;
+		}
+
+		const source = formSource.trim();
+		if (!source || !looksLikeUrl(source)) {
+			return;
+		}
+
+		const derivedName = deriveRepoName(source);
+		if (derivedName) {
+			formName = derivedName;
+		}
+	});
+
+	const handleCancel = (): void => {
+		isRegistering = false;
+		isEditing = false;
+		editingName = '';
+		formName = '';
+		formSource = '';
+		formRemote = 'origin';
+		formBranch = 'main';
+		advancedOpen = false;
+		error = null;
+	};
+
+	const startEdit = (alias: Alias): void => {
+		isEditing = true;
+		isRegistering = true; // Show the form
+		editingName = alias.name;
 		formName = alias.name;
 		formSource = alias.url ?? alias.path ?? '';
-		formRemote = alias.remote ?? '';
-		formBranch = alias.default_branch ?? '';
-		error = null;
-		success = null;
-	};
-
-	const startNew = (): void => {
-		selectedAlias = null;
-		isNew = true;
-		formName = '';
-		formSource = '';
-		formRemote = '';
-		formBranch = '';
-		error = null;
-		success = null;
-	};
-
-	const cancelEdit = (): void => {
-		selectedAlias = null;
-		isNew = false;
-		formName = '';
-		formSource = '';
-		formRemote = '';
-		formBranch = '';
+		formRemote = alias.remote ?? 'origin';
+		formBranch = alias.default_branch ?? 'main';
+		advancedOpen = false;
 		error = null;
 		success = null;
 	};
@@ -90,45 +125,46 @@
 		loading = true;
 		error = null;
 		success = null;
+		detecting = true;
 
 		try {
-			if (isNew) {
-				await createAlias(name, source, remote, branch);
-				success = `Created ${name}.`;
-			} else {
+			if (isEditing) {
 				await updateAlias(name, source, remote, branch);
 				success = `Updated ${name}.`;
+			} else {
+				await createAlias(name, source, remote, branch);
+				success = `Registered ${name}.`;
 			}
 			await loadAliases();
-			const updated = aliases.find((a) => a.name === name);
-			if (updated) {
-				selectAlias(updated);
-			}
+			// Reset form
+			isRegistering = false;
+			isEditing = false;
+			editingName = '';
+			formName = '';
+			formSource = '';
+			formRemote = 'origin';
+			formBranch = 'main';
+			advancedOpen = false;
 		} catch (err) {
 			error = toErrorMessage(err, 'An error occurred.');
 		} finally {
 			loading = false;
+			detecting = false;
 		}
 	};
 
-	const handleDelete = async (): Promise<void> => {
-		if (!selectedAlias) return;
+	const handleDelete = async (alias: Alias): Promise<void> => {
+		const confirmed = window.confirm(`Remove "${alias.name}" from the catalog?`);
+		if (!confirmed) return;
 
-		const name = selectedAlias.name;
 		loading = true;
 		error = null;
 		success = null;
 
 		try {
-			await deleteAlias(name);
-			success = `Deleted ${name}.`;
+			await deleteAlias(alias.name);
+			success = `Removed ${alias.name}.`;
 			await loadAliases();
-			selectedAlias = null;
-			isNew = false;
-			formName = '';
-			formSource = '';
-			formRemote = '';
-			formBranch = '';
 		} catch (err) {
 			error = toErrorMessage(err, 'An error occurred.');
 		} finally {
@@ -136,12 +172,17 @@
 		}
 	};
 
-	const truncateSource = (alias: Alias): string => {
-		const source = alias.url ?? alias.path ?? '';
-		if (source.length > 40) {
-			return source.substring(0, 37) + '...';
+	const handleCopyUrl = async (alias: Alias): Promise<void> => {
+		const url = alias.url ?? alias.path ?? '';
+		try {
+			await navigator.clipboard.writeText(url);
+			copiedId = alias.name;
+			setTimeout(() => {
+				copiedId = null;
+			}, 1500);
+		} catch {
+			// Ignore clipboard errors
 		}
-		return source;
 	};
 
 	const handleBrowseSource = async (): Promise<void> => {
@@ -161,73 +202,69 @@
 </script>
 
 <SettingsSection
-	title="Repo Registry"
-	description="Registered repos can be quickly added to workspaces by name."
+	title="Repo Catalog"
+	description="Your catalog of known repositories. Repos registered here can be quickly added to worksets and templates by name."
 >
-	<div class="manager">
-		<div class="list-header">
-			<span class="list-count">{aliases.length} repo{aliases.length === 1 ? '' : 's'}</span>
-			<Button variant="ghost" size="sm" onclick={startNew}>+ New</Button>
+	<div class="catalog-container">
+		<!-- Header with Register button -->
+		<div class="catalog-header">
+			<div class="header-text">
+				<h3 class="section-title">Registered Repositories</h3>
+				<p class="section-desc">
+					{aliases.length}
+					{aliases.length === 1 ? 'repo' : 'repos'} in catalog
+				</p>
+			</div>
+			{#if !isRegistering}
+				<Button variant="primary" size="sm" onclick={() => (isRegistering = true)}>
+					<Plus size={14} />
+					Register Repo
+				</Button>
+			{/if}
 		</div>
 
-		{#if aliases.length > 0}
-			<div class="list">
-				{#each aliases as alias (alias)}
-					<button
-						class="list-item"
-						class:active={selectedAlias?.name === alias.name && !isNew}
-						type="button"
-						onclick={() => selectAlias(alias)}
-					>
-						<span class="item-name">{alias.name}</span>
-						<span class="item-source">{truncateSource(alias)}</span>
-					</button>
-				{/each}
-				{#if isNew}
-					<button class="list-item active" type="button">
-						<span class="item-name new">New repo</span>
-					</button>
-				{/if}
-			</div>
-		{:else if !isNew}
-			<div class="empty">
-				<p>No registered repos yet.</p>
-				<Button variant="ghost" onclick={startNew}>Register your first repo</Button>
-			</div>
-		{/if}
-
-		{#if error}
-			<div class="message error">{error}</div>
-		{:else if success}
+		<!-- Success/Error Messages -->
+		{#if success && !isRegistering}
 			<div class="message success">{success}</div>
 		{/if}
+		{#if error && !isRegistering}
+			<div class="message error">{error}</div>
+		{/if}
 
-		{#if isNew || selectedAlias}
-			<div class="detail">
-				<div class="detail-header">
-					{#if isNew}
-						New repo
-					{:else if selectedAlias}
-						Editing: {selectedAlias.name}
+		<!-- Registration Form -->
+		{#if isRegistering}
+			<div class="registration-form">
+				<div class="form-header">
+					{#if isEditing}
+						<h4>Editing: {editingName}</h4>
+					{:else}
+						<h4>New Repo</h4>
 					{/if}
 				</div>
-				<div class="form">
-					<label class="field">
-						<span>Name</span>
+
+				<div class="form-fields">
+					<div class="form-field">
+						<label for="reg-name">Name</label>
 						<input
+							id="reg-name"
 							type="text"
 							bind:value={formName}
 							placeholder="my-repo"
-							disabled={!isNew && !!selectedAlias}
+							disabled={isEditing}
 							autocapitalize="off"
 							autocorrect="off"
 							spellcheck="false"
 						/>
-					</label>
-					<label class="field">
-						<span>Source (URL or path)</span>
-						<div class="inline">
+						{#if isEditing}
+							<p class="field-hint">Repo name cannot be changed</p>
+						{/if}
+					</div>
+
+					<div class="form-field">
+						<label for="reg-source">Source (URL or path)</label>
+						<div class="input-with-button">
 							<input
+								id="reg-source"
 								type="text"
 								bind:value={formSource}
 								placeholder="git@github.com:org/repo.git"
@@ -235,15 +272,24 @@
 								autocorrect="off"
 								spellcheck="false"
 							/>
-							<Button variant="ghost" size="sm" onclick={handleBrowseSource}>Browse</Button>
+							<Button variant="ghost" size="sm" onclick={handleBrowseSource}>
+								<FolderOpen size={14} />
+								Browse
+							</Button>
 						</div>
-					</label>
-					<details class="advanced-section">
-						<summary>Advanced</summary>
+					</div>
+
+					<!-- Advanced section -->
+					<details class="advanced-section" bind:open={advancedOpen}>
+						<summary>
+							<span class="summary-icon"><ChevronDown size={14} /></span>
+							<span>Advanced</span>
+						</summary>
 						<div class="advanced-fields">
-							<label class="field">
-								<span>Remote (optional)</span>
+							<div class="form-field">
+								<label for="reg-remote">Remote (optional)</label>
 								<input
+									id="reg-remote"
 									type="text"
 									bind:value={formRemote}
 									placeholder="origin"
@@ -251,10 +297,11 @@
 									autocorrect="off"
 									spellcheck="false"
 								/>
-							</label>
-							<label class="field">
-								<span>Default branch</span>
+							</div>
+							<div class="form-field">
+								<label for="reg-branch">Default branch</label>
 								<input
+									id="reg-branch"
 									type="text"
 									bind:value={formBranch}
 									placeholder="main"
@@ -262,180 +309,449 @@
 									autocorrect="off"
 									spellcheck="false"
 								/>
-							</label>
+							</div>
 						</div>
 					</details>
 				</div>
-				<div class="actions">
-					{#if !isNew && selectedAlias}
-						<Button variant="danger" onclick={handleDelete} disabled={loading}>Delete</Button>
-					{/if}
-					<div class="spacer"></div>
-					<Button variant="ghost" onclick={cancelEdit} disabled={loading}>Cancel</Button>
-					<Button variant="primary" onclick={handleSave} disabled={loading}>
-						{loading ? 'Saving...' : isNew ? 'Register' : 'Save'}
+
+				{#if detecting}
+					<div class="detecting-feedback">
+						<span class="spin-icon"><Loader2 size={14} /></span>
+						<span>Registering repository...</span>
+					</div>
+				{/if}
+
+				{#if error && isRegistering}
+					<div class="message error">{error}</div>
+				{/if}
+
+				<div class="form-actions">
+					<Button variant="ghost" size="sm" onclick={handleCancel} disabled={detecting}>
+						Cancel
+					</Button>
+					<Button
+						variant="primary"
+						size="sm"
+						onclick={handleSave}
+						disabled={!formName.trim() || detecting}
+					>
+						{detecting
+							? isEditing
+								? 'Saving...'
+								: 'Registering...'
+							: isEditing
+								? 'Save'
+								: 'Register'}
 					</Button>
 				</div>
 			</div>
-		{:else if aliases.length > 0}
-			<div class="hint">Select a repo to edit, or click "+ New" to register one.</div>
 		{/if}
+
+		<!-- Search and List -->
+		<div class="repo-list-container">
+			<div class="search-bar">
+				<span class="search-icon"><Search size={14} /></span>
+				<input type="text" placeholder="Filter by name..." bind:value={searchQuery} />
+			</div>
+
+			<div class="repo-list">
+				{#each filteredAliases as alias (alias.name)}
+					<div class="repo-card">
+						<div class="repo-info">
+							<div class="repo-header">
+								<span class="repo-name">{alias.name}</span>
+								<span class="repo-branch">{alias.default_branch || 'main'}</span>
+							</div>
+							<div class="repo-source">{alias.url ?? alias.path ?? ''}</div>
+						</div>
+						<div class="repo-actions">
+							<button class="action-btn" onclick={() => startEdit(alias)} title="Edit">
+								<Pencil size={14} />
+							</button>
+							<button
+								class="action-btn"
+								onclick={() => handleCopyUrl(alias)}
+								title={copiedId === alias.name ? 'Copied!' : 'Copy remote URL'}
+							>
+								<Copy size={14} />
+							</button>
+							<button
+								class="action-btn danger"
+								onclick={() => handleDelete(alias)}
+								disabled={loading}
+								title="Remove from catalog"
+							>
+								<Trash2 size={14} />
+							</button>
+						</div>
+					</div>
+				{:else}
+					{#if !isRegistering}
+						<div class="empty-state">
+							<p>No repositories found.</p>
+							<Button variant="ghost" onclick={() => (isRegistering = true)}>
+								Register your first repo
+							</Button>
+						</div>
+					{/if}
+				{/each}
+			</div>
+
+			{#if filteredAliases.length > 0}
+				<div class="list-footer">
+					{filteredAliases.length} of {aliases.length} repositories
+				</div>
+			{/if}
+		</div>
 	</div>
 </SettingsSection>
 
 <style>
-	.manager {
+	.catalog-container {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-3);
+		gap: var(--space-4);
 	}
 
-	.list-header {
+	.catalog-header {
 		display: flex;
-		align-items: center;
 		justify-content: space-between;
-		gap: var(--space-2);
+		align-items: flex-start;
+		gap: var(--space-3);
 	}
 
-	.list-count {
-		font-size: 12px;
-		color: var(--muted);
-	}
-
-	.list {
+	.header-text {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-1);
-		max-height: 200px;
-		overflow-y: auto;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		padding: var(--space-1);
-		background: var(--panel);
+		gap: 4px;
 	}
 
-	.list-item {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: var(--space-3);
-		padding: 10px var(--space-3);
-		border: none;
-		background: transparent;
-		color: var(--text);
-		font-size: 13px;
-		font-family: inherit;
-		text-align: left;
-		border-radius: var(--radius-sm);
-		cursor: pointer;
-		transition: background var(--transition-fast);
-	}
-
-	.list-item:hover {
-		background: rgba(255, 255, 255, 0.04);
-	}
-
-	.list-item.active {
-		background: rgba(255, 255, 255, 0.08);
-	}
-
-	.item-name {
-		font-weight: 500;
-	}
-
-	.item-name.new {
-		font-style: italic;
-		color: var(--accent);
-	}
-
-	.item-source {
-		font-size: 12px;
-		color: var(--muted);
-		text-overflow: ellipsis;
-		overflow: hidden;
-		white-space: nowrap;
-	}
-
-	.detail {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-3);
-		padding: var(--space-4);
-		background: var(--panel-soft);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-	}
-
-	.detail-header {
-		font-size: 14px;
+	.section-title {
+		font-size: var(--text-md);
 		font-weight: 600;
-		color: var(--muted);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		color: var(--text);
+		margin: 0;
 	}
 
-	.form {
+	.section-desc {
+		font-size: var(--text-base);
+		color: var(--muted);
+		margin: 0;
+	}
+
+	.registration-form {
+		background: var(--panel);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-lg);
+		padding: var(--space-5);
+	}
+
+	.form-header h4 {
+		font-size: var(--text-sm);
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: var(--text);
+		margin: 0 0 var(--space-4) 0;
+	}
+
+	.form-fields {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-3);
+		gap: var(--space-4);
 	}
 
-	.field {
+	.form-field {
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
-		font-size: 12px;
+	}
+
+	.form-field label {
+		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
-	.field input {
+	.form-field input {
 		background: var(--panel-strong);
-		border: 1px solid rgba(255, 255, 255, 0.08);
+		border: 1px solid var(--border);
 		color: var(--text);
 		border-radius: var(--radius-md);
-		padding: 10px var(--space-3);
-		font-size: 13px;
-		font-family: inherit;
-		transition:
-			border-color var(--transition-fast),
-			box-shadow var(--transition-fast);
+		padding: 10px 12px;
+		font-size: var(--text-mono-base);
+		font-family: var(--font-mono);
+		transition: border-color var(--transition-fast);
 	}
 
-	.field input:focus {
+	.form-field input:focus {
 		outline: none;
 		border-color: var(--accent);
-		box-shadow: 0 0 0 2px var(--accent-soft);
 	}
 
-	.field input:disabled {
+	.form-field input:disabled {
 		opacity: 0.6;
 		cursor: not-allowed;
+		background: var(--panel-soft);
 	}
 
-	.inline {
+	.field-hint {
+		font-size: var(--text-xs);
+		color: var(--subtle);
+		margin: 2px 0 0 0;
+		font-style: italic;
+	}
+
+	.input-with-button {
 		display: flex;
 		gap: 8px;
 		align-items: center;
 	}
 
-	.inline input {
+	.input-with-button input {
 		flex: 1;
 	}
 
-	.actions {
+	.advanced-section {
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		overflow: hidden;
+	}
+
+	.advanced-section summary {
 		display: flex;
 		align-items: center;
 		gap: var(--space-2);
-		padding-top: var(--space-2);
+		padding: var(--space-3);
+		font-size: var(--text-base);
+		font-weight: 500;
+		color: var(--muted);
+		cursor: pointer;
+		user-select: none;
+		list-style: none;
+	}
+
+	.advanced-section summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.advanced-section summary .summary-icon {
+		display: inline-flex;
+		transition: transform var(--transition-fast);
+	}
+
+	.advanced-section[open] summary .summary-icon {
+		transform: rotate(180deg);
+	}
+
+	.advanced-fields {
+		padding: 0 var(--space-4) var(--space-4);
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-4);
+		border-top: 1px solid var(--border);
+		padding-top: var(--space-4);
+	}
+
+	.detecting-feedback {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		padding: var(--space-3);
+		background: var(--accent-soft);
+		border-radius: var(--radius-md);
+		font-size: var(--text-base);
+		color: var(--text);
+		margin-top: var(--space-3);
+	}
+
+	.spin-icon {
+		display: inline-flex;
+	}
+
+	.spin-icon :global(svg) {
+		animation: spin 1s linear infinite;
+	}
+
+	@keyframes spin {
+		from {
+			transform: rotate(0deg);
+		}
+		to {
+			transform: rotate(360deg);
+		}
+	}
+
+	.form-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: var(--space-2);
+		margin-top: var(--space-4);
+		padding-top: var(--space-4);
 		border-top: 1px solid var(--border);
 	}
 
-	.spacer {
+	.repo-list-container {
+		background: var(--panel);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-lg);
+		overflow: hidden;
+	}
+
+	.search-bar {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		padding: var(--space-2) var(--space-3);
+		border-bottom: 1px solid var(--border);
+		background: var(--panel-strong);
+	}
+
+	.search-icon {
+		color: var(--muted);
+		flex-shrink: 0;
+	}
+
+	.search-bar input {
 		flex: 1;
+		background: transparent;
+		border: none;
+		color: var(--text);
+		font-size: var(--text-base);
+		outline: none;
+	}
+
+	.search-bar input::placeholder {
+		color: var(--subtle);
+	}
+
+	.repo-list {
+		max-height: 320px;
+		overflow-y: auto;
+	}
+
+	.repo-card {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: var(--space-3) var(--space-4);
+		border-bottom: 1px solid var(--border);
+		transition: background var(--transition-fast);
+	}
+
+	.repo-card:last-child {
+		border-bottom: none;
+	}
+
+	.repo-card:hover {
+		background: color-mix(in srgb, var(--text) 3%, transparent);
+	}
+
+	.repo-info {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		flex: 1;
+		min-width: 0;
+	}
+
+	.repo-header {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.repo-name {
+		font-family: var(--font-mono);
+		font-size: var(--text-mono-base);
+		font-weight: 500;
+		color: var(--text);
+	}
+
+	.repo-branch {
+		font-size: var(--text-xs);
+		padding: 2px 8px;
+		background: var(--panel-strong);
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		color: var(--muted);
+	}
+
+	.repo-source {
+		font-size: var(--text-mono-sm);
+		color: var(--subtle);
+		font-family: var(--font-mono);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.repo-actions {
+		display: flex;
+		gap: var(--space-1);
+		opacity: 0;
+		transition: opacity var(--transition-fast);
+	}
+
+	.repo-card:hover .repo-actions {
+		opacity: 1;
+	}
+
+	.action-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		border: none;
+		background: transparent;
+		color: var(--muted);
+		cursor: pointer;
+		border-radius: var(--radius-sm);
+		transition: all var(--transition-fast);
+	}
+
+	.action-btn:hover {
+		background: var(--panel-strong);
+		color: var(--text);
+	}
+
+	.action-btn.danger:hover {
+		background: var(--danger-subtle);
+		color: var(--danger);
+	}
+
+	.action-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.list-footer {
+		padding: var(--space-2) var(--space-3);
+		background: var(--panel-strong);
+		border-top: 1px solid var(--border);
+		font-size: var(--text-sm);
+		color: var(--subtle);
+		text-align: center;
+	}
+
+	.empty-state {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: var(--space-3);
+		padding: 48px var(--space-4);
+		text-align: center;
+	}
+
+	.empty-state p {
+		margin: 0;
+		color: var(--muted);
+		font-size: var(--text-md);
 	}
 
 	.message {
-		font-size: 13px;
+		font-size: var(--text-base);
 		padding: var(--space-2) var(--space-3);
 		border-radius: var(--radius-md);
 	}
@@ -445,76 +761,7 @@
 		color: var(--danger);
 	}
 
-	.message.success {
-		background: rgba(74, 222, 128, 0.1);
-		color: var(--success);
-	}
-
-	.empty {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: var(--space-3);
-		padding: 32px;
-		background: var(--panel-soft);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		text-align: center;
-	}
-
-	.empty p {
-		margin: 0;
-		color: var(--muted);
-		font-size: 14px;
-	}
-
-	.hint {
-		font-size: 13px;
-		color: var(--muted);
-		padding: var(--space-4);
-		text-align: center;
-		background: var(--panel-soft);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-	}
-
-	.advanced-section {
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		background: var(--panel);
-	}
-
-	.advanced-section summary {
-		padding: var(--space-3);
-		font-size: 12px;
-		font-weight: 500;
-		color: var(--muted);
-		cursor: pointer;
-		user-select: none;
-		list-style: none;
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-	}
-
-	.advanced-section summary::-webkit-details-marker {
-		display: none;
-	}
-
-	.advanced-section summary::before {
-		content: '▸';
-		font-size: 10px;
-		transition: transform var(--transition-fast);
-	}
-
-	.advanced-section[open] summary::before {
-		transform: rotate(90deg);
-	}
-
-	.advanced-fields {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-3);
-		padding: 0 var(--space-3) var(--space-3);
+	:global(.repo-card:hover .menu-btn) {
+		opacity: 1;
 	}
 </style>

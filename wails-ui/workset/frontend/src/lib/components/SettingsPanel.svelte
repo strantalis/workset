@@ -1,44 +1,30 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import {
-		checkForUpdates,
-		createWorkspaceTerminal,
-		fetchAppVersion,
-		fetchSettings,
-		fetchUpdatePreferences,
-		fetchUpdateState,
-		fetchWorkspaceTerminalLayout,
-		persistWorkspaceTerminalLayout,
-		restartSessiond,
-		setUpdatePreferences,
-		startAppUpdate,
-		setDefaultSetting,
-		stopWorkspaceTerminal,
-	} from '../api';
-	import type { SessiondStatusResponse } from '../api';
+	import { fetchSettings, setDefaultSetting } from '../api/settings';
 	import type {
+		AppVersion,
 		SettingsDefaultField,
 		SettingsDefaults,
 		SettingsSnapshot,
-		TerminalLayout,
-		TerminalLayoutNode,
 		UpdateCheckResult,
 		UpdatePreferences,
 		UpdateState,
 	} from '../types';
 	import { activeWorkspace } from '../state';
 	import { toErrorMessage } from '../errors';
-	import { generateTerminalName } from '../names';
 	import SettingsSidebar from './settings/SettingsSidebar.svelte';
+	import {
+		createSettingsPanelSideEffects,
+		DEFAULT_UPDATE_PREFERENCES,
+	} from './settings/settingsPanelSideEffects';
 	import WorkspaceDefaults from './settings/sections/WorkspaceDefaults.svelte';
 	import AgentDefaults from './settings/sections/AgentDefaults.svelte';
 	import SessionDefaults from './settings/sections/SessionDefaults.svelte';
 	import GitHubAuth from './settings/sections/GitHubAuth.svelte';
 	import AliasManager from './settings/sections/AliasManager.svelte';
 	import GroupManager from './settings/sections/GroupManager.svelte';
-	import SkillManager from './settings/sections/SkillManager.svelte';
+	import AboutSection from './settings/sections/AboutSection.svelte';
 	import Button from './ui/Button.svelte';
-	import type { AppVersion } from '../types';
 
 	interface Props {
 		onClose: () => void;
@@ -66,6 +52,8 @@
 		{ id: 'terminalDebugOverlay', key: 'defaults.terminal_debug_overlay' },
 	];
 
+	const sideEffects = createSettingsPanelSideEffects();
+
 	let snapshot: SettingsSnapshot | null = $state(null);
 	let loading = $state(true);
 	let saving = $state(false);
@@ -79,17 +67,12 @@
 	let activeSection = $state('workspace');
 	let aliasCount = $state(0);
 	let groupCount = $state(0);
-	let skillCount = $state(0);
 	let appVersion = $state<AppVersion | null>(null);
-	let updatePreferences = $state<UpdatePreferences>({ channel: 'stable', autoCheck: true });
+	let updatePreferences = $state<UpdatePreferences>(DEFAULT_UPDATE_PREFERENCES);
 	let updateState = $state<UpdateState | null>(null);
 	let updateCheck = $state<UpdateCheckResult | null>(null);
 	let updateBusy = $state(false);
 	let updateError = $state<string | null>(null);
-	const LAYOUT_VERSION = 1;
-	const LEGACY_STORAGE_PREFIX = 'workset:terminal-layout:';
-	const MIGRATION_PREFIX = 'workset:terminal-layout:migrated:v';
-	const MIGRATION_VERSION = 1;
 
 	const buildDraft = (defaults: SettingsDefaults): void => {
 		const next: Record<FieldId, string> = {} as Record<FieldId, string>;
@@ -128,14 +111,20 @@
 		if (saving || !snapshot) {
 			return;
 		}
+
 		const updates = changedFields();
 		const shouldRefreshTerminalDefaults = updates.some(
 			(field) => field.id === 'terminalDebugOverlay',
 		);
+		const shouldRestartSessiond = updates.some((field) => field.id === 'terminalProtocolLog');
+		const statusMessage =
+			updates.length === 1 ? 'Saved 1 change.' : `Saved ${updates.length} changes.`;
+
 		if (updates.length === 0) {
 			success = 'No changes to save.';
 			return;
 		}
+
 		saving = true;
 		error = null;
 		success = null;
@@ -147,121 +136,50 @@
 				break;
 			}
 		}
+
 		if (!error) {
 			baseline = { ...draft };
-			success = `Saved ${updates.length} change${updates.length === 1 ? '' : 's'}.`;
 			if (shouldRefreshTerminalDefaults) {
 				const { refreshTerminalDefaults } = await import('../terminal/terminalService');
 				await refreshTerminalDefaults();
 			}
+			if (shouldRestartSessiond) {
+				const restartResult = await sideEffects.restartSessiond();
+				if (restartResult.error) {
+					error = `Saved settings, but failed to restart session daemon for terminal protocol logging: ${restartResult.error}`;
+				} else if (restartResult.success) {
+					success = `${statusMessage} ${restartResult.success}`;
+				}
+			}
+
+			if (!error && !success) {
+				success = statusMessage;
+			}
 		}
+
 		saving = false;
 	};
 
 	const handleRestartSessiond = async (): Promise<void> => {
-		if (saving || restartingSessiond) return;
+		if (saving || restartingSessiond) {
+			return;
+		}
 		restartingSessiond = true;
 		error = null;
 		success = null;
 		try {
-			const status = await Promise.race([
-				restartSessiond('settings_panel'),
-				new Promise<SessiondStatusResponse>((_, reject) => {
-					window.setTimeout(() => {
-						reject(new Error('Session daemon restart timed out.'));
-					}, 20000);
-				}),
-			]);
-			if (status?.available) {
-				success = status.warning
-					? `Session daemon restarted. ${status.warning}`
-					: 'Session daemon restarted.';
-			} else {
-				const warning = status?.warning ? ` ${status.warning}` : '';
-				error = status?.error
-					? `Failed to restart: ${status.error}${warning}`
-					: `Failed to restart session daemon.${warning}`;
-			}
-		} catch (err) {
-			error = `Failed to restart: ${toErrorMessage(err, 'Failed to update settings.')}`;
+			const result = await sideEffects.restartSessiond();
+			error = result.error ?? null;
+			success = result.success ?? null;
 		} finally {
 			restartingSessiond = false;
 		}
 	};
 
-	const newId = (): string => {
-		if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-			return crypto.randomUUID();
-		}
-		return `term-${Math.random().toString(36).slice(2)}`;
-	};
-
-	const clearLegacyLayout = (workspaceId: string): void => {
-		if (!workspaceId || typeof localStorage === 'undefined') return;
-		try {
-			localStorage.removeItem(`${LEGACY_STORAGE_PREFIX}${workspaceId}`);
-			localStorage.setItem(`${MIGRATION_PREFIX}${MIGRATION_VERSION}:${workspaceId}`, '1');
-		} catch {
-			// Ignore storage failures.
-		}
-	};
-
-	const loadLegacyLayout = (workspaceId: string): TerminalLayout | null => {
-		if (!workspaceId || typeof localStorage === 'undefined') return null;
-		try {
-			const raw = localStorage.getItem(`${LEGACY_STORAGE_PREFIX}${workspaceId}`);
-			if (!raw) return null;
-			const parsed = JSON.parse(raw) as TerminalLayout;
-			if (!parsed?.root) return null;
-			return parsed;
-		} catch {
-			return null;
-		}
-	};
-
-	const collectTerminalIds = (node: TerminalLayoutNode | null | undefined): string[] => {
-		if (!node) return [];
-		if (node.kind === 'pane') {
-			return (node.tabs ?? []).map((tab) => tab.terminalId).filter(Boolean);
-		}
-		return [...collectTerminalIds(node.first), ...collectTerminalIds(node.second)];
-	};
-
-	const stopSessionsForLayout = async (
-		workspaceId: string,
-		layout: TerminalLayout | null,
-	): Promise<void> => {
-		if (!layout) return;
-		const ids = Array.from(new Set(collectTerminalIds(layout.root)));
-		if (ids.length === 0) return;
-		await Promise.allSettled(
-			ids.map((terminalId) => stopWorkspaceTerminal(workspaceId, terminalId)),
-		);
-	};
-
-	const buildFreshLayout = (workspaceName: string, terminalId: string): TerminalLayout => {
-		const tabId = newId();
-		const paneId = newId();
-		return {
-			version: LAYOUT_VERSION,
-			root: {
-				id: paneId,
-				kind: 'pane',
-				tabs: [
-					{
-						id: tabId,
-						terminalId,
-						title: generateTerminalName(workspaceName, 0),
-					},
-				],
-				activeTabId: tabId,
-			},
-			focusedPaneId: paneId,
-		};
-	};
-
 	const handleResetTerminalLayout = async (): Promise<void> => {
-		if (saving || restartingSessiond || resettingTerminalLayout) return;
+		if (saving || restartingSessiond || resettingTerminalLayout) {
+			return;
+		}
 		const workspace = $activeWorkspace;
 		if (!workspace) {
 			error = 'Select a workspace before resetting terminal layout.';
@@ -270,31 +188,16 @@
 		const confirmed = window.confirm(
 			`Reset the terminal layout for "${workspace.name}"? This will close existing panes and stop running terminal sessions.`,
 		);
-		if (!confirmed) return;
+		if (!confirmed) {
+			return;
+		}
 		resettingTerminalLayout = true;
 		error = null;
 		success = null;
 		try {
-			let layoutToStop: TerminalLayout | null = null;
-			try {
-				const payload = await fetchWorkspaceTerminalLayout(workspace.id);
-				layoutToStop = payload?.layout ?? loadLegacyLayout(workspace.id);
-			} catch {
-				layoutToStop = loadLegacyLayout(workspace.id);
-			}
-			await stopSessionsForLayout(workspace.id, layoutToStop);
-			const created = await createWorkspaceTerminal(workspace.id);
-			const layout = buildFreshLayout(workspace.name, created.terminalId);
-			await persistWorkspaceTerminalLayout(workspace.id, layout);
-			clearLegacyLayout(workspace.id);
-			window.dispatchEvent(
-				new CustomEvent('workset:terminal-layout-reset', {
-					detail: { workspaceId: workspace.id },
-				}),
-			);
-			success = `Terminal layout reset for ${workspace.name}.`;
-		} catch (err) {
-			error = `Failed to reset terminal layout: ${toErrorMessage(err, 'Failed to update settings.')}`;
+			const result = await sideEffects.resetTerminalLayout(workspace);
+			error = result.error ?? null;
+			success = result.success ?? null;
 		} finally {
 			resettingTerminalLayout = false;
 		}
@@ -312,40 +215,64 @@
 		error = null;
 	};
 
+	const getSectionTitle = (section: string): string => {
+		const titles: Record<string, string> = {
+			workspace: 'Workspace',
+			agent: 'Agent',
+			session: 'Terminal',
+			github: 'GitHub',
+			aliases: 'Repo Catalog',
+			groups: 'Templates',
+			about: 'About',
+		};
+		return titles[section] ?? 'Settings';
+	};
+
 	const handleUpdateChannelChange = async (channel: string): Promise<void> => {
-		const nextChannel = channel === 'alpha' ? 'alpha' : 'stable';
 		updateError = null;
-		try {
-			updatePreferences = await setUpdatePreferences({ channel: nextChannel });
+		const result = await sideEffects.setUpdateChannel(channel);
+		if (result.error) {
+			updateError = result.error;
+			return;
+		}
+		if (result.updatePreferences) {
+			updatePreferences = result.updatePreferences;
 			updateCheck = null;
-		} catch (err) {
-			updateError = toErrorMessage(err, 'Failed to update channel preference.');
 		}
 	};
 
 	const handleCheckForUpdates = async (): Promise<void> => {
-		if (updateBusy) return;
+		if (updateBusy) {
+			return;
+		}
 		updateBusy = true;
 		updateError = null;
 		try {
-			updateCheck = await checkForUpdates(updatePreferences.channel);
-			updateState = await fetchUpdateState();
-		} catch (err) {
-			updateError = toErrorMessage(err, 'Failed to check for updates.');
+			const result = await sideEffects.checkForUpdates(updatePreferences.channel);
+			if (result.error) {
+				updateError = result.error;
+				return;
+			}
+			updateCheck = result.updateCheck ?? null;
+			updateState = result.updateState ?? null;
 		} finally {
 			updateBusy = false;
 		}
 	};
 
 	const handleUpdateAndRestart = async (): Promise<void> => {
-		if (updateBusy) return;
+		if (updateBusy) {
+			return;
+		}
 		updateBusy = true;
 		updateError = null;
 		try {
-			const result = await startAppUpdate(updatePreferences.channel);
-			updateState = result.state;
-		} catch (err) {
-			updateError = toErrorMessage(err, 'Failed to start update.');
+			const result = await sideEffects.startUpdate(updatePreferences.channel);
+			if (result.error) {
+				updateError = result.error;
+				return;
+			}
+			updateState = result.updateState ?? null;
 		} finally {
 			updateBusy = false;
 		}
@@ -354,36 +281,17 @@
 	onMount(() => {
 		void loadSettings();
 		void (async () => {
-			try {
-				appVersion = await fetchAppVersion();
-			} catch {
-				appVersion = null;
-			}
+			appVersion = await sideEffects.loadAppVersion();
 		})();
 		void (async () => {
-			try {
-				updatePreferences = await fetchUpdatePreferences();
-			} catch {
-				updatePreferences = { channel: 'stable', autoCheck: true };
-			}
-			try {
-				updateState = await fetchUpdateState();
-			} catch {
-				updateState = null;
-			}
+			const bootstrap = await sideEffects.loadUpdateBootstrap();
+			updatePreferences = bootstrap.updatePreferences;
+			updateState = bootstrap.updateState;
 		})();
 	});
 </script>
 
 <div class="panel" role="dialog" aria-modal="true" aria-label="Settings">
-	<header class="header">
-		<div>
-			<div class="title">Settings</div>
-			<div class="subtitle">Configure defaults, repo registry, and groups.</div>
-		</div>
-		<Button variant="ghost" onclick={onClose}>Close</Button>
-	</header>
-
 	{#if loading}
 		<div class="state">Loading settings...</div>
 	{:else if error && !snapshot}
@@ -393,194 +301,50 @@
 		</div>
 	{:else if snapshot}
 		<div class="body">
-			<SettingsSidebar
-				{activeSection}
-				onSelectSection={selectSection}
-				{aliasCount}
-				{groupCount}
-				{skillCount}
-			/>
+			<SettingsSidebar {activeSection} onSelectSection={selectSection} {aliasCount} {groupCount} />
 
 			<div class="content">
-				{#if activeSection === 'workspace'}
-					<WorkspaceDefaults {draft} {baseline} onUpdate={updateField} />
-				{:else if activeSection === 'agent'}
-					<AgentDefaults {draft} {baseline} onUpdate={updateField} />
-				{:else if activeSection === 'session'}
-					<SessionDefaults
-						{draft}
-						{baseline}
-						onUpdate={updateField}
-						onRestartSessiond={handleRestartSessiond}
-						onResetTerminalLayout={handleResetTerminalLayout}
-						{restartingSessiond}
-						{resettingTerminalLayout}
-					/>
-				{:else if activeSection === 'github'}
-					<GitHubAuth />
-				{:else if activeSection === 'aliases'}
-					<AliasManager onAliasCountChange={(count) => (aliasCount = count)} />
-				{:else if activeSection === 'groups'}
-					<GroupManager onGroupCountChange={(count) => (groupCount = count)} />
-				{:else if activeSection === 'skills'}
-					<SkillManager onSkillCountChange={(count) => (skillCount = count)} />
-				{:else if activeSection === 'about'}
-					<div class="about-section">
-						<div class="about-header">
-							<img src="images/logo.png" alt="Workset" class="about-logo" />
-							<h3>Workset</h3>
-							<p class="tagline">Workspace management for multi-repo development</p>
-						</div>
-
-						{#if appVersion}
-							<div class="info-block">
-								<div class="version-header">
-									<h4>Version</h4>
-									<button
-										type="button"
-										class="copy-btn"
-										title="Copy version info"
-										onclick={async () => {
-											const versionText = `Workset ${appVersion?.version}${appVersion?.dirty ? '+dirty' : ''} (${appVersion?.commit || 'unknown'})`;
-											try {
-												if (navigator.clipboard) {
-													await navigator.clipboard.writeText(versionText);
-												}
-											} catch {
-												// Silently fail if clipboard is not available
-											}
-										}}
-									>
-										<svg
-											width="14"
-											height="14"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											stroke-width="2"
-										>
-											<rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-											<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-										</svg>
-									</button>
-								</div>
-								<div class="version-info">
-									<div class="version-row">
-										<span class="label">Version:</span>
-										<span class="value">{appVersion.version}{appVersion.dirty ? '+dirty' : ''}</span
-										>
-									</div>
-									{#if appVersion.commit}
-										<div class="version-row">
-											<span class="label">Commit:</span>
-											<span class="value">{appVersion.commit}</span>
-										</div>
-									{/if}
-								</div>
-								<div class="updates">
-									<div class="update-row">
-										<label for="update-channel">Channel</label>
-										<select
-											id="update-channel"
-											class="update-select"
-											value={updatePreferences.channel}
-											onchange={(event) =>
-												handleUpdateChannelChange((event.currentTarget as HTMLSelectElement).value)}
-										>
-											<option value="stable">Stable</option>
-											<option value="alpha">Alpha</option>
-										</select>
-									</div>
-									<div class="update-actions">
-										<button
-											type="button"
-											class="update-btn"
-											disabled={updateBusy}
-											onclick={handleCheckForUpdates}
-										>
-											{updateBusy ? 'Checking...' : 'Check for Updates'}
-										</button>
-										{#if updateCheck?.status === 'update_available'}
-											<button
-												type="button"
-												class="update-btn primary"
-												disabled={updateBusy}
-												onclick={handleUpdateAndRestart}
-											>
-												{updateBusy ? 'Preparing...' : 'Update and Restart'}
-											</button>
-										{/if}
-									</div>
-									{#if updateCheck}
-										<div class="update-note">{updateCheck.message}</div>
-									{/if}
-									{#if updateState?.phase === 'applying'}
-										<div class="update-note">{updateState.message}</div>
-									{/if}
-									{#if updateError}
-										<div class="update-error">{updateError}</div>
-									{/if}
-								</div>
-							</div>
-						{/if}
-
-						<div class="info-block">
-							<h4>Built With</h4>
-							<div class="tech-stack">
-								<span class="tech-badge">Wails</span>
-								<span class="tech-badge">Svelte</span>
-								<span class="tech-badge">Go</span>
-								<span class="tech-badge">TypeScript</span>
-							</div>
-						</div>
-
-						<div class="info-block">
-							<h4>Links</h4>
-							<div class="links">
-								<a
-									href="https://github.com/anomalyco/workset"
-									target="_blank"
-									rel="noopener noreferrer"
-									class="link"
-								>
-									<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-										<path
-											d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"
-										/>
-									</svg>
-									GitHub Repository
-								</a>
-								<a
-									href="https://github.com/anomalyco/workset/issues"
-									target="_blank"
-									rel="noopener noreferrer"
-									class="link"
-								>
-									<svg
-										width="16"
-										height="16"
-										viewBox="0 0 24 24"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2"
-									>
-										<path
-											d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"
-										/>
-									</svg>
-									Report an Issue
-								</a>
-							</div>
-						</div>
-
-						<div class="copyright">
-							© {new Date().getFullYear()} Sean Trantalis. Open source under MIT License.
-						</div>
-					</div>
-				{/if}
+				<header class="content-header">
+					<h2 class="content-title">{getSectionTitle(activeSection)}</h2>
+					<button class="close-btn" onclick={onClose} aria-label="Close settings">×</button>
+				</header>
+				<div class="content-body">
+					{#if activeSection === 'workspace'}
+						<WorkspaceDefaults {draft} {baseline} onUpdate={updateField} />
+					{:else if activeSection === 'agent'}
+						<AgentDefaults {draft} {baseline} onUpdate={updateField} />
+					{:else if activeSection === 'session'}
+						<SessionDefaults
+							{draft}
+							{baseline}
+							onUpdate={updateField}
+							onRestartSessiond={handleRestartSessiond}
+							onResetTerminalLayout={handleResetTerminalLayout}
+							{restartingSessiond}
+							{resettingTerminalLayout}
+						/>
+					{:else if activeSection === 'github'}
+						<GitHubAuth />
+					{:else if activeSection === 'aliases'}
+						<AliasManager onAliasCountChange={(count) => (aliasCount = count)} />
+					{:else if activeSection === 'groups'}
+						<GroupManager onGroupCountChange={(count) => (groupCount = count)} />
+					{:else if activeSection === 'about'}
+						<AboutSection
+							{appVersion}
+							{updatePreferences}
+							{updateState}
+							{updateCheck}
+							{updateBusy}
+							{updateError}
+							onUpdateChannelChange={handleUpdateChannelChange}
+							onCheckForUpdates={handleCheckForUpdates}
+							onUpdateAndRestart={handleUpdateAndRestart}
+						/>
+					{/if}
+				</div>
 			</div>
 		</div>
-
 		<footer class="footer">
 			<div class="meta">
 				<span class="config-label">Config</span>
@@ -608,36 +372,15 @@
 
 <style>
 	.panel {
-		width: min(960px, 94vw);
+		width: min(900px, 94vw);
 		max-height: 86vh;
 		display: flex;
 		flex-direction: column;
-		background: var(--panel-strong);
-		border: 1px solid rgba(255, 255, 255, 0.08);
-		border-radius: 20px;
-		box-shadow: var(--shadow-lg), var(--inset-highlight);
+		background: var(--panel);
+		border: 1px solid var(--border);
+		border-radius: 16px;
+		box-shadow: var(--shadow-lg);
 		overflow: hidden;
-	}
-
-	.header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: var(--space-4);
-		padding: var(--space-5) var(--space-6);
-		border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-	}
-
-	.title {
-		font-size: 20px;
-		font-weight: 600;
-		font-family: var(--font-display);
-	}
-
-	.subtitle {
-		color: var(--muted);
-		font-size: 13px;
-		margin-top: var(--space-1);
 	}
 
 	.state {
@@ -656,285 +399,104 @@
 		display: flex;
 		flex: 1;
 		min-height: 0;
-		padding: var(--space-5) var(--space-6);
-		gap: var(--space-6);
+		background: var(--panel);
 	}
 
 	.content {
 		flex: 1;
 		min-width: 0;
-		overflow-y: auto;
-		padding-right: var(--space-1);
-		scrollbar-width: thin;
-		scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+		display: flex;
+		flex-direction: column;
+		background: var(--bg);
 	}
 
-	.content::-webkit-scrollbar {
+	.content-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-4);
+		padding: 20px 24px;
+		border-bottom: 1px solid var(--border);
+		flex-shrink: 0;
+		background: var(--bg);
+	}
+
+	.content-title {
+		font-size: var(--text-lg);
+		font-weight: 600;
+		font-family: var(--font-display);
+		margin: 0;
+		color: var(--text);
+		letter-spacing: -0.01em;
+	}
+
+	.close-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		border-radius: 6px;
+		border: none;
+		background: transparent;
+		color: var(--subtle);
+		font-size: var(--text-xl);
+		line-height: 1;
+		cursor: pointer;
+		transition: all var(--transition-fast);
+	}
+
+	.close-btn:hover {
+		background: var(--panel-strong);
+		color: var(--text);
+	}
+
+	.content-body {
+		flex: 1;
+		overflow-y: auto;
+		padding: var(--space-5) var(--space-6);
+		background: var(--bg);
+	}
+
+	.content-body::-webkit-scrollbar {
 		width: 6px;
 	}
 
-	.content::-webkit-scrollbar-track {
+	.content-body::-webkit-scrollbar-track {
 		background: transparent;
 	}
 
-	.content::-webkit-scrollbar-thumb {
+	.content-body::-webkit-scrollbar-thumb {
 		background: rgba(255, 255, 255, 0.15);
 		border-radius: 3px;
 	}
 
-	.content::-webkit-scrollbar-thumb:hover {
+	.content-body::-webkit-scrollbar-thumb:hover {
 		background: rgba(255, 255, 255, 0.25);
 	}
 
 	.footer {
 		display: flex;
 		align-items: center;
-		gap: var(--space-3);
+		gap: var(--space-4);
 		padding: var(--space-4) var(--space-6);
-		border-top: 1px solid rgba(255, 255, 255, 0.06);
-		background: var(--panel);
-		border-radius: 0;
-		max-height: 100vh;
-	}
-
-	.about-section {
-		padding: 0;
-		max-width: 500px;
-		margin: 0 auto;
-	}
-
-	.about-header {
-		margin-bottom: 24px;
-		text-align: center;
-	}
-
-	.about-logo {
-		width: 48px;
-		height: 48px;
-		margin-bottom: 12px;
-		opacity: 0.9;
-	}
-
-	.about-header h3 {
-		font-size: 24px;
-		font-weight: 600;
-		margin: 0 0 6px 0;
-		color: var(--text);
-	}
-
-	.tagline {
-		font-size: 14px;
-		color: var(--muted);
-		margin: 0;
-	}
-
-	.info-block {
-		margin-bottom: 20px;
-		padding-bottom: 16px;
-		border-bottom: 1px solid var(--border);
-	}
-
-	.info-block:last-of-type {
-		border-bottom: none;
-		margin-bottom: 0;
-	}
-
-	.info-block h4 {
-		font-size: 12px;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
-		color: var(--muted);
-		margin: 0 0 12px 0;
-	}
-
-	.version-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		margin-bottom: 12px;
-	}
-
-	.version-header h4 {
-		margin: 0;
-	}
-
-	.copy-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 28px;
-		height: 28px;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-sm);
-		background: transparent;
-		color: var(--muted);
-		cursor: pointer;
-		transition: all 0.15s ease;
-	}
-
-	.copy-btn:hover {
-		border-color: var(--accent);
-		color: var(--accent);
-		background: color-mix(in srgb, var(--accent) 8%, transparent);
-	}
-
-	.updates {
-		margin-top: 16px;
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-	}
-
-	.update-row {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 10px;
-		font-size: 12px;
-		color: var(--muted);
-	}
-
-	.update-select {
-		min-width: 120px;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-sm);
-		padding: 4px 8px;
-		background: var(--panel);
-		color: var(--text);
-	}
-
-	.update-actions {
-		display: flex;
-		gap: 8px;
-	}
-
-	.update-btn {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 8px 16px;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		background: var(--panel-strong);
-		color: var(--text);
-		font-size: 13px;
-		cursor: pointer;
-		opacity: 1;
-		transition: all 0.15s ease;
-	}
-
-	.update-btn:hover:not(:disabled) {
-		border-color: var(--accent);
-		background: color-mix(in srgb, var(--accent) 8%, var(--panel-strong));
-	}
-
-	.update-btn.primary {
-		border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
-		color: var(--accent);
-	}
-
-	.update-btn:disabled {
-		cursor: not-allowed;
-		opacity: 0.6;
-	}
-
-	.update-note {
-		font-size: 12px;
-		color: var(--muted);
-	}
-
-	.update-error {
-		font-size: 12px;
-		color: var(--danger);
-	}
-
-	.version-info {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
-
-	.version-row {
-		display: flex;
-		gap: 12px;
-		font-size: 13px;
-	}
-
-	.version-row .label {
-		color: var(--muted);
-		min-width: 60px;
-	}
-
-	.version-row .value {
-		color: var(--text);
-		font-family: var(--font-mono);
-	}
-
-	.tech-stack {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
-	}
-
-	.tech-badge {
-		padding: 4px 10px;
-		background: var(--panel-strong);
-		border: 1px solid var(--border);
-		border-radius: 999px;
-		font-size: 12px;
-		color: var(--text);
-	}
-
-	.links {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		align-items: flex-start;
-	}
-
-	.link {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		padding: 6px 10px;
-		background: transparent;
-		border: none;
-		color: var(--text);
-		text-decoration: none;
-		font-size: 13px;
-		transition: all 0.15s ease;
-		border-radius: var(--radius-sm);
-	}
-
-	.link:hover {
-		border-color: var(--accent);
-		background: color-mix(in srgb, var(--accent) 8%, var(--panel-strong));
-	}
-
-	.link svg {
-		flex-shrink: 0;
-		opacity: 0.7;
-	}
-
-	.copyright {
-		margin-top: 16px;
-		padding-top: 12px;
 		border-top: 1px solid var(--border);
-		font-size: 12px;
-		color: var(--muted);
+		background: var(--panel);
+		flex-shrink: 0;
 	}
 
 	.config-label {
-		font-size: 11px;
+		font-size: var(--text-xs);
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
 		color: var(--muted);
+		font-weight: 500;
 	}
 
 	.config-path {
-		font-size: 12px;
+		font-size: var(--text-mono-sm);
 		color: var(--text);
+		font-family: var(--font-mono);
 		opacity: 0.7;
 	}
 
@@ -943,7 +505,7 @@
 	}
 
 	.status {
-		font-size: 12px;
+		font-size: var(--text-sm);
 		font-weight: 500;
 		padding: var(--space-1) 10px;
 		border-radius: 999px;

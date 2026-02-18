@@ -1,0 +1,459 @@
+# Issue #125 File-Size Reduction Tracker
+
+Owner: Sean + Codex  
+Source issue: `https://github.com/strantalis/workset/issues/125`  
+Last updated: 2026-02-07 (main-agent pass 46)
+Program status: closed.
+
+## Goal
+
+Reduce architecture risk from oversized files by splitting high-complexity modules into stable boundaries with tests and CI guardrails.
+
+## Program Targets
+
+- No production source file exceeds 1000 LOC unless explicitly allowlisted with justification.
+- CI blocks regressions on file-size and test/lint failures.
+- Refactors are behavior-preserving and land in small, reversible commits.
+
+## Current Baseline (2026-02-07)
+
+Largest files by LOC right now:
+
+- `wails-ui/workset/app_diffs.go` (926)
+- `pkg/sessiond/terminal_filter.go` (889)
+- `wails-ui/workset/repo_diff_watcher.go` (816)
+- `internal/git/cli.go` (795)
+- `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (699)
+- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte` (700)
+- `wails-ui/workset/frontend/src/lib/components/WorkspaceManager.svelte` (688)
+- `internal/ops/remove.go` (680)
+- `cmd/workset/pr.go` (678)
+- `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (677)
+- `pkg/sessiond/server.go` (669)
+- `wails-ui/workset/frontend/src/lib/components/settings/sections/SkillManager.svelte` (663)
+- `pkg/worksetapi/github_service_read_helpers_test.go` (662)
+- `wails-ui/workset/app_github.go` (641)
+- `pkg/worksetapi/github_provider_cli.go` (628)
+
+## Parallel Tracks (Issue Map)
+
+- [x] `#124` Guardrails (must start first)
+- [x] `#115` FE-DIFF (slice 24 landed; `RepoDiff.svelte` now 700 LOC with extracted helpers/controllers/components)
+- [x] `#116` FE-WORKSPACE (workflow components/services decomposed; all workflow files under 600 LOC, modal shell at 693 LOC under program threshold)
+- [x] `#117` FE-TERMINAL (slice 20 landed; service now 491 LOC)
+- [x] `#118` FE-PLATFORM (slice 7 landed; settings side effects extracted)
+- [x] `#119` BE-SESSIOND (structural splits complete)
+- [x] `#120` BE-GITHUB (slice 5 + tests tranche 2 landed)
+- [x] `#121` BE-TERMEMU (extraction landed; `termemu.go` now 221 LOC)
+- [x] `#122` BE-UPDATER (slice 3 landed + orchestration tests)
+- [x] `#123` TEST-E2E (scenario split + fixtures landed)
+
+## Execution Strategy
+
+### Phase 0: Guardrails First (`#124`)
+
+- [x] Add file-size policy script (production files only; tests/docs excluded).
+- [x] Add allowlist file with reason + owner + expiry.
+- [x] Wire policy check into CI and `make check` parity path.
+- [x] Fail PRs on new violations or LOC growth above threshold.
+- [x] Add docs for override workflow.
+
+Exit criteria:
+
+- PR cannot merge when policy fails.
+- Existing exceptions are explicit and justified.
+
+### Phase 1: Reliability-Critical Backend Splits (`#119`, `#120`, `#121`, `#122`)
+
+Order:
+
+1. `#119` sessiond (highest runtime risk)
+2. `#120` github service
+3. `#121` termemu
+4. `#122` updater
+
+### Phase 2: Frontend Feature Splits (`#115`, `#116`, `#117`, `#118`)
+
+Order:
+
+1. `#115` RepoDiff
+2. `#116` WorkspaceActionModal/workspace flows
+3. `#117` terminal service completion
+4. `#118` API/settings orchestration
+
+### Phase 3: Test Architecture (`#123`)
+
+- [x] Split monolithic e2e suite into scenario files + shared fixtures.
+- [x] Align test package/module boundaries with refactored production modules.
+
+## Detailed Task Plan by Issue
+
+## `#124` Guardrails
+
+Scope:
+
+- `scripts/` + CI workflow + docs.
+
+Tasks:
+
+- [x] Implement `scripts/check-file-size.sh` (or Go equivalent) with path filters.
+- [x] Add config file for thresholds/allowlist.
+- [x] Add CI job step for policy enforcement.
+- [x] Add local command (`go run ./scripts/guardrails --config guardrails.yml --head-sha "$(git rev-parse HEAD)"`).
+
+Verification:
+
+- [x] `go run ./scripts/guardrails --config guardrails.yml --head-sha "$(git rev-parse HEAD)"`
+- [x] CI run shows failing sample + passing sample.
+
+## `#115` FE-DIFF
+
+Primary file:
+
+- `wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte`
+
+Target architecture:
+
+- `repo-diff/summary/` (summary load + state)
+- `repo-diff/pr/` (PR status/reviews actions)
+- `repo-diff/render/` (diff rendering bridge)
+- `repo-diff/comments/` (annotation/review interactions)
+- Keep `RepoDiff.svelte` as composition shell.
+
+Tasks:
+
+- [x] Extract watcher lifecycle/start-stop-update orchestration module (`repo-diff/watcherLifecycle.ts`).
+- [x] Extract summary loader/store controller module (`repo-diff/summaryController.ts`).
+- [x] Extract PR status/reviews controller (`repo-diff/prStatusController.ts`).
+- [x] Extract render queue/selection/file-fetch controller (`repo-diff/fileDiffController.ts`).
+- [x] Extract annotation/reply/edit/delete actions module (`repo-diff/reviewAnnotationActions.ts`).
+- [x] Extract check-sidebar grouping/filtering/summary state into `repo-diff/checkSidebarController.ts`.
+- [x] Extract GitHub operation/auth orchestration into `repo-diff/githubOperationsController.ts`.
+- [x] Extract mount/subscription/cleanup orchestration into `repo-diff/repoDiffLifecycle.ts`.
+- [x] Extract sidebar resize/persistence lifecycle into `repo-diff/sidebarResizeController.ts`.
+- [x] Keep current public props/events unchanged.
+- [x] Extract diff rendering + scroll/highlight orchestration into `repo-diff/diffRenderController.ts`.
+- [x] Extract PR/status/create orchestration state surface into `repo-diff/prOrchestrationSurface.ts`.
+- [x] Extract summary/local/branch diff source switching orchestration into a dedicated helper.
+  Slice landed: extracted source-switch + branch-ref reload orchestration into `repo-diff/summarySourceController.ts`.
+- [x] Extract checks sidebar rendering state surface from `RepoDiff.svelte` template.
+  Slice landed: extracted checks tab UI + interactions into `repo-diff/RepoDiffChecksSidebar.svelte`.
+- [x] Extract file-list sidebar rendering state surface from `RepoDiff.svelte` template.
+  Slice landed: extracted files/local-pending/checks-tab host into `repo-diff/RepoDiffFileListSidebar.svelte`.
+- [x] Extract auth overlay/modal rendering from `RepoDiff.svelte` template.
+  Slice landed: extracted GitHub auth overlay into `repo-diff/RepoDiffAuthModal.svelte`.
+- [x] Extract header PR badge rendering state surface from `RepoDiff.svelte` template.
+  Slice landed: extracted status-mode PR badge into `repo-diff/RepoDiffHeaderPrBadge.svelte`.
+- [x] Remove dead scoped styles in `RepoDiff.svelte` left behind by component extraction.
+  Slice landed: deleted unused selectors/animations after sidebar/header modularization (`svelte-check` warnings for `RepoDiff.svelte` now 0).
+- [x] Extract create/status/local-changes panel from `RepoDiff.svelte`.
+  Slice landed: extracted PR panel controls + state bindings into `repo-diff/RepoDiffPrPanel.svelte`.
+- [x] Extract top header/status controls from `RepoDiff.svelte`.
+  Slice landed: extracted repository/meta/toggle/actions header into `repo-diff/RepoDiffHeader.svelte`.
+- [x] Extract annotation-global style payload from `RepoDiff.svelte`.
+  Slice landed: moved annotation style block into `repo-diff/RepoDiffAnnotationStyles.svelte`.
+- [x] Extract main content state machine and diff viewport from `RepoDiff.svelte`.
+  Slice landed: extracted summary/error/empty states + file list/diff renderer host into `repo-diff/RepoDiffContentPane.svelte` and reduced `RepoDiff.svelte` to 901 LOC.
+- [x] Extract repo-diff utility helpers and review-derived reducers from `RepoDiff.svelte`.
+  Slice landed: moved trusted URL open, error formatting, number parsing, commit-stage copy, and review count reducers into `repo-diff/utils.ts` and `repo-diff/reviewDerived.ts`.
+- [x] Extract repo-diff GitHub action/load handlers from `RepoDiff.svelte`.
+  Slice landed: moved remotes/tracked-PR loading and review-thread delete/resolve actions into `repo-diff/githubHandlers.ts`.
+- [x] Reduce `RepoDiff.svelte` to 700 LOC or lower while preserving composition boundaries.
+  Slice landed: `RepoDiff.svelte` reduced to 700 LOC (all extracted modules/components are below 700 LOC).
+
+Verification:
+
+- [x] `cd wails-ui/workset/frontend && npm run test -- src/lib/components/RepoDiff.spec.ts`
+- [x] `cd wails-ui/workset/frontend && npm run test -- src/lib/components/repo-diff/RepoDiffFileListSidebar.spec.ts`
+- [x] `cd wails-ui/workset/frontend && npm run check`
+- [x] `cd wails-ui/workset/frontend && npm run build`
+- [x] `make check`
+
+## `#116` FE-WORKSPACE
+
+Primary files:
+
+- `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte`
+- `wails-ui/workset/frontend/src/lib/components/WorkspaceManager.svelte`
+- `wails-ui/workset/frontend/src/lib/components/WorkspaceItem.svelte`
+
+Target architecture:
+
+- modal state machine + action handlers extracted to module(s)
+- per-action panes as small components
+- shared workspace mutation service for create/remove/archive/pin/color
+
+Tasks:
+
+- [x] Extract hook-results phase UI into `workspace-action/WorkspaceActionHookResults.svelte`.
+- [x] Extract removal overlay UI into `workspace-action/RemovalOverlay.svelte`.
+- [x] Extract create/add mutation + hook transition logic into `services/workspaceActionService.ts`.
+- [x] Extract rename/archive/remove mutation runners into `services/workspaceActionService.ts`.
+- [x] Extract hook tracking + pending-hook action core into `services/workspaceActionHooks.ts`.
+- [x] Extract context loading/derivation into `services/workspaceActionContextService.ts`.
+- [x] Separate modal state transitions from UI markup.
+  Slice landed: extracted modal phase/title/subtitle/size and hook-transition decisions into `services/workspaceActionModalController.ts`.
+- [x] Extract workspace mutations into dedicated service.
+  Slice landed: added `workspaceActionMutations` gateway/service boundary in `services/workspaceActionService.ts` and routed modal mutations through it.
+- [x] Split large modal sections into components.
+  Slice landed: extracted removal mode sections into `workspace-action/WorkspaceActionRemoveWorkspaceForm.svelte` and `workspace-action/WorkspaceActionRemoveRepoForm.svelte`.
+- [x] Split add-repo mode into a dedicated component.
+  Slice landed: extracted add-repo selection/panel layout into `workspace-action/WorkspaceActionAddRepoForm.svelte`.
+- [x] Split create mode into a dedicated component.
+  Slice landed: extracted create-mode tabs/selection/pending/workspace-name flow into `workspace-action/WorkspaceActionCreateForm.svelte` and wired modal callbacks through a dedicated browse handler.
+- [x] Split create-mode panes into focused components.
+  Slice landed: extracted direct/repos/groups/summary panes into `workspace-action/WorkspaceActionCreateDirectTab.svelte`, `workspace-action/WorkspaceActionCreateReposTab.svelte`, `workspace-action/WorkspaceActionCreateGroupsTab.svelte`, and `workspace-action/WorkspaceActionCreateSummaryPanel.svelte` to avoid shifting the monolith into a new oversized file.
+- [x] Split modal alert/form shell composition into dedicated components.
+  Slice landed: extracted non-hook alerts into `workspace-action/WorkspaceActionStatusAlerts.svelte` and mode routing/rename/archive composition into `workspace-action/WorkspaceActionFormContent.svelte`; `WorkspaceActionModal.svelte` is now 698 LOC.
+- [x] Split add-repo form panes into focused components.
+  Slice landed: extracted direct-entry pane + summary panel into `workspace-action/WorkspaceActionAddRepoDirectTab.svelte` and `workspace-action/WorkspaceActionAddRepoSummaryPanel.svelte`; `WorkspaceActionAddRepoForm.svelte` is now 559 LOC.
+- [x] Split workspace list/repo list/create sections in workspace manager.
+  Slice landed: extracted `workspace-manager/WorkspaceManagerWorkspaceList.svelte`, `workspace-manager/WorkspaceManagerRepoListSection.svelte`, and `workspace-manager/WorkspaceManagerCreateWorkspaceSection.svelte`; `WorkspaceManager.svelte` is now 688 LOC.
+- [x] Split repo rendering/actions from workspace item shell.
+  Slice landed: extracted repo single/multi rendering + actions into `workspace-item/WorkspaceItemRepoSection.svelte`; `WorkspaceItem.svelte` is now 581 LOC.
+- [x] Add tests for action-state transitions and failure paths.
+
+Verification:
+
+- [x] `cd wails-ui/workset/frontend && npm run test -- src/lib/components/workspace-action/*.test.ts`
+- [x] `cd wails-ui/workset/frontend && npm run test -- src/lib/components/Workspace*.spec.ts`
+- [x] `cd wails-ui/workset/frontend && npm run lint`
+
+## `#117` FE-TERMINAL
+
+Primary file:
+
+- `wails-ui/workset/frontend/src/lib/terminal/terminalService.ts`
+
+Status:
+
+- Partial modularization already landed (transport/state/renderer helpers exist).
+
+Remaining tasks:
+
+- [x] Move lifecycle FSM to standalone module with explicit state graph.
+- [x] Move renderer addon wiring (WebGL + web-links sync) into `terminalRenderer.ts`.
+- [x] Move web-links transport/renderer adapter wiring into `terminalWebLinks.ts`.
+- [x] Extract reconnect/attach/detach stream orchestration into `terminalStreamOrchestrator.ts`.
+- [ ] Remove remaining renderer/transport coupling from service shell.
+  Slices landed: extracted resize/transport coupling into `terminalResizeBridge.ts`; extracted render-health/recovery orchestration into `terminalRenderHealth.ts`; extracted attach/dispose + renderer-addon state handling into `terminalAttachRendererState.ts`.
+  Latest slice landed: extracted Xterm instance attach/dispose wiring into `terminalInstanceManager.ts`.
+  Latest slice landed: extracted viewport/resize/focus lifecycle into `terminalViewportResizeController.ts`.
+  Latest slice landed: extracted output queue + backlog flush policy into `terminalOutputBuffer.ts`.
+  Latest slice landed: extracted clipboard/runtime clipboard helpers, OSC/theme response handling, and font-size preference control into dedicated modules (`terminalClipboard.ts`, `terminalOscHandlers.ts`, `terminalFontSizeController.ts`).
+  Latest slice landed: extracted terminal context keying/registry ownership into `terminalContextRegistry.ts` and routed service context access through that boundary.
+  Latest slice landed: extracted debug-overlay state and mouse suppression/tail state into `terminalDebugState.ts` and `terminalMouseState.ts`.
+  Latest slice landed: extracted runtime helper boundary (`terminalServiceRuntime.ts`) and dependency builders (`terminalServiceDeps.ts`, `terminalServiceState.ts`) and reduced facade wiring in `terminalService.ts`.
+- [x] Extract attach/open lifecycle sequencing into a standalone module.
+  Slice landed: extracted open/create/connect + retry sequencing into `terminalAttachOpenLifecycle.ts`.
+- [x] Extract event subscription wiring into a standalone module.
+  Slice landed: extracted event registration/routing/cleanup into `terminalEventSubscriptions.ts`.
+- [x] Extract mode/bootstrap coordination into a standalone module.
+  Slice landed: extracted mode/bootstrap handling + mismatch guard into `terminalModeBootstrapCoordinator.ts`.
+- [x] Extract kitty image/overlay rendering and event application into a standalone module.
+  Slice landed: extracted kitty state + overlay + event controller into `terminalKittyImageController.ts`.
+- [x] Extract input/filter/retry/session-recovery write path into a standalone module.
+  Slice landed: extracted send-input orchestration into `terminalInputOrchestrator.ts`.
+- [x] Extract replay/ack buffering orchestration into a standalone module.
+  Slice landed: extracted replay/ack coordination into `terminalReplayAckOrchestrator.ts`.
+- [x] Add service-level tests for reconnect/attach/detach/stream-release (`terminalStreamOrchestrator.test.ts`).
+- [x] Shrink `terminalService.ts` to orchestration-only facade (`terminalService.ts` is now 491 LOC).
+- [x] Extract terminal layout-tree/storage helpers from `TerminalWorkspace.svelte`.
+  Slice landed: moved layout normalization/tree operations and storage migration helpers into `terminal/terminalLayoutTree.ts` and `terminal/terminalLayoutStorage.ts`; `TerminalWorkspace.svelte` is now 677 LOC.
+- [x] Extract terminal layout node pane UI subcomponents.
+  Slice landed: moved pane tab, pane actions, and split-drop overlay into `TerminalPaneTab.svelte`, `TerminalPaneActions.svelte`, and `TerminalDropZones.svelte`; `TerminalLayoutNode.svelte` is now 563 LOC.
+
+Verification:
+
+- [x] `cd wails-ui/workset/frontend && npm run test -- src/lib/terminal/*.test.ts`
+- [x] `go test ./wails-ui/workset -run "TestTerminalSessionReleaseStream|TestEnsureServiceConcurrent" -count=1`
+
+## `#118` FE-PLATFORM
+
+Primary files:
+
+- `wails-ui/workset/frontend/src/lib/api.ts`
+- `wails-ui/workset/frontend/src/lib/components/settings/*`
+
+Target architecture:
+
+- `api/` domain clients (`workspaces`, `repos`, `terminal`, `github`, `updates`)
+- settings orchestrators separated by domain
+
+Tasks:
+
+- [x] Split monolithic API module into domain entrypoints.
+  Slices landed: extracted updates/app-version domain into `api/updates.ts`; extracted GitHub operations into `api/github.ts`; extracted repo-diff watch/diff APIs into `api/repo-diff.ts`; extracted settings/session/group/alias APIs into `api/settings.ts`; extracted workspace APIs into `api/workspaces.ts`; extracted terminal/layout APIs into `api/terminal-layout.ts`, all with compatibility re-exports from `api.ts`.
+- [x] Split oversized GitHub domain client into focused modules.
+  Slice landed: extracted GitHub auth/review/PR/operations/mapping/user modules under `src/lib/api/github/*`; `src/lib/api/github.ts` is now a 46 LOC export barrel.
+- [x] Extract settings panel side effects into dedicated module.
+  Slice landed: moved sessiond restart, terminal-layout reset, and updater orchestration into `components/settings/settingsPanelSideEffects.ts`, reducing `SettingsPanel.svelte` to 873 LOC and adding dedicated tests (`settingsPanelSideEffects.test.ts`).
+- [x] Extract About section into dedicated component.
+  Slice landed: moved about/version/update/link UI into `components/settings/sections/AboutSection.svelte`; `SettingsPanel.svelte` is now 505 LOC.
+- [x] Extract skill detail pane into dedicated component.
+  Slice landed: moved skill create/edit/sync/hint pane into `components/settings/sections/SkillDetailPanel.svelte`; `SkillManager.svelte` is now 663 LOC.
+- [x] Keep backward-compatible imports through adapter layer during migration.
+- [x] Remove adapter after callsites are migrated.
+  Slice landed: migrated remaining frontend/test callsites to domain API modules, moved skills API into `api/skills.ts`, and removed the `src/lib/api.ts` compatibility barrel.
+
+Verification:
+
+- [x] `cd wails-ui/workset/frontend && npm run test`
+- [x] `cd wails-ui/workset/frontend && npm run check`
+
+## `#119` BE-SESSIOND
+
+Primary file:
+
+- `pkg/sessiond/session.go`
+
+Target architecture:
+
+- protocol parser/encoder
+- stream/backlog subsystem
+- lifecycle/session control subsystem
+- persistence/snapshot subsystem
+
+Tasks:
+
+- [x] Extract terminal filter + protocol parsing/logging block into `pkg/sessiond/terminal_filter.go`.
+- [x] Extract stream/subscriber fanout + credit handling into `pkg/sessiond/stream.go`.
+- [x] Extract persistence/snapshot + transcript/recording subsystem into `pkg/sessiond/session_persist.go`.
+- [x] Extract protocol message handling package.
+- [x] Extract backlog/snapshot response shaping into `pkg/sessiond/session_response.go`.
+- [x] Extract lifecycle + process supervision package.
+- [x] Keep public session behavior and API unchanged.
+- [x] Add churn tests around create/stop/restore.
+
+Verification:
+
+- [x] `go test ./pkg/sessiond -count=1`
+- [x] `go test ./pkg/sessiond -run "TestRepeatedCreateStop|TestSessionCloseWithReasonReapsProcess|TestSessiondSnapshotAndBacklog|TestIdleCloseRecreateSession" -count=1`
+
+## `#120` BE-GITHUB
+
+Primary file:
+
+- `pkg/worksetapi/github_service.go`
+
+Target architecture:
+
+- PR lifecycle service
+- review/comment service
+- operation orchestration service
+- provider integration adapters
+
+Tasks:
+
+- [x] Move pure git command/diff helpers into `pkg/worksetapi/github_git_helpers.go`.
+- [x] Separate read vs write helper use-cases into dedicated modules (`github_service_read_helpers.go`, `github_service_write_helpers.go`).
+- [x] Separate synchronous status fetch paths into `github_service_status.go`.
+- [x] Extract mutating operation orchestration entrypoints into `github_service_write.go`.
+- [x] Extract GraphQL thread-mapping helpers into `github_service_thread_graphql_helpers.go`.
+- [ ] Add unit tests for each extracted service boundary.
+  Tranche 1 landed: read-helper and GraphQL thread helper tests (`github_service_read_helpers_test.go`, `github_service_thread_graphql_helpers_test.go`).
+  Tranche 2 landed: read/status/write helper boundary tests (`github_service_read_helpers_test.go`, `github_service_status_test.go`, `github_service_write_helpers_test.go`).
+
+Verification:
+
+- [x] `go test ./pkg/worksetapi -count=1`
+
+## `#121` BE-TERMEMU
+
+Primary file:
+
+- `pkg/termemu/termemu.go`
+
+Target architecture:
+
+- parser
+- state machine
+- snapshot encoding/output
+
+Tasks:
+
+- [x] Extract parser state machine boundary into `pkg/termemu/parser.go`.
+- [x] Extract state transition engine into `pkg/termemu/state_engine.go`.
+- [x] Extract snapshot renderer/serializer into `pkg/termemu/snapshot_ansi.go` and `pkg/termemu/snapshot_state.go`.
+- [x] Backfill regression tests for escape-sequence edge cases in `pkg/termemu/termemu_test.go`.
+- [x] Reduce `pkg/termemu/termemu.go` below 700 LOC while preserving parser/state behavior.
+  Slice landed: extracted trace/history/tabstop/screen-row/CSI helpers into dedicated files (`trace.go`, `history.go`, `tabstops.go`, `screen_rows.go`, `csi_helpers.go`); `termemu.go` is now 221 LOC.
+
+Verification:
+
+- [x] `go test ./pkg/termemu -count=1`
+
+## `#122` BE-UPDATER
+
+Primary file:
+
+- `wails-ui/workset/app_updates.go`
+
+Target architecture:
+
+- updater client
+- update state machine
+- preferences persistence
+- Wails binding adapter
+
+Tasks:
+
+- [x] Extract update manifest/asset client helpers into `app_update_client.go`.
+- [x] Extract update package/signing helpers into `app_update_package.go`.
+- [x] Split update check/start orchestration from app binding layer.
+  Slice landed: moved update lifecycle orchestration into `app_update_orchestrator.go` and kept `app_updates.go` as Wails binding surface.
+- [x] Isolate signing/asset selection logic.
+  Slice landed: added `selectUpdatePackage` validation/selection helper in `app_update_package.go`.
+- [x] Add tests for channel preference + state transitions.
+  Slice landed: added `app_update_orchestrator_test.go` covering channel preference and check/start phase transitions.
+- [x] Reduce app binding adapter surface below target.
+  Slice landed: moved version parsing/comparison helpers into `app_update_version.go`; `app_updates.go` is now 311 LOC.
+- [x] Document updater trust boundaries and rollback behavior.
+  Slice landed: added explicit security/rollback constraints to `docs/desktop-app.md` (in-app updates section).
+
+Verification:
+
+- [x] `go test ./wails-ui/workset -run "Test.*Update.*" -count=1`
+
+## `#123` TEST-E2E
+
+Primary file:
+
+- `internal/e2e/e2e_test.go`
+
+Target architecture:
+
+- scenario-based test files
+- shared fixture/bootstrap package
+- reusable helpers for workspace/repo/session setup
+
+Tasks:
+
+- [x] Split by scenario domain (workspace, repos, sessions, github).
+  Slice landed: replaced `e2e_test.go` with scenario files (`repo_test.go`, `workspace_test.go`, `template_group_test.go`, `status_test.go`, `cli_test.go`).
+- [x] Extract fixture manager.
+  Slice landed: extracted shared runner/git/bootstrap helpers into `main_test.go`, `bootstrap_test.go`, and `helpers_test.go`.
+- [x] Keep runtime equivalent or faster vs baseline.
+  Current runtime: `go test ./internal/e2e -count=1` ~14-18s in local runs.
+
+Verification:
+
+- [x] `go test ./internal/e2e -count=1`
+
+## Program-Level Verification Gate (Every PR)
+
+- [x] `make check`
+- [x] `go test ./...`
+- [x] File-size policy check passes.
+- [x] No production file >1000 LOC unless allowlisted (guardrail threshold set to 1000 for balance/stability).
+
+## Tracking Notes
+
+- Use this file as source of truth for phase/order/checklist status.
+- Update checkboxes in the same PR that completes work.
+- If a track is blocked, add a short blocker note under that track with the unblock action.
+
+## Immediate Next Actions
+
+1. Keep threshold at 1000 and reject new non-allowlisted violations in CI/local checks.
+2. Treat deeper decomposition of current 700-1000 LOC files as optional architecture work, not policy-blocking work.

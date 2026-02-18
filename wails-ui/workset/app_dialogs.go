@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 func (a *App) OpenDirectoryDialog(title, defaultDirectory string) (string, error) {
@@ -11,11 +11,14 @@ func (a *App) OpenDirectoryDialog(title, defaultDirectory string) (string, error
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return runtime.OpenDirectoryDialog(ctx, runtime.OpenDialogOptions{
-		Title:                title,
-		DefaultDirectory:     defaultDirectory,
-		CanCreateDirectories: true,
-	})
+	_ = ctx
+	return application.Get().Dialog.OpenFile().
+		CanChooseDirectories(true).
+		CanChooseFiles(false).
+		CanCreateDirectories(true).
+		SetTitle(title).
+		SetDirectory(defaultDirectory).
+		PromptForSingleSelection()
 }
 
 func (a *App) OpenFileDialog(title, defaultDirectory string) (string, error) {
@@ -23,8 +26,11 @@ func (a *App) OpenFileDialog(title, defaultDirectory string) (string, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return runtime.OpenFileDialog(ctx, runtime.OpenDialogOptions{
-		Title:            title,
-		DefaultDirectory: defaultDirectory,
-	})
+	_ = ctx
+	return application.Get().Dialog.OpenFile().
+		CanChooseDirectories(false).
+		CanChooseFiles(true).
+		SetTitle(title).
+		SetDirectory(defaultDirectory).
+		PromptForSingleSelection()
 }

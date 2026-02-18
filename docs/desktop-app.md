@@ -4,7 +4,7 @@ description: Desktop UI for Workset with terminals, workspace management, and Gi
 
 # Desktop App
 
-Workset includes a desktop UI built with Wails (Go backend + Svelte frontend). Production builds use the same worksetapi service, config, and workspace state as the CLI. In `wails dev`, app state is isolated under `~/.workset/dev`.
+Workset includes a desktop UI built with Wails (Go backend + Svelte frontend). Production builds use the same worksetapi service, config, and workspace state as the CLI. In `wails3 dev`, app state is isolated under `~/.workset/dev`.
 
 ## What it does
 
@@ -19,13 +19,13 @@ Workset includes a desktop UI built with Wails (Go backend + Svelte frontend). P
 
 ```bash
 cd wails-ui/workset
-wails dev
-wails build
+wails3 dev
+wails3 package
 ```
 
 You'll need the Wails CLI plus Go and Node.js installed locally.
 
-Note: `wails dev` reads/writes config, workspaces, repo store, and UI state under `~/.workset/dev`.
+Note: `wails3 dev` reads/writes config, workspaces, repo store, and UI state under `~/.workset/dev`.
 
 ## GitHub auth
 
@@ -49,6 +49,13 @@ The updater requires both:
 
 - SHA256 match for the update archive.
 - Matching macOS signing Team ID from the manifest.
+
+Security and rollback boundaries:
+
+- Remote update assets must use `https://` (dev-only exception: loopback `http://` with `WORKSET_UPDATES_ALLOW_INSECURE_HTTP=1`).
+- Archive extraction rejects path traversal and symlink targets that escape the staging root.
+- Validation happens before apply (checksum + signing Team ID checks).
+- On update failure, the app records a failed update state and leaves the current installed bundle unchanged.
 
 ### Manifest helper script
 

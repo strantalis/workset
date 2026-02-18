@@ -3,6 +3,7 @@ package worksetapi
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -268,6 +269,41 @@ func (c *githubCLIClient) GetRepoDefaultBranch(ctx context.Context, owner, repo 
 		return "", wrapAuthError(err)
 	}
 	return response.DefaultBranch, nil
+}
+
+func (c *githubCLIClient) GetFileContent(ctx context.Context, owner, repo, path, ref string) ([]byte, bool, error) {
+	query := url.Values{}
+	if strings.TrimSpace(ref) != "" {
+		query.Set("ref", strings.TrimSpace(ref))
+	}
+
+	requestPath := fmt.Sprintf("repos/%s/%s/contents/%s", owner, repo, strings.TrimPrefix(path, "/"))
+	if encoded := query.Encode(); encoded != "" {
+		requestPath += "?" + encoded
+	}
+
+	var response struct {
+		Type     string `json:"type"`
+		Encoding string `json:"encoding"`
+		Content  string `json:"content"`
+	}
+	if err := c.rest.DoWithContext(ctx, http.MethodGet, requestPath, nil, &response); err != nil {
+		if isHTTPStatus(err, http.StatusNotFound) {
+			return nil, false, nil
+		}
+		return nil, false, wrapAuthError(err)
+	}
+	if response.Type != "" && !strings.EqualFold(response.Type, "file") {
+		return nil, false, nil
+	}
+	if strings.EqualFold(response.Encoding, "base64") {
+		decoded, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(response.Content, "\n", ""))
+		if err != nil {
+			return nil, false, err
+		}
+		return decoded, true, nil
+	}
+	return []byte(response.Content), true, nil
 }
 
 func (c *githubCLIClient) GetCurrentUser(ctx context.Context) (GitHubUserJSON, []string, error) {
@@ -615,6 +651,14 @@ func isAuthMissing(err error) bool {
 		}
 	}
 	return strings.Contains(err.Error(), "authentication token not found")
+}
+
+func isHTTPStatus(err error, status int) bool {
+	if err == nil {
+		return false
+	}
+	var httpErr *api.HTTPError
+	return errors.As(err, &httpErr) && httpErr.StatusCode == status
 }
 
 func wrapAuthError(err error) error {

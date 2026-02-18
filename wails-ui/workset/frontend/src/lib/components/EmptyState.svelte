@@ -72,22 +72,22 @@
 	}
 
 	.title {
-		font-size: 20px;
+		font-size: var(--text-2xl);
 		font-weight: 600;
 	}
 
 	.centered .title {
-		font-size: 24px;
+		font-size: var(--text-3xl);
 	}
 
 	.body {
 		color: var(--muted);
-		font-size: 14px;
+		font-size: var(--text-md);
 		line-height: 1.6;
 	}
 
 	.centered .body {
-		font-size: 15px;
+		font-size: var(--text-md);
 		max-width: 420px;
 	}
 
@@ -103,7 +103,7 @@
 
 	.hint {
 		color: var(--muted);
-		font-size: 13px;
+		font-size: var(--text-sm);
 		opacity: 0.7;
 		margin-top: var(--space-2);
 	}

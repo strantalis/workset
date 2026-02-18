@@ -16,7 +16,7 @@ type SkillInfo struct {
 	Description string   `json:"description"`
 	DirName     string   `json:"dirName"`
 	Scope       string   `json:"scope"` // "global" or "project"
-	Tools       []string `json:"tools"` // e.g. ["claude","codex","copilot","agents"]
+	Tools       []string `json:"tools"` // e.g. ["agents","claude","codex","copilot","cursor","opencode"]
 	Path        string   `json:"path"`  // primary SKILL.md path (first found)
 }
 
@@ -29,16 +29,18 @@ type SkillContent struct {
 
 // skillToolDir describes a tool's skill directory patterns.
 type skillToolDir struct {
-	name      string // tool identifier: "claude", "codex", "copilot", "agents"
+	name      string // tool identifier: "agents", "claude", "codex", "copilot", "cursor", "opencode"
 	globalDir string // glob-expanded dir under $HOME (empty = no global)
 	localDir  string // dir relative to project root
 }
 
 var skillToolDirs = []skillToolDir{
+	{name: "agents", globalDir: ".agents/skills", localDir: ".agents/skills"},
 	{name: "claude", globalDir: ".claude/skills", localDir: ".claude/skills"},
 	{name: "codex", globalDir: ".codex/skills", localDir: ".codex/skills"},
 	{name: "copilot", globalDir: "", localDir: ".github/skills"},
-	{name: "agents", globalDir: ".agents/skills", localDir: ".agents/skills"},
+	{name: "cursor", globalDir: ".cursor/skills", localDir: ".cursor/skills"},
+	{name: "opencode", globalDir: ".opencode/skills", localDir: ".opencode/skills"},
 }
 
 // ListSkills scans all tool directories for SKILL.md files and returns a

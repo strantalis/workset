@@ -42,7 +42,7 @@ func (s *Service) updateGlobal(ctx context.Context, fn func(cfg *config.GlobalCo
 	return info, nil
 }
 
-func registerWorkspace(cfg *config.GlobalConfig, name, path string, now time.Time) {
+func registerWorkspace(cfg *config.GlobalConfig, name, path string, now time.Time, template string) {
 	if cfg.Workspaces == nil {
 		cfg.Workspaces = map[string]config.WorkspaceRef{}
 	}
@@ -52,6 +52,9 @@ func registerWorkspace(cfg *config.GlobalConfig, name, path string, now time.Tim
 		if ref.CreatedAt == "" {
 			ref.CreatedAt = now.Format(time.RFC3339)
 		}
+	}
+	if template != "" && ref.Template == "" {
+		ref.Template = template
 	}
 	ref.LastUsed = now.Format(time.RFC3339)
 	cfg.Workspaces[name] = ref

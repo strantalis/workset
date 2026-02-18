@@ -8,10 +8,11 @@ import (
 )
 
 type WorkspaceCreateRequest struct {
-	Name   string   `json:"name"`
-	Path   string   `json:"path"`
-	Repos  []string `json:"repos,omitempty"`
-	Groups []string `json:"groups,omitempty"`
+	Name     string   `json:"name"`
+	Path     string   `json:"path"`
+	Template string   `json:"template,omitempty"`
+	Repos    []string `json:"repos,omitempty"`
+	Groups   []string `json:"groups,omitempty"`
 }
 
 type WorkspaceCreateResponse struct {
@@ -40,6 +41,11 @@ type HooksRunRequest struct {
 	Repo        string `json:"repo"`
 	Event       string `json:"event,omitempty"`
 	Reason      string `json:"reason,omitempty"`
+}
+
+type RepoHooksPreviewRequest struct {
+	Source string `json:"source"`
+	Ref    string `json:"ref,omitempty"`
 }
 
 type HooksRunResponse struct {
@@ -87,10 +93,11 @@ func (a *App) CreateWorkspace(input WorkspaceCreateRequest) (WorkspaceCreateResp
 	a.ensureService()
 
 	result, err := a.service.CreateWorkspace(ctx, worksetapi.WorkspaceCreateInput{
-		Name:   input.Name,
-		Path:   input.Path,
-		Repos:  input.Repos,
-		Groups: input.Groups,
+		Name:     input.Name,
+		Path:     input.Path,
+		Template: input.Template,
+		Repos:    input.Repos,
+		Groups:   input.Groups,
 	})
 	if err != nil {
 		return WorkspaceCreateResponse{}, err
@@ -239,6 +246,23 @@ func (a *App) TrustRepoHooks(repoName string) error {
 	a.ensureService()
 	_, err := a.service.TrustRepoHooks(ctx, repoName)
 	return err
+}
+
+func (a *App) PreviewRepoHooks(input RepoHooksPreviewRequest) (worksetapi.RepoHooksPreviewJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	a.ensureService()
+
+	result, err := a.service.PreviewRepoHooks(ctx, worksetapi.RepoHooksPreviewInput{
+		Source: input.Source,
+		Ref:    input.Ref,
+	})
+	if err != nil {
+		return worksetapi.RepoHooksPreviewJSON{}, err
+	}
+	return result.Payload, nil
 }
 
 func (a *App) RemoveRepo(input RepoRemoveRequest) (worksetapi.RepoRemoveResultJSON, error) {
@@ -435,6 +459,16 @@ func (a *App) SetWorkspaceColor(workspaceID, color string) (worksetapi.Workspace
 	}
 	a.ensureService()
 	result, _, err := a.service.SetWorkspaceColor(ctx, worksetapi.WorkspaceSelector{Value: workspaceID}, color)
+	return result, err
+}
+
+func (a *App) SetWorkspaceDescription(workspaceID, description string) (worksetapi.WorkspaceRefJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	a.ensureService()
+	result, _, err := a.service.SetWorkspaceDescription(ctx, worksetapi.WorkspaceSelector{Value: workspaceID}, description)
 	return result, err
 }
 

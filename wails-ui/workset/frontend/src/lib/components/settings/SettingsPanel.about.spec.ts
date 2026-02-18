@@ -1,21 +1,34 @@
 import { describe, test, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, fireEvent, cleanup, waitFor } from '@testing-library/svelte';
 import SettingsPanel from '../SettingsPanel.svelte';
-import * as api from '../../api';
+import * as settingsApi from '../../api/settings';
+import * as updatesApi from '../../api/updates';
+import * as terminalApi from '../../api/terminal-layout';
 import type { SettingsDefaults } from '../../types';
 
-// Mock the API module
-vi.mock('../../api', () => ({
+const api = {
+	...settingsApi,
+	...updatesApi,
+	...terminalApi,
+};
+
+vi.mock('../../api/settings', () => ({
 	fetchSettings: vi.fn(),
+	setDefaultSetting: vi.fn(),
+	restartSessiond: vi.fn(),
+}));
+
+vi.mock('../../api/updates', () => ({
 	fetchAppVersion: vi.fn(),
 	fetchUpdatePreferences: vi.fn(),
 	fetchUpdateState: vi.fn(),
 	checkForUpdates: vi.fn(),
 	startAppUpdate: vi.fn(),
 	setUpdatePreferences: vi.fn(),
+}));
+
+vi.mock('../../api/terminal-layout', () => ({
 	fetchWorkspaceTerminalLayout: vi.fn(),
-	setDefaultSetting: vi.fn(),
-	restartSessiond: vi.fn(),
 	createWorkspaceTerminal: vi.fn(),
 	persistWorkspaceTerminalLayout: vi.fn(),
 	stopWorkspaceTerminal: vi.fn(),
@@ -116,8 +129,8 @@ describe('SettingsPanel About Section', () => {
 		// Check About section content
 		expect(getByText('Workspace management for multi-repo development')).toBeInTheDocument();
 		expect(getByText('Version')).toBeInTheDocument();
-		expect(getByText('Built With')).toBeInTheDocument();
-		expect(getByText('Links')).toBeInTheDocument();
+		expect(getByText('GitHub Repository')).toBeInTheDocument();
+		expect(getByText('Report an Issue')).toBeInTheDocument();
 	});
 
 	test('displays version information correctly', async () => {
@@ -198,16 +211,16 @@ describe('SettingsPanel About Section', () => {
 		await fireEvent.click(aboutButton);
 
 		// About section should still render even without version info
-		// Look for elements that are always present (Built With section)
+		// Look for elements that are always present.
 		await waitFor(() => {
-			expect(getByText('Built With')).toBeInTheDocument();
+			expect(getByText('GitHub Repository')).toBeInTheDocument();
 		});
 
 		// Version section should NOT be present when appVersion is null
 		expect(queryByText('Version')).not.toBeInTheDocument();
 	});
 
-	test('displays tech stack badges', async () => {
+	test('displays about action links', async () => {
 		vi.mocked(api.fetchSettings).mockResolvedValue({
 			configPath: '/test/config.yaml',
 			defaults: buildDefaults(),
@@ -227,11 +240,8 @@ describe('SettingsPanel About Section', () => {
 
 		await waitForLoadingAndClickAbout(getByText, queryByText);
 
-		// Check tech badges
-		expect(getByText('Wails')).toBeInTheDocument();
-		expect(getByText('Svelte')).toBeInTheDocument();
-		expect(getByText('Go')).toBeInTheDocument();
-		expect(getByText('TypeScript')).toBeInTheDocument();
+		expect(getByText('GitHub Repository')).toBeInTheDocument();
+		expect(getByText('Report an Issue')).toBeInTheDocument();
 	});
 
 	test('displays GitHub links', async () => {

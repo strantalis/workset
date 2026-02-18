@@ -68,6 +68,17 @@ func commandErrWriter(cmd *cli.Command) io.Writer {
 	return os.Stderr
 }
 
+func shellQuoteArg(value string) string {
+	if value == "" {
+		return "''"
+	}
+	if !strings.ContainsAny(value, " \t\r\n'\"\\$`!&|;<>()[]{}*?~") {
+		return value
+	}
+	escaped := strings.ReplaceAll(value, "'", `'"'"'`)
+	return "'" + escaped + "'"
+}
+
 func enableSuggestions(cmd *cli.Command) {
 	if cmd == nil {
 		return

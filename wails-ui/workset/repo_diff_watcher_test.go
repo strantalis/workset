@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/strantalis/workset/pkg/worksetapi"
 )
 
@@ -108,7 +111,7 @@ func TestRefreshLocalEmitsEventsOnce(t *testing.T) {
 	var summaryPayload RepoDiffSummary
 	repoDiffEmit = func(_ context.Context, name string, data ...interface{}) {
 		events = append(events, name)
-		if name == "repodiff:summary" && len(data) > 0 {
+		if name == EventRepoDiffSummary && len(data) > 0 {
 			if payload, ok := data[0].(RepoDiffSummaryEvent); ok {
 				summaryPayload = payload.Summary
 			}
@@ -146,7 +149,7 @@ func TestRefreshLocalEmitsEventsOnce(t *testing.T) {
 	if len(events) != 3 {
 		t.Fatalf("expected 3 events, got %d: %v", len(events), events)
 	}
-	if events[0] != "repodiff:local-status" || events[1] != "repodiff:local-summary" || events[2] != "repodiff:summary" {
+	if events[0] != EventRepoDiffLocalStatus || events[1] != EventRepoDiffLocalSummary || events[2] != EventRepoDiffSummary {
 		t.Fatalf("unexpected event order: %v", events)
 	}
 
@@ -229,7 +232,7 @@ func TestRefreshPrEmitsEventsOnce(t *testing.T) {
 	if len(events) != 3 {
 		t.Fatalf("expected 3 events, got %d: %v", len(events), events)
 	}
-	if events[0] != "repodiff:pr-status" || events[1] != "repodiff:summary" || events[2] != "repodiff:pr-reviews" {
+	if events[0] != EventRepoDiffPRStatus || events[1] != EventRepoDiffSummary || events[2] != EventRepoDiffPRReviews {
 		t.Fatalf("unexpected event order: %v", events)
 	}
 
@@ -286,7 +289,7 @@ func TestLocalOnlySkipsSummaryAndPr(t *testing.T) {
 	}
 
 	watch.refreshLocal()
-	if len(events) != 1 || events[0] != "repodiff:local-status" {
+	if len(events) != 1 || events[0] != EventRepoDiffLocalStatus {
 		t.Fatalf("expected only local-status event, got %v", events)
 	}
 
@@ -346,4 +349,132 @@ func TestRepoDiffWatchManagerStartDedupesConcurrentStarts(t *testing.T) {
 
 	manager.stop(input)
 	manager.stop(input)
+}
+
+func TestRepoDiffWatchStopStopsRefreshTimer(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	watch := &repoDiffWatch{
+		ctx:            ctx,
+		cancel:         cancel,
+		localRefreshCh: make(chan struct{}, 1),
+	}
+	watch.refreshTimer = time.AfterFunc(500*time.Millisecond, func() {
+		watch.enqueueLocalRefresh()
+	})
+
+	watch.stop()
+
+	if watch.refreshTimer != nil {
+		t.Fatal("expected refresh timer to be cleared on stop")
+	}
+	if got := len(watch.localRefreshCh); got != 0 {
+		t.Fatalf("expected no pending refresh events after stop, got %d", got)
+	}
+}
+
+func TestRepoDiffWatchUpdatePrInfoEmptyInputDoesNotClearState(t *testing.T) {
+	watch := &repoDiffWatch{
+		fullRefs: 1,
+		prNumber: 42,
+		prBranch: "feature/foo",
+		lastPrStatus: &worksetapi.PullRequestStatusJSON{
+			Number: 42,
+			State:  "open",
+		},
+	}
+
+	watch.updatePrInfo(0, "")
+
+	if watch.prNumber != 42 {
+		t.Fatalf("expected pr number to remain unchanged, got %d", watch.prNumber)
+	}
+	if watch.prBranch != "feature/foo" {
+		t.Fatalf("expected pr branch to remain unchanged, got %q", watch.prBranch)
+	}
+	if watch.lastPrStatus == nil {
+		t.Fatal("expected last PR status to remain set")
+	}
+}
+
+func TestRepoDiffWatchRunLocalOnlySkipsFsnotify(t *testing.T) {
+	origNewWatcher := repoDiffNewWatcher
+	origGetLocalStatus := repoDiffGetLocalStatus
+	defer func() {
+		repoDiffNewWatcher = origNewWatcher
+		repoDiffGetLocalStatus = origGetLocalStatus
+	}()
+
+	var watcherCreateCount int32
+	repoDiffNewWatcher = func() (*fsnotify.Watcher, error) {
+		atomic.AddInt32(&watcherCreateCount, 1)
+		return fsnotify.NewWatcher()
+	}
+	repoDiffGetLocalStatus = func(_ context.Context, _ *App, _ repoDiffWatchKey, _ string) (worksetapi.RepoLocalStatusJSON, error) {
+		return worksetapi.RepoLocalStatusJSON{
+			HasUncommitted: false,
+			CurrentBranch:  "main",
+		}, nil
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	watch := newRepoDiffWatch(
+		&App{ctx: context.Background()},
+		ctx,
+		cancel,
+		repoDiffWatchKey{workspaceID: "ws-1", repoID: "repo-1"},
+		"repo",
+		t.TempDir(),
+		true,
+	)
+
+	done := make(chan struct{})
+	go func() {
+		watch.run()
+		close(done)
+	}()
+
+	time.Sleep(30 * time.Millisecond)
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for watch to stop")
+	}
+
+	if got := atomic.LoadInt32(&watcherCreateCount); got != 0 {
+		t.Fatalf("expected no fsnotify watcher for local-only run, got %d", got)
+	}
+}
+
+func TestRepoDiffWatchAddWatchRecursiveDedupesPaths(t *testing.T) {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		t.Fatalf("create watcher: %v", err)
+	}
+	defer watcher.Close()
+
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "a", "b"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "c"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	watch := &repoDiffWatch{watchedPaths: map[string]struct{}{}}
+	if err := watch.addWatchRecursive(watcher, root); err != nil {
+		t.Fatalf("add first recursive watch: %v", err)
+	}
+	firstCount := len(watch.watchedPaths)
+	if firstCount == 0 {
+		t.Fatal("expected at least one watched path")
+	}
+
+	if err := watch.addWatchRecursive(watcher, root); err != nil {
+		t.Fatalf("add second recursive watch: %v", err)
+	}
+	if got := len(watch.watchedPaths); got != firstCount {
+		t.Fatalf("expected deduped watch count %d, got %d", firstCount, got)
+	}
 }

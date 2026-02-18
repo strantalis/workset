@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { setUpdatePreferences } from './api';
-import { SetUpdatePreferences } from '../../wailsjs/go/main/App';
+import { setUpdatePreferences } from './api/updates';
+import { SetUpdatePreferences } from '../../bindings/workset/app';
 
-vi.mock('../../wailsjs/go/main/App', () => ({
+vi.mock('../../bindings/workset/app', () => ({
 	SetUpdatePreferences: vi.fn(),
 }));
 

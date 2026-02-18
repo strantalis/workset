@@ -5,8 +5,6 @@
 		detachTerminal,
 		focusTerminalInstance,
 		getTerminalStore,
-		restartTerminal as restartServiceTerminal,
-		retryHealthCheck as retryServiceHealthCheck,
 		scrollTerminalToBottom,
 		isTerminalAtBottom,
 		syncTerminal,
@@ -26,8 +24,6 @@
 	let {
 		// eslint-disable-next-line prefer-const
 		workspaceId,
-		// eslint-disable-next-line prefer-const
-		workspaceName,
 		// eslint-disable-next-line prefer-const
 		terminalId,
 		// eslint-disable-next-line prefer-const
@@ -55,7 +51,7 @@
 	$effect(() => {
 		if (terminalId === currentTerminalId && workspaceId === currentWorkspaceId) return;
 		if (currentTerminalId && currentWorkspaceId) {
-			detachTerminal(currentWorkspaceId, currentTerminalId);
+			detachTerminal(currentWorkspaceId, currentTerminalId, { force: true });
 		}
 		currentWorkspaceId = workspaceId;
 		currentTerminalId = terminalId;
@@ -64,9 +60,9 @@
 
 	$effect(() => {
 		if (!terminalId) return;
+		if (!terminalContainer || !terminalContainer.isConnected) return;
 		syncTerminal({
 			workspaceId,
-			workspaceName,
 			terminalId,
 			container: terminalContainer,
 			active,
@@ -79,16 +75,6 @@
 		}
 		unsubscribe?.();
 	});
-
-	export async function restart(): Promise<void> {
-		if (!terminalId || !workspaceId) return;
-		await restartServiceTerminal(workspaceId, terminalId);
-	}
-
-	export function retryHealthCheck(): void {
-		if (!terminalId || !workspaceId) return;
-		retryServiceHealthCheck(workspaceId, terminalId);
-	}
 
 	export function focus(): void {
 		if (!terminalId || !workspaceId) return;

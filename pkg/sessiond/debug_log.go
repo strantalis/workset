@@ -57,3 +57,12 @@ func debugLogf(format string, args ...any) {
 		append([]any{time.Now().Format(time.RFC3339Nano)}, args...)...,
 	)
 }
+
+func envTruthy(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}

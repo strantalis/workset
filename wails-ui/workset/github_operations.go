@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/strantalis/workset/pkg/worksetapi"
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type GitHubOperationType string
@@ -291,7 +290,7 @@ func parseGitHubOperationType(raw string) (GitHubOperationType, error) {
 	}
 }
 
-var githubOperationEmit = wruntime.EventsEmit
+var githubOperationEmit = emitRuntimeEvent
 
 func (a *App) ensureGitHubOperationManager() *githubOperationManager {
 	if a.githubOps == nil {
@@ -304,16 +303,17 @@ func (a *App) emitGitHubOperation(status GitHubOperationStatusPayload) {
 	if a == nil || a.ctx == nil {
 		return
 	}
-	githubOperationEmit(a.ctx, "github:operation", status)
+	githubOperationEmit(a.ctx, EventGitHubOperation, status)
 }
 
 func (a *App) runCreatePullRequestAsync(ctx context.Context, key githubOperationKey, repoName string, input StartCreatePullRequestAsyncRequest) {
 	manager := a.ensureGitHubOperationManager()
+	svc := a.ensureService()
 	if status, ok := manager.setStage(key, GitHubOperationStageGenerating); ok {
 		a.emitGitHubOperation(status)
 	}
 
-	generated, err := a.service.GeneratePullRequestText(ctx, worksetapi.PullRequestGenerateInput{
+	generated, err := svc.GeneratePullRequestText(ctx, worksetapi.PullRequestGenerateInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
 		Repo:      repoName,
 	})
@@ -328,7 +328,7 @@ func (a *App) runCreatePullRequestAsync(ctx context.Context, key githubOperation
 		a.emitGitHubOperation(status)
 	}
 
-	created, err := a.service.CreatePullRequest(ctx, worksetapi.PullRequestCreateInput{
+	created, err := svc.CreatePullRequest(ctx, worksetapi.PullRequestCreateInput{
 		Workspace:  worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
 		Repo:       repoName,
 		Base:       input.Base,
@@ -354,8 +354,9 @@ func (a *App) runCreatePullRequestAsync(ctx context.Context, key githubOperation
 
 func (a *App) runCommitAndPushAsync(ctx context.Context, key githubOperationKey, repoName string, input StartCommitAndPushAsyncRequest) {
 	manager := a.ensureGitHubOperationManager()
+	svc := a.ensureService()
 
-	result, err := a.service.CommitAndPush(ctx, worksetapi.CommitAndPushInput{
+	result, err := svc.CommitAndPush(ctx, worksetapi.CommitAndPushInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
 		Repo:      repoName,
 		Message:   input.Message,

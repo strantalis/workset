@@ -281,10 +281,11 @@ func (a *App) SendPullRequestReviewsToTerminal(input PullRequestReviewsRequest) 
 		}
 		terminalID = created.TerminalID
 	}
-	if err := a.StartWorkspaceTerminal(input.WorkspaceID, terminalID); err != nil {
+	windowName := a.workspaceTerminalOwner(input.WorkspaceID)
+	if err := a.StartWorkspaceTerminalForWindowName(ctx, input.WorkspaceID, terminalID, windowName); err != nil {
 		return err
 	}
-	return a.WriteWorkspaceTerminal(input.WorkspaceID, terminalID, summary)
+	return a.WriteWorkspaceTerminalForWindowName(ctx, input.WorkspaceID, terminalID, summary, windowName)
 }
 
 type CommitAndPushRequest struct {
@@ -395,9 +396,8 @@ func (a *App) GetGitHubOperationStatus(input GitHubOperationStatusRequest) (GitH
 	}
 	status, ok := a.ensureGitHubOperationManager().get(key)
 	if !ok {
-		return GitHubOperationStatusPayload{}, worksetapi.NotFoundError{
-			Message: fmt.Sprintf("operation status not found (%s)", opType),
-		}
+		// No active operation is a valid state; return empty payload without error.
+		return GitHubOperationStatusPayload{}, nil
 	}
 	return status, nil
 }

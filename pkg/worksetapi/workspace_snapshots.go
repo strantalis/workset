@@ -2,12 +2,12 @@ package worksetapi
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"sort"
 
 	"github.com/strantalis/workset/internal/config"
 	"github.com/strantalis/workset/internal/ops"
+	"github.com/strantalis/workset/internal/workspace"
 )
 
 // ListWorkspaceSnapshots returns workspace snapshots with optional repo status.
@@ -34,18 +34,42 @@ func (s *Service) ListWorkspaceSnapshots(ctx context.Context, opts WorkspaceSnap
 		}
 		root := ref.Path
 		if root == "" {
-			return WorkspaceSnapshotResult{}, fmt.Errorf("workspace path missing for %q", name)
+			if s.logf != nil {
+				s.logf("workspace snapshots: skipping %q (path missing)", name)
+			}
+			continue
 		}
 
 		wsConfig, err := s.workspaces.LoadConfig(ctx, root)
+		hasWorkspaceConfig := true
 		if err != nil {
 			if os.IsNotExist(err) {
-				return WorkspaceSnapshotResult{}, NotFoundError{Message: "workset.yaml not found at " + worksetFilePath(root)}
+				if s.logf != nil {
+					s.logf("workspace snapshots: workspace config missing for %q at %s", name, worksetFilePath(root))
+				}
+				hasWorkspaceConfig = false
+				wsConfig = config.WorkspaceConfig{}
+			} else {
+				if s.logf != nil {
+					s.logf("workspace snapshots: skipping %q (load config: %v)", name, err)
+				}
+				continue
 			}
-			return WorkspaceSnapshotResult{}, err
 		}
-		if err := s.migrateLegacyWorkspaceRemotes(ctx, &cfg, info.Path, root, &wsConfig); err != nil {
-			return WorkspaceSnapshotResult{}, err
+		if hasWorkspaceConfig {
+			if err := s.migrateLegacyWorkspaceRemotes(ctx, &cfg, info.Path, root, &wsConfig); err != nil {
+				return WorkspaceSnapshotResult{}, err
+			}
+		}
+		var state workspace.State
+		if hasWorkspaceConfig {
+			state, err = s.workspaces.LoadState(ctx, root)
+			if err != nil && !os.IsNotExist(err) {
+				if s.logf != nil {
+					s.logf("workspace snapshots: state unavailable for %q: %v", name, err)
+				}
+				state = workspace.State{}
+			}
 		}
 
 		repos := make([]RepoSnapshotJSON, 0, len(wsConfig.Repos))
@@ -54,20 +78,38 @@ func (s *Service) ListWorkspaceSnapshots(ctx context.Context, opts WorkspaceSnap
 			config.ApplyRepoDefaults(&repo, cfg.Defaults)
 			defaults := resolveRepoDefaults(cfg, repo.Name)
 			repoDefaults[repo.Name] = defaults.DefaultBranch
+			var trackedPR *TrackedPullRequestSnapshotJSON
+			if pr, ok := state.PullRequests[repo.Name]; ok {
+				trackedPR = &TrackedPullRequestSnapshotJSON{
+					Repo:       pr.Repo,
+					Number:     pr.Number,
+					URL:        pr.URL,
+					Title:      pr.Title,
+					Body:       pr.Body,
+					State:      pr.State,
+					Draft:      pr.Draft,
+					BaseRepo:   pr.BaseRepo,
+					BaseBranch: pr.BaseBranch,
+					HeadRepo:   pr.HeadRepo,
+					HeadBranch: pr.HeadBranch,
+					UpdatedAt:  pr.UpdatedAt,
+				}
+			}
 			repos = append(repos, RepoSnapshotJSON{
-				Name:          repo.Name,
-				LocalPath:     repo.LocalPath,
-				Managed:       repo.Managed,
-				RepoDir:       repo.RepoDir,
-				Remote:        defaults.Remote,
-				DefaultBranch: defaults.DefaultBranch,
-				Dirty:         false,
-				Missing:       false,
-				StatusKnown:   false,
+				Name:               repo.Name,
+				LocalPath:          repo.LocalPath,
+				Managed:            repo.Managed,
+				RepoDir:            repo.RepoDir,
+				Remote:             defaults.Remote,
+				DefaultBranch:      defaults.DefaultBranch,
+				Dirty:              false,
+				Missing:            false,
+				StatusKnown:        false,
+				TrackedPullRequest: trackedPR,
 			})
 		}
 
-		if opts.IncludeStatus {
+		if opts.IncludeStatus && hasWorkspaceConfig {
 			statuses, err := ops.Status(ctx, ops.StatusInput{
 				WorkspaceRoot:       root,
 				Defaults:            cfg.Defaults,
@@ -75,17 +117,20 @@ func (s *Service) ListWorkspaceSnapshots(ctx context.Context, opts WorkspaceSnap
 				Git:                 s.git,
 			})
 			if err != nil {
-				return WorkspaceSnapshotResult{}, err
-			}
-			byName := map[string]ops.RepoStatus{}
-			for _, status := range statuses {
-				byName[status.Name] = status
-			}
-			for i := range repos {
-				if status, ok := byName[repos[i].Name]; ok && status.Err == nil {
-					repos[i].Dirty = status.Dirty
-					repos[i].Missing = status.Missing
-					repos[i].StatusKnown = true
+				if s.logf != nil {
+					s.logf("workspace snapshots: status unavailable for %q: %v", name, err)
+				}
+			} else {
+				byName := map[string]ops.RepoStatus{}
+				for _, status := range statuses {
+					byName[status.Name] = status
+				}
+				for i := range repos {
+					if status, ok := byName[repos[i].Name]; ok && status.Err == nil {
+						repos[i].Dirty = status.Dirty
+						repos[i].Missing = status.Missing
+						repos[i].StatusKnown = true
+					}
 				}
 			}
 		}
@@ -93,6 +138,7 @@ func (s *Service) ListWorkspaceSnapshots(ctx context.Context, opts WorkspaceSnap
 		snapshots = append(snapshots, WorkspaceSnapshotJSON{
 			Name:           name,
 			Path:           ref.Path,
+			Template:       ref.Template,
 			CreatedAt:      ref.CreatedAt,
 			LastUsed:       ref.LastUsed,
 			ArchivedAt:     ref.ArchivedAt,
@@ -101,6 +147,7 @@ func (s *Service) ListWorkspaceSnapshots(ctx context.Context, opts WorkspaceSnap
 			Pinned:         ref.Pinned,
 			PinOrder:       ref.PinOrder,
 			Color:          ref.Color,
+			Description:    ref.Description,
 			Expanded:       ref.Expanded,
 			Repos:          repos,
 		})

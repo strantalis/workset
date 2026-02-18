@@ -1,12 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-type TerminalScenario = {
-	baseY: number;
-	viewportY: number;
-	nextBaseY: number;
-};
-
-const terminalScenarios: TerminalScenario[] = [];
 const createdTerminals: MockTerminal[] = [];
 
 class MockTerminal {
@@ -14,36 +7,30 @@ class MockTerminal {
 		active: {
 			baseY: 0,
 			viewportY: 0,
-			length: 0,
+			length: 1,
 			getLine: () => ({ translateToString: () => '' }),
 		},
 	};
 	public options: Record<string, unknown>;
-	public parser = {
-		registerOscHandler: () => ({ dispose: () => undefined }),
-	};
-	public unicode = { activeVersion: '' };
 	public element: { parentElement: HTMLElement | null } | null = null;
 	public rows = 24;
 	public scrollToBottom = vi.fn(() => {
 		this.buffer.active.viewportY = this.buffer.active.baseY;
-	});
-	public scrollToLine = vi.fn((line: number) => {
-		this.buffer.active.viewportY = line;
 	});
 	public refresh = vi.fn();
 	public write = vi.fn((_data: string, cb?: () => void) => cb?.());
 	public focus = vi.fn();
 	public clear = vi.fn();
 	public reset = vi.fn();
-	private scenario: TerminalScenario;
+	public attachCustomWheelEventHandler = vi.fn((handler: (event: WheelEvent) => boolean) => {
+		this.customWheelEventHandler = handler;
+	});
+	public customWheelEventHandler: ((event: WheelEvent) => boolean) | null = null;
+	public onDataCallback: ((data: string) => void) | null = null;
+	public onBinaryCallback: ((data: string) => void) | null = null;
 
 	constructor(options: Record<string, unknown>) {
 		this.options = options;
-		this.scenario = terminalScenarios.shift() ?? { baseY: 0, viewportY: 0, nextBaseY: 0 };
-		this.buffer.active.baseY = this.scenario.baseY;
-		this.buffer.active.viewportY = this.scenario.viewportY;
-		this.buffer.active.length = Math.max(this.buffer.active.baseY + 1, 1);
 		createdTerminals.push(this);
 	}
 
@@ -51,13 +38,13 @@ class MockTerminal {
 		addon.activate?.(this);
 	}
 
-	attachCustomKeyEventHandler(): void {}
-
-	onData(): { dispose: () => void } {
+	onData(callback: (data: string) => void): { dispose: () => void } {
+		this.onDataCallback = callback;
 		return { dispose: () => undefined };
 	}
 
-	onBinary(): { dispose: () => void } {
+	onBinary(callback: (data: string) => void): { dispose: () => void } {
+		this.onBinaryCallback = callback;
 		return { dispose: () => undefined };
 	}
 
@@ -69,44 +56,37 @@ class MockTerminal {
 		this.element = { parentElement: container };
 	}
 
-	applyFit(): void {
-		this.buffer.active.baseY = this.scenario.nextBaseY;
-		this.buffer.active.length = Math.max(this.buffer.active.baseY + 1, 1);
+	emitData(data: string): void {
+		this.onDataCallback?.(data);
+	}
+
+	emitBinary(data: string): void {
+		this.onBinaryCallback?.(data);
 	}
 }
 
 class MockFitAddon {
-	private terminal: MockTerminal | null = null;
-
-	activate(terminal: MockTerminal): void {
-		this.terminal = terminal;
-	}
-
-	fit(): void {
-		this.terminal?.applyFit();
-	}
-
+	activate(_terminal: MockTerminal): void {}
+	fit = vi.fn();
 	proposeDimensions(): { cols: number; rows: number } {
 		return { cols: 80, rows: 24 };
 	}
 }
 
-class NoopAddon {
-	activate(): void {}
-	dispose(): void {}
-}
-
 const runtimeMock = {
-	BrowserOpenURL: vi.fn(),
-	EventsOn: vi.fn(),
-	EventsOff: vi.fn(),
+	Browser: {
+		OpenURL: vi.fn(),
+	},
+	Events: {
+		On: vi.fn(),
+		Off: vi.fn(),
+	},
 };
 
 const appMock = {
-	AckWorkspaceTerminal: vi.fn().mockResolvedValue(undefined),
-	ResizeWorkspaceTerminal: vi.fn().mockResolvedValue(undefined),
-	StartWorkspaceTerminal: vi.fn().mockResolvedValue(undefined),
-	WriteWorkspaceTerminal: vi.fn().mockResolvedValue(undefined),
+	ResizeWorkspaceTerminalForWindowName: vi.fn().mockResolvedValue(undefined),
+	StartWorkspaceTerminalForWindowName: vi.fn().mockResolvedValue(undefined),
+	WriteWorkspaceTerminalForWindowName: vi.fn().mockResolvedValue(undefined),
 };
 
 const apiMock = {
@@ -116,7 +96,6 @@ const apiMock = {
 		workspaceId: 'ws',
 		terminalId: 'term',
 	}),
-	fetchWorkspaceTerminalStatus: vi.fn().mockResolvedValue({ active: false }),
 	logTerminalDebug: vi.fn().mockResolvedValue(undefined),
 	stopWorkspaceTerminal: vi.fn().mockResolvedValue(undefined),
 };
@@ -129,24 +108,8 @@ vi.mock('@xterm/addon-fit', () => ({
 	FitAddon: MockFitAddon,
 }));
 
-vi.mock('@xterm/addon-clipboard', () => ({
-	ClipboardAddon: NoopAddon,
-}));
-
-vi.mock('@xterm/addon-unicode11', () => ({
-	Unicode11Addon: NoopAddon,
-}));
-
-vi.mock('@xterm/addon-web-links', () => ({
-	WebLinksAddon: NoopAddon,
-}));
-
-vi.mock('@xterm/addon-webgl', () => ({
-	WebglAddon: NoopAddon,
-}));
-
-vi.mock('../../../wailsjs/runtime/runtime', () => runtimeMock);
-vi.mock('../../../wailsjs/go/main/App', () => appMock);
+vi.mock('@wailsio/runtime', () => runtimeMock);
+vi.mock('../../../bindings/workset/app', () => appMock);
 vi.mock('../api', () => apiMock);
 
 const loadService = async () => import('./terminalService');
@@ -176,12 +139,11 @@ const installLocalStorage = (): void => {
 	});
 };
 
-describe('terminalService fit viewport preservation', () => {
+describe('terminalService resize flow', () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 		vi.resetModules();
 		vi.clearAllMocks();
-		terminalScenarios.length = 0;
 		createdTerminals.length = 0;
 		Object.defineProperty(globalThis, 'ResizeObserver', {
 			value: MockResizeObserver,
@@ -198,41 +160,148 @@ describe('terminalService fit viewport preservation', () => {
 		vi.useRealTimers();
 	});
 
-	it('preserves relative viewport position when user scrolled up', async () => {
-		terminalScenarios.push({ baseY: 120, viewportY: 90, nextBaseY: 260 });
+	it('syncs terminal without viewport snapshot restore behavior', async () => {
 		const service = await loadService();
 		const container = document.createElement('div') as HTMLDivElement;
 
 		service.syncTerminal({
 			workspaceId: 'ws',
-			workspaceName: 'demo',
 			terminalId: 'term',
 			container,
 			active: false,
 		});
+		await Promise.resolve();
+		await Promise.resolve();
 
 		expect(createdTerminals).toHaveLength(1);
 		const terminal = createdTerminals[0];
-		expect(terminal.scrollToLine).toHaveBeenCalledWith(90);
 		expect(terminal.scrollToBottom).not.toHaveBeenCalled();
 	});
 
-	it('keeps follow mode at bottom after fit', async () => {
-		terminalScenarios.push({ baseY: 120, viewportY: 120, nextBaseY: 260 });
+	it('attaches a custom wheel handler that consumes browser scroll', async () => {
 		const service = await loadService();
 		const container = document.createElement('div') as HTMLDivElement;
 
 		service.syncTerminal({
 			workspaceId: 'ws',
-			workspaceName: 'demo',
 			terminalId: 'term',
 			container,
-			active: false,
+			active: true,
+		});
+		await vi.waitFor(() => {
+			expect(appMock.StartWorkspaceTerminalForWindowName).toHaveBeenCalled();
 		});
 
 		expect(createdTerminals).toHaveLength(1);
 		const terminal = createdTerminals[0];
-		expect(terminal.scrollToBottom).toHaveBeenCalled();
-		expect(terminal.scrollToLine).not.toHaveBeenCalled();
+		expect(terminal.attachCustomWheelEventHandler).toHaveBeenCalledTimes(1);
+		expect(terminal.customWheelEventHandler).toBeTypeOf('function');
+
+		const preventDefault = vi.fn();
+		const stopPropagation = vi.fn();
+		const handled = terminal.customWheelEventHandler?.({
+			preventDefault,
+			stopPropagation,
+		} as unknown as WheelEvent);
+		expect(handled).toBe(true);
+		expect(preventDefault).toHaveBeenCalledTimes(1);
+		expect(stopPropagation).toHaveBeenCalledTimes(1);
+	});
+
+	it('forwards wheel input after attaching terminal host in another document', async () => {
+		const service = await loadService();
+		const container = document.createElement('div') as HTMLDivElement;
+
+		service.syncTerminal({
+			workspaceId: 'ws',
+			terminalId: 'term',
+			container,
+			active: true,
+		});
+		await vi.waitFor(() => {
+			expect(appMock.StartWorkspaceTerminalForWindowName).toHaveBeenCalled();
+		});
+
+		expect(createdTerminals).toHaveLength(1);
+		const terminal = createdTerminals[0];
+
+		const popoutDocument = document.implementation.createHTMLDocument('popout');
+		const popoutContainer = popoutDocument.createElement('div') as HTMLDivElement;
+		Object.defineProperty(popoutDocument, 'activeElement', {
+			get: () => popoutContainer.firstElementChild,
+			configurable: true,
+		});
+
+		service.syncTerminal({
+			workspaceId: 'ws',
+			terminalId: 'term',
+			container: popoutContainer,
+			active: true,
+		});
+		await Promise.resolve();
+
+		expect(popoutContainer.firstElementChild).toBeTruthy();
+		expect(popoutContainer.firstElementChild?.ownerDocument).toBe(popoutDocument);
+		expect(terminal.onDataCallback).toBeTypeOf('function');
+
+		terminal.emitData('\x1b[<64;10;10M');
+		await vi.waitFor(() => {
+			expect(appMock.WriteWorkspaceTerminalForWindowName).toHaveBeenCalledWith(
+				'ws',
+				'term',
+				'\x1b[<64;10;10M',
+				expect.any(String),
+			);
+		});
+	});
+
+	it('refits attached terminals on window focus so handoff does not require manual resize', async () => {
+		const service = await loadService();
+		const container = document.createElement('div') as HTMLDivElement;
+		const widthDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
+		const heightDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
+		Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+			configurable: true,
+			get() {
+				return this.isConnected ? 800 : 0;
+			},
+		});
+		Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+			configurable: true,
+			get() {
+				return this.isConnected ? 400 : 0;
+			},
+		});
+		const restoreClientMetrics = (): void => {
+			if (widthDescriptor) {
+				Object.defineProperty(HTMLElement.prototype, 'clientWidth', widthDescriptor);
+			}
+			if (heightDescriptor) {
+				Object.defineProperty(HTMLElement.prototype, 'clientHeight', heightDescriptor);
+			}
+		};
+		try {
+			service.syncTerminal({
+				workspaceId: 'ws',
+				terminalId: 'term',
+				container,
+				active: true,
+			});
+			await vi.waitFor(() => {
+				expect(appMock.StartWorkspaceTerminalForWindowName).toHaveBeenCalled();
+			});
+			await vi.runAllTimersAsync();
+			expect(appMock.ResizeWorkspaceTerminalForWindowName).not.toHaveBeenCalled();
+			appMock.ResizeWorkspaceTerminalForWindowName.mockClear();
+
+			document.body.appendChild(container);
+			window.dispatchEvent(new Event('focus'));
+			await vi.runAllTimersAsync();
+
+			expect(appMock.ResizeWorkspaceTerminalForWindowName.mock.calls.length).toBeGreaterThan(0);
+		} finally {
+			container.remove();
+			restoreClientMetrics();
+		}
 	});
 });
