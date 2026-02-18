@@ -21,6 +21,7 @@
 		PinOff,
 		Plus,
 		Search,
+		Trash2,
 	} from '@lucide/svelte';
 	import { clickOutside } from '../../actions/clickOutside';
 	import type { WorksetSummary } from '../../view-models/worksetViewModel';
@@ -40,6 +41,7 @@
 		onSelectWorkspace: (workspaceId: string) => void;
 		onCreateWorkspace: () => void;
 		onAddRepo: (workspaceId: string) => void;
+		onRemoveWorkspace: (workspaceId: string) => void;
 		onTogglePin: (workspaceId: string, nextPinned: boolean) => void;
 		onToggleArchived: (workspaceId: string, archived: boolean) => void;
 		onOpenPopout: (workspaceId: string) => void;
@@ -57,6 +59,7 @@
 	const onSelectWorkspace = props.onSelectWorkspace;
 	const onCreateWorkspace = props.onCreateWorkspace;
 	const onAddRepo = props.onAddRepo;
+	const onRemoveWorkspace = props.onRemoveWorkspace;
 	const onTogglePin = props.onTogglePin;
 	const onToggleArchived = props.onToggleArchived;
 	const onOpenPopout = props.onOpenPopout;
@@ -272,6 +275,12 @@
 		event.stopPropagation();
 		closeActionMenu();
 		onAddRepo(workspaceId);
+	};
+
+	const handleRemoveWorkspace = (workspaceId: string, event: MouseEvent): void => {
+		event.stopPropagation();
+		closeActionMenu();
+		onRemoveWorkspace(workspaceId);
 	};
 
 	const handleOpenPopout = (workspaceId: string, event: MouseEvent): void => {
@@ -517,6 +526,14 @@
 																		Archive
 																	{/if}
 																</button>
+																<button
+																	type="button"
+																	class="item-delete"
+																	onclick={(event) => handleRemoveWorkspace(item.id, event)}
+																>
+																	<Trash2 size={13} />
+																	Delete workset
+																</button>
 															</div>
 														{/if}
 													</div>
@@ -702,6 +719,14 @@
 																<Archive size={13} />
 																Archive
 															{/if}
+														</button>
+														<button
+															type="button"
+															class="item-delete"
+															onclick={(event) => handleRemoveWorkspace(item.id, event)}
+														>
+															<Trash2 size={13} />
+															Delete workset
 														</button>
 													</div>
 												{/if}

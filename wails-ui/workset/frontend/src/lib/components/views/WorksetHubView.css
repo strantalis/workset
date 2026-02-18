@@ -774,6 +774,14 @@ kbd {
 	color: var(--success);
 }
 
+.action-menu button.item-delete {
+	color: var(--danger);
+}
+
+.action-menu button.item-delete:hover {
+	color: var(--danger);
+}
+
 .empty-state {
 	min-height: 280px;
 	display: grid;
