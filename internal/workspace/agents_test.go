@@ -143,4 +143,31 @@ func TestUpdateAgentsFileCreatesFile(t *testing.T) {
 	if !strings.Contains(string(content), agentsGeneratedStart) {
 		t.Fatalf("missing generated section: %q", string(content))
 	}
+	claudeContent, err := os.ReadFile(ClaudeFile(root))
+	if err != nil {
+		t.Fatalf("read claude file: %v", err)
+	}
+	if string(claudeContent) != string(content) {
+		t.Fatalf("expected CLAUDE.md to mirror AGENTS.md")
+	}
+}
+
+func TestUpdateAgentsFileIgnoresClaudeMirrorError(t *testing.T) {
+	root := t.TempDir()
+	state := State{CurrentBranch: "main"}
+	if err := os.MkdirAll(ClaudeFile(root), 0o755); err != nil {
+		t.Fatalf("mkdir claude path: %v", err)
+	}
+
+	if err := UpdateAgentsFile(root, config.WorkspaceConfig{}, state); err != nil {
+		t.Fatalf("UpdateAgentsFile: %v", err)
+	}
+
+	content, err := os.ReadFile(AgentsFile(root))
+	if err != nil {
+		t.Fatalf("read agents file: %v", err)
+	}
+	if !strings.Contains(string(content), agentsGeneratedStart) {
+		t.Fatalf("missing generated section: %q", string(content))
+	}
 }

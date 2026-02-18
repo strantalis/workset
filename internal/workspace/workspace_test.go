@@ -45,6 +45,13 @@ func TestInitCreatesWorkspace(t *testing.T) {
 	if !strings.Contains(string(content), "Configured Repos (from workset.yaml)") {
 		t.Fatalf("agents file missing configured repos section")
 	}
+	claudeContent, err := os.ReadFile(ClaudeFile(root))
+	if err != nil {
+		t.Fatalf("claude file missing: %v", err)
+	}
+	if string(claudeContent) != string(content) {
+		t.Fatalf("expected CLAUDE.md to mirror AGENTS.md")
+	}
 }
 
 func TestLoadRecreatesState(t *testing.T) {
