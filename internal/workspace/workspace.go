@@ -19,6 +19,7 @@ const (
 	stateFileName   = "state.json"
 	branchMetaFile  = ".workset-branch"
 	agentsFileName  = "AGENTS.md"
+	claudeFileName  = "CLAUDE.md"
 )
 
 type Workspace struct {
@@ -62,6 +63,10 @@ func WorksetFile(root string) string {
 
 func AgentsFile(root string) string {
 	return filepath.Join(root, agentsFileName)
+}
+
+func ClaudeFile(root string) string {
+	return filepath.Join(root, claudeFileName)
 }
 
 func StatePath(root string) string {

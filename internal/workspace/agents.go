@@ -25,22 +25,33 @@ func UpdateAgentsFile(root string, cfg config.WorkspaceConfig, state State) erro
 	}
 	section := formatGeneratedSection(generated)
 	path := AgentsFile(root)
+	content, err := renderAgentsContent(path, section)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return err
+	}
+	return os.WriteFile(ClaudeFile(root), []byte(content), 0o644)
+}
+
+func renderAgentsContent(path, section string) (string, error) {
 	current, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return os.WriteFile(path, []byte(buildAgentsTemplate(section)), 0o644)
+			return buildAgentsTemplate(section), nil
 		}
-		return err
+		return "", err
 	}
 
 	content := string(current)
 	if updated, ok := replaceGeneratedSection(content, section); ok {
-		return os.WriteFile(path, []byte(updated), 0o644)
+		return updated, nil
 	}
 	if strings.TrimSpace(content) == "" {
-		return os.WriteFile(path, []byte(buildAgentsTemplate(section)), 0o644)
+		return buildAgentsTemplate(section), nil
 	}
-	return os.WriteFile(path, []byte(appendGeneratedSection(content, section)), 0o644)
+	return appendGeneratedSection(content, section), nil
 }
 
 func buildAgentsTemplate(section string) string {

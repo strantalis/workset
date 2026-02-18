@@ -143,4 +143,11 @@ func TestUpdateAgentsFileCreatesFile(t *testing.T) {
 	if !strings.Contains(string(content), agentsGeneratedStart) {
 		t.Fatalf("missing generated section: %q", string(content))
 	}
+	claudeContent, err := os.ReadFile(ClaudeFile(root))
+	if err != nil {
+		t.Fatalf("read claude file: %v", err)
+	}
+	if string(claudeContent) != string(content) {
+		t.Fatalf("expected CLAUDE.md to mirror AGENTS.md")
+	}
 }

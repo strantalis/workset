@@ -68,6 +68,13 @@ func TestAddRepoLinksLocal(t *testing.T) {
 	if !strings.Contains(string(agentsContent), "demo-repo") {
 		t.Fatalf("agents file missing repo entry")
 	}
+	claudeContent, err := os.ReadFile(workspace.ClaudeFile(root))
+	if err != nil {
+		t.Fatalf("claude file missing: %v", err)
+	}
+	if string(claudeContent) != string(agentsContent) {
+		t.Fatalf("expected CLAUDE.md to mirror AGENTS.md")
+	}
 }
 
 func TestAddRepoMissingRemoteErrors(t *testing.T) {
