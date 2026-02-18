@@ -39,7 +39,8 @@ export const createTerminalViewportResizeController = <T extends TerminalViewpor
 ) => {
 	const resizeObservers = new Map<string, TerminalResizeObserver>();
 	const resizeTimers = new Map<string, number>();
-	const focusTimers = new Map<string, number>();
+	const focusRetryTimers = new Map<string, number>();
+	const focusRefitTimers = new Map<string, number>();
 	const resizeDebounceMs = options.resizeDebounceMs ?? 100;
 	const setTimeoutFn =
 		options.setTimeoutFn ??
@@ -119,16 +120,27 @@ export const createTerminalViewportResizeController = <T extends TerminalViewpor
 		if (!id) return;
 		const handle = options.getHandle(id);
 		if (handle) {
+			fitTerminal(id, options.hasStarted(id));
 			handle.terminal.focus();
+			clearTimerMap(focusRefitTimers, id);
+			focusRefitTimers.set(
+				id,
+				setTimeoutFn(() => {
+					focusRefitTimers.delete(id);
+					fitTerminal(id, options.hasStarted(id));
+				}, 0),
+			);
 			return;
 		}
-		if (focusTimers.has(id)) return;
-		focusTimers.set(
+		if (focusRetryTimers.has(id)) return;
+		focusRetryTimers.set(
 			id,
 			setTimeoutFn(() => {
-				focusTimers.delete(id);
+				focusRetryTimers.delete(id);
 				const current = options.getHandle(id);
-				current?.terminal.focus();
+				if (!current) return;
+				fitTerminal(id, options.hasStarted(id));
+				current.terminal.focus();
 			}, 0),
 		);
 	};
@@ -147,7 +159,8 @@ export const createTerminalViewportResizeController = <T extends TerminalViewpor
 	};
 
 	const destroy = (id: string): void => {
-		clearTimerMap(focusTimers, id);
+		clearTimerMap(focusRetryTimers, id);
+		clearTimerMap(focusRefitTimers, id);
 		detachResizeObserver(id);
 	};
 
