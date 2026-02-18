@@ -133,6 +133,7 @@
 	// ─── PR tracking ────────────────────────────────────────────────────
 	let trackedPr: PullRequestCreated | null = $state(null);
 	let trackedPrLoading = $state(false);
+	let trackedPrRequestId = 0;
 
 	// ─── Files tab ──────────────────────────────────────────────────────
 	let diffSummary: RepoDiffSummary | null = $state(null);
@@ -381,7 +382,9 @@
 	const selectItem = (itemId: string): void => {
 		selectedItemId = itemId;
 		activeTab = 'files';
-		trackedPr = null;
+		const item = prItems.find((i) => i.id === itemId);
+		trackedPr = item ? (trackedPrMap.get(item.repoId) ?? null) : null;
+		trackedPrLoading = false;
 		prStatus = null;
 		prReviews = [];
 		diffSummary = null;
@@ -408,7 +411,6 @@
 		commitPushSuccess = false;
 		clearCommitPushSuccessTimer();
 
-		const item = prItems.find((i) => i.id === itemId);
 		if (item && workspace) {
 			void loadTrackedPr(workspace.id, item.repoId);
 			void loadRepoLocalStatus(workspace.id, item.repoId);
@@ -419,11 +421,15 @@
 	};
 
 	const loadTrackedPr = async (wsId: string, repoId: string): Promise<void> => {
-		trackedPr = trackedPrMap.get(repoId) ?? null;
-		trackedPrLoading = true;
+		const requestId = ++trackedPrRequestId;
+		const isSelectedRepo = (): boolean => selectedItem?.repoId === repoId;
+		const cached = trackedPrMap.get(repoId) ?? null;
+		if (isSelectedRepo()) {
+			trackedPr = cached;
+			trackedPrLoading = true;
+		}
 		try {
 			const resolved = await fetchTrackedPullRequest(wsId, repoId);
-			trackedPr = resolved;
 			const nextMap = new Map(trackedPrMap);
 			if (resolved) {
 				nextMap.set(repoId, resolved);
@@ -431,10 +437,19 @@
 				nextMap.delete(repoId);
 			}
 			trackedPrMap = nextMap;
+			if (requestId !== trackedPrRequestId || !isSelectedRepo()) {
+				return;
+			}
+			trackedPr = resolved;
 		} catch {
+			if (requestId !== trackedPrRequestId || !isSelectedRepo()) {
+				return;
+			}
 			trackedPr = null;
 		} finally {
-			trackedPrLoading = false;
+			if (requestId === trackedPrRequestId && isSelectedRepo()) {
+				trackedPrLoading = false;
+			}
 		}
 	};
 
