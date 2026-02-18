@@ -22,4 +22,5 @@ ignore:
   - '**/*.gen.*'
   - '**/*_generated.*'
 
-allowlist: []
+allowlist:
+  - wails-ui/workset/frontend/src/lib/components/views/PROrchestrationView.svelte
