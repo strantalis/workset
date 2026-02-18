@@ -50,10 +50,23 @@ def _fetch_releases() -> tuple[list[dict[str, Any]], str | None]:
 
 def _select_release(releases: list[dict[str, Any]], channel: str) -> dict[str, Any] | None:
     prerelease = channel == "alpha"
+    fallback: dict[str, Any] | None = None
     for release in releases:
-        if bool(release.get("prerelease")) == prerelease:
+        if bool(release.get("prerelease")) != prerelease:
+            continue
+        if fallback is None:
+            fallback = release
+        tag = _release_tag(release)
+        assets = release.get("assets") or []
+        asset_names = {str(asset.get("name") or "") for asset in assets if asset.get("name")}
+        expected_zip_name = f"workset-{tag}-macos-update.zip"
+        if (
+            expected_zip_name in asset_names
+            and f"{expected_zip_name}.sha256" in asset_names
+            and f"{expected_zip_name}.teamid" in asset_names
+        ):
             return release
-    return None
+    return fallback
 
 
 def _fetch_text(url: str) -> tuple[str, str | None]:
