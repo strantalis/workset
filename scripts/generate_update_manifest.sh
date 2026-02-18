@@ -62,7 +62,7 @@ usage:
     --team-id <APPLE_TEAM_ID> \
     [--notes-url https://.../releases/tag/v0.3.0] \
     [--minimum-version v0.2.0] \
-    --output updates/stable.json
+    --output docs/updates/stable.json
 EOF
   exit 1
 fi

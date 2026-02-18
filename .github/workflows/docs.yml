@@ -17,7 +17,6 @@ concurrency:
 
 jobs:
   build:
-    if: ${{ github.event_name != 'release' || github.event.release.prerelease != true }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -29,6 +28,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Build docs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: mkdocs build --clean
       - name: Upload artifact
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v3
