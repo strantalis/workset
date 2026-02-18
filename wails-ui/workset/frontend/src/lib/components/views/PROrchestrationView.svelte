@@ -64,12 +64,15 @@
 		fetchBranchFileDiff,
 		fetchRepoDiffSummary,
 		fetchRepoFileDiff,
+		startRepoDiffWatch,
 		startRepoStatusWatch,
+		stopRepoDiffWatch,
 		stopRepoStatusWatch,
 	} from '../../api/repo-diff';
+	import { EVENT_REPO_DIFF_PR_STATUS } from '../../events';
+	import { subscribeRepoDiffEvent } from '../../repoDiffService';
+	import { refreshWorkspacesStatus } from '../../state';
 	import {
-		buildFileLocalCacheKey,
-		buildFilePrCacheKey,
 		buildSummaryLocalCacheKey,
 		buildSummaryPrCacheKey,
 		repoDiffCache,
@@ -85,6 +88,16 @@
 		formatCheckDuration,
 		getCheckIcon,
 	} from './prOrchestrationHelpers';
+	import {
+		applyPrStatusEvent,
+		buildFileDiffCacheKeyForSource,
+		commitPushStageLabel as formatCommitPushStageLabel,
+		createTrackedPrStateReconciler,
+		persistSidebarCollapsed,
+		readSidebarCollapsed,
+		shouldClearSelectedItem,
+		type RepoDiffPrStatusEvent,
+	} from './prOrchestrationView.helpers';
 
 	interface Props {
 		workspace: Workspace | null;
@@ -98,15 +111,7 @@
 	const prItems = $derived(mapWorkspaceToPrItems(workspace));
 
 	// ─── Tracked PR map (drives active/ready partition) ────────────────
-	let trackedPrMap: Map<string, PullRequestCreated> = $state(new Map());
-
-	$effect(() => {
-		if (workspace) {
-			trackedPrMap = buildTrackedPrMap(workspace);
-		} else {
-			trackedPrMap = new Map();
-		}
-	});
+	let trackedPrMap: Map<string, PullRequestCreated> = $derived(buildTrackedPrMap(workspace));
 
 	const partitions = $derived.by(() => {
 		const active = prItems.filter((item) => trackedPrMap.has(item.repoId));
@@ -141,7 +146,7 @@
 	let fileDiffContent: RepoFileDiff | null = $state(null);
 	let fileDiffLoading = $state(false);
 	let fileDiffError: string | null = $state(null);
-	let activeWatchKey: { wsId: string; repoId: string } | null = $state(null);
+	let activeWatchKey: { wsId: string; repoId: string; mode: 'local' | 'pr' } | null = $state(null);
 	let activePrBranches: { base: string; head: string } | null = $state(null);
 	let activeFileKey: string | null = $state(null);
 	let lastDiffSummaryTargetKey: string | null = $state(null);
@@ -173,21 +178,6 @@
 	let commitPushError: string | null = $state(null);
 	let commitPushSuccess = $state(false);
 	let commitPushSuccessTimer: ReturnType<typeof setTimeout> | null = null;
-	const SIDEBAR_COLLAPSED_KEY = 'workset:pr-orchestration:sidebarCollapsed';
-	const readSidebarCollapsed = (): boolean => {
-		try {
-			return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
-		} catch {
-			return false;
-		}
-	};
-	const persistSidebarCollapsed = (collapsed: boolean): void => {
-		try {
-			localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed));
-		} catch {
-			// ignore storage failures
-		}
-	};
 	let sidebarCollapsed = $state(readSidebarCollapsed());
 	const canCollapseSidebar = $derived(selectedItemId !== null);
 
@@ -228,9 +218,8 @@
 		activePrBranches ? `${activePrBranches.base}:${activePrBranches.head}` : '',
 	);
 
-	const getMode = (): 'active' | 'ready' => viewMode;
-	const isActiveDetail = $derived(getMode() === 'active' && selectedItem != null);
-	const isReadyDetail = $derived(getMode() === 'ready' && selectedItem != null);
+	const isActiveDetail = $derived.by(() => viewMode === 'active' && selectedItem != null);
+	const isReadyDetail = $derived.by(() => viewMode === 'ready' && selectedItem != null);
 
 	const checkStats = $derived(buildCheckStats(prStatus));
 	const reviewThreads = $derived(buildReviewThreads(prReviews));
@@ -260,16 +249,7 @@
 		return !s.hasUncommitted && s.ahead === 0;
 	});
 
-	const commitPushStageLabel = $derived.by(() => {
-		const labels: Record<string, string> = {
-			queued: 'Queuing...',
-			generating_message: 'Generating commit message...',
-			staging: 'Staging files...',
-			committing: 'Committing...',
-			pushing: 'Pushing...',
-		};
-		return commitPushStage ? (labels[commitPushStage] ?? 'Processing...') : null;
-	});
+	const commitPushStageLabel = $derived(formatCommitPushStageLabel(commitPushStage));
 
 	// ─── Annotation actions controller ──────────────────────────────────
 	const annotationController = createReviewAnnotationActionsController({
@@ -418,10 +398,14 @@
 
 	const stopActiveWatch = async (): Promise<void> => {
 		if (activeWatchKey) {
-			const { wsId, repoId } = activeWatchKey;
+			const { wsId, repoId, mode } = activeWatchKey;
 			activeWatchKey = null;
 			try {
-				await stopRepoStatusWatch(wsId, repoId);
+				if (mode === 'pr') {
+					await stopRepoDiffWatch(wsId, repoId);
+				} else {
+					await stopRepoStatusWatch(wsId, repoId);
+				}
 			} catch {
 				/* ignore */
 			}
@@ -469,7 +453,11 @@
 			if (!branches) {
 				await startRepoStatusWatch(wsId, repoId);
 				if (requestId !== diffSummaryRequestId) return;
-				activeWatchKey = { wsId, repoId };
+				activeWatchKey = { wsId, repoId, mode: 'local' };
+			} else {
+				await startRepoDiffWatch(wsId, repoId, pr?.number, pr?.headBranch || branches.head);
+				if (requestId !== diffSummaryRequestId) return;
+				activeWatchKey = { wsId, repoId, mode: 'pr' };
 			}
 			if (!cached || cached.stale) {
 				const fetched = branches
@@ -492,34 +480,6 @@
 		}
 	};
 
-	const buildFileDiffCacheKey = (
-		wsId: string,
-		repoId: string,
-		file: RepoDiffFileSummary,
-		source: 'pr' | 'local',
-	): string => {
-		if (source === 'local') {
-			return buildFileLocalCacheKey(
-				wsId,
-				repoId,
-				file.status ?? '',
-				file.path,
-				file.prevPath ?? '',
-			);
-		}
-		if (activePrBranches) {
-			return buildFilePrCacheKey(
-				wsId,
-				repoId,
-				activePrBranches.base,
-				activePrBranches.head,
-				file.path,
-				file.prevPath ?? '',
-			);
-		}
-		return buildFileLocalCacheKey(wsId, repoId, file.status ?? '', file.path, file.prevPath ?? '');
-	};
-
 	const loadFileDiff = async (
 		wsId: string,
 		repoId: string,
@@ -530,7 +490,7 @@
 		const requestId = ++fileDiffRequestId;
 		fileDiffLoading = true;
 		fileDiffError = null;
-		const cacheKey = buildFileDiffCacheKey(wsId, repoId, file, source);
+		const cacheKey = buildFileDiffCacheKeyForSource(wsId, repoId, file, source, activePrBranches);
 		const cached = repoDiffCache.getFileDiff(cacheKey);
 		if (cached) {
 			fileDiffContent = cached.value;
@@ -661,9 +621,20 @@
 		}
 	};
 
-	const openExternalUrl = (url: string | undefined | null): void => {
-		if (url) Browser.OpenURL(url);
-	};
+	const openExternalUrl = (url: string | undefined | null): void =>
+		void (url && Browser.OpenURL(url));
+
+	const reconcileTrackedPrState = createTrackedPrStateReconciler({
+		loadTrackedPr,
+		refreshWorkspacesStatus: () => refreshWorkspacesStatus(true),
+		getSelectedRepoId: () => selectedRepoId,
+		loadRepoLocalStatus,
+		loadDiffSummary,
+		getTrackedPr: (repoId) => trackedPrMap.get(repoId),
+		getActiveWatchKey: () => activeWatchKey,
+		clearActivePrBranches: () => (activePrBranches = null),
+		stopActiveWatch,
+	});
 
 	// ─── Effects ────────────────────────────────────────────────────────
 
@@ -743,9 +714,37 @@
 	});
 
 	$effect(() => {
-		if (selectedItemId && !prItems.find((i) => i.id === selectedItemId)) {
-			selectedItemId = null;
+		const unsub = subscribeRepoDiffEvent<RepoDiffPrStatusEvent>(
+			EVENT_REPO_DIFF_PR_STATUS,
+			(payload) => {
+				if (!workspace || !selectedItem) return;
+				if (payload.workspaceId !== workspace.id || payload.repoId !== selectedItem.repoId) return;
+				const next = applyPrStatusEvent(payload, selectedItem.repoId, trackedPrMap);
+				prStatus = next.prStatus;
+				trackedPr = next.trackedPr;
+				trackedPrMap = next.trackedPrMap;
+				if (next.shouldReconcileTrackedPr) {
+					void reconcileTrackedPrState(workspace.id, selectedItem.repoId);
+				}
+			},
+		);
+		return unsub;
+	});
+
+	$effect(() => {
+		if (
+			!shouldClearSelectedItem(
+				selectedItemId,
+				viewMode,
+				prItems,
+				partitions.active,
+				partitions.readyToPR,
+			)
+		) {
+			return;
 		}
+		selectedItemId = null;
+		activeTab = 'files';
 	});
 
 	$effect(() => {
@@ -928,7 +927,6 @@
 	});
 
 	// ─── Helpers ────────────────────────────────────────────────────────
-
 	const filesForDetail = $derived.by(() => {
 		const src = selectedSource;
 		return src === 'local' ? (localSummary?.files ?? []) : (diffSummary?.files ?? []);
