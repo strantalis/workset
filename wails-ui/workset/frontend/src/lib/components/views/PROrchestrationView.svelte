@@ -21,7 +21,6 @@
 	} from '@lucide/svelte';
 	import { Browser } from '@wailsio/runtime';
 	import type {
-		PullRequestCheck,
 		PullRequestCreated,
 		PullRequestReviewComment,
 		PullRequestStatusResult,
@@ -37,6 +36,7 @@
 		fetchRepoLocalStatus,
 		fetchTrackedPullRequest,
 		generatePullRequestText,
+		listRemotes,
 		replyToReviewComment,
 		resolveReviewThread,
 		startCommitAndPushAsync,
@@ -74,8 +74,17 @@
 		buildSummaryPrCacheKey,
 		repoDiffCache,
 	} from '../../cache/repoDiffCache';
+	import { resolveBranchRefs } from '../../diff/branchRefs';
 	import ResizablePanel from '../ui/ResizablePanel.svelte';
 	import { mapWorkspaceToPrItems } from '../../view-models/prViewModel';
+	import {
+		buildCheckStats,
+		buildDiffTargetKey,
+		buildReviewThreads,
+		buildTrackedPrMap,
+		formatCheckDuration,
+		getCheckIcon,
+	} from './prOrchestrationHelpers';
 
 	interface Props {
 		workspace: Workspace | null;
@@ -91,19 +100,9 @@
 	// ─── Tracked PR map (drives active/ready partition) ────────────────
 	let trackedPrMap: Map<string, PullRequestCreated> = $state(new Map());
 
-	const loadTrackedPrMap = (ws: Workspace): void => {
-		const nextMap = new Map<string, PullRequestCreated>();
-		for (const repo of ws.repos) {
-			if (repo.trackedPullRequest) {
-				nextMap.set(repo.id, repo.trackedPullRequest);
-			}
-		}
-		trackedPrMap = nextMap;
-	};
-
 	$effect(() => {
 		if (workspace) {
-			loadTrackedPrMap(workspace);
+			trackedPrMap = buildTrackedPrMap(workspace);
 		} else {
 			trackedPrMap = new Map();
 		}
@@ -131,6 +130,7 @@
 	// ─── PR tracking ────────────────────────────────────────────────────
 	let trackedPr: PullRequestCreated | null = $state(null);
 	let trackedPrLoading = $state(false);
+	let trackedPrRequestId = 0;
 
 	// ─── Files tab ──────────────────────────────────────────────────────
 	let diffSummary: RepoDiffSummary | null = $state(null);
@@ -144,6 +144,7 @@
 	let activeWatchKey: { wsId: string; repoId: string } | null = $state(null);
 	let activePrBranches: { base: string; head: string } | null = $state(null);
 	let activeFileKey: string | null = $state(null);
+	let lastDiffSummaryTargetKey: string | null = $state(null);
 	let diffSummaryRequestId = 0;
 	let localSummaryRequestId = 0;
 	let fileDiffRequestId = 0;
@@ -231,41 +232,8 @@
 	const isActiveDetail = $derived(getMode() === 'active' && selectedItem != null);
 	const isReadyDetail = $derived(getMode() === 'ready' && selectedItem != null);
 
-	const checkStats = $derived.by(() => {
-		const checks = prStatus?.checks ?? [];
-		let passed = 0;
-		let failed = 0;
-		let pending = 0;
-		for (const c of checks) {
-			if (c.conclusion === 'success') passed++;
-			else if (c.conclusion === 'failure') failed++;
-			else pending++;
-		}
-		return { passed, failed, pending, total: checks.length };
-	});
-
-	const reviewThreads = $derived.by(() => {
-		const threadMap = new Map<string, PullRequestReviewComment[]>();
-		for (const comment of prReviews) {
-			const key = comment.threadId ?? `single-${comment.id}`;
-			const arr = threadMap.get(key) ?? [];
-			arr.push(comment);
-			threadMap.set(key, arr);
-		}
-		return Array.from(threadMap.entries())
-			.map(([id, comments]) => ({
-				id,
-				comments: comments.sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? '')),
-				path: comments[0]?.path ?? '',
-				line: comments[0]?.line,
-				resolved: comments[0]?.resolved ?? false,
-				outdated: comments[0]?.outdated ?? false,
-			}))
-			.sort((a, b) => {
-				if (a.resolved !== b.resolved) return a.resolved ? 1 : -1;
-				return a.path.localeCompare(b.path);
-			});
-	});
+	const checkStats = $derived(buildCheckStats(prStatus));
+	const reviewThreads = $derived(buildReviewThreads(prReviews));
 
 	const unresolvedCount = $derived(reviewThreads.filter((t) => !t.resolved).length);
 
@@ -348,10 +316,30 @@
 
 	// ─── Actions ────────────────────────────────────────────────────────
 
+	const resolvePrBranches = async (
+		wsId: string,
+		repoId: string,
+		pr: PullRequestCreated,
+	): Promise<{ base: string; head: string } | null> => {
+		if (!pr.baseBranch || !pr.headBranch) {
+			return null;
+		}
+
+		const fallback = { base: pr.baseBranch, head: pr.headBranch };
+		try {
+			const remotes = await listRemotes(wsId, repoId);
+			return resolveBranchRefs(remotes, pr) ?? fallback;
+		} catch {
+			return fallback;
+		}
+	};
+
 	const selectItem = (itemId: string): void => {
 		selectedItemId = itemId;
 		activeTab = 'files';
-		trackedPr = null;
+		const item = prItems.find((i) => i.id === itemId);
+		trackedPr = item ? (trackedPrMap.get(item.repoId) ?? null) : null;
+		trackedPrLoading = false;
 		prStatus = null;
 		prReviews = [];
 		diffSummary = null;
@@ -361,6 +349,8 @@
 		fileDiffContent = null;
 		fileDiffError = null;
 		activeFileKey = null;
+		activePrBranches = null;
+		lastDiffSummaryTargetKey = null;
 		diffSummaryRequestId += 1;
 		localSummaryRequestId += 1;
 		fileDiffRequestId += 1;
@@ -376,12 +366,9 @@
 		commitPushSuccess = false;
 		clearCommitPushSuccessTimer();
 
-		const item = prItems.find((i) => i.id === itemId);
 		if (item && workspace) {
 			void loadTrackedPr(workspace.id, item.repoId);
 			void loadRepoLocalStatus(workspace.id, item.repoId);
-			const pr = trackedPrMap.get(item.repoId);
-			void loadDiffSummary(workspace.id, item.repoId, pr);
 			if (viewMode === 'ready') {
 				void loadSuggestedPrText(workspace.id, item.repoId);
 			}
@@ -389,11 +376,15 @@
 	};
 
 	const loadTrackedPr = async (wsId: string, repoId: string): Promise<void> => {
-		trackedPr = trackedPrMap.get(repoId) ?? null;
-		trackedPrLoading = true;
+		const requestId = ++trackedPrRequestId;
+		const isSelectedRepo = (): boolean => selectedItem?.repoId === repoId;
+		const cached = trackedPrMap.get(repoId) ?? null;
+		if (isSelectedRepo()) {
+			trackedPr = cached;
+			trackedPrLoading = true;
+		}
 		try {
 			const resolved = await fetchTrackedPullRequest(wsId, repoId);
-			trackedPr = resolved;
 			const nextMap = new Map(trackedPrMap);
 			if (resolved) {
 				nextMap.set(repoId, resolved);
@@ -401,10 +392,19 @@
 				nextMap.delete(repoId);
 			}
 			trackedPrMap = nextMap;
+			if (requestId !== trackedPrRequestId || !isSelectedRepo()) {
+				return;
+			}
+			trackedPr = resolved;
 		} catch {
+			if (requestId !== trackedPrRequestId || !isSelectedRepo()) {
+				return;
+			}
 			trackedPr = null;
 		} finally {
-			trackedPrLoading = false;
+			if (requestId === trackedPrRequestId && isSelectedRepo()) {
+				trackedPrLoading = false;
+			}
 		}
 	};
 
@@ -454,7 +454,8 @@
 	): Promise<void> => {
 		const requestId = ++diffSummaryRequestId;
 		diffSummaryLoading = true;
-		const branches = pr ? { base: pr.baseBranch, head: pr.headBranch } : null;
+		const branches = pr ? await resolvePrBranches(wsId, repoId, pr) : null;
+		if (requestId !== diffSummaryRequestId) return;
 		activePrBranches = branches;
 		const cacheKey = branches
 			? buildSummaryPrCacheKey(wsId, repoId, branches.base, branches.head)
@@ -665,6 +666,20 @@
 	};
 
 	// ─── Effects ────────────────────────────────────────────────────────
+
+	$effect(() => {
+		const currentWsId = wsId;
+		const currentRepoId = selectedRepoId;
+		if (!selectedItem || currentWsId === '' || currentRepoId === '') {
+			return;
+		}
+		const targetKey = buildDiffTargetKey(currentWsId, currentRepoId, trackedPr ?? undefined);
+		if (targetKey === lastDiffSummaryTargetKey) {
+			return;
+		}
+		lastDiffSummaryTargetKey = targetKey;
+		void loadDiffSummary(currentWsId, currentRepoId, trackedPr ?? undefined);
+	});
 
 	$effect(() => {
 		if (activeTab === 'checks' && !prStatus && !prStatusLoading && selectedItem) {
@@ -913,24 +928,6 @@
 	});
 
 	// ─── Helpers ────────────────────────────────────────────────────────
-
-	const getCheckIcon = (check: PullRequestCheck): string => {
-		if (check.conclusion === 'success') return 'success';
-		if (check.conclusion === 'failure') return 'failure';
-		if (check.status === 'in_progress' || check.status === 'queued') return 'running';
-		return 'pending';
-	};
-
-	const formatCheckDuration = (check: PullRequestCheck): string => {
-		if (!check.startedAt || !check.completedAt) {
-			if (check.status === 'in_progress' || check.status === 'queued') return 'Running...';
-			return 'Pending';
-		}
-		const ms = new Date(check.completedAt).getTime() - new Date(check.startedAt).getTime();
-		if (ms < 1000) return `${ms}ms`;
-		if (ms < 60000) return `${Math.round(ms / 1000)}s`;
-		return `${Math.round(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`;
-	};
 
 	const filesForDetail = $derived.by(() => {
 		const src = selectedSource;
