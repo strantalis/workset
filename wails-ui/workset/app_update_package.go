@@ -272,13 +272,17 @@ func currentBundlePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return bundlePathFromExecutable(executablePath)
+}
+
+func bundlePathFromExecutable(executablePath string) (string, error) {
 	marker := filepath.Join("Contents", "MacOS") + string(filepath.Separator)
-	index := strings.Index(executablePath, marker)
+	index := strings.LastIndex(executablePath, marker)
 	if index <= 0 {
 		return "", errors.New("current binary is not running from a macOS app bundle")
 	}
-	bundlePath := executablePath[:index]
-	if !strings.HasSuffix(strings.ToLower(bundlePath), ".app") {
+	bundlePath := filepath.Clean(executablePath[:index])
+	if !strings.EqualFold(filepath.Ext(bundlePath), ".app") {
 		return "", errors.New("resolved bundle path is invalid")
 	}
 	return bundlePath, nil
