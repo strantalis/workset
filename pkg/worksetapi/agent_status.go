@@ -25,35 +25,6 @@ func (s *Service) GetAgentCLIStatus(ctx context.Context, agent string) (AgentCLI
 		ConfiguredPath: configuredPath,
 	}
 
-	launch := normalizeAgentLaunchMode(cfg.Defaults.AgentLaunch)
-	if launch == agentLaunchStrict {
-		if configuredPath != "" {
-			if isExecutableCandidate(configuredPath) {
-				if filepath.Base(configuredPath) == filepath.Base(command) {
-					status.Installed = true
-					status.Path = configuredPath
-					return status, nil
-				}
-			} else {
-				status.Error = "Configured agent path is not executable"
-			}
-		}
-		if hasPathSeparator(command) {
-			normalizedCommand := normalizeCLIPath(command)
-			if isExecutableCandidate(normalizedCommand) {
-				status.Installed = true
-				status.Path = filepath.Clean(normalizedCommand)
-				return status, nil
-			}
-			status.Error = "agent command is not executable: " + normalizedCommand
-			return status, nil
-		}
-		if status.Error == "" {
-			status.Error = "strict agent launch requires a path with directory separators or agent CLI path"
-		}
-		return status, nil
-	}
-
 	if configuredPath != "" {
 		if isExecutableCandidate(configuredPath) {
 			if filepath.Base(configuredPath) == filepath.Base(command) {

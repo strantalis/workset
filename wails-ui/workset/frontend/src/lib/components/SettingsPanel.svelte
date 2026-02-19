@@ -46,7 +46,6 @@
 		{ id: 'repoStoreRoot', key: 'defaults.repo_store_root' },
 		{ id: 'agent', key: 'defaults.agent' },
 		{ id: 'agentModel', key: 'defaults.agent_model' },
-		{ id: 'agentLaunch', key: 'defaults.agent_launch' },
 		{ id: 'terminalIdleTimeout', key: 'defaults.terminal_idle_timeout' },
 		{ id: 'terminalProtocolLog', key: 'defaults.terminal_protocol_log' },
 		{ id: 'terminalDebugOverlay', key: 'defaults.terminal_debug_overlay' },

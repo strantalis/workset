@@ -117,7 +117,6 @@ Settings are split into three classes with different ownership:
   - `defaults.repo_store_root`
   - `defaults.agent`
   - `defaults.agent_model`
-  - `defaults.agent_launch`
   - `defaults.terminal_idle_timeout`
   - `defaults.terminal_protocol_log`
   - `defaults.terminal_debug_overlay`

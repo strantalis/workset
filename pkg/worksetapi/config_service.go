@@ -67,12 +67,6 @@ func setGlobalDefault(cfg *config.GlobalConfig, key, value string) error {
 		}
 	case "defaults.agent_model":
 		cfg.Defaults.AgentModel = value
-	case "defaults.agent_launch":
-		mode, ok := parseAgentLaunchMode(value)
-		if !ok {
-			return fmt.Errorf("unsupported agent launch mode %q", value)
-		}
-		cfg.Defaults.AgentLaunch = mode
 	case "defaults.terminal_idle_timeout":
 		cfg.Defaults.TerminalIdleTimeout = value
 	case "defaults.terminal_protocol_log":

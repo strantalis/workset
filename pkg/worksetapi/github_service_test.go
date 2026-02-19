@@ -119,10 +119,9 @@ func TestRunAgentPromptWithModelFallbacksOnInvalidJSON(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	cfg := config.GlobalConfig{
 		Defaults: config.Defaults{
-			Remote:      "origin",
-			BaseBranch:  "main",
-			Agent:       "codex",
-			AgentLaunch: "strict",
+			Remote:     "origin",
+			BaseBranch: "main",
+			Agent:      "codex",
 		},
 	}
 	if err := config.SaveGlobal(cfgPath, cfg); err != nil {
@@ -130,8 +129,9 @@ func TestRunAgentPromptWithModelFallbacksOnInvalidJSON(t *testing.T) {
 	}
 	var calls []string
 	runner := func(_ context.Context, _ string, command []string, _ []string, _ string) (CommandResult, error) {
-		calls = append(calls, strings.Join(command, " "))
-		if sliceHasExact(command, "-m") {
+		call := strings.Join(command, " ")
+		calls = append(calls, call)
+		if strings.Contains(call, "-m") {
 			return CommandResult{ExitCode: 0, Stdout: "not-json"}, nil
 		}
 		return CommandResult{ExitCode: 0, Stdout: `{"title":"t","body":"b"}`}, nil

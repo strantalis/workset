@@ -15,7 +15,6 @@ type Defaults struct {
 	SessionScreenHard    string              `yaml:"session_screen_hardstatus" json:"session_screen_hardstatus" mapstructure:"session_screen_hardstatus"`
 	Agent                string              `yaml:"agent" json:"agent" mapstructure:"agent"`
 	AgentModel           string              `yaml:"agent_model" json:"agent_model" mapstructure:"agent_model"`
-	AgentLaunch          string              `yaml:"agent_launch" json:"agent_launch" mapstructure:"agent_launch"`
 	TerminalIdleTimeout  string              `yaml:"terminal_idle_timeout" json:"terminal_idle_timeout" mapstructure:"terminal_idle_timeout"`
 	TerminalProtocolLog  string              `yaml:"terminal_protocol_log" json:"terminal_protocol_log" mapstructure:"terminal_protocol_log"`
 	TerminalDebugOverlay string              `yaml:"terminal_debug_overlay" json:"terminal_debug_overlay" mapstructure:"terminal_debug_overlay"`

@@ -22,7 +22,6 @@ func DefaultConfig() GlobalConfig {
 			SessionScreenHard:    "",
 			Agent:                "codex",
 			AgentModel:           "",
-			AgentLaunch:          "auto",
 			TerminalIdleTimeout:  "0",
 			TerminalProtocolLog:  "off",
 			TerminalDebugOverlay: "off",

@@ -88,19 +88,13 @@ func (s *Service) runAgentPromptRaw(ctx context.Context, repoPath, agent, prompt
 			command[0] = configuredPath
 		}
 	}
-	settings := resolveAgentExecSettings(cfg.Defaults)
+	settings := resolveAgentExecSettings()
 	command, env, stdin, err := prepareAgentCommand(command, prompt, schema)
 	if err != nil {
 		return "", err
 	}
 	command = applyAgentModel(command, model)
-	if !settings.AllowPathGuess {
-		if !hasPathSeparator(command[0]) {
-			return "", ValidationError{Message: "strict agent launch requires a path with directory separators or agent CLI path"}
-		}
-		command[0] = normalizeCLIPath(command[0])
-	}
-	command = resolveAgentCommandPath(command, settings.AllowPathGuess)
+	command = resolveAgentCommandPath(command)
 	if shouldWrapAgentCommand(settings) {
 		wrapped, wrapErr := wrapAgentCommandForShell(command, settings)
 		if wrapErr != nil {
