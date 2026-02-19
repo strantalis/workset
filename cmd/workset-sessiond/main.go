@@ -67,6 +67,7 @@ func main() {
 		cfgIdle = idleTimeout
 	}
 	if cfgIdle != "" {
+		opts.IdleTimeoutSet = true
 		if cfgIdle == "0" || cfgIdle == "off" || cfgIdle == "disabled" || cfgIdle == "false" {
 			opts.IdleTimeout = 0
 		} else if parsed, err := time.ParseDuration(cfgIdle); err == nil {

@@ -12,6 +12,7 @@ type Options struct {
 	TranscriptDir           string
 	RecordDir               string
 	IdleTimeout             time.Duration
+	IdleTimeoutSet          bool
 	BufferBytes             int
 	TranscriptMaxBytes      int64
 	TranscriptTrimThreshold int64
