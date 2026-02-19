@@ -41,7 +41,7 @@ Remote names and default branches come from repo aliases (`repos.<name>.remote` 
 | `session_tmux_status_left` | Override tmux `status-left` when a session theme is enabled. |
 | `session_tmux_status_right` | Override tmux `status-right` when a session theme is enabled. |
 | `session_screen_hardstatus` | Override screen `hardstatus` when a session theme is enabled. |
-| `agent` | Default agent for PR text generation, commit messages, and the GUI terminal launcher. |
+| `agent` | Default agent for PR text generation, commit messages, and the GUI terminal launcher. Supported values: `codex`, `claude`. |
 | `agent_model` | Optional model override for PR text generation and commit messages (does not affect the terminal launcher). Examples: `gpt-5.1-codex-mini` (Codex), `haiku` (Claude). |
 | `agent_launch` | Agent launch strategy: `auto` (shell + PTY fallback) or `strict` (requires a path with directory separators in `defaults.agent` or `agent.cli_path`). |
 | `terminal_idle_timeout` | Idle timeout for GUI terminals/sessiond (duration like `30m`; use `0` to disable). Default is `0`. |

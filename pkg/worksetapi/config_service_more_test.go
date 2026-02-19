@@ -65,6 +65,11 @@ func TestSetDefaultErrors(t *testing.T) {
 		t.Fatalf("expected backend error")
 	}
 
+	_, _, err = env.svc.SetDefault(context.Background(), "defaults.agent", "cursor")
+	if err == nil {
+		t.Fatalf("expected unsupported agent error")
+	}
+
 	_, _, err = env.svc.SetDefault(context.Background(), "defaults.remotes.base", "origin")
 	if err == nil {
 		t.Fatalf("expected removed key error")

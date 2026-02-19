@@ -78,7 +78,7 @@ sequenceDiagram
 - `defaults.terminal_idle_timeout` controls idle shutdown (used by both the daemon and the app).
 - `defaults.terminal_protocol_log` enables OSC/CSI/DSR protocol logging (restart daemon to apply).
 - `defaults.terminal_debug_overlay` shows the terminal debug overlay (bytes in/out, backlog, timestamps).
-- `defaults.agent` controls the default coding agent for terminal launchers and PR generation.
+- `defaults.agent` controls the default coding agent for terminal launchers and PR generation (supported: `codex`, `claude`).
 - `WORKSET_SESSIOND_SOCKET` overrides the session daemon socket path (default `~/.workset/sessiond.sock`).
   Wails dev builds use `~/.workset/sessiond-dev.sock` to avoid contention with production.
 
