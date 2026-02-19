@@ -778,6 +778,7 @@
 							templates={onboardingTemplates}
 							repoRegistry={onboardingRepoRegistry}
 							defaultWorkspaceName=""
+							existingWorkspaceNames={$workspaces.map((workspace) => workspace.name)}
 							onStart={handleOnboardingStart}
 							onPreviewHooks={handleOnboardingPreviewHooks}
 							onComplete={handleOnboardingComplete}

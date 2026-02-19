@@ -102,13 +102,18 @@ const mountView = (props: Record<string, unknown> = {}) => {
 	});
 };
 
-const clickButton = async (label: string): Promise<void> => {
+const getButton = (label: string): HTMLButtonElement => {
 	const button = Array.from(document.querySelectorAll('button')).find((candidate) =>
 		candidate.textContent?.includes(label),
 	);
 	if (!button) {
 		throw new Error(`Button not found: ${label}`);
 	}
+	return button as HTMLButtonElement;
+};
+
+const clickButton = async (label: string): Promise<void> => {
+	const button = getButton(label);
 	button.click();
 	await Promise.resolve();
 };
@@ -160,6 +165,30 @@ describe('OnboardingView', () => {
 		expect(document.body).toHaveTextContent('Discovered lifecycle hooks');
 		expect(document.body).toHaveTextContent('bootstrap');
 		expect(document.body).toHaveTextContent('build');
+	});
+
+	test('blocks duplicate workspace names before moving to next step', async () => {
+		component = mountView({
+			existingWorkspaceNames: ['workspace-alpha'],
+		});
+		await Promise.resolve();
+
+		const continueButton = getButton('Continue');
+		expect(continueButton.disabled).toBe(true);
+		expect(document.body).toHaveTextContent('A workset named "workspace-alpha" already exists.');
+
+		const nameInput = document.querySelector('input[type="text"]');
+		if (!(nameInput instanceof HTMLInputElement)) {
+			throw new Error('Workspace name input not found');
+		}
+		nameInput.value = 'workspace-beta';
+		nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+		await Promise.resolve();
+
+		expect(getButton('Continue').disabled).toBe(false);
+		expect(document.body).not.toHaveTextContent(
+			'A workset named "workspace-alpha" already exists.',
+		);
 	});
 
 	test('requires pending hooks to be trusted before open and then calls onComplete', async () => {
