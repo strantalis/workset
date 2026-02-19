@@ -169,6 +169,29 @@ func TestCreateWorkspaceDuplicateNameBlocked(t *testing.T) {
 	}
 }
 
+func TestCreateWorkspaceExistingWorksetFileReturnsConflict(t *testing.T) {
+	env := newTestEnv(t)
+
+	root := filepath.Join(env.workspaceRoot, workspace.WorkspaceDirName("demo"))
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatalf("mkdir existing workspace root: %v", err)
+	}
+	if err := config.SaveWorkspace(workspace.WorksetFile(root), config.WorkspaceConfig{Name: "demo"}); err != nil {
+		t.Fatalf("write existing workset.yaml: %v", err)
+	}
+
+	_, err := env.svc.CreateWorkspace(context.Background(), WorkspaceCreateInput{Name: "demo"})
+	conflict := requireErrorType[ConflictError](t, err)
+	if !strings.Contains(conflict.Message, workspace.WorksetFile(root)) {
+		t.Fatalf("unexpected conflict message: %q", conflict.Message)
+	}
+
+	cfg := env.loadConfig()
+	if _, exists := cfg.Workspaces["demo"]; exists {
+		t.Fatalf("workspace should not be registered on existing workset conflict")
+	}
+}
+
 type hideWorkspaceOnFirstLoadStore struct {
 	FileConfigStore
 

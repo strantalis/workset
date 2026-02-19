@@ -182,6 +182,12 @@
 	color: #6b7f95;
 }
 
+.field-error {
+	margin: 2px 0 0;
+	font-size: var(--text-xs);
+	color: color-mix(in srgb, var(--danger) 90%, white);
+}
+
 .field input,
 .field textarea,
 .step-content input:not(.registry-search input) {

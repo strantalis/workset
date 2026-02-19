@@ -76,6 +76,14 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 	if err != nil {
 		return WorkspaceCreateResult{}, err
 	}
+	worksetPath := workspace.WorksetFile(root)
+	if _, err := os.Stat(worksetPath); err == nil {
+		return WorkspaceCreateResult{}, ConflictError{
+			Message: fmt.Sprintf("workspace %q already exists at %s", name, worksetPath),
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return WorkspaceCreateResult{}, err
+	}
 
 	ws, err := s.workspaces.Init(ctx, root, name, cfg.Defaults)
 	if err != nil {

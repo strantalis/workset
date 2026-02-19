@@ -52,6 +52,7 @@
 		catalogLoading?: boolean;
 		errorMessage?: string | null;
 		defaultWorkspaceName?: string;
+		existingWorkspaceNames?: string[];
 		templates?: WorksetTemplate[];
 		repoRegistry?: RegisteredRepo[];
 		onStart?: (draft: OnboardingDraft) => Promise<OnboardingStartResult | void>;
@@ -65,6 +66,7 @@
 		catalogLoading = false,
 		errorMessage = null,
 		defaultWorkspaceName = '',
+		existingWorkspaceNames = [],
 		templates = [],
 		repoRegistry = [],
 		onStart,
@@ -104,6 +106,20 @@
 	let activeHookOperation = $state<string | null>(null);
 	let activeHookWorkspace = $state<string | null>(null);
 	let hookEventUnsubscribe: (() => void) | null = null;
+
+	const duplicateWorkspaceMessage = (name: string): string =>
+		`A workset named "${name}" already exists.`;
+
+	const normalizedWorkspaceNames = $derived.by(() =>
+		existingWorkspaceNames.map((name) => name.trim()).filter((name) => name.length > 0),
+	);
+	const trimmedWorkspaceName = $derived(formName.trim());
+	const isDuplicateWorkspaceName = $derived(
+		trimmedWorkspaceName.length > 0 && normalizedWorkspaceNames.includes(trimmedWorkspaceName),
+	);
+	const workspaceNameValidationError = $derived.by(() =>
+		isDuplicateWorkspaceName ? duplicateWorkspaceMessage(trimmedWorkspaceName) : null,
+	);
 
 	const selectedTemplate = $derived(templates.find((t) => t.id === templateId) ?? null);
 	const hookPreviewEnabled = $derived(!!onPreviewHooks);
@@ -265,7 +281,7 @@
 			pending,
 			pendingHooks,
 			hookRuns,
-			workspaceReferences: [initializedWorkspaceName, activeHookWorkspace, formName.trim()],
+			workspaceReferences: [initializedWorkspaceName, activeHookWorkspace, trimmedWorkspaceName],
 			activeHookOperation,
 			getPendingHooks: () => pendingHooks,
 			getHookRuns: () => hookRuns,
@@ -279,7 +295,7 @@
 			pending,
 			pendingHooks,
 			hookRuns,
-			workspaceReferences: [initializedWorkspaceName, activeHookWorkspace, formName.trim()],
+			workspaceReferences: [initializedWorkspaceName, activeHookWorkspace, trimmedWorkspaceName],
 			activeHookOperation,
 			getPendingHooks: () => pendingHooks,
 			getHookRuns: () => hookRuns,
@@ -299,6 +315,14 @@
 			return;
 		}
 		if (initializeStarted) return;
+		if (!trimmedWorkspaceName) {
+			runError = 'Workset name is required.';
+			return;
+		}
+		if (isDuplicateWorkspaceName) {
+			runError = duplicateWorkspaceMessage(trimmedWorkspaceName);
+			return;
+		}
 
 		runError = null;
 		isInitializing = true;
@@ -332,11 +356,11 @@
 		try {
 			({ activeHookOperation, activeHookWorkspace, hookRuns, pendingHooks } = beginHookTracking(
 				'workspace.create',
-				formName.trim(),
+				trimmedWorkspaceName,
 			));
 
 			const result = await onStart?.({
-				workspaceName: formName.trim(),
+				workspaceName: trimmedWorkspaceName,
 				description: formDescription.trim(),
 				repos: repos.map((r) => ({ ...r, hooks: [...(r.hooks ?? [])] })),
 				selectedGroups,
@@ -345,7 +369,7 @@
 				directRepos,
 			});
 
-			initializedWorkspaceName = result?.workspaceName ?? formName.trim();
+			initializedWorkspaceName = result?.workspaceName ?? trimmedWorkspaceName;
 			hookWarnings = result?.warnings ?? [];
 			hookRuns = appendHookRuns(hookRuns, result?.hookRuns ?? []);
 			pendingHooks = (result?.pendingHooks ?? []).map((pending) => ({ ...pending }));
@@ -431,6 +455,9 @@
 										autocorrect="off"
 										spellcheck="false"
 									/>
+									{#if workspaceNameValidationError}
+										<p class="field-error">{workspaceNameValidationError}</p>
+									{/if}
 								</label>
 								<label class="field">
 									<span class="field-label">
@@ -450,7 +477,7 @@
 									type="button"
 									class="btn-primary"
 									onclick={nextStep}
-									disabled={!formName || busy}
+									disabled={!trimmedWorkspaceName || isDuplicateWorkspaceName || busy}
 								>
 									Continue <ArrowRight size={16} />
 								</button>
