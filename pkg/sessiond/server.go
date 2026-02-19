@@ -62,7 +62,7 @@ func NewServer(opts Options) *Server {
 	if opts.TranscriptTailBytes == 0 {
 		opts.TranscriptTailBytes = DefaultOptions().TranscriptTailBytes
 	}
-	if opts.IdleTimeout == 0 {
+	if opts.IdleTimeout == 0 && !opts.IdleTimeoutSet {
 		opts.IdleTimeout = DefaultOptions().IdleTimeout
 	}
 	if opts.ProtocolLogEnabled && opts.ProtocolLogger == nil {
