@@ -3,6 +3,7 @@ package worksetapi
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/strantalis/workset/internal/config"
 	"github.com/strantalis/workset/internal/session"
@@ -57,15 +58,15 @@ func setGlobalDefault(cfg *config.GlobalConfig, key, value string) error {
 	case "defaults.session_screen_hardstatus":
 		cfg.Defaults.SessionScreenHard = value
 	case "defaults.agent":
-		cfg.Defaults.Agent = value
+		agent := strings.ToLower(strings.TrimSpace(value))
+		switch agent {
+		case "codex", "claude":
+			cfg.Defaults.Agent = agent
+		default:
+			return fmt.Errorf("unsupported agent %q; supported agents: codex, claude", strings.TrimSpace(value))
+		}
 	case "defaults.agent_model":
 		cfg.Defaults.AgentModel = value
-	case "defaults.agent_launch":
-		mode, ok := parseAgentLaunchMode(value)
-		if !ok {
-			return fmt.Errorf("unsupported agent launch mode %q", value)
-		}
-		cfg.Defaults.AgentLaunch = mode
 	case "defaults.terminal_idle_timeout":
 		cfg.Defaults.TerminalIdleTimeout = value
 	case "defaults.terminal_protocol_log":

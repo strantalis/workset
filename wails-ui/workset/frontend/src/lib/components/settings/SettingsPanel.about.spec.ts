@@ -51,7 +51,6 @@ describe('SettingsPanel About Section', () => {
 		sessionScreenHard: '',
 		agent: 'default',
 		agentModel: '',
-		agentLaunch: 'auto',
 		terminalIdleTimeout: '0',
 		terminalProtocolLog: 'off',
 		terminalDebugOverlay: 'off',

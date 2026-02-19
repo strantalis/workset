@@ -41,9 +41,6 @@
 			options: [
 				{ label: 'Codex (Default)', value: 'codex' },
 				{ label: 'Claude Code', value: 'claude' },
-				{ label: 'OpenCode', value: 'opencode' },
-				{ label: 'Pi', value: 'pi' },
-				{ label: 'Cursor Agent', value: 'cursor' },
 			],
 		},
 		{

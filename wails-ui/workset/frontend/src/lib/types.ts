@@ -189,7 +189,6 @@ export type SettingsDefaults = {
 	sessionScreenHard: string;
 	agent: string;
 	agentModel: string;
-	agentLaunch: string;
 	terminalIdleTimeout: string;
 	terminalProtocolLog: string;
 	terminalDebugOverlay: string;

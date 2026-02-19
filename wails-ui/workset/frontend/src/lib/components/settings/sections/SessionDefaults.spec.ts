@@ -21,7 +21,6 @@ const buildDefaults = (): SettingsDefaults => ({
 	repoStoreRoot: '/repos',
 	agent: 'default',
 	agentModel: '',
-	agentLaunch: 'auto',
 	terminalIdleTimeout: '0',
 	terminalProtocolLog: 'off',
 	terminalDebugOverlay: 'off',

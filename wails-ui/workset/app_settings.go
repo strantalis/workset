@@ -21,7 +21,6 @@ type SettingsDefaults struct {
 	SessionScreenHard    string              `json:"sessionScreenHard"`
 	Agent                string              `json:"agent"`
 	AgentModel           string              `json:"agentModel"`
-	AgentLaunch          string              `json:"agentLaunch"`
 	TerminalIdleTimeout  string              `json:"terminalIdleTimeout"`
 	TerminalProtocolLog  string              `json:"terminalProtocolLog"`
 	TerminalDebugOverlay string              `json:"terminalDebugOverlay"`
@@ -71,7 +70,6 @@ func (a *App) GetSettings() (SettingsSnapshot, error) {
 			SessionScreenHard:    cfg.Defaults.SessionScreenHard,
 			Agent:                cfg.Defaults.Agent,
 			AgentModel:           cfg.Defaults.AgentModel,
-			AgentLaunch:          cfg.Defaults.AgentLaunch,
 			TerminalIdleTimeout:  cfg.Defaults.TerminalIdleTimeout,
 			TerminalProtocolLog:  cfg.Defaults.TerminalProtocolLog,
 			TerminalDebugOverlay: cfg.Defaults.TerminalDebugOverlay,
