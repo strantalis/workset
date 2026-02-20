@@ -1,0 +1,24 @@
+.terminal-surface {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.terminal-surface .xterm {
+  height: 100%;
+  padding: 4px 8px;
+}
+
+.terminal-surface .xterm-viewport {
+  overflow-y: auto;
+}
+
+.terminal-surface .xterm-viewport::-webkit-scrollbar {
+  width: 6px;
+}
+
+.terminal-surface .xterm-viewport::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}

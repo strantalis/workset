@@ -332,3 +332,29 @@ func gitRevParse(t *testing.T, dir, ref string) string {
 	}
 	return string(bytes.TrimSpace(stdout.Bytes()))
 }
+
+func TestRunForcesNonInteractiveGitEnv(t *testing.T) {
+	dir := t.TempDir()
+	scriptPath := filepath.Join(dir, "fake-git.sh")
+	script := `#!/bin/sh
+if [ "$GIT_TERMINAL_PROMPT" != "0" ]; then
+  echo "GIT_TERMINAL_PROMPT=$GIT_TERMINAL_PROMPT" >&2
+  exit 41
+fi
+if [ "$GCM_INTERACTIVE" != "Always" ]; then
+  echo "GCM_INTERACTIVE=$GCM_INTERACTIVE" >&2
+  exit 42
+fi
+exit 0
+`
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake git: %v", err)
+	}
+	t.Setenv("GIT_TERMINAL_PROMPT", "1")
+	t.Setenv("GCM_INTERACTIVE", "Always")
+
+	client := CLIClient{gitPath: scriptPath}
+	if _, err := client.run(context.Background(), "", "version"); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+}

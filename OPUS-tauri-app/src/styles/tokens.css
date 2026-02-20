@@ -1,0 +1,57 @@
+:root {
+  color-scheme: dark;
+
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+
+  --bg: #0a0a0c;
+  --panel: #111113;
+  --panel-strong: #19191b;
+  --panel-soft: #0f0f11;
+  --surface: #19191b;
+  --surface-hover: #202023;
+  --text: #ececee;
+  --muted: #737380;
+
+  --border: rgba(255, 255, 255, 0.07);
+  --border-active: rgba(255, 255, 255, 0.12);
+
+  --accent: #818cf8;
+  --accent-soft: rgba(129, 140, 248, 0.08);
+  --accent-border: rgba(129, 140, 248, 0.2);
+
+  --success: #34d399;
+  --success-soft: rgba(52, 211, 153, 0.08);
+  --success-border: rgba(52, 211, 153, 0.18);
+
+  --warning: #fbbf24;
+  --warning-soft: rgba(251, 191, 36, 0.08);
+  --warning-border: rgba(251, 191, 36, 0.18);
+
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.08);
+  --danger-border: rgba(248, 113, 113, 0.18);
+
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 0px;
+
+  --transition-fast: 120ms ease;
+  --transition-normal: 160ms ease;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+
+  --rail-width: 52px;
+  --sidebar-width: 250px;
+  --right-panel-width: 320px;
+  --chrome-height: 38px;
+}
