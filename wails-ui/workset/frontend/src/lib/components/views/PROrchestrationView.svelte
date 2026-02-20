@@ -84,7 +84,6 @@
 		buildCheckStats,
 		buildDiffTargetKey,
 		buildReviewThreads,
-		buildTrackedPrMap,
 		formatCheckDuration,
 		getCheckIcon,
 	} from './prOrchestrationHelpers';
@@ -93,9 +92,11 @@
 		buildFileDiffCacheKeyForSource,
 		commitPushStageLabel as formatCommitPushStageLabel,
 		createTrackedPrStateReconciler,
+		mergeTrackedPrMap,
 		persistSidebarCollapsed,
 		readSidebarCollapsed,
 		shouldClearSelectedItem,
+		trackedPrMapsEqual,
 		type RepoDiffPrStatusEvent,
 	} from './prOrchestrationView.helpers';
 
@@ -111,7 +112,8 @@
 	const prItems = $derived(mapWorkspaceToPrItems(workspace));
 
 	// ─── Tracked PR map (drives active/ready partition) ────────────────
-	let trackedPrMap: Map<string, PullRequestCreated> = $derived(buildTrackedPrMap(workspace));
+	let trackedPrMap = $state<Map<string, PullRequestCreated>>(new Map());
+	let suppressedTrackedPrRepoIds = $state<Set<string>>(new Set());
 
 	const partitions = $derived.by(() => {
 		const active = prItems.filter((item) => trackedPrMap.has(item.repoId));
@@ -367,8 +369,10 @@
 			const resolved = await fetchTrackedPullRequest(wsId, repoId);
 			const nextMap = new Map(trackedPrMap);
 			if (resolved) {
+				unsuppressTrackedRepo(repoId);
 				nextMap.set(repoId, resolved);
 			} else {
+				suppressTrackedRepo(repoId);
 				nextMap.delete(repoId);
 			}
 			trackedPrMap = nextMap;
@@ -582,28 +586,29 @@
 		}
 	};
 
-	const handleCreatePr = async (): Promise<void> => {
-		if (!workspace || !selectedItem || !prTitle.trim()) return;
-		isCreating = true;
-		try {
-			const created = await createPullRequest(workspace.id, selectedItem.repoId, {
-				title: prTitle.trim(),
-				body: prBody.trim(),
-				draft: isDraft,
-				autoCommit: true,
-				autoPush: true,
-			});
-			trackedPr = created;
-			const nextMap = new Map(trackedPrMap);
-			nextMap.set(selectedItem.repoId, created);
-			trackedPrMap = nextMap;
-			prCreated = true;
-		} catch {
-			// non-fatal
-		} finally {
-			isCreating = false;
-		}
-	};
+		const handleCreatePr = async (): Promise<void> => {
+			if (!workspace || !selectedItem || !prTitle.trim()) return;
+			isCreating = true;
+			try {
+				const created = await createPullRequest(workspace.id, selectedItem.repoId, {
+					title: prTitle.trim(),
+					body: prBody.trim(),
+					draft: isDraft,
+					autoCommit: true,
+					autoPush: true,
+				});
+				trackedPr = created;
+				const nextMap = new Map(trackedPrMap);
+				nextMap.set(selectedItem.repoId, created);
+				trackedPrMap = nextMap;
+				unsuppressTrackedRepo(selectedItem.repoId);
+				prCreated = true;
+			} catch {
+				// non-fatal
+			} finally {
+				isCreating = false;
+			}
+		};
 
 	const handlePushToPr = async (): Promise<void> => {
 		if (!workspace || !selectedItem || commitPushLoading) return;
@@ -624,6 +629,28 @@
 	const openExternalUrl = (url: string | undefined | null): void =>
 		void (url && Browser.OpenURL(url));
 
+	const setsEqual = (left: ReadonlySet<string>, right: ReadonlySet<string>): boolean => {
+		if (left.size !== right.size) return false;
+		for (const value of left) {
+			if (!right.has(value)) return false;
+		}
+		return true;
+	};
+
+	const suppressTrackedRepo = (repoId: string): void => {
+		if (suppressedTrackedPrRepoIds.has(repoId)) return;
+		const next = new Set(suppressedTrackedPrRepoIds);
+		next.add(repoId);
+		suppressedTrackedPrRepoIds = next;
+	};
+
+	const unsuppressTrackedRepo = (repoId: string): void => {
+		if (!suppressedTrackedPrRepoIds.has(repoId)) return;
+		const next = new Set(suppressedTrackedPrRepoIds);
+		next.delete(repoId);
+		suppressedTrackedPrRepoIds = next;
+	};
+
 	const reconcileTrackedPrState = createTrackedPrStateReconciler({
 		loadTrackedPr,
 		refreshWorkspacesStatus: () => refreshWorkspacesStatus(true),
@@ -637,6 +664,34 @@
 	});
 
 	// ─── Effects ────────────────────────────────────────────────────────
+
+	$effect(() => {
+		const nextMap = mergeTrackedPrMap(workspace, trackedPrMap, suppressedTrackedPrRepoIds);
+		if (!trackedPrMapsEqual(trackedPrMap, nextMap)) {
+			trackedPrMap = nextMap;
+		}
+	});
+
+	$effect(() => {
+		if (!workspace) {
+			if (suppressedTrackedPrRepoIds.size !== 0) {
+				suppressedTrackedPrRepoIds = new Set();
+			}
+			return;
+		}
+
+		const repoById = new Map(workspace.repos.map((repo) => [repo.id, repo]));
+		const nextSuppressed = new Set<string>();
+		for (const repoId of suppressedTrackedPrRepoIds) {
+			const repo = repoById.get(repoId);
+			if (repo?.trackedPullRequest) {
+				nextSuppressed.add(repoId);
+			}
+		}
+		if (!setsEqual(suppressedTrackedPrRepoIds, nextSuppressed)) {
+			suppressedTrackedPrRepoIds = nextSuppressed;
+		}
+	});
 
 	$effect(() => {
 		const currentWsId = wsId;
@@ -713,20 +768,25 @@
 		return unsub;
 	});
 
-	$effect(() => {
-		const unsub = subscribeRepoDiffEvent<RepoDiffPrStatusEvent>(
-			EVENT_REPO_DIFF_PR_STATUS,
-			(payload) => {
-				if (!workspace || !selectedItem) return;
-				if (payload.workspaceId !== workspace.id || payload.repoId !== selectedItem.repoId) return;
-				const next = applyPrStatusEvent(payload, selectedItem.repoId, trackedPrMap);
-				prStatus = next.prStatus;
-				trackedPr = next.trackedPr;
-				trackedPrMap = next.trackedPrMap;
-				if (next.shouldReconcileTrackedPr) {
-					void reconcileTrackedPrState(workspace.id, selectedItem.repoId);
-				}
-			},
+		$effect(() => {
+			const unsub = subscribeRepoDiffEvent<RepoDiffPrStatusEvent>(
+				EVENT_REPO_DIFF_PR_STATUS,
+				(payload) => {
+					if (!workspace || !selectedItem) return;
+					if (payload.workspaceId !== workspace.id || payload.repoId !== selectedItem.repoId) return;
+					const next = applyPrStatusEvent(payload, selectedItem.repoId, trackedPrMap);
+					if (next.trackedPr) {
+						unsuppressTrackedRepo(selectedItem.repoId);
+					} else {
+						suppressTrackedRepo(selectedItem.repoId);
+					}
+					prStatus = next.prStatus;
+					trackedPr = next.trackedPr;
+					trackedPrMap = next.trackedPrMap;
+					if (next.shouldReconcileTrackedPr) {
+						void reconcileTrackedPrState(workspace.id, selectedItem.repoId);
+					}
+				},
 		);
 		return unsub;
 	});
@@ -775,13 +835,6 @@
 			}
 			selectItem(refreshedTarget.id);
 		});
-	});
-
-	// Reset selection on viewMode change
-	$effect(() => {
-		void viewMode;
-		selectedItemId = null;
-		activeTab = 'files';
 	});
 
 	$effect(() => {

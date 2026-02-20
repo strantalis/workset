@@ -64,6 +64,61 @@ export const buildTrackedPrMap = (workspace: Workspace | null): Map<string, Pull
 	return nextMap;
 };
 
+const isOpenPullRequest = (pr: PullRequestCreated | undefined): pr is PullRequestCreated =>
+	Boolean(pr && pr.state.trim().toLowerCase() === 'open');
+
+export const mergeTrackedPrMap = (
+	workspace: Workspace | null,
+	currentMap: Map<string, PullRequestCreated>,
+	suppressedRepoIds: ReadonlySet<string> = new Set<string>(),
+): Map<string, PullRequestCreated> => {
+	if (!workspace) {
+		return new Map<string, PullRequestCreated>();
+	}
+
+	const nextMap = new Map<string, PullRequestCreated>();
+	for (const repo of workspace.repos) {
+		if (suppressedRepoIds.has(repo.id)) {
+			continue;
+		}
+		if (repo.trackedPullRequest) {
+			if (isOpenPullRequest(repo.trackedPullRequest)) {
+				nextMap.set(repo.id, repo.trackedPullRequest);
+			}
+			continue;
+		}
+
+		const cached = currentMap.get(repo.id);
+		if (isOpenPullRequest(cached)) {
+			nextMap.set(repo.id, cached);
+		}
+	}
+	return nextMap;
+};
+
+export const trackedPrMapsEqual = (
+	left: Map<string, PullRequestCreated>,
+	right: Map<string, PullRequestCreated>,
+): boolean => {
+	if (left.size !== right.size) return false;
+	for (const [repoId, leftPr] of left) {
+		const rightPr = right.get(repoId);
+		if (!rightPr) return false;
+		if (
+			leftPr.number !== rightPr.number ||
+			leftPr.url !== rightPr.url ||
+			leftPr.state !== rightPr.state ||
+			leftPr.baseRepo !== rightPr.baseRepo ||
+			leftPr.baseBranch !== rightPr.baseBranch ||
+			leftPr.headRepo !== rightPr.headRepo ||
+			leftPr.headBranch !== rightPr.headBranch
+		) {
+			return false;
+		}
+	}
+	return true;
+};
+
 export const readSidebarCollapsed = (): boolean => {
 	try {
 		return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
