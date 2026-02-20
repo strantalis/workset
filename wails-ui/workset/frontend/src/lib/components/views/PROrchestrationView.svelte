@@ -91,12 +91,12 @@
 		applyPrStatusEvent,
 		buildFileDiffCacheKeyForSource,
 		commitPushStageLabel as formatCommitPushStageLabel,
+		createTrackedPrMapCoordinator,
 		createTrackedPrStateReconciler,
-		mergeTrackedPrMap,
 		persistSidebarCollapsed,
 		readSidebarCollapsed,
 		shouldClearSelectedItem,
-		trackedPrMapsEqual,
+		withTrackedPr,
 		type RepoDiffPrStatusEvent,
 	} from './prOrchestrationView.helpers';
 
@@ -107,14 +107,9 @@
 	}
 
 	const { workspace, focusRepoId = null, focusToken = 0 }: Props = $props();
-
-	// ─── Derived workspace data ──────────────────────────────────────────
 	const prItems = $derived(mapWorkspaceToPrItems(workspace));
-
-	// ─── Tracked PR map (drives active/ready partition) ────────────────
 	let trackedPrMap = $state<Map<string, PullRequestCreated>>(new Map());
-	let suppressedTrackedPrRepoIds = $state<Set<string>>(new Set());
-
+	const trackedPrMapCoordinator = createTrackedPrMapCoordinator();
 	const partitions = $derived.by(() => {
 		const active = prItems.filter((item) => trackedPrMap.has(item.repoId));
 		const readyToPR = prItems.filter(
@@ -122,7 +117,6 @@
 		);
 		return { active, readyToPR };
 	});
-
 	const activeCount = $derived(partitions.active.length);
 	const readyCount = $derived(partitions.readyToPR.length);
 
@@ -134,7 +128,6 @@
 	// ─── Detail tab state ───────────────────────────────────────────────
 	let activeTab: 'files' | 'checks' = $state('files');
 
-	// ─── PR tracking ────────────────────────────────────────────────────
 	let trackedPr: PullRequestCreated | null = $state(null);
 	let trackedPrLoading = $state(false);
 	let trackedPrRequestId = 0;
@@ -160,7 +153,6 @@
 	let prStatus: PullRequestStatusResult | null = $state(null);
 	let prStatusLoading = $state(false);
 
-	// ─── Reviews ────────────────────────────────────────────────────────
 	let prReviews: PullRequestReviewComment[] = $state([]);
 	let prReviewsLoading = $state(false);
 	let currentUserId: number | null = $state(null);
@@ -173,7 +165,6 @@
 	let prCreated = $state(false);
 	let prTextGenerating = $state(false);
 
-	// ─── Commit & Push ──────────────────────────────────────────────────
 	let repoLocalStatus: RepoLocalStatus | null = $state(null);
 	let commitPushLoading = $state(false);
 	let commitPushStage: GitHubOperationStage | null = $state(null);
@@ -367,15 +358,8 @@
 		}
 		try {
 			const resolved = await fetchTrackedPullRequest(wsId, repoId);
-			const nextMap = new Map(trackedPrMap);
-			if (resolved) {
-				unsuppressTrackedRepo(repoId);
-				nextMap.set(repoId, resolved);
-			} else {
-				suppressTrackedRepo(repoId);
-				nextMap.delete(repoId);
-			}
-			trackedPrMap = nextMap;
+			trackedPrMapCoordinator.markResolved(repoId, resolved, cached);
+			trackedPrMap = withTrackedPr(trackedPrMap, repoId, resolved);
 			if (requestId !== trackedPrRequestId || !isSelectedRepo()) {
 				return;
 			}
@@ -586,29 +570,28 @@
 		}
 	};
 
-		const handleCreatePr = async (): Promise<void> => {
-			if (!workspace || !selectedItem || !prTitle.trim()) return;
-			isCreating = true;
-			try {
-				const created = await createPullRequest(workspace.id, selectedItem.repoId, {
-					title: prTitle.trim(),
-					body: prBody.trim(),
-					draft: isDraft,
-					autoCommit: true,
-					autoPush: true,
-				});
-				trackedPr = created;
-				const nextMap = new Map(trackedPrMap);
-				nextMap.set(selectedItem.repoId, created);
-				trackedPrMap = nextMap;
-				unsuppressTrackedRepo(selectedItem.repoId);
-				prCreated = true;
-			} catch {
-				// non-fatal
-			} finally {
-				isCreating = false;
-			}
-		};
+	const handleCreatePr = async (): Promise<void> => {
+		if (!workspace || !selectedItem || !prTitle.trim()) return;
+		isCreating = true;
+		try {
+			const created = await createPullRequest(workspace.id, selectedItem.repoId, {
+				title: prTitle.trim(),
+				body: prBody.trim(),
+				draft: isDraft,
+				autoCommit: true,
+				autoPush: true,
+			});
+			const previousTracked = trackedPrMap.get(selectedItem.repoId) ?? null;
+			trackedPr = created;
+			trackedPrMap = withTrackedPr(trackedPrMap, selectedItem.repoId, created);
+			trackedPrMapCoordinator.markResolved(selectedItem.repoId, created, previousTracked);
+			prCreated = true;
+		} catch {
+			// non-fatal
+		} finally {
+			isCreating = false;
+		}
+	};
 
 	const handlePushToPr = async (): Promise<void> => {
 		if (!workspace || !selectedItem || commitPushLoading) return;
@@ -628,29 +611,6 @@
 
 	const openExternalUrl = (url: string | undefined | null): void =>
 		void (url && Browser.OpenURL(url));
-
-	const setsEqual = (left: ReadonlySet<string>, right: ReadonlySet<string>): boolean => {
-		if (left.size !== right.size) return false;
-		for (const value of left) {
-			if (!right.has(value)) return false;
-		}
-		return true;
-	};
-
-	const suppressTrackedRepo = (repoId: string): void => {
-		if (suppressedTrackedPrRepoIds.has(repoId)) return;
-		const next = new Set(suppressedTrackedPrRepoIds);
-		next.add(repoId);
-		suppressedTrackedPrRepoIds = next;
-	};
-
-	const unsuppressTrackedRepo = (repoId: string): void => {
-		if (!suppressedTrackedPrRepoIds.has(repoId)) return;
-		const next = new Set(suppressedTrackedPrRepoIds);
-		next.delete(repoId);
-		suppressedTrackedPrRepoIds = next;
-	};
-
 	const reconcileTrackedPrState = createTrackedPrStateReconciler({
 		loadTrackedPr,
 		refreshWorkspacesStatus: () => refreshWorkspacesStatus(true),
@@ -662,34 +622,10 @@
 		clearActivePrBranches: () => (activePrBranches = null),
 		stopActiveWatch,
 	});
-
-	// ─── Effects ────────────────────────────────────────────────────────
-
 	$effect(() => {
-		const nextMap = mergeTrackedPrMap(workspace, trackedPrMap, suppressedTrackedPrRepoIds);
-		if (!trackedPrMapsEqual(trackedPrMap, nextMap)) {
+		const nextMap = trackedPrMapCoordinator.applyWorkspace(workspace, trackedPrMap);
+		if (nextMap !== trackedPrMap) {
 			trackedPrMap = nextMap;
-		}
-	});
-
-	$effect(() => {
-		if (!workspace) {
-			if (suppressedTrackedPrRepoIds.size !== 0) {
-				suppressedTrackedPrRepoIds = new Set();
-			}
-			return;
-		}
-
-		const repoById = new Map(workspace.repos.map((repo) => [repo.id, repo]));
-		const nextSuppressed = new Set<string>();
-		for (const repoId of suppressedTrackedPrRepoIds) {
-			const repo = repoById.get(repoId);
-			if (repo?.trackedPullRequest) {
-				nextSuppressed.add(repoId);
-			}
-		}
-		if (!setsEqual(suppressedTrackedPrRepoIds, nextSuppressed)) {
-			suppressedTrackedPrRepoIds = nextSuppressed;
 		}
 	});
 
@@ -768,25 +704,22 @@
 		return unsub;
 	});
 
-		$effect(() => {
-			const unsub = subscribeRepoDiffEvent<RepoDiffPrStatusEvent>(
-				EVENT_REPO_DIFF_PR_STATUS,
-				(payload) => {
-					if (!workspace || !selectedItem) return;
-					if (payload.workspaceId !== workspace.id || payload.repoId !== selectedItem.repoId) return;
-					const next = applyPrStatusEvent(payload, selectedItem.repoId, trackedPrMap);
-					if (next.trackedPr) {
-						unsuppressTrackedRepo(selectedItem.repoId);
-					} else {
-						suppressTrackedRepo(selectedItem.repoId);
-					}
-					prStatus = next.prStatus;
-					trackedPr = next.trackedPr;
-					trackedPrMap = next.trackedPrMap;
-					if (next.shouldReconcileTrackedPr) {
-						void reconcileTrackedPrState(workspace.id, selectedItem.repoId);
-					}
-				},
+	$effect(() => {
+		const unsub = subscribeRepoDiffEvent<RepoDiffPrStatusEvent>(
+			EVENT_REPO_DIFF_PR_STATUS,
+			(payload) => {
+				if (!workspace || !selectedItem) return;
+				if (payload.workspaceId !== workspace.id || payload.repoId !== selectedItem.repoId) return;
+				const previousTracked = trackedPrMap.get(selectedItem.repoId) ?? null;
+				const next = applyPrStatusEvent(payload, selectedItem.repoId, trackedPrMap);
+				trackedPrMapCoordinator.markResolved(selectedItem.repoId, next.trackedPr, previousTracked);
+				prStatus = next.prStatus;
+				trackedPr = next.trackedPr;
+				trackedPrMap = next.trackedPrMap;
+				if (next.shouldReconcileTrackedPr) {
+					void reconcileTrackedPrState(workspace.id, selectedItem.repoId);
+				}
+			},
 		);
 		return unsub;
 	});

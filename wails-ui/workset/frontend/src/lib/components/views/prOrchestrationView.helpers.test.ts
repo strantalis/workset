@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import type { PullRequestCreated, Workspace } from '../../types';
-import { mergeTrackedPrMap, trackedPrMapsEqual } from './prOrchestrationView.helpers';
+import {
+	createTrackedPrMapCoordinator,
+	mergeTrackedPrMap,
+	trackedPrMapsEqual,
+	withTrackedPr,
+} from './prOrchestrationView.helpers';
 
 const openPr = (number: number, title = `PR ${number}`): PullRequestCreated => ({
 	repo: 'octo/repo',
@@ -98,5 +103,59 @@ describe('prOrchestrationView tracked PR map helpers', () => {
 
 		expect(trackedPrMapsEqual(left, right)).toBe(true);
 		expect(trackedPrMapsEqual(left, different)).toBe(false);
+	});
+
+	test('coordinator keeps stale suppressed PR hidden but unsuppresses when workspace reports a different open PR', () => {
+		const coordinator = createTrackedPrMapCoordinator();
+		let current = new Map<string, PullRequestCreated>([['repo-1', openPr(10)]]);
+
+		coordinator.markResolved('repo-1', null, openPr(10));
+		current = coordinator.applyWorkspace(
+			workspaceWithRepos([{ id: 'repo-1', trackedPullRequest: openPr(10) }]),
+			current,
+		);
+		expect(current.size).toBe(0);
+
+		current = coordinator.applyWorkspace(
+			workspaceWithRepos([{ id: 'repo-1', trackedPullRequest: openPr(11) }]),
+			current,
+		);
+		expect(current.get('repo-1')?.number).toBe(11);
+	});
+
+	test('coordinator unsuppresses when no previous tracked PR identity is known and workspace reports open PR', () => {
+		const coordinator = createTrackedPrMapCoordinator();
+		let current = new Map<string, PullRequestCreated>();
+
+		coordinator.markResolved('repo-1', null);
+		current = coordinator.applyWorkspace(
+			workspaceWithRepos([{ id: 'repo-1', trackedPullRequest: openPr(21) }]),
+			current,
+		);
+
+		expect(current.get('repo-1')?.number).toBe(21);
+	});
+
+	test('coordinator keeps existing suppression identity across repeated null resolutions', () => {
+		const coordinator = createTrackedPrMapCoordinator();
+		let current = new Map<string, PullRequestCreated>([['repo-1', openPr(10)]]);
+
+		coordinator.markResolved('repo-1', null, openPr(10));
+		coordinator.markResolved('repo-1', null);
+		current = coordinator.applyWorkspace(
+			workspaceWithRepos([{ id: 'repo-1', trackedPullRequest: openPr(10) }]),
+			current,
+		);
+
+		expect(current.size).toBe(0);
+	});
+
+	test('withTrackedPr upserts and deletes tracked PR entries', () => {
+		const current = new Map<string, PullRequestCreated>([['repo-1', openPr(10)]]);
+		const updated = withTrackedPr(current, 'repo-1', openPr(11));
+		const deleted = withTrackedPr(updated, 'repo-1', null);
+
+		expect(updated.get('repo-1')?.number).toBe(11);
+		expect(deleted.has('repo-1')).toBe(false);
 	});
 });
