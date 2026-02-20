@@ -16,12 +16,15 @@ type TerminalStreamOrchestratorDependencies = {
 export const createTerminalStreamOrchestrator = (deps: TerminalStreamOrchestratorDependencies) => {
 	const inFlight = new Set<string>();
 	const pendingResync = new Set<string>();
+	const coalescedCounts = new Map<string, number>();
 	const lastActive = new Map<string, boolean>();
 
 	const runSync = (id: string): void => {
 		inFlight.add(id);
 		const token = deps.nextSyncToken(id);
-		deps.trace?.(id, 'stream_sync_start', { token });
+		const coalescedCount = coalescedCounts.get(id) ?? 0;
+		coalescedCounts.delete(id);
+		deps.trace?.(id, 'stream_sync_start', { token, coalescedCount });
 		void (async () => {
 			try {
 				await deps.initTerminal(id);
@@ -47,6 +50,13 @@ export const createTerminalStreamOrchestrator = (deps: TerminalStreamOrchestrato
 				const becameActive = current.active && !wasActive;
 				lastActive.set(id, current.active);
 				const quiet = !becameActive;
+				deps.trace?.(id, 'stream_sync_begin_request', {
+					token,
+					quiet,
+					wasActive,
+					active: current.active,
+					becameActive,
+				});
 				try {
 					await deps.beginTerminal(id, quiet);
 				} catch (error) {
@@ -74,7 +84,11 @@ export const createTerminalStreamOrchestrator = (deps: TerminalStreamOrchestrato
 	const syncTerminalStream = (id: string): void => {
 		if (inFlight.has(id)) {
 			pendingResync.add(id);
-			deps.trace?.(id, 'stream_sync_coalesced', {});
+			const coalescedCount = (coalescedCounts.get(id) ?? 0) + 1;
+			coalescedCounts.set(id, coalescedCount);
+			deps.trace?.(id, 'stream_sync_coalesced', {
+				coalescedCount,
+			});
 			return;
 		}
 		runSync(id);

@@ -27,11 +27,21 @@ type TerminalInstanceOrchestrationDependencies = {
 	flushOutput: (id: string, writeAll: boolean) => void;
 	markAttached: (id: string) => void;
 	traceAttach?: (id: string, event: string, details: Record<string, unknown>) => void;
+	traceRenderer?: (id: string, event: string, details: Record<string, unknown>) => void;
 };
 
 export const createTerminalInstanceOrchestration = (
 	deps: TerminalInstanceOrchestrationDependencies,
 ) => {
+	// WebGL enabled. Image addon remains off pending separate validation.
+	const ENABLE_WEBGL_RENDERER = true;
+	const ENABLE_IMAGE_ADDON = false;
+
+	// nudgeRenderer captures this callback and invokes it after manager creation.
+	const reinitWebgl = (id: string): void => {
+		terminalInstanceManager.reinitWebgl(id);
+	};
+
 	const terminalAttachOpenLifecycle = createTerminalAttachOpenLifecycle<TerminalInstanceHandle>({
 		fitTerminal: (id) => {
 			deps.fitTerminal(id, deps.hasStarted(id));
@@ -39,35 +49,24 @@ export const createTerminalInstanceOrchestration = (
 		flushOutput: deps.flushOutput,
 		markAttached: deps.markAttached,
 		traceAttach: deps.traceAttach,
-		nudgeRenderer: (id, handle, opened) => {
+		nudgeRenderer: (id, handle, rebuildAtlas) => {
 			const refresh = (): void => {
+				if (handle.terminal.rows < 1) {
+					return;
+				}
 				const end = Math.max(0, handle.terminal.rows - 1);
 				handle.terminal.refresh(0, end);
 			};
-			const resetAtlas = (): void => {
-				try {
-					handle.webglAddon?.clearTextureAtlas?.();
-				} catch {
-					// Keep rendering even if texture atlas reset is unavailable.
-				}
-			};
-			// Always reset atlas on attach. When panes are detached/re-attached the WebGL
-			// atlas can hold stale glyph quads until the next interaction-triggered redraw.
-			resetAtlas();
+			if (rebuildAtlas) {
+				// Dispose and recreate the WebGL addon so the renderer re-initializes
+				// against the current container geometry. clearTextureAtlas() alone is
+				// not sufficient: the WebGL canvas pixel dimensions can go stale when
+				// the terminal's DOM node moves between containers, causing glyphs to
+				// render at wrong pixel offsets until the next scroll-triggered repaint.
+				reinitWebgl(id);
+			}
+			deps.fitTerminal(id, deps.hasStarted(id));
 			refresh();
-			window.requestAnimationFrame(() => {
-				deps.fitTerminal(id, deps.hasStarted(id));
-				resetAtlas();
-				refresh();
-				window.setTimeout(
-					() => {
-						deps.fitTerminal(id, deps.hasStarted(id));
-						resetAtlas();
-						refresh();
-					},
-					opened ? 24 : 40,
-				);
-			});
 		},
 	});
 
@@ -88,6 +87,8 @@ export const createTerminalInstanceOrchestration = (
 
 	const terminalInstanceManager = createTerminalInstanceManager({
 		terminalHandles: deps.terminalHandles,
+		enableWebgl: ENABLE_WEBGL_RENDERER,
+		enableImageAddon: ENABLE_IMAGE_ADDON,
 		createTerminalInstance: () =>
 			deps.createTerminalInstance(terminalFontSizeController.getCurrentFontSize()),
 		createFitAddon: () => new FitAddon(),
@@ -103,15 +104,20 @@ export const createTerminalInstanceOrchestration = (
 		onRendererResolved: (id, renderer) => {
 			deps.setRenderer(id, renderer);
 			deps.setRendererMode(id, 'webgl');
+			deps.traceRenderer?.(id, 'renderer_resolved', { renderer });
 			if (renderer === 'webgl') {
 				deps.setHealth(id, 'ok', 'Session active.');
 			}
 			deps.emitState(id);
 		},
 		onRendererError: (id, message) => {
+			deps.traceRenderer?.(id, 'renderer_error', { message });
 			deps.setStatusAndMessage(id, 'error', message);
 			deps.setHealth(id, 'stale', message);
 			deps.emitState(id);
+		},
+		onRendererDebug: (id, event, details) => {
+			deps.traceRenderer?.(id, event, details);
 		},
 		attachOpen: ({ id, handle, container, active }) => {
 			terminalAttachOpenLifecycle.attach({ id, handle, container, active });

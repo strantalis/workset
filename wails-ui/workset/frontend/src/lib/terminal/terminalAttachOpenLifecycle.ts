@@ -18,37 +18,14 @@ type TerminalAttachOpenLifecycleDeps<THandle extends TerminalAttachOpenHandle> =
 	fitTerminal: (id: string) => void;
 	flushOutput: (id: string, writeAll: boolean) => void;
 	markAttached: (id: string) => void;
-	nudgeRenderer?: (id: string, handle: THandle, opened: boolean) => void;
+	nudgeRenderer?: (id: string, handle: THandle, rebuildAtlas: boolean) => void;
 	traceAttach?: (id: string, event: string, details: Record<string, unknown>) => void;
 };
 
 export const createTerminalAttachOpenLifecycle = <THandle extends TerminalAttachOpenHandle>(
 	deps: TerminalAttachOpenLifecycleDeps<THandle>,
 ) => {
-	const deferredFitTimers = new Map<string, Array<{ win: Window; handle: number }>>();
-	const fitRetryDelaysMs = [0, 16, 48, 120, 260, 520];
-
-	const clearDeferredFits = (id: string): void => {
-		const timers = deferredFitTimers.get(id);
-		if (!timers) return;
-		for (const timer of timers) {
-			timer.win.clearTimeout(timer.handle);
-		}
-		deferredFitTimers.delete(id);
-	};
-
-	const scheduleDeferredFits = (id: string, fitWindow: Window | null): void => {
-		clearDeferredFits(id);
-		if (!fitWindow) return;
-		const timers: Array<{ win: Window; handle: number }> = [];
-		for (const delayMs of fitRetryDelaysMs) {
-			const handle = fitWindow.setTimeout(() => {
-				deps.fitTerminal(id);
-			}, delayMs);
-			timers.push({ win: fitWindow, handle });
-		}
-		deferredFitTimers.set(id, timers);
-	};
+	const attachSequences = new Map<string, number>();
 
 	return {
 		attach: (input: {
@@ -59,11 +36,20 @@ export const createTerminalAttachOpenLifecycle = <THandle extends TerminalAttach
 		}): void => {
 			const { id, handle, container, active } = input;
 			if (!container) return;
+			const attachSeq = (attachSequences.get(id) ?? 0) + 1;
+			attachSequences.set(id, attachSeq);
+
 			const currentWindow = container.ownerDocument?.defaultView ?? null;
 			const wasConnected = handle.container.isConnected;
-			if (container.firstChild !== handle.container) {
+			const wasActive = handle.container.getAttribute('data-active') === 'true';
+			const containerChanged = container.firstElementChild !== handle.container;
+
+			// KISS: exactly one mounted terminal host per pane container.
+			if (containerChanged) {
 				container.replaceChildren(handle.container);
 			}
+			handle.container.setAttribute('data-terminal-key', id);
+
 			const terminalElement = handle.terminal.element;
 			const movedAcrossWindows =
 				handle.openWindow !== undefined && handle.openWindow !== currentWindow;
@@ -71,18 +57,18 @@ export const createTerminalAttachOpenLifecycle = <THandle extends TerminalAttach
 				!terminalElement ||
 				terminalElement.parentElement !== handle.container ||
 				movedAcrossWindows;
+
 			deps.traceAttach?.(id, 'attach_open_start', {
+				attachSeq,
 				active,
 				wasConnected,
 				movedAcrossWindows,
 				needsOpen,
-				currentWindow: currentWindow?.name ?? '',
-				openWindow: handle.openWindow?.name ?? '',
 				containerConnected: container.isConnected,
 				containerWidth: container.clientWidth,
 				containerHeight: container.clientHeight,
 			});
-			const wasActive = handle.container.getAttribute('data-active') === 'true';
+
 			if (needsOpen) {
 				handle.container.replaceChildren();
 				handle.terminal.open(handle.container);
@@ -90,16 +76,61 @@ export const createTerminalAttachOpenLifecycle = <THandle extends TerminalAttach
 			} else if (handle.openWindow === undefined) {
 				handle.openWindow = currentWindow;
 			}
+
 			handle.container.setAttribute('data-active', active ? 'true' : 'false');
-			deps.fitTerminal(id);
-			if (needsOpen || !wasConnected) {
-				scheduleDeferredFits(id, currentWindow);
+			const isRenderable =
+				container.isConnected &&
+				container.clientWidth > 0 &&
+				container.clientHeight > 0 &&
+				handle.container.isConnected &&
+				handle.container.clientWidth > 0 &&
+				handle.container.clientHeight > 0;
+			if (isRenderable) {
+				deps.fitTerminal(id);
+			} else {
+				deps.traceAttach?.(id, 'attach_fit_skip_not_renderable', {
+					attachSeq,
+					active,
+					containerConnected: container.isConnected,
+					containerWidth: container.clientWidth,
+					containerHeight: container.clientHeight,
+					hostConnected: handle.container.isConnected,
+					hostWidth: handle.container.clientWidth,
+					hostHeight: handle.container.clientHeight,
+				});
 			}
-			deps.nudgeRenderer?.(id, handle, needsOpen);
+
+			const shouldNudgeRenderer = needsOpen || !wasConnected || active;
+			if (shouldNudgeRenderer && isRenderable) {
+				// Rebuild the WebGL texture atlas whenever the terminal transitions from
+				// inactive→active or disconnected→connected. Without this, stale glyph
+				// quads from a prior render surface linger after tab/pane switches and
+				// produce corrupted glyphs until the next interaction-triggered redraw.
+				const rebuildAtlas = needsOpen || !wasConnected || !wasActive || containerChanged;
+				deps.traceAttach?.(id, 'attach_nudge', {
+					attachSeq,
+					active,
+					needsOpen,
+					wasConnected,
+					rebuildAtlas,
+				});
+				deps.nudgeRenderer?.(id, handle, rebuildAtlas);
+			} else {
+				deps.traceAttach?.(id, 'attach_nudge_skip', {
+					attachSeq,
+					active,
+					needsOpen,
+					wasConnected,
+					isRenderable,
+				});
+			}
+
 			if (active && (needsOpen || !wasActive || !wasConnected)) {
 				handle.terminal.focus();
 			}
+
 			deps.traceAttach?.(id, 'attach_open_done', {
+				attachSeq,
 				active,
 				needsOpen,
 				wasActive,
@@ -107,7 +138,6 @@ export const createTerminalAttachOpenLifecycle = <THandle extends TerminalAttach
 				hostConnected: handle.container.isConnected,
 				hostWidth: handle.container.clientWidth,
 				hostHeight: handle.container.clientHeight,
-				parentWindow: handle.container.ownerDocument?.defaultView?.name ?? '',
 			});
 			deps.flushOutput(id, false);
 			deps.markAttached(id);

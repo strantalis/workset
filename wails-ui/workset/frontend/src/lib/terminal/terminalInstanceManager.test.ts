@@ -209,6 +209,114 @@ describe('terminalInstanceManager', () => {
 		expect(onRendererError).toHaveBeenCalledWith('ws::term', 'webgl unavailable');
 	});
 
+	it('skips webgl initialization entirely when disabled', () => {
+		const terminalHandles = new Map<string, TerminalInstanceHandle>();
+		const state: ListenerState = {
+			dataCallbacks: [],
+			binaryCallbacks: [],
+			dataDisposables: [],
+			binaryDisposables: [],
+		};
+		const terminal = createTerminalMock(state);
+		const createWebglAddon = vi.fn(() =>
+			castHandleField<NonNullable<TerminalInstanceHandle['webglAddon']>>({
+				dispose: vi.fn(),
+				activate: vi.fn(),
+			}),
+		);
+		const onRendererResolved = vi.fn();
+		const onRendererError = vi.fn();
+		const manager = createTerminalInstanceManager({
+			terminalHandles,
+			enableWebgl: false,
+			createTerminalInstance: () => castHandleField<TerminalInstanceHandle['terminal']>(terminal),
+			createFitAddon: () =>
+				castHandleField<TerminalInstanceHandle['fitAddon']>({
+					fit: vi.fn(),
+					proposeDimensions: vi.fn(),
+				}),
+			createSearchAddon: () =>
+				castHandleField<NonNullable<TerminalInstanceHandle['searchAddon']>>({
+					activate: vi.fn(),
+					dispose: vi.fn(),
+				}),
+			createWebLinksAddon: () =>
+				castHandleField<NonNullable<TerminalInstanceHandle['webLinksAddon']>>({
+					activate: vi.fn(),
+					dispose: vi.fn(),
+				}),
+			createImageAddon: () =>
+				castHandleField<NonNullable<TerminalInstanceHandle['imageAddon']>>({
+					activate: vi.fn(),
+					dispose: vi.fn(),
+				}),
+			createWebglAddon,
+			onData: vi.fn(),
+			attachOpen: vi.fn(),
+			onRendererResolved,
+			onRendererError,
+		});
+		const container = document.createElement('div') as HTMLDivElement;
+
+		const handle = manager.attach('ws::term', container, true);
+
+		expect(createWebglAddon).not.toHaveBeenCalled();
+		expect(handle.renderer).toBe('unknown');
+		expect(onRendererResolved).toHaveBeenCalledWith('ws::term', 'unknown');
+		expect(onRendererError).not.toHaveBeenCalled();
+	});
+
+	it('skips image addon initialization when disabled', () => {
+		const terminalHandles = new Map<string, TerminalInstanceHandle>();
+		const state: ListenerState = {
+			dataCallbacks: [],
+			binaryCallbacks: [],
+			dataDisposables: [],
+			binaryDisposables: [],
+		};
+		const terminal = createTerminalMock(state);
+		const imageAddon = { activate: vi.fn(), dispose: vi.fn() };
+		const createImageAddon = vi.fn(() =>
+			castHandleField<NonNullable<TerminalInstanceHandle['imageAddon']>>(imageAddon),
+		);
+		const manager = createTerminalInstanceManager({
+			terminalHandles,
+			enableImageAddon: false,
+			createTerminalInstance: () => castHandleField<TerminalInstanceHandle['terminal']>(terminal),
+			createFitAddon: () =>
+				castHandleField<TerminalInstanceHandle['fitAddon']>({
+					fit: vi.fn(),
+					proposeDimensions: vi.fn(),
+				}),
+			createSearchAddon: () =>
+				castHandleField<NonNullable<TerminalInstanceHandle['searchAddon']>>({
+					activate: vi.fn(),
+					dispose: vi.fn(),
+				}),
+			createWebLinksAddon: () =>
+				castHandleField<NonNullable<TerminalInstanceHandle['webLinksAddon']>>({
+					activate: vi.fn(),
+					dispose: vi.fn(),
+				}),
+			createImageAddon,
+			createWebglAddon: () =>
+				castHandleField<NonNullable<TerminalInstanceHandle['webglAddon']>>({
+					dispose: vi.fn(),
+					activate: vi.fn(),
+					onContextLoss: vi.fn(() => ({ dispose: vi.fn() })),
+				}),
+			onData: vi.fn(),
+			attachOpen: vi.fn(),
+		});
+		const container = document.createElement('div') as HTMLDivElement;
+
+		const handle = manager.attach('ws::term', container, true);
+
+		expect(createImageAddon).not.toHaveBeenCalled();
+		expect(handle.imageAddon).toBeUndefined();
+		expect(terminal.loadAddon).toHaveBeenCalledTimes(4);
+	});
+
 	it('disposes terminal resources in order and removes handle', () => {
 		const calls: string[] = [];
 		const terminalHandles = new Map<string, TerminalInstanceHandle>();

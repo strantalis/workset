@@ -95,6 +95,7 @@ func (a *App) streamTerminal(session *terminalSession) {
 			emitRuntimeEvent(a.ctx, EventTerminalData, TerminalPayload{
 				WorkspaceID: session.workspaceID,
 				TerminalID:  session.terminalID,
+				WindowName:  streamOwner,
 				DataB64:     msg.DataB64,
 				Bytes:       msg.Len,
 				Seq:         int64(outputSeq),

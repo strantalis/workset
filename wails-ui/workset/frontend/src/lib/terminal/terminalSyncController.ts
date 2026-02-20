@@ -3,6 +3,7 @@ type TerminalSyncInput = {
 	terminalId: string;
 	container: HTMLDivElement | null;
 	active: boolean;
+	source?: string;
 };
 
 type TerminalDetachOptions = {
@@ -17,27 +18,9 @@ type TerminalSyncContext = {
 	active: boolean;
 };
 
-type TerminalMountStatus = 'detached' | 'attaching' | 'attached' | 'detaching';
-
-type TerminalMountIntent =
-	| {
-			type: 'attach';
-			generation: number;
-			container: HTMLDivElement;
-			active: boolean;
-	  }
-	| {
-			type: 'detach';
-			generation: number;
-	  };
-
-type TerminalMountState = {
-	generation: number;
-	status: TerminalMountStatus;
-	container: HTMLDivElement | null;
-	active: boolean;
-	pending: TerminalMountIntent | null;
-	scheduled: boolean;
+type TerminalAttachTraceMeta = {
+	reason: string;
+	source?: string;
 };
 
 export type TerminalSyncControllerDependencies = {
@@ -59,6 +42,11 @@ export type TerminalSyncControllerDependencies = {
 	trace?: (id: string, event: string, details: Record<string, unknown>) => void;
 };
 
+type TerminalAttachmentState = {
+	container: HTMLDivElement;
+	active: boolean;
+};
+
 export const createTerminalSyncController = (deps: TerminalSyncControllerDependencies) => {
 	const lastSyncState = new Map<
 		string,
@@ -69,116 +57,89 @@ export const createTerminalSyncController = (deps: TerminalSyncControllerDepende
 			active: boolean;
 		}
 	>();
-	const mountStates = new Map<string, TerminalMountState>();
+	const attachmentState = new Map<string, TerminalAttachmentState>();
+	const containerOwners = new Map<HTMLDivElement, string>();
 
-	const scheduleMicrotask = (run: () => void): void => {
-		if (typeof queueMicrotask === 'function') {
-			queueMicrotask(run);
-			return;
+	const requestAttach = (
+		id: string,
+		container: HTMLDivElement,
+		active: boolean,
+		trace: TerminalAttachTraceMeta,
+	): void => {
+		const displacedId = containerOwners.get(container);
+		if (displacedId && displacedId !== id) {
+			requestDetach(displacedId, {
+				reason: 'displaced_by_container_reuse',
+				source: trace.source,
+			});
+			const displaced = lastSyncState.get(displacedId);
+			if (displaced) {
+				lastSyncState.set(displacedId, {
+					...displaced,
+					container: null,
+					active: false,
+				});
+				deps.ensureContext({
+					terminalKey: displacedId,
+					workspaceId: displaced.workspaceId,
+					terminalId: displaced.terminalId,
+					container: null,
+					active: false,
+				});
+			}
+			deps.trace?.(displacedId, 'sync_terminal_displaced_by_container_reuse', {
+				by: id,
+				source: trace.source ?? '',
+			});
 		}
-		void Promise.resolve().then(run);
-	};
-
-	const getMountState = (id: string): TerminalMountState => {
-		const existing = mountStates.get(id);
-		if (existing) return existing;
-		const created: TerminalMountState = {
-			generation: 0,
-			status: 'detached',
-			container: null,
-			active: false,
-			pending: null,
-			scheduled: false,
-		};
-		mountStates.set(id, created);
-		return created;
-	};
-
-	const applyMountIntent = (id: string): void => {
-		const state = getMountState(id);
-		if (state.scheduled) return;
-		state.scheduled = true;
-		scheduleMicrotask(() => {
-			state.scheduled = false;
-			const intent = state.pending;
-			state.pending = null;
-			if (!intent) return;
-			if (intent.generation !== state.generation) {
-				deps.trace?.(id, 'mount_intent_stale', {
-					intentGeneration: intent.generation,
-					currentGeneration: state.generation,
-					type: intent.type,
-				});
-				return;
-			}
-			if (intent.type === 'attach') {
-				state.status = 'attaching';
-				deps.attachTerminal(id, intent.container, intent.active);
-				deps.attachResizeObserver(id, intent.container);
-				state.status = 'attached';
-				state.container = intent.container;
-				state.active = intent.active;
-				deps.trace?.(id, 'mount_apply_attach', {
-					generation: intent.generation,
-					active: intent.active,
-				});
-			} else {
-				state.status = 'detaching';
-				deps.markDetached(id);
-				deps.detachResizeObserver(id);
-				state.status = 'detached';
-				state.container = null;
-				state.active = false;
-				deps.trace?.(id, 'mount_apply_detach', {
-					generation: intent.generation,
-				});
-			}
-			if (state.pending) {
-				applyMountIntent(id);
-			}
-		});
-	};
-
-	const requestAttach = (id: string, container: HTMLDivElement, active: boolean): void => {
-		const state = getMountState(id);
-		if (state.status === 'attached' && state.container === container && state.active === active) {
+		const current = attachmentState.get(id);
+		if (current && current.container === container && current.active === active) {
 			deps.trace?.(id, 'mount_skip_attached', {
-				generation: state.generation,
 				active,
+				reason: trace.reason,
+				source: trace.source ?? '',
 			});
 			return;
 		}
-		state.generation += 1;
-		state.pending = {
-			type: 'attach',
-			generation: state.generation,
-			container,
+		deps.attachTerminal(id, container, active);
+		deps.attachResizeObserver(id, container);
+		attachmentState.set(id, { container, active });
+		containerOwners.set(container, id);
+		deps.trace?.(id, 'mount_apply_attach', {
 			active,
-		};
-		deps.trace?.(id, 'mount_request_attach', {
-			generation: state.generation,
-			active,
+			reason: trace.reason,
+			source: trace.source ?? '',
+			containerConnected: container.isConnected,
+			containerWidth: container.clientWidth,
+			containerHeight: container.clientHeight,
 		});
-		applyMountIntent(id);
 	};
 
-	const requestDetach = (id: string): void => {
-		const state = getMountState(id);
-		if (state.status === 'detached' && state.pending?.type !== 'attach') {
+	const requestDetach = (
+		id: string,
+		trace: {
+			reason: string;
+			source?: string;
+		},
+	): void => {
+		const current = attachmentState.get(id);
+		if (!current) {
 			deps.trace?.(id, 'mount_skip_detached', {
-				generation: state.generation,
+				reason: trace.reason,
+				source: trace.source ?? '',
 			});
 			return;
 		}
-		state.generation += 1;
-		state.pending = {
-			type: 'detach',
-			generation: state.generation,
-		};
-		deps.trace?.(id, 'mount_request_detach', {
-			generation: state.generation,
+		if (containerOwners.get(current.container) === id) {
+			containerOwners.delete(current.container);
+		}
+		deps.markDetached(id);
+		deps.detachResizeObserver(id);
+		attachmentState.delete(id);
+		deps.trace?.(id, 'mount_apply_detach', {
+			reason: trace.reason,
+			source: trace.source ?? '',
 		});
-		applyMountIntent(id);
 	};
 
 	const syncTerminal = (input: TerminalSyncInput): void => {
@@ -186,52 +147,32 @@ export const createTerminalSyncController = (deps: TerminalSyncControllerDepende
 		deps.ensureGlobals();
 		const terminalKey = deps.buildTerminalKey(input.workspaceId, input.terminalId);
 		if (!terminalKey) return;
+		const source = input.source?.trim() || 'unspecified';
 		let previous = lastSyncState.get(terminalKey);
 		if (previous && deps.hasContext && !deps.hasContext(terminalKey)) {
 			lastSyncState.delete(terminalKey);
-			mountStates.delete(terminalKey);
-			deps.trace?.(terminalKey, 'sync_terminal_clear_stale_state', {});
+			attachmentState.delete(terminalKey);
+			deps.trace?.(terminalKey, 'sync_terminal_clear_stale_state', {
+				source,
+			});
 			previous = undefined;
 		}
-		const sameIdentity =
-			previous !== undefined &&
-			previous.workspaceId === input.workspaceId &&
-			previous.terminalId === input.terminalId;
+
 		if (
-			sameIdentity &&
 			previous &&
+			previous.workspaceId === input.workspaceId &&
+			previous.terminalId === input.terminalId &&
 			previous.container === input.container &&
 			previous.active === input.active
 		) {
 			deps.trace?.(terminalKey, 'sync_terminal_skip_unchanged', {
+				source,
 				hasContainer: Boolean(input.container),
 				active: input.active,
 			});
 			return;
 		}
 
-		// During rapid tab/workspace switches the view can briefly report a null
-		// container for a terminal that is still mounted/re-attaching. Preserve
-		// the last non-null context so in-flight stream sync doesn't race against
-		// a transient container-less update.
-		if (!input.container && previous?.container) {
-			deps.trace?.(terminalKey, 'sync_terminal_no_container_preserve_previous', {
-				active: input.active,
-				previousActive: previous.active,
-			});
-			deps.trace?.(terminalKey, 'sync_terminal_skip_stream_no_container', {
-				active: input.active,
-				hadContainer: true,
-			});
-			return;
-		}
-
-		deps.trace?.(terminalKey, 'sync_terminal_start', {
-			workspaceId: input.workspaceId,
-			terminalId: input.terminalId,
-			hasContainer: Boolean(input.container),
-			active: input.active,
-		});
 		lastSyncState.set(terminalKey, {
 			workspaceId: input.workspaceId,
 			terminalId: input.terminalId,
@@ -245,40 +186,52 @@ export const createTerminalSyncController = (deps: TerminalSyncControllerDepende
 			container: input.container,
 			active: input.active,
 		});
-		if (input.container) {
-			deps.trace?.(terminalKey, 'sync_terminal_attach', {
-				active: input.active,
-			});
-			requestAttach(terminalKey, input.container, input.active);
-			// Container element churn (same terminal identity + same active state) should
-			// only move the mounted host node. Re-running stream/init on every container
-			// replacement causes noisy reassert-start loops and focus/input instability.
-			if (
-				sameIdentity &&
-				previous &&
-				previous.container !== input.container &&
-				previous.active === input.active
-			) {
-				deps.trace?.(terminalKey, 'sync_terminal_skip_stream_container_churn', {
-					active: input.active,
-				});
-				return;
-			}
-		} else {
-			deps.trace?.(terminalKey, 'sync_terminal_no_container', {
-				active: input.active,
-			});
-			// Do not kick stream/init while there is no host element. Tab switches
-			// can briefly produce a null container before the next pane mounts, and
-			// that causes attach/init races against the subsequent real attach.
+
+		if (!input.container) {
 			deps.trace?.(terminalKey, 'sync_terminal_skip_stream_no_container', {
+				source,
 				active: input.active,
-				hadContainer: Boolean(previous?.container),
 			});
 			return;
 		}
+
+		const activeFlipOnSameContainer =
+			source === 'controller.active_change' &&
+			previous !== undefined &&
+			previous.container === input.container &&
+			previous.active !== input.active;
+
+		requestAttach(terminalKey, input.container, input.active, {
+			reason: 'sync_terminal_attach',
+			source,
+		});
+
+		if (activeFlipOnSameContainer) {
+			const previousActive = previous?.active ?? false;
+			deps.trace?.(terminalKey, 'sync_terminal_active_flip_attach', {
+				source,
+				previousActive,
+				active: input.active,
+				hasContainer: true,
+			});
+			if (input.active) {
+				deps.focusTerminal(terminalKey);
+				deps.syncTerminalStream(terminalKey);
+				deps.trace?.(terminalKey, 'sync_terminal_stream_requested', {
+					source,
+					reason: 'active_flip',
+				});
+			}
+			return;
+		}
+
+		if (input.active) {
+			deps.focusTerminal(terminalKey);
+		}
 		deps.syncTerminalStream(terminalKey);
-		deps.trace?.(terminalKey, 'sync_terminal_stream_requested', {});
+		deps.trace?.(terminalKey, 'sync_terminal_stream_requested', {
+			source,
+		});
 	};
 
 	const detachTerminal = (
@@ -297,12 +250,10 @@ export const createTerminalSyncController = (deps: TerminalSyncControllerDepende
 			});
 			return;
 		}
-		deps.trace?.(terminalKey, 'detach_terminal', {
-			workspaceId,
-			terminalId,
-			force,
+		requestDetach(terminalKey, {
+			reason: force ? 'detach_terminal_force' : 'detach_terminal',
+			source: 'sync_controller_detach',
 		});
-		requestDetach(terminalKey);
 		// Keep key/workspace/terminal association stable across tab switches so
 		// in-flight init/start calls can resolve against the same terminal entry.
 		deps.ensureContext({
@@ -313,29 +264,26 @@ export const createTerminalSyncController = (deps: TerminalSyncControllerDepende
 			active: false,
 		});
 		lastSyncState.delete(terminalKey);
-		deps.trace?.(terminalKey, 'detach_terminal_context_retained', {});
 	};
 
 	const closeTerminal = async (workspaceId: string, terminalId: string): Promise<void> => {
 		const terminalKey = deps.buildTerminalKey(workspaceId, terminalId);
 		if (!terminalKey) return;
-		deps.trace?.(terminalKey, 'close_terminal_start', {
-			workspaceId,
-			terminalId,
+		requestDetach(terminalKey, {
+			reason: 'close_terminal',
+			source: 'sync_controller_close',
 		});
-		requestDetach(terminalKey);
 		try {
 			await deps.stopTerminal(workspaceId, terminalId);
 			deps.trace?.(terminalKey, 'close_terminal_stop_ok', {});
 		} catch {
 			deps.trace?.(terminalKey, 'close_terminal_stop_error', {});
-			// Ignore failures.
+			// Ignore stop failures when closing stale/missing sessions.
 		}
 		deps.disposeTerminalResources(terminalKey);
 		deps.deleteContext(terminalKey);
 		lastSyncState.delete(terminalKey);
-		mountStates.delete(terminalKey);
-		deps.trace?.(terminalKey, 'close_terminal_done', {});
+		attachmentState.delete(terminalKey);
 	};
 
 	const focusTerminalInstance = (workspaceId: string, terminalId: string): void => {

@@ -52,6 +52,14 @@ type ConsumeOrderedStreamResult = {
 	droppedStaleChunks: number;
 };
 
+type OrderedStreamSnapshot = {
+	queuedChunks: number;
+	queuedBytes: number;
+	firstSeq: number;
+	lastSeq: number;
+	lastDeliveredSeq: number;
+};
+
 const DEFAULT_MAX_BUFFERED_OUTPUT_BYTES_PER_TERMINAL = 512 * 1024;
 
 const createDefaultStats = (): TerminalDebugStats => ({
@@ -261,9 +269,39 @@ export const createTerminalServiceState = (input: TerminalServiceStateInput = {}
 
 		const ready: TerminalBufferedOutputChunk[] = [];
 		let droppedStaleChunks = 0;
-		for (const item of state.chunks) {
-			if (item.seq > 0 && state.lastSeq > 0 && item.seq <= state.lastSeq) {
-				droppedStaleChunks += 1;
+		let cursor = 0;
+		while (cursor < state.chunks.length) {
+			const item = state.chunks[cursor];
+			if (item.seq > 0) {
+				if (state.lastSeq > 0) {
+					if (item.seq <= state.lastSeq) {
+						droppedStaleChunks += 1;
+						cursor += 1;
+						continue;
+					}
+					const expectedSeq = state.lastSeq + 1;
+					// Preserve strict in-order delivery for control sequences.
+					// If there is a gap, keep newer chunks queued until missing seq arrives.
+					if (item.seq !== expectedSeq) {
+						if (!options.force) {
+							break;
+						}
+						// Forced flush mode is a recovery path: if one seq is dropped,
+						// move forward so output rendering does not deadlock indefinitely.
+						droppedStaleChunks += item.seq - expectedSeq;
+						state.lastSeq = item.seq - 1;
+					}
+					if (item.seq !== state.lastSeq + 1) {
+						break;
+					}
+				}
+				ready.push({
+					seq: item.seq,
+					bytes: item.bytes,
+					chunk: item.chunk,
+				});
+				state.lastSeq = item.seq;
+				cursor += 1;
 				continue;
 			}
 			ready.push({
@@ -271,15 +309,37 @@ export const createTerminalServiceState = (input: TerminalServiceStateInput = {}
 				bytes: item.bytes,
 				chunk: item.chunk,
 			});
-			if (item.seq > 0) {
-				state.lastSeq = item.seq;
-			}
+			cursor += 1;
 		}
-		state.chunks = [];
+		state.chunks = state.chunks.slice(cursor);
 		orderedStreamOutput.set(id, state);
 		return {
 			chunks: ready,
 			droppedStaleChunks,
+		};
+	};
+
+	const getOrderedStreamSnapshot = (id: string): OrderedStreamSnapshot => {
+		const state = orderedStreamOutput.get(id);
+		if (!state || state.chunks.length === 0) {
+			return {
+				queuedChunks: 0,
+				queuedBytes: 0,
+				firstSeq: 0,
+				lastSeq: 0,
+				lastDeliveredSeq: state?.lastSeq ?? 0,
+			};
+		}
+		let queuedBytes = 0;
+		for (const chunk of state.chunks) {
+			queuedBytes += chunk.bytes;
+		}
+		return {
+			queuedChunks: state.chunks.length,
+			queuedBytes,
+			firstSeq: state.chunks[0]?.seq ?? 0,
+			lastSeq: state.chunks[state.chunks.length - 1]?.seq ?? 0,
+			lastDeliveredSeq: state.lastSeq,
 		};
 	};
 
@@ -301,6 +361,7 @@ export const createTerminalServiceState = (input: TerminalServiceStateInput = {}
 		deletePendingOutput,
 		enqueueOrderedStreamChunk,
 		consumeOrderedStreamChunks,
+		getOrderedStreamSnapshot,
 		resetOrderedStream,
 	};
 };

@@ -522,13 +522,7 @@
 		border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
 	}
 
-	.pane:not(.focused) {
-		opacity: 0.35;
-	}
-
-	.pane:not(.focused):hover,
 	.pane.drag-active {
-		opacity: 0.7;
 		box-shadow: var(--shadow-md);
 	}
 
@@ -567,6 +561,13 @@
 		min-height: 0;
 		padding: 0;
 		position: relative;
+	}
+
+	/* Dim the terminal area of inactive panes. Applied to pane-body only so
+	   the tab header stays at full brightness and remains readable. */
+	.pane:not(.focused) .pane-body {
+		opacity: 0.45;
+		transition: opacity 0.2s ease;
 	}
 
 	.pane-empty {

@@ -93,7 +93,11 @@ describe('terminalStreamOrchestrator', () => {
 		expect(initCalls).toBe(2);
 		expect(beginTerminal).toHaveBeenCalledTimes(2);
 		expect(emitState).toHaveBeenCalledTimes(2);
-		expect(trace).toHaveBeenCalledWith('ws::term', 'stream_sync_coalesced', {});
+		expect(trace).toHaveBeenCalledWith(
+			'ws::term',
+			'stream_sync_coalesced',
+			expect.objectContaining({ coalescedCount: 1 }),
+		);
 		expect(trace).toHaveBeenCalledWith(
 			'ws::term',
 			'stream_sync_done',

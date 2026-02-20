@@ -13,6 +13,7 @@ import (
 type TerminalPayload struct {
 	WorkspaceID string `json:"workspaceId"`
 	TerminalID  string `json:"terminalId"`
+	WindowName  string `json:"windowName,omitempty"`
 	DataB64     string `json:"dataB64,omitempty"`
 	Bytes       int    `json:"bytes"`
 	Seq         int64  `json:"seq,omitempty"`
