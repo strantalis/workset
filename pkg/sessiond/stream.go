@@ -59,15 +59,22 @@ func (s *Session) subscribe(streamID string) *subscriber {
 func (s *Session) unsubscribe(sub *subscriber) {
 	s.subscribersMu.Lock()
 	_, ok := s.subscribers[sub]
+	clearMouseModes := false
 	if ok {
 		delete(s.subscribers, sub)
 		if sub.streamID != "" {
 			delete(s.streams, sub.streamID)
 		}
+		clearMouseModes = len(s.subscribers) == 0
 	}
 	s.subscribersMu.Unlock()
 	if !ok {
 		return
+	}
+	if clearMouseModes {
+		s.outputMu.Lock()
+		s.modeState.clearMouseModes()
+		s.outputMu.Unlock()
 	}
 	sub.close()
 }

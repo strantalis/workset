@@ -115,7 +115,9 @@
 		const shouldRefreshTerminalDefaults = updates.some(
 			(field) => field.id === 'terminalDebugOverlay',
 		);
-		const shouldRestartSessiond = updates.some((field) => field.id === 'terminalProtocolLog');
+		const shouldRestartSessiond = updates.some(
+			(field) => field.id === 'terminalProtocolLog' || field.id === 'terminalIdleTimeout',
+		);
 		const statusMessage =
 			updates.length === 1 ? 'Saved 1 change.' : `Saved ${updates.length} changes.`;
 
@@ -145,7 +147,7 @@
 			if (shouldRestartSessiond) {
 				const restartResult = await sideEffects.restartSessiond();
 				if (restartResult.error) {
-					error = `Saved settings, but failed to restart session daemon for terminal protocol logging: ${restartResult.error}`;
+					error = `Saved settings, but failed to restart session daemon to apply terminal settings: ${restartResult.error}`;
 				} else if (restartResult.success) {
 					success = `${statusMessage} ${restartResult.success}`;
 				}

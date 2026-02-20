@@ -541,7 +541,7 @@ const ensureGlobals = (): void =>
 		forEachAttached: (callback) => terminalAttachState.forEachAttached(callback),
 		ensureSessionActive: async (id) => {
 			try {
-				await ensureSessionActive(id);
+				await beginTerminal(id, false);
 			} finally {
 				// Refit after focus regain so popout->main handoff does not need manual resize.
 				runFocusRefit(id);
