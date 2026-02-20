@@ -178,4 +178,28 @@ describe('reviewAnnotationActions', () => {
 		expect(setup.handleDeleteComment).toHaveBeenCalledWith(1);
 		expect(setup.handleResolveThread).toHaveBeenCalledWith('THREAD_1', true);
 	});
+
+	it('sanitizes markdown and prevents click handler exploitation via injected data attributes', () => {
+		const setup = createSetup();
+		const threadEl = setup.render({
+			...baseAnnotation,
+			metadata: {
+				...baseAnnotation.metadata!,
+				thread: [
+					{
+						...baseAnnotation.metadata!.thread[0],
+						body: 'Malicious <button class="diff-action-btn" data-action="delete" data-comment-id="999">Fake Delete</button>',
+					},
+				],
+			},
+		});
+
+		const injectedBtn = threadEl.querySelector('.diff-annotation-body button') as HTMLElement;
+		expect(injectedBtn).toBeInTheDocument();
+		expect(injectedBtn.hasAttribute('data-action')).toBe(false);
+		expect(injectedBtn.hasAttribute('data-comment-id')).toBe(false);
+
+		injectedBtn.click();
+		expect(setup.handleDeleteComment).not.toHaveBeenCalled();
+	});
 });

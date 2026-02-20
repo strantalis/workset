@@ -45,7 +45,9 @@ export const createReviewAnnotationActionsController = (
 	const renderMarkdown = (text: string): string => {
 		try {
 			const rendered = marked.parse(text, { async: false, breaks: true }) as string;
-			return DOMPurify.sanitize(rendered);
+			return DOMPurify.sanitize(rendered, {
+				FORBID_ATTR: ['data-action', 'data-comment-id', 'data-thread-id'],
+			});
 		} catch {
 			return escapeHtml(text);
 		}
@@ -267,7 +269,7 @@ export const createReviewAnnotationActionsController = (
 				return;
 			}
 
-			const btn = target.closest('[data-action]') as HTMLElement;
+			const btn = target.closest('button[data-action]') as HTMLElement;
 			if (!btn) return;
 
 			const action = btn.dataset.action;
