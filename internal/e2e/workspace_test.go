@@ -179,8 +179,17 @@ func TestWorkspaceRemoveSquashMergedBranch(t *testing.T) {
 	worktreePath := filepath.Join(runner.workspaceRoot(), "ws-switch", repoName)
 
 	commitFile(t, worktreePath, "", "feature.txt", "feature", "feat: add feature")
-	commitFile(t, source, "main", "feature.txt", "feature", "chore: squash merge feature")
-	commitFile(t, source, "main", "feature.txt", "feature v2", "chore: tweak after merge")
+	commitFile(t, worktreePath, "", "deps.txt", "dep-one", "chore: adjust deps")
+	runGit(t, source, "checkout", "main")
+	if err := os.WriteFile(filepath.Join(source, "feature.txt"), []byte("feature"), 0o644); err != nil {
+		t.Fatalf("write squash feature: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "deps.txt"), []byte("dep-one"), 0o644); err != nil {
+		t.Fatalf("write squash deps: %v", err)
+	}
+	runGit(t, source, "add", "feature.txt", "deps.txt")
+	runGit(t, source, "commit", "-m", "chore: squash merge feature")
+	commitFile(t, source, "main", "deps.txt", "dep-two", "chore: tweak after merge")
 
 	if _, err := runner.run("rm", "-w", "ws-switch", "--delete", "--yes"); err != nil {
 		t.Fatalf("expected workspace rm after squash merge: %v", err)

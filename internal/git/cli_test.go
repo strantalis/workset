@@ -36,6 +36,80 @@ func TestIsContentMergedSquashMerge(t *testing.T) {
 	}
 }
 
+func TestIsContentMergedSquashMergeWithPostMergeDrift(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	repo := initGitRepo(t)
+	ensureBranch(t, repo, "main")
+	commitFile(t, repo, "file.txt", "one\n", "initial")
+
+	runGit(t, repo, "checkout", "-b", "feature")
+	commitFile(t, repo, "file.txt", "two\n", "feature change")
+	commitFile(t, repo, "deps.txt", "dep-one\n", "feature deps")
+
+	runGit(t, repo, "checkout", "main")
+	runGit(t, repo, "merge", "--squash", "feature")
+	runGit(t, repo, "commit", "-m", "squash merge")
+	commitFile(t, repo, "deps.txt", "dep-two\n", "main drift")
+
+	client := NewCLIClient()
+	ancestor, err := client.IsAncestor(repo, "refs/heads/feature", "refs/heads/main")
+	if err != nil {
+		t.Fatalf("IsAncestor: %v", err)
+	}
+	if ancestor {
+		t.Fatalf("expected feature not to be an ancestor after squash merge")
+	}
+
+	equal, err := client.refsMatch(repo, "refs/heads/main", "refs/heads/feature")
+	if err != nil {
+		t.Fatalf("refsMatch: %v", err)
+	}
+	if equal {
+		t.Fatalf("expected base and branch trees to differ after post-merge drift")
+	}
+
+	merged, err := client.IsContentMerged(repo, "refs/heads/feature", "refs/heads/main")
+	if err != nil {
+		t.Fatalf("IsContentMerged: %v", err)
+	}
+	if !merged {
+		t.Fatalf("expected content to be merged after squash merge with post-merge drift")
+	}
+}
+
+func TestIsContentMergedModeOnlyChangeNotMergedByBlobHistory(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	repo := initGitRepo(t)
+	ensureBranch(t, repo, "main")
+	commitFile(t, repo, "script.sh", "echo hi\n", "initial")
+
+	runGit(t, repo, "checkout", "-b", "feature")
+	if err := os.Chmod(filepath.Join(repo, "script.sh"), 0o755); err != nil {
+		t.Fatalf("chmod +x: %v", err)
+	}
+	runGit(t, repo, "add", "script.sh")
+	runGit(t, repo, "commit", "-m", "mode only")
+
+	runGit(t, repo, "checkout", "main")
+	commitFile(t, repo, "script.sh", "echo changed\n", "main change")
+	commitFile(t, repo, "script.sh", "echo hi\n", "main revert content")
+
+	client := NewCLIClient()
+	merged, err := client.IsContentMerged(repo, "refs/heads/feature", "refs/heads/main")
+	if err != nil {
+		t.Fatalf("IsContentMerged: %v", err)
+	}
+	if merged {
+		t.Fatalf("expected mode-only branch change to remain unmerged")
+	}
+}
+
 func TestIsContentMergedMergeCommit(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
