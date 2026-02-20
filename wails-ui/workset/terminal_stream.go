@@ -69,6 +69,7 @@ func (a *App) streamTerminal(session *terminalSession) {
 		session.mu.Lock()
 		session.streamCancel = nil
 		session.streamOwner = ""
+		session.client = nil
 		session.mu.Unlock()
 		return
 	}

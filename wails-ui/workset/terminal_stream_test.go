@@ -195,6 +195,46 @@ func TestStreamTerminalStaleCloseDoesNotClearClient(t *testing.T) {
 	}
 }
 
+func TestStreamTerminalAttachErrorClearsClient(t *testing.T) {
+	originalAttach := attachSessionStream
+	t.Cleanup(func() {
+		attachSessionStream = originalAttach
+	})
+
+	app := NewApp()
+	session := newTerminalSession("ws", "term", "/tmp")
+	session.client = &sessiond.Client{}
+	session.markReady(nil)
+
+	attachSessionStream = func(
+		_ *sessiond.Client,
+		_ context.Context,
+		_ string,
+		_ int64,
+		_ bool,
+		_ string,
+	) (terminalStream, sessiond.StreamMessage, error) {
+		return nil, sessiond.StreamMessage{}, errors.New("attach failed")
+	}
+
+	app.streamTerminal(session)
+
+	session.mu.Lock()
+	client := session.client
+	stream := session.stream
+	streamCancel := session.streamCancel
+	session.mu.Unlock()
+	if client != nil {
+		t.Fatal("expected attach error to clear cached session client")
+	}
+	if stream != nil {
+		t.Fatal("expected stream to remain nil after attach error")
+	}
+	if streamCancel != nil {
+		t.Fatal("expected stream cancel to be released after attach error")
+	}
+}
+
 func TestStreamTerminalReadErrorKeepsSessionAlive(t *testing.T) {
 	originalAttach := attachSessionStream
 	t.Cleanup(func() {
