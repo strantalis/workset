@@ -12,6 +12,15 @@ type terminalModeState struct {
 	mouse1015 bool
 }
 
+func (s *terminalModeState) clearMouseModes() {
+	s.mouse1000 = false
+	s.mouse1002 = false
+	s.mouse1003 = false
+	s.mouse1005 = false
+	s.mouse1006 = false
+	s.mouse1015 = false
+}
+
 type terminalModeParser struct {
 	state      int
 	privateCSI bool

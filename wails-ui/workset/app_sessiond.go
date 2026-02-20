@@ -48,7 +48,9 @@ func (a *App) getSessiondClientInternal(waitForRestart bool) (*sessiond.Client, 
 	logRestartf("client_ensure_running")
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
-	startOpts := sessiond.StartOptions{}
+	startOpts := sessiond.StartOptions{
+		IdleTimeout: "0",
+	}
 	svc := a.ensureService()
 	if cfg, _, cfgErr := svc.GetConfig(ctx); cfgErr == nil {
 		if envTruthy(cfg.Defaults.TerminalProtocolLog) {

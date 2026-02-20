@@ -311,12 +311,14 @@ describe('terminalService resize flow', () => {
 			await vi.runAllTimersAsync();
 			expect(appMock.ResizeWorkspaceTerminalForWindowName).not.toHaveBeenCalled();
 			appMock.ResizeWorkspaceTerminalForWindowName.mockClear();
+			appMock.StartWorkspaceTerminalForWindowName.mockClear();
 
 			document.body.appendChild(container);
 			window.dispatchEvent(new Event('focus'));
 			await vi.runAllTimersAsync();
 
 			expect(appMock.ResizeWorkspaceTerminalForWindowName.mock.calls.length).toBeGreaterThan(0);
+			expect(appMock.StartWorkspaceTerminalForWindowName.mock.calls.length).toBeGreaterThan(0);
 		} finally {
 			container.remove();
 			restoreClientMetrics();

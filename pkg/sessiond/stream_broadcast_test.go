@@ -43,3 +43,33 @@ func TestSessionBroadcastClonesReusedSourceBuffer(t *testing.T) {
 		t.Fatalf("timed out waiting for second event")
 	}
 }
+
+func TestUnsubscribeClearsMouseModesWhenLastSubscriberLeaves(t *testing.T) {
+	session := &Session{
+		subscribers: make(map[*subscriber]struct{}),
+		streams:     make(map[string]*subscriber),
+		modeState: terminalModeState{
+			altScreen: true,
+			mouse1002: true,
+			mouse1006: true,
+		},
+	}
+	sub := newSubscriber("mode-clear-stream")
+	session.subscribers[sub] = struct{}{}
+	session.streams[sub.streamID] = sub
+
+	session.unsubscribe(sub)
+
+	session.outputMu.Lock()
+	modeState := session.modeState
+	session.outputMu.Unlock()
+	if !modeState.altScreen {
+		t.Fatalf("expected alt-screen mode to remain enabled")
+	}
+	if modeState.mouse1002 {
+		t.Fatalf("expected mouse1002 to be cleared")
+	}
+	if modeState.mouse1006 {
+		t.Fatalf("expected mouse1006 to be cleared")
+	}
+}

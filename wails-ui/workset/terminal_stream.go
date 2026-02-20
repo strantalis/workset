@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync/atomic"
 
 	"github.com/strantalis/workset/pkg/sessiond"
@@ -20,6 +21,24 @@ var attachSessionStream = func(
 }
 
 var terminalOutputSeq atomic.Uint64
+
+var terminalSessionGoneMarkers = []string{
+	"session not found",
+	"session not running",
+}
+
+func isTerminalSessionGoneError(message string) bool {
+	text := strings.ToLower(strings.TrimSpace(message))
+	if text == "" {
+		return false
+	}
+	for _, marker := range terminalSessionGoneMarkers {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
+}
 
 func (a *App) streamTerminal(session *terminalSession) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -50,7 +69,6 @@ func (a *App) streamTerminal(session *terminalSession) {
 		session.mu.Lock()
 		session.streamCancel = nil
 		session.streamOwner = ""
-		session.client = nil
 		session.mu.Unlock()
 		return
 	}
@@ -59,24 +77,16 @@ func (a *App) streamTerminal(session *terminalSession) {
 	session.streamOwner = streamOwner
 	session.mu.Unlock()
 	defer func() {
-		if !session.releaseStream(stream) {
-			return
-		}
-		_ = session.CloseWithReason("closed")
+		_ = session.releaseStream(stream)
 	}()
-	if first.Type == "error" && first.Error != "" {
-		session.mu.Lock()
-		session.client = nil
-		session.mu.Unlock()
-		return
-	}
-	handleMessage := func(msg sessiond.StreamMessage) bool {
+	streamEndedAsSessionGone := false
+	handleMessage := func(msg sessiond.StreamMessage) (bool, bool) {
 		switch msg.Type {
 		case "ready":
-			return true
+			return true, false
 		case "data":
 			if msg.DataB64 == "" || msg.Len <= 0 {
-				return true
+				return true, false
 			}
 			outputSeq := terminalOutputSeq.Add(1)
 			logTerminalDebug(TerminalDebugPayload{
@@ -101,30 +111,40 @@ func (a *App) streamTerminal(session *terminalSession) {
 				Seq:         int64(outputSeq),
 			})
 		case "error":
-			return false
+			return false, isTerminalSessionGoneError(msg.Error)
 		case "closed":
-			return false
+			return false, true
 		}
-		return true
+		return true, false
 	}
-	if !handleMessage(first) {
-		_ = session.CloseWithReason("closed")
+	if continueStream, sessionGone := handleMessage(first); !continueStream {
+		streamEndedAsSessionGone = sessionGone
+		if streamEndedAsSessionGone {
+			session.mu.Lock()
+			if session.stream == stream {
+				session.client = nil
+			}
+			session.mu.Unlock()
+		}
 		return
 	}
 	for {
 		var msg sessiond.StreamMessage
 		if err := stream.Next(&msg); err != nil {
-			session.mu.Lock()
-			// Ignore terminal stream shutdown from stale streams during ownership
-			// handoff; only the active stream can invalidate the session client.
-			if session.stream == stream {
-				session.client = nil
-			}
-			session.mu.Unlock()
 			break
 		}
-		if !handleMessage(msg) {
+		continueStream, sessionGone := handleMessage(msg)
+		if !continueStream {
+			streamEndedAsSessionGone = sessionGone
 			break
 		}
 	}
+	if !streamEndedAsSessionGone {
+		return
+	}
+	session.mu.Lock()
+	if session.stream == stream {
+		session.client = nil
+	}
+	session.mu.Unlock()
 }

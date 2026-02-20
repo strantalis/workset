@@ -207,6 +207,40 @@ describe('SettingsPanel About Section', () => {
 		expect(getByText('dev')).toBeInTheDocument();
 	});
 
+	test('restarts session daemon when terminal idle timeout changes', async () => {
+		vi.mocked(api.fetchSettings).mockResolvedValue({
+			configPath: '/test/config.yaml',
+			defaults: buildDefaults(),
+		});
+		vi.mocked(api.fetchAppVersion).mockResolvedValue({
+			version: '1.0.0',
+			commit: 'abc123',
+			dirty: false,
+		});
+		vi.mocked(api.setDefaultSetting).mockResolvedValue(undefined);
+		vi.mocked(api.restartSessiond).mockResolvedValue({ available: true });
+
+		const { getByText, getByLabelText, getByRole, queryByText } = render(SettingsPanel, {
+			props: {
+				onClose: mockOnClose,
+			},
+		});
+
+		await waitFor(() => {
+			expect(queryByText('Loading settings...')).not.toBeInTheDocument();
+		});
+		await fireEvent.click(getByText('Terminal'));
+
+		const idleTimeoutInput = getByLabelText('Terminal idle timeout') as HTMLInputElement;
+		await fireEvent.input(idleTimeoutInput, { target: { value: '15m' } });
+		await fireEvent.click(getByRole('button', { name: 'Save' }));
+
+		await waitFor(() => {
+			expect(api.setDefaultSetting).toHaveBeenCalledWith('defaults.terminal_idle_timeout', '15m');
+		});
+		expect(api.restartSessiond).toHaveBeenCalledTimes(1);
+	});
+
 	test('renders About section even when version fetch fails', async () => {
 		vi.mocked(api.fetchSettings).mockResolvedValue({
 			configPath: '/test/config.yaml',

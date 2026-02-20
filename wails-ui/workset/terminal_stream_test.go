@@ -194,3 +194,85 @@ func TestStreamTerminalStaleCloseDoesNotClearClient(t *testing.T) {
 		t.Fatal("expected stale stream close to preserve active session client")
 	}
 }
+
+func TestStreamTerminalReadErrorKeepsSessionAlive(t *testing.T) {
+	originalAttach := attachSessionStream
+	t.Cleanup(func() {
+		attachSessionStream = originalAttach
+	})
+
+	app := NewApp()
+	session := newTerminalSession("ws", "term", "/tmp")
+	session.client = &sessiond.Client{}
+	session.markReady(nil)
+
+	attachSessionStream = func(
+		_ *sessiond.Client,
+		_ context.Context,
+		_ string,
+		_ int64,
+		_ bool,
+		_ string,
+	) (terminalStream, sessiond.StreamMessage, error) {
+		return &stubTerminalStream{
+			id:      "stream-live",
+			nextErr: errors.New("temporary decode failure"),
+		}, sessiond.StreamMessage{Type: "ready"}, nil
+	}
+
+	app.streamTerminal(session)
+
+	session.mu.Lock()
+	client := session.client
+	closed := session.closed
+	stream := session.stream
+	session.mu.Unlock()
+	if client == nil {
+		t.Fatal("expected transient stream read error to preserve session client")
+	}
+	if closed {
+		t.Fatal("expected transient stream read error to keep session open")
+	}
+	if stream != nil {
+		t.Fatal("expected stream reference to be released after read error")
+	}
+}
+
+func TestStreamTerminalSessionGoneErrorClearsClient(t *testing.T) {
+	originalAttach := attachSessionStream
+	t.Cleanup(func() {
+		attachSessionStream = originalAttach
+	})
+
+	app := NewApp()
+	session := newTerminalSession("ws", "term", "/tmp")
+	session.client = &sessiond.Client{}
+	session.markReady(nil)
+
+	attachSessionStream = func(
+		_ *sessiond.Client,
+		_ context.Context,
+		_ string,
+		_ int64,
+		_ bool,
+		_ string,
+	) (terminalStream, sessiond.StreamMessage, error) {
+		return &stubTerminalStream{id: "stream-gone"}, sessiond.StreamMessage{
+			Type:  "error",
+			Error: "session not found",
+		}, nil
+	}
+
+	app.streamTerminal(session)
+
+	session.mu.Lock()
+	client := session.client
+	closed := session.closed
+	session.mu.Unlock()
+	if client != nil {
+		t.Fatal("expected session-gone error to clear session client")
+	}
+	if closed {
+		t.Fatal("expected session-gone error to avoid closing local session record")
+	}
+}
