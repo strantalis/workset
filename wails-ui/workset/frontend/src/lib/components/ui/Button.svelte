@@ -64,6 +64,10 @@
 		cursor: pointer;
 		font-size: var(--text-base);
 		font-family: inherit;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
 		transition:
 			background var(--transition-fast),
 			border-color var(--transition-fast),
