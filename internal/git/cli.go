@@ -535,10 +535,17 @@ func (c CLIClient) changesAppliedInBase(repoPath, mergeBase, branchRef, baseRef 
 			if err != nil {
 				return false, err
 			}
-			if !baseOK || !branchOK {
+			if !branchOK {
 				return false, nil
 			}
-			if baseEntry.hash != branchEntry.hash || baseEntry.mode != branchEntry.mode {
+			if baseOK && baseEntry.hash == branchEntry.hash && baseEntry.mode == branchEntry.mode {
+				continue
+			}
+			seen, err := c.blobSeenInRange(repoPath, mergeBase, baseRef, entry.oldPath, branchEntry.hash)
+			if err != nil {
+				return false, err
+			}
+			if !seen {
 				return false, nil
 			}
 		case "D":
@@ -547,7 +554,13 @@ func (c CLIClient) changesAppliedInBase(repoPath, mergeBase, branchRef, baseRef 
 				return false, err
 			}
 			if baseOK && baseEntry.hash != "" {
-				return false, nil
+				deleted, err := c.pathDeletedInRange(repoPath, mergeBase, baseRef, entry.oldPath)
+				if err != nil {
+					return false, err
+				}
+				if !deleted {
+					return false, nil
+				}
 			}
 		case "R", "C":
 			baseEntry, baseOK, err := c.readTreeEntry(repoPath, baseRef, entry.newPath)
@@ -558,24 +571,58 @@ func (c CLIClient) changesAppliedInBase(repoPath, mergeBase, branchRef, baseRef 
 			if err != nil {
 				return false, err
 			}
-			if !baseOK || !branchOK {
+			if !branchOK {
 				return false, nil
 			}
-			if baseEntry.hash != branchEntry.hash || baseEntry.mode != branchEntry.mode {
-				return false, nil
+			if !baseOK || baseEntry.hash != branchEntry.hash || baseEntry.mode != branchEntry.mode {
+				seen, err := c.blobSeenInRange(repoPath, mergeBase, baseRef, entry.newPath, branchEntry.hash)
+				if err != nil {
+					return false, err
+				}
+				if !seen {
+					return false, nil
+				}
+			}
+			if entry.status != "R" {
+				continue
 			}
 			oldEntry, oldOK, err := c.readTreeEntry(repoPath, baseRef, entry.oldPath)
 			if err != nil {
 				return false, err
 			}
 			if oldOK && oldEntry.hash != "" {
-				return false, nil
+				deleted, err := c.pathDeletedInRange(repoPath, mergeBase, baseRef, entry.oldPath)
+				if err != nil {
+					return false, err
+				}
+				if !deleted {
+					return false, nil
+				}
 			}
 		default:
 			return false, fmt.Errorf("unsupported diff status %s", entry.status)
 		}
 	}
 	return true, nil
+}
+
+func (c CLIClient) blobSeenInRange(repoPath, startRef, endRef, path, blobHash string) (bool, error) {
+	if blobHash == "" {
+		return false, errors.New("blob hash required")
+	}
+	result, err := c.run(context.Background(), repoPath, "log", "--format=%H", startRef+".."+endRef, "--find-object="+blobHash, "--", path)
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(result.stdout) != "", nil
+}
+
+func (c CLIClient) pathDeletedInRange(repoPath, startRef, endRef, path string) (bool, error) {
+	result, err := c.run(context.Background(), repoPath, "log", "--format=%H", "--diff-filter=D", startRef+".."+endRef, "--", path)
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(result.stdout) != "", nil
 }
 
 func (c CLIClient) treeSeenInHistory(repoPath, baseRef, branchRef string) (bool, error) {
