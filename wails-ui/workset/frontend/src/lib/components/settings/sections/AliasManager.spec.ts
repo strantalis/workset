@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import AliasManager from './AliasManager.svelte';
 import * as settingsService from '../../../api/settings';
 import * as githubApi from '../../../api/github';
+import type { GitHubRepoSearchItem } from '../../../types';
 
 vi.mock('../../../api/settings', () => ({
 	listAliases: vi.fn(),
@@ -104,6 +105,7 @@ describe('AliasManager', () => {
 		) as HTMLInputElement;
 		const branchInput = getByLabelText('Default branch') as HTMLInputElement;
 
+		await fireEvent.focus(sourceInput);
 		await fireEvent.input(sourceInput, { target: { value: 'workset' } });
 		await vi.advanceTimersByTimeAsync(260);
 
@@ -198,6 +200,7 @@ describe('AliasManager', () => {
 			'Source (URL/path or GitHub repo search)',
 		) as HTMLInputElement;
 
+		await fireEvent.focus(sourceInput);
 		await fireEvent.input(sourceInput, { target: { value: 'workset' } });
 		await vi.advanceTimersByTimeAsync(260);
 
@@ -206,5 +209,48 @@ describe('AliasManager', () => {
 				getByText('Connect GitHub in Settings -> GitHub authentication to search.'),
 			).toBeInTheDocument();
 		});
+	});
+
+	test('does not reopen suggestions when search resolves after source input blur', async () => {
+		let resolveSearch!: (value: GitHubRepoSearchItem[]) => void;
+		const pendingSearch = new Promise<GitHubRepoSearchItem[]>((resolve) => {
+			resolveSearch = resolve;
+		});
+		vi.mocked(githubApi.searchGitHubRepositories).mockImplementationOnce(() => pendingSearch);
+
+		const { getByLabelText, getByText, queryByText } = render(AliasManager, {
+			props: {
+				onAliasCountChange: vi.fn(),
+			},
+		});
+
+		await fireEvent.click(getByText('Register Repo'));
+		const sourceInput = getByLabelText(
+			'Source (URL/path or GitHub repo search)',
+		) as HTMLInputElement;
+
+		await fireEvent.focus(sourceInput);
+		await fireEvent.input(sourceInput, { target: { value: 'workset' } });
+		await vi.advanceTimersByTimeAsync(260);
+		expect(githubApi.searchGitHubRepositories).toHaveBeenCalledWith('workset', 8);
+
+		await fireEvent.blur(sourceInput);
+		resolveSearch([
+			{
+				name: 'workset',
+				fullName: 'strantalis/workset',
+				owner: 'strantalis',
+				defaultBranch: 'main',
+				cloneUrl: 'https://github.com/strantalis/workset.git',
+				sshUrl: 'git@github.com:strantalis/workset.git',
+				private: false,
+				archived: false,
+				host: 'github.com',
+			},
+		]);
+		await Promise.resolve();
+		await vi.advanceTimersByTimeAsync(150);
+
+		expect(queryByText('strantalis/workset')).not.toBeInTheDocument();
 	});
 });

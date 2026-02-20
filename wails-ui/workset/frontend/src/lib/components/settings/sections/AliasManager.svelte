@@ -49,6 +49,7 @@
 	let searchLoading = $state(false);
 	let searchError: string | null = $state(null);
 	let suggestionsOpen = $state(false);
+	let sourceInputFocused = $state(false);
 	let activeSuggestionIndex = $state(-1);
 	let lastSearchedQuery = $state('');
 	let sourceSearchDebounce: ReturnType<typeof setTimeout> | null = null;
@@ -71,9 +72,7 @@
 	const filteredAliases = $derived(
 		aliases.filter((a) => a.name.toLowerCase().includes(searchQuery.toLowerCase())),
 	);
-	const showRemoteSuggestionPanel = $derived(
-		isRegistering && !isEditing && suggestionsOpen,
-	);
+	const showRemoteSuggestionPanel = $derived(isRegistering && !isEditing && suggestionsOpen);
 
 	const isLikelyLocalPath = (value: string): boolean => {
 		const trimmed = value.trim();
@@ -151,7 +150,7 @@
 		remoteSuggestions = [];
 		searchLoading = false;
 		searchError = null;
-		suggestionsOpen = true;
+		suggestionsOpen = sourceInputFocused;
 		activeSuggestionIndex = -1;
 		lastSearchedQuery = query;
 	};
@@ -160,7 +159,7 @@
 		const requestSequence = ++sourceSearchSequence;
 		searchLoading = true;
 		searchError = null;
-		suggestionsOpen = true;
+		suggestionsOpen = sourceInputFocused;
 		lastSearchedQuery = query;
 		try {
 			const results = await searchGitHubRepositories(query, 8);
@@ -248,6 +247,7 @@
 	};
 
 	const handleSourceBlur = (): void => {
+		sourceInputFocused = false;
 		if (sourceSearchCloseTimer) {
 			clearTimeout(sourceSearchCloseTimer);
 		}
@@ -258,6 +258,11 @@
 
 	const openRemoteSuggestions = (): void => {
 		if (!isRegistering || isEditing) return;
+		sourceInputFocused = true;
+		if (sourceSearchCloseTimer) {
+			clearTimeout(sourceSearchCloseTimer);
+			sourceSearchCloseTimer = null;
+		}
 		queueRemoteSearch(formSource);
 	};
 
@@ -506,17 +511,13 @@
 												Start typing to search GitHub repositories.
 											</div>
 										{:else if showSearchMinCharsHint}
-											<div class="repo-suggestion-state">
-												Type at least 2 characters to search.
-											</div>
+											<div class="repo-suggestion-state">Type at least 2 characters to search.</div>
 										{:else if showNoSearchResults}
 											<div class="repo-suggestion-state">
 												No remote repositories found for "{lastSearchedQuery}".
 											</div>
 										{:else if remoteSuggestions.length === 0}
-											<div class="repo-suggestion-state">
-												Type at least 2 characters to search.
-											</div>
+											<div class="repo-suggestion-state">Type at least 2 characters to search.</div>
 										{:else}
 											{#each remoteSuggestions as suggestion, index (suggestion.fullName)}
 												<button
