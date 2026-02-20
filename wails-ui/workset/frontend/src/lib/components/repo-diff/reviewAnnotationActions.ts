@@ -1,3 +1,5 @@
+import DOMPurify from 'dompurify';
+import { marked } from 'marked';
 import type { PullRequestReviewComment } from '../../types';
 import type { DiffLineAnnotation, ReviewAnnotation } from './annotations';
 
@@ -38,6 +40,15 @@ export const createReviewAnnotationActionsController = (
 		const div = options.document.createElement('div');
 		div.textContent = text;
 		return div.innerHTML;
+	};
+
+	const renderMarkdown = (text: string): string => {
+		try {
+			const rendered = marked.parse(text, { async: false, breaks: true }) as string;
+			return DOMPurify.sanitize(rendered);
+		} catch {
+			return escapeHtml(text);
+		}
 	};
 
 	const removeInlineForm = (threadEl: HTMLElement): void => {
@@ -227,7 +238,7 @@ export const createReviewAnnotationActionsController = (
 							}
             </div>
           </div>
-          <div class="diff-annotation-body">${escapeHtml(comment.body)}</div>
+          <div class="diff-annotation-body">${renderMarkdown(comment.body)}</div>
         </div>
       `;
 			})

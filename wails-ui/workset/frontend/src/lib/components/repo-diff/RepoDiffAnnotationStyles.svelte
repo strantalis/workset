@@ -81,12 +81,77 @@
 		font-size: var(--text-base);
 		line-height: 1.5;
 		color: var(--text);
-		white-space: pre-wrap;
 		word-break: break-word;
 	}
 
 	:global(.diff-annotation-reply .diff-annotation-body) {
 		font-size: var(--text-sm);
+	}
+
+	/* Markdown styles inside annotation body */
+	:global(.diff-annotation-body p) {
+		margin: 0 0 10px 0;
+	}
+
+	:global(.diff-annotation-body p:last-child) {
+		margin-bottom: 0;
+	}
+
+	:global(.diff-annotation-body a) {
+		color: var(--accent);
+		text-decoration: none;
+	}
+
+	:global(.diff-annotation-body a:hover) {
+		text-decoration: underline;
+	}
+
+	:global(.diff-annotation-body code) {
+		font-family: var(--font-mono);
+		font-size: var(--text-mono-xs);
+		background: rgba(110, 118, 129, 0.2);
+		padding: 2px 4px;
+		border-radius: 4px;
+	}
+
+	:global(.diff-annotation-body pre) {
+		background: var(--bg);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		padding: 12px;
+		margin: 10px 0;
+		overflow-x: auto;
+	}
+
+	:global(.diff-annotation-body pre code) {
+		background: transparent;
+		padding: 0;
+		font-size: var(--text-mono-sm);
+		border-radius: 0;
+	}
+
+	:global(.diff-annotation-body blockquote) {
+		border-left: 3px solid rgba(110, 118, 129, 0.4);
+		margin: 10px 0;
+		padding-left: 12px;
+		color: var(--muted);
+	}
+
+	:global(.diff-annotation-body ul),
+	:global(.diff-annotation-body ol) {
+		margin: 10px 0;
+		padding-left: 20px;
+	}
+
+	:global(.diff-annotation-body li) {
+		margin-bottom: 4px;
+	}
+
+	:global(.diff-annotation-body img) {
+		max-width: 100%;
+		height: auto;
+		border-radius: 6px;
+		margin: 10px 0;
 	}
 
 	/* Comment action buttons */
