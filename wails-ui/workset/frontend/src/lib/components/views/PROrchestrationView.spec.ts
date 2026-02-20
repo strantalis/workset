@@ -130,6 +130,17 @@ const buildWorkspace = (): Workspace => ({
 	lastUsed: '2026-02-17T00:00:00Z',
 });
 
+const buildWorkspaceWithoutTrackedPr = (): Workspace => {
+	const workspace = buildWorkspace();
+	return {
+		...workspace,
+		repos: workspace.repos.map((repo) => ({
+			...repo,
+			trackedPullRequest: undefined,
+		})),
+	};
+};
+
 describe('PROrchestrationView sidebar collapse', () => {
 	beforeEach(() => {
 		resetLocalStorage();
@@ -317,5 +328,20 @@ describe('PROrchestrationView sidebar collapse', () => {
 			expect(vi.mocked(repoDiffApi.stopRepoDiffWatch)).toHaveBeenCalledWith('ws-1', 'repo-1');
 		});
 		expect(await findByText('No active PRs')).toBeInTheDocument();
+	});
+
+	test('keeps active PR list stable when workspace refresh temporarily omits tracked PR', async () => {
+		const workspace = buildWorkspace();
+		const { getByText, queryByText, rerender } = render(PROrchestrationView, {
+			props: { workspace },
+		});
+
+		expect(getByText('repo-one')).toBeInTheDocument();
+		expect(queryByText('No active PRs')).not.toBeInTheDocument();
+
+		await rerender({ workspace: buildWorkspaceWithoutTrackedPr() });
+
+		expect(getByText('repo-one')).toBeInTheDocument();
+		expect(queryByText('No active PRs')).not.toBeInTheDocument();
 	});
 });

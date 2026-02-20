@@ -50,6 +50,7 @@ export type PullRequestReviewThread = {
 type ViewMode = 'active' | 'ready';
 type PrListItemRef = { id: string };
 type PrBranches = { base: string; head: string };
+type TrackedPrMap = Map<string, PullRequestCreated>;
 
 const SIDEBAR_COLLAPSED_KEY = 'workset:pr-orchestration:sidebarCollapsed';
 
@@ -60,6 +61,134 @@ export const buildTrackedPrMap = (workspace: Workspace | null): Map<string, Pull
 		if (repo.trackedPullRequest) {
 			nextMap.set(repo.id, repo.trackedPullRequest);
 		}
+	}
+	return nextMap;
+};
+
+const isOpenPullRequest = (pr: PullRequestCreated | undefined): pr is PullRequestCreated =>
+	Boolean(pr && pr.state.trim().toLowerCase() === 'open');
+
+export const mergeTrackedPrMap = (
+	workspace: Workspace | null,
+	currentMap: Map<string, PullRequestCreated>,
+	suppressedRepoIds: ReadonlySet<string> = new Set<string>(),
+): Map<string, PullRequestCreated> => {
+	if (!workspace) {
+		return new Map<string, PullRequestCreated>();
+	}
+
+	const nextMap = new Map<string, PullRequestCreated>();
+	for (const repo of workspace.repos) {
+		if (suppressedRepoIds.has(repo.id)) {
+			continue;
+		}
+		if (repo.trackedPullRequest) {
+			if (isOpenPullRequest(repo.trackedPullRequest)) {
+				nextMap.set(repo.id, repo.trackedPullRequest);
+			}
+			continue;
+		}
+
+		const cached = currentMap.get(repo.id);
+		if (isOpenPullRequest(cached)) {
+			nextMap.set(repo.id, cached);
+		}
+	}
+	return nextMap;
+};
+
+export const trackedPrMapsEqual = (left: TrackedPrMap, right: TrackedPrMap): boolean => {
+	if (left.size !== right.size) return false;
+	for (const [repoId, leftPr] of left) {
+		const rightPr = right.get(repoId);
+		if (!rightPr) return false;
+		if (
+			leftPr.number !== rightPr.number ||
+			leftPr.url !== rightPr.url ||
+			leftPr.state !== rightPr.state ||
+			leftPr.baseRepo !== rightPr.baseRepo ||
+			leftPr.baseBranch !== rightPr.baseBranch ||
+			leftPr.headRepo !== rightPr.headRepo ||
+			leftPr.headBranch !== rightPr.headBranch
+		) {
+			return false;
+		}
+	}
+	return true;
+};
+
+export type TrackedPrMapCoordinator = {
+	applyWorkspace: (workspace: Workspace | null, currentMap: TrackedPrMap) => TrackedPrMap;
+	markResolved: (
+		repoId: string,
+		pr: PullRequestCreated | null,
+		previousPr?: PullRequestCreated | null,
+	) => void;
+};
+
+const trackedPrIdentityKey = (pr: PullRequestCreated): string =>
+	`${pr.number}:${pr.url}:${pr.baseRepo}:${pr.baseBranch}:${pr.headRepo}:${pr.headBranch}`;
+
+export const createTrackedPrMapCoordinator = (): TrackedPrMapCoordinator => {
+	const suppressedRepoPrKeys = new Map<string, string | null>();
+
+	const applyWorkspace = (workspace: Workspace | null, currentMap: TrackedPrMap): TrackedPrMap => {
+		if (!workspace) {
+			suppressedRepoPrKeys.clear();
+			return new Map<string, PullRequestCreated>();
+		}
+
+		for (const [repoId, suppressedKey] of Array.from(suppressedRepoPrKeys.entries())) {
+			const repo = workspace.repos.find((candidate) => candidate.id === repoId);
+			if (!repo?.trackedPullRequest) {
+				suppressedRepoPrKeys.delete(repoId);
+				continue;
+			}
+			if (isOpenPullRequest(repo.trackedPullRequest)) {
+				const reportedKey = trackedPrIdentityKey(repo.trackedPullRequest);
+				if (suppressedKey === null || suppressedKey !== reportedKey) {
+					suppressedRepoPrKeys.delete(repoId);
+				}
+			}
+		}
+
+		const nextMap = mergeTrackedPrMap(workspace, currentMap, new Set(suppressedRepoPrKeys.keys()));
+		return trackedPrMapsEqual(currentMap, nextMap) ? currentMap : nextMap;
+	};
+
+	const markResolved = (
+		repoId: string,
+		pr: PullRequestCreated | null,
+		previousPr: PullRequestCreated | null = null,
+	): void => {
+		if (pr) {
+			suppressedRepoPrKeys.delete(repoId);
+			return;
+		}
+		const previousKey =
+			previousPr && isOpenPullRequest(previousPr) ? trackedPrIdentityKey(previousPr) : null;
+		if (previousKey !== null) {
+			suppressedRepoPrKeys.set(repoId, previousKey);
+			return;
+		}
+		if (!suppressedRepoPrKeys.has(repoId)) {
+			suppressedRepoPrKeys.set(repoId, null);
+		}
+	};
+
+	return { applyWorkspace, markResolved };
+};
+
+export const withTrackedPr = (
+	currentMap: TrackedPrMap,
+	repoId: string,
+	pr: PullRequestCreated | null,
+): TrackedPrMap => {
+	const nextMap = new Map(currentMap);
+	if (pr) {
+		nextMap.set(repoId, pr);
+	} else {
+		nextMap.delete(repoId);
 	}
 	return nextMap;
 };
