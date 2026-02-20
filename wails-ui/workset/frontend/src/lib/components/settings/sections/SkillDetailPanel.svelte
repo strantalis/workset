@@ -75,9 +75,10 @@
 			</button>
 		</div>
 		<div class="form">
-			<label class="field">
+			<label class="ws-field">
 				<span>Directory name</span>
 				<input
+					class="ws-field-input"
 					type="text"
 					value={formDirName}
 					oninput={(event) => onFormDirNameChange((event.currentTarget as HTMLInputElement).value)}
@@ -87,9 +88,10 @@
 					spellcheck="false"
 				/>
 			</label>
-			<label class="field">
+			<label class="ws-field">
 				<span>Scope</span>
 				<select
+					class="ws-field-select"
 					value={formScope}
 					onchange={(event) =>
 						onFormScopeChange(
@@ -100,9 +102,10 @@
 					<option value="project">Project</option>
 				</select>
 			</label>
-			<label class="field">
+			<label class="ws-field">
 				<span>Tool</span>
 				<select
+					class="ws-field-select"
 					value={formTool}
 					onchange={(event) => onFormToolChange((event.currentTarget as HTMLSelectElement).value)}
 				>
@@ -115,7 +118,7 @@
 					{/each}
 				</select>
 			</label>
-			<label class="field">
+			<label class="ws-field">
 				<span>SKILL.md content</span>
 				<textarea
 					value={formContent}
@@ -190,7 +193,7 @@
 		</div>
 
 		{#if editing}
-			<label class="field">
+			<label class="ws-field">
 				<span>SKILL.md content</span>
 				<textarea
 					value={formContent}
@@ -219,7 +222,7 @@
 		{/if}
 	</div>
 {:else if skillsCount > 0}
-	<div class="hint">Select a skill to view, or click "+ New" to create one.</div>
+	<div class="hint ws-hint">Select a skill to view, or click "+ New" to create one.</div>
 {/if}
 
 <style>
@@ -319,33 +322,11 @@
 		gap: var(--space-3);
 	}
 
-	.field {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		font-size: var(--text-sm);
-		color: var(--muted);
-	}
-
-	.field input,
-	.field select {
+	.ws-field-input,
+	.ws-field-select {
 		background: var(--panel-strong);
-		border: 1px solid var(--border);
-		color: var(--text);
-		border-radius: var(--radius-md);
 		padding: 10px var(--space-3);
-		font-size: var(--text-base);
 		font-family: inherit;
-		transition:
-			border-color var(--transition-fast),
-			box-shadow var(--transition-fast);
-	}
-
-	.field input:focus,
-	.field select:focus {
-		outline: none;
-		border-color: var(--accent);
-		box-shadow: 0 0 0 2px var(--accent-soft);
 	}
 
 	.content-editor {
@@ -396,8 +377,6 @@
 	}
 
 	.hint {
-		font-size: var(--text-base);
-		color: var(--muted);
 		padding: var(--space-4);
 		text-align: center;
 		background: var(--panel-soft);

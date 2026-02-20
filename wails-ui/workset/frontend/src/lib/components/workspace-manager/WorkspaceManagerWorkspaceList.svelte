@@ -35,7 +35,7 @@
 </script>
 
 <div class="list-header">
-	<div class="section-title">Workspace list</div>
+	<div class="section-title ws-section-title">Workspace list</div>
 	<label class="toggle">
 		<input
 			type="checkbox"
@@ -46,12 +46,12 @@
 	</label>
 </div>
 {#if workspaceError}
-	<div class="note error">{workspaceError}</div>
+	<div class="note error ws-note ws-note-error">{workspaceError}</div>
 {/if}
 
 <div class="workspace-column">
 	{#if activeWorkspaces.length === 0}
-		<div class="empty">No active workspaces yet.</div>
+		<div class="empty ws-empty">No active workspaces yet.</div>
 	{/if}
 	{#each activeWorkspaces as workspace (workspace.id)}
 		<div class:active={workspace.id === selectedWorkspaceId} class="workspace-card">
@@ -89,7 +89,7 @@
 	{#if showArchived}
 		<div class="divider">Archived</div>
 		{#if archivedWorkspaces.length === 0}
-			<div class="empty">No archived workspaces.</div>
+			<div class="empty ws-empty">No archived workspaces.</div>
 		{/if}
 		{#each archivedWorkspaces as workspace (workspace.id)}
 			<div class:active={workspace.id === selectedWorkspaceId} class="workspace-card archived">
@@ -132,14 +132,6 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 16px;
-	}
-
-	.section-title {
-		font-size: var(--text-base);
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
-		color: var(--muted);
-		font-weight: 600;
 	}
 
 	.toggle {
@@ -211,19 +203,5 @@
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
 		color: var(--muted);
-	}
-
-	.empty {
-		font-size: var(--text-base);
-		color: var(--muted);
-		padding: 8px 0;
-	}
-
-	.note {
-		font-size: var(--text-base);
-	}
-
-	.note.error {
-		color: var(--danger);
 	}
 </style>

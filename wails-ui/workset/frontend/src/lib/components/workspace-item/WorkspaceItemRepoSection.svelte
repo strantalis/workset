@@ -46,6 +46,16 @@
 	const closeRepoMenus = (): void => {
 		repoMenu = null;
 	};
+
+	const statusDotClassMap: Record<string, string> = {
+		clean: 'ws-dot-clean',
+		modified: 'ws-dot-modified',
+		changes: 'ws-dot-ahead',
+		missing: 'ws-dot-error',
+	};
+
+	const statusDotClass = (statusClass: string): string =>
+		`status-dot ws-dot ${statusDotClassMap[statusClass] ?? 'status-dot-unknown'}`;
 </script>
 
 {#if isSingleRepo && workspace.repos[0]}
@@ -65,15 +75,12 @@
 					{ellipsisMiddle(repoRef, labelLimits.ref)}
 				</span>
 			{/if}
-			<svg
-				class="status-dot {status.className}"
-				viewBox="0 0 6 6"
+			<span
+				class={statusDotClass(status.className)}
 				role="img"
 				aria-label={status.label}
-			>
-				<title>{status.title}</title>
-				<circle cx="3" cy="3" r="3" />
-			</svg>
+				title={status.title}
+			></span>
 			<span class="last-used-inline">{formatLastUsed(workspace.lastUsed)}</span>
 		</button>
 		<div class="repo-actions">
@@ -135,15 +142,12 @@
 								{ellipsisMiddle(repoRef, labelLimits.ref)}
 							</span>
 						{/if}
-						<svg
-							class="status-dot {status.className}"
-							viewBox="0 0 6 6"
+						<span
+							class={statusDotClass(status.className)}
 							role="img"
 							aria-label={status.label}
-						>
-							<title>{status.title}</title>
-							<circle cx="3" cy="3" r="3" />
-						</svg>
+							title={status.title}
+						></span>
 					</span>
 				</button>
 				<div class="repo-actions">
@@ -336,28 +340,11 @@
 	.status-dot {
 		width: 4px;
 		height: 4px;
-		flex-shrink: 0;
 		opacity: 0.8;
 	}
 
-	.status-dot.missing {
-		fill: var(--danger);
-	}
-
-	.status-dot.unknown {
-		fill: var(--muted);
-	}
-
-	.status-dot.modified {
-		fill: var(--warning);
-	}
-
-	.status-dot.changes {
-		fill: var(--accent);
-	}
-
-	.status-dot.clean {
-		fill: var(--success);
+	.status-dot-unknown {
+		background: var(--muted);
 	}
 
 	.last-used-inline {

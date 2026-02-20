@@ -645,7 +645,7 @@ Add task-specific guidance here.
 							<LoaderCircle size={16} class="spin" /> Loading skills...
 						</div>
 					{:else if filteredSkills.length === 0}
-						<div class="empty-state">No skills matched your current filters.</div>
+						<div class="empty-state ws-empty-state">No skills matched your current filters.</div>
 					{:else}
 						<div class="card-grid">
 							{#each filteredSkills as skill (skillKey(skill))}

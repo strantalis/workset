@@ -198,14 +198,16 @@
 					placeholder="Switch workset, navigate, search repos..."
 					bind:value={query}
 				/>
-				<kbd class="kbd">esc</kbd>
+				<kbd class="kbd ui-kbd">esc</kbd>
 			</div>
 			<div class="result-list">
 				{#if items.length === 0}
-					<div class="empty">No matching items</div>
+					<div class="empty ws-empty-state">
+						<p class="ws-empty-state-copy">No matching items</p>
+					</div>
 				{:else}
 					{#if filteredWorksetItems.length > 0}
-						<div class="section-header">WORKSETS</div>
+						<div class="section-header ws-section-title">WORKSETS</div>
 						{#each filteredWorksetItems as item, i (item.id)}
 							{@const globalIdx = i}
 							{@const ws = worksetLookup.get(item.worksetId ?? '')}
@@ -236,11 +238,11 @@
 										</span>
 										<span class="meta-health">
 											{#each ws.health as status, idx (`${ws.id}-health-${idx}`)}
-												<span class="dot {status}"></span>
+												<span class="ws-dot ws-dot-sm ws-dot-{status}"></span>
 											{/each}
 										</span>
 										{#if shortcutMap?.get(item.worksetId ?? '')}
-											<kbd class="kbd">⌘{shortcutMap.get(item.worksetId ?? '')}</kbd>
+											<kbd class="kbd ui-kbd">⌘{shortcutMap.get(item.worksetId ?? '')}</kbd>
 										{/if}
 									</span>
 								{/if}
@@ -248,7 +250,7 @@
 						{/each}
 					{/if}
 					{#if filteredViewItems.length > 0}
-						<div class="section-header">NAVIGATE</div>
+						<div class="section-header ws-section-title">NAVIGATE</div>
 						{#each filteredViewItems as item, i (item.id)}
 							{@const globalIdx = filteredWorksetItems.length + i}
 							<button
@@ -282,11 +284,11 @@
 				{/if}
 			</div>
 			<div class="footer">
-				<span><kbd class="kbd">↑↓</kbd> navigate</span>
-				<span><kbd class="kbd">↵</kbd> open</span>
-				<span><kbd class="kbd">esc</kbd> close</span>
-				<span><kbd class="kbd">⌘1-5</kbd> direct switch</span>
-				<span><kbd class="kbd">⌘K</kbd> toggle</span>
+				<span><kbd class="kbd ui-kbd">↑↓</kbd> navigate</span>
+				<span><kbd class="kbd ui-kbd">↵</kbd> open</span>
+				<span><kbd class="kbd ui-kbd">esc</kbd> close</span>
+				<span><kbd class="kbd ui-kbd">⌘1-5</kbd> direct switch</span>
+				<span><kbd class="kbd ui-kbd">⌘K</kbd> toggle</span>
 			</div>
 		</div>
 	</div>
@@ -349,10 +351,6 @@
 
 	.section-header {
 		padding: 8px 8px 4px;
-		font-size: var(--text-xs);
-		font-weight: 700;
-		letter-spacing: 0.08em;
-		color: var(--muted);
 		user-select: none;
 	}
 
@@ -454,33 +452,8 @@
 		gap: 3px;
 	}
 
-	.dot {
-		width: 6px;
-		height: 6px;
-		border-radius: 999px;
-	}
-
-	.dot.clean {
-		background: var(--success);
-	}
-
-	.dot.modified {
-		background: var(--warning);
-	}
-
-	.dot.ahead {
-		background: var(--accent);
-	}
-
-	.dot.error {
-		background: var(--danger);
-	}
-
 	.empty {
 		padding: 20px;
-		font-size: var(--text-sm);
-		color: var(--muted);
-		text-align: center;
 	}
 
 	.footer {
@@ -493,16 +466,9 @@
 	}
 
 	.kbd {
-		display: inline-flex;
-		align-items: center;
 		justify-content: center;
 		min-width: 20px;
 		height: 18px;
 		padding: 0 4px;
-		border-radius: 6px;
-		border: 1px solid var(--border);
-		background: var(--panel-soft);
-		font-size: var(--text-mono-xs);
-		font-family: var(--font-mono);
 	}
 </style>

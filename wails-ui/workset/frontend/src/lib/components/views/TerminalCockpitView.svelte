@@ -189,10 +189,12 @@
 			{/if}
 		</div>
 	{:else}
-		<div class="empty-state">
+		<div class="empty-state ws-empty-state">
 			<FileTerminal size={28} />
 			<h2>No workspace selected</h2>
-			<p>Select a workspace to launch the Engineering Cockpit with live terminals.</p>
+			<p class="ws-empty-state-copy">
+				Select a workspace to launch the Engineering Cockpit with live terminals.
+			</p>
 		</div>
 	{/if}
 </div>
@@ -641,10 +643,6 @@
 	/* ── Empty state ─────────────────────────────────────── */
 	.empty-state {
 		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
 		gap: 12px;
 		color: var(--muted);
 		padding: 24px;
@@ -658,10 +656,8 @@
 	}
 
 	.empty-state p {
-		margin: 0;
 		font-size: var(--text-base);
 		max-width: 40ch;
-		text-align: center;
 		line-height: 1.5;
 	}
 </style>

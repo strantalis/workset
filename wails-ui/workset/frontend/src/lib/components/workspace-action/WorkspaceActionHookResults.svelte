@@ -34,6 +34,13 @@
 		onTrustPendingHook,
 		onDone,
 	}: Props = $props();
+
+	const hookRunDotClass = (status: HookExecution['status']): string | null => {
+		if (status === 'ok') return 'ws-dot-clean';
+		if (status === 'failed') return 'ws-dot-error';
+		if (status === 'running') return 'ws-dot-ahead';
+		return null;
+	};
 </script>
 
 <div class="hook-results-container">
@@ -50,12 +57,12 @@
 
 	{#if hookRuns.length > 0}
 		<div class="hook-results-section">
-			<h4 class="hook-results-heading">Hook runs</h4>
+			<h4 class="hook-results-heading ws-section-title">Hook runs</h4>
 			<div class="hook-runs-list">
 				{#each hookRuns as run (`${run.repo}:${run.event}:${run.id}`)}
 					<div class="hook-run-row">
 						<span class="hook-run-repo">{run.repo}</span>
-						<code class="hook-run-id">{run.id}</code>
+						<code class="hook-run-id ui-kbd">{run.id}</code>
 						<span
 							class="hook-status-badge"
 							class:ok={run.status === 'ok'}
@@ -63,6 +70,10 @@
 							class:running={run.status === 'running'}
 							class:skipped={run.status === 'skipped'}
 						>
+							{#if hookRunDotClass(run.status)}
+								<span class={`ws-dot ws-dot-sm ${hookRunDotClass(run.status)}`} aria-hidden="true"
+								></span>
+							{/if}
 							{run.status}
 						</span>
 						{#if run.log_path}
@@ -76,7 +87,7 @@
 
 	{#if pendingHooks.length > 0}
 		<div class="hook-results-section">
-			<h4 class="hook-results-heading">Pending hooks</h4>
+			<h4 class="hook-results-heading ws-section-title">Pending hooks</h4>
 			{#each pendingHooks as pending (`${pending.repo}:${pending.event}`)}
 				<div class="pending-hook-card">
 					<div class="pending-hook-info">
@@ -86,7 +97,7 @@
 							<span class="hook-status-badge ok">trusted</span>
 						{/if}
 					</div>
-					<div class="pending-hook-actions">
+					<div class="ws-pending-hook-actions">
 						<Button
 							variant="primary"
 							size="sm"
@@ -105,7 +116,7 @@
 						</Button>
 					</div>
 					{#if pending.runError}
-						<div class="pending-hook-error">{pending.runError}</div>
+						<div class="ws-pending-hook-error">{pending.runError}</div>
 					{/if}
 				</div>
 			{/each}
@@ -132,10 +143,6 @@
 
 	.hook-results-heading {
 		margin: 0;
-		font-size: var(--text-base);
-		font-weight: 600;
-		color: var(--muted);
-		text-transform: uppercase;
 		letter-spacing: 0.03em;
 	}
 
@@ -162,13 +169,13 @@
 	}
 
 	.hook-run-id {
-		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
 	.hook-status-badge {
 		display: inline-flex;
 		align-items: center;
+		gap: 6px;
 		padding: 2px 8px;
 		border-radius: var(--radius-sm);
 		font-size: var(--text-xs);
@@ -230,16 +237,6 @@
 	.pending-hook-names {
 		font-size: var(--text-sm);
 		color: var(--muted);
-	}
-
-	.pending-hook-actions {
-		display: flex;
-		gap: 8px;
-	}
-
-	.pending-hook-error {
-		color: var(--danger);
-		font-size: var(--text-sm);
 	}
 
 	.hook-results-footer {

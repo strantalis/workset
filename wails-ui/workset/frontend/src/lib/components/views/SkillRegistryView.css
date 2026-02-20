@@ -951,12 +951,17 @@
 }
 
 /* ─── States ─── */
-.loading-state,
-.empty-state {
+.loading-state {
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	gap: 8px;
+	padding: 40px;
+	color: var(--muted);
+	font-size: var(--text-base);
+}
+
+.empty-state {
 	padding: 40px;
 	color: var(--muted);
 	font-size: var(--text-base);

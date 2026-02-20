@@ -419,16 +419,16 @@
 				{/if}
 			</div>
 		{:else}
-			<div class="empty">
-				<p>No skills found.</p>
+			<div class="empty ws-empty-state">
+				<p class="ws-empty-state-copy">No skills found.</p>
 				<Button variant="ghost" onclick={startNew}>Create your first skill</Button>
 			</div>
 		{/if}
 
 		{#if error}
-			<div class="message error">{error}</div>
+			<div class="message error ws-message ws-message-error">{error}</div>
 		{:else if success}
-			<div class="message success">{success}</div>
+			<div class="message success ws-message ws-message-success">{success}</div>
 		{/if}
 
 		<SkillDetailPanel
@@ -627,37 +627,14 @@
 		opacity: 1;
 	}
 
-	.message {
-		font-size: var(--text-base);
-		padding: var(--space-2) var(--space-3);
-		border-radius: var(--radius-md);
-	}
-
-	.message.error {
-		background: var(--danger-subtle);
-		color: var(--danger);
-	}
-
 	.message.success {
 		background: rgba(74, 222, 128, 0.1);
-		color: var(--success);
 	}
 
 	.empty {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: var(--space-3);
 		padding: 32px;
 		background: var(--panel-soft);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-md);
-		text-align: center;
-	}
-
-	.empty p {
-		margin: 0;
-		color: var(--muted);
-		font-size: var(--text-md);
 	}
 </style>

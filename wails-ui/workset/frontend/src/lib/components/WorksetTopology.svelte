@@ -34,7 +34,7 @@
 <div class="topology-container">
 	<div class="topo-gradient"></div>
 
-	<h3 class="topo-title">Workset Topology</h3>
+	<h3 class="topo-title ws-section-title">Workset Topology</h3>
 
 	<div class="topo-area">
 		<div class="topo-center-wrapper">
@@ -126,9 +126,6 @@
 		margin: 0;
 		font-size: var(--text-sm);
 		font-weight: 500;
-		color: var(--muted);
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
 		margin-bottom: 16px;
 		position: relative;
 		z-index: 1;

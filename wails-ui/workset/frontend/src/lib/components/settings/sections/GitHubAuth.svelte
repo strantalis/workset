@@ -150,7 +150,7 @@
 	{#if loading}
 		<div class="state">Loading GitHub status…</div>
 	{:else if error && !info}
-		<div class="message error">{error}</div>
+		<div class="message error ws-message ws-message-error">{error}</div>
 	{:else if info}
 		<!-- Status Card -->
 		<div class="status-card" class:success-pulse={successPulse}>
@@ -185,11 +185,11 @@
 		</div>
 
 		{#if error}
-			<div class="message error">{error}</div>
+			<div class="message error ws-message ws-message-error">{error}</div>
 		{/if}
 
 		{#if statusMessage}
-			<div class="message success">{statusMessage}</div>
+			<div class="message success ws-message ws-message-success">{statusMessage}</div>
 		{/if}
 
 		<!-- Mode Toggle -->
@@ -223,7 +223,7 @@
 
 				{#if !cliInstalled}
 					<div class="cli-not-installed">
-						<div class="message warning">
+						<div class="message warning ws-message ws-message-warning">
 							GitHub CLI is not installed. Provide the `gh` binary path to continue.
 						</div>
 						<div class="cli-path-input">
@@ -359,25 +359,12 @@
 		font-size: var(--text-sm);
 	}
 
-	.message {
-		font-size: var(--text-base);
-		padding: var(--space-2) var(--space-3);
-		border-radius: var(--radius-md);
-	}
-
-	.message.error {
-		background: var(--danger-subtle);
-		color: var(--danger);
-	}
-
 	.message.success {
 		background: var(--success-subtle);
-		color: var(--success);
 	}
 
 	.message.warning {
 		background: var(--warning-subtle);
-		color: var(--warning);
 	}
 
 	.mode-toggle {

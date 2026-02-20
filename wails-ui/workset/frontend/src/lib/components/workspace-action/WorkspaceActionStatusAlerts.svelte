@@ -39,7 +39,7 @@
 						(trusted)
 					{/if}
 				</div>
-				<div class="pending-hook-actions">
+				<div class="ws-pending-hook-actions">
 					<Button
 						variant="ghost"
 						size="sm"
@@ -58,7 +58,7 @@
 					</Button>
 				</div>
 				{#if pending.runError}
-					<div class="pending-hook-error">{pending.runError}</div>
+					<div class="ws-pending-hook-error">{pending.runError}</div>
 				{/if}
 			</div>
 		{/each}
@@ -70,15 +70,5 @@
 		display: grid;
 		gap: 6px;
 		margin-bottom: 10px;
-	}
-
-	.pending-hook-actions {
-		display: flex;
-		gap: 8px;
-	}
-
-	.pending-hook-error {
-		color: var(--danger);
-		font-size: var(--text-sm);
 	}
 </style>

@@ -52,23 +52,24 @@
 		onLayoutModeChange?: (layoutMode: WorksetLayoutMode) => void;
 	}
 
-	const props: Props = $props();
-	const worksets = $derived(props.worksets);
-	const shortcutMap = $derived(props.shortcutMap);
-	const activeWorkspaceId = $derived(props.activeWorkspaceId);
-	const onSelectWorkspace = props.onSelectWorkspace;
-	const onCreateWorkspace = props.onCreateWorkspace;
-	const onAddRepo = props.onAddRepo;
-	const onRemoveWorkspace = props.onRemoveWorkspace;
-	const onTogglePin = props.onTogglePin;
-	const onToggleArchived = props.onToggleArchived;
-	const onOpenPopout = props.onOpenPopout;
-	const onClosePopout = props.onClosePopout;
-	const isWorkspacePoppedOut = props.isWorkspacePoppedOut;
-	const onGroupModeChange = props.onGroupModeChange ?? (() => {});
-	const onLayoutModeChange = props.onLayoutModeChange ?? (() => {});
-	const groupModeProp = $derived(props.groupMode ?? 'active');
-	const layoutModeProp = $derived(props.layoutMode ?? 'grid');
+	const {
+		worksets,
+		shortcutMap,
+		activeWorkspaceId,
+		onSelectWorkspace,
+		onCreateWorkspace,
+		onAddRepo,
+		onRemoveWorkspace,
+		onTogglePin,
+		onToggleArchived,
+		onOpenPopout,
+		onClosePopout,
+		isWorkspacePoppedOut,
+		onGroupModeChange = () => {},
+		groupMode: groupModeProp = 'active',
+		layoutMode: layoutModeProp = 'grid',
+		onLayoutModeChange = () => {},
+	}: Props = $props();
 
 	const GROUP_MODES: Array<{ id: WorksetGroupMode; label: string; icon: typeof LayoutGrid }> = [
 		{ id: 'all', label: 'All', icon: LayoutGrid },
@@ -308,29 +309,29 @@
 
 		<div class="stats-row">
 			<div class="stat-pill">
-				<div class="dot accent"></div>
+				<div class="ws-dot ws-dot-md ws-dot-ahead"></div>
 				<span>Worksets</span>
 				<strong>{totalWorksets}</strong>
 			</div>
 			<div class="stat-pill">
-				<div class="dot violet"></div>
+				<div class="ws-dot ws-dot-md ws-dot-violet"></div>
 				<span>Repos</span>
 				<strong>{totalRepos}</strong>
 			</div>
 			<div class="stat-pill">
-				<div class="dot success"></div>
+				<div class="ws-dot ws-dot-md ws-dot-clean"></div>
 				<span>Open PRs</span>
 				<strong>{totalPrs}</strong>
 			</div>
 			{#if totalDirty > 0}
 				<div class="stat-pill">
-					<div class="dot gold"></div>
+					<div class="ws-dot ws-dot-md ws-dot-gold"></div>
 					<span>Dirty</span>
 					<strong>{totalDirty}</strong>
 				</div>
 			{/if}
 			<div class="stat-pill">
-				<div class="dot gold"></div>
+				<div class="ws-dot ws-dot-md ws-dot-gold"></div>
 				<span>Pinned</span>
 				<strong>{totalPinned}</strong>
 			</div>
@@ -401,9 +402,9 @@
 
 	<section class="content">
 		{#if groups.length === 0 || groups.every((group) => group.items.length === 0)}
-			<div class="empty-state">
+			<div class="empty-state ws-empty-state">
 				<Search size={32} />
-				<p>No worksets match "{searchQuery}"</p>
+				<p class="ws-empty-state-copy">No worksets match "{searchQuery}"</p>
 			</div>
 		{:else}
 			<div class="groups">
@@ -560,11 +561,11 @@
 
 											<div class="health-row">
 												{#each item.health as status, index (`${item.id}-health-${index}`)}
-													<span class="dot {status}" title={status}></span>
+													<span class={`ws-dot ws-dot-sm ws-dot-${status}`} title={status}></span>
 												{/each}
-												<span class="diff"
-													><span class="plus">+{item.linesAdded}</span>
-													<span class="minus">-{item.linesRemoved}</span></span
+												<span class="diff ws-diffstat"
+													><span class="ws-diffstat-add">+{item.linesAdded}</span>
+													<span class="ws-diffstat-del">-{item.linesRemoved}</span></span
 												>
 											</div>
 										</div>
@@ -577,7 +578,7 @@
 											</div>
 											<div class="footer-actions">
 												{#if getShortcutNumber(item.id)}
-													<kbd><Command size={7} />{getShortcutNumber(item.id)}</kbd>
+													<kbd class="ui-kbd"><Command size={7} />{getShortcutNumber(item.id)}</kbd>
 												{/if}
 											</div>
 										</div>
@@ -631,14 +632,14 @@
 
 										<div class="row-health">
 											{#each item.health as status, index (`${item.id}-list-health-${index}`)}
-												<span class="dot {status}"></span>
+												<span class={`ws-dot ws-dot-sm ws-dot-${status}`}></span>
 											{/each}
 										</div>
 
 										<div class="row-stats">
-											<span class="diff"
-												><span class="plus">+{item.linesAdded}</span>
-												<span class="minus">-{item.linesRemoved}</span></span
+											<span class="diff ws-diffstat"
+												><span class="ws-diffstat-add">+{item.linesAdded}</span>
+												<span class="ws-diffstat-del">-{item.linesRemoved}</span></span
 											>
 											<span class="prs"><GitPullRequest size={10} /> {item.openPrs}</span>
 											<span class="dirty">{item.dirtyCount} dirty</span>
@@ -646,7 +647,7 @@
 										</div>
 
 										{#if getShortcutNumber(item.id)}
-											<kbd><Command size={7} />{getShortcutNumber(item.id)}</kbd>
+											<kbd class="ui-kbd"><Command size={7} />{getShortcutNumber(item.id)}</kbd>
 										{/if}
 
 										<div class="item-actions">

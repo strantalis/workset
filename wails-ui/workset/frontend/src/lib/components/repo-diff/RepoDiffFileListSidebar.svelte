@@ -110,7 +110,7 @@
 
 	{#if sidebarTab === 'files'}
 		{#if summary && summary.files.length > 0}
-			<div class="section-title">
+			<div class="section-title ws-section-title">
 				{shouldSplitLocalPendingSection && localSummary && localSummary.files.length > 0
 					? 'PR files'
 					: 'Changed files'}
@@ -131,7 +131,7 @@
 							<span class="rename">from {file.prevPath}</span>
 						{/if}
 					</div>
-					<div class="stats">
+					<div class="stats ws-inline">
 						{#if reviewCount > 0}
 							<span
 								class="review-badge"
@@ -152,7 +152,7 @@
 		{/if}
 
 		{#if shouldSplitLocalPendingSection && localSummary && localSummary.files.length > 0}
-			<div class="section-title local-section-title">Local pending changes</div>
+			<div class="section-title ws-section-title local-section-title">Local pending changes</div>
 			{#each localSummary.files as file (`local:${file.path}:${file.prevPath ?? ''}`)}
 				<button
 					class:selected={file.path === selected?.path &&
@@ -168,7 +168,7 @@
 							<span class="rename">from {file.prevPath}</span>
 						{/if}
 					</div>
-					<div class="stats">
+					<div class="stats ws-inline">
 						<span class="tag {file.status} local-tag">{statusLabel(file.status)}</span>
 						<span class="diffstat local-diffstat"
 							><span class="add">+{file.added}</span><span class="sep">/</span><span class="del"
@@ -296,9 +296,6 @@
 	.section-title {
 		font-size: var(--text-xs);
 		font-weight: 500;
-		color: var(--muted);
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
 		height: 24px;
 		display: flex;
 		align-items: center;
@@ -371,10 +368,7 @@
 	}
 
 	.stats {
-		display: flex;
 		justify-content: space-between;
-		align-items: center;
-		gap: 8px;
 		font-size: var(--text-sm);
 		color: var(--muted);
 	}

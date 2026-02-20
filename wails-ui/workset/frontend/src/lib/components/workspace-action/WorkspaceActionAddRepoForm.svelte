@@ -75,7 +75,7 @@
 	const existingRepoNames = $derived(new Set(existingRepos.map((r) => r.name)));
 </script>
 
-<div class="form add-two-column">
+<div class="form add-two-column ws-form-stack">
 	<div class="column-left">
 		<WorkspaceActionSelectionTabs
 			{activeTab}
@@ -89,7 +89,7 @@
 				<WorkspaceActionAddRepoDirectTab {addSource} {onAddSourceInput} {onBrowse} />
 			{:else if activeTab === 'repos'}
 				<div class="field">
-					<div class="inline">
+					<div class="inline ws-inline">
 						<input
 							value={searchQuery}
 							oninput={(event) =>
@@ -138,7 +138,7 @@
 				</div>
 			{:else if activeTab === 'groups'}
 				<div class="field">
-					<div class="inline">
+					<div class="inline ws-inline">
 						<input
 							value={searchQuery}
 							oninput={(event) =>
@@ -220,7 +220,9 @@
 		</div>
 
 		{#if aliasItems.length === 0 && groupItems.length === 0}
-			<div class="hint">No registered repos or groups configured. Add them in Settings.</div>
+			<div class="hint ws-hint">
+				No registered repos or groups configured. Add them in Settings.
+			</div>
 		{/if}
 	</div>
 
@@ -237,27 +239,6 @@
 </div>
 
 <style>
-	.form {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-	}
-
-	.inline {
-		display: flex;
-		gap: 8px;
-		align-items: center;
-	}
-
-	.inline input {
-		flex: 1;
-	}
-
-	.hint {
-		font-size: var(--text-sm);
-		color: var(--muted);
-	}
-
 	.search-input {
 		flex: 1;
 		background: rgba(255, 255, 255, 0.02);

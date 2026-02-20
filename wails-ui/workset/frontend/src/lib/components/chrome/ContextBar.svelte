@@ -50,38 +50,38 @@
 		{/if}
 
 		{#if showShortcut && shortcutNumber}
-			<kbd class="shortcut"><Command size={9} />{shortcutNumber}</kbd>
+			<kbd class="shortcut ui-kbd"><Command size={9} />{shortcutNumber}</kbd>
 		{/if}
 
 		<div class="divider"></div>
-		<div class="branch">
+		<div class="branch ws-inline">
 			<span class="branch-icon"><GitBranch size={12} /></span>
 			{workset.branch}
 		</div>
 		<div class="divider"></div>
 		<div class="health" aria-label="Repository health status">
 			{#each workset.health as status, index (`${workset.id}-${index}`)}
-				<span class="dot {status}"></span>
+				<span class="ws-dot ws-dot-sm ws-dot-{status}"></span>
 			{/each}
 		</div>
 		{#if hasDiff}
 			<div class="divider"></div>
-			<div class="diff">
+			<div class="diff ws-inline">
 				<span class="plus">+{workset.linesAdded}</span>
 				<span class="minus">-{workset.linesRemoved}</span>
 			</div>
 		{/if}
-		<div class="stats">
+		<div class="stats ws-inline">
 			{#if workset.dirtyCount > 0}
-				<span class="warning"><AlertCircle size={10} /> {workset.dirtyCount} dirty</span>
+				<span class="warning ws-inline"><AlertCircle size={10} /> {workset.dirtyCount} dirty</span>
 			{/if}
 			{#if workset.openPrs > 0}
-				<span class="pr"><GitPullRequest size={10} /> {workset.openPrs} PRs</span>
+				<span class="pr ws-inline"><GitPullRequest size={10} /> {workset.openPrs} PRs</span>
 			{/if}
 		</div>
 	{/if}
 
-	<div class="spacer"></div>
+	<div class="ws-spacer"></div>
 	{#if showPopoutToggle}
 		<button
 			type="button"
@@ -101,7 +101,7 @@
 	{/if}
 	{#if showPaletteHint}
 		<button type="button" class="palette-hint" onclick={() => onOpenPalette?.()}>
-			<kbd class="shortcut"><Command size={9} />K</kbd>
+			<kbd class="shortcut ui-kbd"><Command size={9} />K</kbd>
 			<span>Command palette</span>
 		</button>
 	{/if}
@@ -158,19 +158,6 @@
 		color: var(--warning);
 	}
 
-	.shortcut {
-		display: inline-flex;
-		align-items: center;
-		gap: 2px;
-		border: 1px solid var(--border);
-		background: var(--panel-soft);
-		border-radius: 6px;
-		padding: 1px 5px;
-		font-size: var(--text-mono-xs);
-		font-family: var(--font-mono);
-		color: var(--muted);
-	}
-
 	.divider {
 		width: 1px;
 		height: 14px;
@@ -180,8 +167,6 @@
 	.branch,
 	.diff,
 	.stats {
-		display: inline-flex;
-		align-items: center;
 		gap: 6px;
 		font-size: var(--text-xs);
 		color: var(--muted);
@@ -199,28 +184,6 @@
 		gap: 4px;
 	}
 
-	.dot {
-		width: 6px;
-		height: 6px;
-		border-radius: 999px;
-	}
-
-	.dot.clean {
-		background: var(--success);
-	}
-
-	.dot.modified {
-		background: var(--warning);
-	}
-
-	.dot.ahead {
-		background: var(--accent);
-	}
-
-	.dot.error {
-		background: var(--danger);
-	}
-
 	.plus {
 		color: var(--success);
 	}
@@ -231,17 +194,11 @@
 
 	.warning,
 	.pr {
-		display: inline-flex;
-		align-items: center;
 		gap: 4px;
 	}
 
 	.pr {
 		color: #8b8aed;
-	}
-
-	.spacer {
-		flex: 1;
 	}
 
 	.palette-hint {

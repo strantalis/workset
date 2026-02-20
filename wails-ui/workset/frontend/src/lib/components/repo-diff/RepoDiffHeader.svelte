@@ -61,10 +61,10 @@
 			{/if}
 			{#if summary}
 				<span>Files: {summary.files.length}</span>
-				<span class="diffstat"
-					><span class="add">+{summary.totalAdded}</span><span class="sep">/</span><span class="del"
-						>-{summary.totalRemoved}</span
-					></span
+				<span class="diffstat ws-diffstat"
+					><span class="ws-diffstat-add">+{summary.totalAdded}</span><span class="ws-diffstat-sep"
+						>/</span
+					><span class="ws-diffstat-del">-{summary.totalRemoved}</span></span
 				>
 			{/if}
 			<RepoDiffHeaderPrBadge
@@ -129,26 +129,6 @@
 		color: var(--muted);
 		font-size: var(--text-sm);
 		flex-wrap: wrap;
-	}
-
-	.diffstat {
-		font-weight: 600;
-		display: inline-flex;
-		gap: 8px;
-		align-items: center;
-	}
-
-	.diffstat .add {
-		color: var(--success);
-	}
-
-	.diffstat .del {
-		color: var(--danger);
-	}
-
-	.diffstat .sep {
-		color: var(--muted);
-		margin: 0 -6px;
 	}
 
 	.status {
