@@ -47,13 +47,15 @@
 	};
 
 	let commitCopied = $state(false);
+	let commitCopiedTimer: ReturnType<typeof setTimeout> | undefined;
 
 	const copyCommit = async (): Promise<void> => {
 		if (!appVersion?.commit) return;
 		try {
 			await navigator.clipboard.writeText(appVersion.commit);
+			clearTimeout(commitCopiedTimer);
 			commitCopied = true;
-			setTimeout(() => {
+			commitCopiedTimer = setTimeout(() => {
 				commitCopied = false;
 			}, 1500);
 		} catch {
