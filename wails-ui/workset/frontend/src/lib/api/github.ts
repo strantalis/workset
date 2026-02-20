@@ -44,3 +44,4 @@ export {
 } from './github/review';
 
 export { fetchCurrentGitHubUser } from './github/user';
+export { searchGitHubRepositories } from './github/search';

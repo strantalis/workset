@@ -252,6 +252,30 @@ type GitHubUserResult struct {
 	Config config.GlobalConfigLoadInfo
 }
 
+// GitHubRepoSearchInput describes inputs for remote repository search.
+type GitHubRepoSearchInput struct {
+	Query string
+	Limit int
+}
+
+// GitHubRepoSearchItemJSON describes a repository candidate for catalog registration.
+type GitHubRepoSearchItemJSON struct {
+	Name          string `json:"name"`
+	FullName      string `json:"full_name"`
+	Owner         string `json:"owner"`
+	DefaultBranch string `json:"default_branch"`
+	CloneURL      string `json:"clone_url"`
+	SSHURL        string `json:"ssh_url"`
+	Private       bool   `json:"private"`
+	Archived      bool   `json:"archived"`
+	Host          string `json:"host"`
+}
+
+// GitHubRepoSearchResult wraps repository typeahead payload.
+type GitHubRepoSearchResult struct {
+	Repositories []GitHubRepoSearchItemJSON
+}
+
 // GitHubAuthStatusJSON describes the current GitHub auth state.
 type GitHubAuthStatusJSON struct {
 	Authenticated bool     `json:"authenticated"`

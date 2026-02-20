@@ -49,6 +49,11 @@ type readHelpersCheckRunCall struct {
 	perPage int
 }
 
+type readHelpersRepoSearchCall struct {
+	query   string
+	perPage int
+}
+
 type readHelpersGitHubClient struct {
 	getPullRequestCalls       []readHelpersGetPullRequestCall
 	getRepoDefaultBranchCalls []readHelpersGetRepoDefaultBranchCall
@@ -56,6 +61,7 @@ type readHelpersGitHubClient struct {
 	getFileContentCalls       []readHelpersGetFileContentCall
 	listPullRequestsCalls     []readHelpersPRCall
 	listCheckRunsCalls        []readHelpersCheckRunCall
+	searchRepositoriesCalls   []readHelpersRepoSearchCall
 
 	getPullRequestFunc         func(ctx context.Context, owner, repo string, number int) (GitHubPullRequest, error)
 	getRepoDefaultBranchFunc   func(ctx context.Context, owner, repo string) (string, error)
@@ -63,6 +69,7 @@ type readHelpersGitHubClient struct {
 	getFileContentFunc         func(ctx context.Context, owner, repo, path, ref string) ([]byte, bool, error)
 	listPullRequestsFunc       func(ctx context.Context, owner, repo, head, state string, page, perPage int) ([]GitHubPullRequest, int, error)
 	listCheckRunsFunc          func(ctx context.Context, owner, repo, ref string, page, perPage int) ([]PullRequestCheckJSON, int, error)
+	searchRepositoriesFunc     func(ctx context.Context, query string, perPage int) ([]GitHubRepositorySearchResult, error)
 }
 
 func (c *readHelpersGitHubClient) CreatePullRequest(_ context.Context, _ string, _ string, _ GitHubNewPullRequest) (GitHubPullRequest, error) {
@@ -98,6 +105,17 @@ func (c *readHelpersGitHubClient) ListPullRequests(ctx context.Context, owner, r
 
 func (c *readHelpersGitHubClient) ListReviewComments(_ context.Context, _ string, _ string, _ int, _ int, _ int) ([]PullRequestReviewCommentJSON, int, error) {
 	return nil, 0, nil
+}
+
+func (c *readHelpersGitHubClient) SearchRepositories(ctx context.Context, query string, perPage int) ([]GitHubRepositorySearchResult, error) {
+	c.searchRepositoriesCalls = append(c.searchRepositoriesCalls, readHelpersRepoSearchCall{
+		query:   query,
+		perPage: perPage,
+	})
+	if c.searchRepositoriesFunc == nil {
+		return nil, nil
+	}
+	return c.searchRepositoriesFunc(ctx, query, perPage)
 }
 
 func (c *readHelpersGitHubClient) CreateReplyComment(_ context.Context, _ string, _ string, _ int, _ int64, _ string) (PullRequestReviewCommentJSON, error) {

@@ -97,13 +97,17 @@ func (p *githubPATProvider) Client(ctx context.Context, host string) (GitHubClie
 	if err != nil {
 		return nil, err
 	}
-	client, err := newGitHubClientWithToken(token, host)
+	normalizedHost := strings.TrimSpace(host)
+	if normalizedHost == "" {
+		normalizedHost = defaultGitHubHost
+	}
+	client, err := newGitHubClientWithToken(token, normalizedHost)
 	if err != nil {
 		return nil, err
 	}
 	return &githubPATClient{
 		token:  token,
-		host:   host,
+		host:   normalizedHost,
 		client: client,
 	}, nil
 }
@@ -174,6 +178,44 @@ func (c *githubPATClient) ListPullRequests(ctx context.Context, owner, repo, hea
 		next = resp.NextPage
 	}
 	return out, next, nil
+}
+
+func (c *githubPATClient) SearchRepositories(ctx context.Context, query string, perPage int) ([]GitHubRepositorySearchResult, error) {
+	trimmed := strings.TrimSpace(query)
+	if trimmed == "" {
+		return []GitHubRepositorySearchResult{}, nil
+	}
+	if perPage <= 0 {
+		perPage = 8
+	}
+	searchResult, _, err := c.client.Search.Repositories(ctx, trimmed, &github.SearchOptions{
+		Sort:  "updated",
+		Order: "desc",
+		ListOptions: github.ListOptions{
+			PerPage: perPage,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	results := make([]GitHubRepositorySearchResult, 0, len(searchResult.Repositories))
+	for _, repo := range searchResult.Repositories {
+		if repo == nil {
+			continue
+		}
+		results = append(results, GitHubRepositorySearchResult{
+			Name:          repo.GetName(),
+			FullName:      repo.GetFullName(),
+			Owner:         repo.GetOwner().GetLogin(),
+			DefaultBranch: repo.GetDefaultBranch(),
+			CloneURL:      repo.GetCloneURL(),
+			SSHURL:        repo.GetSSHURL(),
+			Private:       repo.GetPrivate(),
+			Archived:      repo.GetArchived(),
+			Host:          c.host,
+		})
+	}
+	return results, nil
 }
 
 func (c *githubPATClient) ListReviewComments(ctx context.Context, owner, repo string, number, page, perPage int) ([]PullRequestReviewCommentJSON, int, error) {

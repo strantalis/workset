@@ -398,6 +398,18 @@ export type GitHubAuthInfo = {
 	cli: GitHubCLIStatus;
 };
 
+export type GitHubRepoSearchItem = {
+	name: string;
+	fullName: string;
+	owner: string;
+	defaultBranch: string;
+	cloneUrl: string;
+	sshUrl: string;
+	private: boolean;
+	archived: boolean;
+	host: string;
+};
+
 export type RemoteInfo = {
 	name: string;
 	owner: string;

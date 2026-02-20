@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import {
 		Plus,
 		Search,
@@ -17,7 +17,8 @@
 		openDirectoryDialog,
 		updateAlias,
 	} from '../../../api/settings';
-	import type { Alias } from '../../../types';
+	import { searchGitHubRepositories } from '../../../api/github';
+	import type { Alias, GitHubRepoSearchItem } from '../../../types';
 	import { toErrorMessage } from '../../../errors';
 	import SettingsSection from '../SettingsSection.svelte';
 	import Button from '../../ui/Button.svelte';
@@ -44,6 +45,15 @@
 	let formBranch = $state('main');
 	let advancedOpen = $state(false);
 	let detecting = $state(false);
+	let remoteSuggestions: GitHubRepoSearchItem[] = $state([]);
+	let searchLoading = $state(false);
+	let searchError: string | null = $state(null);
+	let suggestionsOpen = $state(false);
+	let activeSuggestionIndex = $state(-1);
+	let lastSearchedQuery = $state('');
+	let sourceSearchDebounce: ReturnType<typeof setTimeout> | null = null;
+	let sourceSearchCloseTimer: ReturnType<typeof setTimeout> | null = null;
+	let sourceSearchSequence = 0;
 
 	// Search and copy state
 	let searchQuery = $state('');
@@ -61,6 +71,195 @@
 	const filteredAliases = $derived(
 		aliases.filter((a) => a.name.toLowerCase().includes(searchQuery.toLowerCase())),
 	);
+	const showRemoteSuggestionPanel = $derived(
+		isRegistering && !isEditing && suggestionsOpen,
+	);
+
+	const isLikelyLocalPath = (value: string): boolean => {
+		const trimmed = value.trim();
+		return (
+			trimmed.startsWith('/') ||
+			trimmed.startsWith('./') ||
+			trimmed.startsWith('../') ||
+			trimmed.startsWith('~') ||
+			/^[a-zA-Z]:[\\/]/.test(trimmed) ||
+			trimmed.includes('\\')
+		);
+	};
+	const sourceQuery = $derived(formSource.trim());
+	const showSearchStartHint = $derived(sourceQuery.length === 0);
+	const showSearchMinCharsHint = $derived(
+		sourceQuery.length > 0 &&
+			sourceQuery.length < 2 &&
+			!looksLikeUrl(sourceQuery) &&
+			!isLikelyLocalPath(sourceQuery),
+	);
+	const showNoSearchResults = $derived(
+		!searchLoading &&
+			searchError === null &&
+			!showSearchStartHint &&
+			!showSearchMinCharsHint &&
+			remoteSuggestions.length === 0 &&
+			lastSearchedQuery !== '' &&
+			sourceQuery === lastSearchedQuery,
+	);
+
+	const shouldSearchRemote = (value: string): boolean => {
+		const trimmed = value.trim();
+		return trimmed.length >= 2 && !looksLikeUrl(trimmed) && !isLikelyLocalPath(trimmed);
+	};
+
+	const toSearchErrorMessage = (err: unknown): string => {
+		const message = toErrorMessage(err, 'Failed to search remote repositories.');
+		const normalized = message.toLowerCase();
+		if (
+			normalized.includes('auth required') ||
+			normalized.includes('not authenticated') ||
+			normalized.includes('authentication') ||
+			normalized.includes('authenticate') ||
+			normalized.includes('github auth')
+		) {
+			return 'Connect GitHub in Settings -> GitHub authentication to search.';
+		}
+		return message;
+	};
+
+	const clearSourceTimers = (): void => {
+		if (sourceSearchDebounce) {
+			clearTimeout(sourceSearchDebounce);
+			sourceSearchDebounce = null;
+		}
+		if (sourceSearchCloseTimer) {
+			clearTimeout(sourceSearchCloseTimer);
+			sourceSearchCloseTimer = null;
+		}
+	};
+
+	const resetRemoteSuggestions = (): void => {
+		clearSourceTimers();
+		sourceSearchSequence += 1;
+		remoteSuggestions = [];
+		searchLoading = false;
+		searchError = null;
+		suggestionsOpen = false;
+		activeSuggestionIndex = -1;
+		lastSearchedQuery = '';
+	};
+
+	const showRemoteSearchHints = (query: string): void => {
+		sourceSearchSequence += 1;
+		remoteSuggestions = [];
+		searchLoading = false;
+		searchError = null;
+		suggestionsOpen = true;
+		activeSuggestionIndex = -1;
+		lastSearchedQuery = query;
+	};
+
+	const runRemoteSearch = async (query: string): Promise<void> => {
+		const requestSequence = ++sourceSearchSequence;
+		searchLoading = true;
+		searchError = null;
+		suggestionsOpen = true;
+		lastSearchedQuery = query;
+		try {
+			const results = await searchGitHubRepositories(query, 8);
+			if (requestSequence !== sourceSearchSequence) return;
+			remoteSuggestions = results;
+			activeSuggestionIndex = results.length > 0 ? 0 : -1;
+		} catch (err) {
+			if (requestSequence !== sourceSearchSequence) return;
+			remoteSuggestions = [];
+			activeSuggestionIndex = -1;
+			searchError = toSearchErrorMessage(err);
+		} finally {
+			if (requestSequence === sourceSearchSequence) {
+				searchLoading = false;
+			}
+		}
+	};
+
+	const queueRemoteSearch = (value: string): void => {
+		const query = value.trim();
+		if (!isRegistering || isEditing) {
+			resetRemoteSuggestions();
+			return;
+		}
+		if (sourceSearchDebounce) {
+			clearTimeout(sourceSearchDebounce);
+			sourceSearchDebounce = null;
+		}
+		if (query.length === 0) {
+			showRemoteSearchHints('');
+			return;
+		}
+		if (!shouldSearchRemote(query)) {
+			if (looksLikeUrl(query) || isLikelyLocalPath(query)) {
+				resetRemoteSuggestions();
+				return;
+			}
+			showRemoteSearchHints(query);
+			return;
+		}
+		sourceSearchDebounce = setTimeout(() => {
+			void runRemoteSearch(query);
+		}, 250);
+	};
+
+	const handleSourceInput = (value: string): void => {
+		formSource = value;
+		queueRemoteSearch(value);
+	};
+
+	const selectRemoteSuggestion = (suggestion: GitHubRepoSearchItem): void => {
+		formSource = suggestion.sshUrl || suggestion.cloneUrl;
+		formName = suggestion.name;
+		formBranch = suggestion.defaultBranch.trim() || 'main';
+		resetRemoteSuggestions();
+	};
+
+	const handleSourceKeydown = (event: KeyboardEvent): void => {
+		if (!showRemoteSuggestionPanel || searchLoading || searchError) {
+			if (event.key === 'Escape') resetRemoteSuggestions();
+			return;
+		}
+		if (remoteSuggestions.length === 0) return;
+
+		if (event.key === 'ArrowDown') {
+			event.preventDefault();
+			activeSuggestionIndex = (activeSuggestionIndex + 1) % remoteSuggestions.length;
+			return;
+		}
+		if (event.key === 'ArrowUp') {
+			event.preventDefault();
+			activeSuggestionIndex =
+				(activeSuggestionIndex - 1 + remoteSuggestions.length) % remoteSuggestions.length;
+			return;
+		}
+		if (event.key === 'Enter' && activeSuggestionIndex >= 0) {
+			event.preventDefault();
+			selectRemoteSuggestion(remoteSuggestions[activeSuggestionIndex]);
+			return;
+		}
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			resetRemoteSuggestions();
+		}
+	};
+
+	const handleSourceBlur = (): void => {
+		if (sourceSearchCloseTimer) {
+			clearTimeout(sourceSearchCloseTimer);
+		}
+		sourceSearchCloseTimer = setTimeout(() => {
+			suggestionsOpen = false;
+		}, 120);
+	};
+
+	const openRemoteSuggestions = (): void => {
+		if (!isRegistering || isEditing) return;
+		queueRemoteSearch(formSource);
+	};
 
 	$effect((): void => {
 		if (isEditing || !isRegistering) {
@@ -91,6 +290,7 @@
 		formRemote = 'origin';
 		formBranch = 'main';
 		advancedOpen = false;
+		resetRemoteSuggestions();
 		error = null;
 	};
 
@@ -103,6 +303,7 @@
 		formRemote = alias.remote ?? 'origin';
 		formBranch = alias.default_branch ?? 'main';
 		advancedOpen = false;
+		resetRemoteSuggestions();
 		error = null;
 		success = null;
 	};
@@ -145,6 +346,7 @@
 			formRemote = 'origin';
 			formBranch = 'main';
 			advancedOpen = false;
+			resetRemoteSuggestions();
 		} catch (err) {
 			error = toErrorMessage(err, 'An error occurred.');
 		} finally {
@@ -191,6 +393,7 @@
 			const path = await openDirectoryDialog('Select repository directory', defaultDirectory);
 			if (!path) return;
 			formSource = path;
+			resetRemoteSuggestions();
 		} catch (err) {
 			error = toErrorMessage(err, 'An error occurred.');
 		}
@@ -198,6 +401,10 @@
 
 	onMount(() => {
 		void loadAliases();
+	});
+
+	onDestroy(() => {
+		clearSourceTimers();
 	});
 </script>
 
@@ -261,22 +468,95 @@
 					</div>
 
 					<div class="form-field">
-						<label for="reg-source">Source (URL or path)</label>
+						<label for="reg-source">Source (URL/path or GitHub repo search)</label>
 						<div class="input-with-button">
-							<input
-								id="reg-source"
-								type="text"
-								bind:value={formSource}
-								placeholder="git@github.com:org/repo.git"
-								autocapitalize="off"
-								autocorrect="off"
-								spellcheck="false"
-							/>
+							<div class="source-input-wrap">
+								<input
+									id="reg-source"
+									type="text"
+									bind:value={formSource}
+									placeholder="Search GitHub repos or paste URL/path"
+									autocapitalize="off"
+									autocorrect="off"
+									spellcheck="false"
+									oninput={(event) =>
+										handleSourceInput((event.currentTarget as HTMLInputElement).value)}
+									onkeydown={handleSourceKeydown}
+									onfocus={openRemoteSuggestions}
+									onblur={handleSourceBlur}
+								/>
+								<span class="source-affordance" aria-hidden="true">
+									{#if searchLoading}
+										<span class="spin-icon"><Loader2 size={14} /></span>
+									{:else}
+										<Search size={14} />
+									{/if}
+								</span>
+								{#if showRemoteSuggestionPanel}
+									<div class="repo-suggestions">
+										{#if searchLoading}
+											<div class="repo-suggestion-state">
+												<span class="spin-icon"><Loader2 size={14} /></span>
+												<span>Searching remote repositories…</span>
+											</div>
+										{:else if searchError}
+											<div class="repo-suggestion-state repo-suggestion-error">{searchError}</div>
+										{:else if showSearchStartHint}
+											<div class="repo-suggestion-state">
+												Start typing to search GitHub repositories.
+											</div>
+										{:else if showSearchMinCharsHint}
+											<div class="repo-suggestion-state">
+												Type at least 2 characters to search.
+											</div>
+										{:else if showNoSearchResults}
+											<div class="repo-suggestion-state">
+												No remote repositories found for "{lastSearchedQuery}".
+											</div>
+										{:else if remoteSuggestions.length === 0}
+											<div class="repo-suggestion-state">
+												Type at least 2 characters to search.
+											</div>
+										{:else}
+											{#each remoteSuggestions as suggestion, index (suggestion.fullName)}
+												<button
+													type="button"
+													class="repo-suggestion-item"
+													class:active={index === activeSuggestionIndex}
+													onmousedown={(event) => {
+														event.preventDefault();
+														selectRemoteSuggestion(suggestion);
+													}}
+												>
+													<div class="repo-suggestion-main">
+														<span class="repo-suggestion-name">{suggestion.fullName}</span>
+														<span class="repo-suggestion-branch"
+															>{suggestion.defaultBranch || 'main'}</span
+														>
+													</div>
+													<div class="repo-suggestion-meta">
+														<span>{suggestion.sshUrl || suggestion.cloneUrl}</span>
+														{#if suggestion.private}
+															<span class="repo-suggestion-flag">private</span>
+														{/if}
+														{#if suggestion.archived}
+															<span class="repo-suggestion-flag">archived</span>
+														{/if}
+													</div>
+												</button>
+											{/each}
+										{/if}
+									</div>
+								{/if}
+							</div>
 							<Button variant="ghost" size="sm" onclick={handleBrowseSource}>
 								<FolderOpen size={14} />
 								Browse
 							</Button>
 						</div>
+						<p class="field-hint">
+							Tip: type 2+ characters to search your GitHub repos, or paste a URL/path.
+						</p>
 					</div>
 
 					<!-- Advanced section -->
@@ -510,11 +790,122 @@
 	.input-with-button {
 		display: flex;
 		gap: 8px;
+		align-items: flex-start;
+	}
+
+	.source-input-wrap {
+		position: relative;
+		flex: 1;
+	}
+
+	.source-input-wrap input {
+		width: 100%;
+		padding-right: 36px;
+	}
+
+	.source-affordance {
+		position: absolute;
+		right: 10px;
+		top: 50%;
+		transform: translateY(-50%);
+		display: inline-flex;
+		color: var(--subtle);
+		pointer-events: none;
+	}
+
+	.source-input-wrap:focus-within .source-affordance {
+		color: var(--accent);
+	}
+
+	.repo-suggestions {
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: calc(100% + 6px);
+		z-index: 30;
+		max-height: 260px;
+		overflow-y: auto;
+		background: var(--panel);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		box-shadow: 0 8px 24px rgb(0 0 0 / 24%);
+	}
+
+	.repo-suggestion-state {
+		padding: var(--space-3);
+		font-size: var(--text-base);
+		color: var(--muted);
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.repo-suggestion-error {
+		color: var(--danger);
+	}
+
+	.repo-suggestion-item {
+		width: 100%;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 4px;
+		padding: var(--space-3);
+		border: none;
+		border-bottom: 1px solid var(--border);
+		background: transparent;
+		color: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.repo-suggestion-item:last-child {
+		border-bottom: none;
+	}
+
+	.repo-suggestion-item:hover,
+	.repo-suggestion-item.active {
+		background: color-mix(in srgb, var(--accent) 10%, transparent);
+	}
+
+	.repo-suggestion-main {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.repo-suggestion-name {
+		font-size: var(--text-mono-base);
+		font-family: var(--font-mono);
+		color: var(--text);
+	}
+
+	.repo-suggestion-branch {
+		font-size: var(--text-xs);
+		padding: 2px 8px;
+		border-radius: 999px;
+		background: var(--panel-strong);
+		border: 1px solid var(--border);
+		color: var(--muted);
+	}
+
+	.repo-suggestion-meta {
+		font-size: var(--text-mono-sm);
+		color: var(--subtle);
+		font-family: var(--font-mono);
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2);
 		align-items: center;
 	}
 
-	.input-with-button input {
-		flex: 1;
+	.repo-suggestion-flag {
+		font-family: var(--font-sans);
+		font-size: var(--text-xs);
+		color: var(--muted);
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		padding: 1px 6px;
 	}
 
 	.advanced-section {

@@ -42,6 +42,67 @@ func TestGetCheckAnnotationsReturnsClientPayload(t *testing.T) {
 	}
 }
 
+func TestSearchGitHubRepositoriesValidatesQueryLength(t *testing.T) {
+	svc := &Service{github: &readHelpersGitHubProvider{client: &readHelpersGitHubClient{}}}
+	_, err := svc.SearchGitHubRepositories(context.Background(), GitHubRepoSearchInput{
+		Query: "a",
+		Limit: 5,
+	})
+	if err == nil {
+		t.Fatalf("expected query length validation error")
+	}
+}
+
+func TestSearchGitHubRepositoriesReturnsMappedRepositories(t *testing.T) {
+	client := &readHelpersGitHubClient{
+		searchRepositoriesFunc: func(_ context.Context, query string, perPage int) ([]GitHubRepositorySearchResult, error) {
+			if query != "workset" {
+				t.Fatalf("unexpected query %q", query)
+			}
+			if perPage != 20 {
+				t.Fatalf("expected clamped limit 20, got %d", perPage)
+			}
+			return []GitHubRepositorySearchResult{
+				{
+					Name:          "workset",
+					FullName:      "strantalis/workset",
+					Owner:         "strantalis",
+					DefaultBranch: "main",
+					CloneURL:      "https://github.com/strantalis/workset.git",
+					SSHURL:        "git@github.com:strantalis/workset.git",
+					Private:       false,
+					Archived:      false,
+				},
+			}, nil
+		},
+	}
+	provider := &readHelpersGitHubProvider{client: client}
+	svc := &Service{github: provider}
+
+	result, err := svc.SearchGitHubRepositories(context.Background(), GitHubRepoSearchInput{
+		Query: "  workset ",
+		Limit: 200,
+	})
+	if err != nil {
+		t.Fatalf("SearchGitHubRepositories: %v", err)
+	}
+	if len(result.Repositories) != 1 {
+		t.Fatalf("expected one repository, got %d", len(result.Repositories))
+	}
+	if result.Repositories[0].FullName != "strantalis/workset" {
+		t.Fatalf("unexpected repository payload: %+v", result.Repositories[0])
+	}
+	if result.Repositories[0].Host != defaultGitHubHost {
+		t.Fatalf("expected default host fallback, got %q", result.Repositories[0].Host)
+	}
+	if len(provider.clientHosts) != 1 || provider.clientHosts[0] != defaultGitHubHost {
+		t.Fatalf("unexpected provider host calls: %+v", provider.clientHosts)
+	}
+	if len(client.searchRepositoriesCalls) != 1 {
+		t.Fatalf("expected one search call, got %d", len(client.searchRepositoriesCalls))
+	}
+}
+
 func TestGetTrackedPullRequestReturnsNotFoundWhenStateMissing(t *testing.T) {
 	env, root, _ := setupGitHubServiceRepo(t)
 
