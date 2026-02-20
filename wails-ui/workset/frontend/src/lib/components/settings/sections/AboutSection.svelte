@@ -46,6 +46,23 @@
 		}
 	};
 
+	let commitCopied = $state(false);
+	let commitCopiedTimer: ReturnType<typeof setTimeout> | undefined;
+
+	const copyCommit = async (): Promise<void> => {
+		if (!appVersion?.commit) return;
+		try {
+			await navigator.clipboard.writeText(appVersion.commit);
+			clearTimeout(commitCopiedTimer);
+			commitCopied = true;
+			commitCopiedTimer = setTimeout(() => {
+				commitCopied = false;
+			}, 1500);
+		} catch {
+			// Ignore clipboard failures
+		}
+	};
+
 	const handleChannelChange = (event: Event): void => {
 		const target = event.currentTarget as HTMLSelectElement;
 		onUpdateChannelChange(target.value);
@@ -90,9 +107,43 @@
 			{#if appVersion.commit}
 				<div class="version-row">
 					<span class="row-label">Commit</span>
-					<span class="row-value commit-hash" title={appVersion.commit}
-						>{shortCommit(appVersion.commit)}</span
-					>
+					<div class="row-value-with-action">
+						<span class="row-value commit-hash" title={appVersion.commit}
+							>{shortCommit(appVersion.commit)}</span
+						>
+						<button
+							type="button"
+							class="copy-btn"
+							class:copied={commitCopied}
+							title={commitCopied ? 'Copied!' : 'Copy commit SHA'}
+							onclick={copyCommit}
+						>
+							{#if commitCopied}
+								<svg
+									width="14"
+									height="14"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+								>
+									<polyline points="20 6 9 17 4 12" />
+								</svg>
+							{:else}
+								<svg
+									width="14"
+									height="14"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+								>
+									<rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+									<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+								</svg>
+							{/if}
+						</button>
+					</div>
 				</div>
 			{/if}
 			<div class="version-row">
@@ -274,6 +325,12 @@
 		border-color: var(--accent);
 		color: var(--accent);
 		background: var(--accent-soft);
+	}
+
+	.copy-btn.copied {
+		border-color: var(--success, var(--accent));
+		color: var(--success, var(--accent));
+		background: var(--success-soft, var(--accent-soft));
 	}
 
 	.channel-select {

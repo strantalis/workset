@@ -385,6 +385,135 @@ describe('SettingsPanel About Section', () => {
 		expect(clipboardWriteText).toHaveBeenCalledWith('Workset 1.0.0 (abc123)');
 	});
 
+	test('commit copy button copies full SHA to clipboard', async () => {
+		const clipboardWriteText = vi.fn().mockResolvedValue(undefined);
+		Object.assign(navigator, {
+			clipboard: { writeText: clipboardWriteText },
+		});
+
+		const fullCommit = 'cdadc66bb8c1234567890abcdef';
+		vi.mocked(api.fetchSettings).mockResolvedValue({
+			configPath: '/test/config.yaml',
+			defaults: buildDefaults(),
+		});
+		vi.mocked(api.fetchAppVersion).mockResolvedValue({
+			version: '1.0.0',
+			commit: fullCommit,
+			dirty: false,
+		});
+
+		const { getByText, getByTitle, queryByText } = render(SettingsPanel, {
+			props: { onClose: mockOnClose },
+		});
+
+		await waitForLoadingAndClickAbout(getByText, queryByText);
+
+		const copyCommitButton = getByTitle('Copy commit SHA');
+		await fireEvent.click(copyCommitButton);
+
+		expect(clipboardWriteText).toHaveBeenCalledWith(fullCommit);
+	});
+
+	test('commit copy button shows Copied! tooltip after click', async () => {
+		vi.useFakeTimers();
+		const clipboardWriteText = vi.fn().mockResolvedValue(undefined);
+		Object.assign(navigator, {
+			clipboard: { writeText: clipboardWriteText },
+		});
+
+		vi.mocked(api.fetchSettings).mockResolvedValue({
+			configPath: '/test/config.yaml',
+			defaults: buildDefaults(),
+		});
+		vi.mocked(api.fetchAppVersion).mockResolvedValue({
+			version: '1.0.0',
+			commit: 'abc123def456',
+			dirty: false,
+		});
+
+		const { getByText, getByTitle, queryByText, queryByTitle } = render(SettingsPanel, {
+			props: { onClose: mockOnClose },
+		});
+
+		await waitForLoadingAndClickAbout(getByText, queryByText);
+
+		await fireEvent.click(getByTitle('Copy commit SHA'));
+
+		// Tooltip should now say "Copied!"
+		await waitFor(() => {
+			expect(queryByTitle('Copied!')).toBeInTheDocument();
+		});
+
+		// After 1500ms the tooltip should revert
+		vi.advanceTimersByTime(1500);
+		await waitFor(() => {
+			expect(queryByTitle('Copy commit SHA')).toBeInTheDocument();
+		});
+
+		vi.useRealTimers();
+	});
+
+	test('rapid commit copy clicks do not cause premature reset of copied state', async () => {
+		vi.useFakeTimers();
+		const clipboardWriteText = vi.fn().mockResolvedValue(undefined);
+		Object.assign(navigator, {
+			clipboard: { writeText: clipboardWriteText },
+		});
+
+		vi.mocked(api.fetchSettings).mockResolvedValue({
+			configPath: '/test/config.yaml',
+			defaults: buildDefaults(),
+		});
+		vi.mocked(api.fetchAppVersion).mockResolvedValue({
+			version: '1.0.0',
+			commit: 'abc123def456',
+			dirty: false,
+		});
+
+		const { getByText, getByTitle, queryByText, queryByTitle } = render(SettingsPanel, {
+			props: { onClose: mockOnClose },
+		});
+
+		await waitForLoadingAndClickAbout(getByText, queryByText);
+
+		// Click once, advance partway, click again
+		await fireEvent.click(getByTitle('Copy commit SHA'));
+		await waitFor(() => expect(queryByTitle('Copied!')).toBeInTheDocument());
+
+		vi.advanceTimersByTime(800); // before first timer fires
+		await fireEvent.click(getByTitle('Copied!')); // second click resets timer
+
+		// Should still show "Copied!" — first timer was cleared
+		vi.advanceTimersByTime(800); // 800ms into second timer, still within window
+		await waitFor(() => expect(queryByTitle('Copied!')).toBeInTheDocument());
+
+		// After full 1500ms from second click it should revert
+		vi.advanceTimersByTime(700);
+		await waitFor(() => expect(queryByTitle('Copy commit SHA')).toBeInTheDocument());
+
+		vi.useRealTimers();
+	});
+
+	test('commit copy button is not rendered when commit is absent', async () => {
+		vi.mocked(api.fetchSettings).mockResolvedValue({
+			configPath: '/test/config.yaml',
+			defaults: buildDefaults(),
+		});
+		vi.mocked(api.fetchAppVersion).mockResolvedValue({
+			version: 'dev',
+			commit: '',
+			dirty: false,
+		});
+
+		const { getByText, queryByText, queryByTitle } = render(SettingsPanel, {
+			props: { onClose: mockOnClose },
+		});
+
+		await waitForLoadingAndClickAbout(getByText, queryByText);
+
+		expect(queryByTitle('Copy commit SHA')).not.toBeInTheDocument();
+	});
+
 	test('displays copyright with current year', async () => {
 		vi.mocked(api.fetchSettings).mockResolvedValue({
 			configPath: '/test/config.yaml',
