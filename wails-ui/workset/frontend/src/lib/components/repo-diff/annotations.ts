@@ -29,75 +29,68 @@ export type ReviewAnnotation = {
 export const buildLineAnnotations = (
 	reviews: PullRequestReviewComment[],
 ): DiffLineAnnotation<ReviewAnnotation>[] => {
-	const withLine = reviews.filter((r) => r.line != null);
-	if (withLine.length === 0) return [];
+	if (reviews.length === 0) return [];
 
-	// Build map of comment ID to comment for quick lookup
-	const byId = new Map(withLine.map((r) => [r.id, r]));
+	const byID = new Map(reviews.map((comment) => [comment.id, comment]));
+	const resolveThreadKey = (comment: PullRequestReviewComment): string => {
+		if (comment.threadId) return comment.threadId;
+		let cursor = comment;
+		const visited = new Set<number>();
+		while (cursor.inReplyTo && !visited.has(cursor.id)) {
+			visited.add(cursor.id);
+			const parent = byID.get(cursor.inReplyTo);
+			if (!parent) break;
+			if (parent.threadId) return parent.threadId;
+			cursor = parent;
+		}
+		return `single-${cursor.id}`;
+	};
 
-	// Find root comments (not replies, or reply target not in our filtered set)
-	const roots = withLine.filter((r) => !r.inReplyTo || !byId.has(r.inReplyTo));
-
-	// Build threads: for each root, gather all replies
-	const threads: Array<{
-		root: PullRequestReviewComment;
-		replies: PullRequestReviewComment[];
-	}> = [];
-
-	const usedIds = new Set<number>();
-
-	for (const root of roots) {
-		if (usedIds.has(root.id)) continue;
-		usedIds.add(root.id);
-
-		// Find all comments that reply to this root (direct or chained)
-		const replies: PullRequestReviewComment[] = [];
-		const findReplies = (parentId: number) => {
-			for (const r of withLine) {
-				if (r.inReplyTo === parentId && !usedIds.has(r.id)) {
-					usedIds.add(r.id);
-					replies.push(r);
-					findReplies(r.id); // Find nested replies
-				}
-			}
-		};
-		findReplies(root.id);
-
-		threads.push({ root, replies });
+	const threadMap = new Map<string, PullRequestReviewComment[]>();
+	for (const comment of reviews) {
+		const key = resolveThreadKey(comment);
+		const comments = threadMap.get(key) ?? [];
+		comments.push(comment);
+		threadMap.set(key, comments);
 	}
 
-	// Convert threads to annotations
-	return threads.map(({ root, replies }) => ({
-		side: (root.side?.toLowerCase() === 'left' ? 'deletions' : 'additions') as
-			| 'deletions'
-			| 'additions',
-		lineNumber: root.line!,
-		metadata: {
-			resolved: root.resolved ?? false,
-			thread: [
-				{
-					id: root.id,
-					nodeId: root.nodeId,
-					threadId: root.threadId,
-					author: root.author ?? 'Reviewer',
-					authorId: root.authorId,
-					body: root.body,
-					url: root.url,
-					isReply: false,
-					resolved: root.resolved,
-				},
-				...replies.map((r) => ({
-					id: r.id,
-					nodeId: r.nodeId,
-					threadId: r.threadId ?? root.threadId,
-					author: r.author ?? 'Reviewer',
-					authorId: r.authorId,
-					body: r.body,
-					url: r.url,
-					isReply: true,
+	const annotations: DiffLineAnnotation<ReviewAnnotation>[] = [];
+	for (const thread of threadMap.values()) {
+		const comments = [...thread].sort((a, b) => {
+			const byTime = (a.createdAt ?? '').localeCompare(b.createdAt ?? '');
+			return byTime !== 0 ? byTime : a.id - b.id;
+		});
+
+		const commentIds = new Set(comments.map((comment) => comment.id));
+		const root =
+			comments.find((comment) => !comment.inReplyTo || !commentIds.has(comment.inReplyTo)) ??
+			comments[0];
+		const anchor =
+			comments.find((comment) => comment.line != null || comment.originalLine != null) ?? root;
+		const lineNumber = anchor.line ?? anchor.originalLine;
+		if (lineNumber == null || lineNumber <= 0) continue;
+
+		annotations.push({
+			side: (anchor.side?.toLowerCase() === 'left' ? 'deletions' : 'additions') as
+				| 'deletions'
+				| 'additions',
+			lineNumber,
+			metadata: {
+				resolved: root.resolved ?? false,
+				thread: comments.map((comment) => ({
+					id: comment.id,
+					nodeId: comment.nodeId,
+					threadId: comment.threadId ?? root.threadId,
+					author: comment.author ?? 'Reviewer',
+					authorId: comment.authorId,
+					body: comment.body,
+					url: comment.url,
+					isReply: comment.id !== root.id,
 					resolved: root.resolved,
 				})),
-			],
-		},
-	}));
+			},
+		});
+	}
+
+	return annotations;
 };
