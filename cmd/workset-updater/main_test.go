@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 )
 
@@ -171,6 +172,9 @@ func TestHasStagedHelperBinary(t *testing.T) {
 
 func TestPrepareFinalizeBinary(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS != "darwin" {
+		t.Skip("prepareFinalizeBinary uses macOS ditto")
+	}
 
 	stageRoot := filepath.Join(t.TempDir(), "workset-update-finalize")
 	if err := os.MkdirAll(stageRoot, 0o755); err != nil {
