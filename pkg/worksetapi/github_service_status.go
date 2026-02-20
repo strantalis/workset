@@ -76,6 +76,9 @@ func (s *Service) reconcileTrackedPullRequest(
 		return
 	}
 	if pr.Merged {
+		if !s.shouldRecordMergedPullRequest(ctx, resolution, pr.Number) {
+			return
+		}
 		s.recordPullRequest(ctx, resolution, PullRequestCreatedJSON{
 			Repo:       resolution.Repo.Name,
 			Number:     pr.Number,
@@ -93,6 +96,34 @@ func (s *Service) reconcileTrackedPullRequest(
 		return
 	}
 	s.clearTrackedPullRequestIfMatchingNumber(ctx, resolution, pr.Number)
+}
+
+func (s *Service) shouldRecordMergedPullRequest(
+	ctx context.Context,
+	resolution repoResolution,
+	number int,
+) bool {
+	state, err := s.workspaces.LoadState(ctx, resolution.WorkspaceRoot)
+	if err != nil {
+		if s.logf != nil {
+			s.logf("workset: unable to load workspace state for merged PR reconciliation: %v", err)
+		}
+		return true
+	}
+	if len(state.PullRequests) == 0 {
+		return true
+	}
+	tracked, ok := state.PullRequests[resolution.Repo.Name]
+	if !ok {
+		return true
+	}
+	if tracked.Number == number {
+		return true
+	}
+	if strings.EqualFold(tracked.State, "open") && !tracked.Merged {
+		return false
+	}
+	return true
 }
 
 // GetCheckAnnotations returns annotations for a specific check run.

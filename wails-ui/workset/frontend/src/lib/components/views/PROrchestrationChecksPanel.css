@@ -1,0 +1,139 @@
+.checks-panel {
+	flex: 1;
+	overflow-y: auto;
+	padding: 24px;
+	background: var(--bg);
+}
+.checks-max {
+	max-width: 900px;
+	margin: 0 auto;
+}
+.checks-header-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 24px;
+}
+.checks-header-row h2 {
+	margin: 0;
+	font-size: var(--text-xl);
+	font-weight: 600;
+	color: var(--text);
+}
+.checks-list {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+.ck-row {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	padding: 16px;
+	border-radius: 8px;
+	border: 1px solid var(--border);
+	background: var(--panel);
+	transition: background 150ms;
+}
+.ck-row:hover {
+	background: var(--panel-strong);
+}
+.ck-circle {
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+.ck-circle.success {
+	background: color-mix(in srgb, var(--success) 10%, transparent);
+	color: var(--success);
+}
+.ck-circle.failure {
+	background: color-mix(in srgb, var(--status-error) 10%, transparent);
+	color: var(--status-error);
+}
+.ck-circle.running {
+	background: color-mix(in srgb, var(--yellow) 10%, transparent);
+	color: var(--yellow);
+}
+.ck-circle.pending {
+	background: color-mix(in srgb, var(--yellow) 10%, transparent);
+	color: var(--yellow);
+}
+.ck-info {
+	flex: 1;
+	min-width: 0;
+}
+.ck-name-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 2px;
+}
+.ck-name-row h3 {
+	margin: 0;
+	font-size: var(--text-base);
+	font-weight: 500;
+	color: var(--text);
+}
+.ck-dur {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--muted);
+}
+.ck-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	opacity: 0;
+	transition: opacity 150ms;
+}
+.ck-row:hover .ck-actions {
+	opacity: 1;
+}
+.ck-action {
+	padding: 8px;
+	border-radius: 6px;
+	border: none;
+	background: transparent;
+	color: var(--muted);
+	cursor: pointer;
+	transition: all 100ms;
+}
+.ck-action:hover {
+	background: var(--border);
+	color: var(--text);
+}
+
+.ghost-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 12px;
+	border-radius: 8px;
+	border: 1px solid var(--border);
+	background: var(--panel-strong);
+	font-size: var(--text-sm);
+	color: var(--muted);
+	cursor: pointer;
+	transition: all 150ms;
+}
+.ghost-btn:hover {
+	color: var(--text);
+	border-color: var(--accent-soft);
+}
+
+.panel-loading {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 12px;
+	padding: 64px;
+	color: var(--muted);
+	font-size: var(--text-base);
+	opacity: 0.5;
+}
