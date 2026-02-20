@@ -5,6 +5,7 @@ type Disposable = { dispose: () => void };
 type TerminalRenderer = 'unknown' | 'webgl';
 type WebglAddonLike = ITerminalAddon & {
 	onContextLoss?: (listener: () => void) => Disposable;
+	onChangeTextureAtlas?: (listener: (canvas: HTMLCanvasElement) => void) => Disposable;
 	clearTextureAtlas?: () => void;
 };
 type SearchAddonLike = ITerminalAddon;
@@ -19,6 +20,8 @@ export type TerminalInstanceHandle = {
 	webLinksAddon?: WebLinksAddonLike;
 	imageAddon?: ImageAddonLike;
 	webglContextLossDisposable?: Disposable;
+	webglAtlasChangeDisposable?: Disposable;
+	webglAtlasChangeCount?: number;
 	webglInitFailed?: boolean;
 	webglInitError?: string;
 	renderer: TerminalRenderer;
@@ -28,6 +31,8 @@ export type TerminalInstanceHandle = {
 
 type TerminalInstanceManagerDeps = {
 	terminalHandles: Map<string, TerminalInstanceHandle>;
+	enableWebgl?: boolean;
+	enableImageAddon?: boolean;
 	createTerminalInstance: () => Terminal;
 	createFitAddon: () => FitAddon;
 	createWebglAddon: () => WebglAddonLike;
@@ -38,6 +43,7 @@ type TerminalInstanceManagerDeps = {
 	onData: (id: string, data: string) => void;
 	onRendererResolved?: (id: string, renderer: TerminalRenderer) => void;
 	onRendererError?: (id: string, message: string) => void;
+	onRendererDebug?: (id: string, event: string, details: Record<string, unknown>) => void;
 	attachOpen: (input: {
 		id: string;
 		handle: TerminalInstanceHandle;
@@ -61,11 +67,13 @@ export const createTerminalInstanceManager = (deps: TerminalInstanceManagerDeps)
 				const fitAddon = deps.createFitAddon();
 				const searchAddon = deps.createSearchAddon();
 				const webLinksAddon = deps.createWebLinksAddon();
-				const imageAddon = deps.createImageAddon();
+				const imageAddon = deps.enableImageAddon === false ? undefined : deps.createImageAddon();
 				terminal.loadAddon(fitAddon);
 				terminal.loadAddon(searchAddon);
 				terminal.loadAddon(webLinksAddon);
-				terminal.loadAddon(imageAddon);
+				if (imageAddon) {
+					terminal.loadAddon(imageAddon);
+				}
 				terminal.attachCustomWheelEventHandler((event) => {
 					// Delegate wheel semantics to xterm so alternate-screen TUIs
 					// keep receiving native wheel/mouse behavior.
@@ -97,14 +105,35 @@ export const createTerminalInstanceManager = (deps: TerminalInstanceManagerDeps)
 					container: createHost(),
 				};
 				deps.terminalHandles.set(id, handle);
+				deps.onRendererDebug?.(id, 'terminal_instance_created', {
+					hasContainer: Boolean(container),
+					active,
+				});
 			}
-			if (!handle.webglAddon && !handle.webglInitFailed) {
+			const webglEnabled = deps.enableWebgl !== false;
+			if (!webglEnabled) {
+				if (!handle.webglInitFailed && !handle.webglAddon) {
+					deps.onRendererDebug?.(id, 'webgl_disabled', {
+						active,
+						hasContainer: Boolean(container),
+					});
+				}
+				handle.renderer = 'unknown';
+				handle.webglInitFailed = true;
+				handle.webglInitError = 'WebGL disabled';
+			}
+			if (webglEnabled && !handle.webglAddon && !handle.webglInitFailed) {
+				deps.onRendererDebug?.(id, 'webgl_init_start', {
+					active,
+					hasContainer: Boolean(container),
+				});
 				try {
 					const webglAddon = deps.createWebglAddon();
 					handle.terminal.loadAddon(webglAddon);
 					handle.webglAddon = webglAddon;
 					if (webglAddon.onContextLoss) {
 						handle.webglContextLossDisposable = webglAddon.onContextLoss(() => {
+							deps.onRendererDebug?.(id, 'webgl_context_lost', {});
 							handle.renderer = 'unknown';
 							handle.webglInitFailed = true;
 							handle.webglInitError = 'WebGL context lost';
@@ -112,21 +141,100 @@ export const createTerminalInstanceManager = (deps: TerminalInstanceManagerDeps)
 							deps.onRendererError?.(id, 'WebGL context lost');
 						});
 					}
+					if (webglAddon.onChangeTextureAtlas) {
+						handle.webglAtlasChangeDisposable = webglAddon.onChangeTextureAtlas((canvas) => {
+							const nextCount = (handle?.webglAtlasChangeCount ?? 0) + 1;
+							if (handle) {
+								handle.webglAtlasChangeCount = nextCount;
+							}
+							if (nextCount <= 3 || nextCount % 50 === 0) {
+								deps.onRendererDebug?.(id, 'webgl_texture_atlas_changed', {
+									count: nextCount,
+									width: canvas.width,
+									height: canvas.height,
+								});
+							}
+						});
+					}
 					handle.renderer = 'webgl';
 					handle.webglInitFailed = false;
 					handle.webglInitError = undefined;
+					deps.onRendererDebug?.(id, 'webgl_init_success', {});
 				} catch (error) {
 					handle.renderer = 'unknown';
 					handle.webglInitFailed = true;
 					handle.webglInitError =
 						error instanceof Error ? error.message : 'WebGL renderer initialization failed';
+					deps.onRendererDebug?.(id, 'webgl_init_error', {
+						message: handle.webglInitError,
+					});
 					deps.onRendererResolved?.(id, 'unknown');
 					deps.onRendererError?.(id, handle.webglInitError);
 				}
 			}
+			deps.onRendererDebug?.(id, 'terminal_attach_open_request', {
+				active,
+				hasContainer: Boolean(container),
+			});
 			deps.attachOpen({ id, handle, container, active });
 			deps.onRendererResolved?.(id, handle.renderer);
 			return handle;
+		},
+
+		reinitWebgl: (id: string): void => {
+			const handle = deps.terminalHandles.get(id);
+			// Only reinit if a WebGL addon was previously loaded successfully.
+			// If the initial setup failed (no GPU support), skip — we'd just fail again.
+			if (!handle || deps.enableWebgl === false || !handle.webglAddon) return;
+			handle.webglContextLossDisposable?.dispose();
+			handle.webglAtlasChangeDisposable?.dispose();
+			handle.webglAddon.dispose();
+			handle.webglAddon = undefined;
+			handle.webglContextLossDisposable = undefined;
+			handle.webglAtlasChangeDisposable = undefined;
+			handle.webglAtlasChangeCount = undefined;
+			handle.renderer = 'unknown';
+			deps.onRendererDebug?.(id, 'webgl_reinit_start', {});
+			try {
+				const webglAddon = deps.createWebglAddon();
+				handle.terminal.loadAddon(webglAddon);
+				handle.webglAddon = webglAddon;
+				if (webglAddon.onContextLoss) {
+					handle.webglContextLossDisposable = webglAddon.onContextLoss(() => {
+						deps.onRendererDebug?.(id, 'webgl_context_lost', {});
+						handle.renderer = 'unknown';
+						handle.webglInitFailed = true;
+						handle.webglInitError = 'WebGL context lost';
+						deps.onRendererResolved?.(id, 'unknown');
+						deps.onRendererError?.(id, 'WebGL context lost');
+					});
+				}
+				if (webglAddon.onChangeTextureAtlas) {
+					handle.webglAtlasChangeDisposable = webglAddon.onChangeTextureAtlas((canvas) => {
+						const nextCount = (handle?.webglAtlasChangeCount ?? 0) + 1;
+						if (handle) handle.webglAtlasChangeCount = nextCount;
+						if (nextCount <= 3 || nextCount % 50 === 0) {
+							deps.onRendererDebug?.(id, 'webgl_texture_atlas_changed', {
+								count: nextCount,
+								width: canvas.width,
+								height: canvas.height,
+							});
+						}
+					});
+				}
+				handle.renderer = 'webgl';
+				handle.webglInitFailed = false;
+				handle.webglInitError = undefined;
+				deps.onRendererDebug?.(id, 'webgl_reinit_success', {});
+			} catch (error) {
+				handle.renderer = 'unknown';
+				handle.webglInitFailed = true;
+				handle.webglInitError =
+					error instanceof Error ? error.message : 'WebGL renderer reinitialization failed';
+				deps.onRendererDebug?.(id, 'webgl_reinit_error', { message: handle.webglInitError });
+				deps.onRendererResolved?.(id, 'unknown');
+				deps.onRendererError?.(id, handle.webglInitError);
+			}
 		},
 
 		dispose: (id: string): void => {
@@ -134,12 +242,14 @@ export const createTerminalInstanceManager = (deps: TerminalInstanceManagerDeps)
 			if (!handle) return;
 			handle.dataDisposable?.dispose();
 			handle.webglContextLossDisposable?.dispose();
+			handle.webglAtlasChangeDisposable?.dispose();
 			handle.webglAddon?.dispose();
 			handle.searchAddon?.dispose();
 			handle.webLinksAddon?.dispose();
 			handle.imageAddon?.dispose();
 			handle.terminal.dispose();
 			deps.terminalHandles.delete(id);
+			deps.onRendererDebug?.(id, 'terminal_instance_disposed', {});
 		},
 	};
 };

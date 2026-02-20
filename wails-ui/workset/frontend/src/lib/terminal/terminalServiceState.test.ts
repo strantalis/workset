@@ -189,4 +189,72 @@ describe('terminalServiceState output buffering', () => {
 		});
 		expect(delayed.chunks.map((item) => item.seq)).toEqual([1]);
 	});
+
+	it('holds across seq gaps in normal mode and recovers on forced flush', () => {
+		const state = createTerminalServiceState();
+
+		state.enqueueOrderedStreamChunk('ws::term', {
+			seq: 248,
+			bytes: 1,
+			chunk: new Uint8Array([0x01]),
+			receivedAt: 1,
+		});
+		state.enqueueOrderedStreamChunk('ws::term', {
+			seq: 249,
+			bytes: 1,
+			chunk: new Uint8Array([0x02]),
+			receivedAt: 2,
+		});
+		state.enqueueOrderedStreamChunk('ws::term', {
+			seq: 251,
+			bytes: 1,
+			chunk: new Uint8Array([0x03]),
+			receivedAt: 3,
+		});
+
+		const first = state.consumeOrderedStreamChunks('ws::term');
+		expect(first.chunks.map((item) => item.seq)).toEqual([248, 249]);
+
+		const blocked = state.consumeOrderedStreamChunks('ws::term');
+		expect(blocked.chunks).toHaveLength(0);
+
+		const recovered = state.consumeOrderedStreamChunks('ws::term', {
+			force: true,
+		});
+		expect(recovered.chunks.map((item) => item.seq)).toEqual([251]);
+		expect(recovered.droppedStaleChunks).toBe(1);
+
+		const stale = state.enqueueOrderedStreamChunk('ws::term', {
+			seq: 250,
+			bytes: 1,
+			chunk: new Uint8Array([0x04]),
+			receivedAt: 4,
+		});
+		expect(stale.droppedStaleChunks).toBe(1);
+	});
+
+	it('reports ordered stream snapshot for blocked flush diagnostics', () => {
+		const state = createTerminalServiceState();
+		state.enqueueOrderedStreamChunk('ws::term', {
+			seq: 10,
+			bytes: 2,
+			chunk: new Uint8Array([0x61, 0x62]),
+			receivedAt: 1,
+		});
+		state.enqueueOrderedStreamChunk('ws::term', {
+			seq: 11,
+			bytes: 3,
+			chunk: new Uint8Array([0x63, 0x64, 0x65]),
+			receivedAt: 2,
+		});
+
+		const snapshot = state.getOrderedStreamSnapshot('ws::term');
+		expect(snapshot).toEqual({
+			queuedChunks: 2,
+			queuedBytes: 5,
+			firstSeq: 10,
+			lastSeq: 11,
+			lastDeliveredSeq: 0,
+		});
+	});
 });

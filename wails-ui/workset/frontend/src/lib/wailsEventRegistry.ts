@@ -8,7 +8,17 @@ type EventRegistryEntry = {
 	unsubscribe?: () => void;
 };
 
-const eventRegistry = new Map<string, EventRegistryEntry>();
+const WAILS_EVENT_REGISTRY_GLOBAL_KEY = '__worksetWailsEventRegistry';
+
+const getGlobalEventRegistry = (): Map<string, EventRegistryEntry> => {
+	const root = globalThis as typeof globalThis & {
+		[WAILS_EVENT_REGISTRY_GLOBAL_KEY]?: Map<string, EventRegistryEntry>;
+	};
+	root[WAILS_EVENT_REGISTRY_GLOBAL_KEY] ??= new Map<string, EventRegistryEntry>();
+	return root[WAILS_EVENT_REGISTRY_GLOBAL_KEY]!;
+};
+
+const eventRegistry = getGlobalEventRegistry();
 
 export const subscribeWailsEvent = <T>(event: string, handler: EventHandler<T>): (() => void) => {
 	let entry = eventRegistry.get(event);

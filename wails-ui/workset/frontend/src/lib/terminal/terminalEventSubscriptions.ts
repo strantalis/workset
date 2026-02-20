@@ -3,6 +3,7 @@ import { EVENT_TERMINAL_DATA } from '../events';
 export type TerminalPayload = {
 	workspaceId: string;
 	terminalId: string;
+	windowName?: string;
 	dataB64?: string;
 	bytes?: number;
 	seq?: number;

@@ -13,6 +13,9 @@ const normalizeWindowName = (value: string | null | undefined): string => {
 	return candidate;
 };
 
+export const getCurrentWindowNameHint = (): string =>
+	normalizeWindowName(resolvedWindowName ?? requestedWindowName);
+
 export const getCurrentWindowName = async (): Promise<string> => {
 	if (resolvedWindowName) return resolvedWindowName;
 	if (resolvingWindowName) return resolvingWindowName;

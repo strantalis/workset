@@ -10,10 +10,17 @@ export const createTerminalInstance = (input: {
 	const themeForeground = input.getToken('--text', '#eef3f9');
 	const themeCursor = input.getToken('--accent', '#2d8cff');
 	const themeSelection = input.getToken('--accent', '#2d8cff');
-	const fontMono = input.getToken('--font-mono', '"JetBrains Mono", Menlo, Consolas, monospace');
+	// Keep terminal glyph rendering on conservative system monospace fonts to
+	// reduce block/box glyph seam artifacts in non-WebGL renderer paths.
+	const fontMono = input.getToken(
+		'--font-mono-terminal',
+		'"SF Mono", Menlo, Monaco, Consolas, monospace',
+	);
 
 	const initOptions: ITerminalOptions = {
-		rescaleOverlappingGlyphs: true,
+		// Keep xterm default behavior in canvas mode. Forcing glyph rescaling can
+		// introduce artifacts on block/pixel-heavy output.
+		rescaleOverlappingGlyphs: false,
 		scrollback: 4000,
 		scrollbar: {
 			showScrollbar: false,
