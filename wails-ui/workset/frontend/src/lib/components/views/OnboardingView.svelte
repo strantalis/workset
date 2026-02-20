@@ -386,6 +386,13 @@
 
 	const stepStatus = (s: number): 'active' | 'completed' | 'pending' => getStepStatus(step, s);
 
+	const hookRunDotClass = (status: HookExecution['status']): string | null => {
+		if (status === 'ok') return 'ws-dot-clean';
+		if (status === 'failed') return 'ws-dot-error';
+		if (status === 'running') return 'ws-dot-ahead';
+		return null;
+	};
+
 	onMount(() => {
 		hookEventUnsubscribe = subscribeHookProgressEvent((payload) => {
 			if (
@@ -665,7 +672,7 @@
 														<div class="selected-summary-name">{selectedRegistryRepo.name}</div>
 														<div class="selected-summary-url">{selectedRegistryRepo.remoteUrl}</div>
 													</div>
-													<span class="selected-summary-branch"
+													<span class="selected-summary-branch ui-kbd"
 														>{selectedRegistryRepo.defaultBranch}</span
 													>
 												</div>
@@ -860,12 +867,18 @@
 													<span class="hook-run-repo">{run.repo}</span>
 													<span class="hook-run-id">{run.id}</span>
 													<span
-														class="hook-run-status"
+														class="hook-run-status ws-inline"
 														class:ok={run.status === 'ok'}
 														class:failed={run.status === 'failed'}
 														class:running-status={run.status === 'running'}
 														class:skipped={run.status === 'skipped'}
 													>
+														{#if hookRunDotClass(run.status)}
+															<span
+																class={`ws-dot ws-dot-sm ${hookRunDotClass(run.status)}`}
+																aria-hidden="true"
+															></span>
+														{/if}
 														{run.status}
 													</span>
 												</div>
@@ -889,7 +902,7 @@
 															{pending.hooks.join(', ')}
 														</div>
 													</div>
-													<div class="pending-hook-actions">
+													<div class="ws-pending-hook-actions">
 														<button
 															type="button"
 															class="pending-hook-btn"
@@ -912,7 +925,9 @@
 														</button>
 													</div>
 													{#if pending.runError}
-														<div class="pending-hook-error">{pending.runError}</div>
+														<div class="pending-hook-error ws-pending-hook-error">
+															{pending.runError}
+														</div>
 													{/if}
 												</div>
 											{/each}
@@ -956,7 +971,7 @@
 		<div class="topo-side">
 			<div class="topo-gradient"></div>
 
-			<h3 class="topo-title">Workset Topology</h3>
+			<h3 class="topo-title ws-section-title">Workset Topology</h3>
 
 			<div class="topo-area">
 				<svg class="topo-svg" viewBox="-200 -200 400 400">

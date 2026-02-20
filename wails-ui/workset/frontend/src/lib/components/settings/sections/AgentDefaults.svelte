@@ -157,7 +157,7 @@
 >
 	<div class="fields-row">
 		{#each fields as field (field.id)}
-			<div class="field" class:changed={isChanged(field.id)}>
+			<div class="field ws-field" class:changed={isChanged(field.id)}>
 				<label for={field.id}>{field.label}</label>
 				{#if field.type === 'select'}
 					<Select
@@ -181,7 +181,7 @@
 						}}
 					/>
 				{/if}
-				<p>{field.description}</p>
+				<p class="ws-hint">{field.description}</p>
 			</div>
 		{/each}
 	</div>
@@ -273,12 +273,6 @@
 		margin-bottom: 24px;
 	}
 
-	.field {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
 	.field.changed label::after {
 		content: '*';
 		color: var(--warning);
@@ -290,12 +284,6 @@
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
-		color: var(--muted);
-	}
-
-	.field p {
-		margin: 0;
-		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 

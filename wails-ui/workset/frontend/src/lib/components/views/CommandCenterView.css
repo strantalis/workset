@@ -374,29 +374,19 @@
 	flex-shrink: 0;
 }
 
-.status-dot {
-	width: 8px;
-	height: 8px;
-	border-radius: 50%;
-}
-
 .status-dot.clean {
-	background: var(--success);
 	box-shadow: 0 0 8px rgba(134, 196, 66, 0.4);
 }
 
 .status-dot.modified {
-	background: var(--yellow);
 	box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
 }
 
 .status-dot.ahead {
-	background: var(--accent);
 	box-shadow: 0 0 8px rgba(45, 140, 255, 0.4);
 }
 
 .status-dot.error {
-	background: var(--status-error);
 	box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
 }
 
@@ -545,14 +535,12 @@
 .file-add {
 	font-family: var(--font-mono);
 	font-size: var(--text-mono-xs);
-	color: var(--success);
 	flex-shrink: 0;
 }
 
 .file-del {
 	font-family: var(--font-mono);
 	font-size: var(--text-mono-xs);
-	color: var(--status-error);
 	flex-shrink: 0;
 }
 
@@ -592,24 +580,12 @@ diffs-container {
 	border: 1px solid var(--border);
 	border-radius: 12px;
 	padding: 28px;
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	text-align: center;
-	gap: 12px;
 }
 
 .empty-card h2 {
 	margin: 0;
 	font-size: var(--text-2xl);
 	color: var(--text);
-}
-
-.empty-card p {
-	margin: 0;
-	font-size: var(--text-base);
-	color: var(--muted);
 }
 
 .cta {

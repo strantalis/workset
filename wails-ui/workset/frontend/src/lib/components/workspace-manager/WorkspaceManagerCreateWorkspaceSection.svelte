@@ -37,11 +37,12 @@
 </script>
 
 <section class="create">
-	<div class="section-title">Create workspace</div>
+	<div class="section-title ws-section-title">Create workspace</div>
 	<div class="form-grid">
-		<label class="field">
+		<label class="field ws-field">
 			<span>Name</span>
 			<input
+				class="ws-field-input"
 				placeholder="acme"
 				bind:this={createInput}
 				value={createName}
@@ -52,9 +53,10 @@
 				onkeydown={handleEnter}
 			/>
 		</label>
-		<label class="field span-2">
+		<label class="field span-2 ws-field">
 			<span>Path (optional)</span>
 			<input
+				class="ws-field-input"
 				placeholder="~/workspaces/acme"
 				value={createPath}
 				autocapitalize="off"
@@ -65,14 +67,14 @@
 			/>
 		</label>
 	</div>
-	<div class="inline-actions">
+	<div class="inline-actions ws-inline-actions">
 		<button class="primary" type="button" onclick={onCreate} disabled={creating}>
 			{creating ? 'Creating…' : 'Create workspace'}
 		</button>
 		{#if createError}
-			<div class="note error">{createError}</div>
+			<div class="note error ws-note ws-note-error">{createError}</div>
 		{:else if createSuccess}
-			<div class="note success">{createSuccess}</div>
+			<div class="note success ws-note ws-note-success">{createSuccess}</div>
 		{/if}
 	</div>
 </section>
@@ -85,14 +87,6 @@
 		padding: 16px;
 	}
 
-	.section-title {
-		font-size: var(--text-base);
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
-		color: var(--muted);
-		font-weight: 600;
-	}
-
 	.form-grid {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -100,32 +94,8 @@
 		margin-top: 12px;
 	}
 
-	.field {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		font-size: var(--text-sm);
-		color: var(--muted);
-	}
-
-	.field input {
-		background: var(--panel-soft);
-		border: 1px solid var(--border);
-		border-radius: 10px;
-		color: var(--text);
-		padding: 8px 10px;
-		font-size: var(--text-md);
-	}
-
 	.span-2 {
 		grid-column: span 2;
-	}
-
-	.inline-actions {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		margin-top: 12px;
 	}
 
 	.primary {
@@ -136,17 +106,5 @@
 		border-radius: 10px;
 		font-weight: 600;
 		cursor: pointer;
-	}
-
-	.note {
-		font-size: var(--text-base);
-	}
-
-	.note.error {
-		color: var(--danger);
-	}
-
-	.note.success {
-		color: var(--success);
 	}
 </style>

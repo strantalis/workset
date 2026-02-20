@@ -154,10 +154,11 @@
 </script>
 
 {#if mode === 'rename'}
-	<div class="form">
-		<label class="field">
+	<div class="form ws-form-stack">
+		<label class="field ws-field">
 			<span>New name</span>
 			<input
+				class="ws-field-input"
 				bind:this={textInput}
 				value={renameName}
 				oninput={(event) => onRenameNameInput((event.currentTarget as HTMLInputElement).value)}
@@ -167,7 +168,7 @@
 				spellcheck="false"
 			/>
 		</label>
-		<div class="hint">Renaming updates config and workset.yaml. Files stay in place.</div>
+		<div class="hint ws-hint">Renaming updates config and workset.yaml. Files stay in place.</div>
 		<Button variant="primary" onclick={onRenameSubmit} disabled={loading} class="action-btn">
 			{loading ? 'Renaming…' : 'Rename'}
 		</Button>
@@ -203,11 +204,12 @@
 		onSubmit={onAddSubmit}
 	/>
 {:else if mode === 'archive'}
-	<div class="form">
-		<div class="hint">Archiving hides the workspace but keeps files on disk.</div>
-		<label class="field">
+	<div class="form ws-form-stack">
+		<div class="hint ws-hint">Archiving hides the workspace but keeps files on disk.</div>
+		<label class="field ws-field">
 			<span>Reason (optional)</span>
 			<input
+				class="ws-field-input"
 				bind:this={textInput}
 				value={archiveReason}
 				oninput={(event) => onArchiveReasonInput((event.currentTarget as HTMLInputElement).value)}
@@ -253,43 +255,8 @@
 {/if}
 
 <style>
-	.form {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-	}
-
-	.field {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		font-size: var(--text-sm);
-		color: var(--muted);
-	}
-
-	.field input {
-		background: rgba(255, 255, 255, 0.02);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		color: var(--text);
-		padding: 8px 10px;
-		font-size: var(--text-md);
-		transition:
-			border-color var(--transition-fast),
-			box-shadow var(--transition-fast);
-	}
-
-	.field input:focus {
-		background: rgba(255, 255, 255, 0.04);
-	}
-
 	:global(.action-btn) {
 		width: 100%;
 		margin-top: 8px;
-	}
-
-	.hint {
-		font-size: var(--text-sm);
-		color: var(--muted);
 	}
 </style>

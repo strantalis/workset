@@ -941,14 +941,14 @@
 
 <div class="pro">
 	{#if !workspace}
-		<div class="empty-state">
+		<div class="empty-state ws-empty-state">
 			<GitPullRequest size={48} />
-			<p>Select a workspace to view pull requests</p>
+			<p class="ws-empty-state-copy">Select a workspace to view pull requests</p>
 		</div>
 	{:else if prItems.length === 0}
-		<div class="empty-state">
+		<div class="empty-state ws-empty-state">
 			<GitPullRequest size={48} />
-			<p>No repositories in this workspace</p>
+			<p class="ws-empty-state-copy">No repositories in this workspace</p>
 		</div>
 	{:else}
 		{#snippet detailPanel()}
@@ -1450,13 +1450,13 @@
 					</div>
 				{:else}
 					<!-- ── Empty Detail ── -->
-					<div class="empty-state">
+					<div class="empty-state ws-empty-state">
 						{#if viewMode === 'active'}
 							<GitPullRequest size={48} />
-							<p>Select a PR to view details</p>
+							<p class="ws-empty-state-copy">Select a PR to view details</p>
 						{:else}
 							<Upload size={48} />
-							<p>Select a branch to create a PR</p>
+							<p class="ws-empty-state-copy">Select a branch to create a PR</p>
 						{/if}
 					</div>
 				{/if}

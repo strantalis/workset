@@ -175,7 +175,7 @@
 		<!-- Header -->
 		<div class="templates-header">
 			<div class="header-text">
-				<h3 class="section-title">Your Templates</h3>
+				<h3 class="section-title ws-section-title">Your Templates</h3>
 				<p class="section-desc">
 					{groups.length}
 					{groups.length === 1 ? 'template' : 'templates'} defined
@@ -191,9 +191,9 @@
 
 		<!-- Messages -->
 		{#if error && !isEditing}
-			<div class="message error">{error}</div>
+			<div class="message error ws-message ws-message-error">{error}</div>
 		{:else if success && !isEditing}
-			<div class="message success">{success}</div>
+			<div class="message success ws-message ws-message-success">{success}</div>
 		{/if}
 
 		<!-- Editor Form -->
@@ -274,7 +274,7 @@
 				</div>
 
 				{#if error}
-					<div class="message error">{error}</div>
+					<div class="message error ws-message ws-message-error">{error}</div>
 				{/if}
 
 				<div class="editor-actions">
@@ -292,10 +292,12 @@
 		{:else}
 			<!-- Template Cards Grid -->
 			{#if groups.length === 0}
-				<div class="empty-state">
+				<div class="empty-state ws-empty-state">
 					<Layers size={32} class="empty-icon" />
 					<h4>No templates defined</h4>
-					<p>Create your first template to start organizing your repos.</p>
+					<p class="ws-empty-state-copy">
+						Create your first template to start organizing your repos.
+					</p>
 					<Button variant="primary" onclick={startNew}>Create Template</Button>
 				</div>
 			{:else}
@@ -314,11 +316,15 @@
 									>
 								</div>
 								<div class="card-actions">
-									<button class="action-btn" onclick={() => startEdit(group)} title="Edit">
+									<button
+										class="action-btn ws-icon-action-btn"
+										onclick={() => startEdit(group)}
+										title="Edit"
+									>
 										<Pencil size={14} />
 									</button>
 									<button
-										class="action-btn danger"
+										class="action-btn ws-icon-action-btn danger"
 										onclick={() => handleDelete(group.name)}
 										disabled={loading}
 										title="Delete"
@@ -364,6 +370,8 @@
 		font-weight: 600;
 		color: var(--text);
 		margin: 0;
+		text-transform: none;
+		letter-spacing: normal;
 	}
 
 	.section-desc {
@@ -378,20 +386,8 @@
 		gap: 6px;
 	}
 
-	.message {
-		font-size: var(--text-base);
-		padding: var(--space-2) var(--space-3);
-		border-radius: var(--radius-md);
-	}
-
-	.message.error {
-		background: var(--danger-subtle);
-		color: var(--danger);
-	}
-
 	.message.success {
 		background: var(--success-subtle);
-		color: var(--success);
 	}
 
 	.editor-card {
@@ -656,46 +652,11 @@
 		opacity: 1;
 	}
 
-	.action-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 28px;
-		height: 28px;
-		border: none;
-		background: transparent;
-		color: var(--muted);
-		cursor: pointer;
-		border-radius: var(--radius-sm);
-		transition: all var(--transition-fast);
-	}
-
-	.action-btn:hover {
-		background: var(--panel-strong);
-		color: var(--text);
-	}
-
-	.action-btn.danger:hover {
-		background: var(--danger-subtle);
-		color: var(--danger);
-	}
-
-	.action-btn:disabled {
-		opacity: 0.4;
-		cursor: not-allowed;
-	}
-
 	.empty-state {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: var(--space-3);
 		padding: 64px var(--space-4);
 		background: var(--panel);
 		border: 1px dashed var(--border);
 		border-radius: var(--radius-lg);
-		text-align: center;
 	}
 
 	:global(.empty-state .empty-icon) {
@@ -707,12 +668,6 @@
 		font-size: var(--text-lg);
 		font-weight: 600;
 		color: var(--text);
-		margin: 0;
-	}
-
-	.empty-state p {
-		font-size: var(--text-md);
-		color: var(--muted);
 		margin: 0;
 	}
 </style>

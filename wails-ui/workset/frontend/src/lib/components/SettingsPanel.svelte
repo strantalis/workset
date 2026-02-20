@@ -349,7 +349,7 @@
 				<span class="config-label">Config</span>
 				<span class="config-path">{snapshot.configPath}</span>
 			</div>
-			<div class="spacer"></div>
+			<div class="ws-spacer"></div>
 			{#if error}
 				<span class="status error">{error}</span>
 			{:else if success}
@@ -497,10 +497,6 @@
 		color: var(--text);
 		font-family: var(--font-mono);
 		opacity: 0.7;
-	}
-
-	.spacer {
-		flex: 1;
 	}
 
 	.status {

@@ -90,40 +90,6 @@ h1 {
 	color: var(--text);
 }
 
-.dot {
-	width: 8px;
-	height: 8px;
-	border-radius: 999px;
-}
-
-.dot.accent,
-.dot.ahead {
-	background: var(--accent);
-}
-
-.dot.violet {
-	background: var(--hub-violet);
-}
-
-.dot.success,
-.dot.clean {
-	background: var(--success);
-}
-
-.dot.warning,
-.dot.modified {
-	background: var(--warning);
-}
-
-.dot.gold,
-.dot.dirty {
-	background: var(--hub-gold);
-}
-
-.dot.error {
-	background: var(--danger);
-}
-
 .toolbar {
 	display: flex;
 	align-items: center;
@@ -455,26 +421,12 @@ h1 {
 	gap: 4px;
 }
 
-.health-row .dot {
-	width: 7px;
-	height: 7px;
-}
-
 .diff {
-	display: inline-flex;
-	align-items: center;
-	gap: 5px;
 	margin-left: 8px;
+	gap: 5px;
+	font-weight: inherit;
 	font-size: var(--text-mono-xs);
 	font-family: var(--font-mono);
-}
-
-.plus {
-	color: var(--success);
-}
-
-.minus {
-	color: var(--danger);
 }
 
 .card-footer {
@@ -516,19 +468,6 @@ h1 {
 	display: inline-flex;
 	align-items: center;
 	gap: 8px;
-}
-
-kbd {
-	display: inline-flex;
-	align-items: center;
-	gap: 2px;
-	padding: 1px 5px;
-	border-radius: 6px;
-	border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-	background: color-mix(in srgb, var(--bg) 84%, transparent);
-	font-size: var(--text-mono-xs);
-	font-family: var(--font-mono);
-	color: color-mix(in srgb, var(--muted) 68%, white);
 }
 
 .list {
@@ -652,11 +591,6 @@ kbd {
 	display: inline-flex;
 	align-items: center;
 	gap: 3px;
-}
-
-.row-health .dot {
-	width: 7px;
-	height: 7px;
 }
 
 .row-stats {
@@ -784,10 +718,6 @@ kbd {
 
 .empty-state {
 	min-height: 280px;
-	display: grid;
-	place-content: center;
-	justify-items: center;
-	gap: 12px;
 	color: color-mix(in srgb, var(--muted) 56%, white);
 	font-size: var(--text-base);
 }

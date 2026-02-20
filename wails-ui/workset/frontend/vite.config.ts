@@ -1,11 +1,13 @@
 import { defineConfig } from 'vitest/config';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { svelteTesting } from '@testing-library/svelte/vite';
+import tailwindcss from '@tailwindcss/vite';
 import wails from '@wailsio/runtime/plugins/vite';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
 	plugins: [
+		tailwindcss(),
 		svelte({
 			compilerOptions: {
 				hmr: !mode?.includes('test') && !mode?.includes('production'),

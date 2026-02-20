@@ -8,16 +8,9 @@
 /* ── Empty state ──────────────────────────────────────────── */
 .empty-state {
 	flex: 1;
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
 	gap: 16px;
 	color: var(--muted);
 	opacity: 0.5;
-}
-.empty-state p {
-	font-size: var(--text-md);
 }
 
 /* ── Sidebar ──────────────────────────────────────────────── */

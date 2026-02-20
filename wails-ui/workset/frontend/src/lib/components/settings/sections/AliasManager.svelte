@@ -209,7 +209,7 @@
 		<!-- Header with Register button -->
 		<div class="catalog-header">
 			<div class="header-text">
-				<h3 class="section-title">Registered Repositories</h3>
+				<h3 class="section-title ws-section-title">Registered Repositories</h3>
 				<p class="section-desc">
 					{aliases.length}
 					{aliases.length === 1 ? 'repo' : 'repos'} in catalog
@@ -225,10 +225,10 @@
 
 		<!-- Success/Error Messages -->
 		{#if success && !isRegistering}
-			<div class="message success">{success}</div>
+			<div class="message success ws-message">{success}</div>
 		{/if}
 		{#if error && !isRegistering}
-			<div class="message error">{error}</div>
+			<div class="message error ws-message ws-message-error">{error}</div>
 		{/if}
 
 		<!-- Registration Form -->
@@ -322,7 +322,7 @@
 				{/if}
 
 				{#if error && isRegistering}
-					<div class="message error">{error}</div>
+					<div class="message error ws-message ws-message-error">{error}</div>
 				{/if}
 
 				<div class="form-actions">
@@ -365,18 +365,22 @@
 							<div class="repo-source">{alias.url ?? alias.path ?? ''}</div>
 						</div>
 						<div class="repo-actions">
-							<button class="action-btn" onclick={() => startEdit(alias)} title="Edit">
+							<button
+								class="action-btn ws-icon-action-btn"
+								onclick={() => startEdit(alias)}
+								title="Edit"
+							>
 								<Pencil size={14} />
 							</button>
 							<button
-								class="action-btn"
+								class="action-btn ws-icon-action-btn"
 								onclick={() => handleCopyUrl(alias)}
 								title={copiedId === alias.name ? 'Copied!' : 'Copy remote URL'}
 							>
 								<Copy size={14} />
 							</button>
 							<button
-								class="action-btn danger"
+								class="action-btn ws-icon-action-btn danger"
 								onclick={() => handleDelete(alias)}
 								disabled={loading}
 								title="Remove from catalog"
@@ -387,8 +391,8 @@
 					</div>
 				{:else}
 					{#if !isRegistering}
-						<div class="empty-state">
-							<p>No repositories found.</p>
+						<div class="empty-state ws-empty-state">
+							<p class="ws-empty-state-copy">No repositories found.</p>
 							<Button variant="ghost" onclick={() => (isRegistering = true)}>
 								Register your first repo
 							</Button>
@@ -431,6 +435,8 @@
 		font-weight: 600;
 		color: var(--text);
 		margin: 0;
+		text-transform: none;
+		letter-spacing: normal;
 	}
 
 	.section-desc {
@@ -696,35 +702,6 @@
 		opacity: 1;
 	}
 
-	.action-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 28px;
-		height: 28px;
-		border: none;
-		background: transparent;
-		color: var(--muted);
-		cursor: pointer;
-		border-radius: var(--radius-sm);
-		transition: all var(--transition-fast);
-	}
-
-	.action-btn:hover {
-		background: var(--panel-strong);
-		color: var(--text);
-	}
-
-	.action-btn.danger:hover {
-		background: var(--danger-subtle);
-		color: var(--danger);
-	}
-
-	.action-btn:disabled {
-		opacity: 0.4;
-		cursor: not-allowed;
-	}
-
 	.list-footer {
 		padding: var(--space-2) var(--space-3);
 		background: var(--panel-strong);
@@ -735,30 +712,7 @@
 	}
 
 	.empty-state {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: var(--space-3);
 		padding: 48px var(--space-4);
-		text-align: center;
-	}
-
-	.empty-state p {
-		margin: 0;
-		color: var(--muted);
-		font-size: var(--text-md);
-	}
-
-	.message {
-		font-size: var(--text-base);
-		padding: var(--space-2) var(--space-3);
-		border-radius: var(--radius-md);
-	}
-
-	.message.error {
-		background: var(--danger-subtle);
-		color: var(--danger);
 	}
 
 	:global(.repo-card:hover .menu-btn) {

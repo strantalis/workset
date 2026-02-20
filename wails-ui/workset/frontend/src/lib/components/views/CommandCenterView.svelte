@@ -337,17 +337,21 @@
 	</section>
 
 	{#if !activeWorkspace}
-		<section class="empty-card">
+		<section class="empty-card ws-empty-state">
 			<h2>No workspace selected</h2>
-			<p>Select a workspace from the Hub or create a new one to see repository status.</p>
+			<p class="ws-empty-state-copy">
+				Select a workspace from the Hub or create a new one to see repository status.
+			</p>
 			<button type="button" class="cta" onclick={onCreateWorkspace}>
 				<Plus size={15} /> Create Workspace
 			</button>
 		</section>
 	{:else if activeWorkspace.repos.length === 0}
-		<section class="empty-card">
+		<section class="empty-card ws-empty-state">
 			<h2>No repos linked</h2>
-			<p>Add repositories to this workspace to track branch health and drift.</p>
+			<p class="ws-empty-state-copy">
+				Add repositories to this workspace to track branch health and drift.
+			</p>
 			<button type="button" class="cta" onclick={() => onAddRepo(activeWorkspaceId ?? '')}>
 				<Plus size={15} /> Add Repo
 			</button>
@@ -407,7 +411,7 @@
 											>
 										</div>
 										<div class="repo-badges">
-											<span class="status-dot {statusClass}"></span>
+											<span class={`status-dot ws-dot ws-dot-md ws-dot-${statusClass}`}></span>
 											{#if canExpand}
 												<span class="chevron" class:open={isExpanded}>
 													<ChevronDown size={14} />
@@ -468,10 +472,10 @@
 															</span>
 															<span class="file-path">{file.path}</span>
 															{#if file.added > 0}
-																<span class="file-add">+{file.added}</span>
+																<span class="file-add ws-diffstat-add">+{file.added}</span>
 															{/if}
 															{#if file.removed > 0}
-																<span class="file-del">-{file.removed}</span>
+																<span class="file-del ws-diffstat-del">-{file.removed}</span>
 															{/if}
 														</button>
 
@@ -498,11 +502,11 @@
 											</div>
 
 											<div class="expanded-footer">
-												<span class="file-add">
+												<span class="file-add ws-diffstat-add">
 													+{summaryFiles.reduce((s, f) => s + f.added, 0)}
 												</span>
 												{#if summaryFiles.reduce((s, f) => s + f.removed, 0) > 0}
-													<span class="file-del">
+													<span class="file-del ws-diffstat-del">
 														-{summaryFiles.reduce((s, f) => s + f.removed, 0)}
 													</span>
 												{/if}

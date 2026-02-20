@@ -115,6 +115,7 @@
 						/>
 					{:else}
 						<input
+							class="ws-field-input"
 							id={field.id}
 							type="text"
 							placeholder={field.placeholder ?? ''}
@@ -125,14 +126,16 @@
 							oninput={(event) => handleInput(field.id, event)}
 						/>
 					{/if}
-					<span class="hint">{field.description}</span>
+					<span class="hint ws-hint">{field.description}</span>
 				</div>
 			</div>
 		{/each}
 	</div>
 
 	<div class="sessiond-actions" class:restart-completed={restartCompleted}>
-		<span class="hint">Restart if terminals get stuck or after changing daemon settings.</span>
+		<span class="hint ws-hint"
+			>Restart if terminals get stuck or after changing daemon settings.</span
+		>
 		<button
 			class="restart"
 			type="button"
@@ -149,7 +152,7 @@
 	</div>
 
 	<div class="sessiond-actions reset-layout" class:reset-completed={resetCompleted}>
-		<span class="hint">
+		<span class="hint ws-hint">
 			{#if resetCompleted}
 				Terminal layout and sessions reset.
 			{:else}
@@ -214,25 +217,7 @@
 	.compact-field input {
 		width: 100px;
 		background: var(--panel-strong);
-		border: 1px solid var(--border);
-		color: var(--text);
-		border-radius: var(--radius-md);
 		padding: 8px 12px;
-		font-size: var(--text-base);
-		transition:
-			border-color var(--transition-fast),
-			box-shadow var(--transition-fast);
-	}
-
-	.compact-field input:focus {
-		outline: none;
-		border-color: var(--accent);
-		box-shadow: 0 0 0 2px var(--accent-soft);
-	}
-
-	.hint {
-		font-size: var(--text-sm);
-		color: var(--muted);
 	}
 
 	.sessiond-actions {

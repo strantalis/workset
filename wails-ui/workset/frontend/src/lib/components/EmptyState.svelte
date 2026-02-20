@@ -20,10 +20,14 @@
 	}: Props = $props();
 </script>
 
-<section class="empty" class:centered={variant === 'centered'}>
+<section
+	class="empty"
+	class:centered={variant === 'centered'}
+	class:ws-empty-state={variant === 'centered'}
+>
 	<div class="content">
 		<div class="title">{title}</div>
-		<div class="body">{body}</div>
+		<div class="body ws-empty-state-copy">{body}</div>
 		{#if onAction}
 			<div class="actions">
 				<Button variant="primary" onclick={onAction}>{actionLabel}</Button>
@@ -49,9 +53,6 @@
 	}
 
 	.empty.centered {
-		align-items: center;
-		justify-content: center;
-		text-align: center;
 		background: transparent;
 		border: none;
 		max-width: 480px;
@@ -81,13 +82,10 @@
 	}
 
 	.body {
-		color: var(--muted);
-		font-size: var(--text-md);
 		line-height: 1.6;
 	}
 
 	.centered .body {
-		font-size: var(--text-md);
 		max-width: 420px;
 	}
 

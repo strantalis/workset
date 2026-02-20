@@ -371,11 +371,12 @@
 						</div>
 
 						<div class="rename">
-							<div class="section-title">Rename workspace</div>
+							<div class="section-title ws-section-title">Rename workspace</div>
 							<div class="form-grid">
-								<label class="field span-2">
+								<label class="field span-2 ws-field">
 									<span>New name</span>
 									<input
+										class="ws-field-input"
 										placeholder="acme"
 										bind:this={renameInput}
 										bind:value={renameName}
@@ -388,25 +389,28 @@
 									/>
 								</label>
 							</div>
-							<div class="inline-actions">
+							<div class="inline-actions ws-inline-actions">
 								<button class="primary" type="button" onclick={handleRename} disabled={renaming}>
 									{renaming ? 'Renaming…' : 'Rename'}
 								</button>
 								{#if renameError}
-									<div class="note error">{renameError}</div>
+									<div class="note error ws-note ws-note-error">{renameError}</div>
 								{:else if renameSuccess}
-									<div class="note success">{renameSuccess}</div>
+									<div class="note success ws-note ws-note-success">{renameSuccess}</div>
 								{/if}
 							</div>
-							<div class="hint">Renaming updates config and workset.yaml. Files stay in place.</div>
+							<div class="hint ws-hint">
+								Renaming updates config and workset.yaml. Files stay in place.
+							</div>
 						</div>
 
 						<div class="repo-add">
-							<div class="section-title">Add repo</div>
+							<div class="section-title ws-section-title">Add repo</div>
 							<div class="form-grid">
-								<label class="field span-2">
+								<label class="field span-2 ws-field">
 									<span>Source</span>
 									<input
+										class="ws-field-input"
 										placeholder="registered repo, URL, or local path"
 										bind:this={addSourceInput}
 										bind:value={addSource}
@@ -418,9 +422,10 @@
 										}}
 									/>
 								</label>
-								<label class="field">
+								<label class="field ws-field">
 									<span>Repo name (optional)</span>
 									<input
+										class="ws-field-input"
 										placeholder="agent-skills"
 										bind:value={addName}
 										autocapitalize="off"
@@ -428,9 +433,10 @@
 										spellcheck="false"
 									/>
 								</label>
-								<label class="field">
+								<label class="field ws-field">
 									<span>Repo dir (optional)</span>
 									<input
+										class="ws-field-input"
 										placeholder="agent-skills"
 										bind:value={addRepoDir}
 										autocapitalize="off"
@@ -439,18 +445,18 @@
 									/>
 								</label>
 							</div>
-							<div class="inline-actions">
+							<div class="inline-actions ws-inline-actions">
 								<button class="primary" type="button" onclick={handleAddRepo} disabled={adding}>
 									{adding ? 'Adding…' : 'Add repo'}
 								</button>
 								{#if addError}
-									<div class="note error">{addError}</div>
+									<div class="note error ws-note ws-note-error">{addError}</div>
 								{:else}
 									{#if addSuccess}
-										<div class="note success">{addSuccess}</div>
+										<div class="note success ws-note ws-note-success">{addSuccess}</div>
 									{/if}
 									{#if addWarnings.length > 0}
-										<div class="note warning">
+										<div class="note warning ws-note ws-note-warning">
 											{#each addWarnings as warning (warning)}
 												<div>{warning}</div>
 											{/each}
@@ -458,7 +464,9 @@
 									{/if}
 								{/if}
 							</div>
-							<div class="hint">Removes only update the workset config. Files stay on disk.</div>
+							<div class="hint ws-hint">
+								Removes only update the workset config. Files stay on disk.
+							</div>
 						</div>
 
 						<WorkspaceManagerRepoListSection
@@ -542,14 +550,6 @@
 		padding: 16px;
 	}
 
-	.section-title {
-		font-size: var(--text-base);
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
-		color: var(--muted);
-		font-weight: 600;
-	}
-
 	.form-grid {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -557,48 +557,8 @@
 		margin-top: 12px;
 	}
 
-	.field {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		font-size: var(--text-sm);
-		color: var(--muted);
-	}
-
-	.field input {
-		background: var(--panel-soft);
-		border: 1px solid var(--border);
-		border-radius: 10px;
-		color: var(--text);
-		padding: 8px 10px;
-		font-size: var(--text-md);
-	}
-
 	.span-2 {
 		grid-column: span 2;
-	}
-
-	.inline-actions {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		margin-top: 12px;
-	}
-
-	.note {
-		font-size: var(--text-base);
-	}
-
-	.note.error {
-		color: var(--danger);
-	}
-
-	.note.success {
-		color: var(--success);
-	}
-
-	.note.warning {
-		color: var(--warning);
 	}
 
 	.list-grid {
@@ -659,17 +619,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
-	}
-
-	.hint {
-		font-size: var(--text-sm);
-		color: var(--muted);
-	}
-
-	.empty {
-		font-size: var(--text-base);
-		color: var(--muted);
-		padding: 8px 0;
 	}
 
 	@media (max-width: 1000px) {

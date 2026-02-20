@@ -71,9 +71,10 @@
 >
 	<div class="fields">
 		{#each fields as field (field.id)}
-			<div class="field" class:changed={isChanged(field.id)}>
+			<div class="field ws-field" class:changed={isChanged(field.id)}>
 				<label for={field.id}>{field.label}</label>
 				<input
+					class="ws-field-input"
 					id={field.id}
 					type="text"
 					placeholder={field.placeholder ?? ''}
@@ -83,15 +84,16 @@
 					spellcheck="false"
 					oninput={(event) => handleInput(field.id, event)}
 				/>
-				<p>{field.description}</p>
+				<p class="ws-hint">{field.description}</p>
 			</div>
 		{/each}
 	</div>
 	<div class="full-width-field">
 		{#each fullWidthFields as field (field.id)}
-			<div class="field" class:changed={isChanged(field.id)}>
+			<div class="field ws-field" class:changed={isChanged(field.id)}>
 				<label for={field.id}>{field.label}</label>
 				<input
+					class="ws-field-input"
 					id={field.id}
 					type="text"
 					placeholder={field.placeholder ?? ''}
@@ -101,7 +103,7 @@
 					spellcheck="false"
 					oninput={(event) => handleInput(field.id, event)}
 				/>
-				<p>{field.description}</p>
+				<p class="ws-hint">{field.description}</p>
 			</div>
 		{/each}
 	</div>
@@ -122,12 +124,6 @@
 		grid-column: 1 / -1;
 	}
 
-	.field {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
 	.field.changed label::after {
 		content: '*';
 		color: var(--warning);
@@ -142,27 +138,8 @@
 		color: var(--muted);
 	}
 
-	.field input {
+	.ws-field-input {
 		background: var(--panel-strong);
-		border: 1px solid var(--border);
-		color: var(--text);
-		border-radius: var(--radius-md);
 		padding: 10px 12px;
-		font-size: var(--text-base);
-		transition:
-			border-color var(--transition-fast),
-			box-shadow var(--transition-fast);
-	}
-
-	.field input:focus {
-		outline: none;
-		border-color: var(--accent);
-		box-shadow: 0 0 0 2px var(--accent-soft);
-	}
-
-	.field p {
-		margin: 0;
-		font-size: var(--text-sm);
-		color: var(--muted);
 	}
 </style>

@@ -236,7 +236,7 @@
 				ondragleave={handleSectionDragLeave}
 				ondrop={(e) => handleSectionDrop('pinned', e)}
 			>
-				<div class="section-header pinned"><Pin size={12} /> Pinned</div>
+				<div class="section-header ws-section-title pinned"><Pin size={12} /> Pinned</div>
 				{#if filteredPinnedWorkspaces.length === 0}
 					<div class="section-empty">
 						{searchQuery ? 'No pinned matches' : 'Drop here to pin'}
@@ -271,7 +271,7 @@
 				ondragleave={handleSectionDragLeave}
 				ondrop={(e) => handleSectionDrop('unpinned', e)}
 			>
-				<div class="section-header">Recent</div>
+				<div class="section-header ws-section-title">Recent</div>
 				{#each filteredUnpinnedWorkspaces as workspace (workspace.id)}
 					<WorkspaceItem
 						{workspace}
@@ -496,11 +496,6 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-1);
-		font-size: var(--text-xs);
-		font-weight: 600;
-		color: var(--muted);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
 		padding: var(--space-1) var(--space-2);
 		opacity: 0.7;
 	}

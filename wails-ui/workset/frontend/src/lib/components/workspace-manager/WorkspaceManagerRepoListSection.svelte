@@ -34,9 +34,9 @@
 </script>
 
 <div class="repo-list">
-	<div class="section-title">Repos</div>
+	<div class="section-title ws-section-title">Repos</div>
 	{#if selectedWorkspace.repos.length === 0}
-		<div class="empty">No repos configured yet.</div>
+		<div class="empty ws-empty">No repos configured yet.</div>
 	{/if}
 	{#each selectedWorkspace.repos as repo (repo.name)}
 		<div class:active={repo.name === selectedRepoName} class="repo-row">
@@ -47,7 +47,7 @@
 			<div class="card-actions">
 				{#if confirmRepoRemove?.repoName === repo.name}
 					<div class="remove-options">
-						<label class="option">
+						<label class="option ws-option">
 							<input
 								type="checkbox"
 								checked={removeRepoDeleteWorktree}
@@ -58,7 +58,7 @@
 							/>
 							<span>Also delete worktrees for this repo</span>
 						</label>
-						<label class="option">
+						<label class="option ws-option">
 							<input
 								type="checkbox"
 								checked={removeRepoDeleteLocal}
@@ -68,16 +68,18 @@
 							<span>Also delete local cache for this repo</span>
 						</label>
 						{#if removeRepoDeleteWorktree || removeRepoDeleteLocal}
-							<div class="hint">Destructive deletes are permanent and cannot be undone.</div>
+							<div class="hint ws-hint">
+								Destructive deletes are permanent and cannot be undone.
+							</div>
 						{/if}
 						{#if repo.statusKnown === false && (removeRepoDeleteWorktree || removeRepoDeleteLocal)}
-							<div class="note warning">
+							<div class="note warning ws-note ws-note-warning">
 								Repo status is still loading. Destructive deletes may be blocked if the repo is
 								dirty.
 							</div>
 						{/if}
 						{#if repo.dirty && (removeRepoDeleteWorktree || removeRepoDeleteLocal)}
-							<div class="note warning">
+							<div class="note warning ws-note ws-note-warning">
 								Uncommitted changes detected. Destructive deletes will be blocked until the repo is
 								clean.
 							</div>
@@ -121,14 +123,6 @@
 </div>
 
 <style>
-	.section-title {
-		font-size: var(--text-base);
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
-		color: var(--muted);
-		font-weight: 600;
-	}
-
 	.repo-list {
 		display: flex;
 		flex-direction: column;
@@ -179,41 +173,10 @@
 		gap: 8px;
 	}
 
-	.option {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		font-size: var(--text-base);
-		color: var(--text);
-	}
-
-	.option input {
-		accent-color: var(--accent);
-	}
-
 	.remove-options {
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
 		margin-bottom: 6px;
-	}
-
-	.hint {
-		font-size: var(--text-sm);
-		color: var(--muted);
-	}
-
-	.note {
-		font-size: var(--text-base);
-	}
-
-	.note.warning {
-		color: var(--warning);
-	}
-
-	.empty {
-		font-size: var(--text-base);
-		color: var(--muted);
-		padding: 8px 0;
 	}
 </style>
