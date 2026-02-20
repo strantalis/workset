@@ -20,6 +20,12 @@ const openPr = (number: number, title = `PR ${number}`): PullRequestCreated => (
 	headBranch: `feature/${number}`,
 });
 
+const mergedPr = (number: number, title = `Merged ${number}`): PullRequestCreated => ({
+	...openPr(number, title),
+	state: 'closed',
+	merged: true,
+});
+
 const workspaceWithRepos = (
 	repos: Array<{ id: string; trackedPullRequest?: PullRequestCreated }>,
 ): Workspace => ({
@@ -70,6 +76,16 @@ describe('prOrchestrationView tracked PR map helpers', () => {
 		const merged = mergeTrackedPrMap(workspace, currentMap);
 
 		expect(merged.size).toBe(0);
+	});
+
+	test('retains merged PRs in tracked map', () => {
+		const currentMap = new Map<string, PullRequestCreated>();
+		const workspace = workspaceWithRepos([{ id: 'repo-1', trackedPullRequest: mergedPr(10) }]);
+
+		const merged = mergeTrackedPrMap(workspace, currentMap);
+
+		expect(merged.get('repo-1')?.merged).toBe(true);
+		expect(merged.get('repo-1')?.state).toBe('closed');
 	});
 
 	test('drops entries for repos no longer present in workspace', () => {

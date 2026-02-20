@@ -73,6 +73,7 @@ type GitHubPullRequest struct {
 	Body      string
 	Draft     bool
 	State     string
+	Merged    bool
 	BaseRef   string
 	HeadRef   string
 	HeadSHA   string

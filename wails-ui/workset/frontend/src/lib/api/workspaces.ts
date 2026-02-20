@@ -63,6 +63,9 @@ export async function fetchWorkspaces(
 						body: repo.trackedPullRequest.body,
 						state: repo.trackedPullRequest.state,
 						draft: repo.trackedPullRequest.draft,
+						merged:
+							(repo.trackedPullRequest as { merged?: boolean }).merged ??
+							repo.trackedPullRequest.state?.toLowerCase() === 'merged',
 						baseRepo: repo.trackedPullRequest.baseRepo,
 						baseBranch: repo.trackedPullRequest.baseBranch,
 						headRepo: repo.trackedPullRequest.headRepo,

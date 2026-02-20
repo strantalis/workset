@@ -246,14 +246,14 @@ describe('PROrchestrationView sidebar collapse', () => {
 		await fireEvent.click(getByRole('button', { name: 'Collapse sidebar' }));
 
 		expect(getByRole('button', { name: 'Expand sidebar' })).toBeInTheDocument();
-		expect(queryByText('Active PRs')).not.toBeInTheDocument();
+		expect(queryByText('Tracked PRs')).not.toBeInTheDocument();
 		expect(container.querySelector('.sidebar-collapsed-layout')).toBeInTheDocument();
 		expect(container.querySelector('.sidebar')).not.toBeInTheDocument();
 
 		await fireEvent.click(getByRole('button', { name: 'Expand sidebar' }));
 
 		expect(getByRole('button', { name: 'Collapse sidebar' })).toBeEnabled();
-		expect(getByText('Active PRs')).toBeInTheDocument();
+		expect(getByText('Tracked PRs')).toBeInTheDocument();
 		expect(container.querySelector('.sidebar')).toBeInTheDocument();
 	});
 
@@ -277,7 +277,7 @@ describe('PROrchestrationView sidebar collapse', () => {
 		});
 	});
 
-	test('reconciles tracked state when PR status updates to closed', async () => {
+	test('reconciles tracked state when PR status updates to closed and unmerged', async () => {
 		vi.mocked(repoDiffService.subscribeRepoDiffEvent).mockImplementation(() => () => {});
 		vi.mocked(githubApi.fetchTrackedPullRequest)
 			.mockResolvedValueOnce(trackedPr)
@@ -327,7 +327,7 @@ describe('PROrchestrationView sidebar collapse', () => {
 		await waitFor(() => {
 			expect(vi.mocked(repoDiffApi.stopRepoDiffWatch)).toHaveBeenCalledWith('ws-1', 'repo-1');
 		});
-		expect(await findByText('No active PRs')).toBeInTheDocument();
+		expect(await findByText('No tracked PRs')).toBeInTheDocument();
 	});
 
 	test('keeps active PR list stable when workspace refresh temporarily omits tracked PR', async () => {
@@ -337,11 +337,11 @@ describe('PROrchestrationView sidebar collapse', () => {
 		});
 
 		expect(getByText('repo-one')).toBeInTheDocument();
-		expect(queryByText('No active PRs')).not.toBeInTheDocument();
+		expect(queryByText('No tracked PRs')).not.toBeInTheDocument();
 
 		await rerender({ workspace: buildWorkspaceWithoutTrackedPr() });
 
 		expect(getByText('repo-one')).toBeInTheDocument();
-		expect(queryByText('No active PRs')).not.toBeInTheDocument();
+		expect(queryByText('No tracked PRs')).not.toBeInTheDocument();
 	});
 });

@@ -546,13 +546,15 @@ func (c *githubCLIClient) ResolveReviewThread(ctx context.Context, threadID stri
 }
 
 type pullRequestREST struct {
-	Number    int    `json:"number"`
-	HTMLURL   string `json:"html_url"`
-	Title     string `json:"title"`
-	Body      string `json:"body"`
-	Draft     bool   `json:"draft"`
-	State     string `json:"state"`
-	Mergeable *bool  `json:"mergeable"`
+	Number    int        `json:"number"`
+	HTMLURL   string     `json:"html_url"`
+	Title     string     `json:"title"`
+	Body      string     `json:"body"`
+	Draft     bool       `json:"draft"`
+	State     string     `json:"state"`
+	Merged    bool       `json:"merged"`
+	MergedAt  *time.Time `json:"merged_at"`
+	Mergeable *bool      `json:"mergeable"`
 	Base      struct {
 		Ref string `json:"ref"`
 	} `json:"base"`
@@ -625,6 +627,7 @@ func mapPullRequestREST(pr pullRequestREST) GitHubPullRequest {
 		Body:      pr.Body,
 		Draft:     pr.Draft,
 		State:     pr.State,
+		Merged:    pr.Merged || pr.MergedAt != nil,
 		BaseRef:   pr.Base.Ref,
 		HeadRef:   pr.Head.Ref,
 		HeadSHA:   pr.Head.SHA,

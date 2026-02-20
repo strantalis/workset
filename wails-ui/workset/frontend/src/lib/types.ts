@@ -313,6 +313,7 @@ export type PullRequestSummary = {
 	body?: string;
 	state: string;
 	draft: boolean;
+	merged?: boolean;
 	baseRepo: string;
 	baseBranch: string;
 	headRepo: string;

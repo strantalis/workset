@@ -388,6 +388,7 @@ func mapPullRequest(pr *github.PullRequest) GitHubPullRequest {
 		Body:      pr.GetBody(),
 		Draft:     pr.GetDraft(),
 		State:     pr.GetState(),
+		Merged:    pr.GetMerged() || pr.MergedAt != nil,
 		BaseRef:   pr.GetBase().GetRef(),
 		HeadRef:   pr.GetHead().GetRef(),
 		HeadSHA:   pr.GetHead().GetSHA(),

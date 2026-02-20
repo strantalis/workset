@@ -50,6 +50,7 @@ type PullRequestState struct {
 	Body       string `json:"body,omitempty"`
 	State      string `json:"state"`
 	Draft      bool   `json:"draft"`
+	Merged     bool   `json:"merged"`
 	BaseRepo   string `json:"base_repo"`
 	BaseBranch string `json:"base_branch"`
 	HeadRepo   string `json:"head_repo"`

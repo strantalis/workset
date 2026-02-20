@@ -68,6 +68,7 @@ func TestRecordPullRequestPersistsWorkspaceState(t *testing.T) {
 		Body:       "Body text",
 		Draft:      false,
 		State:      "open",
+		Merged:     false,
 		BaseRepo:   "base-org/base-repo",
 		BaseBranch: "main",
 		HeadRepo:   "head-org/head-repo",
@@ -84,6 +85,9 @@ func TestRecordPullRequestPersistsWorkspaceState(t *testing.T) {
 	}
 	if record.Number != 73 || record.Title != "Track this PR" || record.HeadBranch != "feature/track-pr" {
 		t.Fatalf("unexpected tracked PR record: %+v", record)
+	}
+	if record.Merged {
+		t.Fatalf("expected tracked PR record to be unmerged")
 	}
 	if record.UpdatedAt != env.now.Format(time.RFC3339) {
 		t.Fatalf("unexpected updated_at timestamp: %q", record.UpdatedAt)

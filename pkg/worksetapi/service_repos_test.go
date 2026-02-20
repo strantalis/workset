@@ -115,6 +115,60 @@ func TestAddRepoReattachesExistingWorktree(t *testing.T) {
 	}
 }
 
+func TestRemoveRepoClearsTrackedPullRequestState(t *testing.T) {
+	env := newTestEnv(t)
+	root := env.createWorkspace(context.Background(), "demo")
+	local := env.createLocalRepo("repo-a")
+	ctx := context.Background()
+
+	if _, err := env.svc.AddRepo(ctx, RepoAddInput{
+		Workspace:  WorkspaceSelector{Value: root},
+		Name:       "repo-a",
+		NameSet:    true,
+		SourcePath: local,
+	}); err != nil {
+		t.Fatalf("add repo: %v", err)
+	}
+
+	resolution, err := env.svc.resolveRepo(ctx, RepoSelectionInput{
+		Workspace: WorkspaceSelector{Value: root},
+		Repo:      "repo-a",
+	})
+	if err != nil {
+		t.Fatalf("resolveRepo: %v", err)
+	}
+	env.svc.recordPullRequest(ctx, resolution, PullRequestCreatedJSON{
+		Repo:       "repo-a",
+		Number:     73,
+		URL:        "https://github.com/example/repo-a/pull/73",
+		Title:      "Track for cleanup",
+		State:      "closed",
+		Merged:     true,
+		BaseRepo:   "example/repo-a",
+		BaseBranch: "main",
+		HeadRepo:   "example/repo-a",
+		HeadBranch: "feature/cleanup",
+	})
+
+	if _, err := env.svc.RemoveRepo(ctx, RepoRemoveInput{
+		Workspace:       WorkspaceSelector{Value: root},
+		Name:            "repo-a",
+		DeleteWorktrees: false,
+		DeleteLocal:     false,
+		Confirmed:       true,
+	}); err != nil {
+		t.Fatalf("remove repo: %v", err)
+	}
+
+	state, err := env.svc.workspaces.LoadState(ctx, root)
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	if _, ok := state.PullRequests["repo-a"]; ok {
+		t.Fatalf("expected tracked pull request state to be cleared on repo removal")
+	}
+}
+
 func TestAddRepoFromAliasURL(t *testing.T) {
 	env := newTestEnv(t)
 	root := env.createWorkspace(context.Background(), "demo")

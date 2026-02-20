@@ -134,4 +134,111 @@ describe('CommandCenterView', () => {
 
 		expect(onAddRepo).toHaveBeenCalledWith('ws-1');
 	});
+
+	test('shows merged PR stat and merged cleanup badge', () => {
+		const workspace = buildWorkspace({
+			repos: [
+				{
+					id: 'repo-merged',
+					name: 'merged-repo',
+					path: '/tmp/merged-repo',
+					dirty: false,
+					missing: false,
+					currentBranch: 'main',
+					defaultBranch: 'main',
+					files: [],
+					diff: { added: 0, removed: 0 },
+					trackedPullRequest: {
+						repo: 'merged-repo',
+						number: 12,
+						url: 'https://github.com/example/merged-repo/pull/12',
+						title: 'Merged PR',
+						state: 'closed',
+						draft: false,
+						merged: true,
+						baseRepo: 'example/merged-repo',
+						baseBranch: 'main',
+						headRepo: 'example/merged-repo',
+						headBranch: 'feature/merged',
+					},
+				},
+			],
+		});
+		const { getByText } = render(CommandCenterView, {
+			props: {
+				workspaces: [workspace],
+				activeWorkspaceId: 'ws-1',
+			},
+		});
+
+		expect(getByText('Merged PRs')).toBeInTheDocument();
+		expect(getByText('Merged PR')).toBeInTheDocument();
+	});
+
+	test('sorts repos with dirty/ahead first, then merged cleanup candidates, then clean', () => {
+		const workspace = buildWorkspace({
+			repos: [
+				{
+					id: 'repo-clean',
+					name: 'clean-repo',
+					path: '/tmp/clean-repo',
+					dirty: false,
+					missing: false,
+					currentBranch: 'main',
+					defaultBranch: 'main',
+					ahead: 0,
+					files: [],
+					diff: { added: 0, removed: 0 },
+				},
+				{
+					id: 'repo-merged',
+					name: 'merged-repo',
+					path: '/tmp/merged-repo',
+					dirty: false,
+					missing: false,
+					currentBranch: 'main',
+					defaultBranch: 'main',
+					ahead: 0,
+					files: [],
+					diff: { added: 0, removed: 0 },
+					trackedPullRequest: {
+						repo: 'merged-repo',
+						number: 22,
+						url: 'https://github.com/example/merged-repo/pull/22',
+						title: 'Merged PR',
+						state: 'closed',
+						draft: false,
+						merged: true,
+						baseRepo: 'example/merged-repo',
+						baseBranch: 'main',
+						headRepo: 'example/merged-repo',
+						headBranch: 'feature/merged',
+					},
+				},
+				{
+					id: 'repo-dirty',
+					name: 'dirty-repo',
+					path: '/tmp/dirty-repo',
+					dirty: true,
+					missing: false,
+					currentBranch: 'main',
+					defaultBranch: 'main',
+					ahead: 0,
+					files: [{ path: 'README.md', added: 1, removed: 0, hunks: [] }],
+					diff: { added: 1, removed: 0 },
+				},
+			],
+		});
+		const { container } = render(CommandCenterView, {
+			props: {
+				workspaces: [workspace],
+				activeWorkspaceId: 'ws-1',
+			},
+		});
+
+		const headings = Array.from(container.querySelectorAll('.repo-card h3')).map((node) =>
+			node.textContent?.trim(),
+		);
+		expect(headings).toEqual(['dirty-repo', 'merged-repo', 'clean-repo']);
+	});
 });

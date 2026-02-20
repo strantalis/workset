@@ -36,6 +36,7 @@ func (s *Service) GetPullRequestStatus(ctx context.Context, input PullRequestSta
 		Title:      pr.Title,
 		State:      pr.State,
 		Draft:      pr.Draft,
+		Merged:     pr.Merged,
 		BaseRepo:   fmt.Sprintf("%s/%s", baseInfo.Owner, baseInfo.Repo),
 		BaseBranch: pr.BaseRef,
 		HeadRepo:   fmt.Sprintf("%s/%s", headInfo.Owner, headInfo.Repo),
@@ -66,6 +67,27 @@ func (s *Service) reconcileTrackedPullRequest(
 			Body:       pr.Body,
 			Draft:      pr.Draft,
 			State:      pr.State,
+			Merged:     false,
+			BaseRepo:   fmt.Sprintf("%s/%s", baseInfo.Owner, baseInfo.Repo),
+			BaseBranch: pr.BaseRef,
+			HeadRepo:   fmt.Sprintf("%s/%s", headInfo.Owner, headInfo.Repo),
+			HeadBranch: pr.HeadRef,
+		})
+		return
+	}
+	if pr.Merged {
+		if !s.shouldRecordMergedPullRequest(ctx, resolution, pr.Number) {
+			return
+		}
+		s.recordPullRequest(ctx, resolution, PullRequestCreatedJSON{
+			Repo:       resolution.Repo.Name,
+			Number:     pr.Number,
+			URL:        pr.URL,
+			Title:      pr.Title,
+			Body:       pr.Body,
+			Draft:      pr.Draft,
+			State:      pr.State,
+			Merged:     true,
 			BaseRepo:   fmt.Sprintf("%s/%s", baseInfo.Owner, baseInfo.Repo),
 			BaseBranch: pr.BaseRef,
 			HeadRepo:   fmt.Sprintf("%s/%s", headInfo.Owner, headInfo.Repo),
@@ -74,6 +96,34 @@ func (s *Service) reconcileTrackedPullRequest(
 		return
 	}
 	s.clearTrackedPullRequestIfMatchingNumber(ctx, resolution, pr.Number)
+}
+
+func (s *Service) shouldRecordMergedPullRequest(
+	ctx context.Context,
+	resolution repoResolution,
+	number int,
+) bool {
+	state, err := s.workspaces.LoadState(ctx, resolution.WorkspaceRoot)
+	if err != nil {
+		if s.logf != nil {
+			s.logf("workset: unable to load workspace state for merged PR reconciliation: %v", err)
+		}
+		return true
+	}
+	if len(state.PullRequests) == 0 {
+		return true
+	}
+	tracked, ok := state.PullRequests[resolution.Repo.Name]
+	if !ok {
+		return true
+	}
+	if tracked.Number == number {
+		return true
+	}
+	if strings.EqualFold(tracked.State, "open") && !tracked.Merged {
+		return false
+	}
+	return true
 }
 
 // GetCheckAnnotations returns annotations for a specific check run.
@@ -117,6 +167,7 @@ func (s *Service) GetTrackedPullRequest(ctx context.Context, input PullRequestTr
 				Body:       pr.Body,
 				Draft:      pr.Draft,
 				State:      pr.State,
+				Merged:     pr.Merged,
 				BaseRepo:   pr.BaseRepo,
 				BaseBranch: pr.BaseBranch,
 				HeadRepo:   pr.HeadRepo,

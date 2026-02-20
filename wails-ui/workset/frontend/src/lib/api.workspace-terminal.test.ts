@@ -84,9 +84,11 @@ describe('workspace + terminal API compatibility exports', () => {
 				id: 'ws-1',
 				name: 'Workspace 1',
 				path: '/tmp/ws-1',
+				description: undefined,
 				archived: false,
 				archivedAt: undefined,
 				archivedReason: undefined,
+				template: undefined,
 				repos: [
 					{
 						id: 'repo-1',
@@ -113,6 +115,7 @@ describe('workspace + terminal API compatibility exports', () => {
 							headRepo: 'example/repo-1',
 							headBranch: 'feature/redesign',
 							updatedAt: '2026-02-09T10:00:00.000Z',
+							merged: false,
 						},
 						diff: { added: 2, removed: 1 },
 						files: [{ path: 'README.md', added: 2, removed: 1, hunks: [] }],

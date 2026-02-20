@@ -88,6 +88,7 @@ func (s *Service) ListWorkspaceSnapshots(ctx context.Context, opts WorkspaceSnap
 					Body:       pr.Body,
 					State:      pr.State,
 					Draft:      pr.Draft,
+					Merged:     pr.Merged,
 					BaseRepo:   pr.BaseRepo,
 					BaseBranch: pr.BaseBranch,
 					HeadRepo:   pr.HeadRepo,

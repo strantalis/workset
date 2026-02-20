@@ -88,6 +88,7 @@ func (s *Service) CreatePullRequest(ctx context.Context, input PullRequestCreate
 		Body:       pr.Body,
 		Draft:      pr.Draft,
 		State:      pr.State,
+		Merged:     pr.Merged,
 		BaseRepo:   fmt.Sprintf("%s/%s", baseInfo.Owner, baseInfo.Repo),
 		BaseBranch: baseBranch,
 		HeadRepo:   fmt.Sprintf("%s/%s", headInfo.Owner, headInfo.Repo),

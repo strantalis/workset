@@ -65,6 +65,7 @@ func (s *Service) recordPullRequest(ctx context.Context, resolution repoResoluti
 		Body:       payload.Body,
 		Draft:      payload.Draft,
 		State:      payload.State,
+		Merged:     payload.Merged,
 		BaseRepo:   payload.BaseRepo,
 		BaseBranch: payload.BaseBranch,
 		HeadRepo:   payload.HeadRepo,

@@ -2,9 +2,7 @@
 	import {
 		AlertCircle,
 		ArrowUpRight,
-		Box,
 		CheckCircle2,
-		ChevronLeft,
 		ChevronRight,
 		Circle,
 		ExternalLink,
@@ -14,8 +12,6 @@
 		GitPullRequest,
 		Loader2,
 		MessageSquare,
-		RefreshCw,
-		Terminal,
 		Upload,
 		XCircle,
 	} from '@lucide/svelte';
@@ -79,13 +75,13 @@
 	} from '../../cache/repoDiffCache';
 	import { resolveBranchRefs } from '../../diff/branchRefs';
 	import ResizablePanel from '../ui/ResizablePanel.svelte';
+	import PROrchestrationChecksPanel from './PROrchestrationChecksPanel.svelte';
+	import PROrchestrationSidebar from './PROrchestrationSidebar.svelte';
 	import { mapWorkspaceToPrItems } from '../../view-models/prViewModel';
 	import {
 		buildCheckStats,
 		buildDiffTargetKey,
 		buildReviewThreads,
-		formatCheckDuration,
-		getCheckIcon,
 	} from './prOrchestrationHelpers';
 	import {
 		applyPrStatusEvent,
@@ -108,16 +104,40 @@
 
 	const { workspace, focusRepoId = null, focusToken = 0 }: Props = $props();
 	const prItems = $derived(mapWorkspaceToPrItems(workspace));
+	const PR_STATUS_SYNC_INTERVAL_MS = 8000;
+	const isMergedTrackedPr = (pr: PullRequestCreated | undefined | null): boolean =>
+		Boolean(pr && (pr.merged === true || pr.state.toLowerCase() === 'merged'));
+	const hasTrackedStateTransition = (
+		previousPr: PullRequestCreated | null,
+		nextPr: PullRequestStatusResult['pullRequest'],
+	): boolean => {
+		if (!previousPr) return true;
+		const previousState = previousPr.state.trim().toLowerCase();
+		const nextState = nextPr.state.trim().toLowerCase();
+		const previousMerged = isMergedTrackedPr(previousPr);
+		const nextMerged = nextPr.merged === true || nextState === 'merged';
+		return previousState !== nextState || previousMerged !== nextMerged;
+	};
 	let trackedPrMap = $state<Map<string, PullRequestCreated>>(new Map());
 	const trackedPrMapCoordinator = createTrackedPrMapCoordinator();
 	const partitions = $derived.by(() => {
-		const active = prItems.filter((item) => trackedPrMap.has(item.repoId));
+		const active = prItems.filter((item) => {
+			const tracked = trackedPrMap.get(item.repoId);
+			return tracked != null && !isMergedTrackedPr(tracked);
+		});
+		const merged = prItems.filter((item) => {
+			const tracked = trackedPrMap.get(item.repoId);
+			return tracked != null && isMergedTrackedPr(tracked);
+		});
+		const tracked = [...active, ...merged];
 		const readyToPR = prItems.filter(
 			(item) => !trackedPrMap.has(item.repoId) && (item.hasLocalDiff || item.ahead > 0),
 		);
-		return { active, readyToPR };
+		return { active, merged, tracked, readyToPR };
 	});
 	const activeCount = $derived(partitions.active.length);
+	const mergedCount = $derived(partitions.merged.length);
+	const trackedCount = $derived(partitions.tracked.length);
 	const readyCount = $derived(partitions.readyToPR.length);
 
 	// ─── Sidebar state ──────────────────────────────────────────────────
@@ -152,6 +172,7 @@
 	// ─── Checks ─────────────────────────────────────────────────────────
 	let prStatus: PullRequestStatusResult | null = $state(null);
 	let prStatusLoading = $state(false);
+	let prStatusRequestId = 0;
 
 	let prReviews: PullRequestReviewComment[] = $state([]);
 	let prReviewsLoading = $state(false);
@@ -179,6 +200,11 @@
 		sidebarCollapsed = !sidebarCollapsed;
 		persistSidebarCollapsed(sidebarCollapsed);
 	};
+	const setViewMode = (mode: 'active' | 'ready'): void => {
+		viewMode = mode;
+	};
+	const resolveTrackedTitle = (repoId: string, fallbackTitle: string): string =>
+		trackedPrMap.get(repoId)?.title ?? fallbackTitle;
 
 	// ─── Derived selectors ──────────────────────────────────────────────
 	const selectedItem = $derived(prItems.find((item) => item.id === selectedItemId) ?? null);
@@ -231,9 +257,16 @@
 		}
 	};
 
-	const pushStatusVisible = $derived(
-		isActiveDetail && trackedPr != null && repoLocalStatus != null,
-	);
+	const pushStatusVisible = $derived.by(() => {
+		const pr = trackedPr;
+		if (pr == null) return false;
+		return (
+			isActiveDetail &&
+			!isMergedTrackedPr(pr) &&
+			pr.state.toLowerCase() === 'open' &&
+			repoLocalStatus != null
+		);
+	});
 
 	const pushDisabled = $derived.by(() => {
 		if (commitPushLoading) return true;
@@ -536,21 +569,47 @@
 		}
 	};
 
-	const loadChecks = async (): Promise<void> => {
+	const loadChecks = async (options: { reconcileTracked?: boolean } = {}): Promise<void> => {
 		if (!workspace || !selectedItem) return;
+		const wsId = workspace.id;
+		const repoId = selectedItem.repoId;
+		const previousTracked = trackedPrMap.get(repoId) ?? null;
+		const requestId = ++prStatusRequestId;
 		prStatusLoading = true;
 		try {
-			prStatus = await fetchPullRequestStatus(
-				workspace.id,
-				selectedItem.repoId,
-				trackedPr?.number,
+			const result = await fetchPullRequestStatus(
+				wsId,
+				repoId,
+				previousTracked?.number ?? trackedPr?.number,
 				selectedItem.branch,
 			);
+			if (requestId !== prStatusRequestId || !workspace || !selectedItem) {
+				return;
+			}
+			if (workspace.id !== wsId || selectedItem.repoId !== repoId) {
+				return;
+			}
+			prStatus = result;
+
+			if (
+				options.reconcileTracked &&
+				hasTrackedStateTransition(previousTracked, result.pullRequest)
+			) {
+				await loadTrackedPr(wsId, repoId);
+				await refreshWorkspacesStatus(true);
+			}
 		} catch {
-			prStatus = null;
+			if (requestId === prStatusRequestId) {
+				prStatus = null;
+			}
 		} finally {
-			prStatusLoading = false;
+			if (requestId === prStatusRequestId) {
+				prStatusLoading = false;
+			}
 		}
+	};
+	const handleRefreshChecks = (): void => {
+		void loadChecks();
 	};
 
 	const loadReviews = async (): Promise<void> => {
@@ -649,6 +708,37 @@
 		}
 	});
 
+	$effect(() => {
+		if (viewMode !== 'active' || !workspace || !selectedItem) {
+			return;
+		}
+
+		let stopped = false;
+		let inFlight = false;
+
+		const sync = async (): Promise<void> => {
+			if (stopped || inFlight) {
+				return;
+			}
+			inFlight = true;
+			try {
+				await loadChecks({ reconcileTracked: true });
+			} finally {
+				inFlight = false;
+			}
+		};
+
+		void sync();
+		const timer = setInterval(() => {
+			void sync();
+		}, PR_STATUS_SYNC_INTERVAL_MS);
+
+		return () => {
+			stopped = true;
+			clearInterval(timer);
+		};
+	});
+
 	// Load reviews eagerly when an active PR is selected
 	$effect(() => {
 		if (trackedPr && selectedItem && !prReviewsLoading && prReviews.length === 0) {
@@ -730,7 +820,7 @@
 				selectedItemId,
 				viewMode,
 				prItems,
-				partitions.active,
+				partitions.tracked,
 				partitions.readyToPR,
 			)
 		) {
@@ -954,8 +1044,13 @@
 							<div class="prh-meta">
 								{#if trackedPr}
 									<span class="prh-status">
-										<Circle size={10} class="prh-status-dot" />
-										{trackedPr.state === 'open' ? 'Open' : trackedPr.state}
+										<Circle
+											size={10}
+											class={`prh-status-dot ${isMergedTrackedPr(trackedPr) ? 'prh-status-dot-merged' : 'prh-status-dot-open'}`}
+										/>
+										<span class:prh-status-merged={isMergedTrackedPr(trackedPr)}>
+											{#if isMergedTrackedPr(trackedPr)}Merged{:else if trackedPr.state === 'open'}Open{:else}{trackedPr.state}{/if}
+										</span>
 									</span>
 								{/if}
 								<span class="prh-branch">
@@ -1207,75 +1302,12 @@
 								</div>
 							</div>
 						{:else if activeTab === 'checks'}
-							<!-- ── Checks Tab ── -->
-							<div class="checks-panel">
-								<div class="checks-max">
-									{#if prStatusLoading}
-										<div class="panel-loading">
-											<Loader2 size={20} class="spin" />
-											<span>Loading checks...</span>
-										</div>
-									{:else if !prStatus || prStatus.checks.length === 0}
-										<div class="panel-loading">
-											<CheckCircle2 size={32} />
-											<span>No checks available</span>
-											<button type="button" class="ghost-btn" onclick={loadChecks}>
-												<RefreshCw size={12} /> Refresh checks
-											</button>
-										</div>
-									{:else}
-										<div class="checks-header-row">
-											<h2>Checks</h2>
-											<button type="button" class="ghost-btn" onclick={loadChecks}>
-												<RefreshCw size={12} /> Refresh checks
-											</button>
-										</div>
-										<div class="checks-list">
-											{#each prStatus.checks as check (check.name)}
-												{@const iconType = getCheckIcon(check)}
-												<div class="ck-row">
-													<div class="ck-circle {iconType}">
-														{#if iconType === 'success'}<CheckCircle2 size={16} />
-														{:else if iconType === 'failure'}<XCircle size={16} />
-														{:else}<Loader2 size={16} class="spin" />
-														{/if}
-													</div>
-													<div class="ck-info">
-														<div class="ck-name-row">
-															<h3>{check.name}</h3>
-														</div>
-														<p class="ck-dur">
-															{#if check.conclusion === 'success'}Completed in {formatCheckDuration(
-																	check,
-																)}
-															{:else if check.status === 'in_progress'}Running for {formatCheckDuration(
-																	check,
-																)}...
-															{:else}Pending
-															{/if}
-														</p>
-													</div>
-													<div class="ck-actions">
-														<button type="button" class="ck-action" title="View Logs">
-															<Terminal size={14} />
-														</button>
-														{#if check.detailsUrl}
-															<button
-																type="button"
-																class="ck-action"
-																title="View on Provider"
-																onclick={() => openExternalUrl(check.detailsUrl)}
-															>
-																<ExternalLink size={14} />
-															</button>
-														{/if}
-													</div>
-												</div>
-											{/each}
-										</div>
-									{/if}
-								</div>
-							</div>
+							<PROrchestrationChecksPanel
+								{prStatusLoading}
+								{prStatus}
+								onRefreshChecks={handleRefreshChecks}
+								onOpenExternalUrl={openExternalUrl}
+							/>
 						{/if}
 					</div>
 				{:else if isReadyDetail && selectedItem && workspace}
@@ -1439,7 +1471,7 @@
 					<div class="empty-state ws-empty-state">
 						{#if viewMode === 'active'}
 							<GitPullRequest size={48} />
-							<p class="ws-empty-state-copy">Select a PR to view details</p>
+							<p class="ws-empty-state-copy">Select a tracked PR to view details</p>
 						{:else}
 							<Upload size={48} />
 							<p class="ws-empty-state-copy">Select a branch to create a PR</p>
@@ -1472,135 +1504,21 @@
 				maxRatio={0.42}
 				storageKey="workset:pr-orchestration:sidebarRatio"
 			>
-				<!-- ═══════════════════ LEFT PANEL ═══════════════════ -->
-				<aside class="sidebar">
-					<!-- Workset Header -->
-					<div class="ws-header">
-						<div class="ws-header-top">
-							<div class="ws-eyebrow">Current Workset</div>
-							<button
-								type="button"
-								class="sidebar-toggle-btn"
-								class:disabled={!canCollapseSidebar}
-								aria-label="Collapse sidebar"
-								title={canCollapseSidebar ? 'Collapse sidebar' : 'Select an item to collapse'}
-								disabled={!canCollapseSidebar}
-								onclick={toggleSidebar}
-							>
-								<ChevronLeft size={14} />
-							</button>
-						</div>
-						<div class="ws-badge">
-							<Box size={14} class="ws-badge-icon" />
-							<span class="ws-badge-name">{workspace.name}</span>
-						</div>
-					</div>
-
-					<!-- Tab Switcher -->
-					<div class="mode-switch">
-						<button
-							type="button"
-							class="ms-btn"
-							class:active={viewMode === 'active'}
-							onclick={() => (viewMode = 'active')}
-						>
-							<GitPullRequest size={14} />
-							Active PRs
-							<span class="ms-count">{activeCount}</span>
-						</button>
-						<button
-							type="button"
-							class="ms-btn"
-							class:active={viewMode === 'ready'}
-							onclick={() => (viewMode = 'ready')}
-						>
-							<Upload size={14} class={viewMode === 'ready' ? 'text-green' : ''} />
-							Ready to PR
-							{#if readyCount > 0}
-								<span class="ms-count ready">{readyCount}</span>
-							{/if}
-						</button>
-					</div>
-
-					<!-- List -->
-					<div class="list">
-						{#if viewMode === 'active'}
-							{#if partitions.active.length > 0}
-								{#each partitions.active as item (item.id)}
-									{@const isActive = item.id === selectedItemId}
-									<button
-										type="button"
-										class="list-item"
-										class:active={isActive}
-										onclick={() => selectItem(item.id)}
-									>
-										<div class="li-top">
-											<h3 class="li-title" class:bright={isActive}>
-												{trackedPrMap.get(item.repoId)?.title ?? item.title}
-											</h3>
-											{#if isActive}<ChevronRight size={14} class="li-chevron" />{/if}
-										</div>
-										<div class="li-meta">
-											<span class="li-repo">{item.repoName}</span>
-											<span class="li-sep">·</span>
-											<span
-												class:li-passing={item.status === 'open'}
-												class:li-running={item.status === 'running'}
-												class:li-blocked={item.status === 'blocked'}
-											>
-												{item.status}
-											</span>
-											{#if item.dirtyFiles > 0}
-												<span class="li-sep">·</span>
-												<span class="li-warn">
-													<MessageSquare size={8} />
-													{item.dirtyFiles}
-												</span>
-											{/if}
-										</div>
-									</button>
-								{/each}
-							{:else}
-								<div class="list-empty">
-									<CheckCircle2 size={24} />
-									<p>No active PRs</p>
-								</div>
-							{/if}
-						{:else if partitions.readyToPR.length > 0}
-							{#each partitions.readyToPR as item (item.id)}
-								{@const isActive = item.id === selectedItemId}
-								<button
-									type="button"
-									class="list-item"
-									class:active-ready={isActive}
-									onclick={() => selectItem(item.id)}
-								>
-									<div class="li-top">
-										<h3 class="li-title" class:bright={isActive}>{item.repoName}</h3>
-										{#if isActive}<ChevronRight size={14} class="li-chevron-green" />{/if}
-									</div>
-									<div class="li-branch-row">
-										<GitBranch size={11} class="text-green" />
-										<span class="li-branch-name">{item.branch}</span>
-									</div>
-									<div class="li-meta">
-										<span class="li-commits">
-											<ArrowUpRight size={10} class="text-blue" />
-											{item.ahead} commit{item.ahead !== 1 ? 's' : ''} ahead
-										</span>
-										<span class="text-green">+{item.dirtyFiles}</span>
-										<span class="li-time">{item.updatedAtLabel}</span>
-									</div>
-								</button>
-							{/each}
-						{:else}
-							<div class="list-empty">
-								<CheckCircle2 size={24} />
-								<p>All branches have PRs</p>
-							</div>
-						{/if}
-					</div>
-				</aside>
+				<PROrchestrationSidebar
+					workspaceName={workspace.name}
+					{viewMode}
+					{canCollapseSidebar}
+					{trackedCount}
+					{readyCount}
+					{activeCount}
+					{mergedCount}
+					{partitions}
+					{selectedItemId}
+					{resolveTrackedTitle}
+					onToggleSidebar={toggleSidebar}
+					onViewModeChange={setViewMode}
+					onSelectItem={selectItem}
+				/>
 
 				{#snippet second()}
 					{@render detailPanel()}
