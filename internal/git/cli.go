@@ -541,7 +541,7 @@ func (c CLIClient) changesAppliedInBase(repoPath, mergeBase, branchRef, baseRef 
 			if baseOK && baseEntry.hash == branchEntry.hash && baseEntry.mode == branchEntry.mode {
 				continue
 			}
-			seen, err := c.blobSeenInRange(repoPath, mergeBase, baseRef, entry.oldPath, branchEntry.hash)
+			seen, err := c.treeEntrySeenInRange(repoPath, mergeBase, baseRef, entry.oldPath, branchEntry)
 			if err != nil {
 				return false, err
 			}
@@ -575,7 +575,7 @@ func (c CLIClient) changesAppliedInBase(repoPath, mergeBase, branchRef, baseRef 
 				return false, nil
 			}
 			if !baseOK || baseEntry.hash != branchEntry.hash || baseEntry.mode != branchEntry.mode {
-				seen, err := c.blobSeenInRange(repoPath, mergeBase, baseRef, entry.newPath, branchEntry.hash)
+				seen, err := c.treeEntrySeenInRange(repoPath, mergeBase, baseRef, entry.newPath, branchEntry)
 				if err != nil {
 					return false, err
 				}
@@ -606,15 +606,28 @@ func (c CLIClient) changesAppliedInBase(repoPath, mergeBase, branchRef, baseRef 
 	return true, nil
 }
 
-func (c CLIClient) blobSeenInRange(repoPath, startRef, endRef, path, blobHash string) (bool, error) {
-	if blobHash == "" {
-		return false, errors.New("blob hash required")
+func (c CLIClient) treeEntrySeenInRange(repoPath, startRef, endRef, path string, expected treeEntry) (bool, error) {
+	if expected.hash == "" || expected.mode == "" {
+		return false, errors.New("tree entry mode and hash required")
 	}
-	result, err := c.run(context.Background(), repoPath, "log", "--format=%H", startRef+".."+endRef, "--find-object="+blobHash, "--", path)
+	result, err := c.run(context.Background(), repoPath, "log", "--format=%H", startRef+".."+endRef, "--find-object="+expected.hash, "--", path)
 	if err != nil {
 		return false, err
 	}
-	return strings.TrimSpace(result.stdout) != "", nil
+	for line := range strings.SplitSeq(result.stdout, "\n") {
+		commit := strings.TrimSpace(line)
+		if commit == "" {
+			continue
+		}
+		entry, ok, err := c.readTreeEntry(repoPath, commit, path)
+		if err != nil {
+			return false, err
+		}
+		if ok && entry.hash == expected.hash && entry.mode == expected.mode {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (c CLIClient) pathDeletedInRange(repoPath, startRef, endRef, path string) (bool, error) {

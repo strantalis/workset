@@ -80,6 +80,36 @@ func TestIsContentMergedSquashMergeWithPostMergeDrift(t *testing.T) {
 	}
 }
 
+func TestIsContentMergedModeOnlyChangeNotMergedByBlobHistory(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	repo := initGitRepo(t)
+	ensureBranch(t, repo, "main")
+	commitFile(t, repo, "script.sh", "echo hi\n", "initial")
+
+	runGit(t, repo, "checkout", "-b", "feature")
+	if err := os.Chmod(filepath.Join(repo, "script.sh"), 0o755); err != nil {
+		t.Fatalf("chmod +x: %v", err)
+	}
+	runGit(t, repo, "add", "script.sh")
+	runGit(t, repo, "commit", "-m", "mode only")
+
+	runGit(t, repo, "checkout", "main")
+	commitFile(t, repo, "script.sh", "echo changed\n", "main change")
+	commitFile(t, repo, "script.sh", "echo hi\n", "main revert content")
+
+	client := NewCLIClient()
+	merged, err := client.IsContentMerged(repo, "refs/heads/feature", "refs/heads/main")
+	if err != nil {
+		t.Fatalf("IsContentMerged: %v", err)
+	}
+	if merged {
+		t.Fatalf("expected mode-only branch change to remain unmerged")
+	}
+}
+
 func TestIsContentMergedMergeCommit(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
