@@ -1,3 +1,5 @@
+import DOMPurify from 'dompurify';
+import { marked } from 'marked';
 import type { PullRequestReviewComment } from '../../types';
 import type { DiffLineAnnotation, ReviewAnnotation } from './annotations';
 
@@ -38,6 +40,17 @@ export const createReviewAnnotationActionsController = (
 		const div = options.document.createElement('div');
 		div.textContent = text;
 		return div.innerHTML;
+	};
+
+	const renderMarkdown = (text: string): string => {
+		try {
+			const rendered = marked.parse(text, { async: false, breaks: true }) as string;
+			return DOMPurify.sanitize(rendered, {
+				FORBID_ATTR: ['data-action', 'data-comment-id', 'data-thread-id'],
+			});
+		} catch {
+			return escapeHtml(text);
+		}
 	};
 
 	const removeInlineForm = (threadEl: HTMLElement): void => {
@@ -227,7 +240,7 @@ export const createReviewAnnotationActionsController = (
 							}
             </div>
           </div>
-          <div class="diff-annotation-body">${escapeHtml(comment.body)}</div>
+          <div class="diff-annotation-body">${renderMarkdown(comment.body)}</div>
         </div>
       `;
 			})
@@ -256,7 +269,7 @@ export const createReviewAnnotationActionsController = (
 				return;
 			}
 
-			const btn = target.closest('[data-action]') as HTMLElement;
+			const btn = target.closest('button[data-action]') as HTMLElement;
 			if (!btn) return;
 
 			const action = btn.dataset.action;
