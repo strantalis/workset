@@ -6,6 +6,7 @@
 		Archive,
 		ArchiveRestore,
 		Box,
+		CheckCircle2,
 		Clock,
 		Command,
 		Eye,
@@ -218,6 +219,7 @@
 			new Set(visibleCatalog.flatMap((item) => item.repos.map((repo) => repo.toLowerCase()))).size,
 	);
 	const totalPrs = $derived(visibleCatalog.reduce((acc, item) => acc + item.openPrs, 0));
+	const totalMergedPrs = $derived(visibleCatalog.reduce((acc, item) => acc + item.mergedPrs, 0));
 	const totalDirty = $derived(visibleCatalog.reduce((acc, item) => acc + item.dirtyCount, 0));
 	const totalPinned = $derived(visibleCatalog.filter((item) => item.pinned).length);
 	const archivedCount = $derived(worksets.filter((item) => item.archived).length);
@@ -323,6 +325,13 @@
 				<span>Open PRs</span>
 				<strong>{totalPrs}</strong>
 			</div>
+			{#if totalMergedPrs > 0}
+				<div class="stat-pill">
+					<div class="ws-dot ws-dot-md ws-dot-violet"></div>
+					<span>Merged PRs</span>
+					<strong>{totalMergedPrs}</strong>
+				</div>
+			{/if}
 			{#if totalDirty > 0}
 				<div class="stat-pill">
 					<div class="ws-dot ws-dot-md ws-dot-gold"></div>
@@ -573,6 +582,11 @@
 										<div class="card-footer">
 											<div class="footer-meta">
 												<span class="prs"><GitPullRequest size={10} /> {item.openPrs}</span>
+												{#if item.mergedPrs > 0}
+													<span class="merged"
+														><CheckCircle2 size={10} /> {item.mergedPrs} merged</span
+													>
+												{/if}
 												<span class="dirty"><AlertCircle size={10} /> {item.dirtyCount} dirty</span>
 												<span><Clock size={10} /> {item.lastActive}</span>
 											</div>
@@ -642,6 +656,11 @@
 												<span class="ws-diffstat-del">-{item.linesRemoved}</span></span
 											>
 											<span class="prs"><GitPullRequest size={10} /> {item.openPrs}</span>
+											{#if item.mergedPrs > 0}
+												<span class="merged"
+													><CheckCircle2 size={10} /> {item.mergedPrs} merged</span
+												>
+											{/if}
 											<span class="dirty">{item.dirtyCount} dirty</span>
 											<span>{item.lastActive}</span>
 										</div>

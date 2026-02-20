@@ -6,6 +6,7 @@
 		AlertCircle,
 		ArrowDownLeft,
 		ArrowUpRight,
+		CheckCircle2,
 		ChevronDown,
 		CircleDot,
 		FilePen,
@@ -74,6 +75,15 @@
 		activeWorkspace?.repos.filter((repo) => repo.trackedPullRequest?.state.toLowerCase() === 'open')
 			.length ?? 0,
 	);
+	const isRepoMerged = (repo: Repo): boolean =>
+		Boolean(
+			repo.trackedPullRequest &&
+			(repo.trackedPullRequest.merged === true ||
+				repo.trackedPullRequest.state.toLowerCase() === 'merged'),
+		);
+	const mergedPrs = $derived(
+		activeWorkspace?.repos.filter((repo) => isRepoMerged(repo)).length ?? 0,
+	);
 
 	/** Returns the file count for a dirty repo (summary or inline). */
 	const getDirtyFileCount = (repo: Repo): number => {
@@ -85,12 +95,21 @@
 	const filteredRepos = $derived.by(() => {
 		if (!activeWorkspace) return [];
 		const query = repoSearch.trim().toLowerCase();
-		if (!query) return activeWorkspace.repos;
-		return activeWorkspace.repos.filter(
-			(repo) =>
-				repo.name.toLowerCase().includes(query) ||
-				(repo.currentBranch ?? '').toLowerCase().includes(query),
-		);
+		const filtered = !query
+			? activeWorkspace.repos
+			: activeWorkspace.repos.filter(
+					(repo) =>
+						repo.name.toLowerCase().includes(query) ||
+						(repo.currentBranch ?? '').toLowerCase().includes(query),
+				);
+		return [...filtered].sort((left, right) => {
+			const leftRank =
+				left.dirty || (left.ahead ?? 0) > 0 || left.missing ? 0 : isRepoMerged(left) ? 1 : 2;
+			const rightRank =
+				right.dirty || (right.ahead ?? 0) > 0 || right.missing ? 0 : isRepoMerged(right) ? 1 : 2;
+			if (leftRank !== rightRank) return leftRank - rightRank;
+			return left.name.localeCompare(right.name);
+		});
 	});
 
 	const getStatusClass = (repo: Repo): string => {
@@ -334,6 +353,15 @@
 				<GitPullRequest size={18} class="icon-purple" />
 			</div>
 		</article>
+		<article class="stat-card">
+			<div class="stat-text">
+				<span class="stat-label">Merged PRs</span>
+				<strong>{mergedPrs}</strong>
+			</div>
+			<div class="stat-icon">
+				<CheckCircle2 size={18} class="icon-purple" />
+			</div>
+		</article>
 	</section>
 
 	{#if !activeWorkspace}
@@ -428,6 +456,12 @@
 											<ArrowDownLeft size={12} />
 											{repo.behind ?? 0}
 										</span>
+										{#if isRepoMerged(repo)}
+											<span class="merged-badge">
+												<CheckCircle2 size={10} />
+												Merged PR
+											</span>
+										{/if}
 										{#if canExpand}
 											<span class="dirty-badge">
 												<CircleDot size={10} />

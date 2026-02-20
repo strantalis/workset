@@ -36,6 +36,7 @@ func (s *Service) GetPullRequestStatus(ctx context.Context, input PullRequestSta
 		Title:      pr.Title,
 		State:      pr.State,
 		Draft:      pr.Draft,
+		Merged:     pr.Merged,
 		BaseRepo:   fmt.Sprintf("%s/%s", baseInfo.Owner, baseInfo.Repo),
 		BaseBranch: pr.BaseRef,
 		HeadRepo:   fmt.Sprintf("%s/%s", headInfo.Owner, headInfo.Repo),
@@ -66,6 +67,24 @@ func (s *Service) reconcileTrackedPullRequest(
 			Body:       pr.Body,
 			Draft:      pr.Draft,
 			State:      pr.State,
+			Merged:     false,
+			BaseRepo:   fmt.Sprintf("%s/%s", baseInfo.Owner, baseInfo.Repo),
+			BaseBranch: pr.BaseRef,
+			HeadRepo:   fmt.Sprintf("%s/%s", headInfo.Owner, headInfo.Repo),
+			HeadBranch: pr.HeadRef,
+		})
+		return
+	}
+	if pr.Merged {
+		s.recordPullRequest(ctx, resolution, PullRequestCreatedJSON{
+			Repo:       resolution.Repo.Name,
+			Number:     pr.Number,
+			URL:        pr.URL,
+			Title:      pr.Title,
+			Body:       pr.Body,
+			Draft:      pr.Draft,
+			State:      pr.State,
+			Merged:     true,
 			BaseRepo:   fmt.Sprintf("%s/%s", baseInfo.Owner, baseInfo.Repo),
 			BaseBranch: pr.BaseRef,
 			HeadRepo:   fmt.Sprintf("%s/%s", headInfo.Owner, headInfo.Repo),
@@ -117,6 +136,7 @@ func (s *Service) GetTrackedPullRequest(ctx context.Context, input PullRequestTr
 				Body:       pr.Body,
 				Draft:      pr.Draft,
 				State:      pr.State,
+				Merged:     pr.Merged,
 				BaseRepo:   pr.BaseRepo,
 				BaseBranch: pr.BaseBranch,
 				HeadRepo:   pr.HeadRepo,

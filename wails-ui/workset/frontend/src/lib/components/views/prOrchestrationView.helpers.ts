@@ -20,6 +20,7 @@ export type RepoDiffPrStatusEvent = {
 			title: string;
 			state: string;
 			draft: boolean;
+			merged?: boolean;
 			base_repo: string;
 			base_branch: string;
 			head_repo: string;
@@ -68,6 +69,12 @@ export const buildTrackedPrMap = (workspace: Workspace | null): Map<string, Pull
 const isOpenPullRequest = (pr: PullRequestCreated | undefined): pr is PullRequestCreated =>
 	Boolean(pr && pr.state.trim().toLowerCase() === 'open');
 
+const isMergedPullRequest = (pr: PullRequestCreated | undefined): pr is PullRequestCreated =>
+	Boolean(pr && (pr.merged === true || pr.state.trim().toLowerCase() === 'merged'));
+
+const isTrackedPullRequest = (pr: PullRequestCreated | undefined): pr is PullRequestCreated =>
+	isOpenPullRequest(pr) || isMergedPullRequest(pr);
+
 export const mergeTrackedPrMap = (
 	workspace: Workspace | null,
 	currentMap: Map<string, PullRequestCreated>,
@@ -83,14 +90,14 @@ export const mergeTrackedPrMap = (
 			continue;
 		}
 		if (repo.trackedPullRequest) {
-			if (isOpenPullRequest(repo.trackedPullRequest)) {
+			if (isTrackedPullRequest(repo.trackedPullRequest)) {
 				nextMap.set(repo.id, repo.trackedPullRequest);
 			}
 			continue;
 		}
 
 		const cached = currentMap.get(repo.id);
-		if (isOpenPullRequest(cached)) {
+		if (isTrackedPullRequest(cached)) {
 			nextMap.set(repo.id, cached);
 		}
 	}
@@ -106,6 +113,7 @@ export const trackedPrMapsEqual = (left: TrackedPrMap, right: TrackedPrMap): boo
 			leftPr.number !== rightPr.number ||
 			leftPr.url !== rightPr.url ||
 			leftPr.state !== rightPr.state ||
+			leftPr.merged !== rightPr.merged ||
 			leftPr.baseRepo !== rightPr.baseRepo ||
 			leftPr.baseBranch !== rightPr.baseBranch ||
 			leftPr.headRepo !== rightPr.headRepo ||
@@ -268,6 +276,9 @@ export const mapPrStatusEventToTrackedPr = (
 	title: payload.status.pullRequest.title,
 	state: payload.status.pullRequest.state,
 	draft: payload.status.pullRequest.draft,
+	merged:
+		payload.status.pullRequest.merged ??
+		payload.status.pullRequest.state.trim().toLowerCase() === 'merged',
 	baseRepo: payload.status.pullRequest.base_repo,
 	baseBranch: payload.status.pullRequest.base_branch,
 	headRepo: payload.status.pullRequest.head_repo,
@@ -284,6 +295,9 @@ export const mapPrStatusEventToStatus = (
 		title: payload.status.pullRequest.title,
 		state: payload.status.pullRequest.state,
 		draft: payload.status.pullRequest.draft,
+		merged:
+			payload.status.pullRequest.merged ??
+			payload.status.pullRequest.state.trim().toLowerCase() === 'merged',
 		baseRepo: payload.status.pullRequest.base_repo,
 		baseBranch: payload.status.pullRequest.base_branch,
 		headRepo: payload.status.pullRequest.head_repo,
@@ -312,8 +326,11 @@ export const applyPrStatusEvent = (
 	shouldReconcileTrackedPr: boolean;
 } => {
 	const prStatus = mapPrStatusEventToStatus(payload);
+	const merged =
+		payload.status.pullRequest.merged ??
+		payload.status.pullRequest.state.trim().toLowerCase() === 'merged';
 	const nextState = payload.status.pullRequest.state.trim().toLowerCase();
-	if (nextState === 'open') {
+	if (nextState === 'open' || merged) {
 		const trackedPr = mapPrStatusEventToTrackedPr(payload);
 		const nextMap = new Map(trackedPrMap);
 		nextMap.set(repoId, trackedPr);

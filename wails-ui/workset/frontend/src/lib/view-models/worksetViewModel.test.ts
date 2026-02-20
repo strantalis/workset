@@ -58,6 +58,7 @@ describe('worksetViewModel', () => {
 						title: 'Closed PR',
 						state: 'closed',
 						draft: false,
+						merged: true,
 						baseRepo: 'example/repo-2',
 						baseBranch: 'main',
 						headRepo: 'example/repo-2',
@@ -68,6 +69,7 @@ describe('worksetViewModel', () => {
 		);
 
 		expect(summary.openPrs).toBe(1);
+		expect(summary.mergedPrs).toBe(1);
 		expect(summary.template).toBe('Template From Metadata');
 	});
 

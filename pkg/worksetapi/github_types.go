@@ -49,6 +49,7 @@ type PullRequestCreatedJSON struct {
 	Body       string `json:"body,omitempty"`
 	Draft      bool   `json:"draft"`
 	State      string `json:"state"`
+	Merged     bool   `json:"merged"`
 	BaseRepo   string `json:"base_repo"`
 	BaseBranch string `json:"base_branch"`
 	HeadRepo   string `json:"head_repo"`
@@ -77,6 +78,7 @@ type PullRequestStatusJSON struct {
 	Title      string `json:"title"`
 	State      string `json:"state"`
 	Draft      bool   `json:"draft"`
+	Merged     bool   `json:"merged"`
 	BaseRepo   string `json:"base_repo"`
 	BaseBranch string `json:"base_branch"`
 	HeadRepo   string `json:"head_repo"`

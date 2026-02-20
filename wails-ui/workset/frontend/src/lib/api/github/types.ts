@@ -8,6 +8,7 @@ export type PullRequestStatusResponse = {
 		title: string;
 		state: string;
 		draft: boolean;
+		merged?: boolean;
 		base_repo: string;
 		base_branch: string;
 		head_repo: string;
@@ -33,6 +34,7 @@ export type PullRequestCreateResponse = {
 	body?: string;
 	draft: boolean;
 	state: string;
+	merged?: boolean;
 	base_repo: string;
 	base_branch: string;
 	head_repo: string;

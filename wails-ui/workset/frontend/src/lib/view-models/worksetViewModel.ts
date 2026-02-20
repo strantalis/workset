@@ -13,6 +13,7 @@ export type WorksetSummary = {
 	repoCount: number;
 	dirtyCount: number;
 	openPrs: number;
+	mergedPrs: number;
 	linesAdded: number;
 	linesRemoved: number;
 	lastActive: string;
@@ -45,6 +46,13 @@ const getWorkspaceDescription = (workspace: Workspace): string => {
 	return '';
 };
 
+const isMergedTrackedPullRequest = (repo: Repo): boolean => {
+	const tracked = repo.trackedPullRequest;
+	if (!tracked) return false;
+	if (tracked.merged === true) return true;
+	return tracked.state.toLowerCase() === 'merged';
+};
+
 const normalizeTemplate = (workspace: Workspace): string => {
 	const template = workspace.template?.trim();
 	return template && template.length > 0 ? template : 'Unassigned';
@@ -54,8 +62,10 @@ export const mapWorkspaceToSummary = (workspace: Workspace): WorksetSummary => {
 	const health = workspace.repos.map(getHealthForRepo);
 	const dirtyCount = workspace.repos.filter((repo) => repo.dirty).length;
 	const openPrs = workspace.repos.filter(
-		(repo) => repo.trackedPullRequest?.state.toLowerCase() === 'open',
+		(repo) =>
+			repo.trackedPullRequest?.state.toLowerCase() === 'open' && !isMergedTrackedPullRequest(repo),
 	).length;
+	const mergedPrs = workspace.repos.filter((repo) => isMergedTrackedPullRequest(repo)).length;
 	const linesAdded = workspace.repos.reduce((acc, repo) => acc + (repo.diff?.added ?? 0), 0);
 	const linesRemoved = workspace.repos.reduce((acc, repo) => acc + (repo.diff?.removed ?? 0), 0);
 
@@ -69,6 +79,7 @@ export const mapWorkspaceToSummary = (workspace: Workspace): WorksetSummary => {
 		repoCount: workspace.repos.length,
 		dirtyCount,
 		openPrs,
+		mergedPrs,
 		linesAdded,
 		linesRemoved,
 		lastActive: formatRelativeTime(workspace.lastUsed),

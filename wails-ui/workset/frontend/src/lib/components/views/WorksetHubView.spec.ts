@@ -13,6 +13,7 @@ const buildWorkset = (overrides: Partial<WorksetSummary> = {}): WorksetSummary =
 	repoCount: 1,
 	dirtyCount: 0,
 	openPrs: 0,
+	mergedPrs: 0,
 	linesAdded: 0,
 	linesRemoved: 0,
 	lastActive: 'just now',

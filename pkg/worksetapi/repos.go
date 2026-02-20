@@ -308,6 +308,15 @@ func (s *Service) RemoveRepo(ctx context.Context, input RepoRemoveInput) (RepoRe
 	}); err != nil {
 		return RepoRemoveResult{}, err
 	}
+	state, err := s.workspaces.LoadState(ctx, wsRoot)
+	if err == nil && len(state.PullRequests) > 0 {
+		if _, tracked := state.PullRequests[name]; tracked {
+			delete(state.PullRequests, name)
+			if err := s.workspaces.SaveState(ctx, wsRoot, state); err != nil {
+				return RepoRemoveResult{}, err
+			}
+		}
+	}
 
 	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
 		info = loadInfo

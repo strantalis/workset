@@ -78,6 +78,7 @@ func TestListWorkspaceSnapshotsWithStatus(t *testing.T) {
 			Title:      "Use API-backed workspace snapshot data",
 			State:      "open",
 			Draft:      false,
+			Merged:     false,
 			BaseRepo:   "example/app",
 			BaseBranch: "main",
 			HeadRepo:   "example/app",
@@ -116,6 +117,9 @@ func TestListWorkspaceSnapshotsWithStatus(t *testing.T) {
 	}
 	if repo.TrackedPullRequest.State != "open" {
 		t.Fatalf("expected tracked pull request state open, got %q", repo.TrackedPullRequest.State)
+	}
+	if repo.TrackedPullRequest.Merged {
+		t.Fatalf("expected tracked pull request merged=false")
 	}
 }
 

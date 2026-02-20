@@ -36,6 +36,30 @@ const buildWorkspace = (): Workspace => ({
 			},
 		},
 		{
+			id: 'repo-merged',
+			name: 'repo-merged',
+			path: '/tmp/ws-1/repo-merged',
+			defaultBranch: 'main',
+			dirty: false,
+			missing: false,
+			diff: { added: 0, removed: 0 },
+			files: [],
+			trackedPullRequest: {
+				repo: 'repo-merged',
+				number: 6,
+				url: 'https://github.com/example/repo-merged/pull/6',
+				title: 'Merged PR',
+				state: 'closed',
+				draft: false,
+				merged: true,
+				baseRepo: 'example/repo-merged',
+				baseBranch: 'main',
+				headRepo: 'example/repo-merged',
+				headBranch: 'feature/merged',
+				updatedAt: '2026-02-09T11:20:00.000Z',
+			},
+		},
+		{
 			id: 'repo-running',
 			name: 'repo-running',
 			path: '/tmp/ws-1/repo-running',
@@ -69,6 +93,7 @@ describe('prViewModel', () => {
 
 		const items = mapWorkspaceToPrItems(buildWorkspace());
 		const open = items.find((item) => item.repoId === 'repo-open');
+		const merged = items.find((item) => item.repoId === 'repo-merged');
 		const running = items.find((item) => item.repoId === 'repo-running');
 		const blocked = items.find((item) => item.repoId === 'repo-blocked');
 
@@ -76,6 +101,7 @@ describe('prViewModel', () => {
 		expect(open?.branch).toBe('feature/snapshot');
 		expect(open?.status).toBe('open');
 		expect(open?.updatedAtLabel).toBe('just now');
+		expect(merged?.status).toBe('merged');
 
 		expect(running?.title).toBe('repo-running');
 		expect(running?.status).toBe('running');

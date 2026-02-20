@@ -7,7 +7,7 @@ export type PrListItem = {
 	repoName: string;
 	title: string;
 	branch: string;
-	status: 'open' | 'running' | 'blocked';
+	status: 'open' | 'merged' | 'running' | 'blocked';
 	dirty: boolean;
 	hasLocalDiff: boolean;
 	dirtyFiles: number;
@@ -20,8 +20,10 @@ const getStatus = (
 	missing: boolean,
 	dirty: boolean,
 	trackedState?: string,
+	trackedMerged?: boolean,
 ): PrListItem['status'] => {
 	if (missing) return 'blocked';
+	if (trackedMerged || trackedState?.toLowerCase() === 'merged') return 'merged';
 	if (trackedState?.toLowerCase() === 'open') return 'open';
 	if (dirty) return 'running';
 	return 'open';
@@ -38,7 +40,12 @@ export const mapWorkspaceToPrItems = (workspace: Workspace | null): PrListItem[]
 		title: repo.trackedPullRequest?.title?.trim() || repo.name,
 		branch:
 			repo.trackedPullRequest?.headBranch ?? repo.currentBranch ?? repo.defaultBranch ?? 'main',
-		status: getStatus(repo.missing, repo.dirty, repo.trackedPullRequest?.state),
+		status: getStatus(
+			repo.missing,
+			repo.dirty,
+			repo.trackedPullRequest?.state,
+			repo.trackedPullRequest?.merged,
+		),
 		dirty: repo.dirty,
 		dirtyFiles: repo.files.length,
 		ahead: repo.ahead ?? 0,

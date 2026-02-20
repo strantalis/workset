@@ -60,6 +60,7 @@ type TrackedPullRequestRef struct {
 	Body       string `json:"body,omitempty"`
 	State      string `json:"state"`
 	Draft      bool   `json:"draft"`
+	Merged     bool   `json:"merged"`
 	BaseRepo   string `json:"baseRepo"`
 	BaseBranch string `json:"baseBranch"`
 	HeadRepo   string `json:"headRepo"`
@@ -103,6 +104,7 @@ func (a *App) ListWorkspaceSnapshots(input WorkspaceSnapshotRequest) ([]Workspac
 					Body:       repo.TrackedPullRequest.Body,
 					State:      repo.TrackedPullRequest.State,
 					Draft:      repo.TrackedPullRequest.Draft,
+					Merged:     repo.TrackedPullRequest.Merged,
 					BaseRepo:   repo.TrackedPullRequest.BaseRepo,
 					BaseBranch: repo.TrackedPullRequest.BaseBranch,
 					HeadRepo:   repo.TrackedPullRequest.HeadRepo,

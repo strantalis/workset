@@ -460,6 +460,13 @@ h1 {
 	gap: 4px;
 }
 
+.merged {
+	color: color-mix(in srgb, var(--accent) 80%, white);
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
 .dirty {
 	color: var(--hub-gold);
 }
