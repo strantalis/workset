@@ -68,12 +68,13 @@ func (p *githubCLIProvider) Client(ctx context.Context, host string) (GitHubClie
 	if err != nil {
 		return nil, wrapAuthError(err)
 	}
-	return &githubCLIClient{rest: rest, graph: graph}, nil
+	return &githubCLIClient{rest: rest, graph: graph, host: host}, nil
 }
 
 type githubCLIClient struct {
 	rest  *api.RESTClient
 	graph *api.GraphQLClient
+	host  string
 }
 
 func (c *githubCLIClient) CreatePullRequest(ctx context.Context, owner, repo string, pr GitHubNewPullRequest) (GitHubPullRequest, error) {
@@ -135,6 +136,65 @@ func (c *githubCLIClient) ListPullRequests(ctx context.Context, owner, repo, hea
 		out = append(out, mapPullRequestREST(pr))
 	}
 	return out, next, nil
+}
+
+func (c *githubCLIClient) SearchRepositories(ctx context.Context, query string, perPage int) ([]GitHubRepositorySearchResult, error) {
+	trimmed := strings.TrimSpace(query)
+	if trimmed == "" {
+		return []GitHubRepositorySearchResult{}, nil
+	}
+	if perPage <= 0 {
+		perPage = 8
+	}
+	params := url.Values{}
+	params.Set("q", trimmed)
+	params.Set("sort", "updated")
+	params.Set("order", "desc")
+	params.Set("per_page", strconv.Itoa(perPage))
+	requestPath := "search/repositories?" + params.Encode()
+	resp, err := c.rest.RequestWithContext(ctx, http.MethodGet, requestPath, nil)
+	if err != nil {
+		return nil, wrapAuthError(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	var payload struct {
+		Items []struct {
+			Name          string `json:"name"`
+			FullName      string `json:"full_name"`
+			DefaultBranch string `json:"default_branch"`
+			CloneURL      string `json:"clone_url"`
+			SSHURL        string `json:"ssh_url"`
+			Private       bool   `json:"private"`
+			Archived      bool   `json:"archived"`
+			Owner         struct {
+				Login string `json:"login"`
+			} `json:"owner"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+
+	host := strings.TrimSpace(c.host)
+	if host == "" {
+		host = defaultGitHubHost
+	}
+	results := make([]GitHubRepositorySearchResult, 0, len(payload.Items))
+	for _, item := range payload.Items {
+		results = append(results, GitHubRepositorySearchResult{
+			Name:          item.Name,
+			FullName:      item.FullName,
+			Owner:         item.Owner.Login,
+			DefaultBranch: item.DefaultBranch,
+			CloneURL:      item.CloneURL,
+			SSHURL:        item.SSHURL,
+			Private:       item.Private,
+			Archived:      item.Archived,
+			Host:          host,
+		})
+	}
+	return results, nil
 }
 
 func (c *githubCLIClient) ListReviewComments(ctx context.Context, owner, repo string, number, page, perPage int) ([]PullRequestReviewCommentJSON, int, error) {

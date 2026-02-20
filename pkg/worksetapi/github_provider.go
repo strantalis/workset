@@ -37,6 +37,7 @@ type GitHubClient interface {
 	CreatePullRequest(ctx context.Context, owner, repo string, pr GitHubNewPullRequest) (GitHubPullRequest, error)
 	GetPullRequest(ctx context.Context, owner, repo string, number int) (GitHubPullRequest, error)
 	ListPullRequests(ctx context.Context, owner, repo, head, state string, page, perPage int) ([]GitHubPullRequest, int, error)
+	SearchRepositories(ctx context.Context, query string, perPage int) ([]GitHubRepositorySearchResult, error)
 	ListReviewComments(ctx context.Context, owner, repo string, number, page, perPage int) ([]PullRequestReviewCommentJSON, int, error)
 	CreateReplyComment(ctx context.Context, owner, repo string, number int, commentID int64, body string) (PullRequestReviewCommentJSON, error)
 	EditReviewComment(ctx context.Context, owner, repo string, commentID int64, body string) (PullRequestReviewCommentJSON, error)
@@ -49,6 +50,19 @@ type GitHubClient interface {
 	GetReviewThreadID(ctx context.Context, commentNodeID string) (string, error)
 	ResolveReviewThread(ctx context.Context, threadID string, resolve bool) (bool, error)
 	GetFileContent(ctx context.Context, owner, repo, path, ref string) ([]byte, bool, error)
+}
+
+// GitHubRepositorySearchResult captures fields used for repo catalog typeahead.
+type GitHubRepositorySearchResult struct {
+	Name          string
+	FullName      string
+	Owner         string
+	DefaultBranch string
+	CloneURL      string
+	SSHURL        string
+	Private       bool
+	Archived      bool
+	Host          string
 }
 
 // GitHubPullRequest captures the fields used by Workset.

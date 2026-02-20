@@ -141,3 +141,15 @@ export type GitHubUser = {
 	name?: string;
 	email?: string;
 };
+
+export type GitHubRepoSearchItemResponse = {
+	name: string;
+	full_name: string;
+	owner: string;
+	default_branch: string;
+	clone_url: string;
+	ssh_url: string;
+	private: boolean;
+	archived: boolean;
+	host: string;
+};

@@ -199,6 +199,51 @@ func (s *Service) GetCurrentGitHubUser(ctx context.Context, input GitHubUserInpu
 	}, nil
 }
 
+// SearchGitHubRepositories returns remote repositories for catalog typeahead.
+func (s *Service) SearchGitHubRepositories(ctx context.Context, input GitHubRepoSearchInput) (GitHubRepoSearchResult, error) {
+	query := strings.TrimSpace(input.Query)
+	if len(query) < 2 {
+		return GitHubRepoSearchResult{}, ValidationError{Message: "search query must be at least 2 characters"}
+	}
+	limit := input.Limit
+	if limit <= 0 {
+		limit = 8
+	}
+	if limit > 20 {
+		limit = 20
+	}
+
+	client, err := s.githubClient(ctx, defaultGitHubHost)
+	if err != nil {
+		return GitHubRepoSearchResult{}, err
+	}
+	repositories, err := client.SearchRepositories(ctx, query, limit)
+	if err != nil {
+		return GitHubRepoSearchResult{}, ValidationError{Message: formatGitHubAPIError(err)}
+	}
+
+	items := make([]GitHubRepoSearchItemJSON, 0, len(repositories))
+	for _, repository := range repositories {
+		host := strings.TrimSpace(repository.Host)
+		if host == "" {
+			host = defaultGitHubHost
+		}
+		items = append(items, GitHubRepoSearchItemJSON{
+			Name:          repository.Name,
+			FullName:      repository.FullName,
+			Owner:         repository.Owner,
+			DefaultBranch: repository.DefaultBranch,
+			CloneURL:      repository.CloneURL,
+			SSHURL:        repository.SSHURL,
+			Private:       repository.Private,
+			Archived:      repository.Archived,
+			Host:          host,
+		})
+	}
+
+	return GitHubRepoSearchResult{Repositories: items}, nil
+}
+
 // GetRepoLocalStatus returns the local uncommitted/ahead/behind status for a repo.
 func (s *Service) GetRepoLocalStatus(ctx context.Context, input RepoLocalStatusInput) (RepoLocalStatusResult, error) {
 	resolution, err := s.resolveRepo(ctx, RepoSelectionInput(input))

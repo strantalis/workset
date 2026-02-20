@@ -462,6 +462,22 @@ func (a *App) GetCurrentGitHubUser(input GitHubUserRequest) (worksetapi.GitHubUs
 	return result.User, nil
 }
 
+func (a *App) SearchGitHubRepositories(query string, limit int) ([]worksetapi.GitHubRepoSearchItemJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	a.ensureService()
+	result, err := a.service.SearchGitHubRepositories(ctx, worksetapi.GitHubRepoSearchInput{
+		Query: query,
+		Limit: limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.Repositories, nil
+}
+
 func (a *App) GetGitHubAuthStatus() (worksetapi.GitHubAuthStatusJSON, error) {
 	ctx := a.ctx
 	if ctx == nil {
