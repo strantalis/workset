@@ -80,6 +80,34 @@ func TestIsContentMergedSquashMergeWithPostMergeDrift(t *testing.T) {
 	}
 }
 
+func TestIsContentMergedSquashMergeWithDivergedBaseEdits(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	repo := initGitRepo(t)
+	ensureBranch(t, repo, "main")
+	commitFile(t, repo, "shared.txt", "alpha\nbeta\ngamma\ndelta\n", "initial")
+
+	runGit(t, repo, "checkout", "-b", "feature")
+	commitFile(t, repo, "shared.txt", "alpha\nbeta\ngamma\ndelta-feature\n", "feature shared update")
+	commitFile(t, repo, "feature.txt", "feature-only\n", "feature file")
+
+	runGit(t, repo, "checkout", "main")
+	commitFile(t, repo, "shared.txt", "alpha-main\nbeta\ngamma\ndelta\n", "main moved")
+	runGit(t, repo, "merge", "--squash", "feature")
+	runGit(t, repo, "commit", "-m", "squash merge")
+
+	client := NewCLIClient()
+	merged, err := client.IsContentMerged(repo, "refs/heads/feature", "refs/heads/main")
+	if err != nil {
+		t.Fatalf("IsContentMerged: %v", err)
+	}
+	if !merged {
+		t.Fatalf("expected content to be merged after squash merge onto diverged base")
+	}
+}
+
 func TestIsContentMergedModeOnlyChangeNotMergedByBlobHistory(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")

@@ -179,8 +179,20 @@ func (c CLIClient) Fetch(ctx context.Context, repoPath, remoteName string) error
 	if remoteName == "" {
 		return errors.New("remote name required")
 	}
-	_, err := c.run(ctx, repoPath, "fetch", remoteName)
+	result, err := c.run(ctx, repoPath, "fetch", "--no-write-fetch-head", remoteName)
+	if err == nil {
+		return nil
+	}
+	if isNoWriteFetchHeadUnsupported(result.stderr) {
+		_, fallbackErr := c.run(ctx, repoPath, "fetch", remoteName)
+		return fallbackErr
+	}
 	return err
+}
+
+func isNoWriteFetchHeadUnsupported(stderr string) bool {
+	text := strings.ToLower(stderr)
+	return strings.Contains(text, "unknown option") && strings.Contains(text, "no-write-fetch-head")
 }
 
 // UpdateBranch force-updates branchName to targetRef. Callers must ensure the update is safe.
@@ -278,9 +290,24 @@ func (c CLIClient) IsContentMerged(repoPath, branchRef, baseRef string) (bool, e
 	if len(bases) == 0 {
 		return false, nil
 	}
+	mergedByMergeTree, err := c.mergeTreeLeavesBaseUnchanged(repoPath, baseRef, branchRef)
+	if err == nil && mergedByMergeTree {
+		return true, nil
+	}
 	var lastErr error
+	if err != nil {
+		lastErr = err
+	}
 	for _, mergeBase := range bases {
 		merged, err := c.changesAppliedInBase(repoPath, mergeBase, branchRef, baseRef)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if merged {
+			return true, nil
+		}
+		merged, err = c.squashPatchAppliedInBase(repoPath, mergeBase, branchRef, baseRef)
 		if err != nil {
 			lastErr = err
 			continue
@@ -301,6 +328,66 @@ func (c CLIClient) IsContentMerged(repoPath, branchRef, baseRef string) (bool, e
 	}
 	if lastErr != nil {
 		return false, lastErr
+	}
+	return false, nil
+}
+
+func (c CLIClient) mergeTreeLeavesBaseUnchanged(repoPath, baseRef, branchRef string) (bool, error) {
+	result, err := c.run(context.Background(), repoPath, "merge-tree", "--write-tree", baseRef, branchRef)
+	if err != nil {
+		if result.exitCode == 1 || isMergeTreeUnsupported(result.stderr) || isMergeTreeTransientFailure(result.stderr) {
+			return false, nil
+		}
+		return false, err
+	}
+	mergedTree := strings.TrimSpace(result.stdout)
+	if mergedTree == "" {
+		return false, errors.New("empty merge-tree output")
+	}
+	baseTreeResult, err := c.run(context.Background(), repoPath, "rev-parse", baseRef+"^{tree}")
+	if err != nil {
+		return false, err
+	}
+	return mergedTree == strings.TrimSpace(baseTreeResult.stdout), nil
+}
+
+func isMergeTreeUnsupported(stderr string) bool {
+	text := strings.ToLower(stderr)
+	return strings.Contains(text, "unknown option") && strings.Contains(text, "write-tree")
+}
+
+func isMergeTreeTransientFailure(stderr string) bool {
+	text := strings.ToLower(stderr)
+	return strings.Contains(text, "unable to create temporary file") || strings.Contains(text, "operation not permitted")
+}
+
+func (c CLIClient) squashPatchAppliedInBase(repoPath, mergeBase, branchRef, baseRef string) (bool, error) {
+	branchPatchID, hasBranchPatch, err := c.rangePatchID(repoPath, mergeBase, branchRef)
+	if err != nil {
+		return false, err
+	}
+	if !hasBranchPatch {
+		return true, nil
+	}
+	result, err := c.run(context.Background(), repoPath, "rev-list", mergeBase+".."+baseRef)
+	if err != nil {
+		return false, err
+	}
+	for line := range strings.SplitSeq(result.stdout, "\n") {
+		commit := strings.TrimSpace(line)
+		if commit == "" {
+			continue
+		}
+		commitPatchID, hasCommitPatch, err := c.commitPatchID(repoPath, commit)
+		if err != nil {
+			return false, err
+		}
+		if !hasCommitPatch {
+			continue
+		}
+		if commitPatchID == branchPatchID {
+			return true, nil
+		}
 	}
 	return false, nil
 }
@@ -510,6 +597,71 @@ func (c CLIClient) rightOnlyCherryCount(repoPath, leftRef, rightRef string) (int
 		return 0, fmt.Errorf("parse rev-list count %q: %w", value, err)
 	}
 	return count, nil
+}
+
+func (c CLIClient) rangePatchID(repoPath, startRef, endRef string) (string, bool, error) {
+	result, err := c.run(
+		context.Background(),
+		repoPath,
+		"diff",
+		"--no-ext-diff",
+		"--full-index",
+		"--binary",
+		startRef+".."+endRef,
+	)
+	if err != nil {
+		return "", false, err
+	}
+	return c.patchIDFromDiff(result.stdout)
+}
+
+func (c CLIClient) commitPatchID(repoPath, commit string) (string, bool, error) {
+	result, err := c.run(
+		context.Background(),
+		repoPath,
+		"show",
+		"--no-ext-diff",
+		"--full-index",
+		"--binary",
+		"--pretty=format:",
+		commit,
+	)
+	if err != nil {
+		return "", false, err
+	}
+	return c.patchIDFromDiff(result.stdout)
+}
+
+func (c CLIClient) patchIDFromDiff(diffText string) (string, bool, error) {
+	if strings.TrimSpace(diffText) == "" {
+		return "", false, nil
+	}
+	cmd := exec.CommandContext(context.Background(), c.gitPath, "patch-id", "--stable")
+	cmd.Env = os.Environ()
+	cmd.Stdin = strings.NewReader(diffText)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		message := strings.TrimSpace(stderr.String())
+		if message == "" {
+			message = strings.TrimSpace(stdout.String())
+		}
+		if message != "" {
+			return "", false, fmt.Errorf("%w: %s", err, message)
+		}
+		return "", false, err
+	}
+	line := strings.TrimSpace(stdout.String())
+	if line == "" {
+		return "", false, nil
+	}
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return "", false, errors.New("empty patch-id output")
+	}
+	return fields[0], true, nil
 }
 
 func (c CLIClient) changesAppliedInBase(repoPath, mergeBase, branchRef, baseRef string) (bool, error) {
