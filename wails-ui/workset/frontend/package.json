@@ -34,7 +34,7 @@
 		"eslint-plugin-svelte": "^3.14.0",
 		"jsdom": "^27.4.0",
 		"prettier": "^3.8.1",
-		"prettier-plugin-svelte": "^3.4.1",
+		"prettier-plugin-svelte": "^3.5.0",
 		"svelte": "^5.51.3",
 		"svelte-check": "^4.3.6",
 		"svelte-preprocess": "^6.0.3",
