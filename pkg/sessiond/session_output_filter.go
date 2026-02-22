@@ -125,11 +125,21 @@ func shouldDropOSCColorResponse(payload []byte) bool {
 	if !ok || len(rest) == 0 {
 		return false
 	}
+
+	restLower := bytes.ToLower(rest)
+	if !bytes.Contains(restLower, []byte("rgb:")) {
+		return false
+	}
+
 	switch string(command) {
 	case "10", "11":
-		return bytes.Contains(bytes.ToLower(rest), []byte("rgb:"))
+		return bytes.HasPrefix(rest, []byte("?;rgb:"))
 	case "4":
-		return bytes.Contains(bytes.ToLower(rest), []byte("rgb:"))
+		_, tail, ok := bytes.Cut(rest, []byte(";"))
+		if !ok || len(tail) == 0 {
+			return false
+		}
+		return bytes.HasPrefix(tail, []byte("?;rgb:"))
 	default:
 		return false
 	}

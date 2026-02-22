@@ -7,7 +7,7 @@ import (
 
 func TestSanitizeProtocolInputDropsOSC11ColorResponse(t *testing.T) {
 	session := newSession(DefaultOptions(), "input-filter-drop-11", "")
-	input := []byte("A\x1b]11;rgb:1414/1f1f/2e2e\x1b\\B")
+	input := []byte("A\x1b]11;?;rgb:1414/1f1f/2e2e\x1b\\B")
 
 	got := session.sanitizeProtocolInput(context.Background(), input)
 	if string(got) != "AB" {
@@ -20,7 +20,7 @@ func TestSanitizeProtocolInputDropsOSC11ColorResponse(t *testing.T) {
 
 func TestSanitizeProtocolInputDropsOSC4ColorResponseBel(t *testing.T) {
 	session := newSession(DefaultOptions(), "input-filter-drop-4", "")
-	input := []byte("X\x1b]4;0;rgb:2e2e/3434/3636\aY")
+	input := []byte("X\x1b]4;0;?;rgb:2e2e/3434/3636\aY")
 
 	got := session.sanitizeProtocolInput(context.Background(), input)
 	if string(got) != "XY" {
@@ -41,7 +41,7 @@ func TestSanitizeProtocolInputKeepsNonColorOSC(t *testing.T) {
 func TestSanitizeProtocolInputDropsSplitOSC11AcrossChunks(t *testing.T) {
 	session := newSession(DefaultOptions(), "input-filter-split", "")
 
-	first := session.sanitizeProtocolInput(context.Background(), []byte("A\x1b]11;rgb:1414/1f"))
+	first := session.sanitizeProtocolInput(context.Background(), []byte("A\x1b]11;?;rgb:1414/1f"))
 	if string(first) != "A" {
 		t.Fatalf("expected first chunk output to keep prefix text only, got %q", string(first))
 	}
@@ -55,5 +55,25 @@ func TestSanitizeProtocolInputDropsSplitOSC11AcrossChunks(t *testing.T) {
 	}
 	if len(session.inputFilter.pendingOSC) != 0 {
 		t.Fatalf("expected pending OSC buffer to clear after terminator, got %d", len(session.inputFilter.pendingOSC))
+	}
+}
+
+func TestSanitizeProtocolInputKeepsOSC10ColorSetSequence(t *testing.T) {
+	session := newSession(DefaultOptions(), "input-filter-keep-10-set", "")
+	input := []byte("A\x1b]10;rgb:1414/1f1f/2e2e\x1b\\B")
+
+	got := session.sanitizeProtocolInput(context.Background(), input)
+	if string(got) != string(input) {
+		t.Fatalf("expected OSC10 color set sequence to pass through unchanged, got %q", string(got))
+	}
+}
+
+func TestSanitizeProtocolInputKeepsOSC4ColorSetSequence(t *testing.T) {
+	session := newSession(DefaultOptions(), "input-filter-keep-4-set", "")
+	input := []byte("A\x1b]4;0;rgb:1414/1f1f/2e2e\x1b\\B")
+
+	got := session.sanitizeProtocolInput(context.Background(), input)
+	if string(got) != string(input) {
+		t.Fatalf("expected OSC4 color set sequence to pass through unchanged, got %q", string(got))
 	}
 }
