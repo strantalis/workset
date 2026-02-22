@@ -32,5 +32,8 @@ func (s *Session) handleProtocolOutput(ctx context.Context, raw []byte) {
 }
 
 func (s *Session) sanitizeProtocolOutput(raw []byte) []byte {
-	return raw
+	if len(raw) == 0 {
+		return nil
+	}
+	return sanitizeTerminalOutputStreaming(raw, &s.outputFilter)
 }
