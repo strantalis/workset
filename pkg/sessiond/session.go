@@ -46,6 +46,8 @@ type Session struct {
 	debugOutputSeq atomic.Uint64
 	modeState      terminalModeState
 	modeParser     terminalModeParser
+	inputFilter    terminalInputFilter
+	outputFilter   terminalOutputFilter
 }
 
 func newSession(opts Options, id, cwd string) *Session {
@@ -94,16 +96,20 @@ func (s *Session) writeForOwner(ctx context.Context, data, owner string) error {
 	case currentOwner != owner:
 		return fmt.Errorf("terminal input lease held by %q", currentOwner)
 	}
-	s.logProtocol(ctx, "in", []byte(data))
+	sanitizedInput := s.sanitizeProtocolInput(ctx, []byte(data))
+	if len(sanitizedInput) == 0 {
+		return nil
+	}
+	s.logProtocol(ctx, "in", sanitizedInput)
 	inSeq := s.debugInputSeq.Add(1)
 	debugLogf(
 		"session_input id=%s seq=%d owner=%q summary=%s",
 		s.id,
 		inSeq,
 		owner,
-		summarizeBytes([]byte(data), 48),
+		summarizeBytes(sanitizedInput, 48),
 	)
-	if _, err := s.pty.Write([]byte(data)); err != nil {
+	if _, err := s.pty.Write(sanitizedInput); err != nil {
 		return err
 	}
 	s.bumpActivityLocked()
