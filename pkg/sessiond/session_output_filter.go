@@ -5,7 +5,6 @@ import "bytes"
 const maxPendingOSCOutputBytes = 4096
 
 type terminalOutputFilter struct {
-	pendingRawOSC   []byte
 	pendingCaretOSC []byte
 }
 
@@ -13,52 +12,7 @@ func sanitizeTerminalOutputStreaming(raw []byte, filter *terminalOutputFilter) [
 	if len(raw) == 0 {
 		return nil
 	}
-	stageOne := filterRawOSCColorResponses(raw, &filter.pendingRawOSC)
-	if len(stageOne) == 0 {
-		return nil
-	}
-	return filterCaretOSCColorResponses(stageOne, &filter.pendingCaretOSC)
-}
-
-func filterRawOSCColorResponses(raw []byte, pending *[]byte) []byte {
-	data := raw
-	if len(*pending) > 0 {
-		combined := make([]byte, 0, len(*pending)+len(raw))
-		combined = append(combined, *pending...)
-		combined = append(combined, raw...)
-		*pending = (*pending)[:0]
-		data = combined
-	}
-
-	out := make([]byte, 0, len(data))
-	for idx := 0; idx < len(data); {
-		if data[idx] != 0x1b || idx+1 >= len(data) || data[idx+1] != ']' {
-			out = append(out, data[idx])
-			idx += 1
-			continue
-		}
-
-		terminatorStart, terminatorLen, complete := findOSCTerminator(data, idx+2)
-		if !complete {
-			tail := data[idx:]
-			if len(tail) <= maxPendingOSCOutputBytes {
-				*pending = append((*pending)[:0], tail...)
-				break
-			}
-			out = append(out, tail...)
-			break
-		}
-
-		sequenceEnd := terminatorStart + terminatorLen
-		payload := data[idx+2 : terminatorStart]
-		if shouldDropOSCColorResponse(payload) {
-			idx = sequenceEnd
-			continue
-		}
-		out = append(out, data[idx:sequenceEnd]...)
-		idx = sequenceEnd
-	}
-	return out
+	return filterCaretOSCColorResponses(raw, &filter.pendingCaretOSC)
 }
 
 func filterCaretOSCColorResponses(raw []byte, pending *[]byte) []byte {
@@ -133,13 +87,13 @@ func shouldDropOSCColorResponse(payload []byte) bool {
 
 	switch string(command) {
 	case "10", "11":
-		return bytes.HasPrefix(rest, []byte("?;rgb:"))
+		return bytes.HasPrefix(rest, []byte("?;rgb:")) || bytes.HasPrefix(rest, []byte("rgb:"))
 	case "4":
 		_, tail, ok := bytes.Cut(rest, []byte(";"))
 		if !ok || len(tail) == 0 {
 			return false
 		}
-		return bytes.HasPrefix(tail, []byte("?;rgb:"))
+		return bytes.HasPrefix(tail, []byte("?;rgb:")) || bytes.HasPrefix(tail, []byte("rgb:"))
 	default:
 		return false
 	}

@@ -30,13 +30,19 @@ func sanitizeTerminalInputStreaming(ctx context.Context, session *Session, raw [
 
 	out := make([]byte, 0, len(data))
 	for idx := 0; idx < len(data); {
-		if data[idx] != 0x1b || idx+1 >= len(data) || data[idx+1] != ']' {
+		startLen := 0
+		switch {
+		case data[idx] == 0x1b && idx+1 < len(data) && data[idx+1] == ']':
+			startLen = 2
+		case data[idx] == 0x9d:
+			startLen = 1
+		default:
 			out = append(out, data[idx])
 			idx += 1
 			continue
 		}
 
-		terminatorStart, terminatorLen, complete := findOSCTerminator(data, idx+2)
+		terminatorStart, terminatorLen, complete := findOSCTerminator(data, idx+startLen)
 		if !complete {
 			tail := data[idx:]
 			if len(tail) <= maxPendingOSCInputBytes {
@@ -50,7 +56,7 @@ func sanitizeTerminalInputStreaming(ctx context.Context, session *Session, raw [
 
 		sequenceEnd := terminatorStart + terminatorLen
 		sequence := data[idx:sequenceEnd]
-		payload := data[idx+2 : terminatorStart]
+		payload := data[idx+startLen : terminatorStart]
 		if shouldDropOSCColorResponse(payload) {
 			if session.protocolLog != nil && ctx != nil {
 				session.protocolLog.Log(
@@ -76,6 +82,8 @@ func findOSCTerminator(data []byte, start int) (terminatorStart int, terminatorL
 	for idx := start; idx < len(data); idx += 1 {
 		switch data[idx] {
 		case 0x07:
+			return idx, 1, true
+		case 0x9c:
 			return idx, 1, true
 		case 0x1b:
 			if idx+1 < len(data) && data[idx+1] == '\\' {
