@@ -1,15 +1,22 @@
 <script lang="ts">
 	import {
-		ArrowUpRight,
-		Box,
+		AlertCircle,
+		ArrowUpFromLine,
 		CheckCircle2,
 		ChevronLeft,
 		ChevronRight,
+		Circle,
+		FileCode,
+		FileMinus,
+		FilePlus,
 		GitBranch,
 		GitPullRequest,
 		MessageSquare,
+		Plus,
 		Upload,
+		XCircle,
 	} from '@lucide/svelte';
+	import type { Workspace } from '../../types';
 	import type { PrListItem } from '../../view-models/prViewModel';
 
 	type Partitions = {
@@ -20,190 +27,289 @@
 	};
 
 	interface Props {
+		workspace: Workspace | null;
 		workspaceName: string;
 		viewMode: 'active' | 'ready';
 		canCollapseSidebar: boolean;
-		trackedCount: number;
-		readyCount: number;
-		activeCount: number;
-		mergedCount: number;
 		partitions: Partitions;
+		prItems: PrListItem[];
 		selectedItemId: string | null;
 		resolveTrackedTitle: (repoId: string, fallbackTitle: string) => string;
+		onStartPush: (itemId: string) => void;
+		pushInProgressRepoId?: string | null;
 		onToggleSidebar: () => void;
 		onViewModeChange: (mode: 'active' | 'ready') => void;
 		onSelectItem: (itemId: string) => void;
 	}
 
 	const {
+		workspace,
 		workspaceName,
 		viewMode,
 		canCollapseSidebar,
-		trackedCount,
-		readyCount,
-		activeCount,
-		mergedCount,
 		partitions,
+		prItems,
 		selectedItemId,
 		resolveTrackedTitle,
+		onStartPush,
+		pushInProgressRepoId = null,
 		onToggleSidebar,
 		onViewModeChange,
 		onSelectItem,
 	}: Props = $props();
+
+	const repoById = $derived.by(() => {
+		const map = new Map<string, Workspace['repos'][number]>();
+		for (const repo of workspace?.repos ?? []) {
+			map.set(repo.id, repo);
+		}
+		return map;
+	});
+
+	const changedRepoIds = $derived.by(
+		() => new Set(partitions.readyToPR.map((item) => item.repoId)),
+	);
+	const trackedRepoIds = $derived.by(() => new Set(partitions.tracked.map((item) => item.repoId)));
+	const changedItems = $derived.by(() => prItems.filter((item) => changedRepoIds.has(item.repoId)));
+	const cleanItems = $derived.by(() => prItems.filter((item) => !changedRepoIds.has(item.repoId)));
+	const trackedItems = $derived.by(() => prItems.filter((item) => trackedRepoIds.has(item.repoId)));
+	const noPrItems = $derived.by(() => prItems.filter((item) => !trackedRepoIds.has(item.repoId)));
+
+	const repoCount = $derived(prItems.length);
+	const changedCount = $derived(changedItems.length);
+	const openPrCount = $derived(partitions.active.length);
+	const canPushItem = (item: PrListItem): boolean => item.hasLocalDiff || item.ahead > 0;
+
+	const selectRepo = (itemId: string): void => {
+		if (viewMode !== 'ready') onViewModeChange('ready');
+		onSelectItem(itemId);
+	};
+
+	const selectPr = (itemId: string): void => {
+		if (viewMode !== 'active') onViewModeChange('active');
+		onSelectItem(itemId);
+	};
+
+	const trackedStatusTone = (item: PrListItem): 'open' | 'merged' | 'blocked' | 'pending' => {
+		if (item.status === 'merged') return 'merged';
+		if (item.status === 'blocked') return 'blocked';
+		if (item.status === 'running') return 'pending';
+		return 'open';
+	};
+
+	const fileName = (path: string): string => {
+		const parts = path.split('/');
+		return parts[parts.length - 1] || path;
+	};
+
+	const fileTone = (
+		file: Workspace['repos'][number]['files'][number],
+	): 'added' | 'removed' | 'changed' => {
+		if (file.added > 0 && file.removed === 0) return 'added';
+		if (file.removed > 0 && file.added === 0) return 'removed';
+		return 'changed';
+	};
 </script>
 
 <aside class="sidebar">
-	<div class="ws-header">
-		<div class="ws-header-top">
-			<div class="ws-eyebrow">Current Workset</div>
-			<button
-				type="button"
-				class="sidebar-toggle-btn"
-				class:disabled={!canCollapseSidebar}
-				aria-label="Collapse sidebar"
-				title={canCollapseSidebar ? 'Collapse sidebar' : 'Select an item to collapse'}
-				disabled={!canCollapseSidebar}
-				onclick={onToggleSidebar}
-			>
-				<ChevronLeft size={14} />
-			</button>
-		</div>
-		<div class="ws-badge">
-			<Box size={14} class="ws-badge-icon" />
-			<span class="ws-badge-name">{workspaceName}</span>
-		</div>
-	</div>
-
-	<div class="mode-switch">
-		<button
-			type="button"
-			class="ms-btn"
-			class:active={viewMode === 'active'}
-			onclick={() => onViewModeChange('active')}
-		>
-			<GitPullRequest size={14} />
-			Tracked PRs
-			<span class="ms-count">{trackedCount}</span>
-		</button>
-		<button
-			type="button"
-			class="ms-btn"
-			class:active={viewMode === 'ready'}
-			onclick={() => onViewModeChange('ready')}
-		>
-			<Upload size={14} class={viewMode === 'ready' ? 'text-green' : ''} />
-			Ready to PR
-			{#if readyCount > 0}
-				<span class="ms-count ready">{readyCount}</span>
-			{/if}
-		</button>
-	</div>
-
 	<div class="list">
-		{#if viewMode === 'active'}
-			{#if partitions.tracked.length > 0}
-				{#if partitions.active.length > 0}
-					<div class="list-group-title">Open ({activeCount})</div>
-					{#each partitions.active as item (item.id)}
-						{@const isActive = item.id === selectedItemId}
+		<div class="section">
+			<div class="section-head">
+				<div class="section-left">
+					<ArrowUpFromLine size={11} />
+					<span>Repositories</span>
+				</div>
+				<div class="section-head-right">
+					<div class="section-count">
+						<span class="accent">{changedCount} modified</span> / {repoCount}
+					</div>
+					<button
+						type="button"
+						class="sidebar-toggle-btn"
+						class:disabled={!canCollapseSidebar}
+						aria-label="Collapse sidebar"
+						title={canCollapseSidebar ? 'Collapse sidebar' : 'Select an item to collapse'}
+						disabled={!canCollapseSidebar}
+						onclick={onToggleSidebar}
+					>
+						<ChevronLeft size={13} />
+					</button>
+				</div>
+			</div>
+
+			<div class="section-body">
+				{#each changedItems as item (item.id)}
+					{@const repo = repoById.get(item.repoId)}
+					{@const isActive = selectedItemId === item.id && viewMode === 'ready'}
+					<div class="repo-block" class:active={isActive}>
 						<button
 							type="button"
-							class="list-item"
+							class="repo-row"
 							class:active={isActive}
-							onclick={() => onSelectItem(item.id)}
+							onclick={() => selectRepo(item.id)}
 						>
-							<div class="li-top">
-								<h3 class="li-title" class:bright={isActive}>
-									{resolveTrackedTitle(item.repoId, item.title)}
-								</h3>
-								{#if isActive}<ChevronRight size={14} class="li-chevron" />{/if}
+							<span class="repo-chevron" class:open={isActive}>
+								<ChevronRight size={11} />
+							</span>
+							<span class="repo-icon"><GitBranch size={11} /></span>
+							<div class="row-main">
+								<div class="row-line-1">
+									<span class="repo-name">{item.repoName}</span>
+									<div class="line-stat">
+										<span class="plus">+{repo?.diff.added ?? 0}</span>
+										<span class="minus">-{repo?.diff.removed ?? 0}</span>
+									</div>
+								</div>
+								<div class="row-line-2">
+									<span class="thread-name">{workspaceName}</span>
+									<span class="branch-name">{item.branch}</span>
+								</div>
 							</div>
-							<div class="li-meta">
-								<span class="li-repo">{item.repoName}</span>
-								<span class="li-sep">·</span>
-								<span
-									class:li-passing={item.status === 'open'}
-									class:li-running={item.status === 'running'}
-									class:li-blocked={item.status === 'blocked'}
-								>
-									{item.status}
-								</span>
-								{#if item.dirtyFiles > 0}
-									<span class="li-sep">·</span>
-									<span class="li-warn">
-										<MessageSquare size={8} />
-										{item.dirtyFiles}
-									</span>
+						</button>
+						{#if isActive && repo}
+							<div class="repo-files">
+								{#each repo.files as file (`${item.id}:${file.path}`)}
+									{@const tone = fileTone(file)}
+									<div class="repo-file-row">
+										<span class="repo-file-icon">
+											{#if tone === 'added'}
+												<FilePlus size={10} />
+											{:else if tone === 'removed'}
+												<FileMinus size={10} />
+											{:else}
+												<FileCode size={10} />
+											{/if}
+										</span>
+										<span class="repo-file-name">{fileName(file.path)}</span>
+										<span class="repo-file-add">+{file.added}</span>
+										{#if file.removed > 0}
+											<span class="repo-file-remove">-{file.removed}</span>
+										{/if}
+									</div>
+								{/each}
+								<div class="repo-actions">
+									<button
+										type="button"
+										class="repo-action-btn"
+										disabled={!canPushItem(item) || pushInProgressRepoId === item.repoId}
+										onclick={(event) => {
+											event.stopPropagation();
+											selectRepo(item.id);
+											onStartPush(item.id);
+										}}
+									>
+										<Upload size={10} />
+										{pushInProgressRepoId === item.repoId ? 'Pushing…' : 'Push'}
+									</button>
+									<button
+										type="button"
+										class="repo-action-btn primary"
+										onclick={(event) => {
+											event.stopPropagation();
+											selectRepo(item.id);
+										}}
+									>
+										<Plus size={10} />
+										Open PR
+									</button>
+								</div>
+							</div>
+						{/if}
+					</div>
+				{/each}
+
+				{#each cleanItems as item (item.id)}
+					<div class="repo-row clean">
+						<span class="repo-chevron-spacer"></span>
+						<span class="repo-icon"><GitBranch size={11} /></span>
+						<div class="row-main">
+							<div class="row-line-1">
+								<span class="repo-name">{item.repoName}</span>
+								<span class="clean-state">clean</span>
+							</div>
+							<div class="row-line-2">
+								<span class="branch-name">{item.branch || 'main'}</span>
+							</div>
+						</div>
+					</div>
+				{/each}
+			</div>
+		</div>
+
+		<div class="section">
+			<div class="section-head">
+				<div class="section-left">
+					<GitPullRequest size={11} />
+					<span>Pull Requests</span>
+				</div>
+				<div class="section-count">
+					<span class="accent">{openPrCount} open</span> / {repoCount} repos
+				</div>
+			</div>
+
+			<div class="section-body">
+				{#each trackedItems as item (item.id)}
+					{@const isActive = selectedItemId === item.id && viewMode === 'active'}
+					{@const tone = trackedStatusTone(item)}
+					<button
+						type="button"
+						class="pr-row"
+						class:active={isActive}
+						onclick={() => selectPr(item.id)}
+					>
+						<div class="pr-status">
+							{#if tone === 'open'}
+								<CheckCircle2 size={12} class="icon-open" />
+							{:else if tone === 'merged'}
+								<Circle size={12} class="icon-merged" />
+							{:else if tone === 'pending'}
+								<AlertCircle size={12} class="icon-pending" />
+							{:else}
+								<XCircle size={12} class="icon-blocked" />
+							{/if}
+						</div>
+						<div class="pr-main">
+							<div class="pr-title">{resolveTrackedTitle(item.repoId, item.title)}</div>
+							<div class="pr-meta">
+								<span class="pr-meta-mono">{item.repoName}</span>
+								<span class="dot">·</span>
+								<span>{workspaceName}</span>
+								{#if item.draft}
+									<span class="draft-pill">Draft</span>
 								{/if}
 							</div>
-						</button>
-					{/each}
-				{/if}
-				{#if partitions.merged.length > 0}
-					<div class="list-group-title">Merged ({mergedCount})</div>
-					{#each partitions.merged as item (item.id)}
-						{@const isActive = item.id === selectedItemId}
-						<button
-							type="button"
-							class="list-item list-item-merged"
-							class:active={isActive}
-							onclick={() => onSelectItem(item.id)}
-						>
-							<div class="li-top">
-								<h3 class="li-title" class:bright={isActive}>
-									{resolveTrackedTitle(item.repoId, item.title)}
-								</h3>
-								{#if isActive}<ChevronRight size={14} class="li-chevron" />{/if}
+							<div class="pr-submeta">
+								{#if item.author}
+									<span>{item.author}</span>
+									<span class="dot">·</span>
+								{/if}
+								<span>{item.updatedAtLabel}</span>
+								{#if item.commentsCount > 0}
+									<span class="dot">·</span>
+									<span class="comment-count"><MessageSquare size={9} /> {item.commentsCount}</span>
+								{/if}
+								{#if tone === 'merged'}
+									<span class="dot">·</span>
+									<span class="merged-pill">Merged</span>
+								{/if}
 							</div>
-							<div class="li-meta">
-								<span class="li-repo">{item.repoName}</span>
-								<span class="li-sep">·</span>
-								<span class="li-merged">merged</span>
-								<span class="li-sep">·</span>
-								<span class="li-cleanup">cleanup candidate</span>
-							</div>
-						</button>
-					{/each}
-				{/if}
-			{:else}
-				<div class="list-empty">
-					<CheckCircle2 size={24} />
-					<p>No tracked PRs</p>
-				</div>
-			{/if}
-		{:else if partitions.readyToPR.length > 0}
-			{#each partitions.readyToPR as item (item.id)}
-				{@const isActive = item.id === selectedItemId}
-				<button
-					type="button"
-					class="list-item"
-					class:active-ready={isActive}
-					onclick={() => onSelectItem(item.id)}
-				>
-					<div class="li-top">
-						<h3 class="li-title" class:bright={isActive}>{item.repoName}</h3>
-						{#if isActive}<ChevronRight size={14} class="li-chevron-green" />{/if}
+						</div>
+					</button>
+				{/each}
+
+				{#each noPrItems as item (item.id)}
+					<div class="pr-row clean-pr">
+						<div class="pr-status">
+							<Circle size={12} class="icon-idle" />
+						</div>
+						<div class="pr-main">
+							<span class="repo-name">{item.repoName}</span>
+							<div class="pr-submeta">No open PRs</div>
+						</div>
 					</div>
-					<div class="li-branch-row">
-						<GitBranch size={11} class="text-green" />
-						<span class="li-branch-name">{item.branch}</span>
-					</div>
-					<div class="li-meta">
-						<span class="li-commits">
-							<ArrowUpRight size={10} class="text-blue" />
-							{item.ahead} commit{item.ahead !== 1 ? 's' : ''} ahead
-						</span>
-						<span class="text-green">+{item.dirtyFiles}</span>
-						<span class="li-time">{item.updatedAtLabel}</span>
-					</div>
-				</button>
-			{/each}
-		{:else}
-			<div class="list-empty">
-				<CheckCircle2 size={24} />
-				<p>All branches have PRs</p>
+				{/each}
 			</div>
-		{/if}
+		</div>
 	</div>
 </aside>
 

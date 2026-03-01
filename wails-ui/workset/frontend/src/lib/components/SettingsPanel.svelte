@@ -22,7 +22,6 @@
 	import SessionDefaults from './settings/sections/SessionDefaults.svelte';
 	import GitHubAuth from './settings/sections/GitHubAuth.svelte';
 	import AliasManager from './settings/sections/AliasManager.svelte';
-	import GroupManager from './settings/sections/GroupManager.svelte';
 	import AboutSection from './settings/sections/AboutSection.svelte';
 	import Button from './ui/Button.svelte';
 
@@ -65,7 +64,6 @@
 
 	let activeSection = $state('workspace');
 	let aliasCount = $state(0);
-	let groupCount = $state(0);
 	let appVersion = $state<AppVersion | null>(null);
 	let updatePreferences = $state<UpdatePreferences>(DEFAULT_UPDATE_PREFERENCES);
 	let updateState = $state<UpdateState | null>(null);
@@ -223,7 +221,6 @@
 			session: 'Terminal',
 			github: 'GitHub',
 			aliases: 'Repo Catalog',
-			groups: 'Templates',
 			about: 'About',
 		};
 		return titles[section] ?? 'Settings';
@@ -302,7 +299,7 @@
 		</div>
 	{:else if snapshot}
 		<div class="body">
-			<SettingsSidebar {activeSection} onSelectSection={selectSection} {aliasCount} {groupCount} />
+			<SettingsSidebar {activeSection} onSelectSection={selectSection} {aliasCount} />
 
 			<div class="content">
 				<header class="content-header">
@@ -328,8 +325,6 @@
 						<GitHubAuth />
 					{:else if activeSection === 'aliases'}
 						<AliasManager onAliasCountChange={(count) => (aliasCount = count)} />
-					{:else if activeSection === 'groups'}
-						<GroupManager onGroupCountChange={(count) => (groupCount = count)} />
 					{:else if activeSection === 'about'}
 						<AboutSection
 							{appVersion}
@@ -377,10 +372,22 @@
 		max-height: 86vh;
 		display: flex;
 		flex-direction: column;
-		background: var(--panel);
-		border: 1px solid var(--border);
+		background:
+			linear-gradient(
+				180deg,
+				rgba(255, 255, 255, 0.08) 0%,
+				rgba(255, 255, 255, 0.02) 44%,
+				rgba(255, 255, 255, 0) 100%
+			),
+			var(--glass-bg-strong);
+		border: 1px solid color-mix(in srgb, var(--glass-border) 88%, transparent);
 		border-radius: 16px;
-		box-shadow: var(--shadow-lg);
+		backdrop-filter: blur(calc(var(--glass-blur) + 1px)) saturate(var(--glass-saturate));
+		-webkit-backdrop-filter: blur(calc(var(--glass-blur) + 1px)) saturate(var(--glass-saturate));
+		box-shadow:
+			var(--glass-shadow),
+			var(--inset-highlight),
+			0 0 0 1px color-mix(in srgb, var(--border) 28%, transparent);
 		overflow: hidden;
 	}
 
@@ -400,7 +407,7 @@
 		display: flex;
 		flex: 1;
 		min-height: 0;
-		background: var(--panel);
+		background: color-mix(in srgb, var(--panel-strong) 90%, var(--panel));
 	}
 
 	.content {
@@ -408,7 +415,7 @@
 		min-width: 0;
 		display: flex;
 		flex-direction: column;
-		background: var(--bg);
+		background: color-mix(in srgb, var(--bg) 92%, var(--panel));
 	}
 
 	.content-header {
@@ -417,9 +424,9 @@
 		justify-content: space-between;
 		gap: var(--space-4);
 		padding: 20px 24px;
-		border-bottom: 1px solid var(--border);
+		border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
 		flex-shrink: 0;
-		background: var(--bg);
+		background: color-mix(in srgb, var(--panel-strong) 86%, var(--panel));
 	}
 
 	.content-title {
@@ -456,7 +463,7 @@
 		flex: 1;
 		overflow-y: auto;
 		padding: var(--space-5) var(--space-6);
-		background: var(--bg);
+		background: color-mix(in srgb, var(--bg) 94%, var(--panel));
 	}
 
 	.content-body::-webkit-scrollbar {
@@ -481,8 +488,8 @@
 		align-items: center;
 		gap: var(--space-4);
 		padding: var(--space-4) var(--space-6);
-		border-top: 1px solid var(--border);
-		background: var(--panel);
+		border-top: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
+		background: color-mix(in srgb, var(--panel-strong) 88%, var(--panel));
 		flex-shrink: 0;
 	}
 

@@ -1,4 +1,4 @@
-import { getGroup, listGroups, listRegisteredRepos } from '../api/settings';
+import { listRegisteredRepos } from '../api/settings';
 import type { Alias } from '../types';
 
 export type RepoTemplate = {
@@ -7,14 +7,6 @@ export type RepoTemplate = {
 	hooks: string[];
 	aliasName?: string;
 	sourceType: 'alias' | 'direct';
-};
-
-export type WorksetTemplate = {
-	id: string;
-	name: string;
-	description: string;
-	groupName: string;
-	repos: RepoTemplate[];
 };
 
 export type RegisteredRepo = {
@@ -28,7 +20,6 @@ export type RegisteredRepo = {
 };
 
 export type OnboardingCatalog = {
-	templates: WorksetTemplate[];
 	repoRegistry: RegisteredRepo[];
 };
 
@@ -94,48 +85,9 @@ const mapAliasesToRegistry = (aliases: Alias[]): RegisteredRepo[] =>
 		.sort((left, right) => left.name.localeCompare(right.name));
 
 export const loadOnboardingCatalog = async (): Promise<OnboardingCatalog> => {
-	const [aliases, groups] = await Promise.all([listRegisteredRepos(), listGroups()]);
-	const aliasesByName = new Map(aliases.map((alias) => [alias.name, alias]));
-
-	const templates = await Promise.all(
-		groups.map(async (group) => {
-			try {
-				const fullGroup = await getGroup(group.name);
-				const repos: RepoTemplate[] = fullGroup.members.map((member) => {
-					const alias = aliasesByName.get(member.repo);
-					return {
-						name: member.repo,
-						remoteUrl: alias ? normalizeSource(alias) : '',
-						hooks: [],
-						aliasName: member.repo,
-						sourceType: 'alias',
-					};
-				});
-				return {
-					id: group.name,
-					name: group.name,
-					description:
-						group.description?.trim() ||
-						`${repos.length} ${repos.length === 1 ? 'repository' : 'repositories'}`,
-					groupName: group.name,
-					repos,
-				} satisfies WorksetTemplate;
-			} catch {
-				return {
-					id: group.name,
-					name: group.name,
-					description:
-						group.description?.trim() ||
-						`${group.repo_count} ${group.repo_count === 1 ? 'repository' : 'repositories'}`,
-					groupName: group.name,
-					repos: [],
-				} satisfies WorksetTemplate;
-			}
-		}),
-	);
+	const aliases = await listRegisteredRepos();
 
 	return {
-		templates: templates.sort((left, right) => left.name.localeCompare(right.name)),
 		repoRegistry: mapAliasesToRegistry(aliases),
 	};
 };

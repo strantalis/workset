@@ -7,10 +7,7 @@ import {
 	renameWorkspace as renameWorkspaceMutation,
 } from '../api/workspaces';
 import { deriveRepoName, isRepoSource } from '../names';
-import {
-	applyGroup as applyGroupMutation,
-	registerRepo as registerRepoMutation,
-} from '../api/settings';
+import { registerRepo as registerRepoMutation } from '../api/settings';
 import type { HookExecution, RepoAddResponse, WorkspaceCreateResponse } from '../types';
 
 export type WorkspaceActionPendingHook = {
@@ -31,7 +28,7 @@ export type CreateWorkspaceMutationInput = {
 	primaryInput: string;
 	directRepos: CreateDirectRepo[];
 	selectedAliases: Iterable<string>;
-	selectedGroups: Iterable<string>;
+	worksetName?: string;
 };
 
 type CreateWorkspaceMutationDeps = {
@@ -54,7 +51,6 @@ export type AddItemsMutationInput = {
 	workspaceId: string;
 	source: string;
 	selectedAliases: Iterable<string>;
-	selectedGroups: Iterable<string>;
 };
 
 type AddItemsMutationDeps = {
@@ -64,7 +60,12 @@ type AddItemsMutationDeps = {
 		name: string,
 		repoDir: string,
 	) => Promise<RepoAddResponse>;
-	applyGroup: (workspaceId: string, group: string) => Promise<void>;
+	removeRepo?: (
+		workspaceId: string,
+		repoName: string,
+		deleteWorktree: boolean,
+		forget: boolean,
+	) => Promise<void>;
 };
 
 export type RenameWorkspaceMutationInput = {
@@ -160,7 +161,6 @@ export type WorkspaceActionMutationGateway = {
 	registerRepo: CreateWorkspaceMutationDeps['registerRepo'];
 	createWorkspace: CreateWorkspaceMutationDeps['createWorkspace'];
 	addRepo: AddItemsMutationDeps['addRepo'];
-	applyGroup: AddItemsMutationDeps['applyGroup'];
 	renameWorkspace: RenameWorkspaceMutationDeps['renameWorkspace'];
 	archiveWorkspace: ArchiveWorkspaceMutationDeps['archiveWorkspace'];
 	removeWorkspace: RemoveWorkspaceMutationDeps['removeWorkspace'];
@@ -182,7 +182,6 @@ export const workspaceActionMutationGateway: WorkspaceActionMutationGateway = {
 	registerRepo: registerRepoMutation,
 	createWorkspace: createWorkspaceMutation,
 	addRepo: addRepoMutation,
-	applyGroup: applyGroupMutation,
 	renameWorkspace: renameWorkspaceMutation,
 	archiveWorkspace: archiveWorkspaceMutation,
 	removeWorkspace: removeWorkspaceMutation,
@@ -220,7 +219,7 @@ export const createWorkspaceActionMutationService = (
 	addItems: (input) =>
 		runAddItemsMutation(input, {
 			addRepo: gateway.addRepo,
-			applyGroup: gateway.applyGroup,
+			removeRepo: gateway.removeRepo,
 		}),
 	renameWorkspace: (input) =>
 		runRenameWorkspaceMutation(input, {
@@ -256,32 +255,36 @@ export const runCreateWorkspaceMutation = async (
 		reposToProcess.push({ url: pendingSource, register: true });
 	}
 
-	const repos: string[] = [];
-	for (const repo of reposToProcess) {
-		const repoName = deriveRepoName(repo.url) || repo.url;
-		if (repo.register) {
-			await deps.registerRepo(repoName, repo.url, '', '');
-		}
-		repos.push(repo.register ? repoName : repo.url);
-	}
+	const repos: string[] = reposToProcess.map((repo) => repo.url);
 
 	for (const alias of input.selectedAliases) {
 		repos.push(alias);
 	}
 
-	const groups = Array.from(input.selectedGroups);
-	const template = groups.length === 1 ? groups[0] : undefined;
+	const worksetName = input.worksetName?.trim() || undefined;
 	const result = await deps.createWorkspace(
 		input.finalName,
 		'',
-		template,
+		worksetName,
 		repos.length > 0 ? repos : undefined,
-		groups.length > 0 ? groups : undefined,
 	);
+	const collectedWarnings = [...(result.warnings ?? [])];
+	for (const repo of reposToProcess) {
+		if (!repo.register) continue;
+		const repoName = deriveRepoName(repo.url) || repo.url;
+		try {
+			await deps.registerRepo(repoName, repo.url, '', '');
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			collectedWarnings.push(
+				`Registered ${repoName} in workset but failed to save in Repo Catalog: ${message}`,
+			);
+		}
+	}
 
 	return {
 		workspaceName: result.workspace.name,
-		warnings: dedupeWarnings(result.warnings ?? []),
+		warnings: dedupeWarnings(collectedWarnings),
 		pendingHooks: normalizePendingHooks(result.pendingHooks),
 		hookRuns: result.hookRuns ?? [],
 	};
@@ -310,24 +313,52 @@ export const runAddItemsMutation = async (
 ): Promise<AddItemsMutationResult> => {
 	const source = input.source.trim();
 	const aliases = Array.from(input.selectedAliases);
-	const groups = Array.from(input.selectedGroups);
 
 	const collectedWarnings: string[] = [];
 	const collectedPendingHooks: WorkspaceActionPendingHook[] = [];
 	const collectedHookRuns: HookExecution[] = [];
+	const addedRepoNames: string[] = [];
 
-	if (source.length > 0) {
-		const result = await deps.addRepo(input.workspaceId, source, '', '');
+	const addAndCollect = async (itemSource: string): Promise<void> => {
+		const result = await deps.addRepo(input.workspaceId, itemSource, '', '');
 		collectRepoAddResult(collectedWarnings, collectedPendingHooks, collectedHookRuns, result);
-	}
+		const addedRepoName = result.payload?.repo?.trim();
+		if (addedRepoName) {
+			addedRepoNames.push(addedRepoName);
+		}
+	};
 
-	for (const alias of aliases) {
-		const result = await deps.addRepo(input.workspaceId, alias, '', '');
-		collectRepoAddResult(collectedWarnings, collectedPendingHooks, collectedHookRuns, result);
-	}
+	const rollbackAddedRepos = async (): Promise<string[]> => {
+		if (!deps.removeRepo || addedRepoNames.length === 0) {
+			return [];
+		}
+		const rollbackWarnings: string[] = [];
+		for (const repoName of addedRepoNames.reverse()) {
+			try {
+				await deps.removeRepo(input.workspaceId, repoName, false, false);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				rollbackWarnings.push(`Rollback failed for ${repoName}: ${message}`);
+			}
+		}
+		return rollbackWarnings;
+	};
 
-	for (const group of groups) {
-		await deps.applyGroup(input.workspaceId, group);
+	try {
+		if (source.length > 0) {
+			await addAndCollect(source);
+		}
+		for (const alias of aliases) {
+			await addAndCollect(alias);
+		}
+	} catch (error) {
+		const rollbackWarnings = await rollbackAddedRepos();
+		const baseMessage = error instanceof Error ? error.message : String(error);
+		const fullMessage =
+			rollbackWarnings.length > 0
+				? `${baseMessage} (rollback warnings: ${rollbackWarnings.join('; ')})`
+				: baseMessage;
+		throw new Error(fullMessage);
 	}
 
 	const pendingByKey = new Map<string, WorkspaceActionPendingHook>();
@@ -336,7 +367,7 @@ export const runAddItemsMutation = async (
 	}
 
 	return {
-		itemCount: (source.length > 0 ? 1 : 0) + aliases.length + groups.length,
+		itemCount: (source.length > 0 ? 1 : 0) + aliases.length,
 		warnings: dedupeWarnings(collectedWarnings),
 		pendingHooks: Array.from(pendingByKey.values()),
 		hookRuns: collectedHookRuns,

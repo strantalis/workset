@@ -4,7 +4,7 @@ description: Global and workspace configuration reference for Workset.
 
 # Config
 
-Global config lives at `~/.workset/config.yaml` and stores defaults, repo aliases, templates, and workspace registry entries.
+Global config lives at `~/.workset/config.yaml` and stores defaults, repo aliases, legacy group metadata (for migration compatibility), and the workset registry.
 
 Workspace config lives at `<workspace>/workset.yaml` and is the source of truth for a workspace.
 If you have an existing config at `~/.config/workset/config.yaml`, Workset migrates it to `~/.workset/config.yaml` on next load.
@@ -23,7 +23,9 @@ Remote names and default branches come from repo aliases (`repos.<name>.remote` 
 | `github` | GitHub auth defaults and overrides. |
 | `hooks` | Hook execution defaults and repo trust list. |
 | `repos` | Named repo aliases for URL or local path. |
-| `workspaces` | Registry of named workspaces and their paths. |
+| `groups` | Legacy template/group definitions. Read for migration compatibility; not part of primary UI flows. |
+| `workset_catalog` | Workset hierarchy: repos + feature threads grouped under each workset. |
+| `worksets` | Registry of named worksets and their paths. Legacy `workspaces` is migrated on load. |
 
 ### `defaults`
 
@@ -76,11 +78,20 @@ For screen, the `session_screen_hardstatus` value is passed to `screen -X hardst
 | `remote` | Remote name for this repo alias (defaults to `defaults.remote`). |
 | `default_branch` | Default branch for this repo alias. |
 
-### `workspaces` entries
+### `worksets` entries
 
 | Field | Description |
 | --- | --- |
 | `path` | Workspace path. |
+| `workset` | Workset label used for hierarchy/grouping. |
+
+### `workset_catalog` entries
+
+| Field | Description |
+| --- | --- |
+| `description` | Optional workset description. |
+| `repos` | Repo aliases that define the workset. |
+| `threads` | Feature-thread names that belong to this workset. |
 
 ## Example (global)
 
@@ -124,9 +135,15 @@ repos:
     remote: origin
     default_branch: main
 
-workspaces:
+worksets:
   core:
     path: ~/.workset/workspaces/core
+    workset: core
+
+workset_catalog:
+  core:
+    repos: [platform]
+    threads: [feature-policy-eval]
 
 ## Repo hooks (`.workset/hooks.yaml`)
 
@@ -180,4 +197,4 @@ repos:
 ## Next steps
 
 - [CLI](cli.md)
-- [Templates](templates.md)
+- [Concepts](concepts.md)

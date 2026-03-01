@@ -93,27 +93,26 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
-		padding: 8px 16px;
+		padding: 8px 14px;
 		font-size: var(--text-mono-sm);
 		font-family: var(--font-mono);
 		background: transparent;
 		color: var(--muted);
 		cursor: grab;
 		border: none;
-		border-top: 2px solid transparent;
-		border-right: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
-		border-radius: 0;
+		border-radius: 8px 8px 0 0;
+		box-shadow: inset 0 2px 0 transparent;
 		transition:
 			color 0.15s ease,
 			background 0.15s ease,
-			border-color 0.15s ease;
+			box-shadow 0.15s ease;
 		white-space: nowrap;
 		position: relative;
 	}
 
 	.pane-tab:hover {
 		color: var(--text);
-		background: color-mix(in srgb, var(--panel-strong) 40%, transparent);
+		background: color-mix(in srgb, var(--panel-strong) 60%, transparent);
 	}
 
 	.pane-tab:active {
@@ -122,8 +121,10 @@
 
 	.pane-tab.active {
 		color: var(--accent);
-		background: var(--bg);
-		border-top-color: var(--accent);
+		background: color-mix(in srgb, var(--panel) 84%, var(--panel-strong));
+		box-shadow:
+			inset 0 2px 0 color-mix(in srgb, var(--accent) 92%, transparent),
+			inset 0 -1px 0 color-mix(in srgb, var(--panel) 94%, transparent);
 	}
 
 	.pane-tab.dragging {

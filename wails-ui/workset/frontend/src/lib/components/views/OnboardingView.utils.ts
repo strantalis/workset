@@ -1,16 +1,13 @@
 import type { HookExecution } from '../../types';
 import type { WorkspaceActionPendingHook } from '../../services/workspaceActionHooks';
-import type {
-	RegisteredRepo,
-	RepoTemplate,
-	WorksetTemplate,
-} from '../../view-models/onboardingViewModel';
+import type { RegisteredRepo, RepoTemplate } from '../../view-models/onboardingViewModel';
 
 export type OnboardingDraft = {
-	workspaceName: string;
+	worksetName: string;
+	threadName: string;
+	featureBranch: string;
 	description: string;
 	repos: RepoTemplate[];
-	selectedGroups: string[];
 	selectedAliases: string[];
 	primarySource: string;
 	directRepos: Array<{ url: string; register: boolean }>;
@@ -28,16 +25,6 @@ export type ReviewRepoEntry = {
 	repo: RepoTemplate;
 	source: string;
 	hooks: string[];
-};
-
-export type TemplateVisualIcon = 'code2' | 'workflow' | 'server';
-
-export const getTemplateVisual = (
-	template: Pick<WorksetTemplate, 'repos'>,
-): { icon: TemplateVisualIcon; color: string } => {
-	if (template.repos.length >= 6) return { icon: 'server', color: '#2D8CFF' };
-	if (template.repos.length >= 3) return { icon: 'workflow', color: '#86C442' };
-	return { icon: 'code2', color: '#F28C28' };
 };
 
 export const resolveHookPreviewSource = (repo: RepoTemplate): string => {
@@ -74,4 +61,4 @@ export const getStepStatus = (
 	return 'pending';
 };
 
-export type { RegisteredRepo, RepoTemplate, WorksetTemplate };
+export type { RegisteredRepo, RepoTemplate };

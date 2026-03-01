@@ -101,11 +101,35 @@ describe('prViewModel', () => {
 		expect(open?.branch).toBe('feature/snapshot');
 		expect(open?.status).toBe('open');
 		expect(open?.updatedAtLabel).toBe('just now');
+		expect(open?.draft).toBe(false);
+		expect(open?.author).toBe('');
+		expect(open?.commentsCount).toBe(0);
 		expect(merged?.status).toBe('merged');
 
 		expect(running?.title).toBe('repo-running');
 		expect(running?.status).toBe('running');
+		expect(running?.draft).toBe(false);
 
 		expect(blocked?.status).toBe('blocked');
+	});
+
+	it('surfaces draft, author, and commentsCount from tracked PR', () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2026-02-09T12:00:00.000Z'));
+
+		const ws = buildWorkspace();
+		ws.repos[0].trackedPullRequest = {
+			...ws.repos[0].trackedPullRequest!,
+			draft: true,
+			author: 'alice',
+			commentsCount: 5,
+		};
+
+		const items = mapWorkspaceToPrItems(ws);
+		const open = items.find((item) => item.repoId === 'repo-open');
+
+		expect(open?.draft).toBe(true);
+		expect(open?.author).toBe('alice');
+		expect(open?.commentsCount).toBe(5);
 	});
 });

@@ -64,22 +64,6 @@ vi.mock('../../services/workspaceActionModalActions', () => ({
 	),
 }));
 
-const defaultTemplate = {
-	id: 'group-template',
-	name: 'API Platform',
-	description: 'Template',
-	groupName: 'api-group',
-	repos: [
-		{
-			name: 'api-repo',
-			remoteUrl: 'git@github.com:example/api-repo.git',
-			hooks: [],
-			aliasName: 'api-repo',
-			sourceType: 'alias' as const,
-		},
-	],
-};
-
 const defaultRegistryRepo = {
 	id: 'repo-1',
 	name: 'api-repo',
@@ -95,7 +79,6 @@ const mountView = (props: Record<string, unknown> = {}) => {
 		target: document.body,
 		props: {
 			defaultWorkspaceName: 'workspace-alpha',
-			templates: [defaultTemplate],
 			repoRegistry: [defaultRegistryRepo],
 			...props,
 		},
@@ -155,8 +138,9 @@ describe('OnboardingView', () => {
 		await Promise.resolve();
 
 		await clickButton('Continue');
-		await clickButton('From Template');
+		await clickButton('api-repo');
 		await clickButton('Next Step');
+		await clickButton('Show review details');
 		await Promise.resolve();
 		await Promise.resolve();
 
@@ -203,7 +187,7 @@ describe('OnboardingView', () => {
 		await Promise.resolve();
 
 		await clickButton('Continue');
-		await clickButton('From Template');
+		await clickButton('api-repo');
 		await clickButton('Next Step');
 		await clickButton('Initialize Workset');
 

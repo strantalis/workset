@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { get } from 'svelte/store';
+	import { previewRepoHooks } from '../api/workspaces';
 	import {
 		activeWorkspaceId,
 		clearRepo,
@@ -10,9 +11,9 @@
 		selectWorkspace,
 		workspaces,
 	} from '../state';
-	import type { Alias, GroupSummary, HookExecution, Repo, Workspace } from '../types';
+	import type { Alias, HookExecution, Repo, Workspace } from '../types';
 	import { subscribeHookProgressEvent } from '../hookEventService';
-	import { isRepoSource } from '../names';
+	import { deriveRepoName, isRepoSource } from '../names';
 	import {
 		applyHookProgress,
 		appendHookRuns,
@@ -61,12 +62,31 @@
 
 	interface Props {
 		onClose: () => void;
-		mode: 'create' | 'rename' | 'add-repo' | 'archive' | 'remove-workspace' | 'remove-repo' | null;
+		mode:
+			| 'create'
+			| 'create-thread'
+			| 'rename'
+			| 'add-repo'
+			| 'archive'
+			| 'remove-workspace'
+			| 'remove-repo'
+			| null;
 		workspaceId?: string | null;
+		workspaceIds?: string[];
 		repoName?: string | null;
+		worksetName?: string | null;
+		worksetRepos?: string[];
 	}
 
-	const { onClose, mode, workspaceId = null, repoName = null }: Props = $props();
+	const {
+		onClose,
+		mode,
+		workspaceId = null,
+		workspaceIds = [],
+		repoName = null,
+		worksetName = null,
+		worksetRepos = [],
+	}: Props = $props();
 
 	let workspace: Workspace | null = $state(null);
 	let repo: Repo | null = $state(null);
@@ -97,20 +117,20 @@
 	let directRepos: WorkspaceActionDirectRepo[] = $state([]);
 	let customizeName = $state('');
 
-	type CreateTab = 'direct' | 'repos' | 'groups';
-	let activeTab = $state<CreateTab>('direct');
 	let searchQuery = $state('');
-	let expandedGroups = $state<Set<string>>(new Set());
 
 	let renameName = $state('');
 
 	let addSource = $state('');
 	let aliasItems: Alias[] = $state([]);
-	let groupItems: GroupSummary[] = $state([]);
-	let groupDetails: Map<string, string[]> = $state(new Map());
 
 	let selectedAliases: Set<string> = $state(new Set());
-	let selectedGroups: Set<string> = $state(new Set());
+	let seededThreadAliases = $state(false);
+	let threadHookRows = $state<Array<{ repoName: string; hooks: string[]; hasSource: boolean }>>([]);
+	let threadHooksLoading = $state(false);
+	let threadHooksError: string | null = $state(null);
+	let threadHooksFingerprint = $state('');
+	let threadHooksPreviewSequence = 0;
 
 	const createContext = $derived.by(() =>
 		deriveWorkspaceActionContext({
@@ -119,9 +139,7 @@
 			customizeName,
 			searchQuery,
 			aliasItems,
-			groupItems,
 			selectedAliases,
-			selectedGroups,
 		}),
 	);
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -129,8 +147,18 @@
 	const finalName = $derived(createContext.finalName);
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const alternatives = $derived(createContext.alternatives);
-	const filteredAliases = $derived(createContext.filteredAliases);
-	const filteredGroups = $derived(createContext.filteredGroups);
+	const filteredAliases = $derived.by(() => {
+		if (mode === 'add-repo') {
+			const query = searchQuery.trim().toLowerCase();
+			if (!query) return aliasItems;
+			return aliasItems.filter(
+				(alias) =>
+					alias.name.toLowerCase().includes(query) ||
+					getAliasSource(alias).toLowerCase().includes(query),
+			);
+		}
+		return createContext.filteredAliases;
+	});
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const totalRepos = $derived(createContext.totalRepos);
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -140,20 +168,129 @@
 		deriveAddRepoContext({
 			addSource,
 			selectedAliases,
-			selectedGroups,
 		}),
 	);
 	const addRepoSelectedItems = $derived(addRepoContext.selectedItems);
 	const addRepoTotalItems = $derived(addRepoContext.totalItems);
 
-	const existingRepos = $derived(deriveExistingReposContext({ mode, workspace }));
+	const targetWorkspaceIds = $derived.by(() => {
+		const ids = workspaceIds.map((id) => id.trim()).filter((id) => id.length > 0);
+		if (workspace?.id && !ids.includes(workspace.id)) {
+			ids.unshift(workspace.id);
+		}
+		return Array.from(new Set(ids));
+	});
+	const existingRepos = $derived.by(() =>
+		deriveExistingReposContext({
+			mode,
+			workspace,
+			workspaces: $workspaces,
+			workspaceIds: targetWorkspaceIds,
+		}),
+	);
+	const normalizedWorksetRepos = $derived.by(() =>
+		Array.from(
+			new Set(
+				worksetRepos.map((repoName) => repoName.trim()).filter((repoName) => repoName.length > 0),
+			),
+		),
+	);
+	const threadRepoSources = $derived.by(() => {
+		const sourceByRepo = new Map<string, string>();
+		for (const repoName of normalizedWorksetRepos) {
+			const alias = aliasItems.find((entry) => entry.name === repoName);
+			const source = alias ? getAliasSource(alias).trim() : '';
+			if (source.length > 0) {
+				sourceByRepo.set(repoName, source);
+			}
+		}
+		return sourceByRepo;
+	});
 
 	$effect(() => {
-		if (mode === 'create' && aliasItems.length > 0) {
-			activeTab = 'repos';
-		} else if (mode === 'create') {
-			activeTab = 'direct';
+		if (mode !== 'create-thread' || seededThreadAliases) return;
+		const seeded = new Set(
+			worksetRepos.map((repoName) => repoName.trim()).filter((repoName) => repoName.length > 0),
+		);
+		selectedAliases = seeded;
+		seededThreadAliases = true;
+	});
+
+	$effect(() => {
+		if (mode !== 'create-thread') {
+			threadHookRows = [];
+			threadHooksLoading = false;
+			threadHooksError = null;
+			threadHooksFingerprint = '';
+			return;
 		}
+
+		const repos = normalizedWorksetRepos;
+		const fingerprint = repos
+			.map((repoName) => `${repoName}:${threadRepoSources.get(repoName) ?? ''}`)
+			.join('|');
+		if (threadHooksFingerprint === fingerprint && threadHookRows.length === repos.length) {
+			return;
+		}
+		threadHooksFingerprint = fingerprint;
+		if (repos.length === 0) {
+			threadHookRows = [];
+			threadHooksLoading = false;
+			threadHooksError = null;
+			return;
+		}
+
+		const sequence = ++threadHooksPreviewSequence;
+		threadHooksLoading = true;
+		threadHooksError = null;
+		void (async () => {
+			const rows = await Promise.all(
+				repos.map(async (repoName) => {
+					const source = threadRepoSources.get(repoName);
+					if (!source) {
+						return {
+							repoName,
+							hooks: [] as string[],
+							hasSource: false,
+							failed: false,
+						};
+					}
+					try {
+						const hooks = await previewRepoHooks(source);
+						return {
+							repoName,
+							hooks: Array.from(
+								new Set(hooks.map((hook) => hook.trim()).filter((hook) => hook.length > 0)),
+							),
+							hasSource: true,
+							failed: false,
+						};
+					} catch {
+						return {
+							repoName,
+							hooks: [] as string[],
+							hasSource: true,
+							failed: true,
+						};
+					}
+				}),
+			);
+			if (sequence !== threadHooksPreviewSequence) return;
+			threadHookRows = rows.map(({ repoName, hooks, hasSource }) => ({
+				repoName,
+				hooks,
+				hasSource,
+			}));
+			const failedRepos = rows.filter((row) => row.failed).map((row) => row.repoName);
+			if (failedRepos.length === 1) {
+				threadHooksError = `Unable to preview hooks for ${failedRepos[0]}.`;
+			} else if (failedRepos.length > 1) {
+				threadHooksError = `Unable to preview hooks for ${failedRepos.length} repositories.`;
+			} else {
+				threadHooksError = null;
+			}
+			threadHooksLoading = false;
+		})();
 	});
 
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -165,40 +302,20 @@
 		selectedAliases = toggleSetItem(selectedAliases, name);
 	};
 
-	const toggleGroup = (name: string): void => {
-		selectedGroups = toggleSetItem(selectedGroups, name);
-	};
-
-	const toggleGroupExpand = (name: string): void => {
-		expandedGroups = toggleSetItem(expandedGroups, name);
-	};
-
 	const removeAlias = (name: string): void => {
 		selectedAliases = removeSetItem(selectedAliases, name);
 	};
 
-	const removeGroup = (name: string): void => {
-		selectedGroups = removeSetItem(selectedGroups, name);
-	};
-
-	const handleTabChange = (tab: CreateTab): void => {
-		activeTab = tab;
-		searchQuery = '';
-	};
-
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const addDirectRepo = (): void => {
 		const next = addDirectRepoSource(directRepos, primaryInput, isRepoSource);
 		directRepos = next.directRepos;
 		primaryInput = next.source;
 	};
 
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const removeDirectRepo = (url: string): void => {
 		directRepos = removeDirectRepoByURL(directRepos, url);
 	};
 
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const toggleDirectRepoRegister = (url: string): void => {
 		directRepos = toggleDirectRepoRegisterByURL(directRepos, url);
 	};
@@ -269,7 +386,14 @@
 			pending,
 			pendingHooks,
 			hookRuns,
-			workspaceReferences: [workspace?.id, workspaceId, hookWorkspaceId, activeHookWorkspace],
+			workspaceReferences: [
+				workspace?.id,
+				workspaceId,
+				hookWorkspaceId,
+				activeHookWorkspace,
+				worksetName,
+				...targetWorkspaceIds,
+			],
 			activeHookOperation,
 			getPendingHooks: () => pendingHooks,
 			getHookRuns: () => hookRuns,
@@ -283,7 +407,14 @@
 			pending,
 			pendingHooks,
 			hookRuns,
-			workspaceReferences: [workspace?.id, workspaceId, hookWorkspaceId, activeHookWorkspace],
+			workspaceReferences: [
+				workspace?.id,
+				workspaceId,
+				hookWorkspaceId,
+				activeHookWorkspace,
+				worksetName,
+				...targetWorkspaceIds,
+			],
 			activeHookOperation,
 			getPendingHooks: () => pendingHooks,
 			getHookRuns: () => hookRuns,
@@ -310,17 +441,33 @@
 		if (mode === 'rename' && context.workspace) {
 			renameName = context.renameName;
 		}
-		if (mode === 'add-repo' || mode === 'create') {
+		if (mode === 'add-repo' || mode === 'create' || mode === 'create-thread') {
 			aliasItems = context.aliasItems;
-			groupItems = context.groupItems;
-			groupDetails = context.groupDetails;
 		}
 	};
 
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const handleCreate = async (): Promise<void> => {
+		const isThreadMode = mode === 'create-thread';
+		const threadRepos = Array.from(
+			new Set(
+				worksetRepos.map((repoName) => repoName.trim()).filter((repoName) => repoName.length > 0),
+			),
+		);
+		const aliasesToCreate = isThreadMode ? new Set(threadRepos) : selectedAliases;
+		const pendingSource = isThreadMode ? '' : primaryInput.trim();
+		const hasPendingSource = pendingSource.length > 0 && isRepoSource(pendingSource);
+		const hasDirectRepos = !isThreadMode && (directRepos.length > 0 || hasPendingSource);
+		const hasCatalogRepos = aliasesToCreate.size > 0;
+		if (isThreadMode && threadRepos.length === 0) {
+			error = 'Selected workset has no repositories.';
+			return;
+		}
+		if (!isThreadMode && !hasCatalogRepos && !hasDirectRepos) {
+			error = 'Select at least one repository or add a repository source.';
+			return;
+		}
 		if (!finalName) {
-			error = 'Enter a repo URL, path, or workset name.';
+			error = mode === 'create-thread' ? 'Enter a thread name.' : 'Enter a workset name.';
 			return;
 		}
 		loading = true;
@@ -337,10 +484,10 @@
 		try {
 			const result = await workspaceActionMutations.createWorkspace({
 				finalName,
-				primaryInput,
-				directRepos,
-				selectedAliases,
-				selectedGroups,
+				primaryInput: isThreadMode ? '' : primaryInput,
+				directRepos: isThreadMode ? [] : directRepos,
+				selectedAliases: aliasesToCreate,
+				worksetName: isThreadMode ? (worksetName ?? undefined) : undefined,
 			});
 
 			hookRuns = appendHookRuns(hookRuns, result.hookRuns);
@@ -365,7 +512,10 @@
 				autoCloseTimer = setTimeout(() => onClose(), 1500);
 			}
 		} catch (err) {
-			error = formatWorkspaceActionError(err, 'Failed to create workspace.');
+			error = formatWorkspaceActionError(
+				err,
+				mode === 'create-thread' ? 'Failed to create thread.' : 'Failed to create workspace.',
+			);
 		} finally {
 			loading = false;
 			({ activeHookOperation, activeHookWorkspace } = clearHookTracking());
@@ -409,12 +559,26 @@
 		const source = addSource.trim();
 		const hasSource = source.length > 0;
 		const hasAliases = selectedAliases.size > 0;
-		const hasGroups = selectedGroups.size > 0;
 
-		if (!hasSource && !hasAliases && !hasGroups) {
-			error = 'Provide a repo URL/path, select aliases, or select groups.';
+		if (!hasSource && !hasAliases) {
+			error = 'Provide a repo URL/path or select repositories.';
 			return;
 		}
+
+		const displayName = worksetName?.trim() || workspace.name;
+		const targetIds = targetWorkspaceIds.length > 0 ? targetWorkspaceIds : [workspace.id];
+		const workspaceById = new Map($workspaces.map((entry) => [entry.id, entry]));
+		const targetWorkspaces = targetIds
+			.map((id) => workspaceById.get(id))
+			.filter((entry): entry is Workspace => entry !== undefined);
+		if (targetWorkspaces.length === 0) {
+			error = 'Unable to locate threads for this workset.';
+			return;
+		}
+
+		const sourceName = source.length > 0 ? deriveRepoName(source) || source : '';
+		const aliasSelections = Array.from(selectedAliases);
+		let mutatedCount = 0;
 
 		loading = true;
 		error = null;
@@ -422,28 +586,54 @@
 		warnings = [];
 		pendingHooks = [];
 		hookRuns = [];
-		hookWorkspaceId = workspace.id;
+		hookWorkspaceId = targetWorkspaces[0]?.id ?? workspace.id;
 		({ activeHookOperation, activeHookWorkspace, hookRuns, pendingHooks } = beginHookTracking(
 			'repo.add',
-			workspace.name,
+			displayName,
 		));
 		try {
-			const result = await workspaceActionMutations.addItems({
-				workspaceId: workspace.id,
-				source,
-				selectedAliases,
-				selectedGroups,
-			});
+			let itemCount = 0;
+			const warningsBucket: string[] = [];
+			const pendingBucket: WorkspaceActionPendingHook[] = [];
+			const hookRunBucket: HookExecution[] = [];
 
-			hookRuns = appendHookRuns(hookRuns, result.hookRuns);
-			pendingHooks = result.pendingHooks.map((pending) => ({ ...pending }));
+			for (const target of targetWorkspaces) {
+				const existingNames = new Set(target.repos.map((repoEntry) => repoEntry.name));
+				const sourceForTarget =
+					sourceName.length > 0 && !existingNames.has(sourceName) ? source : '';
+				const aliasesForTarget = new Set(
+					aliasSelections.filter((aliasName) => !existingNames.has(aliasName)),
+				);
+
+				if (!sourceForTarget && aliasesForTarget.size === 0) {
+					continue;
+				}
+
+				mutatedCount += 1;
+				const result = await workspaceActionMutations.addItems({
+					workspaceId: target.id,
+					source: sourceForTarget,
+					selectedAliases: aliasesForTarget,
+				});
+				itemCount += result.itemCount;
+				warningsBucket.push(...result.warnings);
+				pendingBucket.push(...result.pendingHooks);
+				hookRunBucket.push(...result.hookRuns);
+			}
+
+			if (mutatedCount === 0) {
+				error = 'Selected repositories are already present in every thread for this workset.';
+				return;
+			}
+
+			hookRuns = appendHookRuns(hookRuns, hookRunBucket);
+			pendingHooks = pendingBucket.map((pending) => ({ ...pending }));
 
 			await loadWorkspaces(true);
-			const itemCount = result.itemCount;
-			warnings = result.warnings;
+			warnings = Array.from(new Set(warningsBucket));
 			const transition = resolveMutationHookTransition({
 				action: 'added',
-				workspaceName: workspace.name,
+				workspaceName: displayName,
 				itemCount,
 				warnings,
 				pendingHooks,
@@ -627,16 +817,10 @@
 		<WorkspaceActionFormContent
 			{mode}
 			{loading}
-			{activeTab}
 			{aliasItems}
-			{groupItems}
 			{searchQuery}
 			{filteredAliases}
-			{filteredGroups}
 			{selectedAliases}
-			{selectedGroups}
-			{expandedGroups}
-			{groupDetails}
 			{getAliasSource}
 			{renameName}
 			onRenameNameInput={(value) => (renameName = value)}
@@ -646,16 +830,27 @@
 			{addRepoSelectedItems}
 			{addRepoTotalItems}
 			worksetName={workspace?.name ?? ''}
-			onAddTabChange={handleTabChange}
 			onAddSearchQueryInput={(value) => (searchQuery = value)}
 			onAddSourceInput={(value) => (addSource = value)}
 			onAddBrowse={handleBrowse}
 			onAddToggleAlias={toggleAlias}
-			onAddToggleGroup={toggleGroup}
-			onAddToggleGroupExpand={toggleGroupExpand}
 			onAddRemoveAlias={removeAlias}
-			onAddRemoveGroup={removeGroup}
 			onAddSubmit={handleAddItems}
+			createWorkspaceName={customizeName}
+			createWorksetLabel={worksetName}
+			createSourceInput={primaryInput}
+			createDirectRepos={directRepos}
+			createThreadHookRows={threadHookRows}
+			createThreadHooksLoading={threadHooksLoading}
+			createThreadHooksError={threadHooksError}
+			onCreateWorkspaceNameInput={(value) => (customizeName = value)}
+			onCreateSearchQueryInput={(value) => (searchQuery = value)}
+			onCreateSourceInput={(value) => (primaryInput = value)}
+			onCreateAddDirectRepo={addDirectRepo}
+			onCreateRemoveDirectRepo={removeDirectRepo}
+			onCreateToggleDirectRepoRegister={toggleDirectRepoRegister}
+			onCreateToggleAlias={toggleAlias}
+			onCreateSubmit={handleCreate}
 			{archiveReason}
 			onArchiveReasonInput={(value) => (archiveReason = value)}
 			onArchiveSubmit={handleArchive}

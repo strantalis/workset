@@ -3,6 +3,7 @@ package worksetapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,6 +63,11 @@ func (s *Service) GetGitHubCLIStatus(ctx context.Context) (GitHubCLIStatusJSON, 
 	status := GitHubCLIStatusJSON{
 		ConfiguredPath: configuredPath,
 	}
+	if ghPath := normalizeCLIPath(os.Getenv("GH_PATH")); ghPath != "" {
+		if !isGitHubCLIBinaryPath(ghPath) || !isExecutableFile(ghPath) {
+			status.Error = fmt.Sprintf("Ignoring GH_PATH=%q; it must point to an executable `gh` binary", ghPath)
+		}
+	}
 	if configuredPath != "" && isExecutableFile(configuredPath) {
 		_ = os.Setenv("GH_PATH", configuredPath)
 	}
@@ -83,6 +89,8 @@ func (s *Service) GetGitHubCLIStatus(ctx context.Context) (GitHubCLIStatusJSON, 
 	}
 	version, err := s.ghVersion(ctx, path)
 	if err != nil {
+		status.Installed = false
+		status.Path = ""
 		status.Error = err.Error()
 		return status, nil
 	}
@@ -109,20 +117,22 @@ func (s *Service) ghVersion(ctx context.Context, path string) (string, error) {
 		return "", errors.New("empty gh --version output")
 	}
 	line := strings.SplitN(output, "\n", 2)[0]
-	if parsed := parseGitHubCLIVersion(line); parsed != "" {
-		return parsed, nil
+	parsed := parseGitHubCLIVersion(line)
+	if parsed == "" {
+		return "", errors.New("configured command is not GitHub CLI")
 	}
-	return strings.TrimSpace(line), nil
+	return parsed, nil
 }
 
 func parseGitHubCLIVersion(line string) string {
 	fields := strings.Fields(line)
-	for i, field := range fields {
-		if field == "version" && i+1 < len(fields) {
-			return strings.TrimSpace(fields[i+1])
-		}
+	if len(fields) < 3 {
+		return ""
 	}
-	return ""
+	if !strings.EqualFold(fields[0], "gh") || !strings.EqualFold(fields[1], "version") {
+		return ""
+	}
+	return strings.TrimSpace(fields[2])
 }
 
 func (s *Service) gitHubCLIPathFromConfig(ctx context.Context) (string, error) {
@@ -138,6 +148,14 @@ func (s *Service) SetGitHubCLIPath(ctx context.Context, path string) (GitHubAuth
 	path = normalizeCLIPath(path)
 	if path != "" && !isExecutableFile(path) {
 		return GitHubAuthInfoJSON{}, ValidationError{Message: "GitHub CLI path is not executable"}
+	}
+	if path != "" && !isGitHubCLIBinaryPath(path) {
+		return GitHubAuthInfoJSON{}, ValidationError{Message: "GitHub CLI path must point to the `gh` binary"}
+	}
+	if path != "" {
+		if _, err := s.ghVersion(ctx, path); err != nil {
+			return GitHubAuthInfoJSON{}, ValidationError{Message: "GitHub CLI path is invalid: " + err.Error()}
+		}
 	}
 	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, _ config.GlobalConfigLoadInfo) error {
 		cfg.GitHub.CLIPath = path

@@ -1,14 +1,13 @@
 <script lang="ts">
-	import { Folder, Bot, Terminal, Github, Database, LayoutTemplate, Info } from '@lucide/svelte';
+	import { Folder, Bot, Terminal, Github, Database, Info } from '@lucide/svelte';
 
 	interface Props {
 		activeSection: string;
 		onSelectSection: (section: string) => void;
 		aliasCount?: number;
-		groupCount?: number;
 	}
 
-	const { activeSection, onSelectSection, aliasCount = 0, groupCount = 0 }: Props = $props();
+	const { activeSection, onSelectSection, aliasCount = 0 }: Props = $props();
 
 	type SidebarItem = {
 		id: string;
@@ -37,10 +36,7 @@
 		},
 		{
 			title: 'LIBRARY',
-			items: [
-				{ id: 'aliases', label: 'Repo Catalog', icon: Database, count: aliasCount },
-				{ id: 'groups', label: 'Templates', icon: LayoutTemplate, count: groupCount },
-			],
+			items: [{ id: 'aliases', label: 'Repo Catalog', icon: Database, count: aliasCount }],
 		},
 		{
 			title: 'INFO',

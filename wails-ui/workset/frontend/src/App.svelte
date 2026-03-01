@@ -1,15 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { fly } from 'svelte/transition';
-	import {
-		ArrowLeft,
-		GitPullRequest,
-		LayoutDashboard,
-		PlusCircle,
-		Settings,
-		Sparkles,
-		Terminal,
-	} from '@lucide/svelte';
+	import { PanelLeft } from '@lucide/svelte';
 	import {
 		activeRepo,
 		activeWorkspace,
@@ -18,20 +10,16 @@
 		clearRepo,
 		loadWorkspaces,
 		loadingWorkspaces,
-		refreshWorkspacesStatus,
 		selectWorkspace,
-		toggleWorkspacePin,
 		workspaceError,
 		workspaces,
 	} from './lib/state';
 	import {
-		archiveWorkspace,
 		closeWorkspacePopout,
 		listWorkspacePopouts,
 		openWorkspacePopout,
 		previewRepoHooks,
 		setWorkspaceDescription,
-		unarchiveWorkspace,
 	} from './lib/api/workspaces';
 	import type { RepoLocalStatus } from './lib/api/github';
 	import { fetchGitHubAuthInfo } from './lib/api/github';
@@ -50,32 +38,21 @@
 	import WorkspaceActionModal from './lib/components/WorkspaceActionModal.svelte';
 	import CommandPalette, { type AppView } from './lib/components/chrome/CommandPalette.svelte';
 	import ContextBar from './lib/components/chrome/ContextBar.svelte';
-	import CommandCenterView from './lib/components/views/CommandCenterView.svelte';
+	import ExplorerPanel from './lib/components/chrome/ExplorerPanel.svelte';
 	import OnboardingView from './lib/components/views/OnboardingView.svelte';
 	import type {
 		OnboardingDraft,
 		OnboardingStartResult,
 	} from './lib/components/views/OnboardingView.utils';
-	import PROrchestrationView from './lib/components/views/PROrchestrationView.svelte';
+	import type { Workspace } from './lib/types';
 	import SkillRegistryView from './lib/components/views/SkillRegistryView.svelte';
-	import TerminalCockpitView from './lib/components/views/TerminalCockpitView.svelte';
-	import WorksetHubView, {
-		type WorksetGroupMode,
-		type WorksetLayoutMode,
-	} from './lib/components/views/WorksetHubView.svelte';
+	import SpacesWorkbenchView from './lib/components/views/SpacesWorkbenchView.svelte';
 	import { workspaceActionMutations } from './lib/services/workspaceActionService';
 	import {
 		loadOnboardingCatalog,
 		type RegisteredRepo,
-		type WorksetTemplate,
 	} from './lib/view-models/onboardingViewModel';
 	import { buildShortcutMap, mapWorkspacesToSummaries } from './lib/view-models/worksetViewModel';
-	import {
-		readWorksetHubGroupMode,
-		readWorksetHubLayoutMode,
-		persistWorksetHubGroupMode,
-		persistWorksetHubLayoutMode,
-	} from './lib/worksetHubPreferences';
 
 	type RepoDiffLocalStatusEvent = {
 		workspaceId: string;
@@ -90,7 +67,7 @@
 	};
 
 	type WorkspaceActionMode =
-		| 'create'
+		| 'create-thread'
 		| 'rename'
 		| 'add-repo'
 		| 'archive'
@@ -98,39 +75,21 @@
 		| 'remove-repo'
 		| null;
 
-	type NavItem = {
-		view: AppView;
-		label: string;
-		icon: typeof LayoutDashboard;
+	type CockpitSurface = 'terminal' | 'pull-requests';
+
+	const EXPLORER_OPEN_STORAGE_KEY = 'workset:app:explorerOpen';
+	const AUTO_GITHUB_AUTH_CHECK = false;
+
+	const readExplorerOpenPreference = (): boolean => {
+		if (typeof localStorage === 'undefined') return true;
+		const stored = localStorage.getItem(EXPLORER_OPEN_STORAGE_KEY);
+		if (stored === null) return true;
+		return stored === 'true';
 	};
 
-	const railNavItems: NavItem[] = [
-		{ view: 'command-center', label: 'Command Center', icon: LayoutDashboard },
-		{ view: 'terminal-cockpit', label: 'Engineering Cockpit', icon: Terminal },
-		{ view: 'pr-orchestration', label: 'PR Orchestration', icon: GitPullRequest },
-		{ view: 'skill-registry', label: 'Skill Registry', icon: Sparkles },
-	];
-	const popoutNavItems: NavItem[] = [
-		{ view: 'command-center', label: 'Command Center', icon: LayoutDashboard },
-		{ view: 'terminal-cockpit', label: 'Engineering Cockpit', icon: Terminal },
-		{ view: 'pr-orchestration', label: 'PR Orchestration', icon: GitPullRequest },
-	];
-
-	const contextViews: AppView[] = [
-		'command-center',
-		'terminal-cockpit',
-		'pr-orchestration',
-		'skill-registry',
-	];
-	const popoutViews = new Set<AppView>(popoutNavItems.map((item) => item.view));
-	const appViews = new Set<AppView>([
-		'workset-hub',
-		'command-center',
-		'terminal-cockpit',
-		'pr-orchestration',
-		'skill-registry',
-		'onboarding',
-	]);
+	const contextViews: AppView[] = ['terminal-cockpit', 'skill-registry'];
+	const popoutViews = new Set<AppView>(['terminal-cockpit']);
+	const appViews = new Set<AppView>(['terminal-cockpit', 'skill-registry', 'onboarding']);
 	const searchParams =
 		typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
 	const popoutMode = searchParams?.get('popout') === '1';
@@ -143,8 +102,8 @@
 	const initialView: AppView = popoutMode
 		? requestedAppView && popoutViews.has(requestedAppView)
 			? requestedAppView
-			: 'command-center'
-		: (requestedAppView ?? 'workset-hub');
+			: 'terminal-cockpit'
+		: (requestedAppView ?? 'terminal-cockpit');
 
 	const repoStatusWatchers = new Map<string, { workspaceId: string; repoId: string }>();
 
@@ -153,33 +112,102 @@
 	const hasWorkspaces = $derived($workspaces.length > 0);
 
 	let currentView = $state<AppView>(initialView);
-	let prFocusWorkspaceId = $state<string | null>(null);
-	let prFocusRepoId = $state<string | null>(null);
-	let prFocusToken = $state(0);
-	let worksetHubGroupMode = $state<WorksetGroupMode>(readWorksetHubGroupMode());
-	let worksetHubLayoutMode = $state<WorksetLayoutMode>(readWorksetHubLayoutMode());
 	let workspaceActionMode = $state<WorkspaceActionMode>(null);
 	let workspaceActionWorkspaceId = $state<string | null>(null);
+	let workspaceActionWorkspaceIds = $state<string[]>([]);
 	let workspaceActionRepoName = $state<string | null>(null);
+	let workspaceActionWorksetName = $state<string | null>(null);
+	let workspaceActionWorksetRepos = $state<string[]>([]);
 	let settingsOpen = $state(false);
 	let commandPaletteOpen = $state(false);
 	let authModalOpen = $state(false);
 	let authModalDismissed = $state(false);
 	let popoutBusy = $state(false);
+	let explorerOpen = $state(readExplorerOpenPreference());
 	let openPopoutWorkspaces = $state<Record<string, string>>({});
 	let popoutSelectionApplied = $state(false);
 	let onboardingLoading = $state(false);
 	let onboardingBusy = $state(false);
 	let onboardingError = $state<string | null>(null);
-	let onboardingTemplates = $state<WorksetTemplate[]>([]);
 	let onboardingRepoRegistry = $state<RegisteredRepo[]>([]);
 	let onboardingLoaded = $state(false);
+	let cockpitSurface = $state<CockpitSurface>('terminal');
+
+	const deriveWorksetIdentity = (workspace: Workspace): { id: string; label: string } => {
+		const key = workspace.worksetKey?.trim();
+		const label = workspace.worksetLabel?.trim();
+		const legacy = workspace.workset?.trim() || workspace.template?.trim();
+		const normalizedLegacy = legacy?.toLowerCase().replace(/\s+/g, '-') ?? '';
+		return {
+			id:
+				key && key.length > 0
+					? key
+					: normalizedLegacy.length > 0
+						? `workset:${normalizedLegacy}`
+						: `workspace:${workspace.id.toLowerCase()}`,
+			label:
+				label && label.length > 0 ? label : legacy && legacy.length > 0 ? legacy : workspace.name,
+		};
+	};
+
+	const getWorksetThreads = (workspaceId: string): Workspace[] => {
+		const target = $workspaces.find(
+			(workspace) => workspace.id === workspaceId && !workspace.archived,
+		);
+		if (!target) return [];
+		const identity = deriveWorksetIdentity(target);
+		return $workspaces
+			.filter(
+				(workspace) => !workspace.archived && deriveWorksetIdentity(workspace).id === identity.id,
+			)
+			.sort((left, right) => left.id.localeCompare(right.id));
+	};
+
+	const resolvePopoutWorkspaceId = (workspaceId: string): string => {
+		const id = workspaceId.trim();
+		if (!id) return '';
+		const threads = getWorksetThreads(id);
+		if (threads.length === 0) return id;
+		for (const thread of threads) {
+			if (openPopoutWorkspaces[thread.id] !== undefined) {
+				return thread.id;
+			}
+		}
+		return threads[0]?.id ?? id;
+	};
+
+	const releaseWorksetTerminals = (workspaceId: string): void => {
+		const threads = getWorksetThreads(workspaceId);
+		if (threads.length === 0) {
+			releaseWorkspaceTerminals(workspaceId);
+			return;
+		}
+		for (const thread of threads) {
+			releaseWorkspaceTerminals(thread.id);
+		}
+	};
 
 	const visibleWorkspaces = $derived.by(() => {
 		if (!fixedWorkspaceId) return $workspaces;
+		const threads = getWorksetThreads(fixedWorkspaceId);
+		if (threads.length > 0) return threads;
 		return $workspaces.filter((workspace) => workspace.id === fixedWorkspaceId);
 	});
 	const worksetSummaries = $derived.by(() => mapWorkspacesToSummaries(visibleWorkspaces));
+	const existingWorksetNames = $derived.by(() => {
+		const names = new Set<string>();
+		for (const workspace of $workspaces) {
+			const label =
+				workspace.worksetLabel?.trim() ||
+				workspace.workset?.trim() ||
+				workspace.template?.trim() ||
+				workspace.name.trim();
+			if (label.length > 0) {
+				names.add(label);
+			}
+		}
+		return Array.from(names);
+	});
 	const shortcutMap = $derived.by(() => buildShortcutMap(visibleWorkspaces));
 	const activeSummary = $derived.by(
 		() => worksetSummaries.find((summary) => summary.id === $activeWorkspaceId) ?? null,
@@ -188,8 +216,10 @@
 		$activeWorkspaceId ? shortcutMap.get($activeWorkspaceId) : undefined,
 	);
 	const showContextBar = $derived.by(
-		() => !hasRepo && activeSummary !== null && contextViews.includes(currentView),
+		() => !hasRepo && hasWorkspaces && contextViews.includes(currentView),
 	);
+	const explorerViews = new Set<AppView>(['terminal-cockpit', 'skill-registry']);
+	const showExplorer = $derived.by(() => hasWorkspaces && explorerViews.has(currentView));
 
 	const updateRepoStatusWatchers = (): void => {
 		if (popoutMode) return;
@@ -224,7 +254,9 @@
 
 	const isWorkspacePoppedOut = (workspaceId: string | null | undefined): boolean => {
 		if (!workspaceId) return false;
-		return openPopoutWorkspaces[workspaceId] !== undefined;
+		const popoutWorkspaceId = resolvePopoutWorkspaceId(workspaceId);
+		if (!popoutWorkspaceId) return false;
+		return openPopoutWorkspaces[popoutWorkspaceId] !== undefined;
 	};
 
 	const updateWorkspacePopoutState = (
@@ -237,10 +269,7 @@
 		if (open) {
 			openPopoutWorkspaces = { ...openPopoutWorkspaces, [id]: windowName };
 			if (!popoutMode) {
-				releaseWorkspaceTerminals(id);
-				if ($activeWorkspaceId === id && currentView === 'terminal-cockpit') {
-					currentView = 'command-center';
-				}
+				releaseWorksetTerminals(id);
 			}
 			return;
 		}
@@ -261,10 +290,7 @@
 			openPopoutWorkspaces = next;
 			if (!popoutMode) {
 				for (const workspaceId of Object.keys(next)) {
-					releaseWorkspaceTerminals(workspaceId);
-				}
-				if ($activeWorkspaceId && next[$activeWorkspaceId] && currentView === 'terminal-cockpit') {
-					currentView = 'command-center';
+					releaseWorksetTerminals(workspaceId);
 				}
 			}
 		} catch {
@@ -313,7 +339,6 @@
 		onboardingError = null;
 		try {
 			const catalog = await loadOnboardingCatalog();
-			onboardingTemplates = catalog.templates;
 			onboardingRepoRegistry = catalog.repoRegistry;
 			onboardingLoaded = true;
 		} catch (error) {
@@ -324,82 +349,102 @@
 	};
 
 	const handleSelectWorkspace = (workspaceId: string): void => {
-		if (fixedWorkspaceId && workspaceId !== fixedWorkspaceId) {
+		if (fixedWorkspaceId && !visibleWorkspaces.some((workspace) => workspace.id === workspaceId)) {
 			return;
 		}
 		selectWorkspace(workspaceId);
-		if (currentView === 'workset-hub' || currentView === 'onboarding') {
-			currentView = 'command-center';
+		if (currentView === 'onboarding') {
+			currentView = 'terminal-cockpit';
 		}
 	};
 
 	const handleSelectWorkspaceFromPalette = (workspaceId: string): void => {
-		if (fixedWorkspaceId && workspaceId !== fixedWorkspaceId) {
+		if (fixedWorkspaceId && !visibleWorkspaces.some((workspace) => workspace.id === workspaceId)) {
 			return;
 		}
 		selectWorkspace(workspaceId);
-		currentView = 'command-center';
+		currentView = 'terminal-cockpit';
 		clearRepo();
-	};
-
-	const handleSelectRepo = (workspaceId: string, repoId: string): void => {
-		if (fixedWorkspaceId && workspaceId !== fixedWorkspaceId) {
-			return;
-		}
-		if ($activeWorkspaceId !== workspaceId) {
-			selectWorkspace(workspaceId);
-		}
-
-		const workspace = $workspaces.find((entry) => entry.id === workspaceId);
-		const repo = workspace?.repos.find((entry) => entry.id === repoId);
-		if (!repo) {
-			return;
-		}
-
-		clearRepo();
-		prFocusWorkspaceId = workspaceId;
-		prFocusRepoId = repoId;
-		prFocusToken += 1;
-		currentView = 'pr-orchestration';
 	};
 
 	const handleCreateWorkspace = (): void => {
 		if (popoutMode) {
 			return;
 		}
-		onboardingError = null;
 		setView('onboarding');
+		clearRepo();
 	};
 
 	const openWorkspaceActionModal = (
 		mode: Exclude<WorkspaceActionMode, null>,
 		workspaceId: string | null = null,
 		repoName: string | null = null,
+		options: {
+			worksetName?: string | null;
+			worksetRepos?: string[];
+			workspaceIds?: string[];
+		} = {},
 	): void => {
 		if (popoutMode) return;
 		workspaceActionMode = mode;
 		workspaceActionWorkspaceId = workspaceId;
+		workspaceActionWorkspaceIds = options.workspaceIds ?? [];
 		workspaceActionRepoName = repoName;
+		workspaceActionWorksetName = options.worksetName ?? null;
+		workspaceActionWorksetRepos = options.worksetRepos ?? [];
 	};
 
 	const closeWorkspaceActionModal = (): void => {
 		workspaceActionMode = null;
 		workspaceActionWorkspaceId = null;
+		workspaceActionWorkspaceIds = [];
 		workspaceActionRepoName = null;
+		workspaceActionWorksetName = null;
+		workspaceActionWorksetRepos = [];
 	};
 
-	const handleAddRepo = (workspaceId: string): void => {
-		if (fixedWorkspaceId && workspaceId !== fixedWorkspaceId) {
+	const handleCreateThread = (worksetId: string): void => {
+		if (popoutMode) {
 			return;
 		}
-		openWorkspaceActionModal('add-repo', workspaceId);
+
+		const threads = visibleWorkspaces.filter((workspace) => {
+			const identity = deriveWorksetIdentity(workspace);
+			return identity.id === worksetId;
+		});
+		if (threads.length === 0) {
+			return;
+		}
+
+		const first = threads[0];
+		const label = deriveWorksetIdentity(first).label;
+		const repos = Array.from(
+			new Set(threads.flatMap((workspace) => workspace.repos.map((repo) => repo.name))),
+		).sort((left, right) => left.localeCompare(right));
+
+		openWorkspaceActionModal('create-thread', null, null, {
+			worksetName: label,
+			worksetRepos: repos,
+		});
 	};
 
-	const handleRemoveWorkspace = (workspaceId: string): void => {
-		if (fixedWorkspaceId && workspaceId !== fixedWorkspaceId) {
+	const handleAddRepoToWorkset = (worksetId: string): void => {
+		if (popoutMode) {
 			return;
 		}
-		openWorkspaceActionModal('remove-workspace', workspaceId);
+		const threads = visibleWorkspaces.filter((workspace) => {
+			const identity = deriveWorksetIdentity(workspace);
+			return identity.id === worksetId;
+		});
+		if (threads.length === 0) {
+			return;
+		}
+		const first = threads[0];
+		const label = deriveWorksetIdentity(first).label;
+		openWorkspaceActionModal('add-repo', first.id, null, {
+			worksetName: label,
+			workspaceIds: threads.map((thread) => thread.id),
+		});
 	};
 
 	const handleOnboardingStart = async (
@@ -410,11 +455,11 @@
 		onboardingError = null;
 		try {
 			const result = await workspaceActionMutations.createWorkspace({
-				finalName: draft.workspaceName,
+				finalName: draft.threadName,
 				primaryInput: draft.primarySource,
 				directRepos: draft.directRepos,
 				selectedAliases: draft.selectedAliases,
-				selectedGroups: draft.selectedGroups,
+				worksetName: draft.worksetName,
 			});
 			if (draft.description) {
 				await setWorkspaceDescription(result.workspaceName, draft.description);
@@ -438,24 +483,11 @@
 		await loadWorkspaces(true);
 		selectWorkspace(workspaceName);
 		clearRepo();
-		currentView = 'command-center';
+		currentView = 'terminal-cockpit';
 	};
 
 	const handleOnboardingPreviewHooks = async (source: string): Promise<string[]> => {
 		return previewRepoHooks(source);
-	};
-
-	const handleToggleArchive = async (workspaceId: string, archived: boolean): Promise<void> => {
-		try {
-			if (archived) {
-				await unarchiveWorkspace(workspaceId);
-			} else {
-				await archiveWorkspace(workspaceId, 'Archived from workspace UI');
-			}
-			await refreshWorkspacesStatus(true);
-		} catch {
-			// ignore archive errors; they are surfaced elsewhere
-		}
 	};
 
 	const handleShortcutSwitch = (index: number): void => {
@@ -479,6 +511,11 @@
 		if (key >= '1' && key <= '5') {
 			event.preventDefault();
 			handleShortcutSwitch(Number(key));
+			return;
+		}
+		if (key === 'b' && showExplorer) {
+			event.preventDefault();
+			explorerOpen = !explorerOpen;
 		}
 	};
 
@@ -488,9 +525,11 @@
 
 	const handleOpenPopout = async (workspaceId: string): Promise<void> => {
 		if (!workspaceId || popoutBusy) return;
+		const popoutWorkspaceId = resolvePopoutWorkspaceId(workspaceId);
+		if (!popoutWorkspaceId) return;
 		popoutBusy = true;
 		try {
-			const state = await openWorkspacePopout(workspaceId);
+			const state = await openWorkspacePopout(popoutWorkspaceId);
 			updateWorkspacePopoutState(state.workspaceId, state.windowName, state.open);
 		} catch {
 			// ignore popout launch errors in UI
@@ -501,10 +540,12 @@
 
 	const handleClosePopout = async (workspaceId: string): Promise<void> => {
 		if (!workspaceId || popoutBusy) return;
+		const popoutWorkspaceId = resolvePopoutWorkspaceId(workspaceId);
+		if (!popoutWorkspaceId) return;
 		popoutBusy = true;
 		try {
-			await closeWorkspacePopout(workspaceId);
-			updateWorkspacePopoutState(workspaceId, '', false);
+			await closeWorkspacePopout(popoutWorkspaceId);
+			updateWorkspacePopoutState(popoutWorkspaceId, '', false);
 		} catch {
 			// ignore popout close errors in UI
 		} finally {
@@ -515,7 +556,7 @@
 	onMount(() => {
 		void loadWorkspaces(true);
 		void loadPopoutState();
-		if (!popoutMode) {
+		if (!popoutMode && AUTO_GITHUB_AUTH_CHECK) {
 			void checkGitHubAuth();
 		}
 		repoStatusUnsubscribe = subscribeRepoDiffEvent<RepoDiffLocalStatusEvent>(
@@ -554,12 +595,7 @@
 
 	$effect(() => {
 		if (typeof localStorage === 'undefined') return;
-		persistWorksetHubLayoutMode(worksetHubLayoutMode);
-	});
-
-	$effect(() => {
-		if (typeof localStorage === 'undefined') return;
-		persistWorksetHubGroupMode(worksetHubGroupMode);
+		localStorage.setItem(EXPLORER_OPEN_STORAGE_KEY, String(explorerOpen));
 	});
 
 	$effect(() => {
@@ -576,7 +612,7 @@
 		selectWorkspace(target.id);
 		clearRepo();
 		if (!popoutViews.has(currentView)) {
-			currentView = 'command-center';
+			currentView = 'terminal-cockpit';
 		}
 		popoutSelectionApplied = true;
 	});
@@ -585,86 +621,6 @@
 <svelte:window onkeydown={handleGlobalKeydown} />
 
 <div class="app-shell" class:popout={popoutMode}>
-	{#if !popoutMode}
-		<aside class="rail">
-			<button
-				type="button"
-				class="hub-btn"
-				class:active={currentView === 'workset-hub'}
-				onclick={() => setView('workset-hub')}
-				data-tooltip="Workset Hub"
-				aria-label="Workset Hub"
-			>
-				<img src="images/logo.png" alt="Workset" class="hub-icon" />
-			</button>
-
-			<nav class="rail-nav" aria-label="Main">
-				{#each railNavItems as item (item.view)}
-					<button
-						type="button"
-						class="rail-item"
-						class:active={currentView === item.view}
-						onclick={() => setView(item.view)}
-						data-tooltip={item.label}
-						aria-label={item.label}
-					>
-						<item.icon size={18} />
-					</button>
-				{/each}
-			</nav>
-
-			<div class="rail-divider"></div>
-
-			<button
-				type="button"
-				class="rail-item"
-				class:active={currentView === 'onboarding'}
-				onclick={() => setView('onboarding')}
-				data-tooltip="New Workset"
-				aria-label="New Workset"
-			>
-				<PlusCircle size={18} />
-			</button>
-
-			<button
-				type="button"
-				class="rail-item settings"
-				onclick={() => (settingsOpen = true)}
-				data-tooltip="Settings"
-				aria-label="Settings"
-			>
-				<Settings size={18} />
-			</button>
-		</aside>
-	{:else}
-		<aside class="rail popout-rail" aria-label="Workspace popout navigation">
-			<nav class="rail-nav" aria-label="Popout views">
-				{#each popoutNavItems as item (item.view)}
-					<button
-						type="button"
-						class="rail-item"
-						class:active={currentView === item.view}
-						onclick={() => setView(item.view)}
-						data-tooltip={item.label}
-						aria-label={item.label}
-					>
-						<item.icon size={18} />
-					</button>
-				{/each}
-			</nav>
-
-			<button
-				type="button"
-				class="rail-item popout-return-rail"
-				data-tooltip="Return to main window"
-				aria-label="Return to main window"
-				onclick={() => void handleClosePopout($activeWorkspaceId ?? fixedWorkspaceId ?? '')}
-			>
-				<ArrowLeft size={18} />
-			</button>
-		</aside>
-	{/if}
-
 	<section class="shell-main">
 		{#if showContextBar}
 			<ContextBar
@@ -672,7 +628,7 @@
 				shortcutNumber={popoutMode ? undefined : activeShortcut}
 				showShortcut={!popoutMode}
 				showPaletteHint={!popoutMode}
-				showPopoutToggle={!popoutMode && !!$activeWorkspaceId}
+				showPopoutToggle={!!$activeWorkspaceId}
 				workspacePoppedOut={isWorkspacePoppedOut($activeWorkspaceId)}
 				onTogglePopout={() => {
 					const workspaceId = $activeWorkspaceId;
@@ -683,110 +639,124 @@
 					}
 					void handleOpenPopout(workspaceId);
 				}}
-				onOpenHub={() => setView(popoutMode ? 'command-center' : 'workset-hub')}
 				onOpenPalette={() => (commandPaletteOpen = true)}
 			/>
 		{/if}
 
-		<div class="view-shell">
-			{#key currentView}
-				<div class="view-transition" in:fly={{ y: 10, duration: 200 }}>
-					{#if $loadingWorkspaces}
-						<EmptyState
-							title="Loading workspaces"
-							body="Fetching workspace snapshots and local status."
-						/>
-					{:else if $workspaceError}
-						<section class="error">
-							<div class="title">Failed to load workspaces</div>
-							<div class="body">{$workspaceError}</div>
-							<button class="retry" type="button" onclick={() => loadWorkspaces(true)}>Retry</button
-							>
-						</section>
-					{:else if popoutMode && !hasWorkspace}
-						<EmptyState
-							title="Workspace unavailable"
-							body="The requested workspace for this popout window could not be loaded."
-							variant="centered"
-						/>
-					{:else if !hasWorkspace && !hasWorkspaces && currentView !== 'onboarding'}
-						<EmptyState
-							title="Create your first workspace"
-							body="Workspaces are collections of repositories that move together across branches and PR flow."
-							actionLabel="Create workspace"
-							onAction={handleCreateWorkspace}
-							variant="centered"
-						/>
-					{:else if currentView === 'workset-hub'}
-						<WorksetHubView
-							worksets={worksetSummaries}
-							{shortcutMap}
-							groupMode={worksetHubGroupMode}
-							layoutMode={worksetHubLayoutMode}
-							activeWorkspaceId={$activeWorkspaceId}
-							onSelectWorkspace={handleSelectWorkspace}
-							onCreateWorkspace={handleCreateWorkspace}
-							onGroupModeChange={(value) => (worksetHubGroupMode = value)}
-							onLayoutModeChange={(value) => (worksetHubLayoutMode = value)}
-							onAddRepo={handleAddRepo}
-							onRemoveWorkspace={handleRemoveWorkspace}
-							onTogglePin={(workspaceId, nextPinned) =>
-								void toggleWorkspacePin(workspaceId, nextPinned)}
-							onToggleArchived={(workspaceId, archived) =>
-								void handleToggleArchive(workspaceId, archived)}
-							onOpenPopout={handleOpenPopout}
-							onClosePopout={handleClosePopout}
-							{isWorkspacePoppedOut}
-						/>
-					{:else if currentView === 'command-center'}
-						<CommandCenterView
-							workspaces={visibleWorkspaces}
-							activeWorkspaceId={$activeWorkspaceId}
-							onCreateWorkspace={handleCreateWorkspace}
-							onSelectRepo={handleSelectRepo}
-							onAddRepo={handleAddRepo}
-						/>
-					{:else if currentView === 'terminal-cockpit'}
-						{#if !popoutMode && isWorkspacePoppedOut($activeWorkspaceId)}
+		<div class="shell-content">
+			{#if showExplorer && explorerOpen}
+				<aside class="explorer-shell" in:fly={{ x: -10, duration: 120 }}>
+					<ExplorerPanel
+						workspaces={visibleWorkspaces}
+						activeWorkspaceId={$activeWorkspaceId}
+						{shortcutMap}
+						lockWorksetSelection={popoutMode}
+						canManageRepos={!popoutMode}
+						activeView={currentView === 'skill-registry' ? 'skill-registry' : 'terminal-cockpit'}
+						activeSurface={cockpitSurface}
+						onSelectWorkspace={handleSelectWorkspace}
+						onCreateWorkspace={handleCreateWorkspace}
+						onCreateThread={handleCreateThread}
+						onAddRepo={handleAddRepoToWorkset}
+						onOpenCockpit={() => {
+							cockpitSurface = 'terminal';
+							setView('terminal-cockpit');
+						}}
+						onOpenPullRequests={() => {
+							cockpitSurface = 'pull-requests';
+							setView('terminal-cockpit');
+						}}
+						onOpenSkills={() => setView('skill-registry')}
+						onOpenSettings={() => (settingsOpen = true)}
+						onCollapse={() => (explorerOpen = false)}
+					/>
+				</aside>
+			{/if}
+			{#if showExplorer && !explorerOpen}
+				<button
+					type="button"
+					class="explorer-reopen-btn"
+					aria-label="Open Explorer (⌘B)"
+					title="Open Explorer (⌘B)"
+					onclick={() => (explorerOpen = true)}
+				>
+					<PanelLeft size={13} />
+				</button>
+			{/if}
+
+			<div class="view-shell">
+				{#key currentView}
+					<div class="view-transition" in:fly={{ y: 10, duration: 200 }}>
+						{#if $loadingWorkspaces}
 							<EmptyState
-								title="Workspace terminal is popped out"
-								body="This workspace terminal is currently controlled by another window. Close the popout to reattach it here."
-								actionLabel="Return To Main Window"
-								onAction={() => void handleClosePopout($activeWorkspaceId ?? '')}
+								title="Loading workspaces"
+								body="Fetching workspace snapshots and local status."
+							/>
+						{:else if $workspaceError}
+							<section class="error">
+								<div class="title">Failed to load workspaces</div>
+								<div class="body">{$workspaceError}</div>
+								<button class="retry" type="button" onclick={() => loadWorkspaces(true)}
+									>Retry</button
+								>
+							</section>
+						{:else if popoutMode && !hasWorkspace}
+							<EmptyState
+								title="Workset unavailable"
+								body="The requested workset for this popout window could not be loaded."
 								variant="centered"
 							/>
+						{:else if !hasWorkspace && !hasWorkspaces && currentView !== 'onboarding'}
+							<EmptyState
+								title="Create your first workspace"
+								body="Workspaces are collections of repositories that move together across branches and PR flow."
+								actionLabel="Create workspace"
+								onAction={handleCreateWorkspace}
+								variant="centered"
+							/>
+						{:else if currentView === 'terminal-cockpit'}
+							{#if !popoutMode && isWorkspacePoppedOut($activeWorkspaceId)}
+								<EmptyState
+									title="This workset is open in a popout"
+									body="Use the popout window to continue. Return it here anytime."
+									actionLabel="Focus Popout"
+									onAction={() => void handleOpenPopout($activeWorkspaceId ?? '')}
+									secondaryActionLabel="Return To Main Window"
+									onSecondaryAction={() => void handleClosePopout($activeWorkspaceId ?? '')}
+									variant="centered"
+								/>
+							{:else}
+								<SpacesWorkbenchView
+									workspaces={visibleWorkspaces}
+									activeWorkspaceId={$activeWorkspaceId}
+									{popoutMode}
+									useGlobalExplorer={showExplorer}
+									preferredSurface={cockpitSurface}
+									onSurfaceChange={(surface) => (cockpitSurface = surface)}
+									onSelectWorkspace={handleSelectWorkspace}
+									onCreateWorkspace={handleCreateWorkspace}
+									onCreateThread={handleCreateThread}
+								/>
+							{/if}
+						{:else if currentView === 'skill-registry'}
+							<SkillRegistryView />
 						{:else}
-							<TerminalCockpitView
-								workspace={$activeWorkspace}
-								onOpenWorkspaceTerminal={handleSelectWorkspace}
-								onAddRepo={handleAddRepo}
+							<OnboardingView
+								busy={onboardingBusy}
+								catalogLoading={onboardingLoading}
+								errorMessage={onboardingError}
+								repoRegistry={onboardingRepoRegistry}
+								defaultWorkspaceName=""
+								existingWorkspaceNames={existingWorksetNames}
+								onStart={handleOnboardingStart}
+								onPreviewHooks={handleOnboardingPreviewHooks}
+								onComplete={handleOnboardingComplete}
+								onCancel={() => setView('terminal-cockpit')}
 							/>
 						{/if}
-					{:else if currentView === 'pr-orchestration'}
-						<PROrchestrationView
-							workspace={$activeWorkspace}
-							focusRepoId={prFocusWorkspaceId === $activeWorkspaceId ? prFocusRepoId : null}
-							focusToken={prFocusWorkspaceId === $activeWorkspaceId ? prFocusToken : 0}
-						/>
-					{:else if currentView === 'skill-registry'}
-						<SkillRegistryView />
-					{:else}
-						<OnboardingView
-							busy={onboardingBusy}
-							catalogLoading={onboardingLoading}
-							errorMessage={onboardingError}
-							templates={onboardingTemplates}
-							repoRegistry={onboardingRepoRegistry}
-							defaultWorkspaceName=""
-							existingWorkspaceNames={$workspaces.map((workspace) => workspace.name)}
-							onStart={handleOnboardingStart}
-							onPreviewHooks={handleOnboardingPreviewHooks}
-							onComplete={handleOnboardingComplete}
-							onCancel={() => setView('workset-hub')}
-						/>
-					{/if}
-				</div>
-			{/key}
+					</div>
+				{/key}
+			</div>
 		</div>
 	</section>
 
@@ -842,7 +812,10 @@
 					onClose={closeWorkspaceActionModal}
 					mode={workspaceActionMode}
 					workspaceId={workspaceActionWorkspaceId}
+					workspaceIds={workspaceActionWorkspaceIds}
 					repoName={workspaceActionRepoName}
+					worksetName={workspaceActionWorksetName}
+					worksetRepos={workspaceActionWorksetRepos}
 				/>
 			</div>
 		</div>

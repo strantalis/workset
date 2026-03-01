@@ -58,19 +58,21 @@ func (s *Service) recordPullRequest(ctx context.Context, resolution repoResoluti
 		state.PullRequests = map[string]workspace.PullRequestState{}
 	}
 	state.PullRequests[resolution.Repo.Name] = workspace.PullRequestState{
-		Repo:       payload.Repo,
-		Number:     payload.Number,
-		URL:        payload.URL,
-		Title:      payload.Title,
-		Body:       payload.Body,
-		Draft:      payload.Draft,
-		State:      payload.State,
-		Merged:     payload.Merged,
-		BaseRepo:   payload.BaseRepo,
-		BaseBranch: payload.BaseBranch,
-		HeadRepo:   payload.HeadRepo,
-		HeadBranch: payload.HeadBranch,
-		UpdatedAt:  s.clock().Format(time.RFC3339),
+		Repo:          payload.Repo,
+		Number:        payload.Number,
+		URL:           payload.URL,
+		Title:         payload.Title,
+		Body:          payload.Body,
+		Draft:         payload.Draft,
+		State:         payload.State,
+		Merged:        payload.Merged,
+		BaseRepo:      payload.BaseRepo,
+		BaseBranch:    payload.BaseBranch,
+		HeadRepo:      payload.HeadRepo,
+		HeadBranch:    payload.HeadBranch,
+		UpdatedAt:     s.clock().Format(time.RFC3339),
+		Author:        payload.Author,
+		CommentsCount: payload.CommentsCount,
 	}
 	if err := s.workspaces.SaveState(ctx, resolution.WorkspaceRoot, state); err != nil && s.logf != nil {
 		s.logf("workset: unable to save workspace state for PR tracking: %v", err)

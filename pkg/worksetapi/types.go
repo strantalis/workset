@@ -20,6 +20,7 @@ type WorkspaceSelector struct {
 type WorkspaceRefJSON struct {
 	Name           string `json:"name"`
 	Path           string `json:"path"`
+	Workset        string `json:"workset,omitempty"`
 	Template       string `json:"template,omitempty"`
 	CreatedAt      string `json:"created_at,omitempty"`
 	LastUsed       string `json:"last_used,omitempty"`
@@ -60,7 +61,10 @@ type WorkspaceSnapshotResult struct {
 type WorkspaceSnapshotJSON struct {
 	Name           string             `json:"name"`
 	Path           string             `json:"path"`
+	Workset        string             `json:"workset,omitempty"`
 	Template       string             `json:"template,omitempty"`
+	WorksetKey     string             `json:"workset_key,omitempty"`
+	WorksetLabel   string             `json:"workset_label,omitempty"`
 	CreatedAt      string             `json:"created_at,omitempty"`
 	LastUsed       string             `json:"last_used,omitempty"`
 	ArchivedAt     string             `json:"archived_at,omitempty"`
@@ -90,19 +94,21 @@ type RepoSnapshotJSON struct {
 
 // TrackedPullRequestSnapshotJSON summarizes tracked PR metadata stored in workspace state.
 type TrackedPullRequestSnapshotJSON struct {
-	Repo       string `json:"repo"`
-	Number     int    `json:"number"`
-	URL        string `json:"url"`
-	Title      string `json:"title"`
-	Body       string `json:"body,omitempty"`
-	State      string `json:"state"`
-	Draft      bool   `json:"draft"`
-	Merged     bool   `json:"merged"`
-	BaseRepo   string `json:"base_repo"`
-	BaseBranch string `json:"base_branch"`
-	HeadRepo   string `json:"head_repo"`
-	HeadBranch string `json:"head_branch"`
-	UpdatedAt  string `json:"updated_at,omitempty"`
+	Repo          string `json:"repo"`
+	Number        int    `json:"number"`
+	URL           string `json:"url"`
+	Title         string `json:"title"`
+	Body          string `json:"body,omitempty"`
+	State         string `json:"state"`
+	Draft         bool   `json:"draft"`
+	Merged        bool   `json:"merged"`
+	BaseRepo      string `json:"base_repo"`
+	BaseBranch    string `json:"base_branch"`
+	HeadRepo      string `json:"head_repo"`
+	HeadBranch    string `json:"head_branch"`
+	UpdatedAt     string `json:"updated_at,omitempty"`
+	Author        string `json:"author,omitempty"`
+	CommentsCount int    `json:"comments_count,omitempty"`
 }
 
 // WorkspaceCreatedJSON describes the JSON payload for a created workspace.

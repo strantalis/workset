@@ -12,6 +12,7 @@ import {
 describe('workspaceActionModalController', () => {
 	it('derives modal title, subtitle and size from mode and phase', () => {
 		expect(deriveWorkspaceActionModalTitle('create', 'form')).toBe('Create workset');
+		expect(deriveWorkspaceActionModalTitle('create-thread', 'form')).toBe('New thread');
 		expect(deriveWorkspaceActionModalTitle('remove-repo', 'form')).toBe('Remove repo');
 		expect(deriveWorkspaceActionModalTitle('rename', 'hook-results')).toBe('Hook results');
 
@@ -41,6 +42,8 @@ describe('workspaceActionModalController', () => {
 		).toBe('alpha');
 
 		expect(deriveWorkspaceActionModalSize('create', 'form')).toBe('wide');
+		expect(deriveWorkspaceActionModalSize('add-repo', 'form')).toBe('full');
+		expect(deriveWorkspaceActionModalSize('create-thread', 'form')).toBe('lg');
 		expect(deriveWorkspaceActionModalSize('rename', 'form')).toBe('md');
 		expect(deriveWorkspaceActionModalSize('rename', 'hook-results')).toBe('md');
 	});

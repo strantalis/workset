@@ -80,15 +80,17 @@
 <style>
 	.dropdown-menu {
 		position: fixed;
-		background: #141f2e;
-		border: 1px solid rgba(255, 255, 255, 0.1);
+		background: var(--glass-bg-strong);
+		border: 1px solid var(--glass-border);
 		border-radius: 10px;
 		padding: 6px;
 		display: grid;
 		gap: 4px;
 		z-index: 9999;
 		min-width: 140px;
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+		backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+		-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+		box-shadow: var(--glass-shadow), var(--inset-highlight);
 	}
 
 	/* Menu item styles */

@@ -530,11 +530,9 @@
 		display: flex;
 		align-items: center;
 		padding: 0 4px;
-		background: color-mix(in srgb, var(--panel-strong) 80%, var(--panel));
+		background: color-mix(in srgb, var(--panel-strong) 84%, var(--panel));
 		transition: background 0.2s ease;
-		border-bottom: 1px solid var(--border);
-		backdrop-filter: blur(12px);
-		-webkit-backdrop-filter: blur(12px);
+		border-bottom: 1px solid color-mix(in srgb, var(--border) 56%, transparent);
 	}
 
 	.pane-header.drop-target {
@@ -544,12 +542,12 @@
 	.pane-tabs {
 		display: flex;
 		align-items: center;
-		gap: 0;
+		gap: 2px;
 		flex: 1;
 		min-width: 0;
 		overflow-x: auto;
 		scrollbar-width: none;
-		padding: 0;
+		padding: 0 0 0 2px;
 	}
 
 	.pane-tabs::-webkit-scrollbar {

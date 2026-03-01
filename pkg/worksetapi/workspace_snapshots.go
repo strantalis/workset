@@ -2,8 +2,11 @@ package worksetapi
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"sort"
+	"strings"
+	"unicode"
 
 	"github.com/strantalis/workset/internal/config"
 	"github.com/strantalis/workset/internal/ops"
@@ -81,19 +84,21 @@ func (s *Service) ListWorkspaceSnapshots(ctx context.Context, opts WorkspaceSnap
 			var trackedPR *TrackedPullRequestSnapshotJSON
 			if pr, ok := state.PullRequests[repo.Name]; ok {
 				trackedPR = &TrackedPullRequestSnapshotJSON{
-					Repo:       pr.Repo,
-					Number:     pr.Number,
-					URL:        pr.URL,
-					Title:      pr.Title,
-					Body:       pr.Body,
-					State:      pr.State,
-					Draft:      pr.Draft,
-					Merged:     pr.Merged,
-					BaseRepo:   pr.BaseRepo,
-					BaseBranch: pr.BaseBranch,
-					HeadRepo:   pr.HeadRepo,
-					HeadBranch: pr.HeadBranch,
-					UpdatedAt:  pr.UpdatedAt,
+					Repo:          pr.Repo,
+					Number:        pr.Number,
+					URL:           pr.URL,
+					Title:         pr.Title,
+					Body:          pr.Body,
+					State:         pr.State,
+					Draft:         pr.Draft,
+					Merged:        pr.Merged,
+					BaseRepo:      pr.BaseRepo,
+					BaseBranch:    pr.BaseBranch,
+					HeadRepo:      pr.HeadRepo,
+					HeadBranch:    pr.HeadBranch,
+					UpdatedAt:     pr.UpdatedAt,
+					Author:        pr.Author,
+					CommentsCount: pr.CommentsCount,
 				}
 			}
 			repos = append(repos, RepoSnapshotJSON{
@@ -135,11 +140,16 @@ func (s *Service) ListWorkspaceSnapshots(ctx context.Context, opts WorkspaceSnap
 				}
 			}
 		}
+		workset := workspaceRefWorkset(ref)
+		worksetKey, worksetLabel := deriveWorksetIdentity(name, workset, repos)
 
 		snapshots = append(snapshots, WorkspaceSnapshotJSON{
 			Name:           name,
 			Path:           ref.Path,
-			Template:       ref.Template,
+			Workset:        workset,
+			Template:       workset,
+			WorksetKey:     worksetKey,
+			WorksetLabel:   worksetLabel,
 			CreatedAt:      ref.CreatedAt,
 			LastUsed:       ref.LastUsed,
 			ArchivedAt:     ref.ArchivedAt,
@@ -155,4 +165,78 @@ func (s *Service) ListWorkspaceSnapshots(ctx context.Context, opts WorkspaceSnap
 	}
 
 	return WorkspaceSnapshotResult{Workspaces: snapshots, Config: info}, nil
+}
+
+func deriveWorksetIdentity(workspaceName, explicitWorkset string, repos []RepoSnapshotJSON) (string, string) {
+	workset := strings.TrimSpace(explicitWorkset)
+	if workset != "" {
+		return "workset:" + normalizeWorksetIdentity(workset), workset
+	}
+
+	repoByKey := map[string]string{}
+	for _, repo := range repos {
+		name := strings.TrimSpace(repo.Name)
+		if name == "" {
+			continue
+		}
+		key := strings.ToLower(name)
+		if _, exists := repoByKey[key]; exists {
+			continue
+		}
+		repoByKey[key] = name
+	}
+	if len(repoByKey) == 0 {
+		trimmedWorkspaceName := strings.TrimSpace(workspaceName)
+		if trimmedWorkspaceName == "" {
+			trimmedWorkspaceName = "Workset"
+		}
+		return "workspace:" + strings.ToLower(trimmedWorkspaceName), trimmedWorkspaceName
+	}
+
+	keys := make([]string, 0, len(repoByKey))
+	for key := range repoByKey {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	sortedRepoNames := make([]string, 0, len(keys))
+	for _, key := range keys {
+		sortedRepoNames = append(sortedRepoNames, repoByKey[key])
+	}
+
+	if len(sortedRepoNames) == 1 {
+		return "repo:" + keys[0], sortedRepoNames[0]
+	}
+	if len(sortedRepoNames) <= 2 {
+		return "repos:" + strings.Join(keys, "|"), strings.Join(sortedRepoNames, " + ")
+	}
+	return "repos:" + strings.Join(keys, "|"), fmt.Sprintf("%s + %d repos", sortedRepoNames[0], len(sortedRepoNames)-1)
+}
+
+func normalizeWorksetIdentity(value string) string {
+	trimmed := strings.TrimSpace(strings.ToLower(value))
+	if trimmed == "" {
+		return "unnamed"
+	}
+
+	var b strings.Builder
+	lastDash := false
+	for _, r := range trimmed {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if lastDash {
+			continue
+		}
+		b.WriteRune('-')
+		lastDash = true
+	}
+
+	normalized := strings.Trim(b.String(), "-")
+	if normalized == "" {
+		return "unnamed"
+	}
+	return normalized
 }

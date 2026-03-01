@@ -7,7 +7,7 @@ export type WorksetSummary = {
 	id: string;
 	label: string;
 	description: string;
-	template: string;
+	workset: string;
 	repos: string[];
 	branch: string;
 	repoCount: number;
@@ -53,9 +53,9 @@ const isMergedTrackedPullRequest = (repo: Repo): boolean => {
 	return tracked.state.toLowerCase() === 'merged';
 };
 
-const normalizeTemplate = (workspace: Workspace): string => {
-	const template = workspace.template?.trim();
-	return template && template.length > 0 ? template : 'Unassigned';
+const normalizeWorkset = (workspace: Workspace): string => {
+	const workset = workspace.workset?.trim() || workspace.template?.trim();
+	return workset && workset.length > 0 ? workset : 'Unassigned';
 };
 
 export const mapWorkspaceToSummary = (workspace: Workspace): WorksetSummary => {
@@ -73,7 +73,7 @@ export const mapWorkspaceToSummary = (workspace: Workspace): WorksetSummary => {
 		id: workspace.id,
 		label: workspace.name,
 		description: getWorkspaceDescription(workspace),
-		template: normalizeTemplate(workspace),
+		workset: normalizeWorkset(workspace),
 		repos: workspace.repos.map((repo) => repo.name),
 		branch: getWorkspaceBranch(workspace),
 		repoCount: workspace.repos.length,

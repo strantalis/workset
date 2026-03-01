@@ -68,10 +68,12 @@ func (s *Service) UnarchiveWorkspace(ctx context.Context, selector WorkspaceSele
 }
 
 func workspaceRefJSON(name string, ref config.WorkspaceRef) WorkspaceRefJSON {
+	workset := workspaceRefWorkset(ref)
 	return WorkspaceRefJSON{
 		Name:           name,
 		Path:           ref.Path,
-		Template:       ref.Template,
+		Workset:        workset,
+		Template:       workset,
 		CreatedAt:      ref.CreatedAt,
 		LastUsed:       ref.LastUsed,
 		ArchivedAt:     ref.ArchivedAt,

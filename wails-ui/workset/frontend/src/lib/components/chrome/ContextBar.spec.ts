@@ -5,11 +5,11 @@ import type { WorksetSummary } from '../../view-models/worksetViewModel';
 
 const buildWorkset = (overrides: Partial<WorksetSummary> = {}): WorksetSummary => ({
 	id: 'ws-1',
-	label: 'workspace-one',
+	label: 'oauth-migration',
 	description: 'workspace',
-	template: 'Library',
+	workset: 'Platform Core',
 	repos: ['repo-one'],
-	branch: 'main',
+	branch: 'feature/oauth-migration',
 	repoCount: 1,
 	dirtyCount: 0,
 	openPrs: 0,
@@ -29,12 +29,25 @@ describe('ContextBar', () => {
 		cleanup();
 	});
 
+	test('shows breadcrumb hints for workset and thread', () => {
+		const { getByText } = render(ContextBar, {
+			props: {
+				workset: buildWorkset(),
+				showPaletteHint: false,
+				showPopoutToggle: false,
+			},
+		});
+
+		expect(getByText('Platform Core')).toBeTruthy();
+		expect(getByText('oauth-migration')).toBeTruthy();
+		expect(getByText('Active')).toBeTruthy();
+	});
+
 	test('shows popout action and calls toggle handler when enabled', async () => {
 		const onTogglePopout = vi.fn();
 		const { getByRole } = render(ContextBar, {
 			props: {
 				workset: buildWorkset(),
-				onOpenHub: vi.fn(),
 				showPaletteHint: false,
 				showPopoutToggle: true,
 				workspacePoppedOut: false,
@@ -54,7 +67,6 @@ describe('ContextBar', () => {
 		const { getByRole } = render(ContextBar, {
 			props: {
 				workset: buildWorkset(),
-				onOpenHub: vi.fn(),
 				showPaletteHint: false,
 				showPopoutToggle: true,
 				workspacePoppedOut: true,
@@ -71,7 +83,6 @@ describe('ContextBar', () => {
 		const { queryByRole } = render(ContextBar, {
 			props: {
 				workset: buildWorkset(),
-				onOpenHub: vi.fn(),
 				showPaletteHint: false,
 				showPopoutToggle: false,
 			},
@@ -79,5 +90,22 @@ describe('ContextBar', () => {
 
 		expect(queryByRole('button', { name: 'Open workspace popout' })).toBeNull();
 		expect(queryByRole('button', { name: 'Return workspace to main window' })).toBeNull();
+	});
+
+	test('treats unknown activity timestamp as active', () => {
+		const { getByText } = render(ContextBar, {
+			props: {
+				workset: buildWorkset({
+					lastActiveTs: 0,
+					openPrs: 0,
+					dirtyCount: 0,
+					mergedPrs: 0,
+				}),
+				showPaletteHint: false,
+				showPopoutToggle: false,
+			},
+		});
+
+		expect(getByText('Active')).toBeTruthy();
 	});
 });

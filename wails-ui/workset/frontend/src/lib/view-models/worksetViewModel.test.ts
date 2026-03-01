@@ -2,14 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { Workspace } from '../types';
 import { mapWorkspaceToSummary } from './worksetViewModel';
 
-const baseWorkspace = (
-	repos: Workspace['repos'],
-	template = 'Template From Metadata',
-): Workspace => ({
+const baseWorkspace = (repos: Workspace['repos'], workset = 'Core Platform'): Workspace => ({
 	id: 'ws-1',
 	name: 'Workspace 1',
 	path: '/tmp/ws-1',
-	...(template ? { template } : {}),
+	...(workset ? { workset } : {}),
 	archived: false,
 	repos,
 	pinned: false,
@@ -70,10 +67,10 @@ describe('worksetViewModel', () => {
 
 		expect(summary.openPrs).toBe(1);
 		expect(summary.mergedPrs).toBe(1);
-		expect(summary.template).toBe('Template From Metadata');
+		expect(summary.workset).toBe('Core Platform');
 	});
 
-	it('normalizes missing template metadata to Unassigned', () => {
+	it('normalizes missing workset metadata to Unassigned', () => {
 		const summary = mapWorkspaceToSummary(
 			baseWorkspace(
 				[
@@ -91,6 +88,6 @@ describe('worksetViewModel', () => {
 			),
 		);
 
-		expect(summary.template).toBe('Unassigned');
+		expect(summary.workset).toBe('Unassigned');
 	});
 });

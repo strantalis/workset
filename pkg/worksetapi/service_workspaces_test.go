@@ -289,9 +289,12 @@ func TestCreateWorkspaceWithSingleGroupDoesNotInferTemplate(t *testing.T) {
 	if ref.Template != "" {
 		t.Fatalf("did not expect template to be auto-derived from group, got %q", ref.Template)
 	}
+	if ref.Workset != "demo" {
+		t.Fatalf("expected workset defaulted to workspace name, got %q", ref.Workset)
+	}
 }
 
-func TestCreateWorkspaceStoresTemplateFromInput(t *testing.T) {
+func TestCreateWorkspaceStoresWorksetFromTemplateInput(t *testing.T) {
 	env := newTestEnv(t)
 	cfg := env.loadConfig()
 	cfg.Repos = map[string]config.RegisteredRepo{
@@ -313,8 +316,11 @@ func TestCreateWorkspaceStoresTemplateFromInput(t *testing.T) {
 	if !ok {
 		t.Fatalf("workspace not registered")
 	}
-	if ref.Template != "Manual Template" {
-		t.Fatalf("expected template from input, got %q", ref.Template)
+	if ref.Template != "" {
+		t.Fatalf("expected template to be omitted after migration, got %q", ref.Template)
+	}
+	if ref.Workset != "Manual Template" {
+		t.Fatalf("expected workset from template input, got %q", ref.Workset)
 	}
 }
 

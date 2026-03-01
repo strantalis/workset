@@ -10,7 +10,10 @@ type WorkspaceSnapshot struct {
 	ID             string         `json:"id"`
 	Name           string         `json:"name"`
 	Path           string         `json:"path"`
+	Workset        string         `json:"workset,omitempty"`
 	Template       string         `json:"template,omitempty"`
+	WorksetKey     string         `json:"worksetKey,omitempty"`
+	WorksetLabel   string         `json:"worksetLabel,omitempty"`
 	CreatedAt      string         `json:"createdAt,omitempty"`
 	LastUsed       string         `json:"lastUsed,omitempty"`
 	ArchivedAt     string         `json:"archivedAt,omitempty"`
@@ -53,19 +56,21 @@ type RepoDiffFileSnapshot struct {
 }
 
 type TrackedPullRequestRef struct {
-	Repo       string `json:"repo"`
-	Number     int    `json:"number"`
-	URL        string `json:"url"`
-	Title      string `json:"title"`
-	Body       string `json:"body,omitempty"`
-	State      string `json:"state"`
-	Draft      bool   `json:"draft"`
-	Merged     bool   `json:"merged"`
-	BaseRepo   string `json:"baseRepo"`
-	BaseBranch string `json:"baseBranch"`
-	HeadRepo   string `json:"headRepo"`
-	HeadBranch string `json:"headBranch"`
-	UpdatedAt  string `json:"updatedAt,omitempty"`
+	Repo          string `json:"repo"`
+	Number        int    `json:"number"`
+	URL           string `json:"url"`
+	Title         string `json:"title"`
+	Body          string `json:"body,omitempty"`
+	State         string `json:"state"`
+	Draft         bool   `json:"draft"`
+	Merged        bool   `json:"merged"`
+	BaseRepo      string `json:"baseRepo"`
+	BaseBranch    string `json:"baseBranch"`
+	HeadRepo      string `json:"headRepo"`
+	HeadBranch    string `json:"headBranch"`
+	UpdatedAt     string `json:"updatedAt,omitempty"`
+	Author        string `json:"author,omitempty"`
+	CommentsCount int    `json:"commentsCount,omitempty"`
 }
 
 type WorkspaceSnapshotRequest struct {
@@ -97,19 +102,21 @@ func (a *App) ListWorkspaceSnapshots(input WorkspaceSnapshotRequest) ([]Workspac
 			var tracked *TrackedPullRequestRef
 			if repo.TrackedPullRequest != nil {
 				tracked = &TrackedPullRequestRef{
-					Repo:       repo.TrackedPullRequest.Repo,
-					Number:     repo.TrackedPullRequest.Number,
-					URL:        repo.TrackedPullRequest.URL,
-					Title:      repo.TrackedPullRequest.Title,
-					Body:       repo.TrackedPullRequest.Body,
-					State:      repo.TrackedPullRequest.State,
-					Draft:      repo.TrackedPullRequest.Draft,
-					Merged:     repo.TrackedPullRequest.Merged,
-					BaseRepo:   repo.TrackedPullRequest.BaseRepo,
-					BaseBranch: repo.TrackedPullRequest.BaseBranch,
-					HeadRepo:   repo.TrackedPullRequest.HeadRepo,
-					HeadBranch: repo.TrackedPullRequest.HeadBranch,
-					UpdatedAt:  repo.TrackedPullRequest.UpdatedAt,
+					Repo:          repo.TrackedPullRequest.Repo,
+					Number:        repo.TrackedPullRequest.Number,
+					URL:           repo.TrackedPullRequest.URL,
+					Title:         repo.TrackedPullRequest.Title,
+					Body:          repo.TrackedPullRequest.Body,
+					State:         repo.TrackedPullRequest.State,
+					Draft:         repo.TrackedPullRequest.Draft,
+					Merged:        repo.TrackedPullRequest.Merged,
+					BaseRepo:      repo.TrackedPullRequest.BaseRepo,
+					BaseBranch:    repo.TrackedPullRequest.BaseBranch,
+					HeadRepo:      repo.TrackedPullRequest.HeadRepo,
+					HeadBranch:    repo.TrackedPullRequest.HeadBranch,
+					UpdatedAt:     repo.TrackedPullRequest.UpdatedAt,
+					Author:        repo.TrackedPullRequest.Author,
+					CommentsCount: repo.TrackedPullRequest.CommentsCount,
 				}
 			}
 			repoSnapshot := RepoSnapshot{
@@ -166,7 +173,10 @@ func (a *App) ListWorkspaceSnapshots(input WorkspaceSnapshotRequest) ([]Workspac
 			ID:             workspace.Name,
 			Name:           workspace.Name,
 			Path:           workspace.Path,
+			Workset:        workspace.Workset,
 			Template:       workspace.Template,
+			WorksetKey:     workspace.WorksetKey,
+			WorksetLabel:   workspace.WorksetLabel,
 			CreatedAt:      workspace.CreatedAt,
 			LastUsed:       workspace.LastUsed,
 			ArchivedAt:     workspace.ArchivedAt,

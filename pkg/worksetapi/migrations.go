@@ -3,10 +3,82 @@ package worksetapi
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/strantalis/workset/internal/config"
 )
+
+const (
+	migrationIDWorkspacesToWorksets  = "2026-02-workspaces-to-worksets"
+	migrationIDGroupRemotesToAliases = "2026-02-group-remotes-to-aliases"
+)
+
+type globalConfigMigration struct {
+	id          string
+	summary     string
+	removeAfter string
+	run         func(context.Context, *config.GlobalConfig, string, config.GlobalConfigLoadInfo) error
+}
+
+type globalConfigMigrationDescriptor struct {
+	ID          string
+	Summary     string
+	RemoveAfter string
+}
+
+func (s *Service) globalConfigMigrations(
+	info config.GlobalConfigLoadInfo,
+) []globalConfigMigration {
+	return []globalConfigMigration{
+		{
+			id:          migrationIDWorkspacesToWorksets,
+			summary:     "backfill workset labels + workset_catalog and persist canonical worksets key",
+			removeAfter: "drop once all active configs have no legacy workspaces/template/group usage for two minor releases",
+			run: func(ctx context.Context, cfg *config.GlobalConfig, configPath string, info config.GlobalConfigLoadInfo) error {
+				return s.migrateWorkspaceWorksets(ctx, cfg, configPath, info.UsedLegacyWorkspacesKey)
+			},
+		},
+		{
+			id:          migrationIDGroupRemotesToAliases,
+			summary:     "promote legacy group remotes to alias defaults and strip legacy remote blocks",
+			removeAfter: "drop after legacy remotes/group metadata has been absent for two minor releases",
+			run: func(ctx context.Context, cfg *config.GlobalConfig, configPath string, info config.GlobalConfigLoadInfo) error {
+				return s.migrateLegacyGroupRemotes(ctx, cfg, configPath)
+			},
+		},
+	}
+}
+
+func (s *Service) globalConfigMigrationPlan(
+	info config.GlobalConfigLoadInfo,
+) []globalConfigMigrationDescriptor {
+	migrations := s.globalConfigMigrations(info)
+	plan := make([]globalConfigMigrationDescriptor, 0, len(migrations))
+	for _, migration := range migrations {
+		plan = append(plan, globalConfigMigrationDescriptor{
+			ID:          migration.id,
+			Summary:     migration.summary,
+			RemoveAfter: migration.removeAfter,
+		})
+	}
+	return plan
+}
+
+func (s *Service) runGlobalConfigMigrations(
+	ctx context.Context,
+	cfg *config.GlobalConfig,
+	configPath string,
+	info config.GlobalConfigLoadInfo,
+) error {
+	for _, migration := range s.globalConfigMigrations(info) {
+		if err := migration.run(ctx, cfg, configPath, info); err != nil {
+			return fmt.Errorf("migration %s failed: %w", migration.id, err)
+		}
+	}
+	return nil
+}
 
 func (s *Service) migrateLegacyGroupRemotes(ctx context.Context, cfg *config.GlobalConfig, configPath string) error {
 	if changed := s.applyLegacyGroupRemotesWithWarnings(cfg, true); changed {
@@ -22,6 +94,165 @@ func (s *Service) migrateLegacyGroupRemotes(ctx context.Context, cfg *config.Glo
 		}
 	}
 	return nil
+}
+
+func (s *Service) migrateWorkspaceWorksets(ctx context.Context, cfg *config.GlobalConfig, configPath string, forcePersist bool) error {
+	if len(cfg.Workspaces) == 0 {
+		changed := forcePersist
+		if len(cfg.WorksetCatalog) > 0 {
+			cfg.WorksetCatalog = map[string]config.WorksetCatalogEntry{}
+			changed = true
+		}
+		if forcePersist && len(cfg.Groups) > 0 {
+			cfg.Groups = map[string]config.Group{}
+			changed = true
+		}
+		if !changed {
+			return nil
+		}
+		if updater, ok := s.configs.(ConfigUpdater); ok {
+			_, err := updater.Update(ctx, configPath, func(target *config.GlobalConfig, info config.GlobalConfigLoadInfo) error {
+				target.WorksetCatalog = cfg.WorksetCatalog
+				if forcePersist {
+					target.Groups = map[string]config.Group{}
+				}
+				return nil
+			})
+			return err
+		}
+		return s.configs.Save(ctx, configPath, *cfg)
+	}
+
+	changed := forcePersist
+	updates := map[string]config.WorkspaceRef{}
+	worksetRepoSets := map[string]map[string]struct{}{}
+	worksetThreadSets := map[string]map[string]struct{}{}
+	for name, ref := range cfg.Workspaces {
+		original := ref
+		legacyTemplate := strings.TrimSpace(ref.Template)
+		if strings.TrimSpace(ref.Workset) == "" {
+			workset := legacyTemplate
+			if workset == "" {
+				workset = s.deriveWorkspaceWorkset(ctx, name, ref.Path)
+			}
+			if workset != "" {
+				ref.Workset = workset
+			}
+		}
+		if legacyTemplate != "" {
+			ref.Template = ""
+		}
+		if ref != original {
+			updates[name] = ref
+			cfg.Workspaces[name] = ref
+			changed = true
+		}
+
+		worksetName := strings.TrimSpace(ref.Workset)
+		if worksetName == "" {
+			worksetName = strings.TrimSpace(name)
+		}
+		if worksetName == "" {
+			continue
+		}
+		if _, ok := worksetRepoSets[worksetName]; !ok {
+			worksetRepoSets[worksetName] = map[string]struct{}{}
+		}
+		if _, ok := worksetThreadSets[worksetName]; !ok {
+			worksetThreadSets[worksetName] = map[string]struct{}{}
+		}
+		worksetThreadSets[worksetName][name] = struct{}{}
+		if strings.TrimSpace(ref.Path) == "" {
+			continue
+		}
+		wsConfig, err := s.workspaces.LoadConfig(ctx, ref.Path)
+		if err != nil {
+			continue
+		}
+		for _, repo := range wsConfig.Repos {
+			repoName := strings.TrimSpace(repo.Name)
+			if repoName == "" {
+				continue
+			}
+			worksetRepoSets[worksetName][repoName] = struct{}{}
+		}
+	}
+
+	nextCatalog := map[string]config.WorksetCatalogEntry{}
+	for worksetName, threadSet := range worksetThreadSets {
+		entry := cfg.WorksetCatalog[worksetName]
+		threads := make([]string, 0, len(threadSet))
+		for thread := range threadSet {
+			threads = append(threads, thread)
+		}
+		sort.Strings(threads)
+		repoSet := worksetRepoSets[worksetName]
+		repos := make([]string, 0, len(repoSet))
+		for repo := range repoSet {
+			repos = append(repos, repo)
+		}
+		sort.Strings(repos)
+		entry.Threads = threads
+		entry.Repos = repos
+		nextCatalog[worksetName] = entry
+	}
+	if !reflect.DeepEqual(cfg.WorksetCatalog, nextCatalog) {
+		cfg.WorksetCatalog = nextCatalog
+		changed = true
+	}
+	if forcePersist && len(cfg.Groups) > 0 {
+		cfg.Groups = map[string]config.Group{}
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+
+	if updater, ok := s.configs.(ConfigUpdater); ok {
+		_, err := updater.Update(ctx, configPath, func(target *config.GlobalConfig, info config.GlobalConfigLoadInfo) error {
+			if target.Workspaces == nil {
+				return nil
+			}
+			for name, migrated := range updates {
+				ref, ok := target.Workspaces[name]
+				if !ok {
+					continue
+				}
+				ref.Workset = migrated.Workset
+				ref.Template = ""
+				target.Workspaces[name] = ref
+			}
+			target.WorksetCatalog = cfg.WorksetCatalog
+			if forcePersist {
+				target.Groups = map[string]config.Group{}
+			}
+			return nil
+		})
+		return err
+	}
+
+	return s.configs.Save(ctx, configPath, *cfg)
+}
+
+func (s *Service) deriveWorkspaceWorkset(ctx context.Context, workspaceName, root string) string {
+	trimmedWorkspaceName := strings.TrimSpace(workspaceName)
+	if strings.TrimSpace(root) == "" {
+		return trimmedWorkspaceName
+	}
+	wsConfig, err := s.workspaces.LoadConfig(ctx, root)
+	if err != nil {
+		return trimmedWorkspaceName
+	}
+	repos := make([]RepoSnapshotJSON, 0, len(wsConfig.Repos))
+	for _, repo := range wsConfig.Repos {
+		repoName := strings.TrimSpace(repo.Name)
+		if repoName == "" {
+			continue
+		}
+		repos = append(repos, RepoSnapshotJSON{Name: repoName})
+	}
+	_, worksetLabel := deriveWorksetIdentity(trimmedWorkspaceName, "", repos)
+	return strings.TrimSpace(worksetLabel)
 }
 
 func (s *Service) applyLegacyGroupRemotes(cfg *config.GlobalConfig) bool {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	koanfyaml "github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/confmap"
@@ -80,11 +81,12 @@ func migrateLegacyGlobalConfig(path, legacyPath string) error {
 }
 
 type GlobalConfigLoadInfo struct {
-	Path       string
-	LegacyPath string
-	Migrated   bool
-	UsedLegacy bool
-	Exists     bool
+	Path                    string
+	LegacyPath              string
+	Migrated                bool
+	UsedLegacy              bool
+	Exists                  bool
+	UsedLegacyWorkspacesKey bool
 }
 
 func LoadGlobalWithInfo(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
@@ -147,6 +149,9 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 		if err := k.Load(file.Provider(path), koanfyaml.Parser()); err != nil {
 			return GlobalConfig{}, info, err
 		}
+		if k.Exists("workspaces") {
+			info.UsedLegacyWorkspacesKey = true
+		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return GlobalConfig{}, info, err
 	}
@@ -187,7 +192,7 @@ func SaveGlobal(path string, cfg GlobalConfig) error {
 		}
 	}
 	cfg.EnsureMaps()
-	cfg = stripLegacyGroupRemotes(cfg)
+	cfg = sanitizeGlobalForSave(cfg)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -228,6 +233,31 @@ func stripLegacyGroupRemotes(cfg GlobalConfig) GlobalConfig {
 			cfg.Groups[name] = group
 		}
 	}
+	return cfg
+}
+
+func stripLegacyWorkspaceTemplates(cfg GlobalConfig) GlobalConfig {
+	if cfg.Workspaces == nil {
+		return cfg
+	}
+	for name, ref := range cfg.Workspaces {
+		template := strings.TrimSpace(ref.Template)
+		if template == "" {
+			continue
+		}
+		if strings.TrimSpace(ref.Workset) == "" {
+			ref.Workset = template
+		}
+		ref.Template = ""
+		cfg.Workspaces[name] = ref
+	}
+	return cfg
+}
+
+func sanitizeGlobalForSave(cfg GlobalConfig) GlobalConfig {
+	cfg = stripLegacyGroupRemotes(cfg)
+	cfg = stripLegacyWorkspaceTemplates(cfg)
+	cfg.LegacyWorkspaces = nil
 	return cfg
 }
 

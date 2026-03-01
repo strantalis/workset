@@ -415,7 +415,7 @@
 
 <SettingsSection
 	title="Repo Catalog"
-	description="Your catalog of known repositories. Repos registered here can be quickly added to worksets and templates by name."
+	description="Your catalog of known repositories. Repos registered here can be quickly added to worksets by name."
 >
 	<div class="catalog-container">
 		<!-- Header with Register button -->

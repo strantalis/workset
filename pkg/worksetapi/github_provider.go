@@ -67,17 +67,20 @@ type GitHubRepositorySearchResult struct {
 
 // GitHubPullRequest captures the fields used by Workset.
 type GitHubPullRequest struct {
-	Number    int
-	URL       string
-	Title     string
-	Body      string
-	Draft     bool
-	State     string
-	Merged    bool
-	BaseRef   string
-	HeadRef   string
-	HeadSHA   string
-	Mergeable *bool
+	Number              int
+	URL                 string
+	Title               string
+	Body                string
+	Draft               bool
+	State               string
+	Merged              bool
+	BaseRef             string
+	HeadRef             string
+	HeadSHA             string
+	Mergeable           *bool
+	Author              string
+	CommentsCount       int
+	ReviewCommentsCount int
 }
 
 // GitHubNewPullRequest describes an API payload.

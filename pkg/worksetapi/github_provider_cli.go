@@ -562,6 +562,9 @@ type pullRequestREST struct {
 		Ref string `json:"ref"`
 		SHA string `json:"sha"`
 	} `json:"head"`
+	User           *ghUser `json:"user"`
+	Comments       int     `json:"comments"`
+	ReviewComments int     `json:"review_comments"`
 }
 
 type ghUserResponse struct {
@@ -620,18 +623,25 @@ type ghUser struct {
 }
 
 func mapPullRequestREST(pr pullRequestREST) GitHubPullRequest {
+	author := ""
+	if pr.User != nil {
+		author = pr.User.Login
+	}
 	return GitHubPullRequest{
-		Number:    pr.Number,
-		URL:       pr.HTMLURL,
-		Title:     pr.Title,
-		Body:      pr.Body,
-		Draft:     pr.Draft,
-		State:     pr.State,
-		Merged:    pr.Merged || pr.MergedAt != nil,
-		BaseRef:   pr.Base.Ref,
-		HeadRef:   pr.Head.Ref,
-		HeadSHA:   pr.Head.SHA,
-		Mergeable: pr.Mergeable,
+		Number:              pr.Number,
+		URL:                 pr.HTMLURL,
+		Title:               pr.Title,
+		Body:                pr.Body,
+		Draft:               pr.Draft,
+		State:               pr.State,
+		Merged:              pr.Merged || pr.MergedAt != nil,
+		BaseRef:             pr.Base.Ref,
+		HeadRef:             pr.Head.Ref,
+		HeadSHA:             pr.Head.SHA,
+		Mergeable:           pr.Mergeable,
+		Author:              author,
+		CommentsCount:       pr.Comments,
+		ReviewCommentsCount: pr.ReviewComments,
 	}
 }
 

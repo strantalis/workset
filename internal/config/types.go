@@ -48,6 +48,7 @@ type GroupMember struct {
 
 type WorkspaceRef struct {
 	Path           string `yaml:"path" json:"path" mapstructure:"path"`
+	Workset        string `yaml:"workset,omitempty" json:"workset,omitempty" mapstructure:"workset"`
 	Template       string `yaml:"template,omitempty" json:"template,omitempty" mapstructure:"template"`
 	CreatedAt      string `yaml:"created_at,omitempty" json:"created_at,omitempty" mapstructure:"created_at"`
 	LastUsed       string `yaml:"last_used,omitempty" json:"last_used,omitempty" mapstructure:"last_used"`
@@ -60,14 +61,22 @@ type WorkspaceRef struct {
 	Expanded       bool   `yaml:"expanded,omitempty" json:"expanded,omitempty" mapstructure:"expanded"`
 }
 
+type WorksetCatalogEntry struct {
+	Description string   `yaml:"description,omitempty" json:"description,omitempty" mapstructure:"description"`
+	Repos       []string `yaml:"repos,omitempty" json:"repos,omitempty" mapstructure:"repos"`
+	Threads     []string `yaml:"threads,omitempty" json:"threads,omitempty" mapstructure:"threads"`
+}
+
 type GlobalConfig struct {
-	Defaults   Defaults                  `yaml:"defaults" json:"defaults" mapstructure:"defaults"`
-	GitHub     GitHubConfig              `yaml:"github,omitempty" json:"github,omitempty" mapstructure:"github"`
-	Agent      AgentConfig               `yaml:"agent,omitempty" json:"agent,omitempty" mapstructure:"agent"`
-	Hooks      HooksConfig               `yaml:"hooks,omitempty" json:"hooks,omitempty" mapstructure:"hooks"`
-	Repos      map[string]RegisteredRepo `yaml:"repos" json:"repos" mapstructure:"repos"`
-	Groups     map[string]Group          `yaml:"groups" json:"groups" mapstructure:"groups"`
-	Workspaces map[string]WorkspaceRef   `yaml:"workspaces" json:"workspaces" mapstructure:"workspaces"`
+	Defaults         Defaults                       `yaml:"defaults" json:"defaults" mapstructure:"defaults"`
+	GitHub           GitHubConfig                   `yaml:"github,omitempty" json:"github,omitempty" mapstructure:"github"`
+	Agent            AgentConfig                    `yaml:"agent,omitempty" json:"agent,omitempty" mapstructure:"agent"`
+	Hooks            HooksConfig                    `yaml:"hooks,omitempty" json:"hooks,omitempty" mapstructure:"hooks"`
+	Repos            map[string]RegisteredRepo      `yaml:"repos" json:"repos" mapstructure:"repos"`
+	Groups           map[string]Group               `yaml:"groups,omitempty" json:"groups,omitempty" mapstructure:"groups"`
+	WorksetCatalog   map[string]WorksetCatalogEntry `yaml:"workset_catalog,omitempty" json:"workset_catalog,omitempty" mapstructure:"workset_catalog"`
+	Workspaces       map[string]WorkspaceRef        `yaml:"worksets" json:"worksets" mapstructure:"worksets"`
+	LegacyWorkspaces map[string]WorkspaceRef        `yaml:"workspaces,omitempty" json:"-" mapstructure:"workspaces"`
 }
 
 type WorkspaceConfig struct {

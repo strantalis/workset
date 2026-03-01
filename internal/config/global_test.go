@@ -71,6 +71,77 @@ func TestSaveLoadGlobal(t *testing.T) {
 	}
 }
 
+func TestLoadGlobalReadsLegacyWorkspacesKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	legacy := `
+defaults:
+  base_branch: main
+workspaces:
+  alpha:
+    path: /tmp/alpha
+`
+	if err := os.WriteFile(path, []byte(strings.TrimSpace(legacy)+"\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, info, err := LoadGlobalWithInfo(path)
+	if err != nil {
+		t.Fatalf("LoadGlobal: %v", err)
+	}
+	if !info.UsedLegacyWorkspacesKey {
+		t.Fatalf("expected legacy workspaces key to be detected")
+	}
+	if cfg.Workspaces["alpha"].Path != "/tmp/alpha" {
+		t.Fatalf("expected legacy workspace migrated into worksets map, got %+v", cfg.Workspaces["alpha"])
+	}
+}
+
+func TestSaveGlobalWritesWorksetsKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	cfg := DefaultConfig()
+	cfg.Workspaces["alpha"] = WorkspaceRef{Path: "/tmp/alpha"}
+
+	if err := SaveGlobal(path, cfg); err != nil {
+		t.Fatalf("SaveGlobal: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "worksets:") {
+		t.Fatalf("expected worksets key, got %q", text)
+	}
+	if strings.Contains(text, "\nworkspaces:") {
+		t.Fatalf("did not expect legacy workspaces key, got %q", text)
+	}
+}
+
+func TestSaveGlobalMigratesTemplateToWorkset(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	cfg := DefaultConfig()
+	cfg.Workspaces["alpha"] = WorkspaceRef{
+		Path:     "/tmp/alpha",
+		Template: "legacy-template",
+	}
+
+	if err := SaveGlobal(path, cfg); err != nil {
+		t.Fatalf("SaveGlobal: %v", err)
+	}
+	loaded, err := LoadGlobal(path)
+	if err != nil {
+		t.Fatalf("LoadGlobal: %v", err)
+	}
+	ref := loaded.Workspaces["alpha"]
+	if ref.Workset != "legacy-template" {
+		t.Fatalf("expected workset from legacy template, got %q", ref.Workset)
+	}
+	if ref.Template != "" {
+		t.Fatalf("expected legacy template stripped, got %q", ref.Template)
+	}
+}
+
 func TestSaveGlobalCreatesBackup(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	original := "defaults:\n  base_branch: legacy\nrepos:\n  demo:\n    url: https://example.com/demo.git\n"

@@ -34,63 +34,74 @@ export async function fetchWorkspaces(
 ): Promise<Workspace[]> {
 	const snapshots = await ListWorkspaceSnapshots({ includeArchived, includeStatus });
 
-	const mapped: Workspace[] = snapshots.map((workspace) => ({
-		id: workspace.id,
-		name: workspace.name,
-		path: workspace.path,
-		template: workspace.template,
-		archived: workspace.archived,
-		archivedAt: workspace.archivedAt,
-		archivedReason: workspace.archivedReason,
-		repos: workspace.repos.map((repo) => ({
-			id: repo.id,
-			name: repo.name,
-			path: repo.path,
-			remote: repo.remote,
-			defaultBranch: repo.defaultBranch,
-			dirty: repo.dirty,
-			missing: repo.missing,
-			statusKnown: repo.statusKnown,
-			currentBranch: repo.currentBranch,
-			ahead: repo.ahead ?? 0,
-			behind: repo.behind ?? 0,
-			trackedPullRequest: repo.trackedPullRequest
-				? {
-						repo: repo.trackedPullRequest.repo,
-						number: repo.trackedPullRequest.number,
-						url: repo.trackedPullRequest.url,
-						title: repo.trackedPullRequest.title,
-						body: repo.trackedPullRequest.body,
-						state: repo.trackedPullRequest.state,
-						draft: repo.trackedPullRequest.draft,
-						merged:
-							(repo.trackedPullRequest as { merged?: boolean }).merged ??
-							repo.trackedPullRequest.state?.toLowerCase() === 'merged',
-						baseRepo: repo.trackedPullRequest.baseRepo,
-						baseBranch: repo.trackedPullRequest.baseBranch,
-						headRepo: repo.trackedPullRequest.headRepo,
-						headBranch: repo.trackedPullRequest.headBranch,
-						updatedAt: repo.trackedPullRequest.updatedAt,
-					}
-				: undefined,
-			diff: {
-				added: repo.diff?.added ?? 0,
-				removed: repo.diff?.removed ?? 0,
-			},
-			files: (repo.files ?? []).map((file) => ({
-				path: file.path,
-				added: file.added,
-				removed: file.removed,
-				hunks: [],
+	const mapped: Workspace[] = snapshots.map((workspace) => {
+		const identity = workspace as typeof workspace & {
+			workset?: string;
+			worksetKey?: string;
+			worksetLabel?: string;
+		};
+		const workset = identity.workset ?? workspace.template;
+		return {
+			id: workspace.id,
+			name: workspace.name,
+			path: workspace.path,
+			workset,
+			template: workspace.template ?? workset,
+			worksetKey: identity.worksetKey ?? workspace.id,
+			worksetLabel: identity.worksetLabel ?? workspace.name,
+			archived: workspace.archived,
+			archivedAt: workspace.archivedAt,
+			archivedReason: workspace.archivedReason,
+			repos: workspace.repos.map((repo) => ({
+				id: repo.id,
+				name: repo.name,
+				path: repo.path,
+				remote: repo.remote,
+				defaultBranch: repo.defaultBranch,
+				dirty: repo.dirty,
+				missing: repo.missing,
+				statusKnown: repo.statusKnown,
+				currentBranch: repo.currentBranch,
+				ahead: repo.ahead ?? 0,
+				behind: repo.behind ?? 0,
+				trackedPullRequest: repo.trackedPullRequest
+					? {
+							repo: repo.trackedPullRequest.repo,
+							number: repo.trackedPullRequest.number,
+							url: repo.trackedPullRequest.url,
+							title: repo.trackedPullRequest.title,
+							body: repo.trackedPullRequest.body,
+							state: repo.trackedPullRequest.state,
+							draft: repo.trackedPullRequest.draft,
+							merged:
+								(repo.trackedPullRequest as { merged?: boolean }).merged ??
+								repo.trackedPullRequest.state?.toLowerCase() === 'merged',
+							baseRepo: repo.trackedPullRequest.baseRepo,
+							baseBranch: repo.trackedPullRequest.baseBranch,
+							headRepo: repo.trackedPullRequest.headRepo,
+							headBranch: repo.trackedPullRequest.headBranch,
+							updatedAt: repo.trackedPullRequest.updatedAt,
+						}
+					: undefined,
+				diff: {
+					added: repo.diff?.added ?? 0,
+					removed: repo.diff?.removed ?? 0,
+				},
+				files: (repo.files ?? []).map((file) => ({
+					path: file.path,
+					added: file.added,
+					removed: file.removed,
+					hunks: [],
+				})),
 			})),
-		})),
-		pinned: workspace.pinned ?? false,
-		pinOrder: workspace.pinOrder ?? 0,
-		color: workspace.color,
-		description: workspace.description,
-		expanded: workspace.expanded ?? false,
-		lastUsed: workspace.lastUsed ?? workspace.createdAt ?? '',
-	}));
+			pinned: workspace.pinned ?? false,
+			pinOrder: workspace.pinOrder ?? 0,
+			color: workspace.color,
+			description: workspace.description,
+			expanded: workspace.expanded ?? false,
+			lastUsed: workspace.lastUsed ?? workspace.createdAt ?? '',
+		};
+	});
 
 	if (!includeStatus) {
 		return mapped;
@@ -250,11 +261,16 @@ export async function listWorkspacePopouts(): Promise<WorkspacePopoutState[]> {
 }
 
 function mapWorkspaceRefToWorkspace(ref: WorkspaceRefJSON): Workspace {
+	const legacy = ref as WorkspaceRefJSON & { workset?: string };
+	const workset = legacy.workset ?? ref.template;
 	return {
 		id: ref.name,
 		name: ref.name,
 		path: ref.path,
-		template: ref.template,
+		workset,
+		template: ref.template ?? workset,
+		worksetKey: ref.name,
+		worksetLabel: ref.name,
 		archived: ref.archived,
 		archivedAt: ref.archived_at,
 		archivedReason: ref.archived_reason,

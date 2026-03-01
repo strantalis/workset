@@ -41,7 +41,8 @@ describe('worksetHubPreferences', () => {
 
 	it('defaults invalid values to expected modes', () => {
 		expect(parseWorksetHubLayoutMode('bad-value')).toBe('grid');
-		expect(parseWorksetHubGroupMode('bad-value')).toBe('active');
+		expect(parseWorksetHubGroupMode('bad-value')).toBe('all');
+		expect(parseWorksetHubGroupMode('template')).toBe('all');
 	});
 
 	it('reads persisted values from localStorage', () => {
@@ -54,14 +55,14 @@ describe('worksetHubPreferences', () => {
 
 	it('falls back to defaults when no values are persisted', () => {
 		expect(readWorksetHubLayoutMode()).toBe('grid');
-		expect(readWorksetHubGroupMode()).toBe('active');
+		expect(readWorksetHubGroupMode()).toBe('all');
 	});
 
 	it('persists mode selections using the expected storage keys', () => {
 		persistWorksetHubLayoutMode('list');
-		persistWorksetHubGroupMode('template');
+		persistWorksetHubGroupMode('all');
 
 		expect(localStorage.getItem(WORKSET_HUB_LAYOUT_MODE_KEY)).toBe('list');
-		expect(localStorage.getItem(WORKSET_HUB_GROUP_MODE_KEY)).toBe('template');
+		expect(localStorage.getItem(WORKSET_HUB_GROUP_MODE_KEY)).toBe('all');
 	});
 });

@@ -57,7 +57,7 @@ describe('runCreateWorkspaceMutation', () => {
 					{ url: 'git@github.com:acme/second.git', register: false },
 				],
 				selectedAliases: new Set(['alias-one']),
-				selectedGroups: new Set(['group-one']),
+				worksetName: 'platform-core',
 			},
 			{ registerRepo, createWorkspace },
 		);
@@ -65,12 +65,14 @@ describe('runCreateWorkspaceMutation', () => {
 		expect(registerRepo).toHaveBeenCalledTimes(2);
 		expect(registerRepo).toHaveBeenNthCalledWith(1, 'first', '/tmp/repos/first', '', '');
 		expect(registerRepo).toHaveBeenNthCalledWith(2, 'pending', '/tmp/repos/pending', '', '');
-		expect(createWorkspace).toHaveBeenCalledWith(
-			'alpha',
-			'',
-			'group-one',
-			['first', 'git@github.com:acme/second.git', 'pending', 'alias-one'],
-			['group-one'],
+		expect(createWorkspace).toHaveBeenCalledWith('alpha', '', 'platform-core', [
+			'/tmp/repos/first',
+			'git@github.com:acme/second.git',
+			'/tmp/repos/pending',
+			'alias-one',
+		]);
+		expect(createWorkspace.mock.invocationCallOrder[0]).toBeLessThan(
+			registerRepo.mock.invocationCallOrder[0],
 		);
 		expect(result).toEqual({
 			workspaceName: 'alpha',
@@ -101,11 +103,42 @@ describe('runCreateWorkspaceMutation', () => {
 					primaryInput: '',
 					directRepos: [],
 					selectedAliases: new Set(),
-					selectedGroups: new Set(),
 				},
 				{ registerRepo, createWorkspace },
 			),
 		).rejects.toThrow('create failed');
+	});
+
+	it('returns warning when catalog registration fails after successful create', async () => {
+		const registerRepo = vi.fn(async () => {
+			throw new Error('permission denied');
+		});
+		const createWorkspace = vi.fn(
+			async (): Promise<WorkspaceCreateResponse> => ({
+				workspace: {
+					name: 'alpha',
+					path: '/tmp/alpha',
+					workset: '/tmp/alpha/workset.yaml',
+					branch: 'main',
+					next: 'next',
+				},
+			}),
+		);
+
+		const result = await runCreateWorkspaceMutation(
+			{
+				finalName: 'alpha',
+				primaryInput: '',
+				directRepos: [{ url: '/tmp/repos/first', register: true }],
+				selectedAliases: new Set<string>(),
+			},
+			{ registerRepo, createWorkspace },
+		);
+
+		expect(createWorkspace).toHaveBeenCalledWith('alpha', '', undefined, ['/tmp/repos/first']);
+		expect(result.warnings).toEqual([
+			'Registered first in workset but failed to save in Repo Catalog: permission denied',
+		]);
 	});
 });
 
@@ -132,24 +165,19 @@ describe('runAddItemsMutation', () => {
 					hookRuns: [{ event: 'repo.add', repo: 'repo-b', id: 'hook-2', status: 'skipped' }],
 				}),
 			);
-		const applyGroup = vi.fn(async () => undefined);
-
 		const result = await runAddItemsMutation(
 			{
 				workspaceId: 'ws-1',
 				source: '/tmp/repos/source',
 				selectedAliases: new Set(['alias-one']),
-				selectedGroups: new Set(['group-one']),
 			},
-			{ addRepo, applyGroup },
+			{ addRepo },
 		);
 
 		expect(addRepo).toHaveBeenCalledTimes(2);
 		expect(addRepo).toHaveBeenNthCalledWith(1, 'ws-1', '/tmp/repos/source', '', '');
 		expect(addRepo).toHaveBeenNthCalledWith(2, 'ws-1', 'alias-one', '', '');
-		expect(applyGroup).toHaveBeenCalledTimes(1);
-		expect(applyGroup).toHaveBeenCalledWith('ws-1', 'group-one');
-		expect(result.itemCount).toBe(3);
+		expect(result.itemCount).toBe(2);
 		expect(result.warnings).toEqual(['warning-a', 'warning-b']);
 		expect(result.pendingHooks).toEqual([
 			{ event: 'repo.add', repo: 'repo-a', hooks: ['post-checkout'], reason: 'updated' },
@@ -161,12 +189,39 @@ describe('runAddItemsMutation', () => {
 		]);
 	});
 
-	it('propagates add failures and does not apply groups after failure', async () => {
+	it('propagates add failures', async () => {
 		const addRepo = vi
 			.fn()
 			.mockResolvedValueOnce(buildRepoAddResponse())
 			.mockRejectedValueOnce(new Error('add failed'));
-		const applyGroup = vi.fn(async () => undefined);
+		await expect(
+			runAddItemsMutation(
+				{
+					workspaceId: 'ws-1',
+					source: '/tmp/repos/source',
+					selectedAliases: new Set(['alias-one']),
+				},
+				{ addRepo },
+			),
+		).rejects.toThrow('add failed');
+	});
+
+	it('rolls back previously added repos when a later add fails', async () => {
+		const addRepo = vi
+			.fn()
+			.mockResolvedValueOnce(
+				buildRepoAddResponse({
+					payload: {
+						status: 'ok',
+						workspace: 'ws-1',
+						repo: 'repo-a',
+						local_path: '/tmp/repo-a',
+						managed: true,
+					},
+				}),
+			)
+			.mockRejectedValueOnce(new Error('add failed'));
+		const removeRepo = vi.fn(async () => undefined);
 
 		await expect(
 			runAddItemsMutation(
@@ -174,12 +229,13 @@ describe('runAddItemsMutation', () => {
 					workspaceId: 'ws-1',
 					source: '/tmp/repos/source',
 					selectedAliases: new Set(['alias-one']),
-					selectedGroups: new Set(['group-one']),
 				},
-				{ addRepo, applyGroup },
+				{ addRepo, removeRepo },
 			),
 		).rejects.toThrow('add failed');
-		expect(applyGroup).not.toHaveBeenCalled();
+
+		expect(removeRepo).toHaveBeenCalledTimes(1);
+		expect(removeRepo).toHaveBeenCalledWith('ws-1', 'repo-a', false, false);
 	});
 });
 
@@ -375,7 +431,6 @@ describe('createWorkspaceActionMutationService', () => {
 			}),
 		);
 		const addRepo = vi.fn(async () => buildRepoAddResponse());
-		const applyGroup = vi.fn(async () => undefined);
 		const renameWorkspace = vi.fn(async () => undefined);
 		const archiveWorkspace = vi.fn(async () => undefined);
 		const removeWorkspace = vi.fn(async () => undefined);
@@ -385,7 +440,6 @@ describe('createWorkspaceActionMutationService', () => {
 			registerRepo,
 			createWorkspace,
 			addRepo,
-			applyGroup,
 			renameWorkspace,
 			archiveWorkspace,
 			removeWorkspace,
@@ -397,13 +451,11 @@ describe('createWorkspaceActionMutationService', () => {
 			primaryInput: '/tmp/repos/alpha',
 			directRepos: [],
 			selectedAliases: new Set(),
-			selectedGroups: new Set(),
 		});
 		await service.addItems({
 			workspaceId: 'ws-1',
 			source: '/tmp/repos/beta',
 			selectedAliases: new Set(['alias-one']),
-			selectedGroups: new Set(['group-one']),
 		});
 		await service.renameWorkspace({
 			workspaceId: 'ws-1',
@@ -427,7 +479,6 @@ describe('createWorkspaceActionMutationService', () => {
 		expect(registerRepo).toHaveBeenCalledTimes(1);
 		expect(createWorkspace).toHaveBeenCalledTimes(1);
 		expect(addRepo).toHaveBeenCalledTimes(2);
-		expect(applyGroup).toHaveBeenCalledTimes(1);
 		expect(renameWorkspace).toHaveBeenCalledTimes(1);
 		expect(archiveWorkspace).toHaveBeenCalledTimes(1);
 		expect(removeWorkspace).toHaveBeenCalledTimes(1);
