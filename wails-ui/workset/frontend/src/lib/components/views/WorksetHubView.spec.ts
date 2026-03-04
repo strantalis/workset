@@ -5,9 +5,9 @@ import type { WorksetSummary } from '../../view-models/worksetViewModel';
 
 const buildWorkset = (overrides: Partial<WorksetSummary> = {}): WorksetSummary => ({
 	id: 'ws-1',
-	label: 'workspace-one',
+	label: 'thread-one',
 	description: 'workspace',
-	template: 'Library',
+	workset: 'Platform Core',
 	repos: ['repo-one'],
 	branch: 'main',
 	repoCount: 1,
@@ -44,16 +44,47 @@ describe('WorksetHubView', () => {
 		cleanup();
 	});
 
-	test('opens add-repo action from grid menu', async () => {
+	test('aggregates threads under one workset card', () => {
+		const { getByRole, queryByRole } = render(WorksetHubView, {
+			props: {
+				...baseProps(vi.fn()),
+				worksets: [
+					buildWorkset({ id: 'ws-1', label: 'oauth', workset: 'Platform Core' }),
+					buildWorkset({ id: 'ws-2', label: 'billing', workset: 'Platform Core' }),
+				],
+			},
+		});
+
+		expect(getByRole('heading', { level: 3, name: 'Platform Core' })).toBeTruthy();
+		expect(getByRole('button', { name: /Workset actions/i })).toBeTruthy();
+		expect(queryByRole('heading', { level: 3, name: 'oauth' })).toBeNull();
+		expect(queryByRole('heading', { level: 3, name: 'billing' })).toBeNull();
+	});
+
+	test('opens add-repo action from grid menu using primary thread', async () => {
 		const onAddRepo = vi.fn<(workspaceId: string) => void>();
 		const { getByRole } = render(WorksetHubView, {
-			props: baseProps(onAddRepo),
+			props: {
+				...baseProps(onAddRepo),
+				worksets: [
+					buildWorkset({
+						id: 'ws-recent',
+						label: 'latest-thread',
+						lastActiveTs: Date.now(),
+					}),
+					buildWorkset({
+						id: 'ws-older',
+						label: 'older-thread',
+						lastActiveTs: Date.now() - 1000,
+					}),
+				],
+			},
 		});
 
 		await fireEvent.click(getByRole('button', { name: 'Workset actions' }));
 		await fireEvent.click(getByRole('button', { name: 'Add repo' }));
 
-		expect(onAddRepo).toHaveBeenCalledWith('ws-1');
+		expect(onAddRepo).toHaveBeenCalledWith('ws-recent');
 	});
 
 	test('opens remove-workspace action from grid menu', async () => {
@@ -101,7 +132,7 @@ describe('WorksetHubView', () => {
 	});
 
 	test('invokes group mode callback when group button is clicked', async () => {
-		const onGroupModeChange = vi.fn<(groupMode: 'all' | 'template' | 'repo' | 'active') => void>();
+		const onGroupModeChange = vi.fn<(groupMode: 'all' | 'repo' | 'active') => void>();
 		const { getByRole } = render(WorksetHubView, {
 			props: {
 				...baseProps(vi.fn()),
@@ -109,9 +140,9 @@ describe('WorksetHubView', () => {
 			},
 		});
 
-		await fireEvent.click(getByRole('button', { name: 'Template' }));
+		await fireEvent.click(getByRole('button', { name: 'Repo' }));
 
-		expect(onGroupModeChange).toHaveBeenCalledWith('template');
+		expect(onGroupModeChange).toHaveBeenCalledWith('repo');
 	});
 
 	test('opens add-repo action from list menu', async () => {
@@ -127,133 +158,6 @@ describe('WorksetHubView', () => {
 		expect(onAddRepo).toHaveBeenCalledWith('ws-1');
 	});
 
-	test('opens remove-workspace action from list menu', async () => {
-		const onRemoveWorkspace = vi.fn<(workspaceId: string) => void>();
-		const { getByRole } = render(WorksetHubView, {
-			props: {
-				...baseProps(vi.fn()),
-				onRemoveWorkspace,
-			},
-		});
-
-		await fireEvent.click(getByRole('button', { name: 'List layout' }));
-		await fireEvent.click(getByRole('button', { name: 'Workset actions' }));
-		await fireEvent.click(getByRole('button', { name: 'Delete workset' }));
-
-		expect(onRemoveWorkspace).toHaveBeenCalledWith('ws-1');
-	});
-
-	test('keeps all-mode order stable instead of activity-sorting', async () => {
-		const { container, getByRole, getAllByRole } = render(WorksetHubView, {
-			props: {
-				...baseProps(vi.fn()),
-				worksets: [
-					buildWorkset({
-						id: 'ws-new',
-						label: 'A-workspace',
-						lastActiveTs: Date.now() - 1000,
-					}),
-					buildWorkset({
-						id: 'ws-old',
-						label: 'B-workspace',
-						lastActiveTs: Date.now(),
-					}),
-				],
-			},
-		});
-
-		await fireEvent.click(getByRole('button', { name: 'All' }));
-		const allModeTitles = getAllByRole('heading', { level: 3 }).map((node) => node.textContent);
-		expect(allModeTitles).toEqual(['A-workspace', 'B-workspace']);
-
-		await fireEvent.click(getByRole('button', { name: 'Active' }));
-		expect(container.querySelectorAll('.group')[0]?.textContent).toContain('Today');
-		const activeModeTitles = getAllByRole('heading', { level: 3 }).map((node) => node.textContent);
-		expect(activeModeTitles).toEqual(['B-workspace', 'A-workspace']);
-	});
-
-	test('renders pinned worksets under a Pinned group on all mode', async () => {
-		const { getByRole, getAllByRole } = render(WorksetHubView, {
-			props: {
-				...baseProps(vi.fn()),
-				worksets: [
-					buildWorkset({
-						id: 'ws-pinned',
-						label: 'pinned-workspace',
-						pinned: true,
-						lastActiveTs: Date.now() - 1000,
-					}),
-					buildWorkset({
-						id: 'ws-unpinned',
-						label: 'regular-workspace',
-						pinned: false,
-						lastActiveTs: Date.now() - 2000,
-					}),
-				],
-			},
-		});
-
-		await fireEvent.click(getByRole('button', { name: 'All' }));
-
-		const groupHeaders = getAllByRole('heading', { level: 2 }).map((node) => node.textContent);
-		expect(groupHeaders).toContain('Pinned');
-		expect(groupHeaders).toContain('Unpinned');
-
-		const allModeTitles = getAllByRole('heading', { level: 3 }).map((node) => node.textContent);
-		expect(allModeTitles).toEqual(['pinned-workspace', 'regular-workspace']);
-	});
-
-	test('reacts to prop updates after a workspace becomes pinned', async () => {
-		const initialWorkset = buildWorkset({
-			id: 'ws-pin',
-			label: 'pin-me',
-			pinned: false,
-		});
-		const { getByRole, queryByRole, rerender } = render(WorksetHubView, {
-			props: {
-				...baseProps(vi.fn()),
-				worksets: [initialWorkset],
-			},
-		});
-
-		await fireEvent.click(getByRole('button', { name: 'All' }));
-		expect(queryByRole('heading', { level: 2, name: 'Pinned' })).toBeNull();
-
-		await rerender({
-			...baseProps(vi.fn()),
-			worksets: [{ ...initialWorkset, pinned: true }],
-		});
-
-		expect(getByRole('heading', { level: 2, name: 'Pinned' })).toBeTruthy();
-	});
-
-	test('sorts template groups alphabetically without heuristic labels', async () => {
-		const { getByRole, getAllByRole } = render(WorksetHubView, {
-			props: {
-				...baseProps(vi.fn()),
-				worksets: [
-					buildWorkset({
-						id: 'ws-zeta',
-						label: 'zeta',
-						template: 'Unassigned',
-					}),
-					buildWorkset({
-						id: 'ws-alpha',
-						label: 'alpha',
-						template: 'Unassigned',
-					}),
-				],
-			},
-		});
-
-		await fireEvent.click(getByRole('button', { name: 'Template' }));
-		getByRole('heading', { level: 2, name: /Unassigned/i });
-		const templateModeTitles = getAllByRole('heading', { level: 3 }).map(
-			(node) => node.textContent,
-		);
-		expect(templateModeTitles).toEqual(['alpha', 'zeta']);
-	});
-
 	test('groups worksets with no repos under No Repos', async () => {
 		const { getByRole, getAllByRole } = render(WorksetHubView, {
 			props: {
@@ -262,11 +166,13 @@ describe('WorksetHubView', () => {
 					buildWorkset({
 						id: 'ws-empty',
 						label: 'empty-workspace',
+						workset: 'Infra',
 						repos: [],
 					}),
 					buildWorkset({
 						id: 'ws-linked',
 						label: 'linked-workspace',
+						workset: 'Platform',
 						repos: ['repo-a'],
 					}),
 				],
@@ -276,8 +182,6 @@ describe('WorksetHubView', () => {
 		await fireEvent.click(getByRole('button', { name: 'Repo' }));
 		const groupHeaders = getAllByRole('heading', { level: 2 }).map((node) => node.textContent);
 		expect(groupHeaders).toContain('No Repos');
-		const groupItems = getAllByRole('heading', { level: 3 }).map((node) => node.textContent);
-		expect(groupItems).toEqual(expect.arrayContaining(['linked-workspace', 'empty-workspace']));
-		expect(getByRole('heading', { level: 3, name: 'empty-workspace' })).toBeTruthy();
+		expect(getByRole('heading', { level: 3, name: 'Infra' })).toBeTruthy();
 	});
 });

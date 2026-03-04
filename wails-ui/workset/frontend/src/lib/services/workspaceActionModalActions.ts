@@ -1,6 +1,6 @@
 import { runRepoHooks, trustRepoHooks } from '../api/workspaces';
-import { getGroup, listAliases, listGroups, openDirectoryDialog } from '../api/settings';
-import type { Alias, GroupSummary, HookExecution, Workspace } from '../types';
+import { listAliases, openDirectoryDialog } from '../api/settings';
+import type { Alias, HookExecution, Workspace } from '../types';
 import {
 	loadWorkspaceActionContext,
 	type WorkspaceActionDirectRepo,
@@ -14,7 +14,15 @@ import {
 import { workspaceActionMutations } from './workspaceActionService';
 
 interface WorkspaceContextLoadParams {
-	mode: 'create' | 'rename' | 'add-repo' | 'archive' | 'remove-workspace' | 'remove-repo' | null;
+	mode:
+		| 'create'
+		| 'create-thread'
+		| 'rename'
+		| 'add-repo'
+		| 'archive'
+		| 'remove-workspace'
+		| 'remove-repo'
+		| null;
 	workspaceId: string | null;
 	repoName: string | null;
 }
@@ -38,8 +46,6 @@ export async function loadWorkspaceActionModalContext(
 			loadWorkspaces: deps.loadWorkspaces,
 			getWorkspaces: deps.getWorkspaces,
 			listAliases,
-			listGroups,
-			getGroup,
 		},
 	);
 }
@@ -192,10 +198,4 @@ export type WorkspaceActionContextLoadResult = Awaited<
 	ReturnType<typeof loadWorkspaceActionModalContext>
 >;
 
-export type {
-	WorkspaceActionDirectRepo,
-	WorkspaceActionPendingHook,
-	HookExecution,
-	Alias,
-	GroupSummary,
-};
+export type { WorkspaceActionDirectRepo, WorkspaceActionPendingHook, HookExecution, Alias };

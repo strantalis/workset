@@ -235,7 +235,7 @@ describe('PROrchestrationView sidebar collapse', () => {
 			props: { workspace },
 		});
 
-		const listRow = getByText('repo-one').closest('button');
+		const listRow = getByText('Test PR title').closest('button');
 		expect(listRow).toBeTruthy();
 		await fireEvent.click(listRow!);
 
@@ -246,14 +246,14 @@ describe('PROrchestrationView sidebar collapse', () => {
 		await fireEvent.click(getByRole('button', { name: 'Collapse sidebar' }));
 
 		expect(getByRole('button', { name: 'Expand sidebar' })).toBeInTheDocument();
-		expect(queryByText('Tracked PRs')).not.toBeInTheDocument();
+		expect(queryByText('Pull Requests')).not.toBeInTheDocument();
 		expect(container.querySelector('.sidebar-collapsed-layout')).toBeInTheDocument();
 		expect(container.querySelector('.sidebar')).not.toBeInTheDocument();
 
 		await fireEvent.click(getByRole('button', { name: 'Expand sidebar' }));
 
 		expect(getByRole('button', { name: 'Collapse sidebar' })).toBeEnabled();
-		expect(getByText('Tracked PRs')).toBeInTheDocument();
+		expect(getByText('Pull Requests')).toBeInTheDocument();
 		expect(container.querySelector('.sidebar')).toBeInTheDocument();
 	});
 
@@ -263,7 +263,7 @@ describe('PROrchestrationView sidebar collapse', () => {
 			props: { workspace },
 		});
 
-		const listRow = getByText('repo-one').closest('button');
+		const listRow = getByText('Test PR title').closest('button');
 		expect(listRow).toBeTruthy();
 		await fireEvent.click(listRow!);
 
@@ -288,7 +288,7 @@ describe('PROrchestrationView sidebar collapse', () => {
 			props: { workspace },
 		});
 
-		const listRow = getByText('repo-one').closest('button');
+		const listRow = getByText('Test PR title').closest('button');
 		expect(listRow).toBeTruthy();
 		await fireEvent.click(listRow!);
 
@@ -327,7 +327,7 @@ describe('PROrchestrationView sidebar collapse', () => {
 		await waitFor(() => {
 			expect(vi.mocked(repoDiffApi.stopRepoDiffWatch)).toHaveBeenCalledWith('ws-1', 'repo-1');
 		});
-		expect(await findByText('No tracked PRs')).toBeInTheDocument();
+		expect(await findByText('No open PRs')).toBeInTheDocument();
 	});
 
 	test('keeps active PR list stable when workspace refresh temporarily omits tracked PR', async () => {
@@ -336,12 +336,12 @@ describe('PROrchestrationView sidebar collapse', () => {
 			props: { workspace },
 		});
 
-		expect(getByText('repo-one')).toBeInTheDocument();
-		expect(queryByText('No tracked PRs')).not.toBeInTheDocument();
+		expect(getByText('Test PR title')).toBeInTheDocument();
+		expect(queryByText('No open PRs')).not.toBeInTheDocument();
 
 		await rerender({ workspace: buildWorkspaceWithoutTrackedPr() });
 
-		expect(getByText('repo-one')).toBeInTheDocument();
-		expect(queryByText('No tracked PRs')).not.toBeInTheDocument();
+		expect(getByText('Test PR title')).toBeInTheDocument();
+		expect(queryByText('No open PRs')).not.toBeInTheDocument();
 	});
 });

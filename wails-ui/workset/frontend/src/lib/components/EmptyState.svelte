@@ -6,6 +6,10 @@
 		body: string;
 		actionLabel?: string;
 		onAction?: () => void;
+		actionVariant?: 'primary' | 'ghost' | 'danger';
+		secondaryActionLabel?: string;
+		onSecondaryAction?: () => void;
+		secondaryActionVariant?: 'primary' | 'ghost' | 'danger';
 		hint?: string;
 		variant?: 'default' | 'centered';
 	}
@@ -15,6 +19,10 @@
 		body,
 		actionLabel = 'Create workspace',
 		onAction,
+		actionVariant = 'primary',
+		secondaryActionLabel,
+		onSecondaryAction,
+		secondaryActionVariant = 'ghost',
 		hint,
 		variant = 'default',
 	}: Props = $props();
@@ -28,9 +36,16 @@
 	<div class="content">
 		<div class="title">{title}</div>
 		<div class="body ws-empty-state-copy">{body}</div>
-		{#if onAction}
+		{#if onAction || onSecondaryAction}
 			<div class="actions">
-				<Button variant="primary" onclick={onAction}>{actionLabel}</Button>
+				{#if onAction}
+					<Button variant={actionVariant} onclick={onAction}>{actionLabel}</Button>
+				{/if}
+				{#if onSecondaryAction}
+					<Button variant={secondaryActionVariant} onclick={onSecondaryAction}
+						>{secondaryActionLabel ?? 'Cancel'}</Button
+					>
+				{/if}
 			</div>
 		{/if}
 		{#if hint}

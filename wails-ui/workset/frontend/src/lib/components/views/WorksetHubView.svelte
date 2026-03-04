@@ -1,12 +1,15 @@
 <script lang="ts">
 	import {
 		AlertCircle,
+		ArrowDownLeft,
 		ArrowLeft,
+		ArrowRight,
 		ArrowUpRight,
 		Archive,
 		ArchiveRestore,
 		Box,
 		CheckCircle2,
+		CircleDot,
 		Clock,
 		Command,
 		Eye,
@@ -14,33 +17,44 @@
 		FolderGit2,
 		GitBranch,
 		GitPullRequest,
-		Layers,
 		LayoutGrid,
 		List,
+		MessageSquare,
 		MoreHorizontal,
 		Pin,
 		PinOff,
 		Plus,
 		Search,
+		Terminal,
 		Trash2,
 	} from '@lucide/svelte';
 	import { clickOutside } from '../../actions/clickOutside';
+	import type { Workspace } from '../../types';
 	import type { WorksetSummary } from '../../view-models/worksetViewModel';
-
-	export type WorksetGroupMode = 'all' | 'template' | 'repo' | 'active';
-	export type WorksetLayoutMode = 'grid' | 'list';
-	type WorksetGroup = {
-		label: string;
-		items: WorksetSummary[];
-	};
+	import {
+		buildActiveWorksetRows,
+		buildWorksetAggregates,
+		buildWorksetGroups,
+		getHealthStatusLabel,
+		getThreadStatus,
+		resolveActiveWorksetCard,
+		resolveActiveWorkspaceEntry,
+		type ActiveRepoRow,
+		type WorksetAggregate,
+		type WorksetGroup,
+		type WorksetGroupMode,
+		type WorksetLayoutMode,
+	} from './WorksetHubView.helpers';
 
 	interface Props {
 		worksets: WorksetSummary[];
+		workspaceCatalog?: Workspace[];
 		shortcutMap?: Map<string, number>;
 		activeWorkspaceId: string | null;
 		groupMode?: WorksetGroupMode;
 		onSelectWorkspace: (workspaceId: string) => void;
 		onCreateWorkspace: () => void;
+		onOpenCockpit?: () => void;
 		onAddRepo: (workspaceId: string) => void;
 		onRemoveWorkspace: (workspaceId: string) => void;
 		onTogglePin: (workspaceId: string, nextPinned: boolean) => void;
@@ -55,10 +69,12 @@
 
 	const {
 		worksets,
+		workspaceCatalog = [],
 		shortcutMap,
 		activeWorkspaceId,
 		onSelectWorkspace,
 		onCreateWorkspace,
+		onOpenCockpit = () => {},
 		onAddRepo,
 		onRemoveWorkspace,
 		onTogglePin,
@@ -67,82 +83,44 @@
 		onClosePopout,
 		isWorkspacePoppedOut,
 		onGroupModeChange = () => {},
-		groupMode: groupModeProp = 'active',
-		layoutMode: layoutModeProp = 'grid',
+		groupMode: groupModeProp,
+		layoutMode: layoutModeProp,
 		onLayoutModeChange = () => {},
 	}: Props = $props();
 
 	const GROUP_MODES: Array<{ id: WorksetGroupMode; label: string; icon: typeof LayoutGrid }> = [
 		{ id: 'all', label: 'All', icon: LayoutGrid },
-		{ id: 'template', label: 'Template', icon: Layers },
 		{ id: 'repo', label: 'Repo', icon: FolderGit2 },
 		{ id: 'active', label: 'Active', icon: Clock },
 	];
-
 	let searchQuery = $state('');
-	let groupMode = $state<WorksetGroupMode>('active');
+	let groupMode = $state<WorksetGroupMode>('all');
 	let layoutMode = $state<WorksetLayoutMode>('grid');
 	let showArchived = $state(false);
 	let actionMenuFor = $state<string | null>(null);
-	let groupModeInitialized = false;
-	let layoutModeInitialized = false;
+	let menuClosedAt = $state(0);
 
 	$effect(() => {
-		if (groupModeInitialized) return;
+		if (groupModeProp === undefined || groupMode === groupModeProp) return;
 		groupMode = groupModeProp;
-		groupModeInitialized = true;
 	});
 
 	$effect(() => {
-		if (layoutModeInitialized) return;
+		if (layoutModeProp === undefined || layoutMode === layoutModeProp) return;
 		layoutMode = layoutModeProp;
-		layoutModeInitialized = true;
 	});
 
-	const sortWorksetsByName = (items: WorksetSummary[]): WorksetSummary[] =>
-		[...items].sort((left, right) => left.label.localeCompare(right.label));
-
-	const sortWorksetsByActivity = (items: WorksetSummary[]): WorksetSummary[] =>
-		[...items].sort((left, right) => {
-			if (left.pinned !== right.pinned) return left.pinned ? -1 : 1;
-			return right.lastActiveTs - left.lastActiveTs;
-		});
-
-	const groupByActivity = (items: WorksetSummary[]): WorksetGroup[] => {
-		const dayMs = 24 * 60 * 60 * 1000;
-		const now = Date.now();
-		const today: WorksetSummary[] = [];
-		const thisWeek: WorksetSummary[] = [];
-		const older: WorksetSummary[] = [];
-
-		for (const item of items) {
-			const age = now - item.lastActiveTs;
-			if (age < dayMs) {
-				today.push(item);
-				continue;
-			}
-			if (age < dayMs * 7) {
-				thisWeek.push(item);
-				continue;
-			}
-			older.push(item);
-		}
-
-		return [
-			{ label: 'Today', items: sortWorksetsByActivity(today) },
-			{ label: 'This Week', items: sortWorksetsByActivity(thisWeek) },
-			{ label: 'Older', items: sortWorksetsByActivity(older) },
-		].filter((group) => group.items.length > 0);
-	};
+	const allWorksets = $derived.by(() => buildWorksetAggregates(worksets));
 
 	const filtered = $derived.by(() => {
 		const query = searchQuery.trim().toLowerCase();
-		if (!query) {
-			return worksets;
-		}
-		return worksets.filter((item) => {
+		if (!query) return allWorksets;
+		return allWorksets.filter((item) => {
+			const threadNames = item.threads.map((thread) => thread.label).join(' ');
+			const branches = item.threads.map((thread) => thread.branch).join(' ');
+			const descriptions = item.threads.map((thread) => thread.description).join(' ');
 			const haystack =
-				`${item.label} ${item.description} ${item.template} ${item.branch} ${item.repos.join(
+				`${item.label} ${item.description} ${threadNames} ${branches} ${descriptions} ${item.repos.join(
 					' ',
 				)}`.toLowerCase();
 			return haystack.includes(query);
@@ -153,81 +131,51 @@
 		showArchived ? filtered : filtered.filter((item) => !item.archived),
 	);
 
-	const groups = $derived.by<WorksetGroup[]>(() => {
-		if (groupMode === 'all') {
-			const pinnedItems = visible.filter((item) => item.pinned);
-			if (pinnedItems.length === 0) {
-				return [{ label: '', items: sortWorksetsByName(visible) }];
-			}
-			const unpinnedItems = visible.filter((item) => !item.pinned);
-			return [
-				{ label: 'Pinned', items: sortWorksetsByName(pinnedItems) },
-				{ label: 'Unpinned', items: sortWorksetsByName(unpinnedItems) },
-			];
-		}
-
-		if (groupMode === 'template') {
-			const templateMap = new Map<string, WorksetSummary[]>();
-			for (const item of visible) {
-				const bucket = templateMap.get(item.template) ?? [];
-				bucket.push(item);
-				templateMap.set(item.template, bucket);
-			}
-			return [...templateMap.entries()]
-				.sort(([left], [right]) => left.localeCompare(right))
-				.map(([label, items]) => ({ label, items: sortWorksetsByName(items) }));
-		}
-
-		if (groupMode === 'repo') {
-			const repoMap = new Map<string, WorksetSummary[]>();
-			const noReposLabel = 'No Repos';
-			for (const item of visible) {
-				if (item.repos.length === 0) {
-					const bucket = repoMap.get(noReposLabel) ?? [];
-					bucket.push(item);
-					repoMap.set(noReposLabel, bucket);
-					continue;
-				}
-				for (const repoName of item.repos) {
-					const bucket = repoMap.get(repoName) ?? [];
-					if (!bucket.some((entry) => entry.id === item.id)) {
-						bucket.push(item);
-					}
-					repoMap.set(repoName, bucket);
-				}
-			}
-			return [...repoMap.entries()]
-				.sort((left, right) => {
-					if (left[0] === noReposLabel && right[0] !== noReposLabel) return 1;
-					if (right[0] === noReposLabel && left[0] !== noReposLabel) return -1;
-					const byCount = right[1].length - left[1].length;
-					if (byCount !== 0) return byCount;
-					return left[0].localeCompare(right[0]);
-				})
-				.map(([label, items]) => ({ label, items: sortWorksetsByName(items) }));
-		}
-
-		return groupByActivity(visible);
-	});
+	const groups = $derived.by<WorksetGroup[]>(() => buildWorksetGroups(visible, groupMode));
 
 	const visibleCatalog = $derived.by(() =>
-		showArchived ? worksets : worksets.filter((item) => !item.archived),
+		showArchived ? allWorksets : allWorksets.filter((item) => !item.archived),
 	);
 	const totalWorksets = $derived(visibleCatalog.length);
 	const totalRepos = $derived.by(
 		() =>
 			new Set(visibleCatalog.flatMap((item) => item.repos.map((repo) => repo.toLowerCase()))).size,
 	);
+	const totalThreads = $derived(visibleCatalog.reduce((acc, item) => acc + item.threads.length, 0));
 	const totalPrs = $derived(visibleCatalog.reduce((acc, item) => acc + item.openPrs, 0));
-	const totalMergedPrs = $derived(visibleCatalog.reduce((acc, item) => acc + item.mergedPrs, 0));
 	const totalDirty = $derived(visibleCatalog.reduce((acc, item) => acc + item.dirtyCount, 0));
 	const totalPinned = $derived(visibleCatalog.filter((item) => item.pinned).length);
-	const archivedCount = $derived(worksets.filter((item) => item.archived).length);
+	const archivedCount = $derived(allWorksets.filter((item) => item.archived).length);
+	const activeWorkspaceEntry = $derived.by(() =>
+		resolveActiveWorkspaceEntry(workspaceCatalog, activeWorkspaceId),
+	);
+	const activeWorksetCard = $derived.by(() =>
+		resolveActiveWorksetCard(allWorksets, visibleCatalog, activeWorkspaceEntry, activeWorkspaceId),
+	);
+	const activeWorksetRows = $derived.by<ActiveRepoRow[]>(() =>
+		buildActiveWorksetRows(activeWorksetCard, workspaceCatalog),
+	);
 
-	const getShortcutNumber = (workspaceId: string): number | undefined =>
-		shortcutMap?.get(workspaceId);
+	const getPrimaryThread = (item: WorksetAggregate): WorksetSummary | null => {
+		if (activeWorkspaceId) {
+			const activeThread = item.threads.find((thread) => thread.id === activeWorkspaceId);
+			if (activeThread) return activeThread;
+		}
+		return item.threads[0] ?? null;
+	};
 
-	let menuClosedAt = 0;
+	const getShortcutNumber = (item: WorksetAggregate): number | undefined => {
+		let value: number | undefined;
+		for (const thread of item.threads) {
+			const next = shortcutMap?.get(thread.id);
+			if (next === undefined) continue;
+			value = value === undefined ? next : Math.min(value, next);
+		}
+		return value;
+	};
+
+	const isItemActive = (item: WorksetAggregate): boolean =>
+		!!activeWorkspaceId && item.threads.some((thread) => thread.id === activeWorkspaceId);
 
 	const closeActionMenu = (): void => {
 		actionMenuFor = null;
@@ -235,67 +183,89 @@
 	};
 
 	const updateGroupMode = (next: WorksetGroupMode): void => {
+		if (groupMode === next) return;
 		groupMode = next;
 		onGroupModeChange(next);
 	};
 
 	const updateLayoutMode = (next: WorksetLayoutMode): void => {
+		if (layoutMode === next) return;
 		layoutMode = next;
 		onLayoutModeChange(next);
 	};
 
-	const toggleActionMenu = (workspaceId: string, event: MouseEvent): void => {
+	const toggleActionMenu = (itemId: string, event: MouseEvent): void => {
 		event.stopPropagation();
-		// Guard against clickOutside (capture phase) closing + toggle reopening in the same event cycle
+		// Avoid immediate reopen after clickOutside closes within the same event cycle.
 		if (Date.now() - menuClosedAt < 50) return;
-		actionMenuFor = actionMenuFor === workspaceId ? null : workspaceId;
+		actionMenuFor = actionMenuFor === itemId ? null : itemId;
 	};
 
-	const openWorkspace = (workspaceId: string): void => {
+	const openWorkset = (item: WorksetAggregate): void => {
 		closeActionMenu();
-		onSelectWorkspace(workspaceId);
+		const primaryThread = getPrimaryThread(item);
+		if (!primaryThread) return;
+		onSelectWorkspace(primaryThread.id);
 	};
 
-	const handleWorksetKeyboard = (event: KeyboardEvent, workspaceId: string): void => {
+	const handleWorksetKeyboard = (event: KeyboardEvent, item: WorksetAggregate): void => {
 		if (event.key !== 'Enter' && event.key !== ' ') return;
 		event.preventDefault();
-		openWorkspace(workspaceId);
+		openWorkset(item);
 	};
 
-	const handleTogglePin = (item: WorksetSummary, event: MouseEvent): void => {
+	const handleTogglePin = (item: WorksetAggregate, event: MouseEvent): void => {
 		event.stopPropagation();
 		closeActionMenu();
-		onTogglePin(item.id, !item.pinned);
+		const primaryThread = getPrimaryThread(item);
+		if (!primaryThread) return;
+		onTogglePin(primaryThread.id, !item.pinned);
 	};
 
-	const handleToggleArchive = (item: WorksetSummary, event: MouseEvent): void => {
+	const handleToggleArchive = (item: WorksetAggregate, event: MouseEvent): void => {
 		event.stopPropagation();
 		closeActionMenu();
-		onToggleArchived(item.id, item.archived);
+		const primaryThread = getPrimaryThread(item);
+		if (!primaryThread) return;
+		onToggleArchived(primaryThread.id, item.archived);
 	};
 
-	const handleAddRepo = (workspaceId: string, event: MouseEvent): void => {
+	const handleAddRepo = (item: WorksetAggregate, event: MouseEvent): void => {
 		event.stopPropagation();
 		closeActionMenu();
-		onAddRepo(workspaceId);
+		const primaryThread = getPrimaryThread(item);
+		if (!primaryThread) return;
+		onAddRepo(primaryThread.id);
 	};
 
-	const handleRemoveWorkspace = (workspaceId: string, event: MouseEvent): void => {
+	const handleRemoveWorkspace = (item: WorksetAggregate, event: MouseEvent): void => {
 		event.stopPropagation();
 		closeActionMenu();
-		onRemoveWorkspace(workspaceId);
+		const primaryThread = getPrimaryThread(item);
+		if (!primaryThread) return;
+		onRemoveWorkspace(primaryThread.id);
 	};
 
-	const handleOpenPopout = (workspaceId: string, event: MouseEvent): void => {
+	const handleOpenPopout = (item: WorksetAggregate, event: MouseEvent): void => {
 		event.stopPropagation();
 		closeActionMenu();
-		onOpenPopout(workspaceId);
+		const primaryThread = getPrimaryThread(item);
+		if (!primaryThread) return;
+		onOpenPopout(primaryThread.id);
 	};
 
-	const handleClosePopout = (workspaceId: string, event: MouseEvent): void => {
+	const handleClosePopout = (item: WorksetAggregate, event: MouseEvent): void => {
 		event.stopPropagation();
 		closeActionMenu();
-		onClosePopout(workspaceId);
+		const primaryThread = getPrimaryThread(item);
+		if (!primaryThread) return;
+		onClosePopout(primaryThread.id);
+	};
+
+	const itemHasPopout = (item: WorksetAggregate): boolean => {
+		const primaryThread = getPrimaryThread(item);
+		if (!primaryThread) return false;
+		return isWorkspacePoppedOut(primaryThread.id);
 	};
 </script>
 
@@ -303,7 +273,7 @@
 	<header class="hub-header">
 		<div class="title-wrap">
 			<h1>Worksets</h1>
-			<p>Your units of intent — each one owns repos, branches, PRs, and agent activity.</p>
+			<p>Each workset groups repos and feature threads into a single unit of intent.</p>
 		</div>
 		<button type="button" class="new-workset-btn" onclick={onCreateWorkspace}
 			><Plus size={16} /> New Workset</button
@@ -322,16 +292,14 @@
 			</div>
 			<div class="stat-pill">
 				<div class="ws-dot ws-dot-md ws-dot-clean"></div>
+				<span>Threads</span>
+				<strong>{totalThreads}</strong>
+			</div>
+			<div class="stat-pill">
+				<div class="ws-dot ws-dot-md ws-dot-clean"></div>
 				<span>Open PRs</span>
 				<strong>{totalPrs}</strong>
 			</div>
-			{#if totalMergedPrs > 0}
-				<div class="stat-pill">
-					<div class="ws-dot ws-dot-md ws-dot-violet"></div>
-					<span>Merged PRs</span>
-					<strong>{totalMergedPrs}</strong>
-				</div>
-			{/if}
 			{#if totalDirty > 0}
 				<div class="stat-pill">
 					<div class="ws-dot ws-dot-md ws-dot-gold"></div>
@@ -351,7 +319,7 @@
 				<Search size={15} />
 				<input
 					type="text"
-					placeholder="Search worksets, repos, templates..."
+					placeholder="Search worksets, repos, threads..."
 					bind:value={searchQuery}
 				/>
 			</label>
@@ -410,6 +378,83 @@
 	</header>
 
 	<section class="content">
+		{#if activeWorksetCard}
+			<div class="active-workset-card">
+				<div class="active-workset-header">
+					<div class="active-workset-title">
+						<div class="active-workset-icon">
+							<Box size={14} />
+						</div>
+						<div>
+							<h2>{activeWorksetCard.label}</h2>
+							<p>{activeWorksetCard.description}</p>
+						</div>
+					</div>
+					<div class="active-workset-actions">
+						<div class="daemon-pill">
+							<span class="daemon-dot"></span>
+							Daemon Active
+						</div>
+						<button type="button" class="cockpit-btn" onclick={onOpenCockpit}>
+							<Terminal size={12} />
+							Open Cockpit
+						</button>
+					</div>
+				</div>
+
+				<div class="active-workset-stats">
+					<span><FolderGit2 size={11} /> {activeWorksetCard.repos.length} repos</span>
+					<span><MessageSquare size={11} /> {activeWorksetCard.threads.length} threads</span>
+					{#if activeWorksetCard.openPrs > 0}
+						<span class="pr"><GitPullRequest size={11} /> {activeWorksetCard.openPrs} open PRs</span
+						>
+					{/if}
+					{#if activeWorksetCard.dirtyCount > 0}
+						<span class="dirty"><CircleDot size={11} /> {activeWorksetCard.dirtyCount} dirty</span>
+					{/if}
+					{#if activeWorksetCard.linesAdded > 0 || activeWorksetCard.linesRemoved > 0}
+						<span class="ws-diffstat">
+							<span class="ws-diffstat-add">+{activeWorksetCard.linesAdded}</span>
+							<span class="ws-diffstat-del">-{activeWorksetCard.linesRemoved}</span>
+						</span>
+					{/if}
+				</div>
+
+				<div class="active-repo-table">
+					{#each activeWorksetRows as repo (`active-${repo.name}`)}
+						<div class="active-repo-row">
+							<div class={`ws-dot ws-dot-sm ws-dot-${repo.status}`}></div>
+							<span class="repo-name">{repo.name}</span>
+							<span class="repo-branch">
+								<GitBranch size={10} />
+								{repo.branch}
+							</span>
+							<div class="repo-movement">
+								{#if repo.ahead > 0}
+									<span><ArrowUpRight size={10} /> {repo.ahead}</span>
+								{/if}
+								{#if repo.behind > 0}
+									<span><ArrowDownLeft size={10} /> {repo.behind}</span>
+								{/if}
+							</div>
+							{#if repo.prNumber}
+								<span class="repo-pr"><GitPullRequest size={10} /> #{repo.prNumber}</span>
+							{/if}
+							{#if repo.dirtyFiles > 0}
+								<span class="repo-dirty">{repo.dirtyFiles} dirty</span>
+							{/if}
+							<span class="repo-status">{getHealthStatusLabel(repo.status)}</span>
+						</div>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
+		<div class="all-worksets-heading">
+			<h2>All Worksets</h2>
+			<div class="line"></div>
+		</div>
+
 		{#if groups.length === 0 || groups.every((group) => group.items.length === 0)}
 			<div class="empty-state ws-empty-state">
 				<Search size={32} />
@@ -421,7 +466,13 @@
 					<div class="group">
 						{#if group.label}
 							<div class="group-header">
-								<Layers size={14} />
+								{#if groupMode === 'repo'}
+									<FolderGit2 size={14} />
+								{:else if groupMode === 'active'}
+									<Clock size={14} />
+								{:else}
+									<Box size={14} />
+								{/if}
 								<h2>{group.label}</h2>
 								<span>{group.items.length} workset{group.items.length !== 1 ? 's' : ''}</span>
 							</div>
@@ -432,20 +483,20 @@
 								{#each group.items as item (item.id)}
 									<div
 										class="workset-card"
-										class:active={activeWorkspaceId === item.id}
+										class:active={isItemActive(item)}
 										class:archived={item.archived}
 										role="button"
 										tabindex="0"
-										onclick={() => openWorkspace(item.id)}
-										onkeydown={(event) => handleWorksetKeyboard(event, item.id)}
+										onclick={() => openWorkset(item)}
+										onkeydown={(event) => handleWorksetKeyboard(event, item)}
 									>
-										{#if activeWorkspaceId === item.id}
+										{#if isItemActive(item)}
 											<div class="active-bar"></div>
 										{/if}
 
 										<div class="card-body">
 											<div class="card-head">
-												<div class="card-icon" class:active={activeWorkspaceId === item.id}>
+												<div class="card-icon" class:active={isItemActive(item)}>
 													<Box size={18} />
 												</div>
 
@@ -455,32 +506,36 @@
 														{#if item.pinned}
 															<Pin size={10} class="pin-indicator" />
 														{/if}
-														{#if activeWorkspaceId === item.id}
+														{#if isItemActive(item)}
 															<span class="badge active">Active</span>
 														{/if}
 														{#if item.archived}
 															<span class="badge archived">Archived</span>
 														{/if}
 													</div>
-													<span>{item.template}</span>
+													<span
+														>{item.threads.length} thread{item.threads.length !== 1
+															? 's'
+															: ''}</span
+													>
 												</div>
 
 												<div class="item-actions">
 													<button
 														type="button"
 														class="popout-trigger"
-														aria-label={isWorkspacePoppedOut(item.id)
+														aria-label={itemHasPopout(item)
 															? 'Return workspace to main window'
 															: 'Open workspace popout'}
-														title={isWorkspacePoppedOut(item.id)
+														title={itemHasPopout(item)
 															? 'Return to main window'
 															: 'Open workspace popout'}
 														onclick={(event) =>
-															isWorkspacePoppedOut(item.id)
-																? handleClosePopout(item.id, event)
-																: handleOpenPopout(item.id, event)}
+															itemHasPopout(item)
+																? handleClosePopout(item, event)
+																: handleOpenPopout(item, event)}
 													>
-														{#if isWorkspacePoppedOut(item.id)}
+														{#if itemHasPopout(item)}
 															<ArrowLeft size={13} />
 														{:else}
 															<ArrowUpRight size={13} />
@@ -517,7 +572,7 @@
 																</button>
 																<button
 																	type="button"
-																	onclick={(event) => handleAddRepo(item.id, event)}
+																	onclick={(event) => handleAddRepo(item, event)}
 																>
 																	<Plus size={13} />
 																	Add repo
@@ -539,7 +594,7 @@
 																<button
 																	type="button"
 																	class="item-delete"
-																	onclick={(event) => handleRemoveWorkspace(item.id, event)}
+																	onclick={(event) => handleRemoveWorkspace(item, event)}
 																>
 																	<Trash2 size={13} />
 																	Delete workset
@@ -554,9 +609,20 @@
 												<p class="card-description">{item.description}</p>
 											{/if}
 
-											<div class="branch-chip">
-												<GitBranch size={11} />
-												<span>{item.branch}</span>
+											<div class="thread-list">
+												{#each item.threads.slice(0, 3) as thread (thread.id)}
+													<div class="thread-line">
+														<span class="status-dot status-{getThreadStatus(thread)}"></span>
+														<span class="thread-name">{thread.label}</span>
+														<span class="thread-branch">
+															<GitBranch size={10} />
+															{thread.branch}
+														</span>
+													</div>
+												{/each}
+												{#if item.threads.length > 3}
+													<span class="thread-more">+{item.threads.length - 3} more</span>
+												{/if}
 											</div>
 
 											<div class="repo-chips">
@@ -581,7 +647,13 @@
 
 										<div class="card-footer">
 											<div class="footer-meta">
-												<span class="prs"><GitPullRequest size={10} /> {item.openPrs}</span>
+												<span class="prs"
+													><MessageSquare size={10} />
+													{item.threads.length} thread{item.threads.length !== 1 ? 's' : ''}</span
+												>
+												{#if item.openPrs > 0}
+													<span class="prs"><GitPullRequest size={10} /> {item.openPrs}</span>
+												{/if}
 												{#if item.mergedPrs > 0}
 													<span class="merged"
 														><CheckCircle2 size={10} /> {item.mergedPrs} merged</span
@@ -591,9 +663,13 @@
 												<span><Clock size={10} /> {item.lastActive}</span>
 											</div>
 											<div class="footer-actions">
-												{#if getShortcutNumber(item.id)}
-													<kbd class="ui-kbd"><Command size={7} />{getShortcutNumber(item.id)}</kbd>
+												{#if getShortcutNumber(item)}
+													<kbd class="ui-kbd"><Command size={7} />{getShortcutNumber(item)}</kbd>
 												{/if}
+												<div class="open-indicator">
+													Open
+													<ArrowRight size={10} />
+												</div>
 											</div>
 										</div>
 									</div>
@@ -604,14 +680,14 @@
 								{#each group.items as item (item.id)}
 									<div
 										class="list-row"
-										class:active={activeWorkspaceId === item.id}
+										class:active={isItemActive(item)}
 										class:archived={item.archived}
 										role="button"
 										tabindex="0"
-										onclick={() => openWorkspace(item.id)}
-										onkeydown={(event) => handleWorksetKeyboard(event, item.id)}
+										onclick={() => openWorkset(item)}
+										onkeydown={(event) => handleWorksetKeyboard(event, item)}
 									>
-										<div class="row-icon" class:active={activeWorkspaceId === item.id}>
+										<div class="row-icon" class:active={isItemActive(item)}>
 											<Box size={16} />
 										</div>
 
@@ -621,17 +697,19 @@
 												{#if item.pinned}
 													<Pin size={10} class="pin-indicator" />
 												{/if}
-												{#if activeWorkspaceId === item.id}
+												{#if isItemActive(item)}
 													<span class="badge active">Active</span>
 												{/if}
 												{#if item.archived}
 													<span class="badge archived">Archived</span>
 												{/if}
-												<span class="badge template">{item.template}</span>
 											</div>
-											{#if item.description}
-												<p>{item.description}</p>
-											{/if}
+											<p>
+												{item.threads
+													.slice(0, 2)
+													.map((thread) => thread.label)
+													.join(' · ')}
+											</p>
 										</div>
 
 										<div class="row-branch">
@@ -641,7 +719,7 @@
 
 										<div class="row-repo-count">
 											<FolderGit2 size={11} />
-											{item.repoCount}
+											{item.repos.length}
 										</div>
 
 										<div class="row-health">
@@ -655,7 +733,13 @@
 												><span class="ws-diffstat-add">+{item.linesAdded}</span>
 												<span class="ws-diffstat-del">-{item.linesRemoved}</span></span
 											>
-											<span class="prs"><GitPullRequest size={10} /> {item.openPrs}</span>
+											<span class="prs"
+												><MessageSquare size={10} />
+												{item.threads.length} thread{item.threads.length !== 1 ? 's' : ''}</span
+											>
+											{#if item.openPrs > 0}
+												<span class="prs"><GitPullRequest size={10} /> {item.openPrs}</span>
+											{/if}
 											{#if item.mergedPrs > 0}
 												<span class="merged"
 													><CheckCircle2 size={10} /> {item.mergedPrs} merged</span
@@ -665,26 +749,26 @@
 											<span>{item.lastActive}</span>
 										</div>
 
-										{#if getShortcutNumber(item.id)}
-											<kbd class="ui-kbd"><Command size={7} />{getShortcutNumber(item.id)}</kbd>
+										{#if getShortcutNumber(item)}
+											<kbd class="ui-kbd"><Command size={7} />{getShortcutNumber(item)}</kbd>
 										{/if}
 
 										<div class="item-actions">
 											<button
 												type="button"
 												class="popout-trigger"
-												aria-label={isWorkspacePoppedOut(item.id)
+												aria-label={itemHasPopout(item)
 													? 'Return workspace to main window'
 													: 'Open workspace popout'}
-												title={isWorkspacePoppedOut(item.id)
+												title={itemHasPopout(item)
 													? 'Return to main window'
 													: 'Open workspace popout'}
 												onclick={(event) =>
-													isWorkspacePoppedOut(item.id)
-														? handleClosePopout(item.id, event)
-														: handleOpenPopout(item.id, event)}
+													itemHasPopout(item)
+														? handleClosePopout(item, event)
+														: handleOpenPopout(item, event)}
 											>
-												{#if isWorkspacePoppedOut(item.id)}
+												{#if itemHasPopout(item)}
 													<ArrowLeft size={13} />
 												{:else}
 													<ArrowUpRight size={13} />
@@ -719,10 +803,7 @@
 																Pin to top
 															{/if}
 														</button>
-														<button
-															type="button"
-															onclick={(event) => handleAddRepo(item.id, event)}
-														>
+														<button type="button" onclick={(event) => handleAddRepo(item, event)}>
 															<Plus size={13} />
 															Add repo
 														</button>
@@ -743,7 +824,7 @@
 														<button
 															type="button"
 															class="item-delete"
-															onclick={(event) => handleRemoveWorkspace(item.id, event)}
+															onclick={(event) => handleRemoveWorkspace(item, event)}
 														>
 															<Trash2 size={13} />
 															Delete workset

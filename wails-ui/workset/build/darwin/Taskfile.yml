@@ -62,6 +62,7 @@ tasks:
     summary: Ad-hoc signs the app bundle (macOS only)
     internal: true
     cmds:
+      - find "{{.BIN_DIR}}/{{.APP_NAME}}.app" -name "*.cstemp" -delete || true
       - codesign --force --deep --sign - "{{.BIN_DIR}}/{{.APP_NAME}}.app"
 
   codesign:skip:
@@ -84,5 +85,6 @@ tasks:
         fi
       - cp "{{.BIN_DIR}}/{{.APP_NAME}}" "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS"
       - cp "build/darwin/Info.dev.plist" "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Info.plist"
+      - find "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app" -name "*.cstemp" -delete || true
       - codesign --force --deep --sign - "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app"
       - "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS/{{.APP_NAME}}"

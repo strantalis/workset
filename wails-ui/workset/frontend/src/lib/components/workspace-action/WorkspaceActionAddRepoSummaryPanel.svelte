@@ -1,17 +1,13 @@
 <script lang="ts">
 	import { ArrowRight } from '@lucide/svelte';
-	import type {
-		ExistingRepoContext,
-		WorkspaceActionAddRepoSelectedItem,
-	} from '../../services/workspaceActionContextService';
-	import WorksetTopology from '../WorksetTopology.svelte';
+	import type { ExistingRepoContext } from '../../services/workspaceActionContextService';
 
 	interface Props {
 		loading: boolean;
 		worksetName: string;
 		existingRepos: ExistingRepoContext[];
-		addRepoSelectedItems: WorkspaceActionAddRepoSelectedItem[];
 		addRepoTotalItems: number;
+		hasPendingSource?: boolean;
 		onSubmit: () => void;
 	}
 
@@ -19,36 +15,33 @@
 		loading,
 		worksetName,
 		existingRepos,
-		addRepoSelectedItems,
 		addRepoTotalItems,
+		hasPendingSource = false,
 		onSubmit,
 	}: Props = $props();
 
-	const topologyRepos = $derived.by(() => {
-		// Combine existing repos (dimmed) and selected repos (highlighted)
-		const existing = existingRepos.map((repo) => ({
-			name: repo.name,
-			highlighted: false,
-		}));
-		const selected = addRepoSelectedItems.map((item) => ({
-			name: item.name,
-			highlighted: true,
-		}));
-		return [...existing, ...selected];
-	});
-
 	const hasNewSelections = $derived(addRepoTotalItems > 0);
+	const canContinue = $derived(hasNewSelections || hasPendingSource);
+	const existingCount = $derived(existingRepos.length);
 </script>
 
 <div class="selection-panel">
-	<WorksetTopology repos={topologyRepos} centerLabel={worksetName} centerDim={!hasNewSelections} />
+	<div class="summary-strip">
+		<span>{existingCount} already in workset</span>
+		<span>{addRepoTotalItems} queued to add</span>
+	</div>
 
-	<button
-		type="button"
-		class="continue-btn"
-		onclick={onSubmit}
-		disabled={loading || !hasNewSelections}
-	>
+	<div class="selection-hint">
+		{#if hasNewSelections}
+			Ready to add {addRepoTotalItems} repo{addRepoTotalItems === 1 ? '' : 's'} to {worksetName}.
+		{:else if hasPendingSource}
+			Press Continue to add the typed repository source.
+		{:else}
+			Select one or more repositories to continue.
+		{/if}
+	</div>
+
+	<button type="button" class="continue-btn" onclick={onSubmit} disabled={loading || !canContinue}>
 		{#if loading}
 			Adding…
 		{:else}
@@ -61,13 +54,34 @@
 	.selection-panel {
 		display: flex;
 		flex-direction: column;
-		gap: 16px;
-		height: 100%;
-		max-height: 100%;
-		overflow: hidden;
+		gap: 10px;
+		min-height: 0;
+	}
+
+	.summary-strip {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 10px;
+		padding: 10px 12px;
+		border-radius: 10px;
+		border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+		background: color-mix(in srgb, var(--panel-strong) 72%, transparent);
+		font-size: var(--text-sm);
+		color: var(--muted);
+	}
+
+	.selection-hint {
+		font-size: var(--text-sm);
+		color: var(--muted);
+		border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+		border-radius: 10px;
+		padding: 10px 12px;
+		background: color-mix(in srgb, var(--panel-strong) 68%, transparent);
 	}
 
 	.continue-btn {
+		margin-top: auto;
 		width: 100%;
 		padding: 12px;
 		border: none;
@@ -97,5 +111,12 @@
 	.continue-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+
+	@media (max-width: 1120px) {
+		.summary-strip {
+			flex-direction: column;
+			align-items: flex-start;
+		}
 	}
 </style>

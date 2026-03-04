@@ -110,6 +110,7 @@ export const deriveWorkspaceActionModalTitle = (
 ): string => {
 	if (phase === 'hook-results') return 'Hook results';
 	if (mode === 'create') return 'Create workset';
+	if (mode === 'create-thread') return 'New thread';
 	if (mode === 'rename') return 'Rename workset';
 	if (mode === 'add-repo') return 'Add to workset';
 	if (mode === 'archive') return 'Archive workset';
@@ -120,16 +121,18 @@ export const deriveWorkspaceActionModalTitle = (
 
 export const deriveWorkspaceActionModalSubtitle = (input: ModalSubtitleInput): string => {
 	if (input.phase === 'hook-results') return input.hookResultContext?.name ?? '';
-	if (input.mode === 'create') return '';
+	if (input.mode === 'create' || input.mode === 'create-thread') return '';
 	return input.workspaceName ?? '';
 };
 
 export const deriveWorkspaceActionModalSize = (
 	mode: WorkspaceActionMode,
 	phase: WorkspaceActionModalPhase,
-): 'md' | 'wide' => {
+): 'md' | 'lg' | 'wide' | 'full' => {
 	if (phase === 'hook-results') return 'md';
-	if (mode === 'create' || mode === 'add-repo') return 'wide';
+	if (mode === 'add-repo') return 'full';
+	if (mode === 'create-thread') return 'lg';
+	if (mode === 'create') return 'wide';
 	return 'md';
 };
 

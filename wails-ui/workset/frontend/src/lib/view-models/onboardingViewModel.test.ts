@@ -1,18 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadOnboardingCatalog } from './onboardingViewModel';
-import { getGroup, listGroups, listRegisteredRepos } from '../api/settings';
+import { listRegisteredRepos } from '../api/settings';
 
 vi.mock('../api/settings', () => ({
-	getGroup: vi.fn(),
-	listGroups: vi.fn(),
 	listRegisteredRepos: vi.fn(),
 }));
 
 describe('onboardingViewModel', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		vi.mocked(listGroups).mockResolvedValue([]);
-		vi.mocked(getGroup).mockResolvedValue({ name: '', members: [] });
 	});
 
 	it('does not misclassify generic https repositories as TypeScript', async () => {

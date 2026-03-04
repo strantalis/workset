@@ -26,6 +26,7 @@
 	const authenticated = $derived(info?.status.authenticated ?? false);
 	const login = $derived(info?.status.login ?? '');
 	const cliInstalled = $derived(info?.cli.installed ?? false);
+	const cliWarning = $derived(info?.cli.error?.trim() ?? '');
 
 	const loadInfo = async (): Promise<void> => {
 		loading = true;
@@ -192,6 +193,10 @@
 			<div class="message success ws-message ws-message-success">{statusMessage}</div>
 		{/if}
 
+		{#if cliWarning && cliInstalled}
+			<div class="message warning ws-message ws-message-warning">{cliWarning}</div>
+		{/if}
+
 		<!-- Mode Toggle -->
 		<div class="mode-toggle">
 			<button
@@ -224,7 +229,8 @@
 				{#if !cliInstalled}
 					<div class="cli-not-installed">
 						<div class="message warning ws-message ws-message-warning">
-							GitHub CLI is not installed. Provide the `gh` binary path to continue.
+							{cliWarning ||
+								'GitHub CLI is not installed. Provide the `gh` binary path to continue.'}
 						</div>
 						<div class="cli-path-input">
 							<label class="input-label" for="settings-cli-path">GitHub CLI path</label>

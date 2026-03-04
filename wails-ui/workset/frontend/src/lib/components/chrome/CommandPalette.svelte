@@ -1,24 +1,8 @@
 <script lang="ts">
-	import {
-		Search,
-		Command,
-		Box,
-		LayoutGrid,
-		Terminal,
-		GitPullRequest,
-		GitBranch,
-		Sparkles,
-		Plus,
-	} from '@lucide/svelte';
+	import { Search, Command, Box, Terminal, GitBranch, Sparkles, Plus } from '@lucide/svelte';
 	import type { WorksetSummary } from '../../view-models/worksetViewModel';
 
-	export type AppView =
-		| 'workset-hub'
-		| 'command-center'
-		| 'terminal-cockpit'
-		| 'pr-orchestration'
-		| 'skill-registry'
-		| 'onboarding';
+	export type AppView = 'terminal-cockpit' | 'skill-registry' | 'onboarding';
 
 	type PaletteItem = {
 		id: string;
@@ -46,32 +30,11 @@
 
 	const viewItems: PaletteItem[] = [
 		{
-			id: 'view:workset-hub',
-			type: 'view',
-			label: 'Workset Hub',
-			description: 'Browse and organize worksets',
-			view: 'workset-hub',
-		},
-		{
-			id: 'view:command-center',
-			type: 'view',
-			label: 'Command Center',
-			description: 'Repository status and local changes',
-			view: 'command-center',
-		},
-		{
 			id: 'view:terminal-cockpit',
 			type: 'view',
 			label: 'Engineering Cockpit',
 			description: 'Workspace terminal control surface',
 			view: 'terminal-cockpit',
-		},
-		{
-			id: 'view:pr-orchestration',
-			type: 'view',
-			label: 'PR Orchestration',
-			description: 'PR and review operations',
-			view: 'pr-orchestration',
 		},
 		{
 			id: 'view:skill-registry',
@@ -260,12 +223,8 @@
 								onclick={() => selectItem(item)}
 							>
 								<span class="icon">
-									{#if item.view === 'workset-hub'}
-										<LayoutGrid size={14} />
-									{:else if item.view === 'terminal-cockpit'}
+									{#if item.view === 'terminal-cockpit'}
 										<Terminal size={14} />
-									{:else if item.view === 'pr-orchestration'}
-										<GitPullRequest size={14} />
 									{:else if item.view === 'skill-registry'}
 										<Sparkles size={14} />
 									{:else if item.view === 'onboarding'}
@@ -302,8 +261,9 @@
 		display: grid;
 		place-items: start center;
 		padding-top: 80px;
-		background: rgba(3, 6, 10, 0.72);
-		backdrop-filter: blur(3px);
+		background: rgba(3, 6, 10, 0.58);
+		backdrop-filter: blur(6px);
+		-webkit-backdrop-filter: blur(6px);
 	}
 
 	.overlay-dismiss {
@@ -319,10 +279,12 @@
 		z-index: 1;
 		width: min(620px, calc(100vw - 24px));
 		border-radius: 14px;
-		border: 1px solid var(--border);
-		background: var(--panel);
+		border: 1px solid var(--glass-border);
+		background: var(--glass-bg-strong);
+		backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+		-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 		overflow: hidden;
-		box-shadow: var(--shadow-lg);
+		box-shadow: var(--glass-shadow), var(--inset-highlight);
 	}
 
 	.search-row {

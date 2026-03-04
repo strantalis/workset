@@ -28,6 +28,7 @@
 	let statusText = $state<string | null>(null);
 	let cliPath = $state('');
 	let cliMissing = $state(false);
+	let cliWarning = $state<string | null>(null);
 
 	const formatError = (err: unknown, fallback: string): string => {
 		if (err instanceof Error) return err.message;
@@ -54,12 +55,15 @@
 		loading = true;
 		error = null;
 		statusText = null;
+		cliWarning = null;
 		try {
 			const info: GitHubAuthInfo = await setGitHubAuthMode('cli');
 			cliPath = info.cli.configuredPath ?? cliPath;
 			cliMissing = !info.cli.installed;
+			cliWarning = info.cli.error?.trim() ? info.cli.error : null;
 			if (!info.cli.installed) {
-				error = 'GitHub CLI is not installed. Provide the `gh` binary path to continue.';
+				error =
+					cliWarning ?? 'GitHub CLI is not installed. Provide the `gh` binary path to continue.';
 				return;
 			}
 			cliMissing = false;
@@ -88,11 +92,12 @@
 		try {
 			const info = await setGitHubCLIPath(path);
 			cliPath = info.cli.configuredPath ?? path;
+			cliWarning = info.cli.error?.trim() ? info.cli.error : null;
 			if (info.cli.installed) {
 				statusText = 'GitHub CLI path saved. Click “Check status” to continue.';
 				cliMissing = false;
 			} else {
-				error = 'GitHub CLI still not detected. Verify the path.';
+				error = cliWarning ?? 'GitHub CLI still not detected. Verify the path.';
 				cliMissing = true;
 			}
 		} catch (err) {
@@ -145,6 +150,7 @@
 				}
 				cliPath = info.cli.configuredPath ?? '';
 				cliMissing = !info.cli.installed;
+				cliWarning = info.cli.error?.trim() ? info.cli.error : null;
 			} catch {
 				// ignore
 			}
@@ -164,6 +170,8 @@
 
 	{#if error}
 		<Alert variant="error">{error}</Alert>
+	{:else if cliWarning}
+		<Alert variant="warning">{cliWarning}</Alert>
 	{:else if statusText}
 		<Alert variant="info">{statusText}</Alert>
 	{:else if notice}

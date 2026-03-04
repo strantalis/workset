@@ -2,142 +2,157 @@
  * @vitest-environment jsdom
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { mount, unmount } from 'svelte';
-import type { ComponentProps } from 'svelte';
-import type { Alias, GroupSummary } from '../../types';
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import WorkspaceActionAddRepoForm from './WorkspaceActionAddRepoForm.svelte';
+import * as githubApi from '../../api/github';
+import type { Alias } from '../../types';
+
+vi.mock('../../api/github', () => ({
+	searchGitHubRepositories: vi.fn(),
+}));
 
 const aliases: Alias[] = [{ name: 'repo-alias', path: '/tmp/repos/repo-alias' }];
-const groups: GroupSummary[] = [{ name: 'team-group', description: 'Shared repos', repo_count: 2 }];
-const groupDetails = new Map<string, string[]>([['team-group', ['repo-a', 'repo-b']]]);
-type AddRepoFormProps = ComponentProps<typeof WorkspaceActionAddRepoForm>;
-
-const baseProps = (): AddRepoFormProps => ({
-	loading: false,
-	activeTab: 'repos',
-	aliasItems: aliases,
-	groupItems: groups,
-	searchQuery: '',
-	addSource: '',
-	filteredAliases: aliases,
-	filteredGroups: groups,
-	selectedAliases: new Set<string>(),
-	selectedGroups: new Set<string>(),
-	expandedGroups: new Set<string>(),
-	groupDetails,
-	existingRepos: [{ name: 'repo-existing' }],
-	addRepoSelectedItems: [{ type: 'alias', name: 'repo-alias' }],
-	addRepoTotalItems: 1,
-	worksetName: 'test-workset',
-	getAliasSource: (alias: Alias) => alias.path || alias.url || '',
-	onTabChange: vi.fn(),
-	onSearchQueryInput: vi.fn(),
-	onAddSourceInput: vi.fn(),
-	onBrowse: vi.fn(),
-	onToggleAlias: vi.fn(),
-	onToggleGroup: vi.fn(),
-	onToggleGroupExpand: vi.fn(),
-	onRemoveAlias: vi.fn(),
-	onRemoveGroup: vi.fn(),
-	onSubmit: vi.fn(),
-});
 
 describe('WorkspaceActionAddRepoForm', () => {
-	let container: HTMLDivElement;
-
 	beforeEach(() => {
-		container = document.createElement('div');
-		document.body.appendChild(container);
+		vi.useFakeTimers();
+		vi.mocked(githubApi.searchGitHubRepositories).mockResolvedValue([]);
 	});
 
 	afterEach(() => {
-		container.remove();
+		vi.useRealTimers();
+		cleanup();
+		vi.clearAllMocks();
 	});
 
-	test('renders existing + selected items and triggers repos-tab callbacks', () => {
+	const baseProps = () => ({
+		loading: false,
+		aliasItems: aliases,
+		searchQuery: '',
+		addSource: '',
+		filteredAliases: aliases,
+		selectedAliases: new Set<string>(),
+		existingRepos: [{ name: 'repo-existing' }],
+		addRepoSelectedItems: [{ type: 'alias' as const, name: 'repo-alias' }],
+		addRepoTotalItems: 1,
+		worksetName: 'test-workset',
+		getAliasSource: (alias: Alias) => alias.path || alias.url || '',
+		onSearchQueryInput: vi.fn(),
+		onAddSourceInput: vi.fn(),
+		onBrowse: vi.fn(),
+		onToggleAlias: vi.fn(),
+		onRemoveAlias: vi.fn(),
+		onSubmit: vi.fn(),
+	});
+
+	test('renders seamless non-tabbed add flow and catalog interactions', async () => {
 		const props = baseProps();
-		const component = mount(WorkspaceActionAddRepoForm, {
-			target: container,
-			props,
-		});
-
-		expect(container).toHaveTextContent('test-workset');
-		expect(container).toHaveTextContent('Workset Topology');
-		expect(container).toHaveTextContent('2 repos');
-
-		const directTab = Array.from(container.querySelectorAll('button')).find(
-			(button) => button.textContent?.trim() === 'Direct',
+		const { container, getByText, getByPlaceholderText, queryByText } = render(
+			WorkspaceActionAddRepoForm,
+			{
+				props,
+			},
 		);
-		directTab?.click();
-		expect(props.onTabChange).toHaveBeenCalledWith('direct');
 
-		const aliasCheckbox = container.querySelector(
-			'.checkbox-item input[type="checkbox"]',
+		expect(queryByText('Direct')).not.toBeInTheDocument();
+		expect(queryByText('Groups (1)')).not.toBeInTheDocument();
+
+		const searchInput = getByPlaceholderText(
+			'Search catalog/GitHub, or paste repo URL/path (Enter)',
 		) as HTMLInputElement;
-		aliasCheckbox.click();
+		await fireEvent.input(searchInput, { target: { value: 'repo' } });
+		expect(props.onSearchQueryInput).toHaveBeenCalledWith('repo');
+
+		const aliasItem = container.querySelector('.registry-item') as HTMLButtonElement;
+		await fireEvent.click(aliasItem);
 		expect(props.onToggleAlias).toHaveBeenCalledWith('repo-alias');
 
-		// In the new topology-based UI, items are deselected by unchecking in the left panel
-		// rather than clicking a remove button in the summary panel
-		props.onRemoveAlias('repo-alias');
-		expect(props.onRemoveAlias).toHaveBeenCalledWith('repo-alias');
-
-		const submitButton = Array.from(container.querySelectorAll('button')).find((button) =>
-			button.textContent?.includes('Continue'),
-		);
-		submitButton?.click();
+		await fireEvent.click(getByText('Continue').closest('button') as HTMLButtonElement);
 		expect(props.onSubmit).toHaveBeenCalledTimes(1);
-
-		unmount(component);
 	});
 
-	test('triggers direct-tab source and browse callbacks', () => {
-		const props = baseProps();
-		props.activeTab = 'direct';
-		props.addSource = '/tmp/repos/new-repo';
-		props.addRepoSelectedItems = [{ type: 'repo', name: '/tmp/repos/new-repo' }];
+	test('searches GitHub and commits suggestion source', async () => {
+		vi.mocked(githubApi.searchGitHubRepositories).mockResolvedValue([
+			{
+				name: 'workset',
+				fullName: 'strantalis/workset',
+				owner: 'strantalis',
+				defaultBranch: 'main',
+				cloneUrl: 'https://github.com/strantalis/workset.git',
+				sshUrl: 'git@github.com:strantalis/workset.git',
+				private: false,
+				archived: false,
+				host: 'github.com',
+			},
+		]);
 
-		const component = mount(WorkspaceActionAddRepoForm, {
-			target: container,
+		const props = baseProps();
+		props.filteredAliases = [];
+		const { getByPlaceholderText, getByText } = render(WorkspaceActionAddRepoForm, {
 			props,
 		});
-
-		const sourceInput = container.querySelector(
-			'input[placeholder="git@github.com:org/repo.git"]',
+		const searchInput = getByPlaceholderText(
+			'Search catalog/GitHub, or paste repo URL/path (Enter)',
 		) as HTMLInputElement;
-		sourceInput.value = '/tmp/repos/updated-repo';
-		sourceInput.dispatchEvent(new Event('input', { bubbles: true }));
-		expect(props.onAddSourceInput).toHaveBeenCalledWith('/tmp/repos/updated-repo');
 
-		const browseButton = Array.from(container.querySelectorAll('button')).find(
-			(button) => button.textContent?.trim() === 'Browse',
-		);
-		browseButton?.click();
-		expect(props.onBrowse).toHaveBeenCalledTimes(1);
+		await fireEvent.input(searchInput, { target: { value: 'workset' } });
+		await vi.advanceTimersByTimeAsync(260);
 
-		// In the new topology-based UI, items are removed via the left panel, not the summary
-		// The direct tab source can be cleared by the onAddSourceInput callback
-		props.onAddSourceInput('');
-		expect(props.onAddSourceInput).toHaveBeenCalledWith('');
+		expect(githubApi.searchGitHubRepositories).toHaveBeenCalledWith('workset', 8);
+		await waitFor(() => {
+			expect(getByText('strantalis/workset')).toBeInTheDocument();
+		});
 
-		unmount(component);
+		await fireEvent.click(getByText('strantalis/workset').closest('button') as HTMLButtonElement);
+		expect(props.onAddSourceInput).toHaveBeenCalledWith('git@github.com:strantalis/workset.git');
+		expect(props.onSearchQueryInput).toHaveBeenCalledWith('');
 	});
 
-	test('disables submit when no items are selected', () => {
+	test('adds a direct source on Enter without Add button', async () => {
+		const props = baseProps();
+		const { getByPlaceholderText, queryByRole } = render(WorkspaceActionAddRepoForm, {
+			props,
+		});
+		const searchInput = getByPlaceholderText(
+			'Search catalog/GitHub, or paste repo URL/path (Enter)',
+		) as HTMLInputElement;
+		await fireEvent.input(searchInput, {
+			target: { value: 'git@github.com:strantalis/platform.git' },
+		});
+		await fireEvent.keyDown(searchInput, { key: 'Enter' });
+		expect(queryByRole('button', { name: 'Add' })).not.toBeInTheDocument();
+		expect(props.onAddSourceInput).toHaveBeenCalledWith('git@github.com:strantalis/platform.git');
+	});
+
+	test('disables continue when no items are selected', () => {
 		const props = baseProps();
 		props.addRepoSelectedItems = [];
 		props.addRepoTotalItems = 0;
 
-		const component = mount(WorkspaceActionAddRepoForm, {
-			target: container,
+		const { getByText } = render(WorkspaceActionAddRepoForm, {
 			props,
 		});
 
-		const submitButton = Array.from(container.querySelectorAll('button')).find((button) =>
-			button.textContent?.includes('Continue'),
-		) as HTMLButtonElement;
+		const submitButton = getByText('Continue').closest('button') as HTMLButtonElement;
 		expect(submitButton).toBeDisabled();
+	});
 
-		unmount(component);
+	test('enables continue when a valid direct source is pending', async () => {
+		const props = baseProps();
+		props.addRepoSelectedItems = [];
+		props.addRepoTotalItems = 0;
+
+		const { getByPlaceholderText, getByText } = render(WorkspaceActionAddRepoForm, {
+			props,
+		});
+		const searchInput = getByPlaceholderText(
+			'Search catalog/GitHub, or paste repo URL/path (Enter)',
+		) as HTMLInputElement;
+		await fireEvent.input(searchInput, {
+			target: { value: 'git@github.com:strantalis/platform.git' },
+		});
+
+		const submitButton = getByText('Continue').closest('button') as HTMLButtonElement;
+		expect(submitButton).not.toBeDisabled();
 	});
 });

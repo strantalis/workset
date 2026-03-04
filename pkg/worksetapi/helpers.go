@@ -15,7 +15,7 @@ import (
 func (s *Service) loadGlobal(ctx context.Context) (config.GlobalConfig, config.GlobalConfigLoadInfo, error) {
 	cfg, info, err := s.configs.Load(ctx, s.configPath)
 	if err == nil {
-		if migrateErr := s.migrateLegacyGroupRemotes(ctx, &cfg, info.Path); migrateErr != nil {
+		if migrateErr := s.runGlobalConfigMigrations(ctx, &cfg, info.Path, info); migrateErr != nil {
 			return config.GlobalConfig{}, info, migrateErr
 		}
 	}
@@ -53,11 +53,23 @@ func registerWorkspace(cfg *config.GlobalConfig, name, path string, now time.Tim
 			ref.CreatedAt = now.Format(time.RFC3339)
 		}
 	}
-	if template != "" && ref.Template == "" {
-		ref.Template = template
+	if ref.Workset == "" {
+		if template != "" {
+			ref.Workset = template
+		} else {
+			ref.Workset = name
+		}
 	}
 	ref.LastUsed = now.Format(time.RFC3339)
 	cfg.Workspaces[name] = ref
+}
+
+func workspaceRefWorkset(ref config.WorkspaceRef) string {
+	workset := strings.TrimSpace(ref.Workset)
+	if workset != "" {
+		return workset
+	}
+	return strings.TrimSpace(ref.Template)
 }
 
 func resolveWorkspaceTarget(arg string, cfg *config.GlobalConfig) (string, string, error) {

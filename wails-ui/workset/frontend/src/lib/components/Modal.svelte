@@ -61,9 +61,21 @@
 		width: min(var(--modal-width, 420px), 90%);
 		padding: 20px 22px;
 		border-radius: 16px;
-		border: 1px solid rgba(255, 255, 255, 0.08);
-		background: var(--panel-strong);
-		box-shadow: var(--shadow-lg), var(--inset-highlight);
+		border: 1px solid color-mix(in srgb, var(--glass-border) 90%, transparent);
+		background:
+			linear-gradient(
+				180deg,
+				rgba(255, 255, 255, 0.08) 0%,
+				rgba(255, 255, 255, 0.02) 42%,
+				rgba(255, 255, 255, 0) 100%
+			),
+			var(--glass-bg-strong);
+		backdrop-filter: blur(calc(var(--glass-blur) + 1px)) saturate(var(--glass-saturate));
+		-webkit-backdrop-filter: blur(calc(var(--glass-blur) + 1px)) saturate(var(--glass-saturate));
+		box-shadow:
+			var(--glass-shadow),
+			var(--inset-highlight),
+			0 0 0 1px color-mix(in srgb, var(--border) 32%, transparent);
 		display: flex;
 		flex-direction: column;
 		gap: 16px;
@@ -102,6 +114,10 @@
 		display: flex;
 		flex-direction: column;
 		gap: 12px;
+		border-radius: 12px;
+		border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+		background: color-mix(in srgb, var(--panel-strong) 88%, var(--panel));
+		padding: 12px;
 	}
 
 	.modal-footer {

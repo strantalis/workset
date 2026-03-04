@@ -1,0 +1,245 @@
+.cd-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 12px 16px;
+	border-bottom: 1px solid var(--border);
+	background: color-mix(in srgb, var(--panel) 50%, transparent);
+	flex-shrink: 0;
+}
+
+.cd-left {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-width: 0;
+}
+
+:global(.cd-icon) {
+	color: var(--muted);
+	flex-shrink: 0;
+}
+
+.cd-info {
+	min-width: 0;
+}
+
+.cd-title-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: var(--text-base);
+}
+
+.cd-repo {
+	color: var(--text);
+	font-weight: 500;
+	white-space: nowrap;
+}
+
+.cd-thread {
+	color: var(--muted);
+	font-size: var(--text-xxs);
+	white-space: nowrap;
+}
+
+.cd-arrow {
+	color: var(--muted);
+	opacity: 0.4;
+	font-size: var(--text-2xs);
+}
+
+.cd-branch {
+	font-family: var(--font-mono);
+	font-size: var(--text-mono-2xs);
+	color: var(--accent);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.cd-dot {
+	color: var(--muted);
+	opacity: 0.5;
+}
+
+.cd-meta {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 2px;
+	font-size: var(--text-2xs);
+	color: var(--muted);
+}
+
+.cd-add {
+	color: var(--success);
+}
+
+.cd-del {
+	color: var(--danger);
+}
+
+.cd-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-shrink: 0;
+}
+
+.cd-push-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 12px;
+	font-size: var(--text-xs);
+	font-weight: 500;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: transparent;
+	color: var(--muted);
+	cursor: pointer;
+	transition: all 150ms;
+}
+
+.cd-push-btn:hover:not(:disabled) {
+	color: var(--text);
+	border-color: color-mix(in srgb, var(--border) 140%, transparent);
+}
+
+.cd-push-btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.cd-body {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	overflow: hidden;
+}
+
+.cd-file-sidebar {
+	width: 28%;
+	min-width: 180px;
+	max-width: 360px;
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: column;
+	border-right: 1px solid var(--border);
+	overflow-y: auto;
+}
+
+.cd-file-head {
+	padding: 8px 12px;
+	font-size: var(--text-2xs);
+	color: var(--muted);
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.cd-file-list {
+	flex: 1;
+	overflow-y: auto;
+}
+
+.cd-file-loading {
+	padding: 12px;
+	font-size: var(--text-xs);
+	color: var(--muted);
+}
+
+.cd-file-card {
+	display: block;
+	width: 100%;
+	text-align: left;
+	padding: 10px 12px;
+	border: none;
+	border-bottom: 1px solid color-mix(in srgb, var(--border) 30%, transparent);
+	background: transparent;
+	cursor: pointer;
+	transition: background 120ms;
+}
+
+.cd-file-card:hover {
+	background: color-mix(in srgb, var(--panel-strong) 40%, transparent);
+}
+
+.cd-file-card.active {
+	background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.cd-file-top {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-bottom: 2px;
+}
+
+:global(.cd-file-icon) {
+	color: var(--muted);
+	flex-shrink: 0;
+}
+
+.cd-file-name {
+	font-size: var(--text-xxs);
+	color: var(--text);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.cd-file-card.active .cd-file-name {
+	color: var(--text);
+}
+
+.cd-file-dir {
+	font-size: var(--text-mono-2xs);
+	font-family: var(--font-mono);
+	color: var(--muted);
+	padding-left: 17px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.cd-file-stats {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding-left: 17px;
+	margin-top: 4px;
+}
+
+.cd-diff-bars {
+	display: flex;
+	gap: 1px;
+}
+
+.cd-bar {
+	width: 6px;
+	height: 8px;
+	border-radius: 1px;
+}
+
+.cd-bar-add {
+	background: color-mix(in srgb, var(--success) 70%, transparent);
+}
+
+.cd-bar-del {
+	background: color-mix(in srgb, var(--danger) 70%, transparent);
+}
+
+.cd-file-add {
+	font-size: var(--text-mono-2xs);
+	font-family: var(--font-mono);
+	color: var(--success);
+}
+
+.cd-file-del {
+	font-size: var(--text-mono-2xs);
+	font-family: var(--font-mono);
+	color: var(--danger);
+}

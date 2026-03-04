@@ -29,7 +29,10 @@ export type Workspace = {
 	id: string;
 	name: string;
 	path: string;
+	workset?: string;
 	template?: string;
+	worksetKey?: string;
+	worksetLabel?: string;
 	archived: boolean;
 	archivedAt?: string;
 	archivedReason?: string;
@@ -320,6 +323,8 @@ export type PullRequestSummary = {
 	headBranch: string;
 	updatedAt?: string;
 	mergeable?: string;
+	author?: string;
+	commentsCount?: number;
 };
 
 export type CheckAnnotation = {

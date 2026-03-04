@@ -18,8 +18,8 @@
 	--brand-green: #86c442;
 	--brand-orange: #f28c28;
 	--accent: var(--brand-blue);
-	--warning: var(--brand-orange);
-	--danger: #ff6b6b;
+	--warning: #f59e0b;
+	--danger: #ef4444;
 	--success: var(--brand-green);
 
 	/* Opacity scale */
@@ -82,7 +82,12 @@
 	--text-2xl: 21px;
 	--text-3xl: 26px;
 
+	/* Compact typography scale (design-spec) */
+	--text-2xs: 10px;
+	--text-xxs: 11px;
+
 	/* Monospace typography scale */
+	--text-mono-2xs: 10px;
 	--text-mono-xs: 12px;
 	--text-mono-sm: 13px;
 	--text-mono-base: 14px;
@@ -99,6 +104,12 @@
 	/* Vibrancy surfaces */
 	--surface-translucent: rgba(15, 24, 36, 0.65);
 	--surface-translucent-strong: rgba(20, 31, 46, 0.75);
+	--glass-bg: rgba(19, 31, 48, 0.54);
+	--glass-bg-strong: rgba(20, 33, 52, 0.66);
+	--glass-border: color-mix(in srgb, #9bc7ff 16%, var(--border));
+	--glass-shadow: 0 14px 36px rgba(0, 0, 0, 0.38);
+	--glass-blur: 12px;
+	--glass-saturate: 140%;
 
 	/* Subtle shadows for depth */
 	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.15);
@@ -107,6 +118,16 @@
 
 	/* Inset highlights for glass effect */
 	--inset-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+	:root {
+		--glass-bg: var(--panel-strong);
+		--glass-bg-strong: var(--panel-strong);
+		--glass-border: var(--border);
+		--glass-blur: 0px;
+		--glass-saturate: 100%;
+	}
 }
 
 *,

@@ -76,7 +76,7 @@ func (a *App) OpenWorkspacePopout(workspaceID string) (WorkspacePopoutPayload, e
 	values := url.Values{}
 	values.Set("popout", "1")
 	values.Set("workspace", workspaceID)
-	values.Set("view", "command-center")
+	values.Set("view", "terminal-cockpit")
 	values.Set("window", windowName)
 
 	window := a.runtimeApp.Window.NewWithOptions(application.WebviewWindowOptions{
@@ -87,8 +87,8 @@ func (a *App) OpenWorkspacePopout(workspaceID string) (WorkspacePopoutPayload, e
 		BackgroundColour: application.NewRGB(8, 16, 24),
 		URL:              "/?" + values.Encode(),
 		Mac: application.MacWindow{
-			TitleBar:                application.MacTitleBarHiddenInset,
-			InvisibleTitleBarHeight: 50,
+			TitleBar:                application.MacTitleBarHidden,
+			InvisibleTitleBarHeight: 34,
 			Backdrop:                application.MacBackdropTranslucent,
 		},
 	})

@@ -11,14 +11,30 @@
 		repos: RepoNode[];
 		centerLabel: string;
 		centerDim?: boolean;
+		density?: 'default' | 'compact';
 	}
 
-	const { repos, centerLabel, centerDim = false }: Props = $props();
+	const { repos, centerLabel, centerDim = false, density = 'default' }: Props = $props();
+
+	const geometry = $derived.by(() => {
+		if (density === 'compact') {
+			return {
+				radiusSingle: 88,
+				radiusMulti: 104,
+				wrapperSize: 236,
+			};
+		}
+		return {
+			radiusSingle: 120,
+			radiusMulti: 140,
+			wrapperSize: 320,
+		};
+	});
 
 	const repoPositions = $derived.by(() => {
 		if (repos.length === 0) return [];
 		const total = repos.length;
-		const radius = total === 1 ? 120 : 140;
+		const radius = total === 1 ? geometry.radiusSingle : geometry.radiusMulti;
 		return repos.map((repo, i) => {
 			const angle = total === 1 ? 0 : (i / total) * 2 * Math.PI - Math.PI / 2;
 			return {
@@ -31,15 +47,21 @@
 	});
 </script>
 
-<div class="topology-container">
+<div class="topology-container" class:compact={density === 'compact'}>
 	<div class="topo-gradient"></div>
 
 	<h3 class="topo-title ws-section-title">Workset Topology</h3>
 
 	<div class="topo-area">
-		<div class="topo-center-wrapper">
+		<div
+			class="topo-center-wrapper"
+			style={`width: ${geometry.wrapperSize}px; height: ${geometry.wrapperSize}px;`}
+		>
 			<!-- SVG layer for animated connection lines -->
-			<svg class="topo-svg" viewBox="-160 -160 320 320">
+			<svg
+				class="topo-svg"
+				viewBox={`-${geometry.wrapperSize / 2} -${geometry.wrapperSize / 2} ${geometry.wrapperSize} ${geometry.wrapperSize}`}
+			>
 				{#each repoPositions as pos, i (pos.name + '-line')}
 					<line
 						x1="0"
@@ -100,6 +122,12 @@
 		min-height: 360px;
 	}
 
+	.topology-container.compact {
+		min-height: 286px;
+		padding: 16px;
+		border-radius: 14px;
+	}
+
 	.topo-gradient {
 		position: absolute;
 		inset: 0;
@@ -142,8 +170,6 @@
 
 	.topo-center-wrapper {
 		position: relative;
-		width: 320px;
-		height: 320px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -169,6 +195,15 @@
 		transition:
 			transform 0.3s,
 			opacity 0.3s;
+	}
+
+	.topology-container.compact .hub-node {
+		width: 78px;
+		height: 78px;
+	}
+
+	.topology-container.compact .hub-label {
+		max-width: 68px;
 	}
 
 	.hub-node.dim {
@@ -202,8 +237,7 @@
 	/* ── SVG connection lines ── */
 	.topo-svg {
 		position: absolute;
-		width: 320px;
-		height: 320px;
+		inset: 0;
 		pointer-events: none;
 		overflow: visible;
 	}
@@ -253,6 +287,17 @@
 			opacity 0.25s ease;
 	}
 
+	.topology-container.compact .repo-node {
+		width: 50px;
+		height: 50px;
+		margin-left: -25px;
+		margin-top: -25px;
+	}
+
+	.topology-container.compact .repo-node-label {
+		max-width: 42px;
+	}
+
 	.repo-node.highlighted {
 		border-color: var(--success);
 		color: var(--success);
@@ -288,6 +333,10 @@
 		text-align: center;
 		position: relative;
 		z-index: 1;
+	}
+
+	.topology-container.compact .topo-footer {
+		margin-top: 12px;
 	}
 
 	.topo-badge {

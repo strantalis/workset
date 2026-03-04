@@ -1,39 +1,39 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import type { Alias, GroupSummary, Repo } from '../../types';
+	import type { Alias, Repo } from '../../types';
 	import type {
 		ExistingRepoContext,
 		WorkspaceActionAddRepoSelectedItem,
 	} from '../../services/workspaceActionContextService';
 	import Button from '../ui/Button.svelte';
 	import WorkspaceActionAddRepoForm from './WorkspaceActionAddRepoForm.svelte';
+	import WorkspaceActionCreateForm from './WorkspaceActionCreateForm.svelte';
 	import WorkspaceActionRemoveRepoForm from './WorkspaceActionRemoveRepoForm.svelte';
 	import WorkspaceActionRemoveWorkspaceForm from './WorkspaceActionRemoveWorkspaceForm.svelte';
 
 	type Mode =
 		| 'create'
+		| 'create-thread'
 		| 'rename'
 		| 'add-repo'
 		| 'archive'
 		| 'remove-workspace'
 		| 'remove-repo'
 		| null;
-	type CreateTab = 'direct' | 'repos' | 'groups';
+	type ThreadHookPreviewRow = {
+		repoName: string;
+		hooks: string[];
+		hasSource: boolean;
+	};
 
 	interface Props {
 		mode: Mode;
 		loading: boolean;
 
-		activeTab: CreateTab;
 		aliasItems: Alias[];
-		groupItems: GroupSummary[];
 		searchQuery: string;
 		filteredAliases: Alias[];
-		filteredGroups: GroupSummary[];
 		selectedAliases: Set<string>;
-		selectedGroups: Set<string>;
-		expandedGroups: Set<string>;
-		groupDetails: Map<string, string[]>;
 		getAliasSource: (alias: Alias) => string;
 
 		renameName: string;
@@ -45,16 +45,28 @@
 		addRepoSelectedItems: WorkspaceActionAddRepoSelectedItem[];
 		addRepoTotalItems: number;
 		worksetName: string;
-		onAddTabChange: (tab: CreateTab) => void;
 		onAddSearchQueryInput: (value: string) => void;
 		onAddSourceInput: (value: string) => void;
 		onAddBrowse: () => void;
 		onAddToggleAlias: (name: string) => void;
-		onAddToggleGroup: (name: string) => void;
-		onAddToggleGroupExpand: (name: string) => void;
 		onAddRemoveAlias: (name: string) => void;
-		onAddRemoveGroup: (name: string) => void;
 		onAddSubmit: () => void;
+
+		createWorkspaceName: string;
+		createWorksetLabel?: string | null;
+		createSourceInput: string;
+		createDirectRepos: Array<{ url: string; register: boolean }>;
+		createThreadHookRows?: ThreadHookPreviewRow[];
+		createThreadHooksLoading?: boolean;
+		createThreadHooksError?: string | null;
+		onCreateWorkspaceNameInput: (value: string) => void;
+		onCreateSearchQueryInput: (value: string) => void;
+		onCreateSourceInput: (value: string) => void;
+		onCreateAddDirectRepo: () => void;
+		onCreateRemoveDirectRepo: (url: string) => void;
+		onCreateToggleDirectRepoRegister: (url: string) => void;
+		onCreateToggleAlias: (name: string) => void;
+		onCreateSubmit: () => void;
 
 		archiveReason: string;
 		onArchiveReasonInput: (value: string) => void;
@@ -86,16 +98,10 @@
 		mode,
 		loading,
 
-		activeTab,
 		aliasItems,
-		groupItems,
 		searchQuery,
 		filteredAliases,
-		filteredGroups,
 		selectedAliases,
-		selectedGroups,
-		expandedGroups,
-		groupDetails,
 		getAliasSource,
 
 		renameName,
@@ -107,16 +113,28 @@
 		addRepoSelectedItems,
 		addRepoTotalItems,
 		worksetName,
-		onAddTabChange,
 		onAddSearchQueryInput,
 		onAddSourceInput,
 		onAddBrowse,
 		onAddToggleAlias,
-		onAddToggleGroup,
-		onAddToggleGroupExpand,
 		onAddRemoveAlias,
-		onAddRemoveGroup,
 		onAddSubmit,
+
+		createWorkspaceName,
+		createWorksetLabel = null,
+		createSourceInput,
+		createDirectRepos,
+		createThreadHookRows = [],
+		createThreadHooksLoading = false,
+		createThreadHooksError = null,
+		onCreateWorkspaceNameInput,
+		onCreateSearchQueryInput,
+		onCreateSourceInput,
+		onCreateAddDirectRepo,
+		onCreateRemoveDirectRepo,
+		onCreateToggleDirectRepoRegister,
+		onCreateToggleAlias,
+		onCreateSubmit,
 
 		archiveReason,
 		onArchiveReasonInput,
@@ -153,7 +171,31 @@
 	});
 </script>
 
-{#if mode === 'rename'}
+{#if mode === 'create' || mode === 'create-thread'}
+	<WorkspaceActionCreateForm
+		{loading}
+		modeVariant={mode === 'create-thread' ? 'thread' : 'workset'}
+		worksetLabel={createWorksetLabel}
+		workspaceName={createWorkspaceName}
+		{searchQuery}
+		sourceInput={createSourceInput}
+		directRepos={createDirectRepos}
+		threadHookRows={createThreadHookRows}
+		threadHooksLoading={createThreadHooksLoading}
+		threadHooksError={createThreadHooksError}
+		{filteredAliases}
+		{selectedAliases}
+		{getAliasSource}
+		onWorkspaceNameInput={onCreateWorkspaceNameInput}
+		onSearchQueryInput={onCreateSearchQueryInput}
+		onSourceInput={onCreateSourceInput}
+		onAddDirectRepo={onCreateAddDirectRepo}
+		onRemoveDirectRepo={onCreateRemoveDirectRepo}
+		onToggleDirectRepoRegister={onCreateToggleDirectRepoRegister}
+		onToggleAlias={onCreateToggleAlias}
+		onSubmit={onCreateSubmit}
+	/>
+{:else if mode === 'rename'}
 	<div class="form ws-form-stack">
 		<label class="field ws-field">
 			<span>New name</span>
@@ -176,31 +218,21 @@
 {:else if mode === 'add-repo'}
 	<WorkspaceActionAddRepoForm
 		{loading}
-		{activeTab}
 		{aliasItems}
-		{groupItems}
 		{searchQuery}
 		{addSource}
 		{filteredAliases}
-		{filteredGroups}
 		{selectedAliases}
-		{selectedGroups}
-		{expandedGroups}
-		{groupDetails}
 		{existingRepos}
 		{addRepoSelectedItems}
 		{addRepoTotalItems}
 		{worksetName}
 		{getAliasSource}
-		onTabChange={onAddTabChange}
 		onSearchQueryInput={onAddSearchQueryInput}
 		{onAddSourceInput}
 		onBrowse={onAddBrowse}
 		onToggleAlias={onAddToggleAlias}
-		onToggleGroup={onAddToggleGroup}
-		onToggleGroupExpand={onAddToggleGroupExpand}
 		onRemoveAlias={onAddRemoveAlias}
-		onRemoveGroup={onAddRemoveGroup}
 		onSubmit={onAddSubmit}
 	/>
 {:else if mode === 'archive'}

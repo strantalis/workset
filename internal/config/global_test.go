@@ -39,6 +39,9 @@ func TestLoadGlobalDefaults(t *testing.T) {
 	if cfg.Defaults.TerminalDebugOverlay == "" {
 		t.Fatalf("expected default terminal_debug_overlay set")
 	}
+	if cfg.ConfigVersion != CurrentGlobalConfigVersion {
+		t.Fatalf("expected default config_version %d, got %d", CurrentGlobalConfigVersion, cfg.ConfigVersion)
+	}
 }
 
 func TestSaveLoadGlobal(t *testing.T) {
@@ -68,6 +71,89 @@ func TestSaveLoadGlobal(t *testing.T) {
 	}
 	if loaded.Workspaces["alpha"].ArchivedReason != "paused" {
 		t.Fatalf("expected archived_reason preserved, got %+v", loaded.Workspaces["alpha"])
+	}
+}
+
+func TestLoadGlobalReadsLegacyWorkspacesKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	legacy := `
+defaults:
+  base_branch: main
+workspaces:
+  alpha:
+    path: /tmp/alpha
+`
+	if err := os.WriteFile(path, []byte(strings.TrimSpace(legacy)+"\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, info, err := LoadGlobalWithInfo(path)
+	if err != nil {
+		t.Fatalf("LoadGlobal: %v", err)
+	}
+	if !info.UsedLegacyWorkspacesKey {
+		t.Fatalf("expected legacy workspaces key to be detected")
+	}
+	if info.ConfigVersionPresent {
+		t.Fatalf("expected config_version to be absent for legacy file")
+	}
+	if info.ConfigVersion != LegacyGlobalConfigVersion {
+		t.Fatalf("expected legacy config_version %d, got %d", LegacyGlobalConfigVersion, info.ConfigVersion)
+	}
+	if cfg.ConfigVersion != LegacyGlobalConfigVersion {
+		t.Fatalf("expected loaded config_version %d, got %d", LegacyGlobalConfigVersion, cfg.ConfigVersion)
+	}
+	if cfg.Workspaces["alpha"].Path != "/tmp/alpha" {
+		t.Fatalf("expected legacy workspace migrated into worksets map, got %+v", cfg.Workspaces["alpha"])
+	}
+}
+
+func TestSaveGlobalWritesWorksetsKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	cfg := DefaultConfig()
+	cfg.Workspaces["alpha"] = WorkspaceRef{Path: "/tmp/alpha"}
+
+	if err := SaveGlobal(path, cfg); err != nil {
+		t.Fatalf("SaveGlobal: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "config_version: 1") {
+		t.Fatalf("expected config_version key, got %q", text)
+	}
+	if !strings.Contains(text, "worksets:") {
+		t.Fatalf("expected worksets key, got %q", text)
+	}
+	if strings.Contains(text, "\nworkspaces:") {
+		t.Fatalf("did not expect legacy workspaces key, got %q", text)
+	}
+}
+
+func TestSaveGlobalMigratesTemplateToWorkset(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	cfg := DefaultConfig()
+	cfg.Workspaces["alpha"] = WorkspaceRef{
+		Path:     "/tmp/alpha",
+		Template: "legacy-template",
+	}
+
+	if err := SaveGlobal(path, cfg); err != nil {
+		t.Fatalf("SaveGlobal: %v", err)
+	}
+	loaded, err := LoadGlobal(path)
+	if err != nil {
+		t.Fatalf("LoadGlobal: %v", err)
+	}
+	ref := loaded.Workspaces["alpha"]
+	if ref.Workset != "legacy-template" {
+		t.Fatalf("expected workset from legacy template, got %q", ref.Workset)
+	}
+	if ref.Template != "" {
+		t.Fatalf("expected legacy template stripped, got %q", ref.Template)
 	}
 }
 
@@ -210,5 +296,20 @@ func TestLoadGlobalMigratesLegacyConfig(t *testing.T) {
 	newPath := filepath.Join(home, ".workset", "config.yaml")
 	if _, err := os.Stat(newPath); err != nil {
 		t.Fatalf("expected migrated config at %s: %v", newPath, err)
+	}
+}
+
+func TestLoadGlobalRejectsUnsupportedFutureConfigVersion(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	raw := `
+config_version: 999
+defaults:
+  base_branch: main
+`
+	if err := os.WriteFile(path, []byte(strings.TrimSpace(raw)+"\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	if _, _, err := LoadGlobalWithInfo(path); err == nil || !strings.Contains(err.Error(), "unsupported config_version") {
+		t.Fatalf("expected unsupported config_version error, got %v", err)
 	}
 }

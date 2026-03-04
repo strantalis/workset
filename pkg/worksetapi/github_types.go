@@ -42,18 +42,20 @@ type ListRemotesResult struct {
 
 // PullRequestCreatedJSON describes a created pull request.
 type PullRequestCreatedJSON struct {
-	Repo       string `json:"repo"`
-	Number     int    `json:"number"`
-	URL        string `json:"url"`
-	Title      string `json:"title"`
-	Body       string `json:"body,omitempty"`
-	Draft      bool   `json:"draft"`
-	State      string `json:"state"`
-	Merged     bool   `json:"merged"`
-	BaseRepo   string `json:"base_repo"`
-	BaseBranch string `json:"base_branch"`
-	HeadRepo   string `json:"head_repo"`
-	HeadBranch string `json:"head_branch"`
+	Repo          string `json:"repo"`
+	Number        int    `json:"number"`
+	URL           string `json:"url"`
+	Title         string `json:"title"`
+	Body          string `json:"body,omitempty"`
+	Draft         bool   `json:"draft"`
+	State         string `json:"state"`
+	Merged        bool   `json:"merged"`
+	BaseRepo      string `json:"base_repo"`
+	BaseBranch    string `json:"base_branch"`
+	HeadRepo      string `json:"head_repo"`
+	HeadBranch    string `json:"head_branch"`
+	Author        string `json:"author,omitempty"`
+	CommentsCount int    `json:"comments_count,omitempty"`
 }
 
 // PullRequestCreateResult wraps PR creation payload with config metadata.

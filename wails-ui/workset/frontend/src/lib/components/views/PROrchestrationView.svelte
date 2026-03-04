@@ -1,47 +1,13 @@
 <script lang="ts">
-	import {
-		AlertCircle,
-		ArrowUpRight,
-		CheckCircle2,
-		ChevronRight,
-		Circle,
-		ExternalLink,
-		FileCode,
-		GitBranch,
-		GitCommit,
-		GitPullRequest,
-		Loader2,
-		MessageSquare,
-		Upload,
-		XCircle,
-	} from '@lucide/svelte';
+	// prettier-ignore
+	import { AlertCircle, CheckCircle2, ChevronRight, Circle, Clock, ExternalLink, FileCode, GitCommit, GitMerge, GitPullRequest, Loader2, MessageSquare, ThumbsDown, ThumbsUp, Upload, XCircle } from '@lucide/svelte';
 	import { Browser } from '@wailsio/runtime';
-	import type {
-		PullRequestCreated,
-		PullRequestReviewComment,
-		PullRequestStatusResult,
-		RepoFileDiff,
-		RepoDiffFileSummary,
-		RepoDiffSummary,
-		Workspace,
-	} from '../../types';
-	import {
-		createPullRequest,
-		fetchPullRequestReviews,
-		fetchPullRequestStatus,
-		fetchRepoLocalStatus,
-		fetchTrackedPullRequest,
-		generatePullRequestText,
-		listRemotes,
-		replyToReviewComment,
-		resolveReviewThread,
-		startCommitAndPushAsync,
-	} from '../../api/github';
-	import type {
-		GitHubOperationStage,
-		GitHubOperationStatus,
-		RepoLocalStatus,
-	} from '../../api/github';
+	// prettier-ignore
+	import type { PullRequestCreated, PullRequestReviewComment, PullRequestStatusResult, RepoFileDiff, RepoDiffFileSummary, RepoDiffSummary, Workspace } from '../../types';
+	// prettier-ignore
+	import { fetchPullRequestReviews, fetchPullRequestStatus, fetchRepoLocalStatus, fetchTrackedPullRequest, generatePullRequestText, listRemotes, replyToReviewComment, resolveReviewThread, startCommitAndPushAsync } from '../../api/github';
+	// prettier-ignore
+	import type { GitHubOperationStage, GitHubOperationStatus, RepoLocalStatus } from '../../api/github';
 	import { subscribeGitHubOperationEvent } from '../../githubOperationService';
 	import { deleteReviewComment, editReviewComment } from '../../api/github/review';
 	import { fetchCurrentGitHubUser } from '../../api/github/user';
@@ -76,13 +42,10 @@
 	import { resolveBranchRefs } from '../../diff/branchRefs';
 	import ResizablePanel from '../ui/ResizablePanel.svelte';
 	import PROrchestrationChecksPanel from './PROrchestrationChecksPanel.svelte';
+	import PROrchestrationReadyDetail from './PROrchestrationReadyDetail.svelte';
 	import PROrchestrationSidebar from './PROrchestrationSidebar.svelte';
 	import { mapWorkspaceToPrItems } from '../../view-models/prViewModel';
-	import {
-		buildCheckStats,
-		buildDiffTargetKey,
-		buildReviewThreads,
-	} from './prOrchestrationHelpers';
+	import { buildCheckStats, buildDiffTargetKey } from './prOrchestrationHelpers';
 	import {
 		applyPrStatusEvent,
 		buildFileDiffCacheKeyForSource,
@@ -135,24 +98,17 @@
 		);
 		return { active, merged, tracked, readyToPR };
 	});
-	const activeCount = $derived(partitions.active.length);
-	const mergedCount = $derived(partitions.merged.length);
-	const trackedCount = $derived(partitions.tracked.length);
-	const readyCount = $derived(partitions.readyToPR.length);
 
-	// ─── Sidebar state ──────────────────────────────────────────────────
 	let viewMode: 'active' | 'ready' = $state('active');
 	let selectedItemId: string | null = $state(null);
 	let lastAppliedFocusKey = $state<string | null>(null);
 
-	// ─── Detail tab state ───────────────────────────────────────────────
-	let activeTab: 'files' | 'checks' = $state('files');
+	let activeTab: 'overview' | 'files' | 'checks' = $state('overview');
 
 	let trackedPr: PullRequestCreated | null = $state(null);
 	let trackedPrLoading = $state(false);
 	let trackedPrRequestId = 0;
 
-	// ─── Files tab ──────────────────────────────────────────────────────
 	let diffSummary: RepoDiffSummary | null = $state(null);
 	let localSummary: RepoDiffSummary | null = $state(null);
 	let diffSummaryLoading = $state(false);
@@ -169,7 +125,6 @@
 	let localSummaryRequestId = 0;
 	let fileDiffRequestId = 0;
 
-	// ─── Checks ─────────────────────────────────────────────────────────
 	let prStatus: PullRequestStatusResult | null = $state(null);
 	let prStatusLoading = $state(false);
 	let prStatusRequestId = 0;
@@ -178,16 +133,12 @@
 	let prReviewsLoading = $state(false);
 	let currentUserId: number | null = $state(null);
 
-	// ─── Ready-to-PR form ───────────────────────────────────────────────
 	let prTitle = $state('');
 	let prBody = $state('');
-	let isDraft = $state(false);
-	let isCreating = $state(false);
-	let prCreated = $state(false);
-	let prTextGenerating = $state(false);
 
 	let repoLocalStatus: RepoLocalStatus | null = $state(null);
 	let commitPushLoading = $state(false);
+	let commitPushRepoId: string | null = $state(null);
 	let commitPushStage: GitHubOperationStage | null = $state(null);
 	let commitPushError: string | null = $state(null);
 	let commitPushSuccess = $state(false);
@@ -206,7 +157,6 @@
 	const resolveTrackedTitle = (repoId: string, fallbackTitle: string): string =>
 		trackedPrMap.get(repoId)?.title ?? fallbackTitle;
 
-	// ─── Derived selectors ──────────────────────────────────────────────
 	const selectedItem = $derived(prItems.find((item) => item.id === selectedItemId) ?? null);
 	const wsId = $derived(workspace?.id ?? '');
 	const selectedRepoId = $derived(selectedItem?.repoId ?? '');
@@ -241,9 +191,6 @@
 	const isReadyDetail = $derived.by(() => viewMode === 'ready' && selectedItem != null);
 
 	const checkStats = $derived(buildCheckStats(prStatus));
-	const reviewThreads = $derived(buildReviewThreads(prReviews));
-
-	const unresolvedCount = $derived(reviewThreads.filter((t) => !t.resolved).length);
 
 	const shouldSplitLocalPendingSection = $derived.by(() => {
 		const ls = localSummary;
@@ -277,7 +224,6 @@
 
 	const commitPushStageLabel = $derived(formatCommitPushStageLabel(commitPushStage));
 
-	// ─── Annotation actions controller ──────────────────────────────────
 	const annotationController = createReviewAnnotationActionsController({
 		document,
 		workspaceId: () => workspace?.id ?? '',
@@ -311,7 +257,6 @@
 		},
 	});
 
-	// ─── Line annotations for current file ──────────────────────────────
 	const lineAnnotations: DiffLineAnnotation<ReviewAnnotation>[] = $derived.by(() => {
 		const src = selectedSource;
 		if (src === 'local' || prReviews.length === 0) return [];
@@ -319,8 +264,6 @@
 		if (!file) return [];
 		return buildLineAnnotations(prReviews.filter((r) => r.path === file.path));
 	});
-
-	// ─── Actions ────────────────────────────────────────────────────────
 
 	const resolvePrBranches = async (
 		wsId: string,
@@ -342,7 +285,7 @@
 
 	const selectItem = (itemId: string): void => {
 		selectedItemId = itemId;
-		activeTab = 'files';
+		activeTab = viewMode === 'active' ? 'overview' : 'files';
 		const item = prItems.find((i) => i.id === itemId);
 		trackedPr = item ? (trackedPrMap.get(item.repoId) ?? null) : null;
 		trackedPrLoading = false;
@@ -362,9 +305,6 @@
 		fileDiffRequestId += 1;
 		prTitle = '';
 		prBody = '';
-		isDraft = false;
-		isCreating = false;
-		prCreated = false;
 		repoLocalStatus = null;
 		commitPushLoading = false;
 		commitPushStage = null;
@@ -557,15 +497,12 @@
 	};
 
 	const loadSuggestedPrText = async (wsId: string, repoId: string): Promise<void> => {
-		prTextGenerating = true;
 		try {
 			const generated = await generatePullRequestText(wsId, repoId);
 			if (generated.title && !prTitle) prTitle = generated.title;
 			if (generated.body && !prBody) prBody = generated.body;
 		} catch {
 			// non-fatal: user can still type manually
-		} finally {
-			prTextGenerating = false;
 		}
 	};
 
@@ -629,43 +566,35 @@
 		}
 	};
 
-	const handleCreatePr = async (): Promise<void> => {
-		if (!workspace || !selectedItem || !prTitle.trim()) return;
-		isCreating = true;
-		try {
-			const created = await createPullRequest(workspace.id, selectedItem.repoId, {
-				title: prTitle.trim(),
-				body: prBody.trim(),
-				draft: isDraft,
-				autoCommit: true,
-				autoPush: true,
-			});
-			const previousTracked = trackedPrMap.get(selectedItem.repoId) ?? null;
-			trackedPr = created;
-			trackedPrMap = withTrackedPr(trackedPrMap, selectedItem.repoId, created);
-			trackedPrMapCoordinator.markResolved(selectedItem.repoId, created, previousTracked);
-			prCreated = true;
-		} catch {
-			// non-fatal
-		} finally {
-			isCreating = false;
-		}
-	};
-
-	const handlePushToPr = async (): Promise<void> => {
-		if (!workspace || !selectedItem || commitPushLoading) return;
+	const startPushForRepo = async (repoId: string): Promise<void> => {
+		if (!workspace || commitPushLoading) return;
 		commitPushLoading = true;
+		commitPushRepoId = repoId;
 		commitPushStage = 'queued';
 		commitPushError = null;
 		commitPushSuccess = false;
 		try {
-			await startCommitAndPushAsync(workspace.id, selectedItem.repoId);
+			await startCommitAndPushAsync(workspace.id, repoId);
 			// Event subscription handles progress updates from here
 		} catch (err) {
 			commitPushLoading = false;
+			commitPushRepoId = null;
 			commitPushStage = null;
 			commitPushError = err instanceof Error ? err.message : 'Failed to start push.';
 		}
+	};
+
+	const handlePushToPr = async (): Promise<void> => {
+		if (!selectedItem) return;
+		await startPushForRepo(selectedItem.repoId);
+	};
+
+	const handlePushFromSidebar = (itemId: string): void => {
+		const item = prItems.find((entry) => entry.id === itemId);
+		if (!item) return;
+		if (viewMode !== 'ready') viewMode = 'ready';
+		if (selectedItemId !== itemId) selectItem(itemId);
+		void startPushForRepo(item.repoId);
 	};
 
 	const openExternalUrl = (url: string | undefined | null): void =>
@@ -694,12 +623,36 @@
 		if (!selectedItem || currentWsId === '' || currentRepoId === '') {
 			return;
 		}
-		const targetKey = buildDiffTargetKey(currentWsId, currentRepoId, trackedPr ?? undefined);
+
+		// In "ready" mode with no tracked PR but commits ahead, synthesize a
+		// lightweight PR-like object so loadDiffSummary performs a branch diff
+		// (current branch vs default branch) instead of only local uncommitted changes.
+		let effectivePr = trackedPr ?? undefined;
+		if (!effectivePr && viewMode === 'ready' && selectedItem.ahead > 0 && selectedRepo) {
+			const base = selectedRepo.defaultBranch ?? 'main';
+			const head = selectedItem.branch;
+			if (base && head && base !== head) {
+				effectivePr = {
+					repo: selectedItem.repoName,
+					number: 0,
+					url: '',
+					title: '',
+					state: 'open',
+					draft: false,
+					baseRepo: '',
+					baseBranch: base,
+					headRepo: '',
+					headBranch: head,
+				} as PullRequestCreated;
+			}
+		}
+
+		const targetKey = buildDiffTargetKey(currentWsId, currentRepoId, effectivePr);
 		if (targetKey === lastDiffSummaryTargetKey) {
 			return;
 		}
 		lastDiffSummaryTargetKey = targetKey;
-		void loadDiffSummary(currentWsId, currentRepoId, trackedPr ?? undefined);
+		void loadDiffSummary(currentWsId, currentRepoId, effectivePr);
 	});
 
 	$effect(() => {
@@ -758,25 +711,31 @@
 	// Subscribe to commit & push operation events
 	$effect(() => {
 		const unsub = subscribeGitHubOperationEvent((status: GitHubOperationStatus) => {
-			if (!workspace || !selectedItem) return;
-			if (status.workspaceId !== workspace.id || status.repoId !== selectedItem.repoId) return;
+			if (!workspace) return;
+			if (status.workspaceId !== workspace.id) return;
 			if (status.type !== 'commit_push') return;
+			if (commitPushRepoId && status.repoId !== commitPushRepoId) return;
+
+			const targetRepoId = status.repoId;
+			const selectedMatchesTarget = targetRepoId === selectedRepoId;
 
 			if (status.state === 'running') {
 				commitPushLoading = true;
+				commitPushRepoId = targetRepoId;
 				commitPushStage = status.stage;
 				commitPushError = null;
 				commitPushSuccess = false;
 			} else if (status.state === 'completed') {
 				commitPushLoading = false;
+				commitPushRepoId = null;
 				commitPushStage = null;
 				commitPushError = null;
 				commitPushSuccess = true;
 				// Refresh data after successful push
-				void loadRepoLocalStatus(workspace.id, selectedItem.repoId);
-				void loadLocalSummary(workspace.id, selectedItem.repoId);
-				if (activePrBranches) {
-					void loadDiffSummary(workspace.id, selectedItem.repoId, trackedPr ?? undefined);
+				void loadRepoLocalStatus(workspace.id, targetRepoId);
+				void loadLocalSummary(workspace.id, targetRepoId);
+				if (activePrBranches && selectedMatchesTarget) {
+					void loadDiffSummary(workspace.id, targetRepoId, trackedPr ?? undefined);
 				}
 				// Auto-dismiss success after 3s
 				clearCommitPushSuccessTimer();
@@ -786,6 +745,7 @@
 				}, 3000);
 			} else if (status.state === 'failed') {
 				commitPushLoading = false;
+				commitPushRepoId = null;
 				commitPushStage = null;
 				commitPushSuccess = false;
 				commitPushError = status.error || 'Failed to commit and push.';
@@ -910,7 +870,6 @@
 		};
 	});
 
-	// ─── @pierre/diffs integration ──────────────────────────────────────
 	type ParsedFileDiff = Parameters<FileDiffRenderer<ReviewAnnotation>['render']>[0]['fileDiff'];
 
 	type DiffsModule = FileDiffRendererModule<ReviewAnnotation> & {
@@ -1002,7 +961,6 @@
 		};
 	});
 
-	// ─── Helpers ────────────────────────────────────────────────────────
 	const filesForDetail = $derived.by(() => {
 		const src = selectedSource;
 		return src === 'local' ? (localSummary?.files ?? []) : (diffSummary?.files ?? []);
@@ -1030,151 +988,276 @@
 		{#snippet detailPanel()}
 			<main class="detail">
 				{#if isActiveDetail && selectedItem && workspace}
-					<!-- ── Active PR Detail ── -->
-
-					<!-- PR Header -->
 					<div class="pr-header">
-						<div class="prh-left">
-							<div class="prh-title-row">
-								<span class="prh-repo-tag">{selectedItem.repoName}</span>
+						<div class="prh-top">
+							<div class="prh-icon">
+								{#if trackedPr && isMergedTrackedPr(trackedPr)}
+									<GitMerge size={16} class="prh-icon-merged" />
+								{:else if trackedPr?.draft}
+									<GitPullRequest size={16} class="prh-icon-draft" />
+								{:else}
+									<GitPullRequest size={16} class="prh-icon-open" />
+								{/if}
+							</div>
+							<div class="prh-left">
 								<h1 class="prh-title">
 									{trackedPrMap.get(selectedItem.repoId)?.title ?? selectedItem.title}
 								</h1>
-							</div>
-							<div class="prh-meta">
-								{#if trackedPr}
-									<span class="prh-status">
-										<Circle
-											size={10}
-											class={`prh-status-dot ${isMergedTrackedPr(trackedPr) ? 'prh-status-dot-merged' : 'prh-status-dot-open'}`}
-										/>
-										<span class:prh-status-merged={isMergedTrackedPr(trackedPr)}>
-											{#if isMergedTrackedPr(trackedPr)}Merged{:else if trackedPr.state === 'open'}Open{:else}{trackedPr.state}{/if}
-										</span>
-									</span>
-								{/if}
-								<span class="prh-branch">
-									<GitBranch size={10} />
-									<span>{selectedItem.branch}</span>
-								</span>
-								<span>{selectedItem.updatedAtLabel}</span>
-							</div>
-						</div>
-						{#if trackedPr}
-							<a
-								href={trackedPr.url}
-								class="prh-action-link"
-								onclick={(e) => {
-									e.preventDefault();
-									openExternalUrl(trackedPr?.url);
-								}}
-							>
-								<ExternalLink size={14} />
-								View on GitHub
-							</a>
-						{:else if trackedPrLoading}
-							<span class="prh-loading"><Loader2 size={14} class="spin" /></span>
-						{/if}
-					</div>
-
-					<!-- Push Status Bar -->
-					{#if pushStatusVisible}
-						<div class="pr-push-bar">
-							<div class="psb-stats">
-								{#if commitPushSuccess}
-									<span class="psb-stat psb-success">
-										<CheckCircle2 size={12} />
-										Pushed successfully
-									</span>
-								{:else if commitPushError}
-									<span class="psb-stat psb-error">
-										<AlertCircle size={12} />
-										{commitPushError}
-									</span>
-								{:else if repoLocalStatus && (repoLocalStatus.ahead > 0 || repoLocalStatus.hasUncommitted)}
-									{#if repoLocalStatus.ahead > 0}
-										<span class="psb-stat">
-											<GitCommit size={12} />
-											{repoLocalStatus.ahead} unpushed commit{repoLocalStatus.ahead !== 1
-												? 's'
-												: ''}
-										</span>
+								<div class="prh-meta">
+									<span class="prh-meta-mono">{selectedItem.repoName}</span>
+									<span class="prh-meta-dot">·</span>
+									<span>{workspace.name}</span>
+									<span class="prh-meta-dot">·</span>
+									<span class="prh-meta-accent">{selectedItem.branch}</span>
+									<span class="prh-meta-arrow">→</span>
+									<span class="prh-meta-mono">{trackedPr?.baseBranch ?? 'main'}</span>
+									{#if selectedItem.author}
+										<span class="prh-meta-dot">·</span>
+										<span>by {selectedItem.author}</span>
 									{/if}
-									{#if repoLocalStatus.hasUncommitted}
-										<span class="psb-stat">
-											<FileCode size={12} />
-											{localSummary?.files.length ?? '?'} dirty file{(localSummary?.files.length ??
-												0) !== 1
-												? 's'
-												: ''}
-										</span>
-									{/if}
-								{:else}
-									<span class="psb-stat psb-up-to-date">
-										<CheckCircle2 size={12} />
-										Up to date
-									</span>
-								{/if}
+									<span class="prh-meta-dot">·</span>
+									<Clock size={10} />
+									<span>{selectedItem.updatedAtLabel}</span>
+								</div>
 							</div>
-							<button
-								type="button"
-								class="psb-push-btn"
-								disabled={pushDisabled}
-								onclick={() => void handlePushToPr()}
-							>
-								{#if commitPushLoading}
-									<Loader2 size={14} class="spin" />
-									{commitPushStageLabel ?? 'Pushing...'}
-								{:else}
-									<Upload size={14} />
-									Push to PR
-								{/if}
-							</button>
-						</div>
-					{/if}
-
-					<!-- Tab Bar -->
-					<div class="tab-bar">
-						<button
-							type="button"
-							class="tab-btn"
-							class:active={activeTab === 'files'}
-							onclick={() => (activeTab = 'files')}
-						>
-							<FileCode size={14} />
-							Files Changed
-							<span class="tab-count">{filesForDetail.length || selectedItem.dirtyFiles}</span>
-						</button>
-						<button
-							type="button"
-							class="tab-btn"
-							class:active={activeTab === 'checks'}
-							onclick={() => (activeTab = 'checks')}
-						>
-							{#if checkStats.total === 0}
-								<Circle size={14} class="text-muted" />
-							{:else if checkStats.failed > 0}
-								<XCircle size={14} class="text-red" />
-							{:else if checkStats.pending > 0}
-								<Loader2 size={14} class="text-yellow spin" />
-							{:else}
-								<CheckCircle2 size={14} class="text-green" />
+							{#if trackedPr?.draft}
+								<span class="prh-draft-badge">Draft</span>
 							{/if}
-							Checks
-							<span class="tab-count">{checkStats.total || ''}</span>
-						</button>
-						{#if unresolvedCount > 0}
-							<span class="tab-review-badge">
-								<MessageSquare size={12} />
-								{unresolvedCount} unresolved
-							</span>
-						{/if}
+						</div>
+
+						<div class="prh-actions-row">
+							<div class="prh-actions">
+								{#if trackedPr && !isMergedTrackedPr(trackedPr) && trackedPr.state === 'open'}
+									<button type="button" class="prh-btn prh-btn-approve">
+										<ThumbsUp size={12} />
+										Approve
+									</button>
+									<button type="button" class="prh-btn prh-btn-neutral">
+										<ThumbsDown size={12} />
+										Request Changes
+									</button>
+									<button
+										type="button"
+										class="prh-btn prh-btn-merge"
+										class:prh-btn-disabled={checkStats.failed > 0 || checkStats.pending > 0}
+										disabled={checkStats.failed > 0 || checkStats.pending > 0}
+									>
+										<GitMerge size={12} />
+										Merge PR
+									</button>
+								{/if}
+								{#if trackedPr}
+									<button
+										type="button"
+										class="prh-btn-icon"
+										title="Open in GitHub"
+										onclick={() => openExternalUrl(trackedPr?.url)}
+									>
+										<ExternalLink size={12} />
+									</button>
+								{:else if trackedPrLoading}
+									<span class="prh-loading"><Loader2 size={14} class="spin" /></span>
+								{/if}
+							</div>
+
+							<div class="prh-tab-switcher">
+								<button
+									type="button"
+									class="prh-tab-seg"
+									class:active={activeTab === 'overview'}
+									onclick={() => (activeTab = 'overview')}
+								>
+									Overview
+								</button>
+								<button
+									type="button"
+									class="prh-tab-seg"
+									class:active={activeTab === 'files'}
+									onclick={() => (activeTab = 'files')}
+								>
+									<FileCode size={10} />
+									Files
+									<span class="prh-tab-count"
+										>{filesForDetail.length || selectedItem.dirtyFiles}</span
+									>
+								</button>
+							</div>
+						</div>
 					</div>
 
-					<!-- Tab Content -->
 					<div class="tab-content">
-						{#if activeTab === 'files'}
-							<!-- ── Files Tab ── -->
+						{#if activeTab === 'overview'}
+							<div class="overview-panel">
+								<div class="ov-main">
+									{#if trackedPr?.body}
+										<div class="ov-section">
+											<div class="ov-section-head">Description</div>
+											<div class="ov-description">{trackedPr.body}</div>
+										</div>
+									{/if}
+
+									{#if pushStatusVisible}
+										<div class="pr-push-bar">
+											<div class="psb-stats">
+												{#if commitPushSuccess}
+													<span class="psb-stat psb-success">
+														<CheckCircle2 size={12} />
+														Pushed successfully
+													</span>
+												{:else if commitPushError}
+													<span class="psb-stat psb-error">
+														<AlertCircle size={12} />
+														{commitPushError}
+													</span>
+												{:else if repoLocalStatus && (repoLocalStatus.ahead > 0 || repoLocalStatus.hasUncommitted)}
+													{#if repoLocalStatus.ahead > 0}
+														<span class="psb-stat">
+															<GitCommit size={12} />
+															{repoLocalStatus.ahead} unpushed commit{repoLocalStatus.ahead !== 1
+																? 's'
+																: ''}
+														</span>
+													{/if}
+													{#if repoLocalStatus.hasUncommitted}
+														<span class="psb-stat">
+															<FileCode size={12} />
+															{localSummary?.files.length ?? '?'} dirty file{(localSummary?.files
+																.length ?? 0) !== 1
+																? 's'
+																: ''}
+														</span>
+													{/if}
+												{:else}
+													<span class="psb-stat psb-up-to-date">
+														<CheckCircle2 size={12} />
+														Up to date
+													</span>
+												{/if}
+											</div>
+											<button
+												type="button"
+												class="psb-push-btn"
+												disabled={pushDisabled}
+												onclick={() => void handlePushToPr()}
+											>
+												{#if commitPushLoading}
+													<Loader2 size={14} class="spin" />
+													{commitPushStageLabel ?? 'Pushing...'}
+												{:else}
+													<Upload size={14} />
+													Push to PR
+												{/if}
+											</button>
+										</div>
+									{/if}
+
+									<div class="ov-section">
+										<div class="ov-section-head">
+											Files Changed ·
+											<span class="ov-section-count"
+												>{filesForDetail.length || selectedItem.dirtyFiles} files</span
+											>
+											{#if totalAdd > 0 || totalDel > 0}
+												<span class="ov-stat-plus">+{totalAdd}</span>
+												<span class="ov-stat-minus">-{totalDel}</span>
+											{/if}
+										</div>
+										<div class="ov-file-list">
+											{#if diffSummaryLoading}
+												<div class="ov-file-loading">Loading files...</div>
+											{:else}
+												{#each filesForDetail as file, i (file.path)}
+													<button
+														type="button"
+														class="ov-file-row"
+														onclick={() => {
+															selectedSource = 'pr';
+															selectedFileIdx = i;
+															activeTab = 'files';
+														}}
+													>
+														<FileCode size={11} class="ov-file-icon" />
+														<span class="ov-file-path">{file.path}</span>
+														<span class="ov-file-add">+{file.added}</span>
+														{#if file.removed > 0}
+															<span class="ov-file-del">-{file.removed}</span>
+														{/if}
+													</button>
+												{/each}
+											{/if}
+										</div>
+									</div>
+								</div>
+
+								<div class="ov-sidebar">
+									<div class="ov-sidebar-section">
+										<div class="ov-checks-header">
+											{#if checkStats.total === 0}
+												<Circle size={12} class="ov-check-icon-neutral" />
+												<span>No checks</span>
+											{:else if checkStats.failed > 0}
+												<XCircle size={12} class="ov-check-icon-fail" />
+												<span>Checks failing</span>
+											{:else if checkStats.pending > 0}
+												<AlertCircle size={12} class="ov-check-icon-pending" />
+												<span>Checks running</span>
+											{:else}
+												<CheckCircle2 size={12} class="ov-check-icon-pass" />
+												<span>All checks passing</span>
+											{/if}
+										</div>
+										{#if prStatus?.checks}
+											<div class="ov-checks-list">
+												{#each prStatus.checks as check (check.name)}
+													<div class="ov-check-row">
+														{#if check.conclusion === 'success'}
+															<CheckCircle2 size={11} class="ov-check-icon-pass" />
+														{:else if check.conclusion === 'failure'}
+															<XCircle size={11} class="ov-check-icon-fail" />
+														{:else}
+															<AlertCircle size={11} class="ov-check-icon-pending" />
+														{/if}
+														<span class="ov-check-name">{check.name}</span>
+													</div>
+												{/each}
+											</div>
+										{/if}
+									</div>
+
+									<div class="ov-sidebar-divider"></div>
+
+									<div class="ov-sidebar-section">
+										<div class="ov-stats">
+											{#if selectedItem.commentsCount > 0}
+												<div class="ov-stat-row">
+													<span>Comments</span>
+													<span class="ov-stat-value">
+														<MessageSquare size={9} />
+														{selectedItem.commentsCount}
+													</span>
+												</div>
+											{/if}
+											<div class="ov-stat-row">
+												<span>Files changed</span>
+												<span class="ov-stat-value"
+													>{filesForDetail.length || selectedItem.dirtyFiles}</span
+												>
+											</div>
+											{#if totalAdd > 0 || totalDel > 0}
+												<div class="ov-stat-row">
+													<span>Additions</span>
+													<span class="ov-stat-value ov-stat-plus">+{totalAdd}</span>
+												</div>
+												<div class="ov-stat-row">
+													<span>Deletions</span>
+													<span class="ov-stat-value ov-stat-minus">-{totalDel}</span>
+												</div>
+											{/if}
+										</div>
+									</div>
+								</div>
+							</div>
+						{:else if activeTab === 'files'}
 							<div class="files-panel">
 								<div class="fp-sidebar">
 									<div class="fp-sidebar-head">
@@ -1311,163 +1394,29 @@
 						{/if}
 					</div>
 				{:else if isReadyDetail && selectedItem && workspace}
-					<!-- ── Ready to PR Detail ── -->
-					<div class="ready-detail">
-						<!-- Header -->
-						<div class="rd-header">
-							<div class="rd-icon">
-								<Upload size={18} />
-							</div>
-							<div class="rd-info">
-								<h1>{selectedItem.repoName}</h1>
-								<div class="rd-branch-row">
-									<GitBranch size={11} class="text-green" />
-									<span class="rd-branch">{selectedItem.branch}</span>
-									<ArrowUpRight size={10} class="rd-arrow" />
-									<span class="rd-base">{selectedRepo?.defaultBranch ?? 'main'}</span>
-								</div>
-							</div>
-						</div>
-
-						<div class="rd-stats">
-							<span class="rd-stat">
-								<GitCommit size={12} class="text-blue" />
-								<strong>{selectedItem.ahead}</strong> commit{selectedItem.ahead !== 1 ? 's' : ''} ahead
-								of main
-							</span>
-							<span class="rd-stat">
-								<FileCode size={12} />
-								<strong>{filesForDetail.length || selectedItem.dirtyFiles}</strong>
-								file{(filesForDetail.length || selectedItem.dirtyFiles) !== 1 ? 's' : ''}
-							</span>
-							{#if totalAdd > 0}<span class="text-green">+{totalAdd}</span>{/if}
-							{#if totalDel > 0}<span class="text-red">-{totalDel}</span>{/if}
-						</div>
-					</div>
-
-					<!-- Content -->
-					<div class="rd-content">
-						<div class="rd-max">
-							{#if prCreated}
-								<div class="rd-success">
-									<div class="rd-success-icon">
-										<CheckCircle2 size={32} />
-									</div>
-									<h2>Pull Request Created</h2>
-									<p>
-										{isDraft ? 'Draft PR' : 'PR'} for
-										<span class="mono text-green">{selectedItem.branch}</span>
-										is now open on <span class="text-white">{selectedItem.repoName}</span>
-									</p>
-									<button
-										type="button"
-										class="ghost-btn"
-										onclick={() => openExternalUrl(trackedPr?.url)}
-									>
-										<ExternalLink size={14} />
-										View on GitHub
-									</button>
-								</div>
-							{:else}
-								<!-- PR Title -->
-								<div class="form-field">
-									<label class="form-label" for="pr-title-input">
-										PR Title
-										{#if prTextGenerating}
-											<span class="form-generating"
-												><Loader2 size={12} class="spin" /> Generating…</span
-											>
-										{/if}
-									</label>
-									<div class="form-input-wrap" class:shimmer={prTextGenerating && !prTitle}>
-										<input
-											id="pr-title-input"
-											type="text"
-											class="form-input"
-											bind:value={prTitle}
-											placeholder={prTextGenerating ? '' : 'Enter PR title...'}
-										/>
-									</div>
-								</div>
-
-								<!-- PR Body -->
-								<div class="form-field">
-									<label class="form-label" for="pr-body-input">
-										Description <span class="form-optional">(optional)</span>
-										{#if prTextGenerating && prTitle && !prBody}
-											<span class="form-generating"
-												><Loader2 size={12} class="spin" /> Generating…</span
-											>
-										{/if}
-									</label>
-									<div class="form-input-wrap" class:shimmer={prTextGenerating && !prBody}>
-										<textarea
-											id="pr-body-input"
-											class="form-textarea"
-											rows={4}
-											bind:value={prBody}
-											placeholder={prTextGenerating ? '' : 'Describe the changes in this PR...'}
-										></textarea>
-									</div>
-								</div>
-
-								<!-- Files changed summary -->
-								<div class="form-field">
-									<span class="form-label">Files Changed</span>
-									<div class="rd-file-list">
-										{#if filesForDetail.length > 0}
-											{#each filesForDetail as file (file.path)}
-												<div class="rd-file-row">
-													<FileCode size={13} />
-													<span class="rd-file-name">{file.path}</span>
-													<span class="text-green text-xs mono">+{file.added}</span>
-													{#if file.removed > 0}<span class="text-red text-xs mono"
-															>-{file.removed}</span
-														>{/if}
-												</div>
-											{/each}
-										{:else if selectedRepo}
-											{#each selectedRepo.files as file (file.path)}
-												<div class="rd-file-row">
-													<FileCode size={13} />
-													<span class="rd-file-name">{file.path}</span>
-													<span class="text-green text-xs mono">+{file.added}</span>
-													{#if file.removed > 0}<span class="text-red text-xs mono"
-															>-{file.removed}</span
-														>{/if}
-												</div>
-											{/each}
-										{:else}
-											<div class="rd-file-row"><span>No files detected</span></div>
-										{/if}
-									</div>
-								</div>
-
-								<!-- Actions -->
-								<div class="rd-actions">
-									<label class="rd-draft-toggle">
-										<input type="checkbox" bind:checked={isDraft} />
-										<span>Create as draft</span>
-									</label>
-									<button
-										type="button"
-										class="rd-create-btn"
-										disabled={!prTitle.trim() || isCreating}
-										onclick={() => void handleCreatePr()}
-									>
-										{#if isCreating}
-											<Loader2 size={16} class="spin" /> Creating...
-										{:else}
-											<GitPullRequest size={16} />
-											{isDraft ? 'Create Draft PR' : 'Create Pull Request'}
-										{/if}
-									</button>
-								</div>
-							{/if}
-						</div>
-					</div>
+					<PROrchestrationReadyDetail
+						{selectedItem}
+						workspaceName={workspace.name}
+						{filesForDetail}
+						{totalAdd}
+						{totalDel}
+						{diffSummaryLoading}
+						fallbackFiles={selectedRepo?.files ?? []}
+						{selectedSource}
+						{selectedFileIdx}
+						{fileDiffError}
+						{fileDiffContent}
+						{fileDiffLoading}
+						{commitPushLoading}
+						{commitPushRepoId}
+						onPushFromSidebar={handlePushFromSidebar}
+						onSelectSourceFile={(source, index) => {
+							selectedSource = source;
+							selectedFileIdx = index;
+						}}
+						bind:diffContainer
+					/>
 				{:else}
-					<!-- ── Empty Detail ── -->
 					<div class="empty-state ws-empty-state">
 						{#if viewMode === 'active'}
 							<GitPullRequest size={48} />
@@ -1505,16 +1454,16 @@
 				storageKey="workset:pr-orchestration:sidebarRatio"
 			>
 				<PROrchestrationSidebar
+					{workspace}
 					workspaceName={workspace.name}
 					{viewMode}
 					{canCollapseSidebar}
-					{trackedCount}
-					{readyCount}
-					{activeCount}
-					{mergedCount}
 					{partitions}
+					{prItems}
 					{selectedItemId}
 					{resolveTrackedTitle}
+					pushInProgressRepoId={commitPushRepoId}
+					onStartPush={handlePushFromSidebar}
 					onToggleSidebar={toggleSidebar}
 					onViewModeChange={setViewMode}
 					onSelectItem={selectItem}

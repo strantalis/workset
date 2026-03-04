@@ -13,7 +13,6 @@ describe('SettingsSidebar', () => {
 				activeSection: 'workspace',
 				onSelectSection: () => {},
 				aliasCount: 0,
-				groupCount: 0,
 			},
 		});
 
@@ -30,7 +29,6 @@ describe('SettingsSidebar', () => {
 				activeSection: 'workspace',
 				onSelectSection: () => {},
 				aliasCount: 0,
-				groupCount: 0,
 			},
 		});
 
@@ -43,7 +41,6 @@ describe('SettingsSidebar', () => {
 				activeSection: 'workspace',
 				onSelectSection: () => {},
 				aliasCount: 0,
-				groupCount: 0,
 			},
 		});
 
@@ -57,24 +54,21 @@ describe('SettingsSidebar', () => {
 
 		// LIBRARY items
 		expect(getByText('Repo Catalog')).toBeInTheDocument();
-		expect(getByText('Templates')).toBeInTheDocument();
 
 		// INFO items
 		expect(getByText('About')).toBeInTheDocument();
 	});
 
-	test('displays badge counts for aliases and groups', () => {
+	test('displays badge counts for repo catalog', () => {
 		const { getByText } = render(SettingsSidebar, {
 			props: {
 				activeSection: 'workspace',
 				onSelectSection: () => {},
 				aliasCount: 5,
-				groupCount: 3,
 			},
 		});
 
 		expect(getByText('5')).toBeInTheDocument();
-		expect(getByText('3')).toBeInTheDocument();
 	});
 
 	test('marks active section', () => {
@@ -83,7 +77,6 @@ describe('SettingsSidebar', () => {
 				activeSection: 'about',
 				onSelectSection: () => {},
 				aliasCount: 0,
-				groupCount: 0,
 			},
 		});
 
@@ -99,7 +92,6 @@ describe('SettingsSidebar', () => {
 				activeSection: 'workspace',
 				onSelectSection: handleSelect,
 				aliasCount: 0,
-				groupCount: 0,
 			},
 		});
 

@@ -8,12 +8,15 @@ export type PrListItem = {
 	title: string;
 	branch: string;
 	status: 'open' | 'merged' | 'running' | 'blocked';
+	draft: boolean;
 	dirty: boolean;
 	hasLocalDiff: boolean;
 	dirtyFiles: number;
 	ahead: number;
 	behind: number;
 	updatedAtLabel: string;
+	author: string;
+	commentsCount: number;
 };
 
 const getStatus = (
@@ -46,11 +49,14 @@ export const mapWorkspaceToPrItems = (workspace: Workspace | null): PrListItem[]
 			repo.trackedPullRequest?.state,
 			repo.trackedPullRequest?.merged,
 		),
+		draft: repo.trackedPullRequest?.draft ?? false,
 		dirty: repo.dirty,
 		dirtyFiles: repo.files.length,
 		ahead: repo.ahead ?? 0,
 		behind: repo.behind ?? 0,
 		updatedAtLabel: formatRelativeTime(repo.trackedPullRequest?.updatedAt ?? workspace.lastUsed),
+		author: repo.trackedPullRequest?.author ?? '',
+		commentsCount: repo.trackedPullRequest?.commentsCount ?? 0,
 	}));
 };
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Alias, Group, GroupSummary, Workspace } from '../../types';
+import type { Alias, Workspace } from '../../types';
 import {
 	deriveAddRepoContext,
 	deriveExistingReposContext,
@@ -45,10 +45,6 @@ describe('workspaceActionContextService', () => {
 			{ name: 'alpha-repo', url: 'git@github.com:acme/alpha-repo.git' },
 			{ name: 'beta-repo', path: '/tmp/repos/beta' },
 		];
-		const groupItems: GroupSummary[] = [
-			{ name: 'group-one', description: 'Alpha group', repo_count: 2 },
-			{ name: 'group-two', description: 'Other', repo_count: 1 },
-		];
 
 		const result = deriveWorkspaceActionContext({
 			primaryInput: 'git@github.com:acme/pending.git',
@@ -56,9 +52,7 @@ describe('workspaceActionContextService', () => {
 			customizeName: '',
 			searchQuery: 'alpha',
 			aliasItems,
-			groupItems,
 			selectedAliases: new Set(['alpha-repo']),
-			selectedGroups: new Set(['group-one']),
 		});
 
 		expect(result.detectedRepoName).toBe('pending');
@@ -70,9 +64,8 @@ describe('workspaceActionContextService', () => {
 		expect(result.alternatives).toHaveLength(2);
 		expect(result.alternatives.every((entry) => entry.startsWith('direct-'))).toBe(true);
 		expect(result.filteredAliases).toEqual([aliasItems[0]]);
-		expect(result.filteredGroups).toEqual([groupItems[0]]);
 		expect(result.pendingInputWillBeAdded).toBe(true);
-		expect(result.totalRepos).toBe(5);
+		expect(result.totalRepos).toBe(3);
 		expect(result.selectedItems).toEqual([
 			{ type: 'repo', name: 'direct', url: '/tmp/repos/direct', pending: false },
 			{
@@ -82,7 +75,6 @@ describe('workspaceActionContextService', () => {
 				pending: true,
 			},
 			{ type: 'alias', name: 'alpha-repo', url: undefined, pending: false },
-			{ type: 'group', name: 'group-one', url: undefined, pending: false },
 		]);
 	});
 
@@ -93,9 +85,7 @@ describe('workspaceActionContextService', () => {
 			customizeName: 'custom-name',
 			searchQuery: '',
 			aliasItems: [],
-			groupItems: [],
 			selectedAliases: new Set(),
-			selectedGroups: new Set(),
 		});
 		expect(withCustom.finalName).toBe('custom-name');
 
@@ -105,9 +95,7 @@ describe('workspaceActionContextService', () => {
 			customizeName: '',
 			searchQuery: '',
 			aliasItems: [],
-			groupItems: [],
 			selectedAliases: new Set(),
-			selectedGroups: new Set(),
 		});
 		expect(withPlain.generatedName).toBeNull();
 		expect(withPlain.finalName).toBe('alpha workspace');
@@ -118,16 +106,14 @@ describe('workspaceActionContextService', () => {
 		const addContext = deriveAddRepoContext({
 			addSource: ' /tmp/repos/new-repo ',
 			selectedAliases: new Set(['alias-a']),
-			selectedGroups: new Set(['group-a']),
 		});
 		expect(addContext).toEqual({
 			hasSource: true,
 			selectedItems: [
 				{ type: 'repo', name: '/tmp/repos/new-repo' },
 				{ type: 'alias', name: 'alias-a' },
-				{ type: 'group', name: 'group-a' },
 			],
-			totalItems: 3,
+			totalItems: 2,
 		});
 
 		const workspace = buildWorkspace();
@@ -139,14 +125,48 @@ describe('workspaceActionContextService', () => {
 		expect(deriveExistingReposContext({ mode: 'add-repo', workspace: null })).toEqual([]);
 	});
 
+	it('derives workset-level existing repos as the intersection across threads', () => {
+		const baseWorkspace = buildWorkspace();
+		const secondWorkspace: Workspace = {
+			...buildWorkspace(),
+			id: 'ws-2',
+			name: 'beta',
+			repos: [
+				{
+					id: 'repo-3',
+					name: 'repo-b',
+					path: '/tmp/beta/repo-b',
+					dirty: false,
+					missing: false,
+					diff: { added: 0, removed: 0 },
+					files: [],
+				},
+				{
+					id: 'repo-4',
+					name: 'repo-c',
+					path: '/tmp/beta/repo-c',
+					dirty: false,
+					missing: false,
+					diff: { added: 0, removed: 0 },
+					files: [],
+				},
+			],
+		};
+
+		expect(
+			deriveExistingReposContext({
+				mode: 'add-repo',
+				workspace: baseWorkspace,
+				workspaces: [baseWorkspace, secondWorkspace],
+				workspaceIds: ['ws-1', 'ws-2'],
+			}),
+		).toEqual([{ name: 'repo-b' }]);
+	});
+
 	it('loads base context without alias/group fetch when mode does not require it', async () => {
 		const workspace = buildWorkspace();
 		const loadWorkspaces = vi.fn(async () => undefined);
 		const listAliases = vi.fn(async (): Promise<Alias[]> => [{ name: 'unused' }]);
-		const listGroups = vi.fn(
-			async (): Promise<GroupSummary[]> => [{ name: 'unused', repo_count: 1 }],
-		);
-		const getGroup = vi.fn(async (): Promise<Group> => ({ name: 'unused', members: [] }));
 
 		const result = await loadWorkspaceActionContext(
 			{
@@ -158,38 +178,22 @@ describe('workspaceActionContextService', () => {
 				loadWorkspaces,
 				getWorkspaces: () => [workspace],
 				listAliases,
-				listGroups,
-				getGroup,
 			},
 		);
 
 		expect(loadWorkspaces).toHaveBeenCalledTimes(1);
 		expect(loadWorkspaces).toHaveBeenCalledWith(true);
 		expect(listAliases).not.toHaveBeenCalled();
-		expect(listGroups).not.toHaveBeenCalled();
-		expect(getGroup).not.toHaveBeenCalled();
 		expect(result.workspace?.id).toBe('ws-1');
 		expect(result.repo?.name).toBe('repo-b');
 		expect(result.renameName).toBe('alpha');
 		expect(result.aliasItems).toEqual([]);
-		expect(result.groupItems).toEqual([]);
-		expect(result.groupDetails.size).toBe(0);
 	});
 
-	it('loads alias/group context and group details for create mode', async () => {
+	it('loads alias context for create mode without template groups', async () => {
 		const loadWorkspaces = vi.fn(async () => undefined);
 		const aliases: Alias[] = [{ name: 'alias-a', path: '/tmp/repos/a' }];
-		const groups: GroupSummary[] = [
-			{ name: 'group-a', repo_count: 2, description: 'A' },
-			{ name: 'group-b', repo_count: 1, description: 'B' },
-		];
-		const groupLookup = new Map<string, Group>([
-			['group-a', { name: 'group-a', members: [{ repo: 'repo-a' }, { repo: 'repo-b' }] }],
-			['group-b', { name: 'group-b', members: [{ repo: 'repo-c' }] }],
-		]);
 		const listAliases = vi.fn(async () => aliases);
-		const listGroups = vi.fn(async () => groups);
-		const getGroup = vi.fn(async (name: string) => groupLookup.get(name) as Group);
 
 		const result = await loadWorkspaceActionContext(
 			{
@@ -201,24 +205,41 @@ describe('workspaceActionContextService', () => {
 				loadWorkspaces,
 				getWorkspaces: () => [],
 				listAliases,
-				listGroups,
-				getGroup,
 			},
 		);
 
-		expect(loadWorkspaces).toHaveBeenCalledWith(true);
+		expect(loadWorkspaces).not.toHaveBeenCalled();
 		expect(listAliases).toHaveBeenCalledTimes(1);
-		expect(listGroups).toHaveBeenCalledTimes(1);
-		expect(getGroup).toHaveBeenCalledTimes(2);
-		expect(getGroup).toHaveBeenNthCalledWith(1, 'group-a');
-		expect(getGroup).toHaveBeenNthCalledWith(2, 'group-b');
 		expect(result.workspace).toBeNull();
 		expect(result.repo).toBeNull();
 		expect(result.renameName).toBe('');
 		expect(result.aliasItems).toEqual(aliases);
-		expect(result.groupItems).toEqual(groups);
-		expect(result.groupDetails.get('group-a')).toEqual(['repo-a', 'repo-b']);
-		expect(result.groupDetails.get('group-b')).toEqual(['repo-c']);
+	});
+
+	it('loads alias context for create-thread mode without forcing workspace snapshot reload', async () => {
+		const workspace = buildWorkspace();
+		const loadWorkspaces = vi.fn(async () => undefined);
+		const aliases: Alias[] = [{ name: 'repo-a', path: '/tmp/repos/a' }];
+		const listAliases = vi.fn(async () => aliases);
+
+		const result = await loadWorkspaceActionContext(
+			{
+				mode: 'create-thread',
+				workspaceId: 'ws-1',
+				repoName: null,
+			},
+			{
+				loadWorkspaces,
+				getWorkspaces: () => [workspace],
+				listAliases,
+			},
+		);
+
+		expect(loadWorkspaces).not.toHaveBeenCalled();
+		expect(listAliases).toHaveBeenCalledTimes(1);
+		expect(result.workspace?.id).toBe('ws-1');
+		expect(result.repo).toBeNull();
+		expect(result.aliasItems).toEqual(aliases);
 	});
 
 	it('returns alias source from url/path with empty-string fallback', () => {

@@ -123,6 +123,41 @@ func TestListWorkspaceSnapshotsWithStatus(t *testing.T) {
 	}
 }
 
+func TestListWorkspaceSnapshotsUsesExplicitWorksetIdentity(t *testing.T) {
+	env := newTestEnv(t)
+	env.createWorkspace(context.Background(), "thread-a")
+	env.createWorkspace(context.Background(), "thread-b")
+
+	cfg := env.loadConfig()
+	refA := cfg.Workspaces["thread-a"]
+	refA.Workset = "Platform Core"
+	cfg.Workspaces["thread-a"] = refA
+	refB := cfg.Workspaces["thread-b"]
+	refB.Workset = "Platform Core"
+	cfg.Workspaces["thread-b"] = refB
+	env.saveConfig(cfg)
+
+	result, err := env.svc.ListWorkspaceSnapshots(context.Background(), WorkspaceSnapshotOptions{})
+	if err != nil {
+		t.Fatalf("list snapshots: %v", err)
+	}
+	if len(result.Workspaces) != 2 {
+		t.Fatalf("expected 2 workspaces, got %d", len(result.Workspaces))
+	}
+
+	for _, snapshot := range result.Workspaces {
+		if snapshot.WorksetKey != "workset:platform-core" {
+			t.Fatalf("expected workset key workset:platform-core, got %q", snapshot.WorksetKey)
+		}
+		if snapshot.WorksetLabel != "Platform Core" {
+			t.Fatalf("expected workset label Platform Core, got %q", snapshot.WorksetLabel)
+		}
+		if snapshot.Workset != "Platform Core" {
+			t.Fatalf("expected workset Platform Core, got %q", snapshot.Workset)
+		}
+	}
+}
+
 func TestListWorkspaceSnapshotsIncludesWorkspaceWhenConfigMissing(t *testing.T) {
 	env := newTestEnv(t)
 	alphaRoot := env.createWorkspace(context.Background(), "alpha")
