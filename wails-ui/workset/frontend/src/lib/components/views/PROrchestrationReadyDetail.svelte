@@ -61,12 +61,19 @@
 	/* eslint-enable prefer-const */
 
 	const getAddBarCount = (file: RepoDiffFileSummary): number =>
-		Math.min(5, file.added > 0 ? Math.max(1, Math.ceil((file.added / (file.added + file.removed || 1)) * 5)) : 0);
+		Math.min(
+			5,
+			file.added > 0
+				? Math.max(1, Math.ceil((file.added / (file.added + file.removed || 1)) * 5))
+				: 0,
+		);
 
 	const getDelBarCount = (file: RepoDiffFileSummary): number =>
 		Math.min(
 			5,
-			file.removed > 0 ? Math.max(1, Math.ceil((file.removed / (file.added + file.removed || 1)) * 5)) : 0,
+			file.removed > 0
+				? Math.max(1, Math.ceil((file.removed / (file.added + file.removed || 1)) * 5))
+				: 0,
 		);
 </script>
 

@@ -94,7 +94,12 @@
 		spellcheck="false"
 	/>
 </label>
-<button type="button" class="review-toggle" aria-expanded={reviewDetailsExpanded} onclick={onToggleReviewDetails}>
+<button
+	type="button"
+	class="review-toggle"
+	aria-expanded={reviewDetailsExpanded}
+	onclick={onToggleReviewDetails}
+>
 	<span>{reviewDetailsExpanded ? 'Hide review details' : 'Show review details'}</span>
 	<span class="review-toggle-meta"
 		>{reviewRepoEntries.length} repo{reviewRepoEntries.length === 1 ? '' : 's'}</span
@@ -215,9 +220,7 @@
 							class:skipped={run.status === 'skipped'}
 						>
 							{#if hookRunDotClass(run.status)}
-								<span
-									class={`ws-dot ws-dot-sm ${hookRunDotClass(run.status)}`}
-									aria-hidden="true"
+								<span class={`ws-dot ws-dot-sm ${hookRunDotClass(run.status)}`} aria-hidden="true"
 								></span>
 							{/if}
 							{run.status}

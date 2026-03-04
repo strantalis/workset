@@ -1,25 +1,12 @@
 <script lang="ts">
-	import {
-		AlertCircle,
-		CheckCircle2,
-		ChevronRight,
-		Circle,
-		Clock,
-		ExternalLink,
-		FileCode,
-		GitCommit,
-		GitMerge,
-		GitPullRequest,
-		Loader2,
-		MessageSquare,
-		ThumbsDown,
-		ThumbsUp,
-		Upload,
-		XCircle,
-	} from '@lucide/svelte';
+	// prettier-ignore
+	import { AlertCircle, CheckCircle2, ChevronRight, Circle, Clock, ExternalLink, FileCode, GitCommit, GitMerge, GitPullRequest, Loader2, MessageSquare, ThumbsDown, ThumbsUp, Upload, XCircle } from '@lucide/svelte';
 	import { Browser } from '@wailsio/runtime';
+	// prettier-ignore
 	import type { PullRequestCreated, PullRequestReviewComment, PullRequestStatusResult, RepoFileDiff, RepoDiffFileSummary, RepoDiffSummary, Workspace } from '../../types';
+	// prettier-ignore
 	import { fetchPullRequestReviews, fetchPullRequestStatus, fetchRepoLocalStatus, fetchTrackedPullRequest, generatePullRequestText, listRemotes, replyToReviewComment, resolveReviewThread, startCommitAndPushAsync } from '../../api/github';
+	// prettier-ignore
 	import type { GitHubOperationStage, GitHubOperationStatus, RepoLocalStatus } from '../../api/github';
 	import { subscribeGitHubOperationEvent } from '../../githubOperationService';
 	import { deleteReviewComment, editReviewComment } from '../../api/github/review';
@@ -277,7 +264,6 @@
 		if (!file) return [];
 		return buildLineAnnotations(prReviews.filter((r) => r.path === file.path));
 	});
-
 
 	const resolvePrBranches = async (
 		wsId: string,
@@ -1002,7 +988,6 @@
 		{#snippet detailPanel()}
 			<main class="detail">
 				{#if isActiveDetail && selectedItem && workspace}
-
 					<div class="pr-header">
 						<div class="prh-top">
 							<div class="prh-icon">
@@ -1408,30 +1393,30 @@
 							/>
 						{/if}
 					</div>
-					{:else if isReadyDetail && selectedItem && workspace}
-						<PROrchestrationReadyDetail
-							{selectedItem}
-							workspaceName={workspace.name}
-							{filesForDetail}
-							{totalAdd}
-							{totalDel}
-							{diffSummaryLoading}
-							fallbackFiles={selectedRepo?.files ?? []}
-							{selectedSource}
-							{selectedFileIdx}
-							{fileDiffError}
-							{fileDiffContent}
-							{fileDiffLoading}
-							{commitPushLoading}
-							{commitPushRepoId}
-							onPushFromSidebar={handlePushFromSidebar}
-							onSelectSourceFile={(source, index) => {
-								selectedSource = source;
-								selectedFileIdx = index;
-							}}
-							bind:diffContainer
-						/>
-					{:else}
+				{:else if isReadyDetail && selectedItem && workspace}
+					<PROrchestrationReadyDetail
+						{selectedItem}
+						workspaceName={workspace.name}
+						{filesForDetail}
+						{totalAdd}
+						{totalDel}
+						{diffSummaryLoading}
+						fallbackFiles={selectedRepo?.files ?? []}
+						{selectedSource}
+						{selectedFileIdx}
+						{fileDiffError}
+						{fileDiffContent}
+						{fileDiffLoading}
+						{commitPushLoading}
+						{commitPushRepoId}
+						onPushFromSidebar={handlePushFromSidebar}
+						onSelectSourceFile={(source, index) => {
+							selectedSource = source;
+							selectedFileIdx = index;
+						}}
+						bind:diffContainer
+					/>
+				{:else}
 					<div class="empty-state ws-empty-state">
 						{#if viewMode === 'active'}
 							<GitPullRequest size={48} />

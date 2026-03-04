@@ -52,6 +52,25 @@ const HEALTH_RANK: Record<HealthState, number> = {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+const resolveRepoBranch = (repo: Repo, fallback: string): string => {
+	if (repo.currentBranch && repo.currentBranch.length > 0) return repo.currentBranch;
+	if (repo.defaultBranch && repo.defaultBranch.length > 0) return repo.defaultBranch;
+	return fallback;
+};
+
+const getRepoAhead = (repo: Repo): number => repo.ahead ?? 0;
+
+const getRepoBehind = (repo: Repo): number => repo.behind ?? 0;
+
+const getRepoDirtyFileCount = (repo: Repo): number => {
+	if (!repo.dirty) return 0;
+	return repo.files.length;
+};
+
+const getRepoDiffAdded = (repo: Repo): number => repo.diff?.added ?? 0;
+
+const getRepoDiffRemoved = (repo: Repo): number => repo.diff?.removed ?? 0;
+
 const parseWorksetKey = (value: string): string => {
 	const normalized = value.trim().toLowerCase();
 	return normalized.length > 0 ? normalized : 'unassigned';
@@ -166,31 +185,38 @@ const upsertRepoRow = (
 ): void => {
 	const key = repo.name.toLowerCase();
 	const current = byRepo.get(key);
+	const ahead = getRepoAhead(repo);
+	const behind = getRepoBehind(repo);
+	const dirtyFiles = getRepoDirtyFileCount(repo);
+	const added = getRepoDiffAdded(repo);
+	const removed = getRepoDiffRemoved(repo);
+	const preferredBranch = resolveRepoBranch(repo, 'main');
+
 	if (!current) {
 		byRepo.set(key, {
 			id: repo.id,
 			name: repo.name,
-			branch: repo.currentBranch || repo.defaultBranch || 'main',
-			ahead: repo.ahead ?? 0,
-			behind: repo.behind ?? 0,
-			dirtyFiles: repo.dirty ? repo.files.length : 0,
+			branch: preferredBranch,
+			ahead,
+			behind,
+			dirtyFiles,
 			prNumber: openPr,
 			status,
-			added: repo.diff?.added ?? 0,
-			removed: repo.diff?.removed ?? 0,
+			added,
+			removed,
 		});
 		return;
 	}
 
-	current.ahead = Math.max(current.ahead, repo.ahead ?? 0);
-	current.behind = Math.max(current.behind, repo.behind ?? 0);
-	current.dirtyFiles = Math.max(current.dirtyFiles, repo.dirty ? repo.files.length : 0);
+	current.ahead = Math.max(current.ahead, ahead);
+	current.behind = Math.max(current.behind, behind);
+	current.dirtyFiles = Math.max(current.dirtyFiles, dirtyFiles);
 	current.prNumber = current.prNumber ?? openPr;
-	current.added += repo.diff?.added ?? 0;
-	current.removed += repo.diff?.removed ?? 0;
+	current.added += added;
+	current.removed += removed;
 	if (HEALTH_RANK[status] > HEALTH_RANK[current.status]) {
 		current.status = status;
-		current.branch = repo.currentBranch || repo.defaultBranch || current.branch;
+		current.branch = resolveRepoBranch(repo, current.branch);
 	}
 };
 
@@ -209,7 +235,8 @@ export const getHealthStatusLabel = (status: HealthState): string => {
 };
 
 export const getWorkspaceWorksetLabel = (workspace: Workspace): string => {
-	const value = workspace.worksetLabel?.trim() || workspace.workset?.trim() || workspace.template?.trim();
+	const value =
+		workspace.worksetLabel?.trim() || workspace.workset?.trim() || workspace.template?.trim();
 	return value && value.length > 0 ? value : workspace.name;
 };
 

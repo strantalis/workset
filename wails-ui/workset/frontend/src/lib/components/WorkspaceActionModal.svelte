@@ -459,7 +459,9 @@
 	const buildCreateWorkspacePlan = (): CreateWorkspacePlan => {
 		const isThreadMode = mode === 'create-thread';
 		const threadRepos = Array.from(
-			new Set(worksetRepos.map((repoName) => repoName.trim()).filter((repoName) => repoName.length > 0)),
+			new Set(
+				worksetRepos.map((repoName) => repoName.trim()).filter((repoName) => repoName.length > 0),
+			),
 		);
 		const aliasesToCreate = isThreadMode ? new Set(threadRepos) : selectedAliases;
 		const pendingSource = isThreadMode ? '' : primaryInput.trim();
@@ -599,7 +601,7 @@
 				source: string;
 				targetWorkspaces: Workspace[];
 				aliasSelections: string[];
-			};
+		  };
 
 	const buildAddItemsPlan = (): AddItemsPlan => {
 		if (!workspace) {
@@ -652,8 +654,7 @@
 
 		for (const target of targetWorkspaces) {
 			const existingNames = new Set(target.repos.map((repoEntry) => repoEntry.name));
-			const sourceForTarget =
-				sourceName.length > 0 && !existingNames.has(sourceName) ? source : '';
+			const sourceForTarget = sourceName.length > 0 && !existingNames.has(sourceName) ? source : '';
 			const aliasesForTarget = new Set(
 				aliasSelections.filter((aliasName) => !existingNames.has(aliasName)),
 			);

@@ -754,5 +754,4 @@
 	</div>
 </div>
 
-
 <style src="./ExplorerPanel.css"></style>
