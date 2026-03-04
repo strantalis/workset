@@ -451,10 +451,10 @@ func parseConfigVersion(raw []byte) (int, bool, error) {
 		}
 		numeric, err := strconv.Atoi(trimmed)
 		if err != nil {
-			return 0, false, fmt.Errorf("config_version must be an integer")
+			return 0, false, errors.New("config_version must be an integer")
 		}
 		return numeric, true, nil
 	default:
-		return 0, false, fmt.Errorf("config_version must be an integer")
+		return 0, false, errors.New("config_version must be an integer")
 	}
 }

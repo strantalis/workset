@@ -7,7 +7,6 @@
 		Clock,
 		ExternalLink,
 		FileCode,
-		GitBranch,
 		GitCommit,
 		GitMerge,
 		GitPullRequest,
@@ -19,31 +18,9 @@
 		XCircle,
 	} from '@lucide/svelte';
 	import { Browser } from '@wailsio/runtime';
-	import type {
-		PullRequestCreated,
-		PullRequestReviewComment,
-		PullRequestStatusResult,
-		RepoFileDiff,
-		RepoDiffFileSummary,
-		RepoDiffSummary,
-		Workspace,
-	} from '../../types';
-	import {
-		fetchPullRequestReviews,
-		fetchPullRequestStatus,
-		fetchRepoLocalStatus,
-		fetchTrackedPullRequest,
-		generatePullRequestText,
-		listRemotes,
-		replyToReviewComment,
-		resolveReviewThread,
-		startCommitAndPushAsync,
-	} from '../../api/github';
-	import type {
-		GitHubOperationStage,
-		GitHubOperationStatus,
-		RepoLocalStatus,
-	} from '../../api/github';
+	import type { PullRequestCreated, PullRequestReviewComment, PullRequestStatusResult, RepoFileDiff, RepoDiffFileSummary, RepoDiffSummary, Workspace } from '../../types';
+	import { fetchPullRequestReviews, fetchPullRequestStatus, fetchRepoLocalStatus, fetchTrackedPullRequest, generatePullRequestText, listRemotes, replyToReviewComment, resolveReviewThread, startCommitAndPushAsync } from '../../api/github';
+	import type { GitHubOperationStage, GitHubOperationStatus, RepoLocalStatus } from '../../api/github';
 	import { subscribeGitHubOperationEvent } from '../../githubOperationService';
 	import { deleteReviewComment, editReviewComment } from '../../api/github/review';
 	import { fetchCurrentGitHubUser } from '../../api/github/user';
@@ -78,6 +55,7 @@
 	import { resolveBranchRefs } from '../../diff/branchRefs';
 	import ResizablePanel from '../ui/ResizablePanel.svelte';
 	import PROrchestrationChecksPanel from './PROrchestrationChecksPanel.svelte';
+	import PROrchestrationReadyDetail from './PROrchestrationReadyDetail.svelte';
 	import PROrchestrationSidebar from './PROrchestrationSidebar.svelte';
 	import { mapWorkspaceToPrItems } from '../../view-models/prViewModel';
 	import { buildCheckStats, buildDiffTargetKey } from './prOrchestrationHelpers';
@@ -134,19 +112,16 @@
 		return { active, merged, tracked, readyToPR };
 	});
 
-	// ─── Sidebar state ──────────────────────────────────────────────────
 	let viewMode: 'active' | 'ready' = $state('active');
 	let selectedItemId: string | null = $state(null);
 	let lastAppliedFocusKey = $state<string | null>(null);
 
-	// ─── Detail tab state ───────────────────────────────────────────────
 	let activeTab: 'overview' | 'files' | 'checks' = $state('overview');
 
 	let trackedPr: PullRequestCreated | null = $state(null);
 	let trackedPrLoading = $state(false);
 	let trackedPrRequestId = 0;
 
-	// ─── Files tab ──────────────────────────────────────────────────────
 	let diffSummary: RepoDiffSummary | null = $state(null);
 	let localSummary: RepoDiffSummary | null = $state(null);
 	let diffSummaryLoading = $state(false);
@@ -163,7 +138,6 @@
 	let localSummaryRequestId = 0;
 	let fileDiffRequestId = 0;
 
-	// ─── Checks ─────────────────────────────────────────────────────────
 	let prStatus: PullRequestStatusResult | null = $state(null);
 	let prStatusLoading = $state(false);
 	let prStatusRequestId = 0;
@@ -172,7 +146,6 @@
 	let prReviewsLoading = $state(false);
 	let currentUserId: number | null = $state(null);
 
-	// ─── Ready-to-PR form ───────────────────────────────────────────────
 	let prTitle = $state('');
 	let prBody = $state('');
 
@@ -197,7 +170,6 @@
 	const resolveTrackedTitle = (repoId: string, fallbackTitle: string): string =>
 		trackedPrMap.get(repoId)?.title ?? fallbackTitle;
 
-	// ─── Derived selectors ──────────────────────────────────────────────
 	const selectedItem = $derived(prItems.find((item) => item.id === selectedItemId) ?? null);
 	const wsId = $derived(workspace?.id ?? '');
 	const selectedRepoId = $derived(selectedItem?.repoId ?? '');
@@ -265,7 +237,6 @@
 
 	const commitPushStageLabel = $derived(formatCommitPushStageLabel(commitPushStage));
 
-	// ─── Annotation actions controller ──────────────────────────────────
 	const annotationController = createReviewAnnotationActionsController({
 		document,
 		workspaceId: () => workspace?.id ?? '',
@@ -299,7 +270,6 @@
 		},
 	});
 
-	// ─── Line annotations for current file ──────────────────────────────
 	const lineAnnotations: DiffLineAnnotation<ReviewAnnotation>[] = $derived.by(() => {
 		const src = selectedSource;
 		if (src === 'local' || prReviews.length === 0) return [];
@@ -308,7 +278,6 @@
 		return buildLineAnnotations(prReviews.filter((r) => r.path === file.path));
 	});
 
-	// ─── Actions ────────────────────────────────────────────────────────
 
 	const resolvePrBranches = async (
 		wsId: string,
@@ -915,7 +884,6 @@
 		};
 	});
 
-	// ─── @pierre/diffs integration ──────────────────────────────────────
 	type ParsedFileDiff = Parameters<FileDiffRenderer<ReviewAnnotation>['render']>[0]['fileDiff'];
 
 	type DiffsModule = FileDiffRendererModule<ReviewAnnotation> & {
@@ -1007,7 +975,6 @@
 		};
 	});
 
-	// ─── Helpers ────────────────────────────────────────────────────────
 	const filesForDetail = $derived.by(() => {
 		const src = selectedSource;
 		return src === 'local' ? (localSummary?.files ?? []) : (diffSummary?.files ?? []);
@@ -1035,9 +1002,7 @@
 		{#snippet detailPanel()}
 			<main class="detail">
 				{#if isActiveDetail && selectedItem && workspace}
-					<!-- ── Active PR Detail ── -->
 
-					<!-- PR Header (concept-aligned) -->
 					<div class="pr-header">
 						<div class="prh-top">
 							<div class="prh-icon">
@@ -1075,7 +1040,6 @@
 							{/if}
 						</div>
 
-						<!-- Action buttons + tab switcher -->
 						<div class="prh-actions-row">
 							<div class="prh-actions">
 								{#if trackedPr && !isMergedTrackedPr(trackedPr) && trackedPr.state === 'open'}
@@ -1111,7 +1075,6 @@
 								{/if}
 							</div>
 
-							<!-- Tab Switcher (segmented control) -->
 							<div class="prh-tab-switcher">
 								<button
 									type="button"
@@ -1137,14 +1100,10 @@
 						</div>
 					</div>
 
-					<!-- Tab Content -->
 					<div class="tab-content">
 						{#if activeTab === 'overview'}
-							<!-- ── Overview Tab ── -->
 							<div class="overview-panel">
-								<!-- Left column: Description + Files -->
 								<div class="ov-main">
-									<!-- Description -->
 									{#if trackedPr?.body}
 										<div class="ov-section">
 											<div class="ov-section-head">Description</div>
@@ -1152,7 +1111,6 @@
 										</div>
 									{/if}
 
-									<!-- Push Status (integrated into overview) -->
 									{#if pushStatusVisible}
 										<div class="pr-push-bar">
 											<div class="psb-stats">
@@ -1208,7 +1166,6 @@
 										</div>
 									{/if}
 
-									<!-- Files Changed -->
 									<div class="ov-section">
 										<div class="ov-section-head">
 											Files Changed ·
@@ -1247,9 +1204,7 @@
 									</div>
 								</div>
 
-								<!-- Right sidebar: Checks + Stats -->
 								<div class="ov-sidebar">
-									<!-- Checks Summary -->
 									<div class="ov-sidebar-section">
 										<div class="ov-checks-header">
 											{#if checkStats.total === 0}
@@ -1286,7 +1241,6 @@
 
 									<div class="ov-sidebar-divider"></div>
 
-									<!-- Stats -->
 									<div class="ov-sidebar-section">
 										<div class="ov-stats">
 											{#if selectedItem.commentsCount > 0}
@@ -1319,7 +1273,6 @@
 								</div>
 							</div>
 						{:else if activeTab === 'files'}
-							<!-- ── Files Tab ── -->
 							<div class="files-panel">
 								<div class="fp-sidebar">
 									<div class="fp-sidebar-head">
@@ -1455,196 +1408,30 @@
 							/>
 						{/if}
 					</div>
-				{:else if isReadyDetail && selectedItem && workspace}
-					<!-- ── Change Detail (concept-aligned) ── -->
-
-					<!-- Change header -->
-					<div class="cd-header">
-						<div class="cd-left">
-							<GitBranch size={14} class="cd-icon" />
-							<div class="cd-info">
-								<div class="cd-title-row">
-									<span class="cd-repo">{selectedItem.repoName}</span>
-									<span class="cd-dot">·</span>
-									<span class="cd-thread">{workspace.name}</span>
-									<span class="cd-arrow">→</span>
-									<span class="cd-branch">{selectedItem.branch}</span>
-								</div>
-								<div class="cd-meta">
-									<span
-										>{filesForDetail.length || selectedItem.dirtyFiles}
-										{(filesForDetail.length || selectedItem.dirtyFiles) === 1 ? 'file' : 'files'} changed</span
-									>
-									<span class="cd-dot">·</span>
-									{#if totalAdd > 0}<span class="cd-add">+{totalAdd}</span>{/if}
-									{#if totalDel > 0}<span class="cd-del">-{totalDel}</span>{/if}
-									{#if selectedItem.ahead > 0}
-										<span class="cd-dot">·</span>
-										<span
-											>{selectedItem.ahead} commit{selectedItem.ahead !== 1 ? 's' : ''} ahead</span
-										>
-									{/if}
-								</div>
-							</div>
-						</div>
-						<div class="cd-actions">
-							{#if selectedItem.ahead > 0 || selectedItem.hasLocalDiff}
-								<button
-									type="button"
-									class="cd-push-btn"
-									disabled={commitPushLoading}
-									onclick={() => void handlePushFromSidebar(selectedItem.id)}
-								>
-									{#if commitPushLoading && commitPushRepoId === selectedItem.repoId}
-										<Loader2 size={12} class="spin" />
-										Pushing...
-									{:else}
-										<Upload size={12} />
-										Push {selectedItem.ahead > 0 ? `${selectedItem.ahead}↑` : ''}
-									{/if}
-								</button>
-							{/if}
-						</div>
-					</div>
-
-					<!-- File list + Diff viewer (two-column) -->
-					<div class="cd-body">
-						<!-- File list sidebar -->
-						<div class="cd-file-sidebar">
-							<div class="cd-file-head">Changed Files</div>
-							<div class="cd-file-list">
-								{#if diffSummaryLoading}
-									<div class="cd-file-loading">Loading files...</div>
-								{:else if filesForDetail.length > 0}
-									{#each filesForDetail as file, i (file.path)}
-										{@const fname = file.path.split('/').pop() ?? file.path}
-										{@const dir = file.path.substring(0, file.path.lastIndexOf('/'))}
-										<button
-											type="button"
-											class="cd-file-card"
-											class:active={selectedSource === 'local' ? false : i === selectedFileIdx}
-											onclick={() => {
-												selectedSource = 'pr';
-												selectedFileIdx = i;
-											}}
-										>
-											<div class="cd-file-top">
-												<FileCode size={11} class="cd-file-icon" />
-												<span class="cd-file-name">{fname}</span>
-											</div>
-											{#if dir}
-												<div class="cd-file-dir">{dir}</div>
-											{/if}
-											<div class="cd-file-stats">
-												<div class="cd-diff-bars">
-													{#each Array.from( { length: Math.min(5, file.added > 0 ? Math.max(1, Math.ceil((file.added / (file.added + file.removed || 1)) * 5)) : 0) }, ) as _, addBarIndex (addBarIndex)}
-														<div class="cd-bar cd-bar-add"></div>
-													{/each}
-													{#each Array.from( { length: Math.min(5, file.removed > 0 ? Math.max(1, Math.ceil((file.removed / (file.added + file.removed || 1)) * 5)) : 0) }, ) as _, delBarIndex (delBarIndex)}
-														<div class="cd-bar cd-bar-del"></div>
-													{/each}
-												</div>
-												<span class="cd-file-add">+{file.added}</span>
-												{#if file.removed > 0}
-													<span class="cd-file-del">-{file.removed}</span>
-												{/if}
-											</div>
-										</button>
-									{/each}
-								{:else if selectedRepo}
-									{#each selectedRepo.files as file, i (file.path)}
-										<button
-											type="button"
-											class="cd-file-card"
-											class:active={i === selectedFileIdx}
-											onclick={() => {
-												selectedSource = 'pr';
-												selectedFileIdx = i;
-											}}
-										>
-											<div class="cd-file-top">
-												<FileCode size={11} class="cd-file-icon" />
-												<span class="cd-file-name">{file.path.split('/').pop() ?? file.path}</span>
-											</div>
-											<div class="cd-file-stats">
-												<span class="cd-file-add">+{file.added}</span>
-												{#if file.removed > 0}
-													<span class="cd-file-del">-{file.removed}</span>
-												{/if}
-											</div>
-										</button>
-									{/each}
-								{:else}
-									<div class="cd-file-loading">No files detected</div>
-								{/if}
-							</div>
-						</div>
-
-						<!-- Diff viewer -->
-						<div class="fp-diff">
-							{#if filesForDetail[selectedFileIdx]}
-								{@const activeFile = filesForDetail[selectedFileIdx]}
-								<div class="diff-card">
-									<div class="diff-header">
-										<span>{activeFile.path}</span>
-										<span>
-											{#if activeFile.added > 0}<span class="text-green">+{activeFile.added}</span
-												>{/if}
-											{#if activeFile.removed > 0}<span class="text-red">-{activeFile.removed}</span
-												>{/if}
-										</span>
-									</div>
-									<div class="diff-body">
-										{#if fileDiffError}
-											<div class="diff-placeholder">
-												<AlertCircle size={20} />
-												<p>{fileDiffError}</p>
-											</div>
-										{:else if fileDiffContent?.binary}
-											<div class="diff-placeholder">
-												<FileCode size={24} />
-												<p>Binary file</p>
-											</div>
-										{:else if fileDiffContent?.patch}
-											<div class="diff-renderer-wrap">
-												<div class="diff-renderer">
-													<diffs-container bind:this={diffContainer}></diffs-container>
-												</div>
-												{#if fileDiffLoading}
-													<div class="diff-loading-overlay">
-														<Loader2 size={18} class="spin" />
-														<p>Refreshing diff...</p>
-													</div>
-												{/if}
-											</div>
-											{#if fileDiffContent.truncated}
-												<div class="diff-truncated">
-													Diff truncated ({fileDiffContent.totalLines} total lines)
-												</div>
-											{/if}
-										{:else if fileDiffLoading}
-											<div class="diff-placeholder">
-												<Loader2 size={20} class="spin" />
-												<p>Loading diff...</p>
-											</div>
-										{:else}
-											<div class="diff-placeholder">
-												<FileCode size={24} />
-												<p>No diff content</p>
-											</div>
-										{/if}
-									</div>
-								</div>
-							{:else}
-								<div class="diff-placeholder full">
-									<FileCode size={24} />
-									<p>Select a file to view its diff</p>
-								</div>
-							{/if}
-						</div>
-					</div>
-				{:else}
-					<!-- ── Empty Detail ── -->
+					{:else if isReadyDetail && selectedItem && workspace}
+						<PROrchestrationReadyDetail
+							{selectedItem}
+							workspaceName={workspace.name}
+							{filesForDetail}
+							{totalAdd}
+							{totalDel}
+							{diffSummaryLoading}
+							fallbackFiles={selectedRepo?.files ?? []}
+							{selectedSource}
+							{selectedFileIdx}
+							{fileDiffError}
+							{fileDiffContent}
+							{fileDiffLoading}
+							{commitPushLoading}
+							{commitPushRepoId}
+							onPushFromSidebar={handlePushFromSidebar}
+							onSelectSourceFile={(source, index) => {
+								selectedSource = source;
+								selectedFileIdx = index;
+							}}
+							bind:diffContainer
+						/>
+					{:else}
 					<div class="empty-state ws-empty-state">
 						{#if viewMode === 'active'}
 							<GitPullRequest size={48} />

@@ -194,106 +194,38 @@ func (s *Service) migrateLegacyGroupRemotes(ctx context.Context, cfg *config.Glo
 
 func (s *Service) migrateWorkspaceWorksets(ctx context.Context, cfg *config.GlobalConfig, configPath string, forcePersist bool) error {
 	if len(cfg.Workspaces) == 0 {
-		changed := forcePersist
-		if len(cfg.WorksetCatalog) > 0 {
-			cfg.WorksetCatalog = map[string]config.WorksetCatalogEntry{}
-			changed = true
-		}
-		if forcePersist && len(cfg.Groups) > 0 {
-			cfg.Groups = map[string]config.Group{}
-			changed = true
-		}
-		if !changed {
-			return nil
-		}
-		if updater, ok := s.configs.(ConfigUpdater); ok {
-			_, err := updater.Update(ctx, configPath, func(target *config.GlobalConfig, info config.GlobalConfigLoadInfo) error {
-				target.WorksetCatalog = cfg.WorksetCatalog
-				if forcePersist {
-					target.Groups = map[string]config.Group{}
-				}
-				return nil
-			})
-			return err
-		}
-		return s.configs.Save(ctx, configPath, *cfg)
+		return s.persistEmptyWorkspaceWorksetMigration(ctx, cfg, configPath, forcePersist)
 	}
 
+	state := s.collectWorkspaceWorksetMigrationState(ctx, cfg, forcePersist)
+	s.applyWorkspaceWorksetCatalog(cfg, &state)
+	if forcePersist && len(cfg.Groups) > 0 {
+		cfg.Groups = map[string]config.Group{}
+		state.changed = true
+	}
+	if !state.changed {
+		return nil
+	}
+
+	return s.persistWorkspaceWorksetMigration(ctx, cfg, configPath, forcePersist, state.updates)
+}
+
+type workspaceWorksetMigrationState struct {
+	changed           bool
+	updates           map[string]config.WorkspaceRef
+	worksetRepoSets   map[string]map[string]struct{}
+	worksetThreadSets map[string]map[string]struct{}
+}
+
+func (s *Service) persistEmptyWorkspaceWorksetMigration(
+	ctx context.Context,
+	cfg *config.GlobalConfig,
+	configPath string,
+	forcePersist bool,
+) error {
 	changed := forcePersist
-	updates := map[string]config.WorkspaceRef{}
-	worksetRepoSets := map[string]map[string]struct{}{}
-	worksetThreadSets := map[string]map[string]struct{}{}
-	for name, ref := range cfg.Workspaces {
-		original := ref
-		legacyTemplate := strings.TrimSpace(ref.Template)
-		if strings.TrimSpace(ref.Workset) == "" {
-			workset := legacyTemplate
-			if workset == "" {
-				workset = s.deriveWorkspaceWorkset(ctx, name, ref.Path)
-			}
-			if workset != "" {
-				ref.Workset = workset
-			}
-		}
-		if legacyTemplate != "" {
-			ref.Template = ""
-		}
-		if ref != original {
-			updates[name] = ref
-			cfg.Workspaces[name] = ref
-			changed = true
-		}
-
-		worksetName := strings.TrimSpace(ref.Workset)
-		if worksetName == "" {
-			worksetName = strings.TrimSpace(name)
-		}
-		if worksetName == "" {
-			continue
-		}
-		if _, ok := worksetRepoSets[worksetName]; !ok {
-			worksetRepoSets[worksetName] = map[string]struct{}{}
-		}
-		if _, ok := worksetThreadSets[worksetName]; !ok {
-			worksetThreadSets[worksetName] = map[string]struct{}{}
-		}
-		worksetThreadSets[worksetName][name] = struct{}{}
-		if strings.TrimSpace(ref.Path) == "" {
-			continue
-		}
-		wsConfig, err := s.workspaces.LoadConfig(ctx, ref.Path)
-		if err != nil {
-			continue
-		}
-		for _, repo := range wsConfig.Repos {
-			repoName := strings.TrimSpace(repo.Name)
-			if repoName == "" {
-				continue
-			}
-			worksetRepoSets[worksetName][repoName] = struct{}{}
-		}
-	}
-
-	nextCatalog := map[string]config.WorksetCatalogEntry{}
-	for worksetName, threadSet := range worksetThreadSets {
-		entry := cfg.WorksetCatalog[worksetName]
-		threads := make([]string, 0, len(threadSet))
-		for thread := range threadSet {
-			threads = append(threads, thread)
-		}
-		sort.Strings(threads)
-		repoSet := worksetRepoSets[worksetName]
-		repos := make([]string, 0, len(repoSet))
-		for repo := range repoSet {
-			repos = append(repos, repo)
-		}
-		sort.Strings(repos)
-		entry.Threads = threads
-		entry.Repos = repos
-		nextCatalog[worksetName] = entry
-	}
-	if !reflect.DeepEqual(cfg.WorksetCatalog, nextCatalog) {
-		cfg.WorksetCatalog = nextCatalog
+	if len(cfg.WorksetCatalog) > 0 {
+		cfg.WorksetCatalog = map[string]config.WorksetCatalogEntry{}
 		changed = true
 	}
 	if forcePersist && len(cfg.Groups) > 0 {
@@ -305,7 +237,136 @@ func (s *Service) migrateWorkspaceWorksets(ctx context.Context, cfg *config.Glob
 	}
 
 	if updater, ok := s.configs.(ConfigUpdater); ok {
-		_, err := updater.Update(ctx, configPath, func(target *config.GlobalConfig, info config.GlobalConfigLoadInfo) error {
+		_, err := updater.Update(ctx, configPath, func(target *config.GlobalConfig, _ config.GlobalConfigLoadInfo) error {
+			target.WorksetCatalog = cfg.WorksetCatalog
+			if forcePersist {
+				target.Groups = map[string]config.Group{}
+			}
+			return nil
+		})
+		return err
+	}
+	return s.configs.Save(ctx, configPath, *cfg)
+}
+
+func (s *Service) collectWorkspaceWorksetMigrationState(
+	ctx context.Context,
+	cfg *config.GlobalConfig,
+	forcePersist bool,
+) workspaceWorksetMigrationState {
+	state := workspaceWorksetMigrationState{
+		changed:           forcePersist,
+		updates:           map[string]config.WorkspaceRef{},
+		worksetRepoSets:   map[string]map[string]struct{}{},
+		worksetThreadSets: map[string]map[string]struct{}{},
+	}
+
+	for name, ref := range cfg.Workspaces {
+		normalized, refChanged := s.normalizeWorkspaceRef(ctx, name, ref)
+		if refChanged {
+			state.updates[name] = normalized
+			cfg.Workspaces[name] = normalized
+			state.changed = true
+		}
+
+		worksetName := strings.TrimSpace(normalized.Workset)
+		if worksetName == "" {
+			worksetName = strings.TrimSpace(name)
+		}
+		if worksetName == "" {
+			continue
+		}
+
+		if _, ok := state.worksetRepoSets[worksetName]; !ok {
+			state.worksetRepoSets[worksetName] = map[string]struct{}{}
+		}
+		if _, ok := state.worksetThreadSets[worksetName]; !ok {
+			state.worksetThreadSets[worksetName] = map[string]struct{}{}
+		}
+		state.worksetThreadSets[worksetName][name] = struct{}{}
+		s.addWorkspaceReposToSet(ctx, normalized.Path, state.worksetRepoSets[worksetName])
+	}
+
+	return state
+}
+
+func (s *Service) normalizeWorkspaceRef(
+	ctx context.Context,
+	workspaceName string,
+	ref config.WorkspaceRef,
+) (config.WorkspaceRef, bool) {
+	original := ref
+	legacyTemplate := strings.TrimSpace(ref.Template)
+	if strings.TrimSpace(ref.Workset) == "" {
+		workset := legacyTemplate
+		if workset == "" {
+			workset = s.deriveWorkspaceWorkset(ctx, workspaceName, ref.Path)
+		}
+		if workset != "" {
+			ref.Workset = workset
+		}
+	}
+	if legacyTemplate != "" {
+		ref.Template = ""
+	}
+	return ref, ref != original
+}
+
+func (s *Service) addWorkspaceReposToSet(ctx context.Context, root string, repoSet map[string]struct{}) {
+	if strings.TrimSpace(root) == "" {
+		return
+	}
+	wsConfig, err := s.workspaces.LoadConfig(ctx, root)
+	if err != nil {
+		return
+	}
+	for _, repo := range wsConfig.Repos {
+		repoName := strings.TrimSpace(repo.Name)
+		if repoName == "" {
+			continue
+		}
+		repoSet[repoName] = struct{}{}
+	}
+}
+
+func (s *Service) applyWorkspaceWorksetCatalog(
+	cfg *config.GlobalConfig,
+	state *workspaceWorksetMigrationState,
+) {
+	nextCatalog := map[string]config.WorksetCatalogEntry{}
+	for worksetName, threadSet := range state.worksetThreadSets {
+		entry := cfg.WorksetCatalog[worksetName]
+		threads := make([]string, 0, len(threadSet))
+		for thread := range threadSet {
+			threads = append(threads, thread)
+		}
+		sort.Strings(threads)
+		repoSet := state.worksetRepoSets[worksetName]
+		repos := make([]string, 0, len(repoSet))
+		for repo := range repoSet {
+			repos = append(repos, repo)
+		}
+		sort.Strings(repos)
+		entry.Threads = threads
+		entry.Repos = repos
+		nextCatalog[worksetName] = entry
+	}
+
+	if !reflect.DeepEqual(cfg.WorksetCatalog, nextCatalog) {
+		cfg.WorksetCatalog = nextCatalog
+		state.changed = true
+	}
+}
+
+func (s *Service) persistWorkspaceWorksetMigration(
+	ctx context.Context,
+	cfg *config.GlobalConfig,
+	configPath string,
+	forcePersist bool,
+	updates map[string]config.WorkspaceRef,
+) error {
+	if updater, ok := s.configs.(ConfigUpdater); ok {
+		_, err := updater.Update(ctx, configPath, func(target *config.GlobalConfig, _ config.GlobalConfigLoadInfo) error {
 			if target.Workspaces == nil {
 				return nil
 			}

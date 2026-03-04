@@ -446,30 +446,73 @@
 		}
 	};
 
-	const handleCreate = async (): Promise<void> => {
+	type CreateWorkspacePlan = {
+		isThreadMode: boolean;
+		threadRepos: string[];
+		aliasesToCreate: Set<string>;
+		directReposForMutation: WorkspaceActionDirectRepo[];
+		pendingSource: string;
+		hasCatalogRepos: boolean;
+		hasDirectRepos: boolean;
+	};
+
+	const buildCreateWorkspacePlan = (): CreateWorkspacePlan => {
 		const isThreadMode = mode === 'create-thread';
 		const threadRepos = Array.from(
-			new Set(
-				worksetRepos.map((repoName) => repoName.trim()).filter((repoName) => repoName.length > 0),
-			),
+			new Set(worksetRepos.map((repoName) => repoName.trim()).filter((repoName) => repoName.length > 0)),
 		);
 		const aliasesToCreate = isThreadMode ? new Set(threadRepos) : selectedAliases;
 		const pendingSource = isThreadMode ? '' : primaryInput.trim();
 		const hasPendingSource = pendingSource.length > 0 && isRepoSource(pendingSource);
 		const hasDirectRepos = !isThreadMode && (directRepos.length > 0 || hasPendingSource);
 		const hasCatalogRepos = aliasesToCreate.size > 0;
-		if (isThreadMode && threadRepos.length === 0) {
-			error = 'Selected workset has no repositories.';
-			return;
+		return {
+			isThreadMode,
+			threadRepos,
+			aliasesToCreate,
+			directReposForMutation: isThreadMode ? [] : directRepos,
+			pendingSource,
+			hasCatalogRepos,
+			hasDirectRepos,
+		};
+	};
+
+	const getCreateValidationError = (plan: CreateWorkspacePlan): string | null => {
+		if (plan.isThreadMode && plan.threadRepos.length === 0) {
+			return 'Selected workset has no repositories.';
 		}
-		if (!isThreadMode && !hasCatalogRepos && !hasDirectRepos) {
-			error = 'Select at least one repository or add a repository source.';
-			return;
+		if (!plan.isThreadMode && !plan.hasCatalogRepos && !plan.hasDirectRepos) {
+			return 'Select at least one repository or add a repository source.';
 		}
 		if (!finalName) {
-			error = mode === 'create-thread' ? 'Enter a thread name.' : 'Enter a workset name.';
+			return mode === 'create-thread' ? 'Enter a thread name.' : 'Enter a workset name.';
+		}
+		return null;
+	};
+
+	const applyMutationTransition = (
+		transition: ReturnType<typeof resolveMutationHookTransition>,
+	): void => {
+		success = transition.success;
+		hookResultContext = transition.hookResultContext;
+		phase = transition.phase;
+		if (transition.shouldClose) {
+			onClose();
 			return;
 		}
+		if (transition.shouldAutoClose) {
+			autoCloseTimer = setTimeout(() => onClose(), 1500);
+		}
+	};
+
+	const handleCreate = async (): Promise<void> => {
+		const plan = buildCreateWorkspacePlan();
+		const validationError = getCreateValidationError(plan);
+		if (validationError) {
+			error = validationError;
+			return;
+		}
+
 		loading = true;
 		error = null;
 		success = null;
@@ -484,10 +527,10 @@
 		try {
 			const result = await workspaceActionMutations.createWorkspace({
 				finalName,
-				primaryInput: isThreadMode ? '' : primaryInput,
-				directRepos: isThreadMode ? [] : directRepos,
-				selectedAliases: aliasesToCreate,
-				worksetName: isThreadMode ? (worksetName ?? undefined) : undefined,
+				primaryInput: plan.isThreadMode ? '' : primaryInput,
+				directRepos: plan.directReposForMutation,
+				selectedAliases: plan.aliasesToCreate,
+				worksetName: plan.isThreadMode ? (worksetName ?? undefined) : undefined,
 			});
 
 			hookRuns = appendHookRuns(hookRuns, result.hookRuns);
@@ -496,21 +539,15 @@
 			await loadWorkspaces(true);
 			selectWorkspace(result.workspaceName);
 			warnings = result.warnings;
-			const transition = resolveMutationHookTransition({
-				action: 'created',
-				workspaceName: result.workspaceName,
-				warnings,
-				pendingHooks,
-				hookRuns,
-			});
-			success = transition.success;
-			hookResultContext = transition.hookResultContext;
-			phase = transition.phase;
-			if (transition.shouldClose) {
-				onClose();
-			} else if (transition.shouldAutoClose) {
-				autoCloseTimer = setTimeout(() => onClose(), 1500);
-			}
+			applyMutationTransition(
+				resolveMutationHookTransition({
+					action: 'created',
+					workspaceName: result.workspaceName,
+					warnings,
+					pendingHooks,
+					hookRuns,
+				}),
+			);
 		} catch (err) {
 			error = formatWorkspaceActionError(
 				err,
@@ -554,31 +591,97 @@
 		}
 	};
 
-	const handleAddItems = async (): Promise<void> => {
-		if (!workspace) return;
+	type AddItemsPlan =
+		| { ok: false; error: string }
+		| {
+				ok: true;
+				displayName: string;
+				source: string;
+				targetWorkspaces: Workspace[];
+				aliasSelections: string[];
+			};
+
+	const buildAddItemsPlan = (): AddItemsPlan => {
+		if (!workspace) {
+			return { ok: false, error: 'Workspace is required.' };
+		}
 		const source = addSource.trim();
 		const hasSource = source.length > 0;
 		const hasAliases = selectedAliases.size > 0;
-
 		if (!hasSource && !hasAliases) {
-			error = 'Provide a repo URL/path or select repositories.';
-			return;
+			return { ok: false, error: 'Provide a repo URL/path or select repositories.' };
 		}
 
-		const displayName = worksetName?.trim() || workspace.name;
 		const targetIds = targetWorkspaceIds.length > 0 ? targetWorkspaceIds : [workspace.id];
 		const workspaceById = new Map($workspaces.map((entry) => [entry.id, entry]));
 		const targetWorkspaces = targetIds
 			.map((id) => workspaceById.get(id))
 			.filter((entry): entry is Workspace => entry !== undefined);
 		if (targetWorkspaces.length === 0) {
-			error = 'Unable to locate threads for this workset.';
-			return;
+			return { ok: false, error: 'Unable to locate threads for this workset.' };
 		}
 
+		return {
+			ok: true,
+			displayName: worksetName?.trim() || workspace.name,
+			source,
+			targetWorkspaces,
+			aliasSelections: Array.from(selectedAliases),
+		};
+	};
+
+	type AddItemsResultBucket = {
+		itemCount: number;
+		mutatedCount: number;
+		warnings: string[];
+		pendingHooks: WorkspaceActionPendingHook[];
+		hookRuns: HookExecution[];
+	};
+
+	const runAddItemsMutations = async (
+		targetWorkspaces: Workspace[],
+		source: string,
+		aliasSelections: string[],
+	): Promise<AddItemsResultBucket> => {
 		const sourceName = source.length > 0 ? deriveRepoName(source) || source : '';
-		const aliasSelections = Array.from(selectedAliases);
+		let itemCount = 0;
 		let mutatedCount = 0;
+		const warnings: string[] = [];
+		const pendingHooks: WorkspaceActionPendingHook[] = [];
+		const hookRuns: HookExecution[] = [];
+
+		for (const target of targetWorkspaces) {
+			const existingNames = new Set(target.repos.map((repoEntry) => repoEntry.name));
+			const sourceForTarget =
+				sourceName.length > 0 && !existingNames.has(sourceName) ? source : '';
+			const aliasesForTarget = new Set(
+				aliasSelections.filter((aliasName) => !existingNames.has(aliasName)),
+			);
+			if (!sourceForTarget && aliasesForTarget.size === 0) {
+				continue;
+			}
+
+			mutatedCount += 1;
+			const result = await workspaceActionMutations.addItems({
+				workspaceId: target.id,
+				source: sourceForTarget,
+				selectedAliases: aliasesForTarget,
+			});
+			itemCount += result.itemCount;
+			warnings.push(...result.warnings);
+			pendingHooks.push(...result.pendingHooks);
+			hookRuns.push(...result.hookRuns);
+		}
+
+		return { itemCount, mutatedCount, warnings, pendingHooks, hookRuns };
+	};
+
+	const handleAddItems = async (): Promise<void> => {
+		const plan = buildAddItemsPlan();
+		if (!plan.ok) {
+			error = plan.error;
+			return;
+		}
 
 		loading = true;
 		error = null;
@@ -586,67 +689,37 @@
 		warnings = [];
 		pendingHooks = [];
 		hookRuns = [];
-		hookWorkspaceId = targetWorkspaces[0]?.id ?? workspace.id;
+		hookWorkspaceId = plan.targetWorkspaces[0]?.id ?? null;
 		({ activeHookOperation, activeHookWorkspace, hookRuns, pendingHooks } = beginHookTracking(
 			'repo.add',
-			displayName,
+			plan.displayName,
 		));
 		try {
-			let itemCount = 0;
-			const warningsBucket: string[] = [];
-			const pendingBucket: WorkspaceActionPendingHook[] = [];
-			const hookRunBucket: HookExecution[] = [];
-
-			for (const target of targetWorkspaces) {
-				const existingNames = new Set(target.repos.map((repoEntry) => repoEntry.name));
-				const sourceForTarget =
-					sourceName.length > 0 && !existingNames.has(sourceName) ? source : '';
-				const aliasesForTarget = new Set(
-					aliasSelections.filter((aliasName) => !existingNames.has(aliasName)),
-				);
-
-				if (!sourceForTarget && aliasesForTarget.size === 0) {
-					continue;
-				}
-
-				mutatedCount += 1;
-				const result = await workspaceActionMutations.addItems({
-					workspaceId: target.id,
-					source: sourceForTarget,
-					selectedAliases: aliasesForTarget,
-				});
-				itemCount += result.itemCount;
-				warningsBucket.push(...result.warnings);
-				pendingBucket.push(...result.pendingHooks);
-				hookRunBucket.push(...result.hookRuns);
-			}
-
-			if (mutatedCount === 0) {
+			const result = await runAddItemsMutations(
+				plan.targetWorkspaces,
+				plan.source,
+				plan.aliasSelections,
+			);
+			if (result.mutatedCount === 0) {
 				error = 'Selected repositories are already present in every thread for this workset.';
 				return;
 			}
 
-			hookRuns = appendHookRuns(hookRuns, hookRunBucket);
-			pendingHooks = pendingBucket.map((pending) => ({ ...pending }));
+			hookRuns = appendHookRuns(hookRuns, result.hookRuns);
+			pendingHooks = result.pendingHooks.map((pending) => ({ ...pending }));
 
 			await loadWorkspaces(true);
-			warnings = Array.from(new Set(warningsBucket));
-			const transition = resolveMutationHookTransition({
-				action: 'added',
-				workspaceName: displayName,
-				itemCount,
-				warnings,
-				pendingHooks,
-				hookRuns,
-			});
-			success = transition.success;
-			hookResultContext = transition.hookResultContext;
-			phase = transition.phase;
-			if (transition.shouldClose) {
-				onClose();
-			} else if (transition.shouldAutoClose) {
-				autoCloseTimer = setTimeout(() => onClose(), 1500);
-			}
+			warnings = Array.from(new Set(result.warnings));
+			applyMutationTransition(
+				resolveMutationHookTransition({
+					action: 'added',
+					workspaceName: plan.displayName,
+					itemCount: result.itemCount,
+					warnings,
+					pendingHooks,
+					hookRuns,
+				}),
+			);
 		} catch (err) {
 			error = formatWorkspaceActionError(err, 'Failed to add items.');
 		} finally {

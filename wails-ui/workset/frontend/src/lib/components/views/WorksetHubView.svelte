@@ -29,46 +29,22 @@
 		Trash2,
 	} from '@lucide/svelte';
 	import { clickOutside } from '../../actions/clickOutside';
-	import type { Repo, Workspace } from '../../types';
-	import type { HealthState, WorksetSummary } from '../../view-models/worksetViewModel';
-
-	export type WorksetGroupMode = 'all' | 'repo' | 'active';
-	export type WorksetLayoutMode = 'grid' | 'list';
-	type ThreadStatus = 'active' | 'in-review' | 'merged' | 'stale';
-	type WorksetAggregate = {
-		id: string;
-		label: string;
-		description: string;
-		threads: WorksetSummary[];
-		repos: string[];
-		health: HealthState[];
-		branch: string;
-		dirtyCount: number;
-		openPrs: number;
-		mergedPrs: number;
-		linesAdded: number;
-		linesRemoved: number;
-		lastActive: string;
-		lastActiveTs: number;
-		pinned: boolean;
-		archived: boolean;
-	};
-	type WorksetGroup = {
-		label: string;
-		items: WorksetAggregate[];
-	};
-	type ActiveRepoRow = {
-		id: string;
-		name: string;
-		branch: string;
-		ahead: number;
-		behind: number;
-		dirtyFiles: number;
-		prNumber: number | null;
-		status: HealthState;
-		added: number;
-		removed: number;
-	};
+	import type { Workspace } from '../../types';
+	import type { WorksetSummary } from '../../view-models/worksetViewModel';
+	import {
+		buildActiveWorksetRows,
+		buildWorksetAggregates,
+		buildWorksetGroups,
+		getHealthStatusLabel,
+		getThreadStatus,
+		resolveActiveWorksetCard,
+		resolveActiveWorkspaceEntry,
+		type ActiveRepoRow,
+		type WorksetAggregate,
+		type WorksetGroup,
+		type WorksetGroupMode,
+		type WorksetLayoutMode,
+	} from './WorksetHubView.helpers';
 
 	interface Props {
 		worksets: WorksetSummary[];
@@ -117,27 +93,6 @@
 		{ id: 'repo', label: 'Repo', icon: FolderGit2 },
 		{ id: 'active', label: 'Active', icon: Clock },
 	];
-	const HEALTH_ORDER: HealthState[] = ['clean', 'modified', 'ahead', 'error'];
-	const getRepoHealth = (repo: Repo): HealthState => {
-		if (repo.missing) return 'error';
-		if (repo.dirty) return 'modified';
-		if ((repo.ahead ?? 0) > 0) return 'ahead';
-		return 'clean';
-	};
-
-	const getHealthStatusLabel = (status: HealthState): string => {
-		if (status === 'error') return 'Missing';
-		if (status === 'modified') return 'Modified';
-		if (status === 'ahead') return 'Ahead';
-		return 'Clean';
-	};
-
-	const getWorkspaceWorksetLabel = (workspace: Workspace): string => {
-		const value =
-			workspace.worksetLabel?.trim() || workspace.workset?.trim() || workspace.template?.trim();
-		return value && value.length > 0 ? value : workspace.name;
-	};
-
 	let searchQuery = $state('');
 	let groupMode = $state<WorksetGroupMode>('all');
 	let layoutMode = $state<WorksetLayoutMode>('grid');
@@ -154,94 +109,6 @@
 		if (layoutModeProp === undefined || layoutMode === layoutModeProp) return;
 		layoutMode = layoutModeProp;
 	});
-
-	const parseWorksetKey = (value: string): string => {
-		const normalized = value.trim().toLowerCase();
-		return normalized.length > 0 ? normalized : 'unassigned';
-	};
-
-	const buildWorksetId = (label: string): string => {
-		const slug = label
-			.trim()
-			.toLowerCase()
-			.replace(/[^a-z0-9]+/g, '-')
-			.replace(/(^-|-$)/g, '');
-		return slug.length > 0 ? `workset:${slug}` : 'workset:unassigned';
-	};
-
-	const getThreadStatus = (thread: WorksetSummary): ThreadStatus => {
-		if (thread.openPrs > 0) return 'in-review';
-		if (thread.dirtyCount > 0) return 'active';
-		if (thread.mergedPrs > 0) return 'merged';
-		const age = Date.now() - thread.lastActiveTs;
-		return age > 14 * 24 * 60 * 60 * 1000 ? 'stale' : 'active';
-	};
-
-	const buildWorksetAggregates = (items: WorksetSummary[]): WorksetAggregate[] => {
-		const byWorkset = new Map<string, WorksetSummary[]>();
-		for (const thread of items) {
-			const key = parseWorksetKey(thread.workset);
-			const bucket = byWorkset.get(key) ?? [];
-			bucket.push(thread);
-			byWorkset.set(key, bucket);
-		}
-
-		return [...byWorkset.entries()]
-			.map(([, threads]) => {
-				const orderedThreads = [...threads];
-				const latestThread =
-					orderedThreads.reduce(
-						(latest, thread) => (thread.lastActiveTs > latest.lastActiveTs ? thread : latest),
-						orderedThreads[0],
-					) ?? null;
-				if (!latestThread) return null;
-				const repos = new Set<string>();
-				const health = new Set<HealthState>();
-				let dirtyCount = 0;
-				let openPrs = 0;
-				let mergedPrs = 0;
-				let linesAdded = 0;
-				let linesRemoved = 0;
-				for (const thread of orderedThreads) {
-					for (const repoName of thread.repos) repos.add(repoName);
-					for (const state of thread.health) health.add(state);
-					dirtyCount += thread.dirtyCount;
-					openPrs += thread.openPrs;
-					mergedPrs += thread.mergedPrs;
-					linesAdded += thread.linesAdded;
-					linesRemoved += thread.linesRemoved;
-				}
-				return {
-					id: buildWorksetId(latestThread.workset),
-					label: latestThread.workset.trim().length > 0 ? latestThread.workset : 'Unassigned',
-					description:
-						orderedThreads.find((entry) => entry.description.trim().length > 0)?.description ?? '',
-					threads: orderedThreads,
-					repos: [...repos].sort((left, right) => left.localeCompare(right)),
-					health: HEALTH_ORDER.filter((state) => health.has(state)),
-					branch: latestThread.branch,
-					dirtyCount,
-					openPrs,
-					mergedPrs,
-					linesAdded,
-					linesRemoved,
-					lastActive: latestThread.lastActive,
-					lastActiveTs: latestThread.lastActiveTs,
-					pinned: orderedThreads.some((thread) => thread.pinned),
-					archived: orderedThreads.every((thread) => thread.archived),
-				};
-			})
-			.filter((value): value is WorksetAggregate => value !== null);
-	};
-
-	const sortByActivity = (items: WorksetAggregate[]): WorksetAggregate[] =>
-		[...items].sort((left, right) => {
-			if (left.pinned !== right.pinned) return left.pinned ? -1 : 1;
-			return right.lastActiveTs - left.lastActiveTs;
-		});
-
-	const sortByLabel = (items: WorksetAggregate[]): WorksetAggregate[] =>
-		[...items].sort((left, right) => left.label.localeCompare(right.label));
 
 	const allWorksets = $derived.by(() => buildWorksetAggregates(worksets));
 
@@ -264,61 +131,7 @@
 		showArchived ? filtered : filtered.filter((item) => !item.archived),
 	);
 
-	const groups = $derived.by<WorksetGroup[]>(() => {
-		if (groupMode === 'all') {
-			return [{ label: '', items: sortByActivity(visible) }];
-		}
-
-		if (groupMode === 'repo') {
-			const repoMap = new Map<string, WorksetAggregate[]>();
-			const noReposLabel = 'No Repos';
-			for (const item of visible) {
-				if (item.repos.length === 0) {
-					const bucket = repoMap.get(noReposLabel) ?? [];
-					bucket.push(item);
-					repoMap.set(noReposLabel, bucket);
-					continue;
-				}
-				for (const repoName of item.repos) {
-					const bucket = repoMap.get(repoName) ?? [];
-					if (!bucket.some((entry) => entry.id === item.id)) bucket.push(item);
-					repoMap.set(repoName, bucket);
-				}
-			}
-			return [...repoMap.entries()]
-				.sort((left, right) => {
-					if (left[0] === noReposLabel && right[0] !== noReposLabel) return 1;
-					if (right[0] === noReposLabel && left[0] !== noReposLabel) return -1;
-					const byCount = right[1].length - left[1].length;
-					if (byCount !== 0) return byCount;
-					return left[0].localeCompare(right[0]);
-				})
-				.map(([label, items]) => ({ label, items: sortByLabel(items) }));
-		}
-
-		const dayMs = 24 * 60 * 60 * 1000;
-		const now = Date.now();
-		const today: WorksetAggregate[] = [];
-		const thisWeek: WorksetAggregate[] = [];
-		const older: WorksetAggregate[] = [];
-		for (const item of visible) {
-			const age = now - item.lastActiveTs;
-			if (age < dayMs) {
-				today.push(item);
-				continue;
-			}
-			if (age < dayMs * 7) {
-				thisWeek.push(item);
-				continue;
-			}
-			older.push(item);
-		}
-		return [
-			{ label: 'Today', items: sortByActivity(today) },
-			{ label: 'This Week', items: sortByActivity(thisWeek) },
-			{ label: 'Older', items: sortByActivity(older) },
-		].filter((group) => group.items.length > 0);
-	});
+	const groups = $derived.by<WorksetGroup[]>(() => buildWorksetGroups(visible, groupMode));
 
 	const visibleCatalog = $derived.by(() =>
 		showArchived ? allWorksets : allWorksets.filter((item) => !item.archived),
@@ -333,89 +146,15 @@
 	const totalDirty = $derived(visibleCatalog.reduce((acc, item) => acc + item.dirtyCount, 0));
 	const totalPinned = $derived(visibleCatalog.filter((item) => item.pinned).length);
 	const archivedCount = $derived(allWorksets.filter((item) => item.archived).length);
-	const activeWorkspaceEntry = $derived.by(() => {
-		if (workspaceCatalog.length === 0) return null;
-		if (activeWorkspaceId) {
-			const active = workspaceCatalog.find((workspace) => workspace.id === activeWorkspaceId);
-			if (active) return active;
-		}
-		return workspaceCatalog.find((workspace) => !workspace.archived) ?? workspaceCatalog[0] ?? null;
-	});
-	const activeWorksetCard = $derived.by(() => {
-		if (activeWorkspaceId) {
-			const byThread = allWorksets.find((item) =>
-				item.threads.some((thread) => thread.id === activeWorkspaceId),
-			);
-			if (byThread) return byThread;
-		}
-		const candidate = activeWorkspaceEntry;
-		if (candidate) {
-			const worksetId = buildWorksetId(getWorkspaceWorksetLabel(candidate));
-			const byId = allWorksets.find((item) => item.id === worksetId);
-			if (byId) return byId;
-		}
-		return visibleCatalog[0] ?? null;
-	});
-	const activeWorksetRows = $derived.by<ActiveRepoRow[]>(() => {
-		const active = activeWorksetCard;
-		if (!active) return [];
-		const threads = workspaceCatalog.filter(
-			(workspace) => buildWorksetId(getWorkspaceWorksetLabel(workspace)) === active.id,
-		);
-		if (threads.length === 0) return [];
-
-		const rank: Record<HealthState, number> = {
-			clean: 0,
-			ahead: 1,
-			modified: 2,
-			error: 3,
-		};
-		const byRepo = new Map<string, ActiveRepoRow>();
-		for (const thread of threads) {
-			for (const repo of thread.repos) {
-				const key = repo.name.toLowerCase();
-				const current = byRepo.get(key);
-				const status = getRepoHealth(repo);
-				const tracked = repo.trackedPullRequest;
-				const openPr =
-					tracked && tracked.state.toLowerCase() === 'open' && tracked.merged !== true
-						? tracked.number
-						: null;
-				if (!current) {
-					byRepo.set(key, {
-						id: repo.id,
-						name: repo.name,
-						branch: repo.currentBranch || repo.defaultBranch || 'main',
-						ahead: repo.ahead ?? 0,
-						behind: repo.behind ?? 0,
-						dirtyFiles: repo.dirty ? repo.files.length : 0,
-						prNumber: openPr,
-						status,
-						added: repo.diff?.added ?? 0,
-						removed: repo.diff?.removed ?? 0,
-					});
-					continue;
-				}
-
-				current.ahead = Math.max(current.ahead, repo.ahead ?? 0);
-				current.behind = Math.max(current.behind, repo.behind ?? 0);
-				current.dirtyFiles = Math.max(current.dirtyFiles, repo.dirty ? repo.files.length : 0);
-				current.prNumber = current.prNumber ?? openPr;
-				current.added += repo.diff?.added ?? 0;
-				current.removed += repo.diff?.removed ?? 0;
-				if (rank[status] > rank[current.status]) {
-					current.status = status;
-					current.branch = repo.currentBranch || repo.defaultBranch || current.branch;
-				}
-			}
-		}
-
-		return [...byRepo.values()].sort((left, right) => {
-			const statusDelta = rank[right.status] - rank[left.status];
-			if (statusDelta !== 0) return statusDelta;
-			return left.name.localeCompare(right.name);
-		});
-	});
+	const activeWorkspaceEntry = $derived.by(() =>
+		resolveActiveWorkspaceEntry(workspaceCatalog, activeWorkspaceId),
+	);
+	const activeWorksetCard = $derived.by(() =>
+		resolveActiveWorksetCard(allWorksets, visibleCatalog, activeWorkspaceEntry, activeWorkspaceId),
+	);
+	const activeWorksetRows = $derived.by<ActiveRepoRow[]>(() =>
+		buildActiveWorksetRows(activeWorksetCard, workspaceCatalog),
+	);
 
 	const getPrimaryThread = (item: WorksetAggregate): WorksetSummary | null => {
 		if (activeWorkspaceId) {
