@@ -16,16 +16,19 @@ const (
 )
 
 type globalConfigMigration struct {
-	id          string
-	summary     string
-	removeAfter string
-	run         func(context.Context, *config.GlobalConfig, string, config.GlobalConfigLoadInfo) error
+	id            string
+	summary       string
+	removeAfter   string
+	targetVersion int
+	runWhen       func(*config.GlobalConfig, config.GlobalConfigLoadInfo) bool
+	run           func(context.Context, *config.GlobalConfig, string, config.GlobalConfigLoadInfo) error
 }
 
 type globalConfigMigrationDescriptor struct {
-	ID          string
-	Summary     string
-	RemoveAfter string
+	ID            string
+	Summary       string
+	RemoveAfter   string
+	TargetVersion int
 }
 
 func (s *Service) globalConfigMigrations(
@@ -33,17 +36,29 @@ func (s *Service) globalConfigMigrations(
 ) []globalConfigMigration {
 	return []globalConfigMigration{
 		{
-			id:          migrationIDWorkspacesToWorksets,
-			summary:     "backfill workset labels + workset_catalog and persist canonical worksets key",
-			removeAfter: "drop once all active configs have no legacy workspaces/template/group usage for two minor releases",
+			id:            migrationIDWorkspacesToWorksets,
+			summary:       "backfill workset labels + workset_catalog and persist canonical worksets key",
+			removeAfter:   "drop once all active configs have no legacy workspaces/template/group usage for two minor releases",
+			targetVersion: config.CurrentGlobalConfigVersion,
+			runWhen: func(cfg *config.GlobalConfig, info config.GlobalConfigLoadInfo) bool {
+				return normalizedGlobalConfigVersion(cfg.ConfigVersion) < config.CurrentGlobalConfigVersion ||
+					info.UsedLegacyWorkspacesKey ||
+					needsWorkspaceWorksetNormalization(cfg)
+			},
 			run: func(ctx context.Context, cfg *config.GlobalConfig, configPath string, info config.GlobalConfigLoadInfo) error {
-				return s.migrateWorkspaceWorksets(ctx, cfg, configPath, info.UsedLegacyWorkspacesKey)
+				forcePersist := info.UsedLegacyWorkspacesKey ||
+					normalizedGlobalConfigVersion(cfg.ConfigVersion) < config.CurrentGlobalConfigVersion
+				return s.migrateWorkspaceWorksets(ctx, cfg, configPath, forcePersist)
 			},
 		},
 		{
-			id:          migrationIDGroupRemotesToAliases,
-			summary:     "promote legacy group remotes to alias defaults and strip legacy remote blocks",
-			removeAfter: "drop after legacy remotes/group metadata has been absent for two minor releases",
+			id:            migrationIDGroupRemotesToAliases,
+			summary:       "promote legacy group remotes to alias defaults and strip legacy remote blocks",
+			removeAfter:   "drop after legacy remotes/group metadata has been absent for two minor releases",
+			targetVersion: config.CurrentGlobalConfigVersion,
+			runWhen: func(cfg *config.GlobalConfig, _ config.GlobalConfigLoadInfo) bool {
+				return normalizedGlobalConfigVersion(cfg.ConfigVersion) < config.CurrentGlobalConfigVersion || hasLegacyGroupRemotes(cfg)
+			},
 			run: func(ctx context.Context, cfg *config.GlobalConfig, configPath string, info config.GlobalConfigLoadInfo) error {
 				return s.migrateLegacyGroupRemotes(ctx, cfg, configPath)
 			},
@@ -58,9 +73,10 @@ func (s *Service) globalConfigMigrationPlan(
 	plan := make([]globalConfigMigrationDescriptor, 0, len(migrations))
 	for _, migration := range migrations {
 		plan = append(plan, globalConfigMigrationDescriptor{
-			ID:          migration.id,
-			Summary:     migration.summary,
-			RemoveAfter: migration.removeAfter,
+			ID:            migration.id,
+			Summary:       migration.summary,
+			RemoveAfter:   migration.removeAfter,
+			TargetVersion: migration.targetVersion,
 		})
 	}
 	return plan
@@ -72,12 +88,92 @@ func (s *Service) runGlobalConfigMigrations(
 	configPath string,
 	info config.GlobalConfigLoadInfo,
 ) error {
+	initialVersion := normalizedGlobalConfigVersion(cfg.ConfigVersion)
+	cfg.ConfigVersion = initialVersion
+
 	for _, migration := range s.globalConfigMigrations(info) {
+		if migration.runWhen != nil && !migration.runWhen(cfg, info) {
+			continue
+		}
 		if err := migration.run(ctx, cfg, configPath, info); err != nil {
 			return fmt.Errorf("migration %s failed: %w", migration.id, err)
 		}
+		if cfg.ConfigVersion < migration.targetVersion {
+			cfg.ConfigVersion = migration.targetVersion
+		}
+	}
+	if cfg.ConfigVersion < config.CurrentGlobalConfigVersion {
+		cfg.ConfigVersion = config.CurrentGlobalConfigVersion
+	}
+	if info.Exists && cfg.ConfigVersion > initialVersion {
+		if err := s.persistGlobalConfigVersion(ctx, configPath, cfg.ConfigVersion); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+func (s *Service) persistGlobalConfigVersion(ctx context.Context, configPath string, version int) error {
+	if version <= 0 {
+		return nil
+	}
+	if updater, ok := s.configs.(ConfigUpdater); ok {
+		_, err := updater.Update(ctx, configPath, func(target *config.GlobalConfig, _ config.GlobalConfigLoadInfo) error {
+			if target.ConfigVersion < version {
+				target.ConfigVersion = version
+			}
+			return nil
+		})
+		return err
+	}
+	loaded, _, err := s.configs.Load(ctx, configPath)
+	if err != nil {
+		return err
+	}
+	if loaded.ConfigVersion >= version {
+		return nil
+	}
+	loaded.ConfigVersion = version
+	return s.configs.Save(ctx, configPath, loaded)
+}
+
+func normalizedGlobalConfigVersion(value int) int {
+	if value < config.LegacyGlobalConfigVersion {
+		return config.LegacyGlobalConfigVersion
+	}
+	return value
+}
+
+func hasLegacyGroupRemotes(cfg *config.GlobalConfig) bool {
+	if cfg == nil || len(cfg.Groups) == 0 {
+		return false
+	}
+	for _, group := range cfg.Groups {
+		for _, member := range group.Members {
+			if member.LegacyRemotes != nil {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func needsWorkspaceWorksetNormalization(cfg *config.GlobalConfig) bool {
+	if cfg == nil {
+		return false
+	}
+	if len(cfg.Workspaces) == 0 {
+		return len(cfg.WorksetCatalog) > 0
+	}
+	if len(cfg.WorksetCatalog) == 0 {
+		return true
+	}
+	for _, ref := range cfg.Workspaces {
+		if strings.TrimSpace(ref.Workset) == "" || strings.TrimSpace(ref.Template) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) migrateLegacyGroupRemotes(ctx context.Context, cfg *config.GlobalConfig, configPath string) error {

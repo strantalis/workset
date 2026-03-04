@@ -39,6 +39,9 @@ func TestLoadGlobalMigratesWorkspaceWorksetFromWorkspaceConfig(t *testing.T) {
 	if loaded.Workspaces["demo"].Workset != "repo-a" {
 		t.Fatalf("expected migrated workset repo-a, got %q", loaded.Workspaces["demo"].Workset)
 	}
+	if loaded.ConfigVersion != config.CurrentGlobalConfigVersion {
+		t.Fatalf("expected config_version %d after migration, got %d", config.CurrentGlobalConfigVersion, loaded.ConfigVersion)
+	}
 
 	cfg = env.loadConfig()
 	if cfg.Workspaces["demo"].Workset != "repo-a" {
@@ -63,6 +66,9 @@ func TestLoadGlobalMigratesWorkspaceWorksetFromTemplate(t *testing.T) {
 	}
 	if loaded.Workspaces["demo"].Workset != "Manual Template" {
 		t.Fatalf("expected migrated workset from template, got %q", loaded.Workspaces["demo"].Workset)
+	}
+	if loaded.ConfigVersion != config.CurrentGlobalConfigVersion {
+		t.Fatalf("expected config_version %d after migration, got %d", config.CurrentGlobalConfigVersion, loaded.ConfigVersion)
 	}
 
 	cfg = env.loadConfig()
@@ -114,6 +120,9 @@ groups:
 	if !strings.Contains(text, "worksets:") {
 		t.Fatalf("expected migrated worksets key, got %q", text)
 	}
+	if !strings.Contains(text, "config_version: 1") {
+		t.Fatalf("expected config_version key after migration, got %q", text)
+	}
 	if strings.Contains(text, "\nworkspaces:") {
 		t.Fatalf("did not expect legacy workspaces key after migration, got %q", text)
 	}
@@ -160,6 +169,14 @@ func TestGlobalConfigMigrationPlanHasOrderedRemovalMetadata(t *testing.T) {
 		}
 		if strings.TrimSpace(migration.RemoveAfter) == "" {
 			t.Fatalf("expected migration %q to include remove_after guidance", migration.ID)
+		}
+		if migration.TargetVersion != config.CurrentGlobalConfigVersion {
+			t.Fatalf(
+				"expected migration %q target_version=%d, got %d",
+				migration.ID,
+				config.CurrentGlobalConfigVersion,
+				migration.TargetVersion,
+			)
 		}
 	}
 	expected := []string{

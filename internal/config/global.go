@@ -3,9 +3,11 @@ package config
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 
 	koanfyaml "github.com/knadh/koanf/parsers/yaml"
@@ -14,6 +16,13 @@ import (
 	"github.com/knadh/koanf/providers/rawbytes"
 	"github.com/knadh/koanf/v2"
 	"gopkg.in/yaml.v3"
+)
+
+const (
+	// LegacyGlobalConfigVersion represents pre-versioned configs.
+	LegacyGlobalConfigVersion = 0
+	// CurrentGlobalConfigVersion is the latest persisted config schema version.
+	CurrentGlobalConfigVersion = 1
 )
 
 func GlobalConfigPath() (string, error) {
@@ -86,6 +95,8 @@ type GlobalConfigLoadInfo struct {
 	Migrated                bool
 	UsedLegacy              bool
 	Exists                  bool
+	ConfigVersion           int
+	ConfigVersionPresent    bool
 	UsedLegacyWorkspacesKey bool
 }
 
@@ -138,6 +149,7 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 	info.Path = path
 
 	defaults := DefaultConfig()
+	info.ConfigVersion = defaults.ConfigVersion
 
 	k := koanf.New(".")
 	if err := k.Load(confmap.Provider(defaultConfigMap(defaults), "."), nil); err != nil {
@@ -146,6 +158,20 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 
 	if _, err := os.Stat(path); err == nil {
 		info.Exists = true
+		rawData, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return GlobalConfig{}, info, readErr
+		}
+		parsedVersion, present, parseErr := parseConfigVersion(rawData)
+		if parseErr != nil {
+			return GlobalConfig{}, info, parseErr
+		}
+		info.ConfigVersionPresent = present
+		if present {
+			info.ConfigVersion = parsedVersion
+		} else {
+			info.ConfigVersion = LegacyGlobalConfigVersion
+		}
 		if err := k.Load(file.Provider(path), koanfyaml.Parser()); err != nil {
 			return GlobalConfig{}, info, err
 		}
@@ -160,12 +186,40 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 	if err := k.UnmarshalWithConf("", &cfg, koanf.UnmarshalConf{Tag: "yaml"}); err != nil {
 		return GlobalConfig{}, info, err
 	}
+	cfg.ConfigVersion = normalizeConfigVersion(info.ConfigVersion)
+	if cfg.ConfigVersion > CurrentGlobalConfigVersion {
+		return GlobalConfig{}, info, fmt.Errorf(
+			"unsupported config_version %d (max supported %d)",
+			cfg.ConfigVersion,
+			CurrentGlobalConfigVersion,
+		)
+	}
 	finalizeGlobal(&cfg, defaults)
 	return cfg, info, nil
 }
 
 func loadGlobalFromBytes(data []byte) (GlobalConfig, error) {
 	defaults := DefaultConfig()
+	version := defaults.ConfigVersion
+	if len(bytes.TrimSpace(data)) > 0 {
+		parsedVersion, present, err := parseConfigVersion(data)
+		if err != nil {
+			return GlobalConfig{}, err
+		}
+		if present {
+			version = parsedVersion
+		} else {
+			version = LegacyGlobalConfigVersion
+		}
+	}
+	version = normalizeConfigVersion(version)
+	if version > CurrentGlobalConfigVersion {
+		return GlobalConfig{}, fmt.Errorf(
+			"unsupported config_version %d (max supported %d)",
+			version,
+			CurrentGlobalConfigVersion,
+		)
+	}
 	k := koanf.New(".")
 	if err := k.Load(confmap.Provider(defaultConfigMap(defaults), "."), nil); err != nil {
 		return GlobalConfig{}, err
@@ -179,6 +233,7 @@ func loadGlobalFromBytes(data []byte) (GlobalConfig, error) {
 	if err := k.UnmarshalWithConf("", &cfg, koanf.UnmarshalConf{Tag: "yaml"}); err != nil {
 		return GlobalConfig{}, err
 	}
+	cfg.ConfigVersion = version
 	finalizeGlobal(&cfg, defaults)
 	return cfg, nil
 }
@@ -192,6 +247,7 @@ func SaveGlobal(path string, cfg GlobalConfig) error {
 		}
 	}
 	cfg.EnsureMaps()
+	cfg.ConfigVersion = ensureCurrentConfigVersion(cfg.ConfigVersion)
 	cfg = sanitizeGlobalForSave(cfg)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
@@ -257,6 +313,7 @@ func stripLegacyWorkspaceTemplates(cfg GlobalConfig) GlobalConfig {
 func sanitizeGlobalForSave(cfg GlobalConfig) GlobalConfig {
 	cfg = stripLegacyGroupRemotes(cfg)
 	cfg = stripLegacyWorkspaceTemplates(cfg)
+	cfg.ConfigVersion = ensureCurrentConfigVersion(cfg.ConfigVersion)
 	cfg.LegacyWorkspaces = nil
 	return cfg
 }
@@ -290,6 +347,7 @@ func defaultConfigMap(defaults GlobalConfig) map[string]any {
 
 func finalizeGlobal(cfg *GlobalConfig, defaults GlobalConfig) {
 	cfg.EnsureMaps()
+	cfg.ConfigVersion = normalizeConfigVersion(cfg.ConfigVersion)
 	if cfg.Defaults.Remote == "" {
 		cfg.Defaults.Remote = defaults.Defaults.Remote
 	}
@@ -349,5 +407,54 @@ func finalizeGlobal(cfg *GlobalConfig, defaults GlobalConfig) {
 	}
 	if cfg.Hooks.Items == nil {
 		cfg.Hooks.Items = defaults.Hooks.Items
+	}
+}
+
+func normalizeConfigVersion(value int) int {
+	if value < LegacyGlobalConfigVersion {
+		return LegacyGlobalConfigVersion
+	}
+	return value
+}
+
+func ensureCurrentConfigVersion(value int) int {
+	value = normalizeConfigVersion(value)
+	if value < CurrentGlobalConfigVersion {
+		return CurrentGlobalConfigVersion
+	}
+	return value
+}
+
+func parseConfigVersion(raw []byte) (int, bool, error) {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return 0, false, nil
+	}
+	var root map[string]any
+	if err := yaml.Unmarshal(raw, &root); err != nil {
+		return 0, false, err
+	}
+	value, ok := root["config_version"]
+	if !ok {
+		return 0, false, nil
+	}
+	switch parsed := value.(type) {
+	case int:
+		return parsed, true, nil
+	case int64:
+		return int(parsed), true, nil
+	case float64:
+		return int(parsed), true, nil
+	case string:
+		trimmed := strings.TrimSpace(parsed)
+		if trimmed == "" {
+			return 0, true, nil
+		}
+		numeric, err := strconv.Atoi(trimmed)
+		if err != nil {
+			return 0, false, fmt.Errorf("config_version must be an integer")
+		}
+		return numeric, true, nil
+	default:
+		return 0, false, fmt.Errorf("config_version must be an integer")
 	}
 }

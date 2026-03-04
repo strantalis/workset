@@ -7,6 +7,7 @@ import (
 
 func DefaultConfig() GlobalConfig {
 	return GlobalConfig{
+		ConfigVersion: CurrentGlobalConfigVersion,
 		Defaults: Defaults{
 			Remote:               "origin",
 			BaseBranch:           "main",

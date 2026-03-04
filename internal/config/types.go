@@ -68,6 +68,7 @@ type WorksetCatalogEntry struct {
 }
 
 type GlobalConfig struct {
+	ConfigVersion    int                            `yaml:"config_version,omitempty" json:"config_version,omitempty" mapstructure:"config_version"`
 	Defaults         Defaults                       `yaml:"defaults" json:"defaults" mapstructure:"defaults"`
 	GitHub           GitHubConfig                   `yaml:"github,omitempty" json:"github,omitempty" mapstructure:"github"`
 	Agent            AgentConfig                    `yaml:"agent,omitempty" json:"agent,omitempty" mapstructure:"agent"`
