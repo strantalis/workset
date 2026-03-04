@@ -112,65 +112,114 @@ func validateRegister(reg register, now time.Time, warnDays int) ([]string, []st
 	warnCutoff := today.AddDate(0, 0, warnDays)
 
 	for i, item := range reg.Items {
-		prefix := fmt.Sprintf("items[%d]", i)
-		id := strings.TrimSpace(item.ID)
-		if id == "" {
-			problems = append(problems, prefix+".id is required")
-			continue
-		}
-		prefix = fmt.Sprintf("item %q", id)
-		if _, exists := seen[id]; exists {
-			problems = append(problems, prefix+" has duplicate id")
-			continue
-		}
-		seen[id] = struct{}{}
-
-		if strings.TrimSpace(item.Scope) == "" {
-			problems = append(problems, prefix+".scope is required")
-		}
-		if strings.TrimSpace(item.Summary) == "" {
-			problems = append(problems, prefix+".summary is required")
-		}
-		if strings.TrimSpace(item.Owner) == "" {
-			problems = append(problems, prefix+".owner is required")
-		}
-		if strings.TrimSpace(item.TrackingIssue) == "" {
-			problems = append(problems, prefix+".tracking_issue is required")
-		}
-		if len(item.Evidence) == 0 {
-			problems = append(problems, prefix+".evidence must include at least one path")
-		}
-		if _, err := parseDate(item.Introduced); err != nil {
-			problems = append(problems, fmt.Sprintf("%s.introduced: %v", prefix, err))
-		}
-
-		status := strings.TrimSpace(item.Status)
-		switch status {
-		case statusActive:
-			removeBy, err := parseDate(item.RemoveBy)
-			if err != nil {
-				problems = append(problems, fmt.Sprintf("%s.remove_by: %v", prefix, err))
-				continue
-			}
-			if today.After(removeBy) {
-				problems = append(problems, fmt.Sprintf("%s is overdue (remove_by=%s, today=%s)", prefix, removeBy.Format(time.DateOnly), today.Format(time.DateOnly)))
-				continue
-			}
-			if !warnCutoff.Before(removeBy) {
-				warnings = append(warnings, fmt.Sprintf("%s is due soon (remove_by=%s)", prefix, removeBy.Format(time.DateOnly)))
-			}
-		case statusCompleted:
-			if strings.TrimSpace(item.RemoveBy) != "" {
-				if _, err := parseDate(item.RemoveBy); err != nil {
-					problems = append(problems, fmt.Sprintf("%s.remove_by: %v", prefix, err))
-				}
-			}
-		default:
-			problems = append(problems, fmt.Sprintf("%s.status must be %q or %q", prefix, statusActive, statusCompleted))
-		}
+		itemProblems, itemWarnings := validateRegisterItem(i, item, seen, today, warnCutoff)
+		problems = append(problems, itemProblems...)
+		warnings = append(warnings, itemWarnings...)
 	}
 
 	return problems, warnings
+}
+
+func validateRegisterItem(
+	index int,
+	item registerItem,
+	seen map[string]struct{},
+	today time.Time,
+	warnCutoff time.Time,
+) ([]string, []string) {
+	idPrefix := fmt.Sprintf("items[%d]", index)
+	id := strings.TrimSpace(item.ID)
+	if id == "" {
+		return []string{idPrefix + ".id is required"}, nil
+	}
+	prefix := fmt.Sprintf("item %q", id)
+	if _, exists := seen[id]; exists {
+		return []string{prefix + " has duplicate id"}, nil
+	}
+	seen[id] = struct{}{}
+
+	problems := validateRegisterItemFields(prefix, item)
+	statusProblems, statusWarnings := validateRegisterItemStatus(prefix, item, today, warnCutoff)
+	problems = append(problems, statusProblems...)
+	return problems, statusWarnings
+}
+
+func validateRegisterItemFields(prefix string, item registerItem) []string {
+	requiredFields := map[string]string{
+		"scope":          item.Scope,
+		"summary":        item.Summary,
+		"owner":          item.Owner,
+		"tracking_issue": item.TrackingIssue,
+	}
+	problems := make([]string, 0, len(requiredFields)+2)
+	for field, value := range requiredFields {
+		if strings.TrimSpace(value) == "" {
+			problems = append(problems, fmt.Sprintf("%s.%s is required", prefix, field))
+		}
+	}
+	if len(item.Evidence) == 0 {
+		problems = append(problems, prefix+".evidence must include at least one path")
+	}
+	if _, err := parseDate(item.Introduced); err != nil {
+		problems = append(problems, fmt.Sprintf("%s.introduced: %v", prefix, err))
+	}
+	return problems
+}
+
+func validateRegisterItemStatus(
+	prefix string,
+	item registerItem,
+	today time.Time,
+	warnCutoff time.Time,
+) ([]string, []string) {
+	switch strings.TrimSpace(item.Status) {
+	case statusActive:
+		return validateActiveStatus(prefix, item, today, warnCutoff)
+	case statusCompleted:
+		return validateCompletedStatus(prefix, item), nil
+	default:
+		return []string{
+			fmt.Sprintf("%s.status must be %q or %q", prefix, statusActive, statusCompleted),
+		}, nil
+	}
+}
+
+func validateActiveStatus(
+	prefix string,
+	item registerItem,
+	today time.Time,
+	warnCutoff time.Time,
+) ([]string, []string) {
+	removeBy, err := parseDate(item.RemoveBy)
+	if err != nil {
+		return []string{fmt.Sprintf("%s.remove_by: %v", prefix, err)}, nil
+	}
+	if today.After(removeBy) {
+		return []string{
+			fmt.Sprintf(
+				"%s is overdue (remove_by=%s, today=%s)",
+				prefix,
+				removeBy.Format(time.DateOnly),
+				today.Format(time.DateOnly),
+			),
+		}, nil
+	}
+	if !warnCutoff.Before(removeBy) {
+		return nil, []string{
+			fmt.Sprintf("%s is due soon (remove_by=%s)", prefix, removeBy.Format(time.DateOnly)),
+		}
+	}
+	return nil, nil
+}
+
+func validateCompletedStatus(prefix string, item registerItem) []string {
+	if strings.TrimSpace(item.RemoveBy) == "" {
+		return nil
+	}
+	if _, err := parseDate(item.RemoveBy); err != nil {
+		return []string{fmt.Sprintf("%s.remove_by: %v", prefix, err)}
+	}
+	return nil
 }
 
 func parseDate(value string) (time.Time, error) {
