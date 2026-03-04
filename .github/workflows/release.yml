@@ -174,7 +174,7 @@ jobs:
           args: release --snapshot --clean
         env:
           GORELEASER_KEY: ${{ secrets.GORELEASER_PRO }}
-      - uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3
+      - uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v3
         with:
           subject-checksums: dist/checksums.txt
       - name: Upload CLI artifacts to alpha release
@@ -569,7 +569,7 @@ jobs:
           args: release --release-notes=GITHUB_CHANGELOG.md --clean
         env:
           GORELEASER_KEY: ${{ secrets.GORELEASER_PRO }}
-      - uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3
+      - uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v3
         with:
           subject-checksums: dist/checksums.txt
 
