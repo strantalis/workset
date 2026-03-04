@@ -313,3 +313,49 @@ defaults:
 		t.Fatalf("expected unsupported config_version error, got %v", err)
 	}
 }
+
+func TestSaveGlobalPersistsNestedWorksetThreadsAndDropsCatalog(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	cfg := DefaultConfig()
+	cfg.Repos["platform"] = RegisteredRepo{
+		URL:           "git@github.com:org/platform.git",
+		Remote:        "origin",
+		DefaultBranch: "main",
+	}
+	cfg.Workspaces["feature-policy-eval"] = WorkspaceRef{
+		Path:      "/tmp/worksets/core/feature-policy-eval",
+		Workset:   "core",
+		CreatedAt: "2026-03-04T00:00:00Z",
+	}
+
+	if err := SaveGlobal(path, cfg); err != nil {
+		t.Fatalf("SaveGlobal: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "worksets:\n") {
+		t.Fatalf("expected worksets key in serialized config, got %q", text)
+	}
+	if !strings.Contains(text, "threads:\n") {
+		t.Fatalf("expected nested threads map in serialized config, got %q", text)
+	}
+	if strings.Contains(text, "workset_catalog:") {
+		t.Fatalf("did not expect workset_catalog key in serialized config, got %q", text)
+	}
+
+	loaded, err := LoadGlobal(path)
+	if err != nil {
+		t.Fatalf("LoadGlobal: %v", err)
+	}
+	ref, ok := loaded.Workspaces["feature-policy-eval"]
+	if !ok {
+		t.Fatalf("expected feature-policy-eval workspace to round-trip")
+	}
+	if ref.Workset != "core" {
+		t.Fatalf("expected workset core, got %q", ref.Workset)
+	}
+}

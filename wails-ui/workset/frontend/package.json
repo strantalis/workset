@@ -20,6 +20,7 @@
 		"format:check": "prettier --check ."
 	},
 	"devDependencies": {
+		"@eslint/js": "^10.0.1",
 		"@playwright/test": "^1.58.2",
 		"@sveltejs/vite-plugin-svelte": "^6.2.4",
 		"@tailwindcss/vite": "^4.2.1",
@@ -32,6 +33,7 @@
 		"eslint": "^10.0.2",
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-plugin-svelte": "^3.15.0",
+		"globals": "^17.4.0",
 		"jsdom": "^27.4.0",
 		"prettier": "^3.8.1",
 		"prettier-plugin-svelte": "^3.5.0",

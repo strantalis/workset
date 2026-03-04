@@ -101,16 +101,8 @@ groups:
 	if err := os.WriteFile(env.configPath, []byte(strings.TrimSpace(legacy)+"\n"), 0o644); err != nil {
 		t.Fatalf("write legacy config: %v", err)
 	}
-	loaded, _, err := env.svc.GetConfig(context.Background())
-	if err != nil {
+	if _, _, err := env.svc.GetConfig(context.Background()); err != nil {
 		t.Fatalf("get config: %v", err)
-	}
-	if len(loaded.WorksetCatalog) != 1 {
-		t.Fatalf("expected 1 workset catalog entry, got %d", len(loaded.WorksetCatalog))
-	}
-	entry := loaded.WorksetCatalog["demo"]
-	if len(entry.Threads) != 1 || entry.Threads[0] != "demo" {
-		t.Fatalf("expected catalog threads [demo], got %+v", entry.Threads)
 	}
 	data, err := os.ReadFile(env.configPath)
 	if err != nil {
@@ -126,23 +118,15 @@ groups:
 	if strings.Contains(text, "\nworkspaces:") {
 		t.Fatalf("did not expect legacy workspaces key after migration, got %q", text)
 	}
-	if !strings.Contains(text, "workset_catalog:") {
-		t.Fatalf("expected workset_catalog key after migration, got %q", text)
+	if strings.Contains(text, "workset_catalog:") {
+		t.Fatalf("did not expect workset_catalog key after migration, got %q", text)
 	}
 	if strings.Contains(text, "\ngroups:") {
 		t.Fatalf("did not expect legacy groups key after migration, got %q", text)
 	}
 
-	loadedAgain, _, err := env.svc.GetConfig(context.Background())
-	if err != nil {
+	if _, _, err := env.svc.GetConfig(context.Background()); err != nil {
 		t.Fatalf("get config second pass: %v", err)
-	}
-	if len(loadedAgain.WorksetCatalog) != len(loaded.WorksetCatalog) {
-		t.Fatalf(
-			"expected idempotent workset catalog on second migration run, first=%d second=%d",
-			len(loaded.WorksetCatalog),
-			len(loadedAgain.WorksetCatalog),
-		)
 	}
 	dataAgain, err := os.ReadFile(env.configPath)
 	if err != nil {
@@ -150,6 +134,93 @@ groups:
 	}
 	if string(dataAgain) != text {
 		t.Fatalf("expected config migration to be idempotent on second load")
+	}
+}
+
+func TestLoadGlobalRewritesFlatWorksetsShapeToNestedThreads(t *testing.T) {
+	env := newTestEnv(t)
+	flat := `
+config_version: 1
+defaults:
+  remote: origin
+  base_branch: main
+  workspace_root: ` + env.workspaceRoot + `
+  repo_store_root: ` + env.repoRoot + `
+worksets:
+  demo:
+    path: ` + env.workspaceRoot + `/demo
+    workset: core
+`
+	if err := os.MkdirAll(filepath.Join(env.workspaceRoot, "demo"), 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	if err := os.WriteFile(env.configPath, []byte(strings.TrimSpace(flat)+"\n"), 0o644); err != nil {
+		t.Fatalf("write flat config: %v", err)
+	}
+
+	loaded, _, err := env.svc.GetConfig(context.Background())
+	if err != nil {
+		t.Fatalf("get config: %v", err)
+	}
+	ref := loaded.Workspaces["demo"]
+	if ref.Workset != "core" {
+		t.Fatalf("expected workset core, got %q", ref.Workset)
+	}
+
+	data, err := os.ReadFile(env.configPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "threads:") {
+		t.Fatalf("expected nested threads shape after rewrite, got %q", text)
+	}
+	if strings.Contains(text, "workset_catalog:") {
+		t.Fatalf("did not expect workset_catalog key after rewrite, got %q", text)
+	}
+}
+
+func TestLoadGlobalRewritesLegacyWorksetCatalogKey(t *testing.T) {
+	env := newTestEnv(t)
+	legacy := `
+config_version: 1
+defaults:
+  remote: origin
+  base_branch: main
+  workspace_root: ` + env.workspaceRoot + `
+  repo_store_root: ` + env.repoRoot + `
+workset_catalog:
+  core:
+    repos:
+      - platform
+worksets:
+  core:
+    threads:
+      demo:
+        path: ` + env.workspaceRoot + `/demo
+        workset: core
+`
+	if err := os.MkdirAll(filepath.Join(env.workspaceRoot, "demo"), 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	if err := os.WriteFile(env.configPath, []byte(strings.TrimSpace(legacy)+"\n"), 0o644); err != nil {
+		t.Fatalf("write legacy catalog config: %v", err)
+	}
+
+	if _, _, err := env.svc.GetConfig(context.Background()); err != nil {
+		t.Fatalf("get config: %v", err)
+	}
+
+	data, err := os.ReadFile(env.configPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	text := string(data)
+	if strings.Contains(text, "workset_catalog:") {
+		t.Fatalf("did not expect workset_catalog key after rewrite, got %q", text)
+	}
+	if !strings.Contains(text, "threads:") {
+		t.Fatalf("expected canonical nested threads shape after rewrite, got %q", text)
 	}
 }
 

@@ -34,7 +34,7 @@
 
 		// Calculate position relative to viewport
 		let top = triggerRect.bottom + gap;
-		let left = 0;
+		let left = position === 'right' ? triggerRect.right - menuRect.width : triggerRect.left;
 
 		// Check if menu would go off bottom of viewport
 		const spaceBelow = window.innerHeight - triggerRect.bottom - gap;
@@ -43,12 +43,6 @@
 		if (menuRect.height > spaceBelow && spaceAbove > spaceBelow) {
 			// Flip to open upward if there's more space above
 			top = triggerRect.top - menuRect.height - gap;
-		}
-
-		if (position === 'right') {
-			left = triggerRect.right - menuRect.width;
-		} else {
-			left = triggerRect.left;
 		}
 
 		// Prevent going off screen horizontally

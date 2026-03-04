@@ -40,6 +40,7 @@ describe('SettingsPanel About Section', () => {
 		remote: 'origin',
 		baseBranch: 'main',
 		workspace: 'test',
+		worksetRoot: '/workset',
 		workspaceRoot: '/workspaces',
 		repoStoreRoot: '/repos',
 		sessionBackend: 'local',

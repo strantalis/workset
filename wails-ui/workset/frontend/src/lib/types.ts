@@ -181,6 +181,7 @@ export type SettingsDefaults = {
 	remote: string;
 	baseBranch: string;
 	workspace: string;
+	worksetRoot: string;
 	workspaceRoot: string;
 	repoStoreRoot: string;
 	sessionBackend: string;

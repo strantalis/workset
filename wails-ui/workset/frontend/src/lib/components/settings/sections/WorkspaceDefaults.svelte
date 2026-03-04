@@ -22,8 +22,8 @@
 	const fields: Field[] = [
 		{
 			id: 'workspace',
-			label: 'DEFAULT WORKSET NAME',
-			description: 'Used when a workspace name is not provided.',
+			label: 'DEFAULT THREAD NAME',
+			description: 'Used when a thread name is not provided.',
 			placeholder: 'acme',
 		},
 		{
@@ -40,13 +40,19 @@
 		},
 		{
 			id: 'workspaceRoot',
-			label: 'WORKSPACE ROOT',
-			description: 'Root folder for workspace checkouts.',
+			label: 'LEGACY THREAD ROOT',
+			description: 'Backward-compatible fallback for legacy thread paths.',
 			placeholder: '~/workspaces',
 		},
 	];
 
 	const fullWidthFields: Field[] = [
+		{
+			id: 'worksetRoot',
+			label: 'WORKSET ROOT',
+			description: 'Base path for workset folders and nested thread directories.',
+			placeholder: '~/.workset',
+		},
 		{
 			id: 'repoStoreRoot',
 			label: 'REPO STORE ROOT',
@@ -67,7 +73,7 @@
 
 <SettingsSection
 	title="Workset Defaults"
-	description="Defaults used when creating or importing workspaces."
+	description="Defaults used when creating or importing threads."
 >
 	<div class="fields">
 		{#each fields as field (field.id)}

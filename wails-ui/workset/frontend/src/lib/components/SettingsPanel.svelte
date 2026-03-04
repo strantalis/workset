@@ -41,6 +41,7 @@
 		{ id: 'workspace', key: 'defaults.workspace' },
 		{ id: 'remote', key: 'defaults.remote' },
 		{ id: 'baseBranch', key: 'defaults.base_branch' },
+		{ id: 'worksetRoot', key: 'defaults.workset_root' },
 		{ id: 'workspaceRoot', key: 'defaults.workspace_root' },
 		{ id: 'repoStoreRoot', key: 'defaults.repo_store_root' },
 		{ id: 'agent', key: 'defaults.agent' },

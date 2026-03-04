@@ -88,6 +88,7 @@ func TestSetDefaultVariousKeys(t *testing.T) {
 	cases := map[string]string{
 		"defaults.remote":                    "origin",
 		"defaults.workspace":                 "demo",
+		"defaults.workset_root":              "/tmp/workset",
 		"defaults.workspace_root":            "/tmp/workspaces",
 		"defaults.repo_store_root":           "/tmp/repos",
 		"defaults.session_name_format":       "ws-{workspace}",
@@ -111,6 +112,9 @@ func TestSetDefaultVariousKeys(t *testing.T) {
 	cfg := env.loadConfig()
 	if cfg.Defaults.Workspace != "demo" {
 		t.Fatalf("workspace default not set")
+	}
+	if cfg.Defaults.WorksetRoot != "/tmp/workset" {
+		t.Fatalf("workset_root default not set")
 	}
 	if cfg.Defaults.SessionBackend != "exec" {
 		t.Fatalf("session backend not set")

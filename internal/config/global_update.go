@@ -43,7 +43,7 @@ func UpdateGlobal(path string, fn func(cfg *GlobalConfig, info GlobalConfigLoadI
 		cfg.EnsureMaps()
 		cfg.ConfigVersion = ensureCurrentConfigVersion(cfg.ConfigVersion)
 		cfg = sanitizeGlobalForSave(cfg)
-		data, err := yaml.Marshal(cfg)
+		data, err := yaml.Marshal(toSerializedGlobalConfig(cfg))
 		if err != nil {
 			return nil, err
 		}

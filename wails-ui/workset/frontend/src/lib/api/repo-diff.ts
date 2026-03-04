@@ -23,8 +23,9 @@ export async function startRepoDiffWatch(
 	return (await StartRepoDiffWatch({
 		workspaceId,
 		repoId,
-		prNumber,
-		prBranch,
+		prNumber: prNumber ?? 0,
+		prBranch: prBranch ?? '',
+		localOnly: false,
 	})) as boolean;
 }
 
@@ -32,6 +33,8 @@ export async function startRepoStatusWatch(workspaceId: string, repoId: string):
 	return (await StartRepoDiffWatch({
 		workspaceId,
 		repoId,
+		prNumber: 0,
+		prBranch: '',
 		localOnly: true,
 	})) as boolean;
 }
@@ -45,17 +48,30 @@ export async function updateRepoDiffWatch(
 	return (await UpdateRepoDiffWatch({
 		workspaceId,
 		repoId,
-		prNumber,
-		prBranch,
+		prNumber: prNumber ?? 0,
+		prBranch: prBranch ?? '',
+		localOnly: false,
 	})) as boolean;
 }
 
 export async function stopRepoDiffWatch(workspaceId: string, repoId: string): Promise<boolean> {
-	return (await StopRepoDiffWatch({ workspaceId, repoId })) as boolean;
+	return (await StopRepoDiffWatch({
+		workspaceId,
+		repoId,
+		prNumber: 0,
+		prBranch: '',
+		localOnly: false,
+	})) as boolean;
 }
 
 export async function stopRepoStatusWatch(workspaceId: string, repoId: string): Promise<boolean> {
-	return (await StopRepoDiffWatch({ workspaceId, repoId, localOnly: true })) as boolean;
+	return (await StopRepoDiffWatch({
+		workspaceId,
+		repoId,
+		prNumber: 0,
+		prBranch: '',
+		localOnly: true,
+	})) as boolean;
 }
 
 export async function fetchRepoDiff(

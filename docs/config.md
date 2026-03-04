@@ -1,16 +1,16 @@
 ---
-description: Global and workspace configuration reference for Workset.
+description: Global and thread configuration reference for Workset.
 ---
 
 # Config
 
-Global config lives at `~/.workset/config.yaml` and stores defaults, repo aliases, legacy group metadata (for migration compatibility), and the workset registry.
+Global config lives at `~/.workset/config.yaml` and stores defaults, repo aliases, and the workset registry.
 
-Workspace config lives at `<workspace>/workset.yaml` and is the source of truth for a workspace.
+Thread config lives at `<thread>/workset.yaml` and is the source of truth for a thread.
 If you have an existing config at `~/.config/workset/config.yaml`, Workset migrates it to `~/.workset/config.yaml` on next load.
 
-`defaults.workspace` can point to a registered workspace name or a path. When set, workspace commands use it if `-w` is omitted.
-`defaults.repo_store_root` is where URL-based repos are cloned when added to a workspace.
+`defaults.workspace` can point to a registered thread name or a path. When set, thread commands use it if `-w` is omitted.
+`defaults.repo_store_root` is where URL-based repos are cloned when added to a thread.
 Remote names and default branches come from repo aliases (`repos.<name>.remote` / `repos.<name>.default_branch`) or from `defaults.remote` / `defaults.base_branch`. For local repos, the configured remote must exist or Workset errors.
 
 ## Global config (`~/.workset/config.yaml`)
@@ -19,13 +19,11 @@ Remote names and default branches come from repo aliases (`repos.<name>.remote` 
 
 | Key | Description |
 | --- | --- |
-| `defaults` | Global defaults for commands and workspace behavior. |
+| `defaults` | Global defaults for commands and thread/workset behavior. |
 | `github` | GitHub auth defaults and overrides. |
 | `hooks` | Hook execution defaults and repo trust list. |
 | `repos` | Named repo aliases for URL or local path. |
-| `groups` | Legacy template/group definitions. Read for migration compatibility; not part of primary UI flows. |
-| `workset_catalog` | Workset hierarchy: repos + feature threads grouped under each workset. |
-| `worksets` | Registry of named worksets and their paths. Legacy `workspaces` is migrated on load. |
+| `worksets` | Registry of named worksets, each with a `threads` map. Legacy `workspaces` is migrated on load. |
 
 ### `defaults`
 
@@ -33,8 +31,9 @@ Remote names and default branches come from repo aliases (`repos.<name>.remote` 
 | --- | --- |
 | `remote` | Default remote name for repos (used when aliases omit one). |
 | `base_branch` | Default branch for new worktrees. |
-| `workspace` | Default workspace name or absolute path. |
-| `workspace_root` | Base directory for new workspaces. |
+| `workspace` | Default thread name or absolute path. |
+| `workset_root` | Base directory used for generated workset and thread paths. |
+| `workspace_root` | Legacy fallback root for thread paths (`<workset_root>/workspaces` by default). |
 | `repo_store_root` | Where URL-based repos are cloned. |
 | `session_backend` | Default session backend (`auto`, `tmux`, `screen`, `exec`). |
 | `session_name_format` | Format string for session names (supports `{workspace}`). |
@@ -80,18 +79,11 @@ For screen, the `session_screen_hardstatus` value is passed to `screen -X hardst
 
 ### `worksets` entries
 
-| Field | Description |
-| --- | --- |
-| `path` | Workspace path. |
-| `workset` | Workset label used for hierarchy/grouping. |
-
-### `workset_catalog` entries
+`worksets` is keyed by workset name. Each entry contains a `threads` map keyed by thread name.
 
 | Field | Description |
 | --- | --- |
-| `description` | Optional workset description. |
-| `repos` | Repo aliases that define the workset. |
-| `threads` | Feature-thread names that belong to this workset. |
+| `threads` | Map of thread names to thread refs (`path`, metadata, optional `workset`). |
 
 ## Example (global)
 
@@ -100,6 +92,7 @@ defaults:
   remote: origin
   base_branch: main
   workspace: core
+  workset_root: ~/.workset
   workspace_root: ~/.workset/workspaces
   repo_store_root: ~/.workset/repos
   agent: codex
@@ -137,13 +130,11 @@ repos:
 
 worksets:
   core:
-    path: ~/.workset/workspaces/core
-    workset: core
-
-workset_catalog:
-  core:
-    repos: [platform]
-    threads: [feature-policy-eval]
+    threads:
+      feature-policy-eval:
+        path: ~/.workset/worksets/core/feature-policy-eval
+        workset: core
+```
 
 ## Repo hooks (`.workset/hooks.yaml`)
 
@@ -157,29 +148,28 @@ hooks:
     cwd: "{repo.path}"
     on_error: fail
 ```
-```
 
-## Workspace config (`<workspace>/workset.yaml`)
+## Thread config (`<thread>/workset.yaml`)
 
 ### Top-level fields
 
 | Field | Description |
 | --- | --- |
-| `name` | Workspace display name. |
-| `repos` | List of repo entries in the workspace. |
+| `name` | Thread display name. |
+| `repos` | List of repo entries in the thread. |
 
 ### `repos` entries
 
 | Field | Description |
 | --- | --- |
 | `name` | Repo alias name. |
-| `repo_dir` | Directory name under the workspace. |
+| `repo_dir` | Directory name under the thread. |
 | `local_path` | Path to the repo's main working copy. |
 | `managed` | `true` if Workset owns the clone. |
-| `remote` | Derived from the repo alias or defaults (not stored in workspace config). |
-| `default_branch` | Derived from the repo alias or defaults (not stored in workspace config). |
+| `remote` | Derived from the repo alias or defaults (not stored in thread config). |
+| `default_branch` | Derived from the repo alias or defaults (not stored in thread config). |
 
-## Example (workspace)
+## Example (thread)
 
 ```yaml
 name: feature-policy-eval

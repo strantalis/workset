@@ -10,6 +10,7 @@ type SettingsDefaults struct {
 	Remote               string              `json:"remote"`
 	BaseBranch           string              `json:"baseBranch"`
 	Workspace            string              `json:"workspace"`
+	WorksetRoot          string              `json:"worksetRoot"`
 	WorkspaceRoot        string              `json:"workspaceRoot"`
 	RepoStoreRoot        string              `json:"repoStoreRoot"`
 	SessionBackend       string              `json:"sessionBackend"`
@@ -59,6 +60,7 @@ func (a *App) GetSettings() (SettingsSnapshot, error) {
 			Remote:               cfg.Defaults.Remote,
 			BaseBranch:           cfg.Defaults.BaseBranch,
 			Workspace:            cfg.Defaults.Workspace,
+			WorksetRoot:          cfg.Defaults.WorksetRoot,
 			WorkspaceRoot:        cfg.Defaults.WorkspaceRoot,
 			RepoStoreRoot:        cfg.Defaults.RepoStoreRoot,
 			SessionBackend:       cfg.Defaults.SessionBackend,

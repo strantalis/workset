@@ -15,6 +15,7 @@
 		Sparkles,
 		Settings,
 		Terminal,
+		Trash2,
 	} from '@lucide/svelte';
 	import type { Workspace } from '../../types';
 
@@ -50,6 +51,7 @@
 		onCreateWorkspace?: () => void;
 		onCreateThread?: (worksetId: string) => void;
 		onAddRepo?: (worksetId: string) => void;
+		onRemoveThread?: (threadId: string) => void;
 		onOpenCockpit?: () => void;
 		onOpenPullRequests?: () => void;
 		onOpenSkills?: () => void;
@@ -69,6 +71,7 @@
 		onCreateWorkspace = () => {},
 		onCreateThread = () => {},
 		onAddRepo = () => {},
+		onRemoveThread = () => {},
 		onOpenCockpit = () => {},
 		onOpenPullRequests = () => {},
 		onOpenSkills = () => {},
@@ -618,18 +621,34 @@
 			</div>
 			<div class="thread-list">
 				{#each selectedWorkset.threads as thread (thread.id)}
-					<button
-						type="button"
-						class="thread-item"
-						class:active={thread.id === activeWorkspaceId}
-						onclick={() => selectThread(thread.id)}
-					>
-						<span class="status-dot status-{getThreadStatus(thread)}"></span>
-						<span class="thread-name">{thread.name}</span>
-						{#if thread.repos.some((repo) => isOpenTrackedPullRequest(repo))}
-							<span class="thread-pr-indicator">PR</span>
+					<div class="thread-row">
+						<button
+							type="button"
+							class="thread-item"
+							class:active={thread.id === activeWorkspaceId}
+							onclick={() => selectThread(thread.id)}
+						>
+							<span class="status-dot status-{getThreadStatus(thread)}"></span>
+							<span class="thread-name">{thread.name}</span>
+							{#if thread.repos.some((repo) => isOpenTrackedPullRequest(repo))}
+								<span class="thread-pr-indicator">PR</span>
+							{/if}
+						</button>
+						{#if canManageRepos}
+							<button
+								type="button"
+								class="thread-remove-btn"
+								title={`Remove thread ${thread.name}`}
+								aria-label={`Remove thread ${thread.name}`}
+								onclick={(event) => {
+									event.stopPropagation();
+									onRemoveThread(thread.id);
+								}}
+							>
+								<Trash2 size={10} />
+							</button>
 						{/if}
-					</button>
+					</div>
 				{/each}
 				<button
 					type="button"

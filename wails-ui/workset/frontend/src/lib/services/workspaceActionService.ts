@@ -358,7 +358,7 @@ export const runAddItemsMutation = async (
 			rollbackWarnings.length > 0
 				? `${baseMessage} (rollback warnings: ${rollbackWarnings.join('; ')})`
 				: baseMessage;
-		throw new Error(fullMessage);
+		throw new Error(fullMessage, { cause: error });
 	}
 
 	const pendingByKey = new Map<string, WorkspaceActionPendingHook>();

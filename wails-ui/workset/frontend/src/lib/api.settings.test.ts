@@ -30,7 +30,7 @@ describe('settings API compatibility exports', () => {
 	});
 
 	test('restartSessiond uses default restart when reason is missing or blank', async () => {
-		vi.mocked(RestartSessiond).mockResolvedValue({ available: true });
+		vi.mocked(RestartSessiond).mockResolvedValue({ available: true, error: '', warning: '' });
 
 		await restartSessiond();
 		await restartSessiond('   ');
@@ -40,7 +40,11 @@ describe('settings API compatibility exports', () => {
 	});
 
 	test('restartSessiond forwards trimmed reason when provided', async () => {
-		vi.mocked(RestartSessiondWithReason).mockResolvedValue({ available: true });
+		vi.mocked(RestartSessiondWithReason).mockResolvedValue({
+			available: true,
+			error: '',
+			warning: '',
+		});
 
 		await restartSessiond('  maintenance window  ');
 
@@ -53,6 +57,7 @@ describe('settings API compatibility exports', () => {
 			{
 				name: 'workset',
 				url: 'https://example/repo.git',
+				path: '',
 				remote: 'origin',
 				default_branch: 'main',
 			},
@@ -80,6 +85,7 @@ describe('settings API compatibility exports', () => {
 			{
 				name: 'workset',
 				url: 'https://example/repo.git',
+				path: '',
 				remote: 'origin',
 				default_branch: 'main',
 			},

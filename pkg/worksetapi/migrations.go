@@ -3,8 +3,6 @@ package worksetapi
 import (
 	"context"
 	"fmt"
-	"reflect"
-	"sort"
 	"strings"
 
 	"github.com/strantalis/workset/internal/config"
@@ -37,16 +35,20 @@ func (s *Service) globalConfigMigrations(
 	return []globalConfigMigration{
 		{
 			id:            migrationIDWorkspacesToWorksets,
-			summary:       "backfill workset labels + workset_catalog and persist canonical worksets key",
+			summary:       "backfill workset labels and persist canonical worksets key",
 			removeAfter:   "drop once all active configs have no legacy workspaces/template/group usage for two minor releases",
 			targetVersion: config.CurrentGlobalConfigVersion,
 			runWhen: func(cfg *config.GlobalConfig, info config.GlobalConfigLoadInfo) bool {
 				return normalizedGlobalConfigVersion(cfg.ConfigVersion) < config.CurrentGlobalConfigVersion ||
 					info.UsedLegacyWorkspacesKey ||
+					info.UsedFlatWorksetsShape ||
+					info.UsedLegacyWorksetCatalog ||
 					needsWorkspaceWorksetNormalization(cfg)
 			},
 			run: func(ctx context.Context, cfg *config.GlobalConfig, configPath string, info config.GlobalConfigLoadInfo) error {
 				forcePersist := info.UsedLegacyWorkspacesKey ||
+					info.UsedFlatWorksetsShape ||
+					info.UsedLegacyWorksetCatalog ||
 					normalizedGlobalConfigVersion(cfg.ConfigVersion) < config.CurrentGlobalConfigVersion
 				return s.migrateWorkspaceWorksets(ctx, cfg, configPath, forcePersist)
 			},
@@ -163,10 +165,7 @@ func needsWorkspaceWorksetNormalization(cfg *config.GlobalConfig) bool {
 		return false
 	}
 	if len(cfg.Workspaces) == 0 {
-		return len(cfg.WorksetCatalog) > 0
-	}
-	if len(cfg.WorksetCatalog) == 0 {
-		return true
+		return false
 	}
 	for _, ref := range cfg.Workspaces {
 		if strings.TrimSpace(ref.Workset) == "" || strings.TrimSpace(ref.Template) != "" {
@@ -198,7 +197,6 @@ func (s *Service) migrateWorkspaceWorksets(ctx context.Context, cfg *config.Glob
 	}
 
 	state := s.collectWorkspaceWorksetMigrationState(ctx, cfg, forcePersist)
-	s.applyWorkspaceWorksetCatalog(cfg, &state)
 	if forcePersist && len(cfg.Groups) > 0 {
 		cfg.Groups = map[string]config.Group{}
 		state.changed = true
@@ -211,10 +209,8 @@ func (s *Service) migrateWorkspaceWorksets(ctx context.Context, cfg *config.Glob
 }
 
 type workspaceWorksetMigrationState struct {
-	changed           bool
-	updates           map[string]config.WorkspaceRef
-	worksetRepoSets   map[string]map[string]struct{}
-	worksetThreadSets map[string]map[string]struct{}
+	changed bool
+	updates map[string]config.WorkspaceRef
 }
 
 func (s *Service) persistEmptyWorkspaceWorksetMigration(
@@ -224,10 +220,6 @@ func (s *Service) persistEmptyWorkspaceWorksetMigration(
 	forcePersist bool,
 ) error {
 	changed := forcePersist
-	if len(cfg.WorksetCatalog) > 0 {
-		cfg.WorksetCatalog = map[string]config.WorksetCatalogEntry{}
-		changed = true
-	}
 	if forcePersist && len(cfg.Groups) > 0 {
 		cfg.Groups = map[string]config.Group{}
 		changed = true
@@ -238,7 +230,6 @@ func (s *Service) persistEmptyWorkspaceWorksetMigration(
 
 	if updater, ok := s.configs.(ConfigUpdater); ok {
 		_, err := updater.Update(ctx, configPath, func(target *config.GlobalConfig, _ config.GlobalConfigLoadInfo) error {
-			target.WorksetCatalog = cfg.WorksetCatalog
 			if forcePersist {
 				target.Groups = map[string]config.Group{}
 			}
@@ -255,10 +246,8 @@ func (s *Service) collectWorkspaceWorksetMigrationState(
 	forcePersist bool,
 ) workspaceWorksetMigrationState {
 	state := workspaceWorksetMigrationState{
-		changed:           forcePersist,
-		updates:           map[string]config.WorkspaceRef{},
-		worksetRepoSets:   map[string]map[string]struct{}{},
-		worksetThreadSets: map[string]map[string]struct{}{},
+		changed: forcePersist,
+		updates: map[string]config.WorkspaceRef{},
 	}
 
 	for name, ref := range cfg.Workspaces {
@@ -269,22 +258,6 @@ func (s *Service) collectWorkspaceWorksetMigrationState(
 			state.changed = true
 		}
 
-		worksetName := strings.TrimSpace(normalized.Workset)
-		if worksetName == "" {
-			worksetName = strings.TrimSpace(name)
-		}
-		if worksetName == "" {
-			continue
-		}
-
-		if _, ok := state.worksetRepoSets[worksetName]; !ok {
-			state.worksetRepoSets[worksetName] = map[string]struct{}{}
-		}
-		if _, ok := state.worksetThreadSets[worksetName]; !ok {
-			state.worksetThreadSets[worksetName] = map[string]struct{}{}
-		}
-		state.worksetThreadSets[worksetName][name] = struct{}{}
-		s.addWorkspaceReposToSet(ctx, normalized.Path, state.worksetRepoSets[worksetName])
 	}
 
 	return state
@@ -312,52 +285,6 @@ func (s *Service) normalizeWorkspaceRef(
 	return ref, ref != original
 }
 
-func (s *Service) addWorkspaceReposToSet(ctx context.Context, root string, repoSet map[string]struct{}) {
-	if strings.TrimSpace(root) == "" {
-		return
-	}
-	wsConfig, err := s.workspaces.LoadConfig(ctx, root)
-	if err != nil {
-		return
-	}
-	for _, repo := range wsConfig.Repos {
-		repoName := strings.TrimSpace(repo.Name)
-		if repoName == "" {
-			continue
-		}
-		repoSet[repoName] = struct{}{}
-	}
-}
-
-func (s *Service) applyWorkspaceWorksetCatalog(
-	cfg *config.GlobalConfig,
-	state *workspaceWorksetMigrationState,
-) {
-	nextCatalog := map[string]config.WorksetCatalogEntry{}
-	for worksetName, threadSet := range state.worksetThreadSets {
-		entry := cfg.WorksetCatalog[worksetName]
-		threads := make([]string, 0, len(threadSet))
-		for thread := range threadSet {
-			threads = append(threads, thread)
-		}
-		sort.Strings(threads)
-		repoSet := state.worksetRepoSets[worksetName]
-		repos := make([]string, 0, len(repoSet))
-		for repo := range repoSet {
-			repos = append(repos, repo)
-		}
-		sort.Strings(repos)
-		entry.Threads = threads
-		entry.Repos = repos
-		nextCatalog[worksetName] = entry
-	}
-
-	if !reflect.DeepEqual(cfg.WorksetCatalog, nextCatalog) {
-		cfg.WorksetCatalog = nextCatalog
-		state.changed = true
-	}
-}
-
 func (s *Service) persistWorkspaceWorksetMigration(
 	ctx context.Context,
 	cfg *config.GlobalConfig,
@@ -379,7 +306,6 @@ func (s *Service) persistWorkspaceWorksetMigration(
 				ref.Template = ""
 				target.Workspaces[name] = ref
 			}
-			target.WorksetCatalog = cfg.WorksetCatalog
 			if forcePersist {
 				target.Groups = map[string]config.Group{}
 			}

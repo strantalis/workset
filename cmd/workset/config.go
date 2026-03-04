@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	configpkg "github.com/strantalis/workset/internal/config"
 	"github.com/strantalis/workset/internal/output"
 	"github.com/strantalis/workset/pkg/worksetapi"
 	"github.com/urfave/cli/v3"
@@ -30,11 +31,12 @@ func configCommand() *cli.Command {
 					if verboseEnabled(cmd) {
 						printConfigLoadInfo(cmd, cmd.String("config"), info)
 					}
+					canonical := configpkg.CanonicalGlobalForOutput(cfg)
 					mode := outputModeFromContext(cmd)
 					if mode.JSON {
-						return output.WriteJSON(commandWriter(cmd), cfg)
+						return output.WriteJSON(commandWriter(cmd), canonical)
 					}
-					data, err := yaml.Marshal(cfg)
+					data, err := yaml.Marshal(canonical)
 					if err != nil {
 						return err
 					}
