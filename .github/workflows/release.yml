@@ -168,7 +168,7 @@ jobs:
       - name: Install Syft
         uses: anchore/sbom-action/download-syft@28d71544de8eaf1b958d335707167c5f783590ad # v0
       - name: GoReleaser (snapshot)
-        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+        uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
         with:
           distribution: goreleaser-pro
           args: release --snapshot --clean
@@ -563,7 +563,7 @@ jobs:
             echo "::notice::macOS notarization skipped; missing: ${missing[*]}"
           fi
       - name: GoReleaser (release)
-        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+        uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
         with:
           distribution: goreleaser-pro
           args: release --release-notes=GITHUB_CHANGELOG.md --clean
