@@ -108,3 +108,44 @@ func TestRecoverConfigRebuildsRepoAliases(t *testing.T) {
 		t.Fatalf("expected repo alias default branch, got %q", alias.DefaultBranch)
 	}
 }
+
+func TestRecoverConfigScansNestedWorksetThreadRootByDefault(t *testing.T) {
+	env := newTestEnv(t)
+	cfg := env.loadConfig()
+	worksetRoot := filepath.Join(env.root, "workset-home")
+	workspaceRoot := filepath.Join(worksetRoot, "workspaces")
+	threadRoot := filepath.Join(worksetRoot, "worksets", "core", "demo")
+	cfg.Defaults.WorksetRoot = worksetRoot
+	cfg.Defaults.WorkspaceRoot = workspaceRoot
+	env.saveConfig(cfg)
+
+	if err := os.MkdirAll(workspaceRoot, 0o755); err != nil {
+		t.Fatalf("mkdir workspace root: %v", err)
+	}
+	if err := os.MkdirAll(threadRoot, 0o755); err != nil {
+		t.Fatalf("mkdir thread root: %v", err)
+	}
+	if err := config.SaveWorkspace(workspace.WorksetFile(threadRoot), config.WorkspaceConfig{Name: "demo"}); err != nil {
+		t.Fatalf("save workspace: %v", err)
+	}
+
+	result, err := env.svc.RecoverConfig(context.Background(), ConfigRecoverInput{})
+	if err != nil {
+		t.Fatalf("recover config: %v", err)
+	}
+	if len(result.Payload.WorkspacesRecovered) != 1 || result.Payload.WorkspacesRecovered[0] != "demo" {
+		t.Fatalf("unexpected recovered workspaces: %+v", result.Payload.WorkspacesRecovered)
+	}
+	if result.Payload.WorkspaceRoot != workspaceRoot {
+		t.Fatalf("unexpected primary workspace root: got %q want %q", result.Payload.WorkspaceRoot, workspaceRoot)
+	}
+
+	loaded := env.loadConfig()
+	ref, ok := loaded.Workspaces["demo"]
+	if !ok {
+		t.Fatalf("expected recovered workspace to be registered")
+	}
+	if ref.Path != threadRoot {
+		t.Fatalf("expected recovered workspace path %q, got %q", threadRoot, ref.Path)
+	}
+}

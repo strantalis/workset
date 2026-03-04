@@ -103,18 +103,18 @@ type GlobalConfigLoadInfo struct {
 }
 
 type serializedWorksetGroup struct {
-	Threads map[string]WorkspaceRef `yaml:"threads,omitempty"`
+	Threads map[string]WorkspaceRef `yaml:"threads,omitempty" json:"threads,omitempty"`
 }
 
 type serializedGlobalConfig struct {
-	ConfigVersion int                               `yaml:"config_version,omitempty"`
-	Defaults      Defaults                          `yaml:"defaults"`
-	GitHub        GitHubConfig                      `yaml:"github,omitempty"`
-	Agent         AgentConfig                       `yaml:"agent,omitempty"`
-	Hooks         HooksConfig                       `yaml:"hooks,omitempty"`
-	Repos         map[string]RegisteredRepo         `yaml:"repos"`
-	Groups        map[string]Group                  `yaml:"groups,omitempty"`
-	Worksets      map[string]serializedWorksetGroup `yaml:"worksets,omitempty"`
+	ConfigVersion int                               `yaml:"config_version,omitempty" json:"config_version,omitempty"`
+	Defaults      Defaults                          `yaml:"defaults" json:"defaults"`
+	GitHub        GitHubConfig                      `yaml:"github,omitempty" json:"github,omitempty"`
+	Agent         AgentConfig                       `yaml:"agent,omitempty" json:"agent,omitempty"`
+	Hooks         HooksConfig                       `yaml:"hooks,omitempty" json:"hooks,omitempty"`
+	Repos         map[string]RegisteredRepo         `yaml:"repos" json:"repos"`
+	Groups        map[string]Group                  `yaml:"groups,omitempty" json:"groups,omitempty"`
+	Worksets      map[string]serializedWorksetGroup `yaml:"worksets,omitempty" json:"worksets,omitempty"`
 }
 
 func LoadGlobalWithInfo(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {

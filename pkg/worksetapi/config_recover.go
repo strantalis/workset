@@ -60,37 +60,26 @@ func (s *Service) RecoverConfig(ctx context.Context, input ConfigRecoverInput) (
 		return ConfigRecoverResult{}, err
 	}
 
-	root := strings.TrimSpace(input.WorkspaceRoot)
-	if root == "" {
-		root = strings.TrimSpace(cfg.Defaults.WorkspaceRoot)
-	}
-	if root == "" {
-		root = config.DefaultConfig().Defaults.WorkspaceRoot
-	}
-	if root == "" {
-		return ConfigRecoverResult{}, ValidationError{Message: "workspace root required"}
-	}
-
-	absRoot, err := filepath.Abs(root)
+	absRoot, scanRoots, err := resolveRecoverScanRoots(cfg, input.WorkspaceRoot)
 	if err != nil {
-		return ConfigRecoverResult{}, err
-	}
-	absRoot = filepath.Clean(absRoot)
-	if _, err := os.Stat(absRoot); err != nil {
-		if os.IsNotExist(err) {
-			return ConfigRecoverResult{}, NotFoundError{Message: "workspace root not found: " + absRoot}
-		}
 		return ConfigRecoverResult{}, err
 	}
 
 	preWarnings := []string{}
 
-	worksetFiles, err := findWorksetFiles(absRoot)
+	worksetFiles, err := findWorksetFilesAcrossRoots(scanRoots)
 	if err != nil {
 		return ConfigRecoverResult{}, err
 	}
 	if len(worksetFiles) == 0 {
-		preWarnings = append(preWarnings, "no workset.yaml files found under "+absRoot)
+		if len(scanRoots) == 1 {
+			preWarnings = append(preWarnings, "no workset.yaml files found under "+scanRoots[0])
+		} else {
+			preWarnings = append(
+				preWarnings,
+				"no workset.yaml files found under scan roots: "+strings.Join(scanRoots, ", "),
+			)
+		}
 	}
 
 	candidates := []recoverCandidate{}
@@ -155,6 +144,119 @@ func (s *Service) RecoverConfig(ctx context.Context, input ConfigRecoverInput) (
 		DryRun:              input.DryRun,
 	}
 	return ConfigRecoverResult{Payload: payload, Config: info}, nil
+}
+
+func resolveRecoverScanRoots(cfg config.GlobalConfig, overrideRoot string) (string, []string, error) {
+	overrideRoot = strings.TrimSpace(overrideRoot)
+	if overrideRoot != "" {
+		absRoot, err := filepath.Abs(overrideRoot)
+		if err != nil {
+			return "", nil, err
+		}
+		absRoot = filepath.Clean(absRoot)
+		if _, err := os.Stat(absRoot); err != nil {
+			if os.IsNotExist(err) {
+				return "", nil, NotFoundError{Message: "workspace root not found: " + absRoot}
+			}
+			return "", nil, err
+		}
+		return absRoot, []string{absRoot}, nil
+	}
+
+	workspaceRoot := strings.TrimSpace(cfg.Defaults.WorkspaceRoot)
+	if workspaceRoot == "" {
+		workspaceRoot = config.DefaultConfig().Defaults.WorkspaceRoot
+	}
+	worksetRoot := strings.TrimSpace(cfg.Defaults.WorksetRoot)
+	if worksetRoot == "" {
+		worksetRoot = config.DefaultConfig().Defaults.WorksetRoot
+	}
+
+	candidates := []string{}
+	if workspaceRoot != "" {
+		candidates = append(candidates, workspaceRoot)
+	}
+	if shouldIncludeWorksetThreadRoot(workspaceRoot, worksetRoot) {
+		candidates = append(candidates, filepath.Join(worksetRoot, "worksets"))
+	}
+	if len(candidates) == 0 {
+		return "", nil, ValidationError{Message: "workspace root required"}
+	}
+
+	seen := map[string]struct{}{}
+	scanRoots := []string{}
+	for _, candidate := range candidates {
+		absCandidate, err := filepath.Abs(candidate)
+		if err != nil {
+			return "", nil, err
+		}
+		absCandidate = filepath.Clean(absCandidate)
+		if _, ok := seen[absCandidate]; ok {
+			continue
+		}
+		seen[absCandidate] = struct{}{}
+		if _, err := os.Stat(absCandidate); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return "", nil, err
+		}
+		scanRoots = append(scanRoots, absCandidate)
+	}
+	if len(scanRoots) == 0 {
+		absRoot, err := filepath.Abs(candidates[0])
+		if err != nil {
+			return "", nil, err
+		}
+		return "", nil, NotFoundError{Message: "workspace root not found: " + filepath.Clean(absRoot)}
+	}
+	return scanRoots[0], scanRoots, nil
+}
+
+func shouldIncludeWorksetThreadRoot(workspaceRoot, worksetRoot string) bool {
+	workspaceRoot = strings.TrimSpace(workspaceRoot)
+	worksetRoot = strings.TrimSpace(worksetRoot)
+	if worksetRoot == "" {
+		return false
+	}
+	if workspaceRoot == "" {
+		return true
+	}
+	absWorkspace, err := filepath.Abs(workspaceRoot)
+	if err != nil {
+		return false
+	}
+	absWorkset, err := filepath.Abs(worksetRoot)
+	if err != nil {
+		return false
+	}
+	absWorkspace = filepath.Clean(absWorkspace)
+	absWorkset = filepath.Clean(absWorkset)
+	workspacesRoot := filepath.Join(absWorkset, "workspaces")
+	if absWorkspace == absWorkset || absWorkspace == workspacesRoot {
+		return true
+	}
+	return strings.HasPrefix(absWorkspace, absWorkset+string(os.PathSeparator))
+}
+
+func findWorksetFilesAcrossRoots(roots []string) ([]string, error) {
+	seen := map[string]struct{}{}
+	combined := []string{}
+	for _, root := range roots {
+		files, err := findWorksetFiles(root)
+		if err != nil {
+			return nil, err
+		}
+		for _, file := range files {
+			if _, ok := seen[file]; ok {
+				continue
+			}
+			seen[file] = struct{}{}
+			combined = append(combined, file)
+		}
+	}
+	sort.Strings(combined)
+	return combined, nil
 }
 
 func (s *Service) applyRecoverCandidates(cfg *config.GlobalConfig, candidates []recoverCandidate, rebuildRepos bool, now time.Time) recoverApplyResult {

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -357,5 +358,31 @@ func TestSaveGlobalPersistsNestedWorksetThreadsAndDropsCatalog(t *testing.T) {
 	}
 	if ref.Workset != "core" {
 		t.Fatalf("expected workset core, got %q", ref.Workset)
+	}
+}
+
+func TestCanonicalGlobalForOutputJSONUsesCanonicalKeys(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Workspaces["thread-a"] = WorkspaceRef{
+		Path:    "/tmp/worksets/core/thread-a",
+		Workset: "core",
+	}
+
+	data, err := json.Marshal(CanonicalGlobalForOutput(cfg))
+	if err != nil {
+		t.Fatalf("json marshal: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "\"config_version\"") {
+		t.Fatalf("expected config_version key in json output, got %q", text)
+	}
+	if strings.Contains(text, "\"ConfigVersion\"") {
+		t.Fatalf("did not expect Go field casing in json output, got %q", text)
+	}
+	if !strings.Contains(text, "\"worksets\"") {
+		t.Fatalf("expected worksets key in json output, got %q", text)
+	}
+	if !strings.Contains(text, "\"threads\"") {
+		t.Fatalf("expected threads key in json output, got %q", text)
 	}
 }
