@@ -128,6 +128,7 @@ export async function fetchPullRequestReviews(
 		repoId,
 		number: number ?? 0,
 		branch: branch ?? '',
+		terminalId: '',
 	})) as unknown as PullRequestReviewsResponse;
 
 	return mapPullRequestReviewComments(result.comments ?? []);

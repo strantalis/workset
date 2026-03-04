@@ -12,6 +12,7 @@ func DefaultConfig() GlobalConfig {
 			Remote:               "origin",
 			BaseBranch:           "main",
 			Workspace:            "",
+			WorksetRoot:          defaultWorksetRoot(),
 			WorkspaceRoot:        defaultWorkspaceRoot(),
 			RepoStoreRoot:        defaultRepoStoreRoot(),
 			SessionBackend:       "auto",
@@ -42,10 +43,9 @@ func DefaultConfig() GlobalConfig {
 			},
 			Items: []HookSpec{},
 		},
-		Repos:          map[string]RegisteredRepo{},
-		Groups:         map[string]Group{},
-		WorksetCatalog: map[string]WorksetCatalogEntry{},
-		Workspaces:     map[string]WorkspaceRef{},
+		Repos:      map[string]RegisteredRepo{},
+		Groups:     map[string]Group{},
+		Workspaces: map[string]WorkspaceRef{},
 	}
 }
 
@@ -61,9 +61,6 @@ func (cfg *GlobalConfig) EnsureMaps() {
 	}
 	if cfg.Workspaces == nil {
 		cfg.Workspaces = map[string]WorkspaceRef{}
-	}
-	if cfg.WorksetCatalog == nil {
-		cfg.WorksetCatalog = map[string]WorksetCatalogEntry{}
 	}
 	cfg.LegacyWorkspaces = nil
 	if cfg.Hooks.RepoHooks.TrustedRepos == nil {
@@ -86,6 +83,14 @@ func defaultWorkspaceRoot() string {
 		return ""
 	}
 	return filepath.Join(home, ".workset", "workspaces")
+}
+
+func defaultWorksetRoot() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".workset")
 }
 
 func defaultRepoStoreRoot() string {

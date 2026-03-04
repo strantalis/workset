@@ -3,6 +3,7 @@ package worksetapi
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/strantalis/workset/internal/config"
@@ -35,8 +36,20 @@ func setGlobalDefault(cfg *config.GlobalConfig, key, value string) error {
 		cfg.Defaults.BaseBranch = value
 	case "defaults.workspace":
 		cfg.Defaults.Workspace = value
+	case "defaults.workset_root":
+		cfg.Defaults.WorksetRoot = value
+		if strings.TrimSpace(cfg.Defaults.WorkspaceRoot) == "" {
+			cfg.Defaults.WorkspaceRoot = filepath.Join(strings.TrimSpace(value), "workspaces")
+		}
 	case "defaults.workspace_root":
 		cfg.Defaults.WorkspaceRoot = value
+		if strings.TrimSpace(cfg.Defaults.WorksetRoot) == "" {
+			root := filepath.Clean(strings.TrimSpace(value))
+			if filepath.Base(root) == "workspaces" {
+				root = filepath.Dir(root)
+			}
+			cfg.Defaults.WorksetRoot = root
+		}
 	case "defaults.repo_store_root":
 		cfg.Defaults.RepoStoreRoot = value
 	case "defaults.session_backend":

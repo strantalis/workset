@@ -30,8 +30,8 @@
 			return;
 		}
 
-		let top = 0;
-		let left = 0;
+		let top: number;
+		let left: number;
 
 		switch (position) {
 			case 'top':

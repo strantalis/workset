@@ -39,7 +39,7 @@
 >
 	<div class="form-content ws-removal-content">
 		<div class="hint hint-intro ws-hint ws-hint-intro">
-			Remove workspace registration only by default.
+			Remove thread registration only by default.
 		</div>
 		<label class="option option-main ws-option ws-option-main">
 			<input
@@ -47,12 +47,12 @@
 				checked={removeDeleteFiles}
 				onchange={(event) => onToggleDeleteFiles((event.currentTarget as HTMLInputElement).checked)}
 			/>
-			<span>Also delete workspace files and worktrees</span>
+			<span>Also delete thread files and worktrees</span>
 		</label>
 		{#if removeDeleteFiles}
 			<div class="deletion-options ws-deletion-options">
 				<div class="hint deletion-hint ws-hint ws-deletion-hint">
-					Deletes the workspace directory and removes all worktrees.
+					Deletes the thread directory and removes all worktrees.
 				</div>
 				<label class="field ws-field">
 					<span>Type DELETE to confirm</span>
@@ -88,8 +88,8 @@
 			disabled={loading || !removeConfirmValid}
 			class="action-btn ws-action-btn"
 		>
-			{loading ? 'Removing…' : 'Remove workspace'}
+			{loading ? 'Removing…' : 'Remove thread'}
 		</Button>
 	</div>
-	<RemovalOverlay {removing} {removalSuccess} removingText="Removing workspace…" />
+	<RemovalOverlay {removing} {removalSuccess} removingText="Removing thread…" />
 </div>

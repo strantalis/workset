@@ -6,7 +6,7 @@ GOLANGCI_LINT_CACHE ?= /tmp/golangci-lint-cache
 UV := $(shell command -v uv 2>/dev/null)
 BASE_SHA ?= $(shell git merge-base HEAD origin/main 2>/dev/null)
 
-.PHONY: help docs-venv docs-serve docs-build test lint lint-fmt fmt ui-lint ui-fmt ui-test guardrails check
+.PHONY: help docs-venv docs-serve docs-build test lint lint-fmt fmt ui-lint ui-fmt ui-test guardrails deprecations check
 
 help:
 	@printf "%s\n" "Targets:" \
@@ -21,6 +21,7 @@ help:
 		"  ui-fmt      Format frontend code with Prettier" \
 		"  ui-test     Run frontend tests" \
 		"  guardrails  Run LOC guardrails (ratcheted against origin/main when available)" \
+		"  deprecations Validate deprecation register deadlines and metadata" \
 		"  check       fmt + test + lint + guardrails"
 
 docs-venv:
@@ -67,4 +68,7 @@ guardrails:
 		go run ./scripts/guardrails --config guardrails.yml --head-sha "$$(git rev-parse HEAD)"; \
 	fi
 
-check: fmt test lint guardrails
+deprecations:
+	go run ./scripts/deprecations --config docs/architecture/deprecation-register.yaml
+
+check: fmt test lint guardrails deprecations

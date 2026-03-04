@@ -62,7 +62,13 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 
 	root := strings.TrimSpace(input.Path)
 	if root == "" {
-		base := cfg.Defaults.WorkspaceRoot
+		base := strings.TrimSpace(cfg.Defaults.WorksetRoot)
+		if base == "" {
+			base = strings.TrimSpace(cfg.Defaults.WorkspaceRoot)
+			if strings.EqualFold(filepath.Base(base), "workspaces") {
+				base = filepath.Dir(base)
+			}
+		}
 		if base == "" {
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -70,7 +76,16 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 			}
 			base = cwd
 		}
-		root = filepath.Join(base, workspace.WorkspaceDirName(name))
+		if template != "" {
+			root = filepath.Join(
+				base,
+				"worksets",
+				workspace.WorkspaceDirName(template),
+				workspace.WorkspaceDirName(name),
+			)
+		} else {
+			root = filepath.Join(base, "workspaces", workspace.WorkspaceDirName(name))
+		}
 	}
 	root, err = filepath.Abs(root)
 	if err != nil {
@@ -166,7 +181,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 		}
 	}
 
-	warnings = append(warnings, warnOutsideWorkspaceRoot(root, cfg.Defaults.WorkspaceRoot)...)
+	warnings = append(warnings, warnOutsideWorkspaceRoot(root, cfg.Defaults.WorksetRoot)...)
 
 	infoPayload := WorkspaceCreatedJSON{
 		Name:    name,
@@ -243,14 +258,17 @@ func (s *Service) DeleteWorkspace(ctx context.Context, input WorkspaceDeleteInpu
 				}
 			}
 		}
-		workspaceRoot := cfg.Defaults.WorkspaceRoot
+		workspaceRoot := strings.TrimSpace(cfg.Defaults.WorksetRoot)
+		if workspaceRoot == "" {
+			workspaceRoot = cfg.Defaults.WorkspaceRoot
+		}
 		if workspaceRoot != "" {
 			absRoot, err := filepath.Abs(workspaceRoot)
 			if err == nil {
 				absRoot = filepath.Clean(absRoot)
 				inside := absTarget == absRoot || strings.HasPrefix(absTarget, absRoot+string(os.PathSeparator))
 				if !inside && !input.Force {
-					return WorkspaceDeleteResult{}, UnsafeOperation{Message: fmt.Sprintf("refusing to delete outside defaults.workspace_root (%s); use --force to override", absRoot)}
+					return WorkspaceDeleteResult{}, UnsafeOperation{Message: fmt.Sprintf("refusing to delete outside defaults.workset_root (%s); use --force to override", absRoot)}
 				}
 			}
 		}
@@ -483,15 +501,15 @@ func (s *Service) resolveWorkspace(ctx context.Context, cfg *config.GlobalConfig
 	return root, wsConfig, nil
 }
 
-func warnOutsideWorkspaceRoot(root, workspaceRoot string) []string {
-	if workspaceRoot == "" {
+func warnOutsideWorkspaceRoot(root, worksetRoot string) []string {
+	if worksetRoot == "" {
 		return nil
 	}
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
 		return nil
 	}
-	absWorkspace, err := filepath.Abs(workspaceRoot)
+	absWorkspace, err := filepath.Abs(worksetRoot)
 	if err != nil {
 		return nil
 	}
@@ -500,7 +518,7 @@ func warnOutsideWorkspaceRoot(root, workspaceRoot string) []string {
 	if absRoot == absWorkspace || strings.HasPrefix(absRoot, absWorkspace+string(os.PathSeparator)) {
 		return nil
 	}
-	return []string{fmt.Sprintf("workspace created outside defaults.workspace_root (%s)", absWorkspace)}
+	return []string{fmt.Sprintf("thread created outside defaults.workset_root (%s)", absWorkspace)}
 }
 
 func shellArg(value string) string {

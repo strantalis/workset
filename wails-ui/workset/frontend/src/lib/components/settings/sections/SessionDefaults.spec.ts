@@ -17,6 +17,7 @@ const buildDefaults = (): SettingsDefaults => ({
 	remote: 'origin',
 	baseBranch: 'main',
 	workspace: 'default',
+	worksetRoot: '/workset',
 	workspaceRoot: '/workspaces',
 	repoStoreRoot: '/repos',
 	agent: 'default',

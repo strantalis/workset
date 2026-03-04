@@ -21,7 +21,7 @@ describe('setUpdatePreferences', () => {
 
 	test('passes channel when provided', async () => {
 		await setUpdatePreferences({ channel: 'alpha' });
-		expect(SetUpdatePreferences).toHaveBeenCalledWith({ channel: 'alpha' });
+		expect(SetUpdatePreferences).toHaveBeenCalledWith({ channel: 'alpha', autoCheck: null });
 	});
 
 	test('passes both fields when both are provided', async () => {

@@ -296,19 +296,10 @@ export const createSettingsPanelSideEffects = (
 		},
 
 		loadUpdateBootstrap: async () => {
-			let updatePreferences = DEFAULT_UPDATE_PREFERENCES;
-			try {
-				updatePreferences = await deps.fetchUpdatePreferences();
-			} catch {
-				updatePreferences = DEFAULT_UPDATE_PREFERENCES;
-			}
-
-			let updateState: UpdateState | null = null;
-			try {
-				updateState = await deps.fetchUpdateState();
-			} catch {
-				updateState = null;
-			}
+			const updatePreferences = await deps
+				.fetchUpdatePreferences()
+				.catch(() => DEFAULT_UPDATE_PREFERENCES);
+			const updateState = await deps.fetchUpdateState().catch((): UpdateState | null => null);
 
 			return { updatePreferences, updateState };
 		},

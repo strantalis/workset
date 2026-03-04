@@ -302,13 +302,17 @@ func TestCreateWorkspaceStoresWorksetFromTemplateInput(t *testing.T) {
 	}
 	env.saveConfig(cfg)
 
-	_, err := env.svc.CreateWorkspace(context.Background(), WorkspaceCreateInput{
+	result, err := env.svc.CreateWorkspace(context.Background(), WorkspaceCreateInput{
 		Name:     "demo",
 		Repos:    []string{"repo-a"},
 		Template: "Manual Template",
 	})
 	if err != nil {
 		t.Fatalf("create workspace: %v", err)
+	}
+	expectedPath := filepath.Join(env.root, "worksets", workspace.WorkspaceDirName("Manual Template"), workspace.WorkspaceDirName("demo"))
+	if result.Workspace.Path != expectedPath {
+		t.Fatalf("expected nested workset thread path %q, got %q", expectedPath, result.Workspace.Path)
 	}
 
 	cfg = env.loadConfig()
@@ -326,7 +330,7 @@ func TestCreateWorkspaceStoresWorksetFromTemplateInput(t *testing.T) {
 
 func TestCreateWorkspaceWarnsOutsideRoot(t *testing.T) {
 	env := newTestEnv(t)
-	outside := filepath.Join(env.root, "outside")
+	outside := filepath.Join(t.TempDir(), "outside")
 	if err := os.MkdirAll(outside, 0o755); err != nil {
 		t.Fatalf("mkdir outside: %v", err)
 	}
@@ -468,7 +472,7 @@ func TestDeleteWorkspaceRequiresConfirmation(t *testing.T) {
 
 func TestDeleteWorkspaceOutsideRootUnsafe(t *testing.T) {
 	env := newTestEnv(t)
-	outside := filepath.Join(env.root, "outside")
+	outside := filepath.Join(t.TempDir(), "outside")
 	if err := os.MkdirAll(outside, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}

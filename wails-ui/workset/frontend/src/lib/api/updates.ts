@@ -25,12 +25,10 @@ export async function fetchUpdatePreferences(): Promise<UpdatePreferences> {
 export async function setUpdatePreferences(
 	input: Partial<UpdatePreferences> & { channel?: string },
 ): Promise<UpdatePreferences> {
-	const payload: { channel: string; autoCheck?: boolean } = {
+	const payload: { channel: string; autoCheck: boolean | null } = {
 		channel: input.channel ?? '',
+		autoCheck: input.autoCheck ?? null,
 	};
-	if (input.autoCheck !== undefined) {
-		payload.autoCheck = input.autoCheck;
-	}
 	return (await SetUpdatePreferences(payload)) as UpdatePreferences;
 }
 

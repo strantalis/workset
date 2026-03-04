@@ -13,6 +13,7 @@ describe('workspaceActionModalController', () => {
 	it('derives modal title, subtitle and size from mode and phase', () => {
 		expect(deriveWorkspaceActionModalTitle('create', 'form')).toBe('Create workset');
 		expect(deriveWorkspaceActionModalTitle('create-thread', 'form')).toBe('New thread');
+		expect(deriveWorkspaceActionModalTitle('remove-workspace', 'form')).toBe('Remove thread');
 		expect(deriveWorkspaceActionModalTitle('remove-repo', 'form')).toBe('Remove repo');
 		expect(deriveWorkspaceActionModalTitle('rename', 'hook-results')).toBe('Hook results');
 

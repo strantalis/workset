@@ -447,6 +447,13 @@
 		});
 	};
 
+	const handleRemoveThread = (threadId: string): void => {
+		if (popoutMode) return;
+		if (!threadId) return;
+		if (fixedWorkspaceId && threadId !== fixedWorkspaceId) return;
+		openWorkspaceActionModal('remove-workspace', threadId);
+	};
+
 	const handleOnboardingStart = async (
 		draft: OnboardingDraft,
 	): Promise<OnboardingStartResult | void> => {
@@ -658,6 +665,7 @@
 						onCreateWorkspace={handleCreateWorkspace}
 						onCreateThread={handleCreateThread}
 						onAddRepo={handleAddRepoToWorkset}
+						onRemoveThread={handleRemoveThread}
 						onOpenCockpit={() => {
 							cockpitSurface = 'terminal';
 							setView('terminal-cockpit');

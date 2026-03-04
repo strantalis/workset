@@ -90,14 +90,31 @@ func migrateLegacyGlobalConfig(path, legacyPath string) error {
 }
 
 type GlobalConfigLoadInfo struct {
-	Path                    string
-	LegacyPath              string
-	Migrated                bool
-	UsedLegacy              bool
-	Exists                  bool
-	ConfigVersion           int
-	ConfigVersionPresent    bool
-	UsedLegacyWorkspacesKey bool
+	Path                     string
+	LegacyPath               string
+	Migrated                 bool
+	UsedLegacy               bool
+	Exists                   bool
+	ConfigVersion            int
+	ConfigVersionPresent     bool
+	UsedLegacyWorkspacesKey  bool
+	UsedFlatWorksetsShape    bool
+	UsedLegacyWorksetCatalog bool
+}
+
+type serializedWorksetGroup struct {
+	Threads map[string]WorkspaceRef `yaml:"threads,omitempty" json:"threads,omitempty"`
+}
+
+type serializedGlobalConfig struct {
+	ConfigVersion int                               `yaml:"config_version,omitempty" json:"config_version,omitempty"`
+	Defaults      Defaults                          `yaml:"defaults" json:"defaults"`
+	GitHub        GitHubConfig                      `yaml:"github,omitempty" json:"github,omitempty"`
+	Agent         AgentConfig                       `yaml:"agent,omitempty" json:"agent,omitempty"`
+	Hooks         HooksConfig                       `yaml:"hooks,omitempty" json:"hooks,omitempty"`
+	Repos         map[string]RegisteredRepo         `yaml:"repos" json:"repos"`
+	Groups        map[string]Group                  `yaml:"groups,omitempty" json:"groups,omitempty"`
+	Worksets      map[string]serializedWorksetGroup `yaml:"worksets,omitempty" json:"worksets,omitempty"`
 }
 
 func LoadGlobalWithInfo(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
@@ -112,6 +129,7 @@ func LoadGlobal(path string) (GlobalConfig, error) {
 
 func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 	info := GlobalConfigLoadInfo{}
+	var rawData []byte
 	if path == "" {
 		var err error
 		path, err = GlobalConfigPath()
@@ -158,10 +176,11 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 
 	if _, err := os.Stat(path); err == nil {
 		info.Exists = true
-		rawData, readErr := os.ReadFile(path)
+		readData, readErr := os.ReadFile(path)
 		if readErr != nil {
 			return GlobalConfig{}, info, readErr
 		}
+		rawData = readData
 		parsedVersion, present, parseErr := parseConfigVersion(rawData)
 		if parseErr != nil {
 			return GlobalConfig{}, info, parseErr
@@ -178,6 +197,16 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 		if k.Exists("workspaces") {
 			info.UsedLegacyWorkspacesKey = true
 		}
+		usedFlatShape, err := hasFlatWorksetsShape(rawData)
+		if err != nil {
+			return GlobalConfig{}, info, err
+		}
+		info.UsedFlatWorksetsShape = usedFlatShape
+		usedWorksetCatalog, err := hasTopLevelKey(rawData, "workset_catalog")
+		if err != nil {
+			return GlobalConfig{}, info, err
+		}
+		info.UsedLegacyWorksetCatalog = usedWorksetCatalog
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return GlobalConfig{}, info, err
 	}
@@ -185,6 +214,15 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 	var cfg GlobalConfig
 	if err := k.UnmarshalWithConf("", &cfg, koanf.UnmarshalConf{Tag: "yaml"}); err != nil {
 		return GlobalConfig{}, info, err
+	}
+	if len(rawData) > 0 {
+		nestedWorkspaces, hasNestedWorksets, err := parseNestedWorksets(rawData)
+		if err != nil {
+			return GlobalConfig{}, info, err
+		}
+		if hasNestedWorksets {
+			cfg.Workspaces = nestedWorkspaces
+		}
 	}
 	cfg.ConfigVersion = normalizeConfigVersion(info.ConfigVersion)
 	if cfg.ConfigVersion > CurrentGlobalConfigVersion {
@@ -233,6 +271,15 @@ func loadGlobalFromBytes(data []byte) (GlobalConfig, error) {
 	if err := k.UnmarshalWithConf("", &cfg, koanf.UnmarshalConf{Tag: "yaml"}); err != nil {
 		return GlobalConfig{}, err
 	}
+	if len(data) > 0 {
+		nestedWorkspaces, hasNestedWorksets, err := parseNestedWorksets(data)
+		if err != nil {
+			return GlobalConfig{}, err
+		}
+		if hasNestedWorksets {
+			cfg.Workspaces = nestedWorkspaces
+		}
+	}
 	cfg.ConfigVersion = version
 	finalizeGlobal(&cfg, defaults)
 	return cfg, nil
@@ -263,7 +310,7 @@ func SaveGlobal(path string, cfg GlobalConfig) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	data, err := yaml.Marshal(cfg)
+	data, err := yaml.Marshal(toSerializedGlobalConfig(cfg))
 	if err != nil {
 		return err
 	}
@@ -318,11 +365,164 @@ func sanitizeGlobalForSave(cfg GlobalConfig) GlobalConfig {
 	return cfg
 }
 
+func toSerializedGlobalConfig(cfg GlobalConfig) serializedGlobalConfig {
+	worksets := map[string]serializedWorksetGroup{}
+	for threadName, ref := range cfg.Workspaces {
+		normalizedThread := strings.TrimSpace(threadName)
+		if normalizedThread == "" {
+			continue
+		}
+		worksetName := strings.TrimSpace(ref.Workset)
+		if worksetName == "" {
+			worksetName = normalizedThread
+		}
+		ref.Template = ""
+		group := worksets[worksetName]
+		if group.Threads == nil {
+			group.Threads = map[string]WorkspaceRef{}
+		}
+		group.Threads[normalizedThread] = ref
+		worksets[worksetName] = group
+	}
+	return serializedGlobalConfig{
+		ConfigVersion: cfg.ConfigVersion,
+		Defaults:      cfg.Defaults,
+		GitHub:        cfg.GitHub,
+		Agent:         cfg.Agent,
+		Hooks:         cfg.Hooks,
+		Repos:         cfg.Repos,
+		Groups:        cfg.Groups,
+		Worksets:      worksets,
+	}
+}
+
+// CanonicalGlobalForOutput returns the canonical persisted config shape for display/export.
+func CanonicalGlobalForOutput(cfg GlobalConfig) any {
+	cfg.EnsureMaps()
+	cfg = sanitizeGlobalForSave(cfg)
+	return toSerializedGlobalConfig(cfg)
+}
+
+func parseNestedWorksets(raw []byte) (map[string]WorkspaceRef, bool, error) {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil, false, nil
+	}
+	var root map[string]any
+	if err := yaml.Unmarshal(raw, &root); err != nil {
+		return nil, false, err
+	}
+	worksetsValue, ok := root["worksets"]
+	if !ok {
+		return nil, false, nil
+	}
+	worksetsMap, ok := asStringAnyMap(worksetsValue)
+	if !ok {
+		return nil, false, nil
+	}
+	hasNested := false
+	for _, rawGroup := range worksetsMap {
+		groupMap, ok := asStringAnyMap(rawGroup)
+		if !ok {
+			continue
+		}
+		if _, ok := groupMap["threads"]; ok {
+			hasNested = true
+			break
+		}
+	}
+	if !hasNested {
+		return nil, false, nil
+	}
+	var serialized struct {
+		Worksets map[string]serializedWorksetGroup `yaml:"worksets"`
+	}
+	if err := yaml.Unmarshal(raw, &serialized); err != nil {
+		return nil, false, err
+	}
+	flattened := map[string]WorkspaceRef{}
+	for worksetName, group := range serialized.Worksets {
+		for threadName, ref := range group.Threads {
+			normalizedThread := strings.TrimSpace(threadName)
+			if normalizedThread == "" {
+				continue
+			}
+			if strings.TrimSpace(ref.Workset) == "" && strings.TrimSpace(worksetName) != normalizedThread {
+				ref.Workset = strings.TrimSpace(worksetName)
+			}
+			ref.Template = ""
+			flattened[normalizedThread] = ref
+		}
+	}
+	return flattened, true, nil
+}
+
+func hasFlatWorksetsShape(raw []byte) (bool, error) {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return false, nil
+	}
+	var root map[string]any
+	if err := yaml.Unmarshal(raw, &root); err != nil {
+		return false, err
+	}
+	worksetsValue, ok := root["worksets"]
+	if !ok {
+		return false, nil
+	}
+	worksetsMap, ok := asStringAnyMap(worksetsValue)
+	if !ok {
+		return false, nil
+	}
+	seenEntries := false
+	for _, rawGroup := range worksetsMap {
+		groupMap, ok := asStringAnyMap(rawGroup)
+		if !ok {
+			continue
+		}
+		seenEntries = true
+		if _, ok := groupMap["threads"]; ok {
+			return false, nil
+		}
+	}
+	return seenEntries, nil
+}
+
+func hasTopLevelKey(raw []byte, key string) (bool, error) {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return false, nil
+	}
+	var root map[string]any
+	if err := yaml.Unmarshal(raw, &root); err != nil {
+		return false, err
+	}
+	_, ok := root[key]
+	return ok, nil
+}
+
+func asStringAnyMap(value any) (map[string]any, bool) {
+	switch typed := value.(type) {
+	case map[string]any:
+		return typed, true
+	case map[any]any:
+		out := map[string]any{}
+		for key, val := range typed {
+			keyText, ok := key.(string)
+			if !ok {
+				continue
+			}
+			out[keyText] = val
+		}
+		return out, true
+	default:
+		return nil, false
+	}
+}
+
 func defaultConfigMap(defaults GlobalConfig) map[string]any {
 	return map[string]any{
 		"defaults.remote":                    defaults.Defaults.Remote,
 		"defaults.base_branch":               defaults.Defaults.BaseBranch,
 		"defaults.workspace":                 defaults.Defaults.Workspace,
+		"defaults.workset_root":              defaults.Defaults.WorksetRoot,
 		"defaults.workspace_root":            defaults.Defaults.WorkspaceRoot,
 		"defaults.repo_store_root":           defaults.Defaults.RepoStoreRoot,
 		"defaults.session_backend":           defaults.Defaults.SessionBackend,
@@ -357,8 +557,18 @@ func finalizeGlobal(cfg *GlobalConfig, defaults GlobalConfig) {
 	if cfg.Defaults.Workspace == "" {
 		cfg.Defaults.Workspace = defaults.Defaults.Workspace
 	}
+	if cfg.Defaults.WorksetRoot == "" && cfg.Defaults.WorkspaceRoot != "" {
+		candidate := filepath.Clean(cfg.Defaults.WorkspaceRoot)
+		if filepath.Base(candidate) == "workspaces" {
+			candidate = filepath.Dir(candidate)
+		}
+		cfg.Defaults.WorksetRoot = candidate
+	}
+	if cfg.Defaults.WorksetRoot == "" {
+		cfg.Defaults.WorksetRoot = defaults.Defaults.WorksetRoot
+	}
 	if cfg.Defaults.WorkspaceRoot == "" {
-		cfg.Defaults.WorkspaceRoot = defaults.Defaults.WorkspaceRoot
+		cfg.Defaults.WorkspaceRoot = filepath.Join(cfg.Defaults.WorksetRoot, "workspaces")
 	}
 	if cfg.Defaults.RepoStoreRoot == "" {
 		cfg.Defaults.RepoStoreRoot = defaults.Defaults.RepoStoreRoot
