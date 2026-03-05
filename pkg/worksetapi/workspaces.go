@@ -56,6 +56,9 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 	if err != nil {
 		return WorkspaceCreateResult{}, err
 	}
+	if input.WorksetOnly {
+		return s.createWorksetOnly(ctx, cfg, info, input, name)
+	}
 	if err := workspaceCreateConflict(cfg, name, ""); err != nil {
 		return WorkspaceCreateResult{}, err
 	}
@@ -224,6 +227,75 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 	}, nil
 }
 
+func (s *Service) createWorksetOnly(
+	ctx context.Context,
+	cfg config.GlobalConfig,
+	info config.GlobalConfigLoadInfo,
+	input WorkspaceCreateInput,
+	name string,
+) (WorkspaceCreateResult, error) {
+	if err := worksetCreateConflict(cfg, name); err != nil {
+		return WorkspaceCreateResult{}, err
+	}
+
+	repoPlans, err := buildNewWorkspaceRepoPlans(cfg, input.Groups, input.Repos)
+	if err != nil {
+		return WorkspaceCreateResult{}, err
+	}
+	worksetRepos := make([]string, 0, len(repoPlans))
+	for _, plan := range repoPlans {
+		worksetRepos = append(worksetRepos, plan.Name)
+	}
+	worksetRepos = normalizeRepoNames(worksetRepos)
+
+	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
+		info = loadInfo
+		if err := worksetCreateConflict(*cfg, name); err != nil {
+			return err
+		}
+		if cfg.WorksetRepos == nil {
+			cfg.WorksetRepos = map[string][]string{}
+		}
+		cfg.WorksetRepos[name] = append([]string(nil), worksetRepos...)
+		if cfg.Repos == nil {
+			cfg.Repos = map[string]config.RegisteredRepo{}
+		}
+		for _, plan := range repoPlans {
+			alias, ok := cfg.Repos[plan.Name]
+			if !ok {
+				alias = config.RegisteredRepo{}
+			}
+			if alias.URL == "" && plan.URL != "" {
+				alias.URL = plan.URL
+			}
+			if alias.Path == "" && plan.SourcePath != "" {
+				alias.Path = plan.SourcePath
+			}
+			if alias.Remote == "" && plan.Remote != "" {
+				alias.Remote = plan.Remote
+			}
+			if alias.DefaultBranch == "" && plan.DefaultBranch != "" {
+				alias.DefaultBranch = plan.DefaultBranch
+			}
+			cfg.Repos[plan.Name] = alias
+		}
+		return nil
+	}); err != nil {
+		return WorkspaceCreateResult{}, err
+	}
+
+	return WorkspaceCreateResult{
+		Workspace: WorkspaceCreatedJSON{
+			Name:    name,
+			Path:    "",
+			Workset: name,
+			Branch:  "",
+			Next:    "workset workspace new <thread> --template " + shellArg(name),
+		},
+		Config: info,
+	}, nil
+}
+
 // DeleteWorkspace removes a workspace registration or deletes files when requested.
 func (s *Service) DeleteWorkspace(ctx context.Context, input WorkspaceDeleteInput) (WorkspaceDeleteResult, error) {
 	cfg, info, err := s.loadGlobal(ctx)
@@ -359,15 +431,16 @@ func (s *Service) DeleteWorkspace(ctx context.Context, input WorkspaceDeleteInpu
 	if configChanged {
 		if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
 			info = loadInfo
+			removedRefs := collectWorkspaceRefsForDelete(cfg, name, root)
 			if name != "" {
 				delete(cfg.Workspaces, name)
 			} else {
 				removeWorkspaceByPath(cfg, root)
 			}
+			applyWorksetRepoModelAfterWorkspaceRemoval(cfg, removedRefs)
 			if cfg.Defaults.Workspace == name || cfg.Defaults.Workspace == root {
 				cfg.Defaults.Workspace = ""
 			}
-			s.rebuildWorksetRepoModel(ctx, cfg)
 			return nil
 		}); err != nil {
 			return WorkspaceDeleteResult{}, err
@@ -381,6 +454,172 @@ func (s *Service) DeleteWorkspace(ctx context.Context, input WorkspaceDeleteInpu
 		DeletedFiles: input.DeleteFiles,
 	}
 	return WorkspaceDeleteResult{Payload: payload, Warnings: warnings, Unpushed: unpushed, Safety: report, Config: info}, nil
+}
+
+type removedWorkspaceRef struct {
+	name string
+	ref  config.WorkspaceRef
+}
+
+func collectWorkspaceRefsForDelete(
+	cfg *config.GlobalConfig,
+	name string,
+	root string,
+) []removedWorkspaceRef {
+	if cfg == nil || len(cfg.Workspaces) == 0 {
+		return nil
+	}
+	removed := make([]removedWorkspaceRef, 0, 1)
+	if name != "" {
+		ref, ok := cfg.Workspaces[name]
+		if ok {
+			removed = append(removed, removedWorkspaceRef{name: name, ref: ref})
+		}
+		return removed
+	}
+
+	cleanRoot := filepath.Clean(root)
+	if cleanRoot == "" {
+		return nil
+	}
+	for workspaceName, ref := range cfg.Workspaces {
+		if filepath.Clean(ref.Path) == cleanRoot {
+			removed = append(removed, removedWorkspaceRef{name: workspaceName, ref: ref})
+		}
+	}
+	return removed
+}
+
+func applyWorksetRepoModelAfterWorkspaceRemoval(
+	cfg *config.GlobalConfig,
+	removedRefs []removedWorkspaceRef,
+) {
+	if cfg == nil || len(removedRefs) == 0 {
+		return
+	}
+	if cfg.WorksetRepos == nil {
+		cfg.WorksetRepos = map[string][]string{}
+	}
+	affected := map[string][]removedWorkspaceRef{}
+	for _, removed := range removedRefs {
+		worksetName := worksetNameForThread(removed.name, removed.ref)
+		if worksetName == "" {
+			continue
+		}
+		affected[worksetName] = append(affected[worksetName], removed)
+	}
+	for worksetName, removedThreads := range affected {
+		threadNames := listThreadsForWorkset(cfg.Workspaces, worksetName)
+		if len(threadNames) == 0 {
+			preservedRepos := normalizeRepoNames(cfg.WorksetRepos[worksetName])
+			originalBase := preservedRepos
+			for _, removed := range removedThreads {
+				effective := resolveRemovedThreadRepos(removed.ref, originalBase)
+				preservedRepos = normalizeRepoNames(append(preservedRepos, effective...))
+			}
+			cfg.WorksetRepos[worksetName] = preservedRepos
+			continue
+		}
+		recomputeWorksetRepoModelForThreads(cfg, worksetName, threadNames)
+	}
+}
+
+func worksetNameForThread(threadName string, ref config.WorkspaceRef) string {
+	worksetName := strings.TrimSpace(workspaceRefWorkset(ref))
+	if worksetName == "" {
+		worksetName = strings.TrimSpace(threadName)
+	}
+	return worksetName
+}
+
+func listThreadsForWorkset(
+	workspaces map[string]config.WorkspaceRef,
+	worksetName string,
+) []string {
+	normalizedWorkset := strings.TrimSpace(worksetName)
+	if normalizedWorkset == "" {
+		return nil
+	}
+	threads := make([]string, 0, 4)
+	for threadName, ref := range workspaces {
+		if worksetNameForThread(threadName, ref) != normalizedWorkset {
+			continue
+		}
+		threads = append(threads, threadName)
+	}
+	sort.Strings(threads)
+	return threads
+}
+
+func recomputeWorksetRepoModelForThreads(
+	cfg *config.GlobalConfig,
+	worksetName string,
+	threadNames []string,
+) {
+	threadRepos := map[string][]string{}
+	for _, threadName := range threadNames {
+		ref, ok := cfg.Workspaces[threadName]
+		if !ok {
+			continue
+		}
+		repos, hasRepos := loadThreadRepoNamesForRef(ref)
+		if !hasRepos {
+			continue
+		}
+		threadRepos[threadName] = repos
+	}
+	baseRepos, hasBase := intersectThreadRepos(threadNames, threadRepos)
+	if !hasBase {
+		baseRepos = nil
+	}
+	cfg.WorksetRepos[worksetName] = baseRepos
+
+	for _, threadName := range threadNames {
+		ref, ok := cfg.Workspaces[threadName]
+		if !ok {
+			continue
+		}
+		currentOverrides := normalizeRepoNames(ref.RepoOverrides)
+		nextOverrides := currentOverrides
+		if repos, hasRepos := threadRepos[threadName]; hasRepos {
+			nextOverrides = subtractRepoNames(repos, baseRepos)
+		} else if len(baseRepos) > 0 {
+			nextOverrides = subtractRepoNames(currentOverrides, baseRepos)
+		}
+		if sameRepoNames(currentOverrides, nextOverrides) {
+			continue
+		}
+		ref.RepoOverrides = nextOverrides
+		cfg.Workspaces[threadName] = ref
+	}
+}
+
+func resolveRemovedThreadRepos(ref config.WorkspaceRef, worksetBase []string) []string {
+	if repos, hasRepos := loadThreadRepoNamesForRef(ref); hasRepos {
+		return repos
+	}
+	return normalizeRepoNames(append(worksetBase, normalizeRepoNames(ref.RepoOverrides)...))
+}
+
+func loadThreadRepoNamesForRef(ref config.WorkspaceRef) ([]string, bool) {
+	root := strings.TrimSpace(ref.Path)
+	if root == "" {
+		return nil, false
+	}
+	wsCfg, err := config.LoadWorkspace(workspace.WorksetFile(root))
+	if err != nil {
+		return nil, false
+	}
+	repos := make([]string, 0, len(wsCfg.Repos))
+	for _, repo := range wsCfg.Repos {
+		repoName := strings.TrimSpace(repo.Name)
+		if repoName == "" {
+			continue
+		}
+		repos = append(repos, repoName)
+	}
+	normalized := normalizeRepoNames(repos)
+	return normalized, len(normalized) > 0
 }
 
 // StatusWorkspace reports per-repo status for a workspace.
@@ -547,6 +786,29 @@ func workspaceCreateConflict(cfg config.GlobalConfig, name, allowPath string) er
 		return ConflictError{Message: fmt.Sprintf("workspace %q already exists at %s", name, path)}
 	}
 	return ConflictError{Message: fmt.Sprintf("workspace %q already exists", name)}
+}
+
+func worksetCreateConflict(cfg config.GlobalConfig, name string) error {
+	worksetName := strings.TrimSpace(name)
+	if worksetName == "" {
+		return nil
+	}
+	if _, ok := cfg.WorksetRepos[worksetName]; ok {
+		return ConflictError{Message: fmt.Sprintf("workset %q already exists", worksetName)}
+	}
+	for threadName, ref := range cfg.Workspaces {
+		if strings.TrimSpace(threadName) == worksetName {
+			return ConflictError{Message: fmt.Sprintf("workset %q already exists", worksetName)}
+		}
+		threadWorkset := strings.TrimSpace(workspaceRefWorkset(ref))
+		if threadWorkset == "" {
+			threadWorkset = strings.TrimSpace(threadName)
+		}
+		if threadWorkset == worksetName {
+			return ConflictError{Message: fmt.Sprintf("workset %q already exists", worksetName)}
+		}
+	}
+	return nil
 }
 
 func samePath(a, b string) bool {

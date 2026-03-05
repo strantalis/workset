@@ -92,6 +92,7 @@ describe('workspace + terminal API compatibility exports', () => {
 				template: undefined,
 				worksetKey: 'ws-1',
 				worksetLabel: 'Workspace 1',
+				placeholder: false,
 				repos: [
 					{
 						id: 'repo-1',

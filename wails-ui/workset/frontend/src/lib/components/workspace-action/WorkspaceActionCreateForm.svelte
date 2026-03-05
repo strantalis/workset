@@ -91,11 +91,7 @@
 	const createActionLabel = $derived(modeVariant === 'thread' ? 'Create Thread' : 'Create Workset');
 	const nameLabel = $derived(modeVariant === 'thread' ? 'Thread Name' : 'Workset Name');
 	const namePlaceholder = $derived(modeVariant === 'thread' ? 'oauth2-migration' : 'platform-core');
-	const canSubmit = $derived(
-		modeVariant === 'thread'
-			? workspaceName.trim().length > 0
-			: selectedCount > 0 || directRepos.length > 0,
-	);
+	const canSubmit = $derived(workspaceName.trim().length > 0);
 	const displayedSourceInput = $derived(sourceInputFocused ? sourceInputDraft : sourceInput);
 	const sourceQuery = $derived(displayedSourceInput.trim());
 	const canAddSource = $derived(sourceQuery.length > 0);

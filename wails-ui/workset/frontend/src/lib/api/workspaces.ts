@@ -39,6 +39,7 @@ export async function fetchWorkspaces(
 			workset?: string;
 			worksetKey?: string;
 			worksetLabel?: string;
+			placeholder?: boolean;
 		};
 		const workset = identity.workset ?? workspace.template;
 		return {
@@ -49,6 +50,7 @@ export async function fetchWorkspaces(
 			template: workspace.template ?? workset,
 			worksetKey: identity.worksetKey ?? workspace.id,
 			worksetLabel: identity.worksetLabel ?? workspace.name,
+			placeholder: identity.placeholder === true,
 			archived: workspace.archived,
 			archivedAt: workspace.archivedAt,
 			archivedReason: workspace.archivedReason,
@@ -115,15 +117,18 @@ export async function createWorkspace(
 	template?: string,
 	aliases?: string[],
 	groups?: string[],
+	options: { worksetOnly?: boolean } = {},
 ): Promise<WorkspaceCreateResponse> {
 	const normalizedTemplate = template?.trim() || undefined;
-	return CreateWorkspace({
+	const request: Parameters<typeof CreateWorkspace>[0] & { worksetOnly?: boolean } = {
 		name,
 		path,
 		template: normalizedTemplate,
+		worksetOnly: options.worksetOnly === true,
 		repos: aliases,
 		groups,
-	});
+	};
+	return CreateWorkspace(request);
 }
 
 export async function renameWorkspace(workspaceId: string, newName: string): Promise<void> {

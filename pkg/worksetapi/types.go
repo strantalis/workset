@@ -65,6 +65,7 @@ type WorkspaceSnapshotJSON struct {
 	Template       string             `json:"template,omitempty"`
 	WorksetKey     string             `json:"workset_key,omitempty"`
 	WorksetLabel   string             `json:"workset_label,omitempty"`
+	Placeholder    bool               `json:"placeholder,omitempty"`
 	CreatedAt      string             `json:"created_at,omitempty"`
 	LastUsed       string             `json:"last_used,omitempty"`
 	ArchivedAt     string             `json:"archived_at,omitempty"`

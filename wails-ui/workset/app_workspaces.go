@@ -14,6 +14,7 @@ type WorkspaceSnapshot struct {
 	Template       string         `json:"template,omitempty"`
 	WorksetKey     string         `json:"worksetKey,omitempty"`
 	WorksetLabel   string         `json:"worksetLabel,omitempty"`
+	Placeholder    bool           `json:"placeholder,omitempty"`
 	CreatedAt      string         `json:"createdAt,omitempty"`
 	LastUsed       string         `json:"lastUsed,omitempty"`
 	ArchivedAt     string         `json:"archivedAt,omitempty"`
@@ -133,7 +134,7 @@ func (a *App) ListWorkspaceSnapshots(input WorkspaceSnapshotRequest) ([]Workspac
 				TrackedPullRequest: tracked,
 			}
 
-			if input.IncludeStatus && !repo.Missing {
+			if input.IncludeStatus && !workspace.Placeholder && !repo.Missing {
 				localStatus, localErr := a.service.GetRepoLocalStatus(ctx, worksetapi.RepoLocalStatusInput{
 					Workspace: worksetapi.WorkspaceSelector{Value: workspace.Name},
 					Repo:      repo.Name,
@@ -177,6 +178,7 @@ func (a *App) ListWorkspaceSnapshots(input WorkspaceSnapshotRequest) ([]Workspac
 			Template:       workspace.Template,
 			WorksetKey:     workspace.WorksetKey,
 			WorksetLabel:   workspace.WorksetLabel,
+			Placeholder:    workspace.Placeholder,
 			CreatedAt:      workspace.CreatedAt,
 			LastUsed:       workspace.LastUsed,
 			ArchivedAt:     workspace.ArchivedAt,

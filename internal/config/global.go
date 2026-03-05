@@ -446,6 +446,10 @@ func parseNestedWorksets(raw []byte) (map[string]WorkspaceRef, map[string][]stri
 		if !ok {
 			continue
 		}
+		if len(groupMap) == 0 {
+			hasNested = true
+			break
+		}
 		if _, ok := groupMap["threads"]; ok {
 			hasNested = true
 			break

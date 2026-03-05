@@ -67,6 +67,7 @@
 	};
 
 	type WorkspaceActionMode =
+		| 'create'
 		| 'create-thread'
 		| 'rename'
 		| 'add-repo'
@@ -152,13 +153,17 @@
 
 	const getWorksetThreads = (workspaceId: string): Workspace[] => {
 		const target = $workspaces.find(
-			(workspace) => workspace.id === workspaceId && !workspace.archived,
+			(workspace) =>
+				workspace.id === workspaceId && !workspace.archived && workspace.placeholder !== true,
 		);
 		if (!target) return [];
 		const identity = deriveWorksetIdentity(target);
 		return $workspaces
 			.filter(
-				(workspace) => !workspace.archived && deriveWorksetIdentity(workspace).id === identity.id,
+				(workspace) =>
+					!workspace.archived &&
+					workspace.placeholder !== true &&
+					deriveWorksetIdentity(workspace).id === identity.id,
 			)
 			.sort((left, right) => left.id.localeCompare(right.id));
 	};
@@ -193,7 +198,10 @@
 		if (threads.length > 0) return threads;
 		return $workspaces.filter((workspace) => workspace.id === fixedWorkspaceId);
 	});
-	const worksetSummaries = $derived.by(() => mapWorkspacesToSummaries(visibleWorkspaces));
+	const threadVisibleWorkspaces = $derived.by(() =>
+		visibleWorkspaces.filter((workspace) => workspace.placeholder !== true),
+	);
+	const worksetSummaries = $derived.by(() => mapWorkspacesToSummaries(threadVisibleWorkspaces));
 	const existingWorksetNames = $derived.by(() => {
 		const names = new Set<string>();
 		for (const workspace of $workspaces) {
@@ -208,7 +216,7 @@
 		}
 		return Array.from(names);
 	});
-	const shortcutMap = $derived.by(() => buildShortcutMap(visibleWorkspaces));
+	const shortcutMap = $derived.by(() => buildShortcutMap(threadVisibleWorkspaces));
 	const activeSummary = $derived.by(
 		() => worksetSummaries.find((summary) => summary.id === $activeWorkspaceId) ?? null,
 	);
@@ -226,6 +234,7 @@
 		const nextKeys = new Set<string>();
 		for (const workspace of $workspaces) {
 			if (workspace.archived) continue;
+			if (workspace.placeholder) continue;
 			for (const repo of workspace.repos) {
 				const key = `${workspace.id}:${repo.id}`;
 				nextKeys.add(key);
@@ -349,6 +358,8 @@
 	};
 
 	const handleSelectWorkspace = (workspaceId: string): void => {
+		const workspace = visibleWorkspaces.find((entry) => entry.id === workspaceId);
+		if (workspace?.placeholder) return;
 		if (fixedWorkspaceId && !visibleWorkspaces.some((workspace) => workspace.id === workspaceId)) {
 			return;
 		}
@@ -359,6 +370,8 @@
 	};
 
 	const handleSelectWorkspaceFromPalette = (workspaceId: string): void => {
+		const workspace = threadVisibleWorkspaces.find((entry) => entry.id === workspaceId);
+		if (!workspace) return;
 		if (fixedWorkspaceId && !visibleWorkspaces.some((workspace) => workspace.id === workspaceId)) {
 			return;
 		}
@@ -409,17 +422,28 @@
 		}
 
 		const threads = visibleWorkspaces.filter((workspace) => {
+			if (workspace.placeholder) return false;
 			const identity = deriveWorksetIdentity(workspace);
 			return identity.id === worksetId;
 		});
-		if (threads.length === 0) {
+		const placeholder = visibleWorkspaces.find((workspace) => {
+			if (!workspace.placeholder) return false;
+			const identity = deriveWorksetIdentity(workspace);
+			return identity.id === worksetId;
+		});
+		if (threads.length === 0 && !placeholder) {
 			return;
 		}
 
-		const first = threads[0];
+		const first = threads[0] ?? placeholder ?? null;
+		if (!first) return;
 		const label = deriveWorksetIdentity(first).label;
 		const repos = Array.from(
-			new Set(threads.flatMap((workspace) => workspace.repos.map((repo) => repo.name))),
+			new Set(
+				threads.length > 0
+					? threads.flatMap((workspace) => workspace.repos.map((repo) => repo.name))
+					: (placeholder?.repos ?? []).map((repo) => repo.name),
+			),
 		).sort((left, right) => left.localeCompare(right));
 
 		openWorkspaceActionModal('create-thread', null, null, {

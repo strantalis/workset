@@ -33,6 +33,7 @@ export type Workspace = {
 	template?: string;
 	worksetKey?: string;
 	worksetLabel?: string;
+	placeholder?: boolean;
 	archived: boolean;
 	archivedAt?: string;
 	archivedReason?: string;

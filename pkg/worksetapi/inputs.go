@@ -2,11 +2,12 @@ package worksetapi
 
 // WorkspaceCreateInput describes inputs for CreateWorkspace.
 type WorkspaceCreateInput struct {
-	Name     string
-	Path     string
-	Template string
-	Groups   []string
-	Repos    []string
+	Name        string
+	Path        string
+	Template    string
+	WorksetOnly bool
+	Groups      []string
+	Repos       []string
 }
 
 // WorkspaceDeleteInput describes inputs for DeleteWorkspace.

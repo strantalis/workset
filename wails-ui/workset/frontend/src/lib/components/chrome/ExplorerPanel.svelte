@@ -187,7 +187,9 @@
 				linesRemoved: 0,
 			};
 
-			target.threads.push(workspace);
+			if (!workspace.placeholder) {
+				target.threads.push(workspace);
+			}
 			target.lastActiveTs = Math.max(target.lastActiveTs, lastUsed);
 			target.pinned = target.pinned || workspace.pinned;
 			for (const repo of workspace.repos) {
@@ -243,12 +245,21 @@
 
 	const activeWorksetId = $derived.by(() => {
 		if (!activeWorkspaceId) return null;
-		const active = workspaces.find((workspace) => workspace.id === activeWorkspaceId);
+		const active = workspaces.find(
+			(workspace) => workspace.id === activeWorkspaceId && workspace.placeholder !== true,
+		);
 		if (!active) return null;
 		return deriveWorksetIdentity(active).id;
 	});
 
+	let selectedWorksetId = $state<string | null>(null);
+
 	const selectedWorkset = $derived.by<WorksetNode | null>(() => {
+		if (selectedWorksetId) {
+			const selected = groupedWorksets.find((item) => item.id === selectedWorksetId);
+			if (selected) return selected;
+			return null;
+		}
 		if (activeWorksetId) {
 			const current = groupedWorksets.find((item) => item.id === activeWorksetId);
 			if (current) return current;
@@ -302,9 +313,14 @@
 
 	const selectWorkset = (worksetId: string): void => {
 		const workset = groupedWorksets.find((item) => item.id === worksetId);
-		const thread = workset?.threads[0];
-		if (!thread) return;
-		selectThread(thread.id);
+		if (!workset) return;
+		selectedWorksetId = workset.id;
+		const thread = workset.threads[0];
+		if (thread) {
+			selectThread(thread.id);
+			return;
+		}
+		switcherOpen = false;
 	};
 
 	const handleSwitcherKeydown = (event: KeyboardEvent): void => {
@@ -340,14 +356,31 @@
 
 	$effect(() => {
 		if (groupedWorksets.length === 0) {
+			selectedWorksetId = null;
 			switcherOpen = false;
 			switcherQuery = '';
 			switcherFocusIndex = 0;
 			return;
 		}
 		if (activeWorkspaceId) return;
-		const first = groupedWorksets[0]?.threads[0];
-		if (first) onSelectWorkspace(first.id);
+
+		if (selectedWorksetId) {
+			const selected = groupedWorksets.find((item) => item.id === selectedWorksetId);
+			if (selected) {
+				const firstSelectedThread = selected.threads[0];
+				if (firstSelectedThread) onSelectWorkspace(firstSelectedThread.id);
+			}
+			return;
+		}
+
+		const firstAvailable = groupedWorksets.find((item) => item.threads.length > 0)?.threads[0];
+		if (firstAvailable) onSelectWorkspace(firstAvailable.id);
+	});
+
+	$effect(() => {
+		if (activeWorksetId) {
+			selectedWorksetId = activeWorksetId;
+		}
 	});
 
 	$effect(() => {

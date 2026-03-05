@@ -65,12 +65,14 @@ describe('runCreateWorkspaceMutation', () => {
 		expect(registerRepo).toHaveBeenCalledTimes(2);
 		expect(registerRepo).toHaveBeenNthCalledWith(1, 'first', '/tmp/repos/first', '', '');
 		expect(registerRepo).toHaveBeenNthCalledWith(2, 'pending', '/tmp/repos/pending', '', '');
-		expect(createWorkspace).toHaveBeenCalledWith('alpha', '', 'platform-core', [
-			'/tmp/repos/first',
-			'git@github.com:acme/second.git',
-			'/tmp/repos/pending',
-			'alias-one',
-		]);
+		expect(createWorkspace).toHaveBeenCalledWith(
+			'alpha',
+			'',
+			'platform-core',
+			['/tmp/repos/first', 'git@github.com:acme/second.git', '/tmp/repos/pending', 'alias-one'],
+			undefined,
+			{ worksetOnly: false },
+		);
 		expect(createWorkspace.mock.invocationCallOrder[0]).toBeLessThan(
 			registerRepo.mock.invocationCallOrder[0],
 		);
@@ -135,10 +137,52 @@ describe('runCreateWorkspaceMutation', () => {
 			{ registerRepo, createWorkspace },
 		);
 
-		expect(createWorkspace).toHaveBeenCalledWith('alpha', '', undefined, ['/tmp/repos/first']);
+		expect(createWorkspace).toHaveBeenCalledWith(
+			'alpha',
+			'',
+			undefined,
+			['/tmp/repos/first'],
+			undefined,
+			{ worksetOnly: false },
+		);
 		expect(result.warnings).toEqual([
 			'Registered first in workset but failed to save in Repo Catalog: permission denied',
 		]);
+	});
+
+	it('passes workset-only flag when requested', async () => {
+		const registerRepo = vi.fn(async () => undefined);
+		const createWorkspace = vi.fn(
+			async (): Promise<WorkspaceCreateResponse> => ({
+				workspace: {
+					name: 'platform-core',
+					path: '',
+					workset: 'platform-core',
+					branch: '',
+					next: 'workset workspace new <thread> --template platform-core',
+				},
+			}),
+		);
+
+		await runCreateWorkspaceMutation(
+			{
+				finalName: 'platform-core',
+				primaryInput: '',
+				directRepos: [],
+				selectedAliases: new Set<string>(),
+				worksetOnly: true,
+			},
+			{ registerRepo, createWorkspace },
+		);
+
+		expect(createWorkspace).toHaveBeenCalledWith(
+			'platform-core',
+			'',
+			undefined,
+			undefined,
+			undefined,
+			{ worksetOnly: true },
+		);
 	});
 });
 

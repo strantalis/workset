@@ -29,6 +29,7 @@ export type CreateWorkspaceMutationInput = {
 	directRepos: CreateDirectRepo[];
 	selectedAliases: Iterable<string>;
 	worksetName?: string;
+	worksetOnly?: boolean;
 };
 
 type CreateWorkspaceMutationDeps = {
@@ -44,6 +45,7 @@ type CreateWorkspaceMutationDeps = {
 		template?: string,
 		repos?: string[],
 		groups?: string[],
+		options?: { worksetOnly?: boolean },
 	) => Promise<WorkspaceCreateResponse>;
 };
 
@@ -267,6 +269,8 @@ export const runCreateWorkspaceMutation = async (
 		'',
 		worksetName,
 		repos.length > 0 ? repos : undefined,
+		undefined,
+		{ worksetOnly: input.worksetOnly === true },
 	);
 	const collectedWarnings = [...(result.warnings ?? [])];
 	for (const repo of reposToProcess) {

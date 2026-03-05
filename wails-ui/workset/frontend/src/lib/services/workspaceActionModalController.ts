@@ -14,6 +14,7 @@ type BaseHookTransitionInput = {
 	warnings: string[];
 	pendingHooks: WorkspaceActionPendingHook[];
 	hookRuns: HookExecution[];
+	inlineResults?: boolean;
 };
 
 type CreateHookTransitionInput = BaseHookTransitionInput & {
@@ -91,6 +92,16 @@ export const resolveMutationHookTransition = (
 		input.action === 'created'
 			? `Created ${input.workspaceName}.`
 			: `Added ${input.itemCount} item${input.itemCount !== 1 ? 's' : ''}.`;
+
+	if (input.inlineResults) {
+		return {
+			phase: 'form',
+			hookResultContext: null,
+			success,
+			shouldClose: false,
+			shouldAutoClose: false,
+		};
+	}
 
 	return {
 		phase: 'hook-results',

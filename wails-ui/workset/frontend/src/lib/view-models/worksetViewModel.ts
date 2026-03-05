@@ -92,11 +92,11 @@ export const mapWorkspaceToSummary = (workspace: Workspace): WorksetSummary => {
 };
 
 export const mapWorkspacesToSummaries = (workspaces: Workspace[]): WorksetSummary[] =>
-	workspaces.map(mapWorkspaceToSummary);
+	workspaces.filter((workspace) => workspace.placeholder !== true).map(mapWorkspaceToSummary);
 
 export const buildShortcutMap = (workspaces: Workspace[], max = 5): Map<string, number> => {
 	const sorted = [...workspaces]
-		.filter((workspace) => !workspace.archived)
+		.filter((workspace) => !workspace.archived && workspace.placeholder !== true)
 		.sort((a, b) => {
 			if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
 			const aTs = new Date(a.lastUsed).getTime() || 0;

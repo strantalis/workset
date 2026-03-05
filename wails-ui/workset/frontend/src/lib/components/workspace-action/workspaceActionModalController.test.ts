@@ -111,6 +111,25 @@ describe('workspaceActionModalController', () => {
 		});
 	});
 
+	it('keeps create-thread hook activity inline when requested', () => {
+		expect(
+			resolveMutationHookTransition({
+				action: 'created',
+				workspaceName: 'alpha/thread-a',
+				warnings: [],
+				pendingHooks: [],
+				hookRuns: [{ event: 'workspace.create', repo: 'repo-a', id: 'hook-1', status: 'running' }],
+				inlineResults: true,
+			}),
+		).toEqual({
+			phase: 'form',
+			hookResultContext: null,
+			success: 'Created alpha/thread-a.',
+			shouldClose: false,
+			shouldAutoClose: false,
+		});
+	});
+
 	it('normalizes removal state and status refresh decisions', () => {
 		expect(
 			resolveRemovalState({

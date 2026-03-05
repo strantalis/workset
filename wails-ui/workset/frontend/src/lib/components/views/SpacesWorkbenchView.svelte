@@ -51,10 +51,16 @@
 			const { id, label } = deriveWorksetIdentity(workspace);
 			const existing = byId.get(id);
 			if (existing) {
-				existing.threads.push(workspace);
+				if (!workspace.placeholder) {
+					existing.threads.push(workspace);
+				}
 				continue;
 			}
-			byId.set(id, { id, label, threads: [workspace] });
+			byId.set(id, {
+				id,
+				label,
+				threads: workspace.placeholder ? [] : [workspace],
+			});
 		}
 
 		return [...byId.values()]
@@ -66,7 +72,9 @@
 	});
 
 	const activeThread = $derived(
-		workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null,
+		workspaces.find(
+			(workspace) => workspace.id === activeWorkspaceId && workspace.placeholder !== true,
+		) ?? null,
 	);
 
 	const activeWorksetId = $derived.by(() => {
