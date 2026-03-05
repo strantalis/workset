@@ -386,3 +386,41 @@ func TestCanonicalGlobalForOutputJSONUsesCanonicalKeys(t *testing.T) {
 		t.Fatalf("expected threads key in json output, got %q", text)
 	}
 }
+
+func TestSaveLoadGlobalPersistsWorksetReposAndRepoOverrides(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	cfg := DefaultConfig()
+	cfg.Workspaces["thread-a"] = WorkspaceRef{
+		Path:          "/tmp/worksets/core/thread-a",
+		Workset:       "core",
+		RepoOverrides: []string{"extra-repo", "extra-repo", " "},
+	}
+	cfg.WorksetRepos["core"] = []string{"platform", "workset", "platform", ""}
+
+	if err := SaveGlobal(path, cfg); err != nil {
+		t.Fatalf("SaveGlobal: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "repos:") {
+		t.Fatalf("expected group repos key in serialized config, got %q", text)
+	}
+	if !strings.Contains(text, "repo_overrides:") {
+		t.Fatalf("expected repo_overrides key in serialized config, got %q", text)
+	}
+
+	loaded, err := LoadGlobal(path)
+	if err != nil {
+		t.Fatalf("LoadGlobal: %v", err)
+	}
+	if got := loaded.WorksetRepos["core"]; len(got) != 2 || got[0] != "platform" || got[1] != "workset" {
+		t.Fatalf("expected normalized workset repos [platform workset], got %#v", got)
+	}
+	if got := loaded.Workspaces["thread-a"].RepoOverrides; len(got) != 1 || got[0] != "extra-repo" {
+		t.Fatalf("expected normalized repo_overrides [extra-repo], got %#v", got)
+	}
+}

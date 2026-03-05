@@ -43,7 +43,8 @@ func (s *Service) globalConfigMigrations(
 					info.UsedLegacyWorkspacesKey ||
 					info.UsedFlatWorksetsShape ||
 					info.UsedLegacyWorksetCatalog ||
-					needsWorkspaceWorksetNormalization(cfg)
+					needsWorkspaceWorksetNormalization(cfg) ||
+					needsWorksetRepoModelNormalization(cfg)
 			},
 			run: func(ctx context.Context, cfg *config.GlobalConfig, configPath string, info config.GlobalConfigLoadInfo) error {
 				forcePersist := info.UsedLegacyWorkspacesKey ||
@@ -168,11 +169,47 @@ func needsWorkspaceWorksetNormalization(cfg *config.GlobalConfig) bool {
 		return false
 	}
 	for _, ref := range cfg.Workspaces {
-		if strings.TrimSpace(ref.Workset) == "" || strings.TrimSpace(ref.Template) != "" {
+		if strings.TrimSpace(ref.Workset) == "" ||
+			strings.TrimSpace(ref.Template) != "" ||
+			len(normalizeRepoNames(ref.RepoOverrides)) != len(ref.RepoOverrides) {
 			return true
 		}
 	}
 	return false
+}
+
+func needsWorksetRepoModelNormalization(cfg *config.GlobalConfig) bool {
+	if cfg == nil {
+		return false
+	}
+	if len(cfg.Workspaces) == 0 {
+		return len(cfg.WorksetRepos) > 0
+	}
+	worksetThreads := map[string]struct{}{}
+	for workspaceName, ref := range cfg.Workspaces {
+		worksetName := strings.TrimSpace(workspaceRefWorkset(ref))
+		if worksetName == "" {
+			worksetName = strings.TrimSpace(workspaceName)
+		}
+		if worksetName == "" {
+			continue
+		}
+		worksetThreads[worksetName] = struct{}{}
+	}
+	for worksetName, repos := range cfg.WorksetRepos {
+		trimmed := strings.TrimSpace(worksetName)
+		if trimmed == "" || trimmed != worksetName {
+			return true
+		}
+		if len(normalizeRepoNames(repos)) != len(repos) {
+			return true
+		}
+		if len(normalizeRepoNames(repos)) == 0 {
+			return true
+		}
+		delete(worksetThreads, worksetName)
+	}
+	return len(worksetThreads) > 0
 }
 
 func (s *Service) migrateLegacyGroupRemotes(ctx context.Context, cfg *config.GlobalConfig, configPath string) error {
@@ -220,6 +257,10 @@ func (s *Service) persistEmptyWorkspaceWorksetMigration(
 	forcePersist bool,
 ) error {
 	changed := forcePersist
+	if len(cfg.WorksetRepos) > 0 {
+		cfg.WorksetRepos = map[string][]string{}
+		changed = true
+	}
 	if forcePersist && len(cfg.Groups) > 0 {
 		cfg.Groups = map[string]config.Group{}
 		changed = true
@@ -230,6 +271,7 @@ func (s *Service) persistEmptyWorkspaceWorksetMigration(
 
 	if updater, ok := s.configs.(ConfigUpdater); ok {
 		_, err := updater.Update(ctx, configPath, func(target *config.GlobalConfig, _ config.GlobalConfigLoadInfo) error {
+			target.WorksetRepos = map[string][]string{}
 			if forcePersist {
 				target.Groups = map[string]config.Group{}
 			}
@@ -259,6 +301,12 @@ func (s *Service) collectWorkspaceWorksetMigrationState(
 		}
 
 	}
+	if s.rebuildWorksetRepoModel(ctx, cfg) {
+		state.changed = true
+		for name, ref := range cfg.Workspaces {
+			state.updates[name] = ref
+		}
+	}
 
 	return state
 }
@@ -268,7 +316,7 @@ func (s *Service) normalizeWorkspaceRef(
 	workspaceName string,
 	ref config.WorkspaceRef,
 ) (config.WorkspaceRef, bool) {
-	original := ref
+	changed := false
 	legacyTemplate := strings.TrimSpace(ref.Template)
 	if strings.TrimSpace(ref.Workset) == "" {
 		workset := legacyTemplate
@@ -277,12 +325,19 @@ func (s *Service) normalizeWorkspaceRef(
 		}
 		if workset != "" {
 			ref.Workset = workset
+			changed = true
 		}
 	}
 	if legacyTemplate != "" {
 		ref.Template = ""
+		changed = true
 	}
-	return ref, ref != original
+	normalizedOverrides := normalizeRepoNames(ref.RepoOverrides)
+	if !sameRepoNames(ref.RepoOverrides, normalizedOverrides) {
+		ref.RepoOverrides = normalizedOverrides
+		changed = true
+	}
+	return ref, changed
 }
 
 func (s *Service) persistWorkspaceWorksetMigration(
@@ -304,7 +359,12 @@ func (s *Service) persistWorkspaceWorksetMigration(
 				}
 				ref.Workset = migrated.Workset
 				ref.Template = ""
+				ref.RepoOverrides = append([]string(nil), migrated.RepoOverrides...)
 				target.Workspaces[name] = ref
+			}
+			target.WorksetRepos = map[string][]string{}
+			for worksetName, repos := range cfg.WorksetRepos {
+				target.WorksetRepos[worksetName] = append([]string(nil), repos...)
 			}
 			if forcePersist {
 				target.Groups = map[string]config.Group{}
@@ -334,8 +394,203 @@ func (s *Service) deriveWorkspaceWorkset(ctx context.Context, workspaceName, roo
 		}
 		repos = append(repos, RepoSnapshotJSON{Name: repoName})
 	}
-	_, worksetLabel := deriveWorksetIdentity(trimmedWorkspaceName, "", repos)
-	return strings.TrimSpace(worksetLabel)
+	repoNames := make([]string, 0, len(repos))
+	for _, repo := range repos {
+		repoNames = append(repoNames, repo.Name)
+	}
+	return deriveWorksetLabelFromRepoNames(trimmedWorkspaceName, repoNames)
+}
+
+func (s *Service) rebuildWorksetRepoModel(ctx context.Context, cfg *config.GlobalConfig) bool {
+	if cfg == nil {
+		return false
+	}
+	changed := false
+	if cfg.WorksetRepos == nil {
+		cfg.WorksetRepos = map[string][]string{}
+		changed = true
+	}
+	groupThreads := map[string][]string{}
+	threadRepos := map[string][]string{}
+	for threadName, ref := range cfg.Workspaces {
+		worksetName := strings.TrimSpace(workspaceRefWorkset(ref))
+		if worksetName == "" {
+			worksetName = strings.TrimSpace(threadName)
+		}
+		groupThreads[worksetName] = append(groupThreads[worksetName], threadName)
+		repos, ok := s.loadThreadRepoNames(ctx, ref.Path)
+		if !ok {
+			continue
+		}
+		threadRepos[threadName] = repos
+	}
+
+	newWorksetRepos := map[string][]string{}
+	for worksetName, threads := range groupThreads {
+		base, hasBase := intersectThreadRepos(threads, threadRepos)
+		if !hasBase {
+			base = nil
+		}
+		newWorksetRepos[worksetName] = base
+		for _, threadName := range threads {
+			ref := cfg.Workspaces[threadName]
+			current := normalizeRepoNames(ref.RepoOverrides)
+			threadRepoSet, hasThreadRepos := threadRepos[threadName]
+			next := current
+			if hasThreadRepos {
+				next = subtractRepoNames(threadRepoSet, base)
+			} else if len(base) > 0 {
+				next = subtractRepoNames(current, base)
+			}
+			if !sameRepoNames(current, next) {
+				ref.RepoOverrides = next
+				cfg.Workspaces[threadName] = ref
+				changed = true
+			}
+		}
+	}
+
+	if !sameWorksetRepoMap(cfg.WorksetRepos, newWorksetRepos) {
+		cfg.WorksetRepos = newWorksetRepos
+		changed = true
+	}
+	return changed
+}
+
+func (s *Service) loadThreadRepoNames(ctx context.Context, root string) ([]string, bool) {
+	if strings.TrimSpace(root) == "" {
+		return nil, false
+	}
+	wsCfg, err := s.workspaces.LoadConfig(ctx, root)
+	if err != nil {
+		return nil, false
+	}
+	repos := make([]string, 0, len(wsCfg.Repos))
+	for _, repo := range wsCfg.Repos {
+		repoName := strings.TrimSpace(repo.Name)
+		if repoName == "" {
+			continue
+		}
+		repos = append(repos, repoName)
+	}
+	normalized := normalizeRepoNames(repos)
+	return normalized, len(normalized) > 0
+}
+
+func intersectThreadRepos(threads []string, threadRepos map[string][]string) ([]string, bool) {
+	base := []string(nil)
+	initialized := false
+	for _, threadName := range threads {
+		repos, ok := threadRepos[threadName]
+		if !ok {
+			continue
+		}
+		if !initialized {
+			base = append([]string(nil), repos...)
+			initialized = true
+			continue
+		}
+		base = intersectRepoNames(base, repos)
+	}
+	return base, initialized
+}
+
+func intersectRepoNames(base []string, other []string) []string {
+	if len(base) == 0 || len(other) == 0 {
+		return nil
+	}
+	otherSet := map[string]struct{}{}
+	for _, repo := range normalizeRepoNames(other) {
+		otherSet[strings.ToLower(repo)] = struct{}{}
+	}
+	out := make([]string, 0, len(base))
+	for _, repo := range normalizeRepoNames(base) {
+		if _, ok := otherSet[strings.ToLower(repo)]; ok {
+			out = append(out, repo)
+		}
+	}
+	return out
+}
+
+func subtractRepoNames(base []string, excluded []string) []string {
+	base = normalizeRepoNames(base)
+	if len(base) == 0 {
+		return nil
+	}
+	excludedSet := map[string]struct{}{}
+	for _, repo := range normalizeRepoNames(excluded) {
+		excludedSet[strings.ToLower(repo)] = struct{}{}
+	}
+	out := make([]string, 0, len(base))
+	for _, repo := range base {
+		if _, ok := excludedSet[strings.ToLower(repo)]; ok {
+			continue
+		}
+		out = append(out, repo)
+	}
+	return out
+}
+
+func normalizeRepoNames(repos []string) []string {
+	if len(repos) == 0 {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(repos))
+	for _, repo := range repos {
+		trimmed := strings.TrimSpace(repo)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, trimmed)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func deriveWorksetLabelFromRepoNames(workspaceName string, repos []string) string {
+	normalized := normalizeRepoNames(repos)
+	if len(normalized) == 0 {
+		return strings.TrimSpace(workspaceName)
+	}
+	return strings.Join(normalized, " + ")
+}
+
+func sameRepoNames(a []string, b []string) bool {
+	a = normalizeRepoNames(a)
+	b = normalizeRepoNames(b)
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func sameWorksetRepoMap(a map[string][]string, b map[string][]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for worksetName, reposA := range a {
+		reposB, ok := b[worksetName]
+		if !ok {
+			return false
+		}
+		if !sameRepoNames(reposA, reposB) {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Service) applyLegacyGroupRemotes(cfg *config.GlobalConfig) bool {

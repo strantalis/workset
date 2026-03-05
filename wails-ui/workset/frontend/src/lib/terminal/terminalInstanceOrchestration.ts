@@ -14,6 +14,7 @@ import {
 type TerminalInstanceOrchestrationDependencies = {
 	terminalHandles: Map<string, TerminalInstanceHandle>;
 	createTerminalInstance: (fontSize: number) => Terminal;
+	openURL: (url: string) => Promise<void>;
 	setRenderer: (id: string, renderer: 'unknown' | 'webgl') => void;
 	setRendererMode: (id: string, mode: 'webgl') => void;
 	setStatusAndMessage: (id: string, status: string, message: string) => void;
@@ -93,7 +94,12 @@ export const createTerminalInstanceOrchestration = (
 			deps.createTerminalInstance(terminalFontSizeController.getCurrentFontSize()),
 		createFitAddon: () => new FitAddon(),
 		createSearchAddon: () => new SearchAddon(),
-		createWebLinksAddon: () => new WebLinksAddon(),
+		createWebLinksAddon: () =>
+			new WebLinksAddon((event, uri) => {
+				event.preventDefault();
+				event.stopPropagation();
+				void deps.openURL(uri).catch(() => undefined);
+			}),
 		createImageAddon: () => new ImageAddon(),
 		createWebglAddon: () => new WebglAddon(),
 		onData: (id, data) => {

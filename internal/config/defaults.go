@@ -43,9 +43,10 @@ func DefaultConfig() GlobalConfig {
 			},
 			Items: []HookSpec{},
 		},
-		Repos:      map[string]RegisteredRepo{},
-		Groups:     map[string]Group{},
-		Workspaces: map[string]WorkspaceRef{},
+		Repos:        map[string]RegisteredRepo{},
+		Groups:       map[string]Group{},
+		Workspaces:   map[string]WorkspaceRef{},
+		WorksetRepos: map[string][]string{},
 	}
 }
 
@@ -61,6 +62,9 @@ func (cfg *GlobalConfig) EnsureMaps() {
 	}
 	if cfg.Workspaces == nil {
 		cfg.Workspaces = map[string]WorkspaceRef{}
+	}
+	if cfg.WorksetRepos == nil {
+		cfg.WorksetRepos = map[string][]string{}
 	}
 	cfg.LegacyWorkspaces = nil
 	if cfg.Hooks.RepoHooks.TrustedRepos == nil {

@@ -48,18 +48,19 @@ type GroupMember struct {
 }
 
 type WorkspaceRef struct {
-	Path           string `yaml:"path" json:"path" mapstructure:"path"`
-	Workset        string `yaml:"workset,omitempty" json:"workset,omitempty" mapstructure:"workset"`
-	Template       string `yaml:"template,omitempty" json:"template,omitempty" mapstructure:"template"`
-	CreatedAt      string `yaml:"created_at,omitempty" json:"created_at,omitempty" mapstructure:"created_at"`
-	LastUsed       string `yaml:"last_used,omitempty" json:"last_used,omitempty" mapstructure:"last_used"`
-	ArchivedAt     string `yaml:"archived_at,omitempty" json:"archived_at,omitempty" mapstructure:"archived_at"`
-	ArchivedReason string `yaml:"archived_reason,omitempty" json:"archived_reason,omitempty" mapstructure:"archived_reason"`
-	Pinned         bool   `yaml:"pinned,omitempty" json:"pinned,omitempty" mapstructure:"pinned"`
-	PinOrder       int    `yaml:"pin_order,omitempty" json:"pin_order,omitempty" mapstructure:"pin_order"`
-	Color          string `yaml:"color,omitempty" json:"color,omitempty" mapstructure:"color"`
-	Description    string `yaml:"description,omitempty" json:"description,omitempty" mapstructure:"description"`
-	Expanded       bool   `yaml:"expanded,omitempty" json:"expanded,omitempty" mapstructure:"expanded"`
+	Path           string   `yaml:"path" json:"path" mapstructure:"path"`
+	Workset        string   `yaml:"workset,omitempty" json:"workset,omitempty" mapstructure:"workset"`
+	RepoOverrides  []string `yaml:"repo_overrides,omitempty" json:"repo_overrides,omitempty" mapstructure:"repo_overrides"`
+	Template       string   `yaml:"template,omitempty" json:"template,omitempty" mapstructure:"template"`
+	CreatedAt      string   `yaml:"created_at,omitempty" json:"created_at,omitempty" mapstructure:"created_at"`
+	LastUsed       string   `yaml:"last_used,omitempty" json:"last_used,omitempty" mapstructure:"last_used"`
+	ArchivedAt     string   `yaml:"archived_at,omitempty" json:"archived_at,omitempty" mapstructure:"archived_at"`
+	ArchivedReason string   `yaml:"archived_reason,omitempty" json:"archived_reason,omitempty" mapstructure:"archived_reason"`
+	Pinned         bool     `yaml:"pinned,omitempty" json:"pinned,omitempty" mapstructure:"pinned"`
+	PinOrder       int      `yaml:"pin_order,omitempty" json:"pin_order,omitempty" mapstructure:"pin_order"`
+	Color          string   `yaml:"color,omitempty" json:"color,omitempty" mapstructure:"color"`
+	Description    string   `yaml:"description,omitempty" json:"description,omitempty" mapstructure:"description"`
+	Expanded       bool     `yaml:"expanded,omitempty" json:"expanded,omitempty" mapstructure:"expanded"`
 }
 
 type GlobalConfig struct {
@@ -72,6 +73,7 @@ type GlobalConfig struct {
 	Groups           map[string]Group          `yaml:"groups,omitempty" json:"groups,omitempty" mapstructure:"groups"`
 	Workspaces       map[string]WorkspaceRef   `yaml:"worksets" json:"worksets" mapstructure:"worksets"`
 	LegacyWorkspaces map[string]WorkspaceRef   `yaml:"workspaces,omitempty" json:"-" mapstructure:"workspaces"`
+	WorksetRepos     map[string][]string       `yaml:"-" json:"-" mapstructure:"-"`
 }
 
 type WorkspaceConfig struct {

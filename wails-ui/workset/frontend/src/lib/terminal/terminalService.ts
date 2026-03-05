@@ -190,6 +190,7 @@ const terminalInstanceOrchestration = createTerminalInstanceOrchestration({
 			fontSize,
 			getToken,
 		}),
+	openURL: (url) => terminalTransport.openURL(url),
 	setRenderer: (id, renderer) => lifecycle.setRenderer(id, renderer),
 	setRendererMode: (id, mode) => lifecycle.setRendererMode(id, mode),
 	setStatusAndMessage: (id, status, message) => lifecycle.setStatusAndMessage(id, status, message),
