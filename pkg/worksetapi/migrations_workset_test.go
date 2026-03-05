@@ -224,6 +224,66 @@ worksets:
 	}
 }
 
+func TestLoadGlobalMigratesWorksetReposAndThreadOverrides(t *testing.T) {
+	env := newTestEnv(t)
+	alphaRoot := env.createWorkspace(context.Background(), "alpha")
+	betaRoot := env.createWorkspace(context.Background(), "beta")
+
+	alphaCfg, err := config.LoadWorkspace(workspace.WorksetFile(alphaRoot))
+	if err != nil {
+		t.Fatalf("load alpha workspace config: %v", err)
+	}
+	alphaCfg.Repos = []config.RepoConfig{
+		{Name: "platform", RepoDir: "platform"},
+		{Name: "workset", RepoDir: "workset"},
+	}
+	if err := config.SaveWorkspace(workspace.WorksetFile(alphaRoot), alphaCfg); err != nil {
+		t.Fatalf("save alpha workspace config: %v", err)
+	}
+
+	betaCfg, err := config.LoadWorkspace(workspace.WorksetFile(betaRoot))
+	if err != nil {
+		t.Fatalf("load beta workspace config: %v", err)
+	}
+	betaCfg.Repos = []config.RepoConfig{
+		{Name: "platform", RepoDir: "platform"},
+		{Name: "workset", RepoDir: "workset"},
+		{Name: "gh-action-tests", RepoDir: "gh-action-tests"},
+	}
+	if err := config.SaveWorkspace(workspace.WorksetFile(betaRoot), betaCfg); err != nil {
+		t.Fatalf("save beta workspace config: %v", err)
+	}
+
+	cfg := env.loadConfig()
+	refAlpha := cfg.Workspaces["alpha"]
+	refAlpha.Workset = "platform + workset"
+	refAlpha.Template = ""
+	cfg.Workspaces["alpha"] = refAlpha
+	refBeta := cfg.Workspaces["beta"]
+	refBeta.Workset = "platform + workset"
+	refBeta.Template = ""
+	cfg.Workspaces["beta"] = refBeta
+	cfg.WorksetRepos = map[string][]string{}
+	env.saveConfig(cfg)
+
+	loaded, _, err := env.svc.GetConfig(context.Background())
+	if err != nil {
+		t.Fatalf("get config: %v", err)
+	}
+
+	base := loaded.WorksetRepos["platform + workset"]
+	if len(base) != 2 || base[0] != "platform" || base[1] != "workset" {
+		t.Fatalf("expected base repos [platform workset], got %#v", base)
+	}
+	if got := loaded.Workspaces["alpha"].RepoOverrides; len(got) != 0 {
+		t.Fatalf("expected no overrides for alpha, got %#v", got)
+	}
+	betaOverrides := loaded.Workspaces["beta"].RepoOverrides
+	if len(betaOverrides) != 1 || betaOverrides[0] != "gh-action-tests" {
+		t.Fatalf("expected beta override [gh-action-tests], got %#v", betaOverrides)
+	}
+}
+
 func TestGlobalConfigMigrationPlanHasOrderedRemovalMetadata(t *testing.T) {
 	env := newTestEnv(t)
 	plan := env.svc.globalConfigMigrationPlan(config.GlobalConfigLoadInfo{

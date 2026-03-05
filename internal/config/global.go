@@ -103,6 +103,7 @@ type GlobalConfigLoadInfo struct {
 }
 
 type serializedWorksetGroup struct {
+	Repos   []string                `yaml:"repos,omitempty" json:"repos,omitempty"`
 	Threads map[string]WorkspaceRef `yaml:"threads,omitempty" json:"threads,omitempty"`
 }
 
@@ -216,12 +217,13 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 		return GlobalConfig{}, info, err
 	}
 	if len(rawData) > 0 {
-		nestedWorkspaces, hasNestedWorksets, err := parseNestedWorksets(rawData)
+		nestedWorkspaces, nestedWorksetRepos, hasNestedWorksets, err := parseNestedWorksets(rawData)
 		if err != nil {
 			return GlobalConfig{}, info, err
 		}
 		if hasNestedWorksets {
 			cfg.Workspaces = nestedWorkspaces
+			cfg.WorksetRepos = nestedWorksetRepos
 		}
 	}
 	cfg.ConfigVersion = normalizeConfigVersion(info.ConfigVersion)
@@ -272,12 +274,13 @@ func loadGlobalFromBytes(data []byte) (GlobalConfig, error) {
 		return GlobalConfig{}, err
 	}
 	if len(data) > 0 {
-		nestedWorkspaces, hasNestedWorksets, err := parseNestedWorksets(data)
+		nestedWorkspaces, nestedWorksetRepos, hasNestedWorksets, err := parseNestedWorksets(data)
 		if err != nil {
 			return GlobalConfig{}, err
 		}
 		if hasNestedWorksets {
 			cfg.Workspaces = nestedWorkspaces
+			cfg.WorksetRepos = nestedWorksetRepos
 		}
 	}
 	cfg.ConfigVersion = version
@@ -360,6 +363,13 @@ func stripLegacyWorkspaceTemplates(cfg GlobalConfig) GlobalConfig {
 func sanitizeGlobalForSave(cfg GlobalConfig) GlobalConfig {
 	cfg = stripLegacyGroupRemotes(cfg)
 	cfg = stripLegacyWorkspaceTemplates(cfg)
+	for name, ref := range cfg.Workspaces {
+		ref.RepoOverrides = normalizeRepoList(ref.RepoOverrides)
+		cfg.Workspaces[name] = ref
+	}
+	for workset, repos := range cfg.WorksetRepos {
+		cfg.WorksetRepos[workset] = normalizeRepoList(repos)
+	}
 	cfg.ConfigVersion = ensureCurrentConfigVersion(cfg.ConfigVersion)
 	cfg.LegacyWorkspaces = nil
 	return cfg
@@ -377,12 +387,23 @@ func toSerializedGlobalConfig(cfg GlobalConfig) serializedGlobalConfig {
 			worksetName = normalizedThread
 		}
 		ref.Template = ""
+		ref.RepoOverrides = normalizeRepoList(ref.RepoOverrides)
 		group := worksets[worksetName]
 		if group.Threads == nil {
 			group.Threads = map[string]WorkspaceRef{}
 		}
+		group.Repos = normalizeRepoList(cfg.WorksetRepos[worksetName])
 		group.Threads[normalizedThread] = ref
 		worksets[worksetName] = group
+	}
+	for worksetName, repos := range cfg.WorksetRepos {
+		normalizedWorksetName := strings.TrimSpace(worksetName)
+		if normalizedWorksetName == "" {
+			continue
+		}
+		group := worksets[normalizedWorksetName]
+		group.Repos = normalizeRepoList(repos)
+		worksets[normalizedWorksetName] = group
 	}
 	return serializedGlobalConfig{
 		ConfigVersion: cfg.ConfigVersion,
@@ -403,21 +424,21 @@ func CanonicalGlobalForOutput(cfg GlobalConfig) any {
 	return toSerializedGlobalConfig(cfg)
 }
 
-func parseNestedWorksets(raw []byte) (map[string]WorkspaceRef, bool, error) {
+func parseNestedWorksets(raw []byte) (map[string]WorkspaceRef, map[string][]string, bool, error) {
 	if len(bytes.TrimSpace(raw)) == 0 {
-		return nil, false, nil
+		return nil, nil, false, nil
 	}
 	var root map[string]any
 	if err := yaml.Unmarshal(raw, &root); err != nil {
-		return nil, false, err
+		return nil, nil, false, err
 	}
 	worksetsValue, ok := root["worksets"]
 	if !ok {
-		return nil, false, nil
+		return nil, nil, false, nil
 	}
 	worksetsMap, ok := asStringAnyMap(worksetsValue)
 	if !ok {
-		return nil, false, nil
+		return nil, nil, false, nil
 	}
 	hasNested := false
 	for _, rawGroup := range worksetsMap {
@@ -429,31 +450,41 @@ func parseNestedWorksets(raw []byte) (map[string]WorkspaceRef, bool, error) {
 			hasNested = true
 			break
 		}
+		if _, ok := groupMap["repos"]; ok {
+			hasNested = true
+			break
+		}
 	}
 	if !hasNested {
-		return nil, false, nil
+		return nil, nil, false, nil
 	}
 	var serialized struct {
 		Worksets map[string]serializedWorksetGroup `yaml:"worksets"`
 	}
 	if err := yaml.Unmarshal(raw, &serialized); err != nil {
-		return nil, false, err
+		return nil, nil, false, err
 	}
 	flattened := map[string]WorkspaceRef{}
+	worksetRepos := map[string][]string{}
 	for worksetName, group := range serialized.Worksets {
+		normalizedWorksetName := strings.TrimSpace(worksetName)
+		if normalizedWorksetName != "" {
+			worksetRepos[normalizedWorksetName] = normalizeRepoList(group.Repos)
+		}
 		for threadName, ref := range group.Threads {
 			normalizedThread := strings.TrimSpace(threadName)
 			if normalizedThread == "" {
 				continue
 			}
-			if strings.TrimSpace(ref.Workset) == "" && strings.TrimSpace(worksetName) != normalizedThread {
-				ref.Workset = strings.TrimSpace(worksetName)
+			if strings.TrimSpace(ref.Workset) == "" && normalizedWorksetName != normalizedThread {
+				ref.Workset = normalizedWorksetName
 			}
 			ref.Template = ""
+			ref.RepoOverrides = normalizeRepoList(ref.RepoOverrides)
 			flattened[normalizedThread] = ref
 		}
 	}
-	return flattened, true, nil
+	return flattened, worksetRepos, true, nil
 }
 
 func hasFlatWorksetsShape(raw []byte) (bool, error) {
@@ -482,8 +513,35 @@ func hasFlatWorksetsShape(raw []byte) (bool, error) {
 		if _, ok := groupMap["threads"]; ok {
 			return false, nil
 		}
+		if _, ok := groupMap["repos"]; ok {
+			return false, nil
+		}
 	}
 	return seenEntries, nil
+}
+
+func normalizeRepoList(repos []string) []string {
+	if len(repos) == 0 {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	normalized := make([]string, 0, len(repos))
+	for _, repo := range repos {
+		trimmed := strings.TrimSpace(repo)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, trimmed)
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
 }
 
 func hasTopLevelKey(raw []byte, key string) (bool, error) {
@@ -548,6 +606,22 @@ func defaultConfigMap(defaults GlobalConfig) map[string]any {
 func finalizeGlobal(cfg *GlobalConfig, defaults GlobalConfig) {
 	cfg.EnsureMaps()
 	cfg.ConfigVersion = normalizeConfigVersion(cfg.ConfigVersion)
+	for name, ref := range cfg.Workspaces {
+		ref.RepoOverrides = normalizeRepoList(ref.RepoOverrides)
+		cfg.Workspaces[name] = ref
+	}
+	for workset, repos := range cfg.WorksetRepos {
+		normalizedName := strings.TrimSpace(workset)
+		normalizedRepos := normalizeRepoList(repos)
+		if normalizedName == "" {
+			delete(cfg.WorksetRepos, workset)
+			continue
+		}
+		if normalizedName != workset {
+			delete(cfg.WorksetRepos, workset)
+		}
+		cfg.WorksetRepos[normalizedName] = normalizedRepos
+	}
 	if cfg.Defaults.Remote == "" {
 		cfg.Defaults.Remote = defaults.Defaults.Remote
 	}

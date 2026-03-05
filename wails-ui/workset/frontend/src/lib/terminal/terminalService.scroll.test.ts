@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const createdTerminals: MockTerminal[] = [];
+let webLinkHandler: ((event: MouseEvent, uri: string) => void) | undefined;
 
 class MockTerminal {
 	public buffer = {
@@ -121,6 +122,9 @@ vi.mock('@xterm/addon-search', () => ({
 }));
 vi.mock('@xterm/addon-web-links', () => ({
 	WebLinksAddon: class MockWebLinksAddon {
+		constructor(handler?: (event: MouseEvent, uri: string) => void) {
+			webLinkHandler = handler;
+		}
 		activate(): void {}
 		dispose(): void {}
 	},
@@ -163,6 +167,7 @@ describe('terminalService resize flow', () => {
 		vi.resetModules();
 		vi.clearAllMocks();
 		createdTerminals.length = 0;
+		webLinkHandler = undefined;
 		Object.defineProperty(globalThis, 'ResizeObserver', {
 			value: MockResizeObserver,
 			configurable: true,
@@ -271,6 +276,34 @@ describe('terminalService resize flow', () => {
 				expect.any(String),
 			);
 		});
+	});
+
+	it('opens terminal web links via Browser.OpenURL', async () => {
+		const service = await loadService();
+		const container = document.createElement('div') as HTMLDivElement;
+
+		service.syncTerminal({
+			workspaceId: 'ws',
+			terminalId: 'term',
+			container,
+			active: true,
+		});
+		await vi.waitFor(() => {
+			expect(appMock.StartWorkspaceTerminalForWindowName).toHaveBeenCalled();
+		});
+
+		expect(webLinkHandler).toBeTypeOf('function');
+		const preventDefault = vi.fn();
+		const stopPropagation = vi.fn();
+		webLinkHandler?.(
+			{ preventDefault, stopPropagation } as unknown as MouseEvent,
+			'https://example.com',
+		);
+		await Promise.resolve();
+
+		expect(preventDefault).toHaveBeenCalledTimes(1);
+		expect(stopPropagation).toHaveBeenCalledTimes(1);
+		expect(runtimeMock.Browser.OpenURL).toHaveBeenCalledWith('https://example.com');
 	});
 
 	it('refits attached terminals on window focus so handoff does not require manual resize', async () => {

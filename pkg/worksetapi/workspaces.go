@@ -210,6 +210,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 			cfg.Repos[aliasName] = alias
 		}
 		registerWorkspace(cfg, name, root, s.clock(), template)
+		s.rebuildWorksetRepoModel(ctx, cfg)
 		return nil
 	}); err != nil {
 		return WorkspaceCreateResult{}, err
@@ -366,6 +367,7 @@ func (s *Service) DeleteWorkspace(ctx context.Context, input WorkspaceDeleteInpu
 			if cfg.Defaults.Workspace == name || cfg.Defaults.Workspace == root {
 				cfg.Defaults.Workspace = ""
 			}
+			s.rebuildWorksetRepoModel(ctx, cfg)
 			return nil
 		}); err != nil {
 			return WorkspaceDeleteResult{}, err
@@ -492,6 +494,7 @@ func (s *Service) resolveWorkspace(ctx context.Context, cfg *config.GlobalConfig
 				return ConflictError{Message: "workspace name already registered to a different path"}
 			}
 			registerWorkspace(cfg, wsConfig.Name, root, s.clock(), "")
+			s.rebuildWorksetRepoModel(ctx, cfg)
 			return nil
 		}); err != nil {
 			return "", config.WorkspaceConfig{}, err

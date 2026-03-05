@@ -60,8 +60,18 @@ func registerWorkspace(cfg *config.GlobalConfig, name, path string, now time.Tim
 			ref.Workset = name
 		}
 	}
+	ref.RepoOverrides = normalizeRepoNames(ref.RepoOverrides)
 	ref.LastUsed = now.Format(time.RFC3339)
 	cfg.Workspaces[name] = ref
+	if cfg.WorksetRepos == nil {
+		cfg.WorksetRepos = map[string][]string{}
+	}
+	worksetName := strings.TrimSpace(ref.Workset)
+	if worksetName != "" {
+		if _, ok := cfg.WorksetRepos[worksetName]; !ok {
+			cfg.WorksetRepos[worksetName] = nil
+		}
+	}
 }
 
 func workspaceRefWorkset(ref config.WorkspaceRef) string {

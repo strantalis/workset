@@ -106,11 +106,11 @@ func (s *Service) RecoverConfig(ctx context.Context, input ConfigRecoverInput) (
 	}
 
 	now := s.clock()
-	applyResult := s.applyRecoverCandidates(&cfg, candidates, input.RebuildRepos, now)
+	applyResult := s.applyRecoverCandidates(ctx, &cfg, candidates, input.RebuildRepos, now)
 	if !input.DryRun {
 		if applyResult.configChanged {
 			_, err := s.updateGlobal(ctx, func(target *config.GlobalConfig, info config.GlobalConfigLoadInfo) error {
-				applyResult = s.applyRecoverCandidates(target, candidates, input.RebuildRepos, now)
+				applyResult = s.applyRecoverCandidates(ctx, target, candidates, input.RebuildRepos, now)
 				return nil
 			})
 			if err != nil {
@@ -259,7 +259,7 @@ func findWorksetFilesAcrossRoots(roots []string) ([]string, error) {
 	return combined, nil
 }
 
-func (s *Service) applyRecoverCandidates(cfg *config.GlobalConfig, candidates []recoverCandidate, rebuildRepos bool, now time.Time) recoverApplyResult {
+func (s *Service) applyRecoverCandidates(ctx context.Context, cfg *config.GlobalConfig, candidates []recoverCandidate, rebuildRepos bool, now time.Time) recoverApplyResult {
 	cfg.EnsureMaps()
 	result := recoverApplyResult{
 		reposRecovered: map[string]struct{}{},
@@ -287,7 +287,8 @@ func (s *Service) applyRecoverCandidates(cfg *config.GlobalConfig, candidates []
 			}
 			continue
 		}
-		registerWorkspace(cfg, candidate.name, candidate.root, now, "")
+		workset := deriveWorksetLabelFromWorkspaceConfig(candidate.name, candidate.config)
+		registerWorkspace(cfg, candidate.name, candidate.root, now, workset)
 		result.recovered = append(result.recovered, candidate.name)
 		result.configChanged = true
 		if rebuildRepos {
@@ -299,7 +300,22 @@ func (s *Service) applyRecoverCandidates(cfg *config.GlobalConfig, candidates []
 			}
 		}
 	}
+	if s.rebuildWorksetRepoModel(ctx, cfg) {
+		result.configChanged = true
+	}
 	return result
+}
+
+func deriveWorksetLabelFromWorkspaceConfig(workspaceName string, wsConfig config.WorkspaceConfig) string {
+	repos := make([]string, 0, len(wsConfig.Repos))
+	for _, repo := range wsConfig.Repos {
+		repoName := strings.TrimSpace(repo.Name)
+		if repoName == "" {
+			continue
+		}
+		repos = append(repos, repoName)
+	}
+	return deriveWorksetLabelFromRepoNames(workspaceName, repos)
 }
 
 func findWorksetFiles(root string) ([]string, error) {
