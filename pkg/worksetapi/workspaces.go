@@ -253,32 +253,7 @@ func (s *Service) createWorksetOnly(
 		if err := worksetCreateConflict(*cfg, name); err != nil {
 			return err
 		}
-		if cfg.WorksetRepos == nil {
-			cfg.WorksetRepos = map[string][]string{}
-		}
-		cfg.WorksetRepos[name] = append([]string(nil), worksetRepos...)
-		if cfg.Repos == nil {
-			cfg.Repos = map[string]config.RegisteredRepo{}
-		}
-		for _, plan := range repoPlans {
-			alias, ok := cfg.Repos[plan.Name]
-			if !ok {
-				alias = config.RegisteredRepo{}
-			}
-			if alias.URL == "" && plan.URL != "" {
-				alias.URL = plan.URL
-			}
-			if alias.Path == "" && plan.SourcePath != "" {
-				alias.Path = plan.SourcePath
-			}
-			if alias.Remote == "" && plan.Remote != "" {
-				alias.Remote = plan.Remote
-			}
-			if alias.DefaultBranch == "" && plan.DefaultBranch != "" {
-				alias.DefaultBranch = plan.DefaultBranch
-			}
-			cfg.Repos[plan.Name] = alias
-		}
+		applyWorksetOnlyRepoState(cfg, name, worksetRepos, repoPlans)
 		return nil
 	}); err != nil {
 		return WorkspaceCreateResult{}, err
@@ -293,7 +268,41 @@ func (s *Service) createWorksetOnly(
 			Next:    "workset workspace new <thread> --template " + shellArg(name),
 		},
 		Config: info,
-	}, nil
+		}, nil
+}
+
+func applyWorksetOnlyRepoState(
+	cfg *config.GlobalConfig,
+	worksetName string,
+	worksetRepos []string,
+	repoPlans []repoPlan,
+) {
+	if cfg.WorksetRepos == nil {
+		cfg.WorksetRepos = map[string][]string{}
+	}
+	cfg.WorksetRepos[worksetName] = append([]string(nil), worksetRepos...)
+	if cfg.Repos == nil {
+		cfg.Repos = map[string]config.RegisteredRepo{}
+	}
+	for _, plan := range repoPlans {
+		cfg.Repos[plan.Name] = mergeWorksetRepoAlias(cfg.Repos[plan.Name], plan)
+	}
+}
+
+func mergeWorksetRepoAlias(alias config.RegisteredRepo, plan repoPlan) config.RegisteredRepo {
+	if alias.URL == "" && plan.URL != "" {
+		alias.URL = plan.URL
+	}
+	if alias.Path == "" && plan.SourcePath != "" {
+		alias.Path = plan.SourcePath
+	}
+	if alias.Remote == "" && plan.Remote != "" {
+		alias.Remote = plan.Remote
+	}
+	if alias.DefaultBranch == "" && plan.DefaultBranch != "" {
+		alias.DefaultBranch = plan.DefaultBranch
+	}
+	return alias
 }
 
 // DeleteWorkspace removes a workspace registration or deletes files when requested.
