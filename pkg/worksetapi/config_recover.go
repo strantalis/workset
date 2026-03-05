@@ -277,33 +277,38 @@ func (s *Service) applyRecoverCandidates(ctx context.Context, cfg *config.Global
 			continue
 		}
 		if ok && existing == target {
-			if rebuildRepos {
-				if repos := recoverRepoAliases(cfg, candidate.config, s.git, cfg.Defaults, &result.warnings); len(repos) > 0 {
-					for _, repo := range repos {
-						result.reposRecovered[repo] = struct{}{}
-					}
-					result.configChanged = true
-				}
-			}
+			s.recoverAliasesIfRequested(cfg, candidate.config, rebuildRepos, &result)
 			continue
 		}
 		workset := deriveWorksetLabelFromWorkspaceConfig(candidate.name, candidate.config)
 		registerWorkspace(cfg, candidate.name, candidate.root, now, workset)
 		result.recovered = append(result.recovered, candidate.name)
 		result.configChanged = true
-		if rebuildRepos {
-			if repos := recoverRepoAliases(cfg, candidate.config, s.git, cfg.Defaults, &result.warnings); len(repos) > 0 {
-				for _, repo := range repos {
-					result.reposRecovered[repo] = struct{}{}
-				}
-				result.configChanged = true
-			}
-		}
+		s.recoverAliasesIfRequested(cfg, candidate.config, rebuildRepos, &result)
 	}
 	if s.rebuildWorksetRepoModel(ctx, cfg) {
 		result.configChanged = true
 	}
 	return result
+}
+
+func (s *Service) recoverAliasesIfRequested(
+	cfg *config.GlobalConfig,
+	wsConfig config.WorkspaceConfig,
+	rebuildRepos bool,
+	result *recoverApplyResult,
+) {
+	if !rebuildRepos {
+		return
+	}
+	repos := recoverRepoAliases(cfg, wsConfig, s.git, cfg.Defaults, &result.warnings)
+	if len(repos) == 0 {
+		return
+	}
+	for _, repo := range repos {
+		result.reposRecovered[repo] = struct{}{}
+	}
+	result.configChanged = true
 }
 
 func deriveWorksetLabelFromWorkspaceConfig(workspaceName string, wsConfig config.WorkspaceConfig) string {
