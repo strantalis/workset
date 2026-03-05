@@ -230,4 +230,42 @@ describe('ExplorerPanel', () => {
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		expect(onSelectWorkspace).not.toHaveBeenCalled();
 	});
+
+	test('allows add repo for worksets without threads', async () => {
+		const onSelectWorkspace = vi.fn<(workspaceId: string) => void>();
+		const onAddRepo = vi.fn<(worksetId: string) => void>();
+
+		const { getByRole } = render(ExplorerPanel, {
+			props: {
+				workspaces: [
+					buildWorkspace({
+						id: 'thread-alpha',
+						name: 'Alpha Thread',
+						workset: 'Alpha',
+						worksetKey: 'workset:alpha',
+						worksetLabel: 'Alpha',
+					}),
+					buildWorkspace({
+						id: 'placeholder-beta',
+						name: 'Beta Placeholder',
+						workset: 'Beta',
+						worksetKey: 'workset:beta',
+						worksetLabel: 'Beta',
+						placeholder: true,
+					}),
+				],
+				activeWorkspaceId: 'thread-alpha',
+				shortcutMap: new Map<string, number>(),
+				onSelectWorkspace,
+				onAddRepo,
+			},
+		});
+
+		await fireEvent.click(getByRole('button', { name: 'Switch workset' }));
+		await fireEvent.click(getByRole('button', { name: /Beta/i }));
+
+		const addRepoButton = getByRole('button', { name: 'Add repo to Beta' });
+		await fireEvent.click(addRepoButton);
+		expect(onAddRepo).toHaveBeenCalledWith('workset:beta');
+	});
 });

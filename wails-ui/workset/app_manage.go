@@ -37,6 +37,16 @@ type RepoAddResponse struct {
 	HookRuns     []worksetapi.HookExecutionJSON `json:"hookRuns,omitempty"`
 }
 
+type WorksetRepoAddRequest struct {
+	Workset string   `json:"workset"`
+	Sources []string `json:"sources"`
+}
+
+type WorksetRepoAddResponse struct {
+	Payload  worksetapi.WorksetRepoAddResultJSON `json:"payload"`
+	Warnings []string                            `json:"warnings,omitempty"`
+}
+
 type HooksRunRequest struct {
 	WorkspaceID string `json:"workspaceId"`
 	Repo        string `json:"repo"`
@@ -215,6 +225,26 @@ func (a *App) AddRepo(input RepoAddRequest) (RepoAddResponse, error) {
 		response.HookRuns = append(response.HookRuns, result.HookRuns...)
 	}
 	return response, nil
+}
+
+func (a *App) AddReposToWorkset(input WorksetRepoAddRequest) (WorksetRepoAddResponse, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	a.ensureService()
+
+	result, err := a.service.AddReposToWorkset(ctx, worksetapi.WorksetRepoAddInput{
+		Workset: input.Workset,
+		Sources: input.Sources,
+	})
+	if err != nil {
+		return WorksetRepoAddResponse{}, err
+	}
+	return WorksetRepoAddResponse{
+		Payload:  result.Payload,
+		Warnings: result.Warnings,
+	}, nil
 }
 
 func (a *App) RunHooks(input HooksRunRequest) (HooksRunResponse, error) {

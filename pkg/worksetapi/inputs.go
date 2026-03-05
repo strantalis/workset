@@ -36,6 +36,12 @@ type RepoAddInput struct {
 	SourcePath string
 }
 
+// WorksetRepoAddInput describes inputs for adding repos directly to a workset.
+type WorksetRepoAddInput struct {
+	Workset string
+	Sources []string
+}
+
 // RepoRemoveInput describes inputs for RemoveRepo.
 type RepoRemoveInput struct {
 	Workspace       WorkspaceSelector

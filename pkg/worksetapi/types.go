@@ -184,6 +184,20 @@ type RepoAddResult struct {
 	Config       config.GlobalConfigLoadInfo
 }
 
+// WorksetRepoAddResultJSON is the JSON payload for workset-level repo add operations.
+type WorksetRepoAddResultJSON struct {
+	Status  string   `json:"status"`
+	Workset string   `json:"workset"`
+	Added   []string `json:"added,omitempty"`
+}
+
+// WorksetRepoAddResult wraps workset-level repo add payload with warnings and config metadata.
+type WorksetRepoAddResult struct {
+	Payload  WorksetRepoAddResultJSON
+	Warnings []string
+	Config   config.GlobalConfigLoadInfo
+}
+
 // HookPendingJSON describes hooks waiting for approval/trust.
 type HookPendingJSON struct {
 	Event  string        `json:"event"`

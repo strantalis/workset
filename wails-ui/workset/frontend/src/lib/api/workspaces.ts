@@ -1,12 +1,14 @@
 import type {
 	HooksRunResponse,
 	RepoAddResponse,
+	WorksetRepoAddResponse,
 	Workspace,
 	WorkspaceCreateResponse,
 } from '../types';
 import type { WorkspaceRefJSON } from '../../../bindings/github.com/strantalis/workset/pkg/worksetapi/models';
 import {
 	AddRepo,
+	AddReposToWorkset,
 	ArchiveWorkspace,
 	CloseWorkspacePopout,
 	CreateWorkspace,
@@ -170,6 +172,13 @@ export async function addRepo(
 	repoDir: string,
 ): Promise<RepoAddResponse> {
 	return AddRepo({ workspaceId, source, name, repoDir });
+}
+
+export async function addReposToWorkset(
+	workset: string,
+	sources: string[],
+): Promise<WorksetRepoAddResponse> {
+	return AddReposToWorkset({ workset, sources });
 }
 
 export async function runRepoHooks(

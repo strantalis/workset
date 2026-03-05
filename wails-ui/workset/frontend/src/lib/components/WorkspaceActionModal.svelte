@@ -612,16 +612,15 @@
 		| { ok: false; error: string }
 		| {
 				ok: true;
+				mode: 'threads' | 'workset';
 				displayName: string;
+				worksetName: string;
 				source: string;
 				targetWorkspaces: Workspace[];
 				aliasSelections: string[];
 		  };
 
 	const buildAddItemsPlan = (): AddItemsPlan => {
-		if (!workspace) {
-			return { ok: false, error: 'Workspace is required.' };
-		}
 		const source = addSource.trim();
 		const hasSource = source.length > 0;
 		const hasAliases = selectedAliases.size > 0;
@@ -629,18 +628,32 @@
 			return { ok: false, error: 'Provide a repo URL/path or select repositories.' };
 		}
 
-		const targetIds = targetWorkspaceIds.length > 0 ? targetWorkspaceIds : [workspace.id];
+		const targetIds =
+			targetWorkspaceIds.length > 0 ? targetWorkspaceIds : workspace ? [workspace.id] : [];
 		const workspaceById = new Map($workspaces.map((entry) => [entry.id, entry]));
-		const targetWorkspaces = targetIds
+		const resolvedTargets = targetIds
 			.map((id) => workspaceById.get(id))
 			.filter((entry): entry is Workspace => entry !== undefined);
-		if (targetWorkspaces.length === 0) {
-			return { ok: false, error: 'Unable to locate threads for this workset.' };
+		const targetWorkspaces = resolvedTargets.filter((entry) => entry.placeholder !== true);
+		const normalizedWorksetName = (
+			worksetName ??
+			workspace?.worksetLabel ??
+			workspace?.name ??
+			''
+		).trim();
+		if (targetWorkspaces.length === 0 && !normalizedWorksetName) {
+			return { ok: false, error: 'Unable to locate workset.' };
+		}
+		const displayName = targetWorkspaces[0]?.name ?? normalizedWorksetName;
+		if (!displayName) {
+			return { ok: false, error: 'Unable to locate workset.' };
 		}
 
 		return {
 			ok: true,
-			displayName: worksetName?.trim() || workspace.name,
+			mode: targetWorkspaces.length > 0 ? 'threads' : 'workset',
+			displayName,
+			worksetName: normalizedWorksetName || displayName,
 			source,
 			targetWorkspaces,
 			aliasSelections: Array.from(selectedAliases),
@@ -705,19 +718,28 @@
 		warnings = [];
 		pendingHooks = [];
 		hookRuns = [];
-		hookWorkspaceId = plan.targetWorkspaces[0]?.id ?? null;
+		hookWorkspaceId = plan.mode === 'threads' ? (plan.targetWorkspaces[0]?.id ?? null) : null;
 		({ activeHookOperation, activeHookWorkspace, hookRuns, pendingHooks } = beginHookTracking(
 			'repo.add',
 			plan.displayName,
 		));
 		try {
-			const result = await runAddItemsMutations(
-				plan.targetWorkspaces,
-				plan.source,
-				plan.aliasSelections,
-			);
-			if (result.mutatedCount === 0) {
-				error = 'Selected repositories are already present in every thread for this workset.';
+			const result =
+				plan.mode === 'threads'
+					? await runAddItemsMutations(plan.targetWorkspaces, plan.source, plan.aliasSelections)
+					: {
+							mutatedCount: 1,
+							...(await workspaceActionMutations.addReposToWorkset({
+								worksetName: plan.worksetName,
+								source: plan.source,
+								selectedAliases: new Set(plan.aliasSelections),
+							})),
+						};
+			if (result.itemCount === 0 || result.mutatedCount === 0) {
+				error =
+					plan.mode === 'threads'
+						? 'Selected repositories are already present in every thread for this workset.'
+						: 'Selected repositories are already present in this workset.';
 				return;
 			}
 

@@ -1,5 +1,6 @@
 import {
 	addRepo as addRepoMutation,
+	addReposToWorkset as addReposToWorksetMutation,
 	archiveWorkspace as archiveWorkspaceMutation,
 	createWorkspace as createWorkspaceMutation,
 	removeRepo as removeRepoMutation,
@@ -8,7 +9,12 @@ import {
 } from '../api/workspaces';
 import { deriveRepoName, isRepoSource } from '../names';
 import { registerRepo as registerRepoMutation } from '../api/settings';
-import type { HookExecution, RepoAddResponse, WorkspaceCreateResponse } from '../types';
+import type {
+	HookExecution,
+	RepoAddResponse,
+	WorksetRepoAddResponse,
+	WorkspaceCreateResponse,
+} from '../types';
 
 export type WorkspaceActionPendingHook = {
 	event: string;
@@ -68,6 +74,16 @@ type AddItemsMutationDeps = {
 		deleteWorktree: boolean,
 		forget: boolean,
 	) => Promise<void>;
+};
+
+export type AddReposToWorksetMutationInput = {
+	worksetName: string;
+	source: string;
+	selectedAliases: Iterable<string>;
+};
+
+type AddReposToWorksetMutationDeps = {
+	addReposToWorkset: (workset: string, sources: string[]) => Promise<WorksetRepoAddResponse>;
 };
 
 export type RenameWorkspaceMutationInput = {
@@ -163,6 +179,7 @@ export type WorkspaceActionMutationGateway = {
 	registerRepo: CreateWorkspaceMutationDeps['registerRepo'];
 	createWorkspace: CreateWorkspaceMutationDeps['createWorkspace'];
 	addRepo: AddItemsMutationDeps['addRepo'];
+	addReposToWorkset: AddReposToWorksetMutationDeps['addReposToWorkset'];
 	renameWorkspace: RenameWorkspaceMutationDeps['renameWorkspace'];
 	archiveWorkspace: ArchiveWorkspaceMutationDeps['archiveWorkspace'];
 	removeWorkspace: RemoveWorkspaceMutationDeps['removeWorkspace'];
@@ -172,6 +189,7 @@ export type WorkspaceActionMutationGateway = {
 export type WorkspaceActionMutationService = {
 	createWorkspace: (input: CreateWorkspaceMutationInput) => Promise<CreateWorkspaceMutationResult>;
 	addItems: (input: AddItemsMutationInput) => Promise<AddItemsMutationResult>;
+	addReposToWorkset: (input: AddReposToWorksetMutationInput) => Promise<AddItemsMutationResult>;
 	renameWorkspace: (input: RenameWorkspaceMutationInput) => Promise<RenameWorkspaceMutationResult>;
 	archiveWorkspace: (
 		input: ArchiveWorkspaceMutationInput,
@@ -184,6 +202,7 @@ export const workspaceActionMutationGateway: WorkspaceActionMutationGateway = {
 	registerRepo: registerRepoMutation,
 	createWorkspace: createWorkspaceMutation,
 	addRepo: addRepoMutation,
+	addReposToWorkset: addReposToWorksetMutation,
 	renameWorkspace: renameWorkspaceMutation,
 	archiveWorkspace: archiveWorkspaceMutation,
 	removeWorkspace: removeWorkspaceMutation,
@@ -222,6 +241,10 @@ export const createWorkspaceActionMutationService = (
 		runAddItemsMutation(input, {
 			addRepo: gateway.addRepo,
 			removeRepo: gateway.removeRepo,
+		}),
+	addReposToWorkset: (input) =>
+		runAddReposToWorksetMutation(input, {
+			addReposToWorkset: gateway.addReposToWorkset,
 		}),
 	renameWorkspace: (input) =>
 		runRenameWorkspaceMutation(input, {
@@ -273,16 +296,18 @@ export const runCreateWorkspaceMutation = async (
 		{ worksetOnly: input.worksetOnly === true },
 	);
 	const collectedWarnings = [...(result.warnings ?? [])];
-	for (const repo of reposToProcess) {
-		if (!repo.register) continue;
-		const repoName = deriveRepoName(repo.url) || repo.url;
-		try {
-			await deps.registerRepo(repoName, repo.url, '', '');
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			collectedWarnings.push(
-				`Registered ${repoName} in workset but failed to save in Repo Catalog: ${message}`,
-			);
+	if (!input.worksetOnly) {
+		for (const repo of reposToProcess) {
+			if (!repo.register) continue;
+			const repoName = deriveRepoName(repo.url) || repo.url;
+			try {
+				await deps.registerRepo(repoName, repo.url, '', '');
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				collectedWarnings.push(
+					`Registered ${repoName} in workset but failed to save in Repo Catalog: ${message}`,
+				);
+			}
 		}
 	}
 
@@ -375,6 +400,26 @@ export const runAddItemsMutation = async (
 		warnings: dedupeWarnings(collectedWarnings),
 		pendingHooks: Array.from(pendingByKey.values()),
 		hookRuns: collectedHookRuns,
+	};
+};
+
+export const runAddReposToWorksetMutation = async (
+	input: AddReposToWorksetMutationInput,
+	deps: AddReposToWorksetMutationDeps,
+): Promise<AddItemsMutationResult> => {
+	const source = input.source.trim();
+	const sources = [
+		...(source.length > 0 ? [source] : []),
+		...Array.from(input.selectedAliases)
+			.map((alias) => alias.trim())
+			.filter((alias) => alias.length > 0),
+	];
+	const result = await deps.addReposToWorkset(input.worksetName, sources);
+	return {
+		itemCount: result.payload.added?.length ?? 0,
+		warnings: dedupeWarnings(result.warnings ?? []),
+		pendingHooks: [],
+		hookRuns: [],
 	};
 };
 

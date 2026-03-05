@@ -120,6 +120,15 @@ export type RepoAddResponse = {
 	hookRuns?: HookExecution[];
 };
 
+export type WorksetRepoAddResponse = {
+	payload: {
+		status: string;
+		workset: string;
+		added?: string[];
+	};
+	warnings?: string[];
+};
+
 export type HookExecution = {
 	event: string;
 	repo: string;

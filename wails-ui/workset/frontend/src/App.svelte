@@ -457,13 +457,17 @@
 			return;
 		}
 		const threads = visibleWorkspaces.filter((workspace) => {
+			if (workspace.placeholder) return false;
 			const identity = deriveWorksetIdentity(workspace);
 			return identity.id === worksetId;
 		});
-		if (threads.length === 0) {
-			return;
-		}
-		const first = threads[0];
+		const placeholder = visibleWorkspaces.find((workspace) => {
+			if (!workspace.placeholder) return false;
+			const identity = deriveWorksetIdentity(workspace);
+			return identity.id === worksetId;
+		});
+		const first = threads[0] ?? placeholder ?? null;
+		if (!first) return;
 		const label = deriveWorksetIdentity(first).label;
 		openWorkspaceActionModal('add-repo', first.id, null, {
 			worksetName: label,

@@ -3,6 +3,7 @@ import type { HookExecution, RepoAddResponse, WorkspaceCreateResponse } from '..
 import {
 	createWorkspaceActionMutationService,
 	evaluateHookTransition,
+	runAddReposToWorksetMutation,
 	runArchiveWorkspaceMutation,
 	runAddItemsMutation,
 	runCreateWorkspaceMutation,
@@ -167,8 +168,8 @@ describe('runCreateWorkspaceMutation', () => {
 		await runCreateWorkspaceMutation(
 			{
 				finalName: 'platform-core',
-				primaryInput: '',
-				directRepos: [],
+				primaryInput: '/tmp/repos/pending',
+				directRepos: [{ url: '/tmp/repos/direct', register: true }],
 				selectedAliases: new Set<string>(),
 				worksetOnly: true,
 			},
@@ -179,10 +180,11 @@ describe('runCreateWorkspaceMutation', () => {
 			'platform-core',
 			'',
 			undefined,
-			undefined,
+			['/tmp/repos/direct', '/tmp/repos/pending'],
 			undefined,
 			{ worksetOnly: true },
 		);
+		expect(registerRepo).not.toHaveBeenCalled();
 	});
 });
 
@@ -280,6 +282,39 @@ describe('runAddItemsMutation', () => {
 
 		expect(removeRepo).toHaveBeenCalledTimes(1);
 		expect(removeRepo).toHaveBeenCalledWith('ws-1', 'repo-a', false, false);
+	});
+});
+
+describe('runAddReposToWorksetMutation', () => {
+	it('adds repo sources directly to a workset and reports added count', async () => {
+		const addReposToWorkset = vi.fn(async () => ({
+			payload: {
+				status: 'ok',
+				workset: 'Platform Core',
+				added: ['repo-a', 'repo-b'],
+			},
+			warnings: ['already present'],
+		}));
+
+		const result = await runAddReposToWorksetMutation(
+			{
+				worksetName: 'Platform Core',
+				source: '/tmp/repos/repo-a',
+				selectedAliases: new Set(['repo-b']),
+			},
+			{ addReposToWorkset },
+		);
+
+		expect(addReposToWorkset).toHaveBeenCalledWith('Platform Core', [
+			'/tmp/repos/repo-a',
+			'repo-b',
+		]);
+		expect(result).toEqual({
+			itemCount: 2,
+			warnings: ['already present'],
+			pendingHooks: [],
+			hookRuns: [],
+		});
 	});
 });
 
@@ -475,6 +510,10 @@ describe('createWorkspaceActionMutationService', () => {
 			}),
 		);
 		const addRepo = vi.fn(async () => buildRepoAddResponse());
+		const addReposToWorkset = vi.fn(async () => ({
+			payload: { status: 'ok', workset: 'platform-core', added: ['repo-c'] },
+			warnings: [],
+		}));
 		const renameWorkspace = vi.fn(async () => undefined);
 		const archiveWorkspace = vi.fn(async () => undefined);
 		const removeWorkspace = vi.fn(async () => undefined);
@@ -484,6 +523,7 @@ describe('createWorkspaceActionMutationService', () => {
 			registerRepo,
 			createWorkspace,
 			addRepo,
+			addReposToWorkset,
 			renameWorkspace,
 			archiveWorkspace,
 			removeWorkspace,
@@ -500,6 +540,11 @@ describe('createWorkspaceActionMutationService', () => {
 			workspaceId: 'ws-1',
 			source: '/tmp/repos/beta',
 			selectedAliases: new Set(['alias-one']),
+		});
+		await service.addReposToWorkset({
+			worksetName: 'platform-core',
+			source: '/tmp/repos/gamma',
+			selectedAliases: new Set(),
 		});
 		await service.renameWorkspace({
 			workspaceId: 'ws-1',
@@ -523,6 +568,7 @@ describe('createWorkspaceActionMutationService', () => {
 		expect(registerRepo).toHaveBeenCalledTimes(1);
 		expect(createWorkspace).toHaveBeenCalledTimes(1);
 		expect(addRepo).toHaveBeenCalledTimes(2);
+		expect(addReposToWorkset).toHaveBeenCalledTimes(1);
 		expect(renameWorkspace).toHaveBeenCalledTimes(1);
 		expect(archiveWorkspace).toHaveBeenCalledTimes(1);
 		expect(removeWorkspace).toHaveBeenCalledTimes(1);
