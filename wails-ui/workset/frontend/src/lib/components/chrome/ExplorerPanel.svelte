@@ -43,6 +43,7 @@
 		workspaces: Workspace[];
 		activeWorkspaceId: string | null;
 		shortcutMap: Map<string, number>;
+		activeTerminalWorkspaceIds?: string[];
 		lockWorksetSelection?: boolean;
 		canManageRepos?: boolean;
 		activeView?: 'terminal-cockpit' | 'skill-registry';
@@ -63,6 +64,7 @@
 		workspaces,
 		activeWorkspaceId,
 		shortcutMap,
+		activeTerminalWorkspaceIds = [],
 		lockWorksetSelection = false,
 		canManageRepos = true,
 		activeView = 'terminal-cockpit',
@@ -78,6 +80,8 @@
 		onOpenSettings = () => {},
 		onCollapse = () => {},
 	}: Props = $props();
+
+	const activeTerminalWorkspaceIdSet = $derived.by(() => new Set(activeTerminalWorkspaceIds));
 
 	const parseLastUsed = (value: string): number => {
 		const timestamp = Date.parse(value);
@@ -310,6 +314,9 @@
 		onSelectWorkspace(workspaceId);
 		switcherOpen = false;
 	};
+
+	const isThreadTerminalActive = (workspaceId: string): boolean =>
+		activeTerminalWorkspaceIdSet.has(workspaceId);
 
 	const selectWorkset = (worksetId: string): void => {
 		const workset = groupedWorksets.find((item) => item.id === worksetId);
@@ -663,6 +670,9 @@
 						>
 							<span class="status-dot status-{getThreadStatus(thread)}"></span>
 							<span class="thread-name">{thread.name}</span>
+							{#if isThreadTerminalActive(thread.id)}
+								<span class="thread-live-indicator">Live</span>
+							{/if}
 							{#if thread.repos.some((repo) => isOpenTrackedPullRequest(repo))}
 								<span class="thread-pr-indicator">PR</span>
 							{/if}

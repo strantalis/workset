@@ -268,4 +268,62 @@ describe('ExplorerPanel', () => {
 		await fireEvent.click(addRepoButton);
 		expect(onAddRepo).toHaveBeenCalledWith('workset:beta');
 	});
+
+	test('renders Live badge for threads with active terminal IO', () => {
+		const alpha = buildWorkspace({
+			id: 'thread-alpha',
+			name: 'alpha',
+			workset: 'Core',
+			worksetKey: 'workset:core',
+			worksetLabel: 'Core',
+		});
+		const beta = buildWorkspace({
+			id: 'thread-beta',
+			name: 'beta',
+			workset: 'Core',
+			worksetKey: 'workset:core',
+			worksetLabel: 'Core',
+		});
+		const { getByText } = render(ExplorerPanel, {
+			props: {
+				workspaces: [alpha, beta],
+				activeWorkspaceId: alpha.id,
+				shortcutMap: new Map<string, number>(),
+				activeTerminalWorkspaceIds: [beta.id],
+				onSelectWorkspace: vi.fn(),
+			},
+		});
+
+		const liveBadge = getByText('Live');
+		expect(liveBadge).toBeInTheDocument();
+		expect(getByText('beta').parentElement).toContainElement(liveBadge);
+	});
+
+	test('does not render Live badge when no thread has active terminal IO', () => {
+		const alpha = buildWorkspace({
+			id: 'thread-alpha',
+			name: 'alpha',
+			workset: 'Core',
+			worksetKey: 'workset:core',
+			worksetLabel: 'Core',
+		});
+		const beta = buildWorkspace({
+			id: 'thread-beta',
+			name: 'beta',
+			workset: 'Core',
+			worksetKey: 'workset:core',
+			worksetLabel: 'Core',
+		});
+		const { queryByText } = render(ExplorerPanel, {
+			props: {
+				workspaces: [alpha, beta],
+				activeWorkspaceId: alpha.id,
+				shortcutMap: new Map<string, number>(),
+				activeTerminalWorkspaceIds: [],
+				onSelectWorkspace: vi.fn(),
+			},
+		});
+
+		expect(queryByText('Live')).toBeNull();
+	});
 });

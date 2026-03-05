@@ -380,7 +380,17 @@ func (a *App) WriteWorkspaceTerminalForWindowName(ctx context.Context, workspace
 	if err != nil {
 		return err
 	}
-	return session.WriteAsOwner(data, windowName)
+	if err := session.WriteAsOwner(data, windowName); err != nil {
+		return err
+	}
+	emitRuntimeEvent(a.ctx, EventTerminalInput, TerminalPayload{
+		WorkspaceID: workspaceID,
+		TerminalID:  terminalID,
+		WindowName:  windowName,
+		Bytes:       len(data),
+		Seq:         int64(inputSeq),
+	})
+	return nil
 }
 
 func (a *App) ResizeWorkspaceTerminalForWindow(ctx context.Context, workspaceID, terminalID string, cols, rows int) error {
