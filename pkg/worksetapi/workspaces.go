@@ -268,7 +268,7 @@ func (s *Service) createWorksetOnly(
 			Next:    "workset workspace new <thread> --template " + shellArg(name),
 		},
 		Config: info,
-		}, nil
+	}, nil
 }
 
 func applyWorksetOnlyRepoState(
