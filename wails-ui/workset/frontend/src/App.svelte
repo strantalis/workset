@@ -114,6 +114,7 @@
 
 	const repoStatusWatchers = new Map<string, { workspaceId: string; repoId: string }>();
 	const terminalActivityExpiryTimers = new Map<string, number>();
+	const terminalActivityDeadlines = new Map<string, number>();
 
 	const hasWorkspace = $derived($activeWorkspace !== null);
 	const hasRepo = $derived($activeRepo !== null);
@@ -140,8 +141,8 @@
 	let onboardingRepoRegistry = $state<RegisteredRepo[]>([]);
 	let onboardingLoaded = $state(false);
 	let cockpitSurface = $state<CockpitSurface>('terminal');
-	let activeTerminalWorkspaceExpiry = $state<Record<string, number>>({});
-	const activeTerminalWorkspaceIds = $derived.by(() => Object.keys(activeTerminalWorkspaceExpiry));
+	let activeTerminalWorkspaces = $state<Record<string, true>>({});
+	const activeTerminalWorkspaceIds = $derived.by(() => Object.keys(activeTerminalWorkspaces));
 
 	const deriveWorksetIdentity = (workspace: Workspace): { id: string; label: string } => {
 		const key = workspace.worksetKey?.trim();
@@ -208,23 +209,52 @@
 		terminalActivityExpiryTimers.delete(workspaceId);
 	};
 
+	const removeWorkspaceTerminalActivity = (workspaceId: string): void => {
+		if (activeTerminalWorkspaces[workspaceId] === undefined) return;
+		const next = { ...activeTerminalWorkspaces };
+		delete next[workspaceId];
+		activeTerminalWorkspaces = next;
+	};
+
+	const scheduleWorkspaceTerminalActivityExpiry = (workspaceId: string, delayMs: number): void => {
+		clearTerminalActivityTimer(workspaceId);
+		const timer = window.setTimeout(
+			() => {
+				terminalActivityExpiryTimers.delete(workspaceId);
+				const deadline = terminalActivityDeadlines.get(workspaceId);
+				if (deadline === undefined) {
+					removeWorkspaceTerminalActivity(workspaceId);
+					return;
+				}
+				const remainingMs = deadline - Date.now();
+				if (remainingMs > 0) {
+					scheduleWorkspaceTerminalActivityExpiry(workspaceId, remainingMs);
+					return;
+				}
+				terminalActivityDeadlines.delete(workspaceId);
+				removeWorkspaceTerminalActivity(workspaceId);
+			},
+			Math.max(0, delayMs),
+		);
+		terminalActivityExpiryTimers.set(workspaceId, timer);
+	};
+
 	const markWorkspaceTerminalActivity = (workspaceId: string | null | undefined): void => {
 		const id = workspaceId?.trim() ?? '';
 		if (!id) return;
-		clearTerminalActivityTimer(id);
 		const expiresAt = Date.now() + TERMINAL_ACTIVITY_TTL_MS;
-		activeTerminalWorkspaceExpiry = {
-			...activeTerminalWorkspaceExpiry,
-			[id]: expiresAt,
-		};
-		const timer = window.setTimeout(() => {
-			if (activeTerminalWorkspaceExpiry[id] !== expiresAt) return;
-			const next = { ...activeTerminalWorkspaceExpiry };
-			delete next[id];
-			activeTerminalWorkspaceExpiry = next;
-			terminalActivityExpiryTimers.delete(id);
-		}, TERMINAL_ACTIVITY_TTL_MS);
-		terminalActivityExpiryTimers.set(id, timer);
+		terminalActivityDeadlines.set(id, expiresAt);
+		if (activeTerminalWorkspaces[id] === undefined) {
+			activeTerminalWorkspaces = {
+				...activeTerminalWorkspaces,
+				[id]: true,
+			};
+			scheduleWorkspaceTerminalActivityExpiry(id, TERMINAL_ACTIVITY_TTL_MS);
+			return;
+		}
+		if (!terminalActivityExpiryTimers.has(id)) {
+			scheduleWorkspaceTerminalActivityExpiry(id, TERMINAL_ACTIVITY_TTL_MS);
+		}
 	};
 
 	const visibleWorkspaces = $derived.by(() => {
@@ -679,7 +709,8 @@
 			window.clearTimeout(timer);
 		}
 		terminalActivityExpiryTimers.clear();
-		activeTerminalWorkspaceExpiry = {};
+		terminalActivityDeadlines.clear();
+		activeTerminalWorkspaces = {};
 	});
 
 	$effect(() => {
