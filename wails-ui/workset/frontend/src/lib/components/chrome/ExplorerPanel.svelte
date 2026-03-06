@@ -666,16 +666,16 @@
 				<span>Threads</span>
 				<span class="count">{selectedWorkset.threads.length}</span>
 			</div>
-				<div class="thread-list">
-					{#each selectedWorkset.threads as thread (thread.id)}
-						<div
-							class="thread-row"
-							role="presentation"
-							onmouseenter={() => (hoveredThreadId = thread.id)}
-							onmouseleave={() => {
-								if (hoveredThreadId === thread.id) hoveredThreadId = null;
-							}}
-						>
+			<div class="thread-list">
+				{#each selectedWorkset.threads as thread (thread.id)}
+					<div
+						class="thread-row"
+						role="presentation"
+						onmouseenter={() => (hoveredThreadId = thread.id)}
+						onmouseleave={() => {
+							if (hoveredThreadId === thread.id) hoveredThreadId = null;
+						}}
+					>
 						<button
 							type="button"
 							class="thread-item"
