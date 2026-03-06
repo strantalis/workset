@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { AlertCircle, FileCode, GitBranch, Loader2, Upload } from '@lucide/svelte';
-	import type { RepoDiffFileSummary, RepoFileDiff } from '../../types';
+	import { createPullRequest, generatePullRequestText } from '../../api/github';
+	import type { PullRequestCreated, RepoDiffFileSummary, RepoFileDiff } from '../../types';
 
 	interface ReadyDetailItem {
 		id: string;
@@ -22,12 +23,8 @@
 		selectedItem: ReadyDetailItem;
 		workspaceName: string;
 		showCreatePanel: boolean;
-		prTitle: string;
-		prBody: string;
-		prTextGenerating: boolean;
-		isDraft: boolean;
-		isCreating: boolean;
-		prCreateError: string | null;
+		workspaceId: string;
+		baseBranch: string;
 		filesForDetail: RepoDiffFileSummary[];
 		totalAdd: number;
 		totalDel: number;
@@ -41,10 +38,7 @@
 		commitPushLoading: boolean;
 		commitPushRepoId: string | null;
 		onPushFromSidebar: (itemId: string) => Promise<void> | void;
-		onCreatePr: () => Promise<void> | void;
-		onPrTitleInput: (value: string) => void;
-		onPrBodyInput: (value: string) => void;
-		onDraftChange: (value: boolean) => void;
+		onPullRequestCreated: (created: PullRequestCreated) => Promise<void> | void;
 		onSelectSourceFile: (source: 'pr' | 'local', index: number) => void;
 		diffContainer?: HTMLElement | null;
 	}
@@ -54,12 +48,8 @@
 		selectedItem,
 		workspaceName,
 		showCreatePanel,
-		prTitle,
-		prBody,
-		prTextGenerating,
-		isDraft,
-		isCreating,
-		prCreateError,
+		workspaceId,
+		baseBranch,
 		filesForDetail,
 		totalAdd,
 		totalDel,
@@ -73,14 +63,20 @@
 		commitPushLoading,
 		commitPushRepoId,
 		onPushFromSidebar,
-		onCreatePr,
-		onPrTitleInput,
-		onPrBodyInput,
-		onDraftChange,
+		onPullRequestCreated,
 		onSelectSourceFile,
 		diffContainer = $bindable(null),
 	}: Props = $props();
 	/* eslint-enable prefer-const */
+
+	let prTitle = $state('');
+	let prBody = $state('');
+	let prTextGenerating = $state(false);
+	let prTextGenerationRequestId = 0;
+	let isDraft = $state(false);
+	let isCreating = $state(false);
+	let prCreateError: string | null = $state(null);
+	let composerContextKey = '';
 
 	const getAddBarCount = (file: RepoDiffFileSummary): number =>
 		Math.min(
@@ -97,6 +93,75 @@
 				? Math.max(1, Math.ceil((file.removed / (file.added + file.removed || 1)) * 5))
 				: 0,
 		);
+
+	const resetComposerState = (): void => {
+		prTitle = '';
+		prBody = '';
+		isDraft = false;
+		isCreating = false;
+		prCreateError = null;
+		prTextGenerating = false;
+		prTextGenerationRequestId += 1;
+	};
+
+	const loadSuggestedPrText = async (wsId: string, repoId: string): Promise<void> => {
+		const requestId = ++prTextGenerationRequestId;
+		prTextGenerating = true;
+		try {
+			const generated = await generatePullRequestText(wsId, repoId);
+			if (requestId !== prTextGenerationRequestId) return;
+			if (generated.title && !prTitle) prTitle = generated.title;
+			if (generated.body && !prBody) prBody = generated.body;
+		} catch {
+			// non-fatal: user can still type manually
+		} finally {
+			if (requestId === prTextGenerationRequestId) {
+				prTextGenerating = false;
+			}
+		}
+	};
+
+	const handleCreatePr = async (): Promise<void> => {
+		if (!showCreatePanel || isCreating) return;
+		const title = prTitle.trim();
+		if (title === '') {
+			prCreateError = 'PR title is required.';
+			return;
+		}
+		isCreating = true;
+		prCreateError = null;
+		try {
+			const created = await createPullRequest(workspaceId, selectedItem.repoId, {
+				title,
+				body: prBody.trim(),
+				base: baseBranch,
+				head: selectedItem.branch,
+				draft: isDraft,
+				autoCommit: true,
+				autoPush: true,
+			});
+			await onPullRequestCreated(created);
+		} catch (err) {
+			prCreateError = err instanceof Error ? err.message : 'Failed to create pull request.';
+		} finally {
+			isCreating = false;
+		}
+	};
+
+	$effect(() => {
+		if (!showCreatePanel) {
+			composerContextKey = '';
+			prTextGenerating = false;
+			prTextGenerationRequestId += 1;
+			return;
+		}
+
+		const nextKey = `${workspaceId}:${selectedItem.repoId}:${selectedItem.branch}`;
+		if (composerContextKey === nextKey) return;
+		composerContextKey = nextKey;
+		resetComposerState();
+		void loadSuggestedPrText(workspaceId, selectedItem.repoId);
+	});
 </script>
 
 <div class="cd-header">
@@ -161,7 +226,10 @@
 					class="cd-create-input"
 					class:cd-input-generating={prTextGenerating && !prTitle}
 					value={prTitle}
-					oninput={(event) => onPrTitleInput((event.currentTarget as HTMLInputElement).value)}
+					oninput={(event) => {
+						prTitle = (event.currentTarget as HTMLInputElement).value;
+						if (prCreateError) prCreateError = null;
+					}}
 					placeholder={prTextGenerating && !prTitle ? 'Generating title...' : 'Enter PR title...'}
 				/>
 			</label>
@@ -172,7 +240,9 @@
 					class:cd-input-generating={prTextGenerating && !prBody}
 					rows={3}
 					value={prBody}
-					oninput={(event) => onPrBodyInput((event.currentTarget as HTMLTextAreaElement).value)}
+					oninput={(event) => {
+						prBody = (event.currentTarget as HTMLTextAreaElement).value;
+					}}
 					placeholder={prTextGenerating && !prBody
 						? 'Generating description...'
 						: 'Describe the changes in this PR...'}
@@ -184,7 +254,9 @@
 				<input
 					type="checkbox"
 					checked={isDraft}
-					onchange={(event) => onDraftChange((event.currentTarget as HTMLInputElement).checked)}
+					onchange={(event) => {
+						isDraft = (event.currentTarget as HTMLInputElement).checked;
+					}}
 				/>
 				<span>Create as draft</span>
 			</label>
@@ -192,7 +264,7 @@
 				type="button"
 				class="cd-create-btn"
 				disabled={isCreating || !prTitle.trim()}
-				onclick={() => void onCreatePr()}
+				onclick={() => void handleCreatePr()}
 			>
 				{#if isCreating}
 					<Loader2 size={12} class="spin" />

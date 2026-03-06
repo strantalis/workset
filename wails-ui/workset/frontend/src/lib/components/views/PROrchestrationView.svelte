@@ -5,7 +5,7 @@
 	// prettier-ignore
 	import type { PullRequestCreated, PullRequestReviewComment, PullRequestStatusResult, RepoFileDiff, RepoDiffFileSummary, RepoDiffSummary, Workspace } from '../../types';
 	// prettier-ignore
-	import { createPullRequest, fetchPullRequestReviews, fetchPullRequestStatus, fetchRepoLocalStatus, fetchTrackedPullRequest, generatePullRequestText, listRemotes, replyToReviewComment, resolveReviewThread, startCommitAndPushAsync } from '../../api/github';
+	import { fetchPullRequestReviews, fetchPullRequestStatus, fetchRepoLocalStatus, fetchTrackedPullRequest, listRemotes, replyToReviewComment, resolveReviewThread, startCommitAndPushAsync } from '../../api/github';
 	// prettier-ignore
 	import type { GitHubOperationStage, GitHubOperationStatus, RepoLocalStatus } from '../../api/github';
 	import { subscribeGitHubOperationEvent } from '../../githubOperationService';
@@ -133,14 +133,7 @@
 	let prReviewsLoading = $state(false);
 	let currentUserId: number | null = $state(null);
 
-	let prTitle = $state('');
-	let prBody = $state('');
-	let prTextGenerating = $state(false);
-	let prTextGenerationRequestId = 0;
 	let prComposerItemId: string | null = $state(null);
-	let isDraft = $state(false);
-	let isCreating = $state(false);
-	let prCreateError: string | null = $state(null);
 
 	let repoLocalStatus: RepoLocalStatus | null = $state(null);
 	let commitPushLoading = $state(false);
@@ -161,8 +154,6 @@
 		viewMode = mode;
 		if (mode !== 'ready') {
 			prComposerItemId = null;
-			prTextGenerating = false;
-			prTextGenerationRequestId += 1;
 		}
 	};
 	const resolveTrackedTitle = (repoId: string, fallbackTitle: string): string =>
@@ -317,13 +308,6 @@
 		diffSummaryRequestId += 1;
 		localSummaryRequestId += 1;
 		fileDiffRequestId += 1;
-		prTitle = '';
-		prBody = '';
-		prTextGenerating = false;
-		prTextGenerationRequestId += 1;
-		isDraft = false;
-		isCreating = false;
-		prCreateError = null;
 		repoLocalStatus = null;
 		commitPushLoading = false;
 		commitPushStage = null;
@@ -334,9 +318,6 @@
 		if (item && workspace) {
 			void loadTrackedPr(workspace.id, item.repoId);
 			void loadRepoLocalStatus(workspace.id, item.repoId);
-			if (viewMode === 'ready' && prComposerItemId === item.id) {
-				void loadSuggestedPrText(workspace.id, item.repoId);
-			}
 		}
 	};
 
@@ -524,23 +505,6 @@
 		}
 	};
 
-	const loadSuggestedPrText = async (wsId: string, repoId: string): Promise<void> => {
-		const requestId = ++prTextGenerationRequestId;
-		prTextGenerating = true;
-		try {
-			const generated = await generatePullRequestText(wsId, repoId);
-			if (requestId !== prTextGenerationRequestId) return;
-			if (generated.title && !prTitle) prTitle = generated.title;
-			if (generated.body && !prBody) prBody = generated.body;
-		} catch {
-			// non-fatal: user can still type manually
-		} finally {
-			if (requestId === prTextGenerationRequestId) {
-				prTextGenerating = false;
-			}
-		}
-	};
-
 	const loadChecks = async (options: { reconcileTracked?: boolean } = {}): Promise<void> => {
 		if (!workspace || !selectedItem) return;
 		const wsId = workspace.id;
@@ -632,42 +596,15 @@
 		void startPushForRepo(item.repoId);
 	};
 
-	const handleCreatePr = async (): Promise<void> => {
-		if (!workspace || !selectedItem || isCreating) return;
-		const title = prTitle.trim();
-		if (title === '') {
-			prCreateError = 'PR title is required.';
-			return;
-		}
-		isCreating = true;
-		prCreateError = null;
-		try {
-			const created = await createPullRequest(workspace.id, selectedItem.repoId, {
-				title,
-				body: prBody.trim(),
-				base: selectedRepo?.defaultBranch ?? '',
-				head: selectedItem.branch,
-				draft: isDraft,
-				autoCommit: true,
-				autoPush: true,
-			});
-			trackedPrMapCoordinator.markResolved(
-				selectedItem.repoId,
-				created,
-				trackedPrMap.get(selectedItem.repoId) ?? null,
-			);
-			trackedPrMap = withTrackedPr(trackedPrMap, selectedItem.repoId, created);
-			trackedPr = created;
-			setViewMode('active');
-			activeTab = 'overview';
-			void refreshWorkspacesStatus(true);
-			void loadChecks();
-			void loadReviews();
-		} catch (err) {
-			prCreateError = err instanceof Error ? err.message : 'Failed to create pull request.';
-		} finally {
-			isCreating = false;
-		}
+	const handlePullRequestCreated = (repoId: string, created: PullRequestCreated): void => {
+		trackedPrMapCoordinator.markResolved(repoId, created, trackedPrMap.get(repoId) ?? null);
+		trackedPrMap = withTrackedPr(trackedPrMap, repoId, created);
+		trackedPr = created;
+		setViewMode('active');
+		activeTab = 'overview';
+		void refreshWorkspacesStatus(true);
+		void loadChecks();
+		void loadReviews();
 	};
 
 	const openExternalUrl = (url: string | undefined | null): void =>
@@ -1471,12 +1408,8 @@
 						{selectedItem}
 						workspaceName={workspace.name}
 						showCreatePanel={prComposerItemId === selectedItem.id}
-						{prTitle}
-						{prBody}
-						{prTextGenerating}
-						{isDraft}
-						{isCreating}
-						{prCreateError}
+						workspaceId={workspace.id}
+						baseBranch={selectedRepo?.defaultBranch ?? ''}
 						{filesForDetail}
 						{totalAdd}
 						{totalDel}
@@ -1490,16 +1423,8 @@
 						{commitPushLoading}
 						{commitPushRepoId}
 						onPushFromSidebar={handlePushFromSidebar}
-						onCreatePr={() => void handleCreatePr()}
-						onPrTitleInput={(value) => {
-							prTitle = value;
-							if (prCreateError) prCreateError = null;
-						}}
-						onPrBodyInput={(value) => {
-							prBody = value;
-						}}
-						onDraftChange={(value) => {
-							isDraft = value;
+						onPullRequestCreated={(created) => {
+							handlePullRequestCreated(selectedItem.repoId, created);
 						}}
 						onSelectSourceFile={(source, index) => {
 							selectedSource = source;
