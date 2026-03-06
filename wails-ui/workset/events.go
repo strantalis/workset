@@ -7,7 +7,8 @@ const (
 
 	EventSessiondRestarted = "sessiond:restarted"
 
-	EventTerminalData = "terminal:data"
+	EventTerminalData  = "terminal:data"
+	EventTerminalInput = "terminal:input"
 
 	EventWorkspacePopoutOpened = "workspace:popout-opened"
 	EventWorkspacePopoutClosed = "workspace:popout-closed"

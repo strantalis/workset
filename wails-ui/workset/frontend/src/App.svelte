@@ -24,6 +24,8 @@
 	import type { RepoLocalStatus } from './lib/api/github';
 	import { fetchGitHubAuthInfo } from './lib/api/github';
 	import {
+		EVENT_TERMINAL_DATA,
+		EVENT_TERMINAL_INPUT,
 		EVENT_REPO_DIFF_LOCAL_STATUS,
 		EVENT_WORKSPACE_POPOUT_CLOSED,
 		EVENT_WORKSPACE_POPOUT_OPENED,
@@ -65,6 +67,9 @@
 		windowName: string;
 		open: boolean;
 	};
+	type TerminalActivityEvent = {
+		workspaceId: string;
+	};
 
 	type WorkspaceActionMode =
 		| 'create'
@@ -80,6 +85,7 @@
 
 	const EXPLORER_OPEN_STORAGE_KEY = 'workset:app:explorerOpen';
 	const AUTO_GITHUB_AUTH_CHECK = false;
+	const TERMINAL_ACTIVITY_TTL_MS = 20_000;
 
 	const readExplorerOpenPreference = (): boolean => {
 		if (typeof localStorage === 'undefined') return true;
@@ -107,6 +113,8 @@
 		: (requestedAppView ?? 'terminal-cockpit');
 
 	const repoStatusWatchers = new Map<string, { workspaceId: string; repoId: string }>();
+	const terminalActivityExpiryTimers = new Map<string, number>();
+	const terminalActivityDeadlines = new Map<string, number>();
 
 	const hasWorkspace = $derived($activeWorkspace !== null);
 	const hasRepo = $derived($activeRepo !== null);
@@ -133,6 +141,8 @@
 	let onboardingRepoRegistry = $state<RegisteredRepo[]>([]);
 	let onboardingLoaded = $state(false);
 	let cockpitSurface = $state<CockpitSurface>('terminal');
+	let activeTerminalWorkspaces = $state<Record<string, true>>({});
+	const activeTerminalWorkspaceIds = $derived.by(() => Object.keys(activeTerminalWorkspaces));
 
 	const deriveWorksetIdentity = (workspace: Workspace): { id: string; label: string } => {
 		const key = workspace.worksetKey?.trim();
@@ -189,6 +199,61 @@
 		}
 		for (const thread of threads) {
 			releaseWorkspaceTerminals(thread.id);
+		}
+	};
+
+	const clearTerminalActivityTimer = (workspaceId: string): void => {
+		const timer = terminalActivityExpiryTimers.get(workspaceId);
+		if (timer === undefined) return;
+		window.clearTimeout(timer);
+		terminalActivityExpiryTimers.delete(workspaceId);
+	};
+
+	const removeWorkspaceTerminalActivity = (workspaceId: string): void => {
+		if (activeTerminalWorkspaces[workspaceId] === undefined) return;
+		const next = { ...activeTerminalWorkspaces };
+		delete next[workspaceId];
+		activeTerminalWorkspaces = next;
+	};
+
+	const scheduleWorkspaceTerminalActivityExpiry = (workspaceId: string, delayMs: number): void => {
+		clearTerminalActivityTimer(workspaceId);
+		const timer = window.setTimeout(
+			() => {
+				terminalActivityExpiryTimers.delete(workspaceId);
+				const deadline = terminalActivityDeadlines.get(workspaceId);
+				if (deadline === undefined) {
+					removeWorkspaceTerminalActivity(workspaceId);
+					return;
+				}
+				const remainingMs = deadline - Date.now();
+				if (remainingMs > 0) {
+					scheduleWorkspaceTerminalActivityExpiry(workspaceId, remainingMs);
+					return;
+				}
+				terminalActivityDeadlines.delete(workspaceId);
+				removeWorkspaceTerminalActivity(workspaceId);
+			},
+			Math.max(0, delayMs),
+		);
+		terminalActivityExpiryTimers.set(workspaceId, timer);
+	};
+
+	const markWorkspaceTerminalActivity = (workspaceId: string | null | undefined): void => {
+		const id = workspaceId?.trim() ?? '';
+		if (!id) return;
+		const expiresAt = Date.now() + TERMINAL_ACTIVITY_TTL_MS;
+		terminalActivityDeadlines.set(id, expiresAt);
+		if (activeTerminalWorkspaces[id] === undefined) {
+			activeTerminalWorkspaces = {
+				...activeTerminalWorkspaces,
+				[id]: true,
+			};
+			scheduleWorkspaceTerminalActivityExpiry(id, TERMINAL_ACTIVITY_TTL_MS);
+			return;
+		}
+		if (!terminalActivityExpiryTimers.has(id)) {
+			scheduleWorkspaceTerminalActivityExpiry(id, TERMINAL_ACTIVITY_TTL_MS);
 		}
 	};
 
@@ -557,6 +622,8 @@
 	let repoStatusUnsubscribe: (() => void) | null = null;
 	let popoutOpenedUnsubscribe: (() => void) | null = null;
 	let popoutClosedUnsubscribe: (() => void) | null = null;
+	let terminalDataUnsubscribe: (() => void) | null = null;
+	let terminalInputUnsubscribe: (() => void) | null = null;
 
 	const handleOpenPopout = async (workspaceId: string): Promise<void> => {
 		if (!workspaceId || popoutBusy) return;
@@ -612,6 +679,18 @@
 				updateWorkspacePopoutState(payload.workspaceId, payload.windowName, false);
 			},
 		);
+		terminalDataUnsubscribe = subscribeWailsEvent<TerminalActivityEvent>(
+			EVENT_TERMINAL_DATA,
+			(payload) => {
+				markWorkspaceTerminalActivity(payload.workspaceId);
+			},
+		);
+		terminalInputUnsubscribe = subscribeWailsEvent<TerminalActivityEvent>(
+			EVENT_TERMINAL_INPUT,
+			(payload) => {
+				markWorkspaceTerminalActivity(payload.workspaceId);
+			},
+		);
 	});
 
 	onDestroy(() => {
@@ -622,6 +701,16 @@
 		popoutOpenedUnsubscribe = null;
 		popoutClosedUnsubscribe?.();
 		popoutClosedUnsubscribe = null;
+		terminalDataUnsubscribe?.();
+		terminalDataUnsubscribe = null;
+		terminalInputUnsubscribe?.();
+		terminalInputUnsubscribe = null;
+		for (const timer of terminalActivityExpiryTimers.values()) {
+			window.clearTimeout(timer);
+		}
+		terminalActivityExpiryTimers.clear();
+		terminalActivityDeadlines.clear();
+		activeTerminalWorkspaces = {};
 	});
 
 	$effect(() => {
@@ -689,6 +778,7 @@
 						canManageRepos={!popoutMode}
 						activeView={currentView === 'skill-registry' ? 'skill-registry' : 'terminal-cockpit'}
 						activeSurface={cockpitSurface}
+						{activeTerminalWorkspaceIds}
 						onSelectWorkspace={handleSelectWorkspace}
 						onCreateWorkspace={handleCreateWorkspace}
 						onCreateThread={handleCreateThread}

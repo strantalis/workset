@@ -455,6 +455,21 @@
 	font-family: var(--font-mono);
 }
 
+.thread-live-indicator {
+	display: inline-flex;
+	align-items: center;
+	height: 16px;
+	padding: 0 5px;
+	border-radius: 999px;
+	border: 1px solid color-mix(in srgb, var(--success) 58%, transparent);
+	background: color-mix(in srgb, var(--success) 16%, transparent);
+	color: color-mix(in srgb, var(--success) 78%, white);
+	font-size: 9px;
+	font-family: var(--font-mono);
+	font-weight: 600;
+	line-height: 1;
+}
+
 .thread-remove-btn {
 	display: inline-flex;
 	align-items: center;
