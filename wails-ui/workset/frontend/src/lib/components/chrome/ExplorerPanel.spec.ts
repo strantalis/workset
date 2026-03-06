@@ -269,7 +269,7 @@ describe('ExplorerPanel', () => {
 		expect(onAddRepo).toHaveBeenCalledWith('workset:beta');
 	});
 
-	test('renders Live badge for threads with active terminal IO', () => {
+	test('reveals the remove button only for the hovered thread', async () => {
 		const alpha = buildWorkspace({
 			id: 'thread-alpha',
 			name: 'alpha',
@@ -284,7 +284,87 @@ describe('ExplorerPanel', () => {
 			worksetKey: 'workset:core',
 			worksetLabel: 'Core',
 		});
-		const { getByText } = render(ExplorerPanel, {
+		const { getByRole, queryByRole } = render(ExplorerPanel, {
+			props: {
+				workspaces: [alpha, beta],
+				activeWorkspaceId: alpha.id,
+				shortcutMap: new Map<string, number>(),
+				onSelectWorkspace: vi.fn(),
+			},
+		});
+
+		const alphaLabel = getByRole('button', { name: 'alpha' });
+		const betaLabel = getByRole('button', { name: 'beta' });
+		const alphaRow = alphaLabel.closest('.thread-row');
+		const betaRow = betaLabel.closest('.thread-row');
+		expect(alphaRow).not.toBeNull();
+		expect(betaRow).not.toBeNull();
+
+		expect(queryByRole('button', { name: 'Remove thread alpha' })).toBeNull();
+		expect(queryByRole('button', { name: 'Remove thread beta' })).toBeNull();
+
+		await fireEvent.mouseEnter(alphaRow!);
+		expect(getByRole('button', { name: 'Remove thread alpha' })).toBeInTheDocument();
+		expect(queryByRole('button', { name: 'Remove thread beta' })).toBeNull();
+
+		await fireEvent.mouseLeave(alphaRow!);
+		await fireEvent.mouseEnter(betaRow!);
+		expect(queryByRole('button', { name: 'Remove thread alpha' })).toBeNull();
+		expect(getByRole('button', { name: 'Remove thread beta' })).toBeInTheDocument();
+	});
+
+	test('clears the hovered remove button when switching threads', async () => {
+		const alpha = buildWorkspace({
+			id: 'thread-alpha',
+			name: 'alpha',
+			workset: 'Core',
+			worksetKey: 'workset:core',
+			worksetLabel: 'Core',
+		});
+		const beta = buildWorkspace({
+			id: 'thread-beta',
+			name: 'beta',
+			workset: 'Core',
+			worksetKey: 'workset:core',
+			worksetLabel: 'Core',
+		});
+		const onSelectWorkspace = vi.fn<(workspaceId: string) => void>();
+		const { getByRole, queryByRole } = render(ExplorerPanel, {
+			props: {
+				workspaces: [alpha, beta],
+				activeWorkspaceId: alpha.id,
+				shortcutMap: new Map<string, number>(),
+				onSelectWorkspace,
+			},
+		});
+
+		const alphaRow = getByRole('button', { name: 'alpha' }).closest('.thread-row');
+		expect(alphaRow).not.toBeNull();
+
+		await fireEvent.mouseEnter(alphaRow!);
+		expect(getByRole('button', { name: 'Remove thread alpha' })).toBeInTheDocument();
+
+		await fireEvent.click(getByRole('button', { name: 'beta' }));
+		expect(onSelectWorkspace).toHaveBeenCalledWith(beta.id);
+		expect(queryByRole('button', { name: 'Remove thread alpha' })).toBeNull();
+	});
+
+	test('renders animated work badge for threads with active terminal IO', () => {
+		const alpha = buildWorkspace({
+			id: 'thread-alpha',
+			name: 'alpha',
+			workset: 'Core',
+			worksetKey: 'workset:core',
+			worksetLabel: 'Core',
+		});
+		const beta = buildWorkspace({
+			id: 'thread-beta',
+			name: 'beta',
+			workset: 'Core',
+			worksetKey: 'workset:core',
+			worksetLabel: 'Core',
+		});
+		const { container, getByText } = render(ExplorerPanel, {
 			props: {
 				workspaces: [alpha, beta],
 				activeWorkspaceId: alpha.id,
@@ -294,9 +374,10 @@ describe('ExplorerPanel', () => {
 			},
 		});
 
-		const liveBadge = getByText('Live');
-		expect(liveBadge).toBeInTheDocument();
-		expect(getByText('beta').parentElement).toContainElement(liveBadge);
+		const workBadge = container.querySelector<HTMLElement>('.thread-live-indicator');
+		expect(workBadge).not.toBeNull();
+		expect(workBadge).toHaveAttribute('title', 'Work in progress');
+		expect(getByText('beta').parentElement).toContainElement(workBadge);
 	});
 
 	test('does not render Live badge when no thread has active terminal IO', () => {

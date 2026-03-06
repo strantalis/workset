@@ -277,6 +277,8 @@
 	let switcherSearchInputEl: HTMLInputElement | null = $state(null);
 	let switcherListEl: HTMLDivElement | null = $state(null);
 	let reposOpen = $state(false);
+	let hoveredThreadId = $state<string | null>(null);
+	let focusedRemoveThreadId = $state<string | null>(null);
 
 	const switcherAvailableWorksets = $derived.by(() => {
 		if (!selectedWorkset) return groupedWorksets;
@@ -311,12 +313,17 @@
 
 	const selectThread = (workspaceId: string): void => {
 		if (!workspaceId) return;
+		hoveredThreadId = null;
+		focusedRemoveThreadId = null;
 		onSelectWorkspace(workspaceId);
 		switcherOpen = false;
 	};
 
 	const isThreadTerminalActive = (workspaceId: string): boolean =>
 		activeTerminalWorkspaceIdSet.has(workspaceId);
+
+	const isThreadRemoveVisible = (workspaceId: string): boolean =>
+		hoveredThreadId === workspaceId || focusedRemoveThreadId === workspaceId;
 
 	const selectWorkset = (worksetId: string): void => {
 		const workset = groupedWorksets.find((item) => item.id === worksetId);
@@ -661,7 +668,14 @@
 			</div>
 			<div class="thread-list">
 				{#each selectedWorkset.threads as thread (thread.id)}
-					<div class="thread-row">
+					<div
+						class="thread-row"
+						role="presentation"
+						onmouseenter={() => (hoveredThreadId = thread.id)}
+						onmouseleave={() => {
+							if (hoveredThreadId === thread.id) hoveredThreadId = null;
+						}}
+					>
 						<button
 							type="button"
 							class="thread-item"
@@ -671,25 +685,38 @@
 							<span class="status-dot status-{getThreadStatus(thread)}"></span>
 							<span class="thread-name">{thread.name}</span>
 							{#if isThreadTerminalActive(thread.id)}
-								<span class="thread-live-indicator">Live</span>
+								<span class="thread-live-indicator" title="Work in progress">
+									<span class="thread-live-glyph" aria-hidden="true">
+										<span class="thread-live-core"></span>
+									</span>
+									<span class="thread-live-label">Work in progress</span>
+								</span>
 							{/if}
 							{#if thread.repos.some((repo) => isOpenTrackedPullRequest(repo))}
 								<span class="thread-pr-indicator">PR</span>
 							{/if}
 						</button>
 						{#if canManageRepos}
-							<button
-								type="button"
-								class="thread-remove-btn"
-								title={`Remove thread ${thread.name}`}
-								aria-label={`Remove thread ${thread.name}`}
-								onclick={(event) => {
-									event.stopPropagation();
-									onRemoveThread(thread.id);
-								}}
-							>
-								<Trash2 size={10} />
-							</button>
+							<div class="thread-remove-slot">
+								{#if isThreadRemoveVisible(thread.id)}
+									<button
+										type="button"
+										class="thread-remove-btn"
+										title={`Remove thread ${thread.name}`}
+										aria-label={`Remove thread ${thread.name}`}
+										onfocus={() => (focusedRemoveThreadId = thread.id)}
+										onblur={() => {
+											if (focusedRemoveThreadId === thread.id) focusedRemoveThreadId = null;
+										}}
+										onclick={(event) => {
+											event.stopPropagation();
+											onRemoveThread(thread.id);
+										}}
+									>
+										<Trash2 size={10} />
+									</button>
+								{/if}
+							</div>
 						{/if}
 					</div>
 				{/each}
