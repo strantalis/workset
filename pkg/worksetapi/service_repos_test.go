@@ -194,6 +194,56 @@ func TestAddRepoFromAliasURL(t *testing.T) {
 	}
 }
 
+func TestAddReposToWorksetWithoutThreads(t *testing.T) {
+	env := newTestEnv(t)
+	local := env.createLocalRepo("repo-a")
+
+	cfg := env.loadConfig()
+	cfg.WorksetRepos = map[string][]string{
+		"Platform Core": {"repo-b"},
+	}
+	cfg.Repos = map[string]config.RegisteredRepo{
+		"repo-b": {URL: "https://example.com/repo-b.git"},
+	}
+	env.saveConfig(cfg)
+
+	result, err := env.svc.AddReposToWorkset(context.Background(), WorksetRepoAddInput{
+		Workset: "Platform Core",
+		Sources: []string{local, "https://example.com/repo-c.git", "repo-b"},
+	})
+	if err != nil {
+		t.Fatalf("add repos to workset: %v", err)
+	}
+	if result.Payload.Workset != "Platform Core" {
+		t.Fatalf("unexpected workset: %q", result.Payload.Workset)
+	}
+	if len(result.Payload.Added) != 2 || result.Payload.Added[0] != "repo-a" || result.Payload.Added[1] != "repo-c" {
+		t.Fatalf("expected added repos [repo-a repo-c], got %v", result.Payload.Added)
+	}
+
+	updated := env.loadConfig()
+	if got := updated.WorksetRepos["Platform Core"]; len(got) != 3 || got[0] != "repo-b" || got[1] != "repo-a" || got[2] != "repo-c" {
+		t.Fatalf("expected workset repos [repo-b repo-a repo-c], got %v", got)
+	}
+	aliasA := updated.Repos["repo-a"]
+	if aliasA.Path == "" || aliasA.URL != "" {
+		t.Fatalf("expected repo-a catalog entry to use local path, got %+v", aliasA)
+	}
+	aliasC := updated.Repos["repo-c"]
+	if aliasC.URL != "https://example.com/repo-c.git" {
+		t.Fatalf("expected repo-c catalog entry URL, got %+v", aliasC)
+	}
+}
+
+func TestAddReposToWorksetRequiresExistingWorkset(t *testing.T) {
+	env := newTestEnv(t)
+	_, err := env.svc.AddReposToWorkset(context.Background(), WorksetRepoAddInput{
+		Workset: "missing",
+		Sources: []string{"https://example.com/repo.git"},
+	})
+	_ = requireErrorType[NotFoundError](t, err)
+}
+
 func TestRemoveRepoSafetyAndConfirmation(t *testing.T) {
 	env := newTestEnv(t)
 	root := env.createWorkspace(context.Background(), "demo")

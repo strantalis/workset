@@ -158,6 +158,31 @@ func TestListWorkspaceSnapshotsUsesExplicitWorksetIdentity(t *testing.T) {
 	}
 }
 
+func TestListWorkspaceSnapshotsIncludesEmptyWorksetPlaceholder(t *testing.T) {
+	env := newTestEnv(t)
+	cfg := env.loadConfig()
+	cfg.WorksetRepos["Platform Core"] = []string{"repo-a", "repo-b"}
+	env.saveConfig(cfg)
+
+	result, err := env.svc.ListWorkspaceSnapshots(context.Background(), WorkspaceSnapshotOptions{})
+	if err != nil {
+		t.Fatalf("list snapshots: %v", err)
+	}
+	if len(result.Workspaces) != 1 {
+		t.Fatalf("expected 1 placeholder workset, got %d", len(result.Workspaces))
+	}
+	placeholder := result.Workspaces[0]
+	if !placeholder.Placeholder {
+		t.Fatalf("expected placeholder snapshot")
+	}
+	if placeholder.Workset != "Platform Core" {
+		t.Fatalf("expected workset Platform Core, got %q", placeholder.Workset)
+	}
+	if len(placeholder.Repos) != 2 {
+		t.Fatalf("expected two repos on placeholder, got %d", len(placeholder.Repos))
+	}
+}
+
 func TestListWorkspaceSnapshotsIncludesWorkspaceWhenConfigMissing(t *testing.T) {
 	env := newTestEnv(t)
 	alphaRoot := env.createWorkspace(context.Background(), "alpha")

@@ -19,9 +19,6 @@ func (s *Service) ListWorkspaceSnapshots(ctx context.Context, opts WorkspaceSnap
 	if err != nil {
 		return WorkspaceSnapshotResult{}, err
 	}
-	if len(cfg.Workspaces) == 0 {
-		return WorkspaceSnapshotResult{Workspaces: []WorkspaceSnapshotJSON{}, Config: info}, nil
-	}
 
 	names := make([]string, 0, len(cfg.Workspaces))
 	for name := range cfg.Workspaces {
@@ -30,6 +27,7 @@ func (s *Service) ListWorkspaceSnapshots(ctx context.Context, opts WorkspaceSnap
 	sort.Strings(names)
 
 	snapshots := make([]WorkspaceSnapshotJSON, 0, len(names))
+	worksetsWithVisibleThreads := map[string]struct{}{}
 	for _, name := range names {
 		ref := cfg.Workspaces[name]
 		if !opts.IncludeArchived && ref.ArchivedAt != "" {
@@ -142,6 +140,10 @@ func (s *Service) ListWorkspaceSnapshots(ctx context.Context, opts WorkspaceSnap
 		}
 		workset := workspaceRefWorkset(ref)
 		worksetKey, worksetLabel := deriveWorksetIdentity(name, workset, repos)
+		normalizedWorkset := strings.TrimSpace(workset)
+		if normalizedWorkset != "" {
+			worksetsWithVisibleThreads[normalizedWorkset] = struct{}{}
+		}
 
 		snapshots = append(snapshots, WorkspaceSnapshotJSON{
 			Name:           name,
@@ -164,7 +166,90 @@ func (s *Service) ListWorkspaceSnapshots(ctx context.Context, opts WorkspaceSnap
 		})
 	}
 
+	if len(cfg.WorksetRepos) > 0 {
+		worksetNames := make([]string, 0, len(cfg.WorksetRepos))
+		for worksetName := range cfg.WorksetRepos {
+			normalized := strings.TrimSpace(worksetName)
+			if normalized == "" {
+				continue
+			}
+			if _, ok := worksetsWithVisibleThreads[normalized]; ok {
+				continue
+			}
+			worksetNames = append(worksetNames, normalized)
+		}
+		sort.Strings(worksetNames)
+		for _, worksetName := range worksetNames {
+			baseRepos := normalizeRepoNames(cfg.WorksetRepos[worksetName])
+			repos := make([]RepoSnapshotJSON, 0, len(baseRepos))
+			for _, repoName := range baseRepos {
+				repos = append(repos, RepoSnapshotJSON{
+					Name: repoName,
+				})
+			}
+			worksetKey, worksetLabel := deriveWorksetIdentity(worksetName, worksetName, repos)
+			hasThreads, hasActiveThreads := worksetThreadState(cfg, worksetName)
+			snapshots = append(snapshots, WorkspaceSnapshotJSON{
+				Name:         worksetName,
+				Path:         "",
+				Workset:      worksetName,
+				Template:     worksetName,
+				WorksetKey:   worksetKey,
+				WorksetLabel: worksetLabel,
+				Placeholder:  true,
+				LastUsed:     latestWorksetLastUsed(cfg, worksetName),
+				Archived:     hasThreads && !hasActiveThreads,
+				Repos:        repos,
+			})
+		}
+	}
+
 	return WorkspaceSnapshotResult{Workspaces: snapshots, Config: info}, nil
+}
+
+func worksetThreadState(cfg config.GlobalConfig, worksetName string) (bool, bool) {
+	normalized := strings.TrimSpace(worksetName)
+	if normalized == "" {
+		return false, false
+	}
+	hasThreads := false
+	hasActive := false
+	for threadName, ref := range cfg.Workspaces {
+		threadWorkset := strings.TrimSpace(workspaceRefWorkset(ref))
+		if threadWorkset == "" {
+			threadWorkset = strings.TrimSpace(threadName)
+		}
+		if threadWorkset != normalized {
+			continue
+		}
+		hasThreads = true
+		if strings.TrimSpace(ref.ArchivedAt) == "" {
+			hasActive = true
+		}
+	}
+	return hasThreads, hasActive
+}
+
+func latestWorksetLastUsed(cfg config.GlobalConfig, worksetName string) string {
+	normalized := strings.TrimSpace(worksetName)
+	if normalized == "" {
+		return ""
+	}
+	latest := ""
+	for threadName, ref := range cfg.Workspaces {
+		threadWorkset := strings.TrimSpace(workspaceRefWorkset(ref))
+		if threadWorkset == "" {
+			threadWorkset = strings.TrimSpace(threadName)
+		}
+		if threadWorkset != normalized {
+			continue
+		}
+		lastUsed := strings.TrimSpace(ref.LastUsed)
+		if lastUsed > latest {
+			latest = lastUsed
+		}
+	}
+	return latest
 }
 
 func deriveWorksetIdentity(workspaceName, explicitWorkset string, repos []RepoSnapshotJSON) (string, string) {

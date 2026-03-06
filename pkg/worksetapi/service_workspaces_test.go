@@ -328,6 +328,41 @@ func TestCreateWorkspaceStoresWorksetFromTemplateInput(t *testing.T) {
 	}
 }
 
+func TestCreateWorkspaceWorksetOnlyCreatesEmptyWorkset(t *testing.T) {
+	env := newTestEnv(t)
+	cfg := env.loadConfig()
+	cfg.Repos = map[string]config.RegisteredRepo{
+		"repo-a": {Path: env.createLocalRepo("repo-a")},
+	}
+	env.saveConfig(cfg)
+
+	result, err := env.svc.CreateWorkspace(context.Background(), WorkspaceCreateInput{
+		Name:        "Platform Core",
+		WorksetOnly: true,
+		Repos:       []string{"repo-a"},
+	})
+	if err != nil {
+		t.Fatalf("create workset-only: %v", err)
+	}
+	if result.Workspace.Name != "Platform Core" {
+		t.Fatalf("unexpected workset name: %q", result.Workspace.Name)
+	}
+	if result.Workspace.Path != "" {
+		t.Fatalf("expected no workspace path for workset-only create, got %q", result.Workspace.Path)
+	}
+	if result.Workspace.Workset != "Platform Core" {
+		t.Fatalf("expected workset label Platform Core, got %q", result.Workspace.Workset)
+	}
+
+	cfg = env.loadConfig()
+	if len(cfg.Workspaces) != 0 {
+		t.Fatalf("expected no thread registrations, got %d", len(cfg.Workspaces))
+	}
+	if got := cfg.WorksetRepos["Platform Core"]; len(got) != 1 || got[0] != "repo-a" {
+		t.Fatalf("expected workset repos [repo-a], got %v", got)
+	}
+}
+
 func TestCreateWorkspaceWarnsOutsideRoot(t *testing.T) {
 	env := newTestEnv(t)
 	outside := filepath.Join(t.TempDir(), "outside")
@@ -580,6 +615,85 @@ func TestDeleteWorkspaceRemovesRegistration(t *testing.T) {
 	}
 	if _, err := os.Stat(root); err != nil {
 		t.Fatalf("workspace should still exist: %v", err)
+	}
+}
+
+func TestDeleteWorkspacePreservesWorksetWhenLastThreadRemoved(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+	cfg := env.loadConfig()
+	cfg.Repos = map[string]config.RegisteredRepo{
+		"repo-a": {Path: env.createLocalRepo("repo-a")},
+		"repo-b": {Path: env.createLocalRepo("repo-b")},
+	}
+	env.saveConfig(cfg)
+	if _, err := env.svc.CreateWorkspace(ctx, WorkspaceCreateInput{
+		Name:     "thread-a",
+		Template: "Platform Core",
+		Repos:    []string{"repo-a", "repo-b"},
+	}); err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+
+	if _, err := env.svc.DeleteWorkspace(ctx, WorkspaceDeleteInput{
+		Selector:    WorkspaceSelector{Value: "thread-a"},
+		DeleteFiles: false,
+	}); err != nil {
+		t.Fatalf("delete workspace: %v", err)
+	}
+
+	cfg = env.loadConfig()
+	if _, ok := cfg.Workspaces["thread-a"]; ok {
+		t.Fatalf("expected thread registration removed")
+	}
+	if _, ok := cfg.WorksetRepos["Platform Core"]; !ok {
+		t.Fatalf("expected empty workset to remain registered")
+	}
+	if got := cfg.WorksetRepos["Platform Core"]; len(got) != 2 || got[0] != "repo-a" || got[1] != "repo-b" {
+		t.Fatalf("expected preserved workset repos [repo-a repo-b], got %v", got)
+	}
+}
+
+func TestDeleteWorkspaceRecomputesWorksetReposFromRemainingThread(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+	cfg := env.loadConfig()
+	cfg.Repos = map[string]config.RegisteredRepo{
+		"repo-a": {Path: env.createLocalRepo("repo-a")},
+		"repo-b": {Path: env.createLocalRepo("repo-b")},
+		"repo-c": {Path: env.createLocalRepo("repo-c")},
+	}
+	env.saveConfig(cfg)
+
+	if _, err := env.svc.CreateWorkspace(ctx, WorkspaceCreateInput{
+		Name:     "thread-a",
+		Template: "Platform Core",
+		Repos:    []string{"repo-a", "repo-b"},
+	}); err != nil {
+		t.Fatalf("create thread-a: %v", err)
+	}
+	if _, err := env.svc.CreateWorkspace(ctx, WorkspaceCreateInput{
+		Name:     "thread-b",
+		Template: "Platform Core",
+		Repos:    []string{"repo-a", "repo-b", "repo-c"},
+	}); err != nil {
+		t.Fatalf("create thread-b: %v", err)
+	}
+
+	if _, err := env.svc.DeleteWorkspace(ctx, WorkspaceDeleteInput{
+		Selector:    WorkspaceSelector{Value: "thread-a"},
+		DeleteFiles: false,
+	}); err != nil {
+		t.Fatalf("delete thread-a: %v", err)
+	}
+
+	cfg = env.loadConfig()
+	if got := cfg.WorksetRepos["Platform Core"]; len(got) != 3 || got[0] != "repo-a" || got[1] != "repo-b" || got[2] != "repo-c" {
+		t.Fatalf("expected remaining thread repos [repo-a repo-b repo-c], got %v", got)
+	}
+	ref := cfg.Workspaces["thread-b"]
+	if len(ref.RepoOverrides) != 0 {
+		t.Fatalf("expected thread-b overrides normalized to empty, got %v", ref.RepoOverrides)
 	}
 }
 

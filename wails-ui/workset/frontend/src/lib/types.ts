@@ -33,6 +33,7 @@ export type Workspace = {
 	template?: string;
 	worksetKey?: string;
 	worksetLabel?: string;
+	placeholder?: boolean;
 	archived: boolean;
 	archivedAt?: string;
 	archivedReason?: string;
@@ -117,6 +118,15 @@ export type RepoAddResponse = {
 		reason?: string;
 	}[];
 	hookRuns?: HookExecution[];
+};
+
+export type WorksetRepoAddResponse = {
+	payload: {
+		status: string;
+		workset: string;
+		added?: string[];
+	};
+	warnings?: string[];
 };
 
 export type HookExecution = {

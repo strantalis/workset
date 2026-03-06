@@ -20,7 +20,9 @@ let loadSequence = 0;
 export const activeWorkspace = derived(
 	[workspaces, activeWorkspaceId],
 	([$workspaces, $activeWorkspaceId]) =>
-		$workspaces.find((workspace) => workspace.id === $activeWorkspaceId) ?? null,
+		$workspaces.find(
+			(workspace) => workspace.id === $activeWorkspaceId && workspace.placeholder !== true,
+		) ?? null,
 );
 
 export const activeRepo = derived(
@@ -31,12 +33,14 @@ export const activeRepo = derived(
 
 // Derived stores for pinned and unpinned workspaces
 export const pinnedWorkspaces = derived(workspaces, ($workspaces) =>
-	$workspaces.filter((w) => w.pinned && !w.archived).sort((a, b) => a.pinOrder - b.pinOrder),
+	$workspaces
+		.filter((w) => w.pinned && !w.archived && w.placeholder !== true)
+		.sort((a, b) => a.pinOrder - b.pinOrder),
 );
 
 export const unpinnedWorkspaces = derived(workspaces, ($workspaces) =>
 	$workspaces
-		.filter((w) => !w.pinned && !w.archived)
+		.filter((w) => !w.pinned && !w.archived && w.placeholder !== true)
 		.sort((a, b) => {
 			const aTs = new Date(a.lastUsed).getTime() || 0;
 			const bTs = new Date(b.lastUsed).getTime() || 0;
@@ -45,6 +49,10 @@ export const unpinnedWorkspaces = derived(workspaces, ($workspaces) =>
 );
 
 export function selectWorkspace(workspaceId: string): void {
+	const target = get(workspaces).find((workspace) => workspace.id === workspaceId);
+	if (!target || target.placeholder === true) {
+		return;
+	}
 	activeWorkspaceId.set(workspaceId);
 	activeRepoId.set(null);
 	// Update last used timestamp in background
@@ -147,7 +155,12 @@ const syncSelection = (data: Workspace[]): void => {
 	const currentRepoId = get(activeRepoId);
 	const activeWorkspace =
 		currentWorkspaceId &&
-		data.find((workspace) => workspace.id === currentWorkspaceId && !workspace.archived);
+		data.find(
+			(workspace) =>
+				workspace.id === currentWorkspaceId &&
+				!workspace.archived &&
+				workspace.placeholder !== true,
+		);
 	if (!activeWorkspace) {
 		activeWorkspaceId.set(null);
 		activeRepoId.set(null);

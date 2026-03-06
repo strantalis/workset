@@ -1,5 +1,6 @@
 import {
 	addRepo as addRepoMutation,
+	addReposToWorkset as addReposToWorksetMutation,
 	archiveWorkspace as archiveWorkspaceMutation,
 	createWorkspace as createWorkspaceMutation,
 	removeRepo as removeRepoMutation,
@@ -8,7 +9,12 @@ import {
 } from '../api/workspaces';
 import { deriveRepoName, isRepoSource } from '../names';
 import { registerRepo as registerRepoMutation } from '../api/settings';
-import type { HookExecution, RepoAddResponse, WorkspaceCreateResponse } from '../types';
+import type {
+	HookExecution,
+	RepoAddResponse,
+	WorksetRepoAddResponse,
+	WorkspaceCreateResponse,
+} from '../types';
 
 export type WorkspaceActionPendingHook = {
 	event: string;
@@ -29,6 +35,7 @@ export type CreateWorkspaceMutationInput = {
 	directRepos: CreateDirectRepo[];
 	selectedAliases: Iterable<string>;
 	worksetName?: string;
+	worksetOnly?: boolean;
 };
 
 type CreateWorkspaceMutationDeps = {
@@ -44,6 +51,7 @@ type CreateWorkspaceMutationDeps = {
 		template?: string,
 		repos?: string[],
 		groups?: string[],
+		options?: { worksetOnly?: boolean },
 	) => Promise<WorkspaceCreateResponse>;
 };
 
@@ -66,6 +74,16 @@ type AddItemsMutationDeps = {
 		deleteWorktree: boolean,
 		forget: boolean,
 	) => Promise<void>;
+};
+
+export type AddReposToWorksetMutationInput = {
+	worksetName: string;
+	source: string;
+	selectedAliases: Iterable<string>;
+};
+
+type AddReposToWorksetMutationDeps = {
+	addReposToWorkset: (workset: string, sources: string[]) => Promise<WorksetRepoAddResponse>;
 };
 
 export type RenameWorkspaceMutationInput = {
@@ -161,6 +179,7 @@ export type WorkspaceActionMutationGateway = {
 	registerRepo: CreateWorkspaceMutationDeps['registerRepo'];
 	createWorkspace: CreateWorkspaceMutationDeps['createWorkspace'];
 	addRepo: AddItemsMutationDeps['addRepo'];
+	addReposToWorkset: AddReposToWorksetMutationDeps['addReposToWorkset'];
 	renameWorkspace: RenameWorkspaceMutationDeps['renameWorkspace'];
 	archiveWorkspace: ArchiveWorkspaceMutationDeps['archiveWorkspace'];
 	removeWorkspace: RemoveWorkspaceMutationDeps['removeWorkspace'];
@@ -170,6 +189,7 @@ export type WorkspaceActionMutationGateway = {
 export type WorkspaceActionMutationService = {
 	createWorkspace: (input: CreateWorkspaceMutationInput) => Promise<CreateWorkspaceMutationResult>;
 	addItems: (input: AddItemsMutationInput) => Promise<AddItemsMutationResult>;
+	addReposToWorkset: (input: AddReposToWorksetMutationInput) => Promise<AddItemsMutationResult>;
 	renameWorkspace: (input: RenameWorkspaceMutationInput) => Promise<RenameWorkspaceMutationResult>;
 	archiveWorkspace: (
 		input: ArchiveWorkspaceMutationInput,
@@ -182,6 +202,7 @@ export const workspaceActionMutationGateway: WorkspaceActionMutationGateway = {
 	registerRepo: registerRepoMutation,
 	createWorkspace: createWorkspaceMutation,
 	addRepo: addRepoMutation,
+	addReposToWorkset: addReposToWorksetMutation,
 	renameWorkspace: renameWorkspaceMutation,
 	archiveWorkspace: archiveWorkspaceMutation,
 	removeWorkspace: removeWorkspaceMutation,
@@ -221,6 +242,10 @@ export const createWorkspaceActionMutationService = (
 			addRepo: gateway.addRepo,
 			removeRepo: gateway.removeRepo,
 		}),
+	addReposToWorkset: (input) =>
+		runAddReposToWorksetMutation(input, {
+			addReposToWorkset: gateway.addReposToWorkset,
+		}),
 	renameWorkspace: (input) =>
 		runRenameWorkspaceMutation(input, {
 			renameWorkspace: gateway.renameWorkspace,
@@ -241,34 +266,36 @@ export const createWorkspaceActionMutationService = (
 
 export const workspaceActionMutations = createWorkspaceActionMutationService();
 
-export const runCreateWorkspaceMutation = async (
-	input: CreateWorkspaceMutationInput,
-	deps: CreateWorkspaceMutationDeps,
-): Promise<CreateWorkspaceMutationResult> => {
+const deriveReposToProcess = (input: CreateWorkspaceMutationInput): CreateDirectRepo[] => {
 	const reposToProcess = [...input.directRepos];
 	const pendingSource = input.primaryInput.trim();
-	if (
-		pendingSource &&
-		isRepoSource(pendingSource) &&
-		!reposToProcess.some((repo) => repo.url === pendingSource)
-	) {
-		reposToProcess.push({ url: pendingSource, register: true });
+	const hasPendingSource = pendingSource.length > 0;
+	if (!hasPendingSource || !isRepoSource(pendingSource)) {
+		return reposToProcess;
 	}
+	if (reposToProcess.some((repo) => repo.url === pendingSource)) {
+		return reposToProcess;
+	}
+	reposToProcess.push({ url: pendingSource, register: true });
+	return reposToProcess;
+};
 
+const buildCreateWorkspaceRepoSources = (
+	reposToProcess: CreateDirectRepo[],
+	selectedAliases: Iterable<string>,
+): string[] => {
 	const repos: string[] = reposToProcess.map((repo) => repo.url);
-
-	for (const alias of input.selectedAliases) {
+	for (const alias of selectedAliases) {
 		repos.push(alias);
 	}
+	return repos;
+};
 
-	const worksetName = input.worksetName?.trim() || undefined;
-	const result = await deps.createWorkspace(
-		input.finalName,
-		'',
-		worksetName,
-		repos.length > 0 ? repos : undefined,
-	);
-	const collectedWarnings = [...(result.warnings ?? [])];
+const registerReposInCatalog = async (
+	reposToProcess: CreateDirectRepo[],
+	deps: CreateWorkspaceMutationDeps,
+	collectedWarnings: string[],
+): Promise<void> => {
 	for (const repo of reposToProcess) {
 		if (!repo.register) continue;
 		const repoName = deriveRepoName(repo.url) || repo.url;
@@ -280,6 +307,28 @@ export const runCreateWorkspaceMutation = async (
 				`Registered ${repoName} in workset but failed to save in Repo Catalog: ${message}`,
 			);
 		}
+	}
+};
+
+export const runCreateWorkspaceMutation = async (
+	input: CreateWorkspaceMutationInput,
+	deps: CreateWorkspaceMutationDeps,
+): Promise<CreateWorkspaceMutationResult> => {
+	const reposToProcess = deriveReposToProcess(input);
+	const repos = buildCreateWorkspaceRepoSources(reposToProcess, input.selectedAliases);
+
+	const worksetName = input.worksetName?.trim() || undefined;
+	const result = await deps.createWorkspace(
+		input.finalName,
+		'',
+		worksetName,
+		repos.length > 0 ? repos : undefined,
+		undefined,
+		{ worksetOnly: input.worksetOnly === true },
+	);
+	const collectedWarnings = [...(result.warnings ?? [])];
+	if (!input.worksetOnly) {
+		await registerReposInCatalog(reposToProcess, deps, collectedWarnings);
 	}
 
 	return {
@@ -371,6 +420,26 @@ export const runAddItemsMutation = async (
 		warnings: dedupeWarnings(collectedWarnings),
 		pendingHooks: Array.from(pendingByKey.values()),
 		hookRuns: collectedHookRuns,
+	};
+};
+
+export const runAddReposToWorksetMutation = async (
+	input: AddReposToWorksetMutationInput,
+	deps: AddReposToWorksetMutationDeps,
+): Promise<AddItemsMutationResult> => {
+	const source = input.source.trim();
+	const sources = [
+		...(source.length > 0 ? [source] : []),
+		...Array.from(input.selectedAliases)
+			.map((alias) => alias.trim())
+			.filter((alias) => alias.length > 0),
+	];
+	const result = await deps.addReposToWorkset(input.worksetName, sources);
+	return {
+		itemCount: result.payload.added?.length ?? 0,
+		warnings: dedupeWarnings(result.warnings ?? []),
+		pendingHooks: [],
+		hookRuns: [],
 	};
 };
 

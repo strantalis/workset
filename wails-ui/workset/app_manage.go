@@ -8,11 +8,12 @@ import (
 )
 
 type WorkspaceCreateRequest struct {
-	Name     string   `json:"name"`
-	Path     string   `json:"path"`
-	Template string   `json:"template,omitempty"`
-	Repos    []string `json:"repos,omitempty"`
-	Groups   []string `json:"groups,omitempty"`
+	Name        string   `json:"name"`
+	Path        string   `json:"path"`
+	Template    string   `json:"template,omitempty"`
+	WorksetOnly bool     `json:"worksetOnly,omitempty"`
+	Repos       []string `json:"repos,omitempty"`
+	Groups      []string `json:"groups,omitempty"`
 }
 
 type WorkspaceCreateResponse struct {
@@ -34,6 +35,16 @@ type RepoAddResponse struct {
 	Warnings     []string                       `json:"warnings,omitempty"`
 	PendingHooks []worksetapi.HookPendingJSON   `json:"pendingHooks,omitempty"`
 	HookRuns     []worksetapi.HookExecutionJSON `json:"hookRuns,omitempty"`
+}
+
+type WorksetRepoAddRequest struct {
+	Workset string   `json:"workset"`
+	Sources []string `json:"sources"`
+}
+
+type WorksetRepoAddResponse struct {
+	Payload  worksetapi.WorksetRepoAddResultJSON `json:"payload"`
+	Warnings []string                            `json:"warnings,omitempty"`
 }
 
 type HooksRunRequest struct {
@@ -93,11 +104,12 @@ func (a *App) CreateWorkspace(input WorkspaceCreateRequest) (WorkspaceCreateResp
 	a.ensureService()
 
 	result, err := a.service.CreateWorkspace(ctx, worksetapi.WorkspaceCreateInput{
-		Name:     input.Name,
-		Path:     input.Path,
-		Template: input.Template,
-		Repos:    input.Repos,
-		Groups:   input.Groups,
+		Name:        input.Name,
+		Path:        input.Path,
+		Template:    input.Template,
+		WorksetOnly: input.WorksetOnly,
+		Repos:       input.Repos,
+		Groups:      input.Groups,
 	})
 	if err != nil {
 		return WorkspaceCreateResponse{}, err
@@ -213,6 +225,26 @@ func (a *App) AddRepo(input RepoAddRequest) (RepoAddResponse, error) {
 		response.HookRuns = append(response.HookRuns, result.HookRuns...)
 	}
 	return response, nil
+}
+
+func (a *App) AddReposToWorkset(input WorksetRepoAddRequest) (WorksetRepoAddResponse, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	a.ensureService()
+
+	result, err := a.service.AddReposToWorkset(ctx, worksetapi.WorksetRepoAddInput{
+		Workset: input.Workset,
+		Sources: input.Sources,
+	})
+	if err != nil {
+		return WorksetRepoAddResponse{}, err
+	}
+	return WorksetRepoAddResponse{
+		Payload:  result.Payload,
+		Warnings: result.Warnings,
+	}, nil
 }
 
 func (a *App) RunHooks(input HooksRunRequest) (HooksRunResponse, error) {

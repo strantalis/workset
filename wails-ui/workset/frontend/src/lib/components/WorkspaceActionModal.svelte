@@ -23,7 +23,10 @@
 		type WorkspaceActionPendingHook,
 	} from '../services/workspaceActionHooks';
 	import { formatWorkspaceActionError } from '../services/workspaceActionErrors';
-	import { workspaceActionMutations } from '../services/workspaceActionService';
+	import {
+		evaluateHookTransition,
+		workspaceActionMutations,
+	} from '../services/workspaceActionService';
 	import {
 		addDirectRepoSource,
 		removeDirectRepoByURL,
@@ -380,6 +383,15 @@
 	});
 
 	const modalSize = $derived(deriveWorkspaceActionModalSize(mode, phase));
+	const inlineThreadHookResults = $derived(mode === 'create-thread' && phase === 'form');
+
+	const queueModalAutoClose = (delayMs = 1500): void => {
+		if (autoCloseTimer) return;
+		autoCloseTimer = setTimeout(() => {
+			autoCloseTimer = null;
+			onClose();
+		}, delayMs);
+	};
 
 	const handleRunPendingHook = async (pending: WorkspaceActionPendingHook): Promise<void> => {
 		await runWorkspaceActionPendingHook({
@@ -451,9 +463,6 @@
 		threadRepos: string[];
 		aliasesToCreate: Set<string>;
 		directReposForMutation: WorkspaceActionDirectRepo[];
-		pendingSource: string;
-		hasCatalogRepos: boolean;
-		hasDirectRepos: boolean;
 	};
 
 	const buildCreateWorkspacePlan = (): CreateWorkspacePlan => {
@@ -464,28 +473,15 @@
 			),
 		);
 		const aliasesToCreate = isThreadMode ? new Set(threadRepos) : selectedAliases;
-		const pendingSource = isThreadMode ? '' : primaryInput.trim();
-		const hasPendingSource = pendingSource.length > 0 && isRepoSource(pendingSource);
-		const hasDirectRepos = !isThreadMode && (directRepos.length > 0 || hasPendingSource);
-		const hasCatalogRepos = aliasesToCreate.size > 0;
 		return {
 			isThreadMode,
 			threadRepos,
 			aliasesToCreate,
 			directReposForMutation: isThreadMode ? [] : directRepos,
-			pendingSource,
-			hasCatalogRepos,
-			hasDirectRepos,
 		};
 	};
 
-	const getCreateValidationError = (plan: CreateWorkspacePlan): string | null => {
-		if (plan.isThreadMode && plan.threadRepos.length === 0) {
-			return 'Selected workset has no repositories.';
-		}
-		if (!plan.isThreadMode && !plan.hasCatalogRepos && !plan.hasDirectRepos) {
-			return 'Select at least one repository or add a repository source.';
-		}
+	const getCreateValidationError = (): string | null => {
 		if (!finalName) {
 			return mode === 'create-thread' ? 'Enter a thread name.' : 'Enter a workset name.';
 		}
@@ -503,13 +499,26 @@
 			return;
 		}
 		if (transition.shouldAutoClose) {
-			autoCloseTimer = setTimeout(() => onClose(), 1500);
+			queueModalAutoClose();
 		}
 	};
 
+	$effect(() => {
+		if (!inlineThreadHookResults || loading || !success) return;
+		if (pendingHooks.length === 0 && hookRuns.length === 0) return;
+
+		const transition = evaluateHookTransition({
+			warnings,
+			pendingHooks,
+			hookRuns,
+		});
+		if (!transition.shouldAutoClose) return;
+		queueModalAutoClose();
+	});
+
 	const handleCreate = async (): Promise<void> => {
 		const plan = buildCreateWorkspacePlan();
-		const validationError = getCreateValidationError(plan);
+		const validationError = getCreateValidationError();
 		if (validationError) {
 			error = validationError;
 			return;
@@ -533,13 +542,18 @@
 				directRepos: plan.directReposForMutation,
 				selectedAliases: plan.aliasesToCreate,
 				worksetName: plan.isThreadMode ? (worksetName ?? undefined) : undefined,
+				worksetOnly: !plan.isThreadMode,
 			});
 
 			hookRuns = appendHookRuns(hookRuns, result.hookRuns);
 			pendingHooks = result.pendingHooks.map((pending) => ({ ...pending }));
 			hookWorkspaceId = result.workspaceName;
 			await loadWorkspaces(true);
-			selectWorkspace(result.workspaceName);
+			if (plan.isThreadMode) {
+				selectWorkspace(result.workspaceName);
+			} else {
+				clearWorkspace();
+			}
 			warnings = result.warnings;
 			applyMutationTransition(
 				resolveMutationHookTransition({
@@ -548,6 +562,7 @@
 					warnings,
 					pendingHooks,
 					hookRuns,
+					inlineResults: plan.isThreadMode,
 				}),
 			);
 		} catch (err) {
@@ -597,35 +612,47 @@
 		| { ok: false; error: string }
 		| {
 				ok: true;
+				mode: 'threads' | 'workset';
 				displayName: string;
+				worksetName: string;
 				source: string;
 				targetWorkspaces: Workspace[];
 				aliasSelections: string[];
 		  };
 
+	const resolveAddItemsTargets = (): Workspace[] => {
+		const targetIds =
+			targetWorkspaceIds.length > 0 ? targetWorkspaceIds : workspace ? [workspace.id] : [];
+		const workspaceById = new Map($workspaces.map((entry) => [entry.id, entry]));
+		return targetIds
+			.map((id) => workspaceById.get(id))
+			.filter((entry): entry is Workspace => entry !== undefined && entry.placeholder !== true);
+	};
+
+	const resolveAddItemsWorksetLabel = (): string =>
+		(worksetName ?? workspace?.worksetLabel ?? workspace?.name ?? '').trim();
+
 	const buildAddItemsPlan = (): AddItemsPlan => {
-		if (!workspace) {
-			return { ok: false, error: 'Workspace is required.' };
-		}
 		const source = addSource.trim();
-		const hasSource = source.length > 0;
-		const hasAliases = selectedAliases.size > 0;
-		if (!hasSource && !hasAliases) {
+		if (source.length === 0 && selectedAliases.size === 0) {
 			return { ok: false, error: 'Provide a repo URL/path or select repositories.' };
 		}
 
-		const targetIds = targetWorkspaceIds.length > 0 ? targetWorkspaceIds : [workspace.id];
-		const workspaceById = new Map($workspaces.map((entry) => [entry.id, entry]));
-		const targetWorkspaces = targetIds
-			.map((id) => workspaceById.get(id))
-			.filter((entry): entry is Workspace => entry !== undefined);
-		if (targetWorkspaces.length === 0) {
-			return { ok: false, error: 'Unable to locate threads for this workset.' };
+		const targetWorkspaces = resolveAddItemsTargets();
+		const normalizedWorksetName = resolveAddItemsWorksetLabel();
+		if (targetWorkspaces.length === 0 && !normalizedWorksetName) {
+			return { ok: false, error: 'Unable to locate workset.' };
+		}
+		const displayName = targetWorkspaces[0]?.name ?? normalizedWorksetName;
+		if (!displayName) {
+			return { ok: false, error: 'Unable to locate workset.' };
 		}
 
 		return {
 			ok: true,
-			displayName: worksetName?.trim() || workspace.name,
+			mode: targetWorkspaces.length > 0 ? 'threads' : 'workset',
+			displayName,
+			worksetName: normalizedWorksetName || displayName,
 			source,
 			targetWorkspaces,
 			aliasSelections: Array.from(selectedAliases),
@@ -690,19 +717,28 @@
 		warnings = [];
 		pendingHooks = [];
 		hookRuns = [];
-		hookWorkspaceId = plan.targetWorkspaces[0]?.id ?? null;
+		hookWorkspaceId = plan.mode === 'threads' ? (plan.targetWorkspaces[0]?.id ?? null) : null;
 		({ activeHookOperation, activeHookWorkspace, hookRuns, pendingHooks } = beginHookTracking(
 			'repo.add',
 			plan.displayName,
 		));
 		try {
-			const result = await runAddItemsMutations(
-				plan.targetWorkspaces,
-				plan.source,
-				plan.aliasSelections,
-			);
-			if (result.mutatedCount === 0) {
-				error = 'Selected repositories are already present in every thread for this workset.';
+			const result =
+				plan.mode === 'threads'
+					? await runAddItemsMutations(plan.targetWorkspaces, plan.source, plan.aliasSelections)
+					: {
+							mutatedCount: 1,
+							...(await workspaceActionMutations.addReposToWorkset({
+								worksetName: plan.worksetName,
+								source: plan.source,
+								selectedAliases: new Set(plan.aliasSelections),
+							})),
+						};
+			if (result.itemCount === 0 || result.mutatedCount === 0) {
+				error =
+					plan.mode === 'threads'
+						? 'Selected repositories are already present in every thread for this workset.'
+						: 'Selected repositories are already present in this workset.';
 				return;
 			}
 
@@ -883,7 +919,9 @@
 			{error}
 			{success}
 			{warnings}
+			{hookRuns}
 			{pendingHooks}
+			showHooks={!inlineThreadHookResults}
 			onRunPendingHook={handleRunPendingHook}
 			onTrustPendingHook={handleTrustPendingHook}
 		/>
@@ -948,5 +986,19 @@
 			onRemoveRepoConfirmTextInput={(value) => (removeRepoConfirmText = value)}
 			onRemoveRepoSubmit={handleRemoveRepo}
 		/>
+
+		{#if inlineThreadHookResults && (hookRuns.length > 0 || pendingHooks.length > 0)}
+			<WorkspaceActionStatusAlerts
+				{error}
+				{success}
+				{warnings}
+				{hookRuns}
+				{pendingHooks}
+				showMessages={false}
+				showHooks={true}
+				onRunPendingHook={handleRunPendingHook}
+				onTrustPendingHook={handleTrustPendingHook}
+			/>
+		{/if}
 	{/if}
 </Modal>

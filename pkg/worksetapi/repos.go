@@ -11,6 +11,12 @@ import (
 	"github.com/strantalis/workset/internal/workspace"
 )
 
+type resolvedWorksetRepoSource struct {
+	name       string
+	url        string
+	sourcePath string
+}
+
 // ListRepos lists repos configured for a workspace.
 func (s *Service) ListRepos(ctx context.Context, selector WorkspaceSelector) (RepoListResult, error) {
 	cfg, info, err := s.loadGlobal(ctx)
@@ -236,6 +242,200 @@ func (s *Service) AddRepo(ctx context.Context, input RepoAddInput) (RepoAddResul
 		HookRuns:     hookRuns,
 		Config:       info,
 	}, nil
+}
+
+// AddReposToWorkset adds repos to an existing workset without requiring any thread.
+func (s *Service) AddReposToWorkset(
+	ctx context.Context,
+	input WorksetRepoAddInput,
+) (WorksetRepoAddResult, error) {
+	cfg, info, err := s.loadGlobal(ctx)
+	if err != nil {
+		return WorksetRepoAddResult{}, err
+	}
+	worksetName, sources, err := validateWorksetRepoAddInput(cfg, input)
+	if err != nil {
+		return WorksetRepoAddResult{}, err
+	}
+	resolved, err := resolveWorksetRepoSources(cfg, sources)
+	if err != nil {
+		return WorksetRepoAddResult{}, err
+	}
+
+	added := []string{}
+	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
+		info = loadInfo
+		var applyErr error
+		added, applyErr = applyResolvedWorksetRepos(cfg, worksetName, resolved)
+		return applyErr
+	}); err != nil {
+		return WorksetRepoAddResult{}, err
+	}
+
+	return WorksetRepoAddResult{
+		Payload: WorksetRepoAddResultJSON{
+			Status:  "ok",
+			Workset: worksetName,
+			Added:   added,
+		},
+		Config: info,
+	}, nil
+}
+
+func validateWorksetRepoAddInput(
+	cfg config.GlobalConfig,
+	input WorksetRepoAddInput,
+) (string, []string, error) {
+	worksetName := strings.TrimSpace(input.Workset)
+	if worksetName == "" {
+		return "", nil, ValidationError{Message: "workset required"}
+	}
+	if !worksetExists(cfg, worksetName) {
+		return "", nil, NotFoundError{Message: fmt.Sprintf("workset not found: %q", worksetName)}
+	}
+	sources := normalizeRepoNames(input.Sources)
+	if len(sources) == 0 {
+		return "", nil, ValidationError{Message: "at least one repo source required"}
+	}
+	return worksetName, sources, nil
+}
+
+func resolveWorksetRepoSources(
+	cfg config.GlobalConfig,
+	sources []string,
+) ([]resolvedWorksetRepoSource, error) {
+	resolved := make([]resolvedWorksetRepoSource, 0, len(sources))
+	for _, source := range sources {
+		repoSource, err := resolveWorksetRepoSource(cfg, source)
+		if err != nil {
+			return nil, err
+		}
+		resolved = append(resolved, repoSource)
+	}
+	return resolved, nil
+}
+
+func applyResolvedWorksetRepos(
+	cfg *config.GlobalConfig,
+	worksetName string,
+	resolved []resolvedWorksetRepoSource,
+) ([]string, error) {
+	if !worksetExists(*cfg, worksetName) {
+		return nil, NotFoundError{Message: fmt.Sprintf("workset not found: %q", worksetName)}
+	}
+	ensureWorksetRepoMaps(cfg)
+	baseRepos := normalizeRepoNames(cfg.WorksetRepos[worksetName])
+	baseSet := repoNameSet(baseRepos)
+	added := make([]string, 0, len(resolved))
+
+	for _, repoSource := range resolved {
+		cfg.Repos[repoSource.name] = mergeResolvedRepoAlias(
+			cfg.Repos[repoSource.name],
+			repoSource,
+			cfg.Defaults,
+		)
+		key := strings.ToLower(repoSource.name)
+		if _, exists := baseSet[key]; exists {
+			continue
+		}
+		baseSet[key] = struct{}{}
+		baseRepos = append(baseRepos, repoSource.name)
+		added = append(added, repoSource.name)
+	}
+
+	cfg.WorksetRepos[worksetName] = normalizeRepoNames(baseRepos)
+	return added, nil
+}
+
+func ensureWorksetRepoMaps(cfg *config.GlobalConfig) {
+	if cfg.WorksetRepos == nil {
+		cfg.WorksetRepos = map[string][]string{}
+	}
+	if cfg.Repos == nil {
+		cfg.Repos = map[string]config.RegisteredRepo{}
+	}
+}
+
+func repoNameSet(repoNames []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(repoNames))
+	for _, repoName := range repoNames {
+		set[strings.ToLower(repoName)] = struct{}{}
+	}
+	return set
+}
+
+func mergeResolvedRepoAlias(
+	alias config.RegisteredRepo,
+	repoSource resolvedWorksetRepoSource,
+	defaults config.Defaults,
+) config.RegisteredRepo {
+	if alias.Path == "" && alias.URL == "" {
+		if repoSource.sourcePath != "" {
+			alias.Path = repoSource.sourcePath
+			alias.URL = ""
+		} else if repoSource.url != "" {
+			alias.URL = repoSource.url
+			alias.Path = ""
+		}
+	}
+	if alias.DefaultBranch == "" {
+		alias.DefaultBranch = defaults.BaseBranch
+	}
+	if alias.Remote == "" {
+		alias.Remote = defaults.Remote
+	}
+	return alias
+}
+
+func resolveWorksetRepoSource(
+	cfg config.GlobalConfig,
+	source string,
+) (resolvedWorksetRepoSource, error) {
+	trimmed := strings.TrimSpace(source)
+	if trimmed == "" {
+		return resolvedWorksetRepoSource{}, ValidationError{Message: "repo source required"}
+	}
+	if alias, ok := cfg.Repos[trimmed]; ok {
+		return resolvedWorksetRepoSource{
+			name:       trimmed,
+			url:        strings.TrimSpace(alias.URL),
+			sourcePath: strings.TrimSpace(alias.Path),
+		}, nil
+	}
+	if looksLikeURL(trimmed) {
+		name := strings.TrimSpace(ops.DeriveRepoNameFromURL(trimmed))
+		if name == "" {
+			return resolvedWorksetRepoSource{}, ValidationError{Message: "unable to derive repo name from source"}
+		}
+		return resolvedWorksetRepoSource{name: name, url: trimmed}, nil
+	}
+	sourcePath, err := resolveLocalPathInput(trimmed)
+	if err != nil {
+		return resolvedWorksetRepoSource{}, err
+	}
+	name := strings.TrimSpace(filepath.Base(sourcePath))
+	if name == "" {
+		return resolvedWorksetRepoSource{}, ValidationError{Message: "unable to derive repo name from source"}
+	}
+	return resolvedWorksetRepoSource{name: name, sourcePath: sourcePath}, nil
+}
+
+func worksetExists(cfg config.GlobalConfig, worksetName string) bool {
+	normalizedWorkset := strings.TrimSpace(worksetName)
+	if normalizedWorkset == "" {
+		return false
+	}
+	if cfg.WorksetRepos != nil {
+		if _, ok := cfg.WorksetRepos[normalizedWorkset]; ok {
+			return true
+		}
+	}
+	for threadName, ref := range cfg.Workspaces {
+		if worksetNameForThread(threadName, ref) == normalizedWorkset {
+			return true
+		}
+	}
+	return false
 }
 
 // RemoveRepo removes a repo from a workspace and optionally deletes files.

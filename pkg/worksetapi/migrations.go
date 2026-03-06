@@ -257,8 +257,16 @@ func (s *Service) persistEmptyWorkspaceWorksetMigration(
 	forcePersist bool,
 ) error {
 	changed := forcePersist
-	if len(cfg.WorksetRepos) > 0 {
-		cfg.WorksetRepos = map[string][]string{}
+	normalizedWorksetRepos := map[string][]string{}
+	for worksetName, repos := range cfg.WorksetRepos {
+		trimmed := strings.TrimSpace(worksetName)
+		if trimmed == "" {
+			continue
+		}
+		normalizedWorksetRepos[trimmed] = normalizeRepoNames(repos)
+	}
+	if !sameWorksetRepoMap(cfg.WorksetRepos, normalizedWorksetRepos) {
+		cfg.WorksetRepos = normalizedWorksetRepos
 		changed = true
 	}
 	if forcePersist && len(cfg.Groups) > 0 {
@@ -272,6 +280,9 @@ func (s *Service) persistEmptyWorkspaceWorksetMigration(
 	if updater, ok := s.configs.(ConfigUpdater); ok {
 		_, err := updater.Update(ctx, configPath, func(target *config.GlobalConfig, _ config.GlobalConfigLoadInfo) error {
 			target.WorksetRepos = map[string][]string{}
+			for worksetName, repos := range normalizedWorksetRepos {
+				target.WorksetRepos[worksetName] = append([]string(nil), repos...)
+			}
 			if forcePersist {
 				target.Groups = map[string]config.Group{}
 			}
@@ -426,6 +437,20 @@ func (s *Service) rebuildWorksetRepoModel(ctx context.Context, cfg *config.Globa
 	}
 
 	newWorksetRepos := map[string][]string{}
+	for worksetName, repos := range cfg.WorksetRepos {
+		normalizedWorkset := strings.TrimSpace(worksetName)
+		if normalizedWorkset == "" {
+			continue
+		}
+		if _, hasThreads := groupThreads[normalizedWorkset]; hasThreads {
+			continue
+		}
+		if orphanWorksetEntryStale(normalizedWorkset, cfg.Workspaces) {
+			changed = true
+			continue
+		}
+		newWorksetRepos[normalizedWorkset] = normalizeRepoNames(repos)
+	}
 	for worksetName, threads := range groupThreads {
 		base, hasBase := intersectThreadRepos(threads, threadRepos)
 		if !hasBase {
@@ -455,6 +480,21 @@ func (s *Service) rebuildWorksetRepoModel(ctx context.Context, cfg *config.Globa
 		changed = true
 	}
 	return changed
+}
+
+func orphanWorksetEntryStale(worksetName string, workspaces map[string]config.WorkspaceRef) bool {
+	if strings.TrimSpace(worksetName) == "" {
+		return false
+	}
+	ref, ok := workspaces[worksetName]
+	if !ok {
+		return false
+	}
+	threadWorkset := strings.TrimSpace(workspaceRefWorkset(ref))
+	if threadWorkset == "" {
+		threadWorkset = strings.TrimSpace(worksetName)
+	}
+	return threadWorkset != strings.TrimSpace(worksetName)
 }
 
 func (s *Service) loadThreadRepoNames(ctx context.Context, root string) ([]string, bool) {

@@ -65,6 +65,7 @@ type WorkspaceSnapshotJSON struct {
 	Template       string             `json:"template,omitempty"`
 	WorksetKey     string             `json:"workset_key,omitempty"`
 	WorksetLabel   string             `json:"workset_label,omitempty"`
+	Placeholder    bool               `json:"placeholder,omitempty"`
 	CreatedAt      string             `json:"created_at,omitempty"`
 	LastUsed       string             `json:"last_used,omitempty"`
 	ArchivedAt     string             `json:"archived_at,omitempty"`
@@ -181,6 +182,20 @@ type RepoAddResult struct {
 	PendingHooks []HookPending
 	HookRuns     []HookExecutionJSON
 	Config       config.GlobalConfigLoadInfo
+}
+
+// WorksetRepoAddResultJSON is the JSON payload for workset-level repo add operations.
+type WorksetRepoAddResultJSON struct {
+	Status  string   `json:"status"`
+	Workset string   `json:"workset"`
+	Added   []string `json:"added,omitempty"`
+}
+
+// WorksetRepoAddResult wraps workset-level repo add payload with warnings and config metadata.
+type WorksetRepoAddResult struct {
+	Payload  WorksetRepoAddResultJSON
+	Warnings []string
+	Config   config.GlobalConfigLoadInfo
 }
 
 // HookPendingJSON describes hooks waiting for approval/trust.
