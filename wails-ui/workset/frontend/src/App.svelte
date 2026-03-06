@@ -32,6 +32,7 @@
 	} from './lib/events';
 	import { subscribeRepoDiffEvent } from './lib/repoDiffService';
 	import { releaseWorkspaceTerminals } from './lib/terminal/terminalService';
+	import { shouldClearPreviousWorkspaceTerminalActivity } from './lib/terminal/terminalActivity';
 	import { subscribeWailsEvent } from './lib/wailsEventRegistry';
 	import { startRepoStatusWatch, stopRepoStatusWatch } from './lib/api/repo-diff';
 	import EmptyState from './lib/components/EmptyState.svelte';
@@ -214,6 +215,14 @@
 		const next = { ...activeTerminalWorkspaces };
 		delete next[workspaceId];
 		activeTerminalWorkspaces = next;
+	};
+
+	const clearWorkspaceTerminalActivity = (workspaceId: string | null | undefined): void => {
+		const id = workspaceId?.trim() ?? '';
+		if (!id) return;
+		clearTerminalActivityTimer(id);
+		terminalActivityDeadlines.delete(id);
+		removeWorkspaceTerminalActivity(id);
 	};
 
 	const scheduleWorkspaceTerminalActivityExpiry = (workspaceId: string, delayMs: number): void => {
@@ -428,7 +437,17 @@
 		if (fixedWorkspaceId && !visibleWorkspaces.some((workspace) => workspace.id === workspaceId)) {
 			return;
 		}
+		const previousWorkspaceId = $activeWorkspaceId;
 		selectWorkspace(workspaceId);
+		if (
+			shouldClearPreviousWorkspaceTerminalActivity({
+				previousWorkspaceId,
+				nextWorkspaceId: workspaceId,
+				previousWorkspacePoppedOut: isWorkspacePoppedOut(previousWorkspaceId),
+			})
+		) {
+			clearWorkspaceTerminalActivity(previousWorkspaceId);
+		}
 		if (currentView === 'onboarding') {
 			currentView = 'terminal-cockpit';
 		}
@@ -440,7 +459,17 @@
 		if (fixedWorkspaceId && !visibleWorkspaces.some((workspace) => workspace.id === workspaceId)) {
 			return;
 		}
+		const previousWorkspaceId = $activeWorkspaceId;
 		selectWorkspace(workspaceId);
+		if (
+			shouldClearPreviousWorkspaceTerminalActivity({
+				previousWorkspaceId,
+				nextWorkspaceId: workspaceId,
+				previousWorkspacePoppedOut: isWorkspacePoppedOut(previousWorkspaceId),
+			})
+		) {
+			clearWorkspaceTerminalActivity(previousWorkspaceId);
+		}
 		currentView = 'terminal-cockpit';
 		clearRepo();
 	};

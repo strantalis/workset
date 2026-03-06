@@ -269,7 +269,7 @@ describe('ExplorerPanel', () => {
 		expect(onAddRepo).toHaveBeenCalledWith('workset:beta');
 	});
 
-	test('renders Live badge for threads with active terminal IO', () => {
+	test('reveals the remove button only for the hovered thread', async () => {
 		const alpha = buildWorkspace({
 			id: 'thread-alpha',
 			name: 'alpha',
@@ -284,7 +284,110 @@ describe('ExplorerPanel', () => {
 			worksetKey: 'workset:core',
 			worksetLabel: 'Core',
 		});
-		const { getByText } = render(ExplorerPanel, {
+		const { getByRole } = render(ExplorerPanel, {
+			props: {
+				workspaces: [alpha, beta],
+				activeWorkspaceId: alpha.id,
+				shortcutMap: new Map<string, number>(),
+				onSelectWorkspace: vi.fn(),
+			},
+		});
+
+		const alphaRow = getByRole('button', { name: 'alpha' }).closest('.thread-row');
+		const betaRow = getByRole('button', { name: 'beta' }).closest('.thread-row');
+		const alphaRemove = getByRole('button', { name: 'Remove thread alpha' });
+		const betaRemove = getByRole('button', { name: 'Remove thread beta' });
+		expect(alphaRow).not.toBeNull();
+		expect(betaRow).not.toBeNull();
+		expect(alphaRemove).not.toHaveClass('visible');
+		expect(betaRemove).not.toHaveClass('visible');
+
+		await fireEvent.mouseEnter(alphaRow!);
+		expect(alphaRemove).toHaveClass('visible');
+		expect(betaRemove).not.toHaveClass('visible');
+
+		await fireEvent.mouseLeave(alphaRow!);
+		await fireEvent.mouseEnter(betaRow!);
+		expect(alphaRemove).not.toHaveClass('visible');
+		expect(betaRemove).toHaveClass('visible');
+	});
+
+	test('clears the hovered remove button when switching threads', async () => {
+		const alpha = buildWorkspace({
+			id: 'thread-alpha',
+			name: 'alpha',
+			workset: 'Core',
+			worksetKey: 'workset:core',
+			worksetLabel: 'Core',
+		});
+		const beta = buildWorkspace({
+			id: 'thread-beta',
+			name: 'beta',
+			workset: 'Core',
+			worksetKey: 'workset:core',
+			worksetLabel: 'Core',
+		});
+		const onSelectWorkspace = vi.fn<(workspaceId: string) => void>();
+		const { getByRole } = render(ExplorerPanel, {
+			props: {
+				workspaces: [alpha, beta],
+				activeWorkspaceId: alpha.id,
+				shortcutMap: new Map<string, number>(),
+				onSelectWorkspace,
+			},
+		});
+
+		const alphaRemove = getByRole('button', { name: 'Remove thread alpha' });
+		const alphaRow = getByRole('button', { name: 'alpha' }).closest('.thread-row');
+		expect(alphaRow).not.toBeNull();
+
+		await fireEvent.mouseEnter(alphaRow!);
+		expect(alphaRemove).toHaveClass('visible');
+
+		await fireEvent.click(getByRole('button', { name: 'beta' }));
+		expect(onSelectWorkspace).toHaveBeenCalledWith(beta.id);
+		expect(alphaRemove).not.toHaveClass('visible');
+	});
+
+	test('keeps remove button keyboard reachable without hover', async () => {
+		const alpha = buildWorkspace({
+			id: 'thread-alpha',
+			name: 'alpha',
+			workset: 'Core',
+			worksetKey: 'workset:core',
+			worksetLabel: 'Core',
+		});
+		const { getByRole } = render(ExplorerPanel, {
+			props: {
+				workspaces: [alpha],
+				activeWorkspaceId: alpha.id,
+				shortcutMap: new Map<string, number>(),
+				onSelectWorkspace: vi.fn(),
+			},
+		});
+
+		const removeButton = getByRole('button', { name: 'Remove thread alpha' });
+		expect(removeButton.tabIndex).toBe(0);
+		removeButton.focus();
+		expect(removeButton).toHaveFocus();
+	});
+
+	test('renders animated work badge for threads with active terminal IO', () => {
+		const alpha = buildWorkspace({
+			id: 'thread-alpha',
+			name: 'alpha',
+			workset: 'Core',
+			worksetKey: 'workset:core',
+			worksetLabel: 'Core',
+		});
+		const beta = buildWorkspace({
+			id: 'thread-beta',
+			name: 'beta',
+			workset: 'Core',
+			worksetKey: 'workset:core',
+			worksetLabel: 'Core',
+		});
+		const { container, getByText } = render(ExplorerPanel, {
 			props: {
 				workspaces: [alpha, beta],
 				activeWorkspaceId: alpha.id,
@@ -294,9 +397,10 @@ describe('ExplorerPanel', () => {
 			},
 		});
 
-		const liveBadge = getByText('Live');
-		expect(liveBadge).toBeInTheDocument();
-		expect(getByText('beta').parentElement).toContainElement(liveBadge);
+		const workBadge = container.querySelector<HTMLElement>('.thread-live-indicator');
+		expect(workBadge).not.toBeNull();
+		expect(workBadge).toHaveAttribute('title', 'Work in progress');
+		expect(getByText('beta').parentElement).toContainElement(workBadge);
 	});
 
 	test('does not render Live badge when no thread has active terminal IO', () => {
