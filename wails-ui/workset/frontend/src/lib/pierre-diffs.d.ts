@@ -17,6 +17,7 @@ declare module '@pierre/diffs' {
 		hunkSeparators?: 'simple' | 'metadata' | 'line-info' | 'custom';
 		lineDiffType?: 'word-alt' | 'word' | 'char' | 'none';
 		overflow?: 'scroll' | 'wrap';
+		unsafeCSS?: string;
 		disableFileHeader?: boolean;
 	};
 

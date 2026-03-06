@@ -21,5 +21,6 @@ export const buildDiffRenderOptions = <TAnnotation>(
 	diffStyle: resolveDiffStyle(containerWidth),
 	diffIndicators: 'bars',
 	overflow: 'wrap',
+	unsafeCSS: '[data-diffs] { width: 100%; } [data-code] { width: 100%; }',
 	renderAnnotation,
 });

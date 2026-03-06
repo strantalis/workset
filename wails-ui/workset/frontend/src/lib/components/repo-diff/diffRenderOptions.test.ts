@@ -21,5 +21,6 @@ describe('diffRenderOptions', () => {
 		expect(options.diffStyle).toBe('unified');
 		expect(options.diffIndicators).toBe('bars');
 		expect(options.overflow).toBe('wrap');
+		expect(options.unsafeCSS).toBeDefined();
 	});
 });
