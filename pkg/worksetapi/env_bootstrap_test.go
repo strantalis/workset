@@ -65,6 +65,38 @@ func TestApplyEnvSnapshotKeepsExistingNonOverride(t *testing.T) {
 	}
 }
 
+func TestApplyEnvSnapshotOverridesHomeAndXDG(t *testing.T) {
+	t.Setenv("HOME", "/tmp/old-home")
+	t.Setenv("XDG_CONFIG_HOME", "/tmp/old-xdg-config")
+	t.Setenv("XDG_STATE_HOME", "/tmp/old-xdg-state")
+	t.Setenv("XDG_CACHE_HOME", "/tmp/old-xdg-cache")
+
+	changed := applyEnvSnapshot(map[string]string{
+		"HOME":            "/Users/tester",
+		"XDG_CONFIG_HOME": "/Users/tester/.config",
+		"XDG_STATE_HOME":  "/Users/tester/.local/state",
+		"XDG_CACHE_HOME":  "/Users/tester/.cache",
+	})
+
+	if got := os.Getenv("HOME"); got != "/Users/tester" {
+		t.Fatalf("expected HOME override, got %q", got)
+	}
+	if got := os.Getenv("XDG_CONFIG_HOME"); got != "/Users/tester/.config" {
+		t.Fatalf("expected XDG_CONFIG_HOME override, got %q", got)
+	}
+	if got := os.Getenv("XDG_STATE_HOME"); got != "/Users/tester/.local/state" {
+		t.Fatalf("expected XDG_STATE_HOME override, got %q", got)
+	}
+	if got := os.Getenv("XDG_CACHE_HOME"); got != "/Users/tester/.cache" {
+		t.Fatalf("expected XDG_CACHE_HOME override, got %q", got)
+	}
+	for _, key := range []string{"HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"} {
+		if !containsKey(changed, key) {
+			t.Fatalf("expected %s in changed keys, got %v", key, changed)
+		}
+	}
+}
+
 func TestEnvSnapshotDisabledParsing(t *testing.T) {
 	t.Setenv("WORKSET_ENV_SNAPSHOT", "0")
 	if !envSnapshotDisabled() {
