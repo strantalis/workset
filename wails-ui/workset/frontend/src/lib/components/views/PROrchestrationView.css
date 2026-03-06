@@ -633,12 +633,16 @@
 	min-height: 0;
 	height: 100%;
 	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	width: 100%;
 }
 .diff-renderer {
 	flex: 1;
 	min-height: 0;
 	min-width: 0;
 	height: 100%;
+	width: 100%;
 	background: var(--bg);
 	overflow: hidden;
 	--diffs-dark-bg: var(--bg);
