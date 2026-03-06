@@ -146,14 +146,12 @@
 	let sidebarCollapsed = $state(readSidebarCollapsed());
 	const canCollapseSidebar = $derived(selectedItemId !== null);
 
-	const toggleSidebar = (): void => {
-		if (!sidebarCollapsed && !canCollapseSidebar) return;
-		persistSidebarCollapsed((sidebarCollapsed = !sidebarCollapsed));
-	};
-	const setViewMode = (mode: 'active' | 'ready'): void => {
-		viewMode = mode;
-		if (mode !== 'ready') prComposerItemId = null;
-	};
+	const toggleSidebar = (): void =>
+		void (!sidebarCollapsed && !canCollapseSidebar
+			? undefined
+			: persistSidebarCollapsed((sidebarCollapsed = !sidebarCollapsed)));
+	const setViewMode = (mode: 'active' | 'ready'): void =>
+		void ((viewMode = mode), mode !== 'ready' && (prComposerItemId = null));
 	const resolveTrackedTitle = (repoId: string, fallbackTitle: string): string =>
 		trackedPrMap.get(repoId)?.title ?? fallbackTitle;
 
@@ -167,11 +165,12 @@
 			: (workspace.repos.find((r) => r.id === selectedItem.repoId) ?? null),
 	);
 
-	const selectedFile = $derived.by(() => {
-		const files =
-			selectedSource === 'local' ? (localSummary?.files ?? []) : (diffSummary?.files ?? []);
-		return files[selectedFileIdx] ?? null;
-	});
+	const selectedFile = $derived.by(
+		() =>
+			(selectedSource === 'local' ? (localSummary?.files ?? []) : (diffSummary?.files ?? []))[
+				selectedFileIdx
+			] ?? null,
+	);
 
 	const selectedKey = $derived.by(() =>
 		selectedFile ? `${selectedSource}:${selectedFile.path}:${selectedFile.prevPath ?? ''}` : '',
@@ -195,22 +194,18 @@
 		() => activePrBranches !== null && (localSummary?.files.length ?? 0) > 0,
 	);
 
-	const clearCommitPushSuccessTimer = (): void => {
-		if (commitPushSuccessTimer == null) return;
-		clearTimeout(commitPushSuccessTimer);
-		commitPushSuccessTimer = null;
-	};
+	const clearCommitPushSuccessTimer = (): void =>
+		void (commitPushSuccessTimer != null && clearTimeout(commitPushSuccessTimer),
+		(commitPushSuccessTimer = null));
 
-	const pushStatusVisible = $derived.by(() => {
-		const pr = trackedPr;
-		return (
-			pr != null &&
+	const pushStatusVisible = $derived.by(
+		() =>
+			trackedPr != null &&
 			isActiveDetail &&
-			!isMergedTrackedPr(pr) &&
-			pr.state.toLowerCase() === 'open' &&
-			repoLocalStatus != null
-		);
-	});
+			!isMergedTrackedPr(trackedPr) &&
+			trackedPr.state.toLowerCase() === 'open' &&
+			repoLocalStatus != null,
+	);
 
 	const pushDisabled = $derived.by(
 		() =>
