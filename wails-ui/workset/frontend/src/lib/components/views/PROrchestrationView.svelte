@@ -50,6 +50,7 @@
 		applyPrStatusEvent,
 		buildFileDiffCacheKeyForSource,
 		commitPushStageLabel as formatCommitPushStageLabel,
+		createPrViewInteractionHandlers,
 		createTrackedPrMapCoordinator,
 		createTrackedPrStateReconciler,
 		persistSidebarCollapsed,
@@ -99,74 +100,72 @@
 		return { active, merged, tracked, readyToPR };
 	});
 
-	let viewMode: 'active' | 'ready' = $state('active');
-	let selectedItemId: string | null = $state(null);
-	let lastAppliedFocusKey = $state<string | null>(null);
+	let viewMode: 'active' | 'ready' = $state('active'),
+		selectedItemId: string | null = $state(null),
+		lastAppliedFocusKey = $state<string | null>(null);
 
 	let activeTab: 'overview' | 'files' | 'checks' = $state('overview');
 
-	let trackedPr: PullRequestCreated | null = $state(null);
-	let trackedPrLoading = $state(false);
-	let trackedPrRequestId = 0;
+	let trackedPr: PullRequestCreated | null = $state(null),
+		trackedPrLoading = $state(false),
+		trackedPrRequestId = 0;
 
-	let diffSummary: RepoDiffSummary | null = $state(null);
-	let localSummary: RepoDiffSummary | null = $state(null);
-	let diffSummaryLoading = $state(false);
-	let selectedFileIdx = $state(0);
-	let selectedSource = $state<'pr' | 'local'>('pr');
-	let fileDiffContent: RepoFileDiff | null = $state(null);
-	let fileDiffLoading = $state(false);
-	let fileDiffError: string | null = $state(null);
+	let diffSummary: RepoDiffSummary | null = $state(null),
+		localSummary: RepoDiffSummary | null = $state(null),
+		diffSummaryLoading = $state(false),
+		selectedFileIdx = $state(0),
+		selectedSource = $state<'pr' | 'local'>('pr'),
+		fileDiffContent: RepoFileDiff | null = $state(null),
+		fileDiffLoading = $state(false),
+		fileDiffError: string | null = $state(null);
 	let activeWatchKey: { wsId: string; repoId: string; mode: 'local' | 'pr' } | null = $state(null);
-	let activePrBranches: { base: string; head: string } | null = $state(null);
-	let activeFileKey: string | null = $state(null);
-	let lastDiffSummaryTargetKey: string | null = $state(null);
-	let diffSummaryRequestId = 0;
-	let localSummaryRequestId = 0;
-	let fileDiffRequestId = 0;
+	let activePrBranches: { base: string; head: string } | null = $state(null),
+		activeFileKey: string | null = $state(null),
+		lastDiffSummaryTargetKey: string | null = $state(null),
+		diffSummaryRequestId = 0,
+		localSummaryRequestId = 0,
+		fileDiffRequestId = 0;
 
-	let prStatus: PullRequestStatusResult | null = $state(null);
-	let prStatusLoading = $state(false);
-	let prStatusRequestId = 0;
+	let prStatus: PullRequestStatusResult | null = $state(null),
+		prStatusLoading = $state(false),
+		prStatusRequestId = 0;
 
-	let prReviews: PullRequestReviewComment[] = $state([]);
-	let prReviewsLoading = $state(false);
-	let currentUserId: number | null = $state(null);
+	let prReviews: PullRequestReviewComment[] = $state([]),
+		prReviewsLoading = $state(false),
+		currentUserId: number | null = $state(null);
 
 	let prComposerItemId: string | null = $state(null);
 
-	let repoLocalStatus: RepoLocalStatus | null = $state(null);
-	let commitPushLoading = $state(false);
-	let commitPushRepoId: string | null = $state(null);
-	let commitPushStage: GitHubOperationStage | null = $state(null);
-	let commitPushError: string | null = $state(null);
-	let commitPushSuccess = $state(false);
+	let repoLocalStatus: RepoLocalStatus | null = $state(null),
+		commitPushLoading = $state(false),
+		commitPushRepoId: string | null = $state(null),
+		commitPushStage: GitHubOperationStage | null = $state(null),
+		commitPushError: string | null = $state(null),
+		commitPushSuccess = $state(false);
 	let commitPushSuccessTimer: ReturnType<typeof setTimeout> | null = null;
 	let sidebarCollapsed = $state(readSidebarCollapsed());
 	const canCollapseSidebar = $derived(selectedItemId !== null);
 
 	const toggleSidebar = (): void => {
 		if (!sidebarCollapsed && !canCollapseSidebar) return;
-		sidebarCollapsed = !sidebarCollapsed;
-		persistSidebarCollapsed(sidebarCollapsed);
+		persistSidebarCollapsed((sidebarCollapsed = !sidebarCollapsed));
 	};
 	const setViewMode = (mode: 'active' | 'ready'): void => {
 		viewMode = mode;
-		if (mode !== 'ready') {
-			prComposerItemId = null;
-		}
+		if (mode !== 'ready') prComposerItemId = null;
 	};
 	const resolveTrackedTitle = (repoId: string, fallbackTitle: string): string =>
 		trackedPrMap.get(repoId)?.title ?? fallbackTitle;
 
-	const selectedItem = $derived(prItems.find((item) => item.id === selectedItemId) ?? null);
-	const wsId = $derived(workspace?.id ?? '');
-	const selectedRepoId = $derived(selectedItem?.repoId ?? '');
+	const selectedItem = $derived(prItems.find((item) => item.id === selectedItemId) ?? null),
+		wsId = $derived(workspace?.id ?? ''),
+		selectedRepoId = $derived(selectedItem?.repoId ?? '');
 
-	const selectedRepo = $derived.by(() => {
-		if (!selectedItem || !workspace) return null;
-		return workspace.repos.find((r) => r.id === selectedItem.repoId) ?? null;
-	});
+	const selectedRepo = $derived.by(() =>
+		!selectedItem || !workspace
+			? null
+			: (workspace.repos.find((r) => r.id === selectedItem.repoId) ?? null),
+	);
 
 	const selectedFile = $derived.by(() => {
 		const files =
@@ -174,42 +173,38 @@
 		return files[selectedFileIdx] ?? null;
 	});
 
-	const selectedKey = $derived.by(() => {
-		if (!selectedFile) return '';
-		return `${selectedSource}:${selectedFile.path}:${selectedFile.prevPath ?? ''}`;
-	});
-
-	const selectedFilePath = $derived(selectedFile?.path ?? '');
-	const selectedFilePrevPath = $derived(selectedFile?.prevPath ?? '');
-	const selectedFileStatus = $derived(selectedFile?.status ?? '');
-	const selectedFileAdded = $derived(selectedFile?.added ?? 0);
-	const selectedFileRemoved = $derived(selectedFile?.removed ?? 0);
-	const selectedFileBinary = $derived(selectedFile?.binary ?? false);
-	const activePrKey = $derived.by(() =>
-		activePrBranches ? `${activePrBranches.base}:${activePrBranches.head}` : '',
+	const selectedKey = $derived.by(() =>
+		selectedFile ? `${selectedSource}:${selectedFile.path}:${selectedFile.prevPath ?? ''}` : '',
 	);
 
-	const isActiveDetail = $derived.by(() => viewMode === 'active' && selectedItem != null);
-	const isReadyDetail = $derived.by(() => viewMode === 'ready' && selectedItem != null);
+	const selectedFilePath = $derived(selectedFile?.path ?? ''),
+		selectedFilePrevPath = $derived(selectedFile?.prevPath ?? ''),
+		selectedFileStatus = $derived(selectedFile?.status ?? ''),
+		selectedFileAdded = $derived(selectedFile?.added ?? 0),
+		selectedFileRemoved = $derived(selectedFile?.removed ?? 0),
+		selectedFileBinary = $derived(selectedFile?.binary ?? false),
+		activePrKey = $derived.by(() =>
+			activePrBranches ? `${activePrBranches.base}:${activePrBranches.head}` : '',
+		);
 
-	const checkStats = $derived(buildCheckStats(prStatus));
+	const isActiveDetail = $derived.by(() => viewMode === 'active' && selectedItem != null),
+		isReadyDetail = $derived.by(() => viewMode === 'ready' && selectedItem != null),
+		checkStats = $derived(buildCheckStats(prStatus));
 
-	const shouldSplitLocalPendingSection = $derived.by(() => {
-		const ls = localSummary;
-		return activePrBranches !== null && (ls?.files.length ?? 0) > 0;
-	});
+	const shouldSplitLocalPendingSection = $derived.by(
+		() => activePrBranches !== null && (localSummary?.files.length ?? 0) > 0,
+	);
 
 	const clearCommitPushSuccessTimer = (): void => {
-		if (commitPushSuccessTimer != null) {
-			clearTimeout(commitPushSuccessTimer);
-			commitPushSuccessTimer = null;
-		}
+		if (commitPushSuccessTimer == null) return;
+		clearTimeout(commitPushSuccessTimer);
+		commitPushSuccessTimer = null;
 	};
 
 	const pushStatusVisible = $derived.by(() => {
 		const pr = trackedPr;
-		if (pr == null) return false;
 		return (
+			pr != null &&
 			isActiveDetail &&
 			!isMergedTrackedPr(pr) &&
 			pr.state.toLowerCase() === 'open' &&
@@ -217,12 +212,12 @@
 		);
 	});
 
-	const pushDisabled = $derived.by(() => {
-		if (commitPushLoading) return true;
-		const s = repoLocalStatus;
-		if (!s) return true;
-		return !s.hasUncommitted && s.ahead === 0;
-	});
+	const pushDisabled = $derived.by(
+		() =>
+			commitPushLoading ||
+			!repoLocalStatus ||
+			(!repoLocalStatus.hasUncommitted && repoLocalStatus.ahead === 0),
+	);
 
 	const commitPushStageLabel = $derived(formatCommitPushStageLabel(commitPushStage));
 
@@ -285,51 +280,6 @@
 		}
 	};
 
-	const selectItem = (itemId: string): void => {
-		if (viewMode === 'ready' && prComposerItemId !== itemId) {
-			prComposerItemId = null;
-		}
-		selectedItemId = itemId;
-		activeTab = viewMode === 'active' ? 'overview' : 'files';
-		const item = prItems.find((i) => i.id === itemId);
-		trackedPr = item ? (trackedPrMap.get(item.repoId) ?? null) : null;
-		trackedPrLoading = false;
-		prStatus = null;
-		prReviews = [];
-		diffSummary = null;
-		localSummary = null;
-		selectedFileIdx = 0;
-		selectedSource = 'pr';
-		fileDiffContent = null;
-		fileDiffError = null;
-		activeFileKey = null;
-		activePrBranches = null;
-		lastDiffSummaryTargetKey = null;
-		diffSummaryRequestId += 1;
-		localSummaryRequestId += 1;
-		fileDiffRequestId += 1;
-		repoLocalStatus = null;
-		commitPushLoading = false;
-		commitPushStage = null;
-		commitPushError = null;
-		commitPushSuccess = false;
-		clearCommitPushSuccessTimer();
-
-		if (item && workspace) {
-			void loadTrackedPr(workspace.id, item.repoId);
-			void loadRepoLocalStatus(workspace.id, item.repoId);
-		}
-	};
-
-	const openPrComposer = (itemId: string): void => {
-		if (viewMode !== 'ready') {
-			setViewMode('ready');
-		}
-		if (selectedItemId === itemId && prComposerItemId === itemId) return;
-		prComposerItemId = itemId;
-		selectItem(itemId);
-	};
-
 	const loadTrackedPr = async (wsId: string, repoId: string): Promise<void> => {
 		const requestId = ++trackedPrRequestId;
 		const isSelectedRepo = (): boolean => selectedItem?.repoId === repoId;
@@ -363,6 +313,36 @@
 			repoLocalStatus = await fetchRepoLocalStatus(wsId, repoId);
 		} catch {
 			repoLocalStatus = null;
+		}
+	};
+
+	const selectItem = (itemId: string): void => {
+		if (viewMode === 'ready' && prComposerItemId !== itemId) {
+			prComposerItemId = null;
+		}
+		selectedItemId = itemId;
+		activeTab = viewMode === 'active' ? 'overview' : 'files';
+		const item = prItems.find((i) => i.id === itemId);
+		trackedPr = item ? (trackedPrMap.get(item.repoId) ?? null) : null;
+		trackedPrLoading = false;
+		prStatus = null;
+		prReviews = [];
+		diffSummary = localSummary = fileDiffContent = null;
+		selectedFileIdx = 0;
+		selectedSource = 'pr';
+		fileDiffError = activeFileKey = lastDiffSummaryTargetKey = null;
+		activePrBranches = null;
+		diffSummaryRequestId += 1;
+		localSummaryRequestId += 1;
+		fileDiffRequestId += 1;
+		repoLocalStatus = null;
+		commitPushLoading = commitPushSuccess = false;
+		commitPushStage = commitPushError = null;
+		clearCommitPushSuccessTimer();
+
+		if (item && workspace) {
+			void loadTrackedPr(workspace.id, item.repoId);
+			void loadRepoLocalStatus(workspace.id, item.repoId);
 		}
 	};
 
@@ -588,15 +568,7 @@
 		await startPushForRepo(selectedItem.repoId);
 	};
 
-	const handlePushFromSidebar = (itemId: string): void => {
-		const item = prItems.find((entry) => entry.id === itemId);
-		if (!item) return;
-		if (viewMode !== 'ready') setViewMode('ready');
-		if (selectedItemId !== itemId) selectItem(itemId);
-		void startPushForRepo(item.repoId);
-	};
-
-	const handlePullRequestCreated = (repoId: string, created: PullRequestCreated): void => {
+	const handleTrackedPrCreated = (repoId: string, created: PullRequestCreated): void => {
 		trackedPrMapCoordinator.markResolved(repoId, created, trackedPrMap.get(repoId) ?? null);
 		trackedPrMap = withTrackedPr(trackedPrMap, repoId, created);
 		trackedPr = created;
@@ -606,6 +578,18 @@
 		void loadChecks();
 		void loadReviews();
 	};
+	const { openPrComposer, handlePushFromSidebar, handlePullRequestCreated } =
+		createPrViewInteractionHandlers({
+			findItem: (itemId) => prItems.find((entry) => entry.id === itemId),
+			getViewMode: () => viewMode,
+			setViewMode,
+			getSelectedItemId: () => selectedItemId,
+			getPrComposerItemId: () => prComposerItemId,
+			setPrComposerItemId: (itemId) => (prComposerItemId = itemId),
+			selectItem,
+			startPushForRepo,
+			handleTrackedPrCreated,
+		});
 
 	const openExternalUrl = (url: string | undefined | null): void =>
 		void (url && Browser.OpenURL(url));
