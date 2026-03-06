@@ -284,7 +284,7 @@ describe('ExplorerPanel', () => {
 			worksetKey: 'workset:core',
 			worksetLabel: 'Core',
 		});
-		const { getByRole, queryByRole } = render(ExplorerPanel, {
+		const { getByRole } = render(ExplorerPanel, {
 			props: {
 				workspaces: [alpha, beta],
 				activeWorkspaceId: alpha.id,
@@ -293,24 +293,23 @@ describe('ExplorerPanel', () => {
 			},
 		});
 
-		const alphaLabel = getByRole('button', { name: 'alpha' });
-		const betaLabel = getByRole('button', { name: 'beta' });
-		const alphaRow = alphaLabel.closest('.thread-row');
-		const betaRow = betaLabel.closest('.thread-row');
+		const alphaRow = getByRole('button', { name: 'alpha' }).closest('.thread-row');
+		const betaRow = getByRole('button', { name: 'beta' }).closest('.thread-row');
+		const alphaRemove = getByRole('button', { name: 'Remove thread alpha' });
+		const betaRemove = getByRole('button', { name: 'Remove thread beta' });
 		expect(alphaRow).not.toBeNull();
 		expect(betaRow).not.toBeNull();
-
-		expect(queryByRole('button', { name: 'Remove thread alpha' })).toBeNull();
-		expect(queryByRole('button', { name: 'Remove thread beta' })).toBeNull();
+		expect(alphaRemove).not.toHaveClass('visible');
+		expect(betaRemove).not.toHaveClass('visible');
 
 		await fireEvent.mouseEnter(alphaRow!);
-		expect(getByRole('button', { name: 'Remove thread alpha' })).toBeInTheDocument();
-		expect(queryByRole('button', { name: 'Remove thread beta' })).toBeNull();
+		expect(alphaRemove).toHaveClass('visible');
+		expect(betaRemove).not.toHaveClass('visible');
 
 		await fireEvent.mouseLeave(alphaRow!);
 		await fireEvent.mouseEnter(betaRow!);
-		expect(queryByRole('button', { name: 'Remove thread alpha' })).toBeNull();
-		expect(getByRole('button', { name: 'Remove thread beta' })).toBeInTheDocument();
+		expect(alphaRemove).not.toHaveClass('visible');
+		expect(betaRemove).toHaveClass('visible');
 	});
 
 	test('clears the hovered remove button when switching threads', async () => {
@@ -329,7 +328,7 @@ describe('ExplorerPanel', () => {
 			worksetLabel: 'Core',
 		});
 		const onSelectWorkspace = vi.fn<(workspaceId: string) => void>();
-		const { getByRole, queryByRole } = render(ExplorerPanel, {
+		const { getByRole } = render(ExplorerPanel, {
 			props: {
 				workspaces: [alpha, beta],
 				activeWorkspaceId: alpha.id,
@@ -338,15 +337,39 @@ describe('ExplorerPanel', () => {
 			},
 		});
 
+		const alphaRemove = getByRole('button', { name: 'Remove thread alpha' });
 		const alphaRow = getByRole('button', { name: 'alpha' }).closest('.thread-row');
 		expect(alphaRow).not.toBeNull();
 
 		await fireEvent.mouseEnter(alphaRow!);
-		expect(getByRole('button', { name: 'Remove thread alpha' })).toBeInTheDocument();
+		expect(alphaRemove).toHaveClass('visible');
 
 		await fireEvent.click(getByRole('button', { name: 'beta' }));
 		expect(onSelectWorkspace).toHaveBeenCalledWith(beta.id);
-		expect(queryByRole('button', { name: 'Remove thread alpha' })).toBeNull();
+		expect(alphaRemove).not.toHaveClass('visible');
+	});
+
+	test('keeps remove button keyboard reachable without hover', async () => {
+		const alpha = buildWorkspace({
+			id: 'thread-alpha',
+			name: 'alpha',
+			workset: 'Core',
+			worksetKey: 'workset:core',
+			worksetLabel: 'Core',
+		});
+		const { getByRole } = render(ExplorerPanel, {
+			props: {
+				workspaces: [alpha],
+				activeWorkspaceId: alpha.id,
+				shortcutMap: new Map<string, number>(),
+				onSelectWorkspace: vi.fn(),
+			},
+		});
+
+		const removeButton = getByRole('button', { name: 'Remove thread alpha' });
+		expect(removeButton.tabIndex).toBe(0);
+		removeButton.focus();
+		expect(removeButton).toHaveFocus();
 	});
 
 	test('renders animated work badge for threads with active terminal IO', () => {

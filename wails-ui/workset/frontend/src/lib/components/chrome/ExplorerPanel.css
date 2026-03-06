@@ -557,14 +557,22 @@
 	border-radius: 6px;
 	color: color-mix(in srgb, var(--muted) 82%, transparent);
 	cursor: pointer;
+	opacity: 0;
+	pointer-events: none;
 	transition:
+		opacity var(--transition-fast),
 		color var(--transition-fast),
 		background var(--transition-fast);
 }
 
-.thread-remove-btn:hover {
+.thread-remove-btn.visible,
+.thread-remove-btn:focus-visible {
+	opacity: 1;
+	pointer-events: auto;
 	color: var(--danger);
 	background: color-mix(in srgb, var(--danger) 14%, transparent);
+	outline: 1px solid color-mix(in srgb, var(--danger) 32%, transparent);
+	outline-offset: 1px;
 }
 
 @keyframes thread-live-halo {

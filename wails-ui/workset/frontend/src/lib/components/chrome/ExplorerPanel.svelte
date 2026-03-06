@@ -666,16 +666,16 @@
 				<span>Threads</span>
 				<span class="count">{selectedWorkset.threads.length}</span>
 			</div>
-			<div class="thread-list">
-				{#each selectedWorkset.threads as thread (thread.id)}
-					<div
-						class="thread-row"
-						role="presentation"
-						onmouseenter={() => (hoveredThreadId = thread.id)}
-						onmouseleave={() => {
-							if (hoveredThreadId === thread.id) hoveredThreadId = null;
-						}}
-					>
+				<div class="thread-list">
+					{#each selectedWorkset.threads as thread (thread.id)}
+						<div
+							class="thread-row"
+							role="presentation"
+							onmouseenter={() => (hoveredThreadId = thread.id)}
+							onmouseleave={() => {
+								if (hoveredThreadId === thread.id) hoveredThreadId = null;
+							}}
+						>
 						<button
 							type="button"
 							class="thread-item"
@@ -698,24 +698,23 @@
 						</button>
 						{#if canManageRepos}
 							<div class="thread-remove-slot">
-								{#if isThreadRemoveVisible(thread.id)}
-									<button
-										type="button"
-										class="thread-remove-btn"
-										title={`Remove thread ${thread.name}`}
-										aria-label={`Remove thread ${thread.name}`}
-										onfocus={() => (focusedRemoveThreadId = thread.id)}
-										onblur={() => {
-											if (focusedRemoveThreadId === thread.id) focusedRemoveThreadId = null;
-										}}
-										onclick={(event) => {
-											event.stopPropagation();
-											onRemoveThread(thread.id);
-										}}
-									>
-										<Trash2 size={10} />
-									</button>
-								{/if}
+								<button
+									type="button"
+									class="thread-remove-btn"
+									class:visible={isThreadRemoveVisible(thread.id)}
+									title={`Remove thread ${thread.name}`}
+									aria-label={`Remove thread ${thread.name}`}
+									onfocus={() => (focusedRemoveThreadId = thread.id)}
+									onblur={() => {
+										if (focusedRemoveThreadId === thread.id) focusedRemoveThreadId = null;
+									}}
+									onclick={(event) => {
+										event.stopPropagation();
+										onRemoveThread(thread.id);
+									}}
+								>
+									<Trash2 size={10} />
+								</button>
 							</div>
 						{/if}
 					</div>
