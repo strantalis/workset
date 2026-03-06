@@ -21,6 +21,13 @@
 	interface Props {
 		selectedItem: ReadyDetailItem;
 		workspaceName: string;
+		showCreatePanel: boolean;
+		prTitle: string;
+		prBody: string;
+		prTextGenerating: boolean;
+		isDraft: boolean;
+		isCreating: boolean;
+		prCreateError: string | null;
 		filesForDetail: RepoDiffFileSummary[];
 		totalAdd: number;
 		totalDel: number;
@@ -34,6 +41,10 @@
 		commitPushLoading: boolean;
 		commitPushRepoId: string | null;
 		onPushFromSidebar: (itemId: string) => Promise<void> | void;
+		onCreatePr: () => Promise<void> | void;
+		onPrTitleInput: (value: string) => void;
+		onPrBodyInput: (value: string) => void;
+		onDraftChange: (value: boolean) => void;
 		onSelectSourceFile: (source: 'pr' | 'local', index: number) => void;
 		diffContainer?: HTMLElement | null;
 	}
@@ -42,6 +53,13 @@
 	let {
 		selectedItem,
 		workspaceName,
+		showCreatePanel,
+		prTitle,
+		prBody,
+		prTextGenerating,
+		isDraft,
+		isCreating,
+		prCreateError,
 		filesForDetail,
 		totalAdd,
 		totalDel,
@@ -55,6 +73,10 @@
 		commitPushLoading,
 		commitPushRepoId,
 		onPushFromSidebar,
+		onCreatePr,
+		onPrTitleInput,
+		onPrBodyInput,
+		onDraftChange,
 		onSelectSourceFile,
 		diffContainer = $bindable(null),
 	}: Props = $props();
@@ -122,6 +144,69 @@
 		{/if}
 	</div>
 </div>
+
+{#if showCreatePanel}
+	<div class="cd-create-panel">
+		{#if prTextGenerating}
+			<div class="cd-generating" role="status" aria-live="polite">
+				<Loader2 size={12} class="spin" />
+				AI is drafting title and description...
+			</div>
+		{/if}
+		<div class="cd-create-fields">
+			<label class="cd-create-field">
+				<span class="cd-create-label">PR Title</span>
+				<input
+					type="text"
+					class="cd-create-input"
+					class:cd-input-generating={prTextGenerating && !prTitle}
+					value={prTitle}
+					oninput={(event) => onPrTitleInput((event.currentTarget as HTMLInputElement).value)}
+					placeholder={prTextGenerating && !prTitle ? 'Generating title...' : 'Enter PR title...'}
+				/>
+			</label>
+			<label class="cd-create-field">
+				<span class="cd-create-label">Description</span>
+				<textarea
+					class="cd-create-textarea"
+					class:cd-input-generating={prTextGenerating && !prBody}
+					rows={3}
+					value={prBody}
+					oninput={(event) => onPrBodyInput((event.currentTarget as HTMLTextAreaElement).value)}
+					placeholder={prTextGenerating && !prBody
+						? 'Generating description...'
+						: 'Describe the changes in this PR...'}
+				></textarea>
+			</label>
+		</div>
+		<div class="cd-create-actions">
+			<label class="cd-draft-toggle">
+				<input
+					type="checkbox"
+					checked={isDraft}
+					onchange={(event) => onDraftChange((event.currentTarget as HTMLInputElement).checked)}
+				/>
+				<span>Create as draft</span>
+			</label>
+			<button
+				type="button"
+				class="cd-create-btn"
+				disabled={isCreating || !prTitle.trim()}
+				onclick={() => void onCreatePr()}
+			>
+				{#if isCreating}
+					<Loader2 size={12} class="spin" />
+					Creating...
+				{:else}
+					Create PR
+				{/if}
+			</button>
+		</div>
+		{#if prCreateError}
+			<div class="cd-create-error">{prCreateError}</div>
+		{/if}
+	</div>
+{/if}
 
 <div class="cd-body">
 	<div class="cd-file-sidebar">

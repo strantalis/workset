@@ -34,12 +34,14 @@
 		partitions: Partitions;
 		prItems: PrListItem[];
 		selectedItemId: string | null;
+		prComposerItemId: string | null;
 		resolveTrackedTitle: (repoId: string, fallbackTitle: string) => string;
 		onStartPush: (itemId: string) => void;
 		pushInProgressRepoId?: string | null;
 		onToggleSidebar: () => void;
 		onViewModeChange: (mode: 'active' | 'ready') => void;
 		onSelectItem: (itemId: string) => void;
+		onOpenPrComposer: (itemId: string) => void;
 	}
 
 	const {
@@ -50,12 +52,14 @@
 		partitions,
 		prItems,
 		selectedItemId,
+		prComposerItemId,
 		resolveTrackedTitle,
 		onStartPush,
 		pushInProgressRepoId = null,
 		onToggleSidebar,
 		onViewModeChange,
 		onSelectItem,
+		onOpenPrComposer,
 	}: Props = $props();
 
 	const repoById = $derived.by(() => {
@@ -141,6 +145,7 @@
 				{#each changedItems as item (item.id)}
 					{@const repo = repoById.get(item.repoId)}
 					{@const isActive = selectedItemId === item.id && viewMode === 'ready'}
+					{@const isComposerActive = isActive && prComposerItemId === item.id}
 					<div class="repo-block" class:active={isActive}>
 						<button
 							type="button"
@@ -203,10 +208,12 @@
 									</button>
 									<button
 										type="button"
-										class="repo-action-btn primary"
+										class="repo-action-btn"
+										class:primary={isComposerActive}
+										aria-pressed={isComposerActive}
 										onclick={(event) => {
 											event.stopPropagation();
-											selectRepo(item.id);
+											onOpenPrComposer(item.id);
 										}}
 									>
 										<Plus size={10} />

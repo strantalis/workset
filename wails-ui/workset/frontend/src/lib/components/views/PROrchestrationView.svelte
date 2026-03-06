@@ -5,7 +5,7 @@
 	// prettier-ignore
 	import type { PullRequestCreated, PullRequestReviewComment, PullRequestStatusResult, RepoFileDiff, RepoDiffFileSummary, RepoDiffSummary, Workspace } from '../../types';
 	// prettier-ignore
-	import { fetchPullRequestReviews, fetchPullRequestStatus, fetchRepoLocalStatus, fetchTrackedPullRequest, generatePullRequestText, listRemotes, replyToReviewComment, resolveReviewThread, startCommitAndPushAsync } from '../../api/github';
+	import { createPullRequest, fetchPullRequestReviews, fetchPullRequestStatus, fetchRepoLocalStatus, fetchTrackedPullRequest, generatePullRequestText, listRemotes, replyToReviewComment, resolveReviewThread, startCommitAndPushAsync } from '../../api/github';
 	// prettier-ignore
 	import type { GitHubOperationStage, GitHubOperationStatus, RepoLocalStatus } from '../../api/github';
 	import { subscribeGitHubOperationEvent } from '../../githubOperationService';
@@ -135,6 +135,12 @@
 
 	let prTitle = $state('');
 	let prBody = $state('');
+	let prTextGenerating = $state(false);
+	let prTextGenerationRequestId = 0;
+	let prComposerItemId: string | null = $state(null);
+	let isDraft = $state(false);
+	let isCreating = $state(false);
+	let prCreateError: string | null = $state(null);
 
 	let repoLocalStatus: RepoLocalStatus | null = $state(null);
 	let commitPushLoading = $state(false);
@@ -153,6 +159,11 @@
 	};
 	const setViewMode = (mode: 'active' | 'ready'): void => {
 		viewMode = mode;
+		if (mode !== 'ready') {
+			prComposerItemId = null;
+			prTextGenerating = false;
+			prTextGenerationRequestId += 1;
+		}
 	};
 	const resolveTrackedTitle = (repoId: string, fallbackTitle: string): string =>
 		trackedPrMap.get(repoId)?.title ?? fallbackTitle;
@@ -284,6 +295,9 @@
 	};
 
 	const selectItem = (itemId: string): void => {
+		if (viewMode === 'ready' && prComposerItemId !== itemId) {
+			prComposerItemId = null;
+		}
 		selectedItemId = itemId;
 		activeTab = viewMode === 'active' ? 'overview' : 'files';
 		const item = prItems.find((i) => i.id === itemId);
@@ -305,6 +319,11 @@
 		fileDiffRequestId += 1;
 		prTitle = '';
 		prBody = '';
+		prTextGenerating = false;
+		prTextGenerationRequestId += 1;
+		isDraft = false;
+		isCreating = false;
+		prCreateError = null;
 		repoLocalStatus = null;
 		commitPushLoading = false;
 		commitPushStage = null;
@@ -315,10 +334,19 @@
 		if (item && workspace) {
 			void loadTrackedPr(workspace.id, item.repoId);
 			void loadRepoLocalStatus(workspace.id, item.repoId);
-			if (viewMode === 'ready') {
+			if (viewMode === 'ready' && prComposerItemId === item.id) {
 				void loadSuggestedPrText(workspace.id, item.repoId);
 			}
 		}
+	};
+
+	const openPrComposer = (itemId: string): void => {
+		if (viewMode !== 'ready') {
+			setViewMode('ready');
+		}
+		if (selectedItemId === itemId && prComposerItemId === itemId) return;
+		prComposerItemId = itemId;
+		selectItem(itemId);
 	};
 
 	const loadTrackedPr = async (wsId: string, repoId: string): Promise<void> => {
@@ -497,12 +525,19 @@
 	};
 
 	const loadSuggestedPrText = async (wsId: string, repoId: string): Promise<void> => {
+		const requestId = ++prTextGenerationRequestId;
+		prTextGenerating = true;
 		try {
 			const generated = await generatePullRequestText(wsId, repoId);
+			if (requestId !== prTextGenerationRequestId) return;
 			if (generated.title && !prTitle) prTitle = generated.title;
 			if (generated.body && !prBody) prBody = generated.body;
 		} catch {
 			// non-fatal: user can still type manually
+		} finally {
+			if (requestId === prTextGenerationRequestId) {
+				prTextGenerating = false;
+			}
 		}
 	};
 
@@ -592,9 +627,47 @@
 	const handlePushFromSidebar = (itemId: string): void => {
 		const item = prItems.find((entry) => entry.id === itemId);
 		if (!item) return;
-		if (viewMode !== 'ready') viewMode = 'ready';
+		if (viewMode !== 'ready') setViewMode('ready');
 		if (selectedItemId !== itemId) selectItem(itemId);
 		void startPushForRepo(item.repoId);
+	};
+
+	const handleCreatePr = async (): Promise<void> => {
+		if (!workspace || !selectedItem || isCreating) return;
+		const title = prTitle.trim();
+		if (title === '') {
+			prCreateError = 'PR title is required.';
+			return;
+		}
+		isCreating = true;
+		prCreateError = null;
+		try {
+			const created = await createPullRequest(workspace.id, selectedItem.repoId, {
+				title,
+				body: prBody.trim(),
+				base: selectedRepo?.defaultBranch ?? '',
+				head: selectedItem.branch,
+				draft: isDraft,
+				autoCommit: true,
+				autoPush: true,
+			});
+			trackedPrMapCoordinator.markResolved(
+				selectedItem.repoId,
+				created,
+				trackedPrMap.get(selectedItem.repoId) ?? null,
+			);
+			trackedPrMap = withTrackedPr(trackedPrMap, selectedItem.repoId, created);
+			trackedPr = created;
+			setViewMode('active');
+			activeTab = 'overview';
+			void refreshWorkspacesStatus(true);
+			void loadChecks();
+			void loadReviews();
+		} catch (err) {
+			prCreateError = err instanceof Error ? err.message : 'Failed to create pull request.';
+		} finally {
+			isCreating = false;
+		}
 	};
 
 	const openExternalUrl = (url: string | undefined | null): void =>
@@ -1397,6 +1470,13 @@
 					<PROrchestrationReadyDetail
 						{selectedItem}
 						workspaceName={workspace.name}
+						showCreatePanel={prComposerItemId === selectedItem.id}
+						{prTitle}
+						{prBody}
+						{prTextGenerating}
+						{isDraft}
+						{isCreating}
+						{prCreateError}
 						{filesForDetail}
 						{totalAdd}
 						{totalDel}
@@ -1410,6 +1490,17 @@
 						{commitPushLoading}
 						{commitPushRepoId}
 						onPushFromSidebar={handlePushFromSidebar}
+						onCreatePr={() => void handleCreatePr()}
+						onPrTitleInput={(value) => {
+							prTitle = value;
+							if (prCreateError) prCreateError = null;
+						}}
+						onPrBodyInput={(value) => {
+							prBody = value;
+						}}
+						onDraftChange={(value) => {
+							isDraft = value;
+						}}
 						onSelectSourceFile={(source, index) => {
 							selectedSource = source;
 							selectedFileIdx = index;
@@ -1461,12 +1552,14 @@
 					{partitions}
 					{prItems}
 					{selectedItemId}
+					{prComposerItemId}
 					{resolveTrackedTitle}
 					pushInProgressRepoId={commitPushRepoId}
 					onStartPush={handlePushFromSidebar}
 					onToggleSidebar={toggleSidebar}
 					onViewModeChange={setViewMode}
 					onSelectItem={selectItem}
+					onOpenPrComposer={openPrComposer}
 				/>
 
 				{#snippet second()}
