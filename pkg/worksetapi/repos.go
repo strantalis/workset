@@ -249,81 +249,25 @@ func (s *Service) AddReposToWorkset(
 	ctx context.Context,
 	input WorksetRepoAddInput,
 ) (WorksetRepoAddResult, error) {
-	worksetName := strings.TrimSpace(input.Workset)
-	if worksetName == "" {
-		return WorksetRepoAddResult{}, ValidationError{Message: "workset required"}
-	}
-
 	cfg, info, err := s.loadGlobal(ctx)
 	if err != nil {
 		return WorksetRepoAddResult{}, err
 	}
-	if !worksetExists(cfg, worksetName) {
-		return WorksetRepoAddResult{}, NotFoundError{Message: fmt.Sprintf("workset not found: %q", worksetName)}
+	worksetName, sources, err := validateWorksetRepoAddInput(cfg, input)
+	if err != nil {
+		return WorksetRepoAddResult{}, err
 	}
-
-	sources := normalizeRepoNames(input.Sources)
-	if len(sources) == 0 {
-		return WorksetRepoAddResult{}, ValidationError{Message: "at least one repo source required"}
-	}
-
-	resolved := make([]resolvedWorksetRepoSource, 0, len(sources))
-	for _, source := range sources {
-		repoSource, err := resolveWorksetRepoSource(cfg, source)
-		if err != nil {
-			return WorksetRepoAddResult{}, err
-		}
-		resolved = append(resolved, repoSource)
+	resolved, err := resolveWorksetRepoSources(cfg, sources)
+	if err != nil {
+		return WorksetRepoAddResult{}, err
 	}
 
 	added := []string{}
 	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
 		info = loadInfo
-		if !worksetExists(*cfg, worksetName) {
-			return NotFoundError{Message: fmt.Sprintf("workset not found: %q", worksetName)}
-		}
-		if cfg.WorksetRepos == nil {
-			cfg.WorksetRepos = map[string][]string{}
-		}
-		if cfg.Repos == nil {
-			cfg.Repos = map[string]config.RegisteredRepo{}
-		}
-
-		baseRepos := normalizeRepoNames(cfg.WorksetRepos[worksetName])
-		baseSet := map[string]struct{}{}
-		for _, repoName := range baseRepos {
-			baseSet[strings.ToLower(repoName)] = struct{}{}
-		}
-
-		for _, repoSource := range resolved {
-			alias := cfg.Repos[repoSource.name]
-			if alias.Path == "" && alias.URL == "" {
-				if repoSource.sourcePath != "" {
-					alias.Path = repoSource.sourcePath
-					alias.URL = ""
-				} else if repoSource.url != "" {
-					alias.URL = repoSource.url
-					alias.Path = ""
-				}
-			}
-			if alias.DefaultBranch == "" {
-				alias.DefaultBranch = cfg.Defaults.BaseBranch
-			}
-			if alias.Remote == "" {
-				alias.Remote = cfg.Defaults.Remote
-			}
-			cfg.Repos[repoSource.name] = alias
-
-			key := strings.ToLower(repoSource.name)
-			if _, exists := baseSet[key]; exists {
-				continue
-			}
-			baseSet[key] = struct{}{}
-			baseRepos = append(baseRepos, repoSource.name)
-			added = append(added, repoSource.name)
-		}
-		cfg.WorksetRepos[worksetName] = normalizeRepoNames(baseRepos)
-		return nil
+		var applyErr error
+		added, applyErr = applyResolvedWorksetRepos(cfg, worksetName, resolved)
+		return applyErr
 	}); err != nil {
 		return WorksetRepoAddResult{}, err
 	}
@@ -336,6 +280,111 @@ func (s *Service) AddReposToWorkset(
 		},
 		Config: info,
 	}, nil
+}
+
+func validateWorksetRepoAddInput(
+	cfg config.GlobalConfig,
+	input WorksetRepoAddInput,
+) (string, []string, error) {
+	worksetName := strings.TrimSpace(input.Workset)
+	if worksetName == "" {
+		return "", nil, ValidationError{Message: "workset required"}
+	}
+	if !worksetExists(cfg, worksetName) {
+		return "", nil, NotFoundError{Message: fmt.Sprintf("workset not found: %q", worksetName)}
+	}
+	sources := normalizeRepoNames(input.Sources)
+	if len(sources) == 0 {
+		return "", nil, ValidationError{Message: "at least one repo source required"}
+	}
+	return worksetName, sources, nil
+}
+
+func resolveWorksetRepoSources(
+	cfg config.GlobalConfig,
+	sources []string,
+) ([]resolvedWorksetRepoSource, error) {
+	resolved := make([]resolvedWorksetRepoSource, 0, len(sources))
+	for _, source := range sources {
+		repoSource, err := resolveWorksetRepoSource(cfg, source)
+		if err != nil {
+			return nil, err
+		}
+		resolved = append(resolved, repoSource)
+	}
+	return resolved, nil
+}
+
+func applyResolvedWorksetRepos(
+	cfg *config.GlobalConfig,
+	worksetName string,
+	resolved []resolvedWorksetRepoSource,
+) ([]string, error) {
+	if !worksetExists(*cfg, worksetName) {
+		return nil, NotFoundError{Message: fmt.Sprintf("workset not found: %q", worksetName)}
+	}
+	ensureWorksetRepoMaps(cfg)
+	baseRepos := normalizeRepoNames(cfg.WorksetRepos[worksetName])
+	baseSet := repoNameSet(baseRepos)
+	added := make([]string, 0, len(resolved))
+
+	for _, repoSource := range resolved {
+		cfg.Repos[repoSource.name] = mergeResolvedRepoAlias(
+			cfg.Repos[repoSource.name],
+			repoSource,
+			cfg.Defaults,
+		)
+		key := strings.ToLower(repoSource.name)
+		if _, exists := baseSet[key]; exists {
+			continue
+		}
+		baseSet[key] = struct{}{}
+		baseRepos = append(baseRepos, repoSource.name)
+		added = append(added, repoSource.name)
+	}
+
+	cfg.WorksetRepos[worksetName] = normalizeRepoNames(baseRepos)
+	return added, nil
+}
+
+func ensureWorksetRepoMaps(cfg *config.GlobalConfig) {
+	if cfg.WorksetRepos == nil {
+		cfg.WorksetRepos = map[string][]string{}
+	}
+	if cfg.Repos == nil {
+		cfg.Repos = map[string]config.RegisteredRepo{}
+	}
+}
+
+func repoNameSet(repoNames []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(repoNames))
+	for _, repoName := range repoNames {
+		set[strings.ToLower(repoName)] = struct{}{}
+	}
+	return set
+}
+
+func mergeResolvedRepoAlias(
+	alias config.RegisteredRepo,
+	repoSource resolvedWorksetRepoSource,
+	defaults config.Defaults,
+) config.RegisteredRepo {
+	if alias.Path == "" && alias.URL == "" {
+		if repoSource.sourcePath != "" {
+			alias.Path = repoSource.sourcePath
+			alias.URL = ""
+		} else if repoSource.url != "" {
+			alias.URL = repoSource.url
+			alias.Path = ""
+		}
+	}
+	if alias.DefaultBranch == "" {
+		alias.DefaultBranch = defaults.BaseBranch
+	}
+	if alias.Remote == "" {
+		alias.Remote = defaults.Remote
+	}
+	return alias
 }
 
 func resolveWorksetRepoSource(

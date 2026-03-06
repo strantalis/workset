@@ -266,25 +266,56 @@ export const createWorkspaceActionMutationService = (
 
 export const workspaceActionMutations = createWorkspaceActionMutationService();
 
+const deriveReposToProcess = (input: CreateWorkspaceMutationInput): CreateDirectRepo[] => {
+	const reposToProcess = [...input.directRepos];
+	const pendingSource = input.primaryInput.trim();
+	const hasPendingSource = pendingSource.length > 0;
+	if (!hasPendingSource || !isRepoSource(pendingSource)) {
+		return reposToProcess;
+	}
+	if (reposToProcess.some((repo) => repo.url === pendingSource)) {
+		return reposToProcess;
+	}
+	reposToProcess.push({ url: pendingSource, register: true });
+	return reposToProcess;
+};
+
+const buildCreateWorkspaceRepoSources = (
+	reposToProcess: CreateDirectRepo[],
+	selectedAliases: Iterable<string>,
+): string[] => {
+	const repos: string[] = reposToProcess.map((repo) => repo.url);
+	for (const alias of selectedAliases) {
+		repos.push(alias);
+	}
+	return repos;
+};
+
+const registerReposInCatalog = async (
+	reposToProcess: CreateDirectRepo[],
+	deps: CreateWorkspaceMutationDeps,
+	collectedWarnings: string[],
+): Promise<void> => {
+	for (const repo of reposToProcess) {
+		if (!repo.register) continue;
+		const repoName = deriveRepoName(repo.url) || repo.url;
+		try {
+			await deps.registerRepo(repoName, repo.url, '', '');
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			collectedWarnings.push(
+				`Registered ${repoName} in workset but failed to save in Repo Catalog: ${message}`,
+			);
+		}
+	}
+};
+
 export const runCreateWorkspaceMutation = async (
 	input: CreateWorkspaceMutationInput,
 	deps: CreateWorkspaceMutationDeps,
 ): Promise<CreateWorkspaceMutationResult> => {
-	const reposToProcess = [...input.directRepos];
-	const pendingSource = input.primaryInput.trim();
-	if (
-		pendingSource &&
-		isRepoSource(pendingSource) &&
-		!reposToProcess.some((repo) => repo.url === pendingSource)
-	) {
-		reposToProcess.push({ url: pendingSource, register: true });
-	}
-
-	const repos: string[] = reposToProcess.map((repo) => repo.url);
-
-	for (const alias of input.selectedAliases) {
-		repos.push(alias);
-	}
+	const reposToProcess = deriveReposToProcess(input);
+	const repos = buildCreateWorkspaceRepoSources(reposToProcess, input.selectedAliases);
 
 	const worksetName = input.worksetName?.trim() || undefined;
 	const result = await deps.createWorkspace(
@@ -297,18 +328,7 @@ export const runCreateWorkspaceMutation = async (
 	);
 	const collectedWarnings = [...(result.warnings ?? [])];
 	if (!input.worksetOnly) {
-		for (const repo of reposToProcess) {
-			if (!repo.register) continue;
-			const repoName = deriveRepoName(repo.url) || repo.url;
-			try {
-				await deps.registerRepo(repoName, repo.url, '', '');
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				collectedWarnings.push(
-					`Registered ${repoName} in workset but failed to save in Repo Catalog: ${message}`,
-				);
-			}
-		}
+		await registerReposInCatalog(reposToProcess, deps, collectedWarnings);
 	}
 
 	return {

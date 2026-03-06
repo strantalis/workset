@@ -620,27 +620,26 @@
 				aliasSelections: string[];
 		  };
 
-	const buildAddItemsPlan = (): AddItemsPlan => {
-		const source = addSource.trim();
-		const hasSource = source.length > 0;
-		const hasAliases = selectedAliases.size > 0;
-		if (!hasSource && !hasAliases) {
-			return { ok: false, error: 'Provide a repo URL/path or select repositories.' };
-		}
-
+	const resolveAddItemsTargets = (): Workspace[] => {
 		const targetIds =
 			targetWorkspaceIds.length > 0 ? targetWorkspaceIds : workspace ? [workspace.id] : [];
 		const workspaceById = new Map($workspaces.map((entry) => [entry.id, entry]));
-		const resolvedTargets = targetIds
+		return targetIds
 			.map((id) => workspaceById.get(id))
-			.filter((entry): entry is Workspace => entry !== undefined);
-		const targetWorkspaces = resolvedTargets.filter((entry) => entry.placeholder !== true);
-		const normalizedWorksetName = (
-			worksetName ??
-			workspace?.worksetLabel ??
-			workspace?.name ??
-			''
-		).trim();
+			.filter((entry): entry is Workspace => entry !== undefined && entry.placeholder !== true);
+	};
+
+	const resolveAddItemsWorksetLabel = (): string =>
+		(worksetName ?? workspace?.worksetLabel ?? workspace?.name ?? '').trim();
+
+	const buildAddItemsPlan = (): AddItemsPlan => {
+		const source = addSource.trim();
+		if (source.length === 0 && selectedAliases.size === 0) {
+			return { ok: false, error: 'Provide a repo URL/path or select repositories.' };
+		}
+
+		const targetWorkspaces = resolveAddItemsTargets();
+		const normalizedWorksetName = resolveAddItemsWorksetLabel();
 		if (targetWorkspaces.length === 0 && !normalizedWorksetName) {
 			return { ok: false, error: 'Unable to locate workset.' };
 		}
