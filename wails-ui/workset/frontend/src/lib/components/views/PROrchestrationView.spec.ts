@@ -344,4 +344,101 @@ describe('PROrchestrationView sidebar collapse', () => {
 		expect(getByText('Test PR title')).toBeInTheDocument();
 		expect(queryByText('No open PRs')).not.toBeInTheDocument();
 	});
+
+	test('creates a pull request from ready detail after selecting Open PR', async () => {
+		vi.mocked(githubApi.fetchTrackedPullRequest).mockResolvedValue(null);
+		const workspace = buildWorkspaceWithoutTrackedPr();
+		const { getByText, getByRole, getByPlaceholderText } = render(PROrchestrationView, {
+			props: { workspace },
+		});
+
+		const repoRow = getByText('feature/sidebar-collapse').closest('button');
+		expect(repoRow).toBeTruthy();
+		await fireEvent.click(repoRow!);
+
+		await waitFor(() => {
+			expect(getByRole('button', { name: 'Open PR' })).toBeInTheDocument();
+		});
+		await fireEvent.click(getByRole('button', { name: 'Open PR' }));
+		await fireEvent.input(getByPlaceholderText('Enter PR title...'), {
+			target: { value: 'Create PR from ready detail' },
+		});
+
+		await fireEvent.click(getByRole('button', { name: 'Create PR' }));
+
+		await waitFor(() => {
+			expect(vi.mocked(githubApi.createPullRequest)).toHaveBeenCalledWith('ws-1', 'repo-1', {
+				title: 'Create PR from ready detail',
+				body: '',
+				base: 'main',
+				head: 'feature/sidebar-collapse',
+				draft: false,
+				autoCommit: true,
+				autoPush: true,
+			});
+		});
+		await waitFor(() => {
+			expect(state.refreshWorkspacesStatus).toHaveBeenCalledWith(true);
+		});
+	});
+
+	test('keeps PR compose fields hidden until Open PR is pressed', async () => {
+		vi.mocked(githubApi.fetchTrackedPullRequest).mockResolvedValue(null);
+		const workspace = buildWorkspaceWithoutTrackedPr();
+		const { getByText, getByRole, queryByPlaceholderText } = render(PROrchestrationView, {
+			props: { workspace },
+		});
+
+		const repoRow = getByText('feature/sidebar-collapse').closest('button');
+		expect(repoRow).toBeTruthy();
+		await fireEvent.click(repoRow!);
+
+		expect(queryByPlaceholderText('Enter PR title...')).not.toBeInTheDocument();
+		expect(vi.mocked(githubApi.generatePullRequestText)).not.toHaveBeenCalled();
+
+		await fireEvent.click(getByRole('button', { name: 'Open PR' }));
+
+		await waitFor(() => {
+			expect(queryByPlaceholderText('Enter PR title...')).toBeInTheDocument();
+		});
+		await waitFor(() => {
+			expect(vi.mocked(githubApi.generatePullRequestText)).toHaveBeenCalledWith('ws-1', 'repo-1');
+		});
+	});
+
+	test('shows AI generation signal while PR title and description are being drafted', async () => {
+		vi.mocked(githubApi.fetchTrackedPullRequest).mockResolvedValue(null);
+		let resolveGenerated: ((value: { title: string; body: string }) => void) | undefined;
+		vi.mocked(githubApi.generatePullRequestText).mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					resolveGenerated = resolve;
+				}),
+		);
+
+		const workspace = buildWorkspaceWithoutTrackedPr();
+		const { getByText, getByRole, queryByText, getByPlaceholderText } = render(
+			PROrchestrationView,
+			{
+				props: { workspace },
+			},
+		);
+
+		const repoRow = getByText('feature/sidebar-collapse').closest('button');
+		expect(repoRow).toBeTruthy();
+		await fireEvent.click(repoRow!);
+		await fireEvent.click(getByRole('button', { name: 'Open PR' }));
+
+		await waitFor(() => {
+			expect(getByText('AI is drafting title and description...')).toBeInTheDocument();
+		});
+		resolveGenerated?.({ title: 'AI generated title', body: 'AI generated body' });
+
+		await waitFor(() => {
+			expect(queryByText('AI is drafting title and description...')).not.toBeInTheDocument();
+		});
+		expect((getByPlaceholderText('Enter PR title...') as HTMLInputElement).value).toBe(
+			'AI generated title',
+		);
+	});
 });

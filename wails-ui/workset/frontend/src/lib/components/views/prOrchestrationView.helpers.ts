@@ -50,6 +50,7 @@ export type PullRequestReviewThread = {
 
 type ViewMode = 'active' | 'ready';
 type PrListItemRef = { id: string };
+type RepoListItemRef = PrListItemRef & { repoId: string };
 type PrBranches = { base: string; head: string };
 type TrackedPrMap = Map<string, PullRequestCreated>;
 
@@ -416,6 +417,41 @@ export const createTrackedPrStateReconciler = (deps: {
 		}
 	};
 };
+
+export const createPrViewInteractionHandlers = (deps: {
+	findItem: (itemId: string) => RepoListItemRef | undefined;
+	getViewMode: () => ViewMode;
+	setViewMode: (mode: ViewMode) => void;
+	getSelectedItemId: () => string | null;
+	getPrComposerItemId: () => string | null;
+	setPrComposerItemId: (itemId: string | null) => void;
+	selectItem: (itemId: string) => void;
+	startPushForRepo: (repoId: string) => Promise<void>;
+	handleTrackedPrCreated: (repoId: string, created: PullRequestCreated) => void;
+}): {
+	openPrComposer: (itemId: string) => void;
+	handlePushFromSidebar: (itemId: string) => void;
+	handlePullRequestCreated: (repoId: string, created: PullRequestCreated) => void;
+} => ({
+	openPrComposer: (itemId: string): void => {
+		if (deps.getViewMode() !== 'ready') {
+			deps.setViewMode('ready');
+		}
+		if (deps.getSelectedItemId() === itemId && deps.getPrComposerItemId() === itemId) return;
+		deps.setPrComposerItemId(itemId);
+		deps.selectItem(itemId);
+	},
+	handlePushFromSidebar: (itemId: string): void => {
+		const item = deps.findItem(itemId);
+		if (!item) return;
+		if (deps.getViewMode() !== 'ready') deps.setViewMode('ready');
+		if (deps.getSelectedItemId() !== itemId) deps.selectItem(itemId);
+		void deps.startPushForRepo(item.repoId);
+	},
+	handlePullRequestCreated: (repoId: string, created: PullRequestCreated): void => {
+		deps.handleTrackedPrCreated(repoId, created);
+	},
+});
 
 export const getCheckIcon = (check: PullRequestCheck): string => {
 	if (check.conclusion === 'success') return 'success';
