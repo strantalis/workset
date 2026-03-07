@@ -133,10 +133,7 @@ const withMermaidContainer = async <T>(run: (container: HTMLElement) => Promise<
 	}
 };
 
-const renderHighlightedBlock = async (
-	source: string,
-	language: string | null,
-): Promise<string> => {
+const renderHighlightedBlock = async (source: string, language: string | null): Promise<string> => {
 	if (!language) {
 		return renderPlainTextBlock(source);
 	}

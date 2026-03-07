@@ -1,8 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import {
-	clearRepoFileSearchCache,
-	searchWorkspaceRepoFiles,
-} from './repo-files';
+import { clearRepoFileSearchCache, searchWorkspaceRepoFiles } from './repo-files';
 import { SearchWorkspaceRepoFiles } from '../../../bindings/workset/app';
 
 vi.mock('../../../bindings/workset/app', () => ({

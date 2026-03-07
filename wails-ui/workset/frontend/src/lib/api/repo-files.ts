@@ -47,7 +47,9 @@ const filterAndRankResults = (
 	return filtered.slice(0, Math.max(1, limit));
 };
 
-const isCacheFresh = (entry: RepoFileSearchCacheEntry | undefined): entry is RepoFileSearchCacheEntry =>
+const isCacheFresh = (
+	entry: RepoFileSearchCacheEntry | undefined,
+): entry is RepoFileSearchCacheEntry =>
 	Boolean(entry && Date.now() - entry.loadedAt < REPO_FILE_CACHE_TTL_MS);
 
 export function clearRepoFileSearchCache(): void {

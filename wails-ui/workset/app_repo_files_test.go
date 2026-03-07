@@ -37,6 +37,33 @@ func TestListRepoFilesIncludesTrackedAndUntracked(t *testing.T) {
 	}
 }
 
+func TestBuildRepoFileIndexOmitsDeletedTrackedFiles(t *testing.T) {
+	repoPath := t.TempDir()
+	runGit(t, repoPath, "init", "-q")
+
+	if err := os.WriteFile(filepath.Join(repoPath, "README.md"), []byte("# hello\n"), 0o644); err != nil {
+		t.Fatalf("write tracked file: %v", err)
+	}
+	runGit(t, repoPath, "add", "README.md")
+	runGit(t, repoPath, "commit", "-qm", "add readme")
+
+	if err := os.Remove(filepath.Join(repoPath, "README.md")); err != nil {
+		t.Fatalf("remove tracked file: %v", err)
+	}
+
+	items, err := buildRepoFileIndex(context.Background(), workspaceRepoRef{
+		id:   "thread-alpha::api",
+		name: "api",
+		path: repoPath,
+	})
+	if err != nil {
+		t.Fatalf("buildRepoFileIndex failed: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected deleted tracked files to be omitted, got %+v", items)
+	}
+}
+
 func TestMatchesRepoFileQueryAllowsEmptyQuery(t *testing.T) {
 	t.Parallel()
 

@@ -296,13 +296,17 @@ var buildRepoFileIndex = func(ctx context.Context, repo workspaceRepoRef) ([]rep
 	items := make([]repoFileIndexItem, 0, len(paths))
 	repoNameFolded := strings.ToLower(repo.name)
 	for _, path := range paths {
+		sizeBytes, ok := repoFileSize(repo.path, path)
+		if !ok {
+			continue
+		}
 		pathFolded := strings.ToLower(path)
 		items = append(items, repoFileIndexItem{
 			path:           path,
 			pathFolded:     pathFolded,
 			repoPathFolded: repoNameFolded + "/" + pathFolded,
 			isMarkdown:     isMarkdownPath(path),
-			sizeBytes:      repoFileSize(repo.path, path),
+			sizeBytes:      sizeBytes,
 		})
 	}
 	return items, nil
@@ -329,16 +333,16 @@ func repoFileMatchScore(pathFolded, repoPathFolded, queryFolded string) int {
 	}
 }
 
-func repoFileSize(repoRoot, relPath string) int {
+func repoFileSize(repoRoot, relPath string) (int, bool) {
 	targetPath := filepath.Join(repoRoot, filepath.FromSlash(relPath))
 	info, err := os.Lstat(targetPath)
 	if err != nil {
-		return 0
+		return 0, false
 	}
 	if info.IsDir() {
-		return 0
+		return 0, false
 	}
-	return int(info.Size())
+	return int(info.Size()), true
 }
 
 func listRepoFiles(ctx context.Context, repoPath string) ([]string, error) {

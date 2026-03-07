@@ -26,7 +26,6 @@
 		onCreateThread?: (worksetId: string) => void;
 		onSurfaceChange?: (surface: SurfaceTab) => void;
 		onCloseDocument?: () => void;
-		onOpenDocument?: (repoId: string, path: string) => void;
 	}
 
 	const {
@@ -41,7 +40,6 @@
 		onCreateThread = () => {},
 		onSurfaceChange = () => {},
 		onCloseDocument = () => {},
-		onOpenDocument = () => {},
 	}: Props = $props();
 
 	const deriveWorksetIdentity = (workspace: Workspace): { id: string; label: string } => {
@@ -266,14 +264,14 @@
 						>
 							{#if activeSurface === 'terminal'}
 								<div class="spaces-surface">
-									<TerminalWorkspace workspaceId={activeThread.id} workspaceName={activeThread.name} />
+									<TerminalWorkspace
+										workspaceId={activeThread.id}
+										workspaceName={activeThread.name}
+									/>
 								</div>
 							{:else}
 								<div class="spaces-surface">
-									<PROrchestrationView
-										workspace={activeThread}
-										onOpenDocument={(repoId, path) => onOpenDocument(repoId, path)}
-									/>
+									<PROrchestrationView workspace={activeThread} />
 								</div>
 							{/if}
 
@@ -289,10 +287,7 @@
 						</div>
 					{:else}
 						<div class="spaces-surface">
-							<PROrchestrationView
-								workspace={activeThread}
-								onOpenDocument={(repoId, path) => onOpenDocument(repoId, path)}
-							/>
+							<PROrchestrationView workspace={activeThread} />
 						</div>
 					{/if}
 				</div>

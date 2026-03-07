@@ -607,26 +607,6 @@
 	font-family: var(--font-mono);
 	color: var(--muted);
 }
-.diff-header-actions {
-	display: inline-flex;
-	align-items: center;
-	gap: 10px;
-}
-.diff-open-file {
-	border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
-	border-radius: 999px;
-	background: transparent;
-	color: var(--text);
-	font-size: 11px;
-	font-weight: 600;
-	letter-spacing: 0.04em;
-	text-transform: uppercase;
-	padding: 4px 9px;
-	cursor: pointer;
-}
-.diff-open-file:hover {
-	background: color-mix(in srgb, var(--accent) 12%, transparent);
-}
 .diff-placeholder {
 	display: flex;
 	flex-direction: column;
