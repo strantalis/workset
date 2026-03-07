@@ -17,6 +17,7 @@ export type PrListItem = {
 	updatedAtLabel: string;
 	author: string;
 	commentsCount: number;
+	reviewCommentsCount: number;
 };
 
 const getStatus = (
@@ -57,6 +58,7 @@ export const mapWorkspaceToPrItems = (workspace: Workspace | null): PrListItem[]
 		updatedAtLabel: formatRelativeTime(repo.trackedPullRequest?.updatedAt ?? workspace.lastUsed),
 		author: repo.trackedPullRequest?.author ?? '',
 		commentsCount: repo.trackedPullRequest?.commentsCount ?? 0,
+		reviewCommentsCount: repo.trackedPullRequest?.reviewCommentsCount ?? 0,
 	}));
 };
 

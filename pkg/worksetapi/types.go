@@ -95,21 +95,22 @@ type RepoSnapshotJSON struct {
 
 // TrackedPullRequestSnapshotJSON summarizes tracked PR metadata stored in workspace state.
 type TrackedPullRequestSnapshotJSON struct {
-	Repo          string `json:"repo"`
-	Number        int    `json:"number"`
-	URL           string `json:"url"`
-	Title         string `json:"title"`
-	Body          string `json:"body,omitempty"`
-	State         string `json:"state"`
-	Draft         bool   `json:"draft"`
-	Merged        bool   `json:"merged"`
-	BaseRepo      string `json:"base_repo"`
-	BaseBranch    string `json:"base_branch"`
-	HeadRepo      string `json:"head_repo"`
-	HeadBranch    string `json:"head_branch"`
-	UpdatedAt     string `json:"updated_at,omitempty"`
-	Author        string `json:"author,omitempty"`
-	CommentsCount int    `json:"comments_count,omitempty"`
+	Repo                string `json:"repo"`
+	Number              int    `json:"number"`
+	URL                 string `json:"url"`
+	Title               string `json:"title"`
+	Body                string `json:"body,omitempty"`
+	State               string `json:"state"`
+	Draft               bool   `json:"draft"`
+	Merged              bool   `json:"merged"`
+	BaseRepo            string `json:"base_repo"`
+	BaseBranch          string `json:"base_branch"`
+	HeadRepo            string `json:"head_repo"`
+	HeadBranch          string `json:"head_branch"`
+	UpdatedAt           string `json:"updated_at,omitempty"`
+	Author              string `json:"author,omitempty"`
+	CommentsCount       int    `json:"comments_count,omitempty"`
+	ReviewCommentsCount int    `json:"review_comments_count,omitempty"`
 }
 
 // WorkspaceCreatedJSON describes the JSON payload for a created workspace.

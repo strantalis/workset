@@ -511,13 +511,15 @@ func TestGetPullRequestStatusRefreshesTrackedPullRequestWhenOpen(t *testing.T) {
 				t.Fatalf("unexpected pull request lookup: owner=%s repo=%s number=%d", owner, repo, number)
 			}
 			return GitHubPullRequest{
-				Number:  41,
-				URL:     "https://github.com/head-org/head-repo/pull/41",
-				Title:   "Updated title",
-				Body:    "Updated body",
-				State:   "open",
-				BaseRef: "main",
-				HeadRef: "feature/topic",
+				Number:              41,
+				URL:                 "https://github.com/head-org/head-repo/pull/41",
+				Title:               "Updated title",
+				Body:                "Updated body",
+				State:               "open",
+				BaseRef:             "main",
+				HeadRef:             "feature/topic",
+				CommentsCount:       1,
+				ReviewCommentsCount: 2,
 			}, nil
 		},
 	}
@@ -547,5 +549,11 @@ func TestGetPullRequestStatusRefreshesTrackedPullRequestWhenOpen(t *testing.T) {
 	}
 	if tracked.Payload.PullRequest.Body != "Updated body" {
 		t.Fatalf("expected tracked pull request body to refresh, got %q", tracked.Payload.PullRequest.Body)
+	}
+	if tracked.Payload.PullRequest.CommentsCount != 3 {
+		t.Fatalf("expected tracked pull request comments count to refresh, got %d", tracked.Payload.PullRequest.CommentsCount)
+	}
+	if tracked.Payload.PullRequest.ReviewCommentsCount != 2 {
+		t.Fatalf("expected tracked pull request review comments count to refresh, got %d", tracked.Payload.PullRequest.ReviewCommentsCount)
 	}
 }

@@ -2,6 +2,8 @@ import { describe, expect, test } from 'vitest';
 import type { PullRequestCreated, Workspace } from '../../types';
 import {
 	createTrackedPrMapCoordinator,
+	getPullRequestFeedbackCounts,
+	hasTrackedPrMetadataChanged,
 	mergeTrackedPrMap,
 	trackedPrMapsEqual,
 	withTrackedPr,
@@ -116,9 +118,13 @@ describe('prOrchestrationView tracked PR map helpers', () => {
 		const different = new Map<string, PullRequestCreated>([
 			['repo-1', { ...openPr(10), headBranch: 'feature/other' }],
 		]);
+		const differentFeedback = new Map<string, PullRequestCreated>([
+			['repo-1', { ...openPr(10), reviewCommentsCount: 2 }],
+		]);
 
 		expect(trackedPrMapsEqual(left, right)).toBe(true);
 		expect(trackedPrMapsEqual(left, different)).toBe(false);
+		expect(trackedPrMapsEqual(left, differentFeedback)).toBe(false);
 	});
 
 	test('coordinator keeps stale suppressed PR hidden but unsuppresses when workspace reports a different open PR', () => {
@@ -173,5 +179,32 @@ describe('prOrchestrationView tracked PR map helpers', () => {
 
 		expect(updated.get('repo-1')?.number).toBe(11);
 		expect(deleted.has('repo-1')).toBe(false);
+	});
+
+	test('detects tracked PR metadata changes for feedback counts', () => {
+		expect(
+			hasTrackedPrMetadataChanged(openPr(10), {
+				...openPr(10),
+				commentsCount: 1,
+				reviewCommentsCount: 1,
+			}),
+		).toBe(true);
+	});
+
+	test('derives feedback counts from tracked PR before falling back to other sources', () => {
+		expect(
+			getPullRequestFeedbackCounts(
+				{ ...openPr(10), commentsCount: 3, reviewCommentsCount: 2 },
+				{
+					pullRequest: { ...openPr(10), commentsCount: 1, reviewCommentsCount: 1 },
+					checks: [],
+				},
+				{ commentsCount: 4, reviewCommentsCount: 4 },
+			),
+		).toEqual({
+			comments: 3,
+			reviewComments: 2,
+			conversationComments: 1,
+		});
 	});
 });

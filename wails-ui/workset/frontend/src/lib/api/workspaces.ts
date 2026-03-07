@@ -69,23 +69,30 @@ export async function fetchWorkspaces(
 				ahead: repo.ahead ?? 0,
 				behind: repo.behind ?? 0,
 				trackedPullRequest: repo.trackedPullRequest
-					? {
-							repo: repo.trackedPullRequest.repo,
-							number: repo.trackedPullRequest.number,
-							url: repo.trackedPullRequest.url,
-							title: repo.trackedPullRequest.title,
-							body: repo.trackedPullRequest.body,
-							state: repo.trackedPullRequest.state,
-							draft: repo.trackedPullRequest.draft,
-							merged:
-								(repo.trackedPullRequest as { merged?: boolean }).merged ??
-								repo.trackedPullRequest.state?.toLowerCase() === 'merged',
-							baseRepo: repo.trackedPullRequest.baseRepo,
-							baseBranch: repo.trackedPullRequest.baseBranch,
-							headRepo: repo.trackedPullRequest.headRepo,
-							headBranch: repo.trackedPullRequest.headBranch,
-							updatedAt: repo.trackedPullRequest.updatedAt,
-						}
+					? (() => {
+							const tracked = repo.trackedPullRequest as typeof repo.trackedPullRequest & {
+								merged?: boolean;
+								commentsCount?: number;
+								reviewCommentsCount?: number;
+							};
+							return {
+								repo: tracked.repo,
+								number: tracked.number,
+								url: tracked.url,
+								title: tracked.title,
+								body: tracked.body,
+								state: tracked.state,
+								draft: tracked.draft,
+								merged: tracked.merged ?? tracked.state?.toLowerCase() === 'merged',
+								baseRepo: tracked.baseRepo,
+								baseBranch: tracked.baseBranch,
+								headRepo: tracked.headRepo,
+								headBranch: tracked.headBranch,
+								updatedAt: tracked.updatedAt,
+								commentsCount: tracked.commentsCount ?? 0,
+								reviewCommentsCount: tracked.reviewCommentsCount ?? 0,
+							};
+						})()
 					: undefined,
 				diff: {
 					added: repo.diff?.added ?? 0,

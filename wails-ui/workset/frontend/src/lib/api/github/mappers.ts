@@ -30,6 +30,8 @@ export function mapPullRequest(result: PullRequestCreateResponse): PullRequestCr
 		baseBranch: result.base_branch,
 		headRepo: result.head_repo,
 		headBranch: result.head_branch,
+		commentsCount: result.comments_count,
+		reviewCommentsCount: result.review_comments_count,
 	};
 }
 
@@ -84,6 +86,8 @@ export function mapPullRequestStatus(result: PullRequestStatusResponse): PullReq
 			headRepo: result.pullRequest.head_repo,
 			headBranch: result.pullRequest.head_branch,
 			mergeable: result.pullRequest.mergeable,
+			commentsCount: result.pullRequest.comments_count,
+			reviewCommentsCount: result.pullRequest.review_comments_count,
 		},
 		checks,
 	};
