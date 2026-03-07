@@ -15,7 +15,7 @@
 		MessageSquare,
 		XCircle,
 	} from '@lucide/svelte';
-	import type { Workspace } from '../../types';
+	import type { RepoDiffFileSummary, Workspace } from '../../types';
 	import type { PrListItem } from '../../view-models/prViewModel';
 
 	type Partitions = {
@@ -35,6 +35,7 @@
 		selectedItemId: string | null;
 		prComposerItemId: string | null;
 		prComposerMode?: 'pull_request' | 'local_merge';
+		selectedReadyRepoFiles?: RepoDiffFileSummary[];
 		selectedFilePath?: string | null;
 		resolveTrackedTitle: (repoId: string, fallbackTitle: string) => string;
 		onToggleSidebar: () => void;
@@ -54,6 +55,7 @@
 		selectedItemId,
 		prComposerItemId,
 		prComposerMode = 'pull_request',
+		selectedReadyRepoFiles = [],
 		selectedFilePath = null,
 		resolveTrackedTitle,
 		onToggleSidebar,
@@ -106,9 +108,17 @@
 		return parts[parts.length - 1] || path;
 	};
 
-	const fileTone = (
-		file: Workspace['repos'][number]['files'][number],
-	): 'added' | 'removed' | 'changed' => {
+	type SidebarRepoFile = Workspace['repos'][number]['files'][number] | RepoDiffFileSummary;
+
+	const resolveReadyRepoFiles = (
+		repo: Workspace['repos'][number] | undefined,
+		isActive: boolean,
+	): SidebarRepoFile[] => {
+		if (viewMode === 'ready' && isActive) return selectedReadyRepoFiles;
+		return repo?.files ?? [];
+	};
+
+	const fileTone = (file: SidebarRepoFile): 'added' | 'removed' | 'changed' => {
 		if (file.added > 0 && file.removed === 0) return 'added';
 		if (file.removed > 0 && file.added === 0) return 'removed';
 		return 'changed';
@@ -148,6 +158,7 @@
 					{@const isComposerActive = isActive && prComposerItemId === item.id}
 					{@const isPullRequestActive = isComposerActive && prComposerMode === 'pull_request'}
 					{@const isLocalMergeActive = isComposerActive && prComposerMode === 'local_merge'}
+					{@const repoFiles = resolveReadyRepoFiles(repo, isActive)}
 					<div class="repo-block" class:active={isActive}>
 						<button
 							type="button"
@@ -175,7 +186,7 @@
 						</button>
 						{#if isActive && repo}
 							<div class="repo-files">
-								{#each repo.files as file (`${item.id}:${file.path}`)}
+								{#each repoFiles as file (`${item.id}:${file.path}`)}
 									{@const tone = fileTone(file)}
 									<button
 										type="button"

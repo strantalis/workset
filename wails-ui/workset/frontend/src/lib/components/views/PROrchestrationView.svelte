@@ -577,10 +577,13 @@
 		});
 	const resolveRepoFileSelectionIndex = (itemId: string, filePath: string): number => {
 		const item = prItems.find((entry) => entry.id === itemId);
-		const index =
-			workspace?.repos
-				.find((repo) => repo.id === item?.repoId)
-				?.files.findIndex((file) => file.path === filePath) ?? -1;
+		const repoFiles =
+			viewMode === 'ready' && selectedItemId === itemId
+				? (diffSummary?.files ?? [])
+				: ((workspace?.repos.find((repo) => repo.id === item?.repoId)?.files ?? []) as {
+						path: string;
+					}[]);
+		const index = repoFiles.findIndex((file) => file.path === filePath);
 		return index >= 0 ? index : 0;
 	};
 	const handleSelectRepoFile = (itemId: string, filePath: string): void => {
@@ -1368,6 +1371,7 @@
 					{selectedItemId}
 					{prComposerItemId}
 					{prComposerMode}
+					selectedReadyRepoFiles={viewMode === 'ready' ? (diffSummary?.files ?? []) : []}
 					selectedFilePath={viewMode === 'ready' ? selectedFilePath : null}
 					{resolveTrackedTitle}
 					onToggleSidebar={toggleSidebar}

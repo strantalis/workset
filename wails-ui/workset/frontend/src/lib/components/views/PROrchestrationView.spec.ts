@@ -504,7 +504,7 @@ describe('PROrchestrationView sidebar collapse', () => {
 		expect(getByRole('button', { name: 'Merge into main' })).toBeInTheDocument();
 	});
 
-	test('uses repository file rows to drive ready-detail diff selection without rendering a duplicate file list', async () => {
+	test('uses ready diff summary files for repository file rows when workspace snapshot files are empty', async () => {
 		vi.mocked(githubApi.fetchTrackedPullRequest).mockResolvedValue(null);
 		vi.mocked(repoDiffApi.fetchBranchDiffSummary).mockResolvedValue({
 			files: [
@@ -519,10 +519,7 @@ describe('PROrchestrationView sidebar collapse', () => {
 		workspace.repos[0] = {
 			...workspace.repos[0],
 			diff: { added: 3, removed: 0 },
-			files: [
-				{ path: 'README.md', added: 2, removed: 0, hunks: [] },
-				{ path: 'docs/guide.md', added: 1, removed: 0, hunks: [] },
-			],
+			files: [],
 		};
 
 		const { getByText, getByRole, queryByText } = render(PROrchestrationView, {
