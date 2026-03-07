@@ -46,6 +46,16 @@ const buildInstalledSkill = (overrides: Partial<SkillInfo> = {}): SkillInfo => (
 	...overrides,
 });
 
+const deferred = <T>() => {
+	let resolve!: (value: T) => void;
+	let reject!: (reason?: unknown) => void;
+	const promise = new Promise<T>((res, rej) => {
+		resolve = res;
+		reject = rej;
+	});
+	return { promise, resolve, reject };
+};
+
 describe('SkillMarketplacePanel', () => {
 	beforeEach(() => {
 		apiMocks.searchMarketplaceSkills.mockReset();
@@ -272,5 +282,61 @@ description: Frontend design skill
 		await findAllByText('frontend-design');
 		expect(queryByText('Workset installed')).toBeNull();
 		expect(queryByText('Global installed')).toBeNull();
+	});
+
+	test('ignores out-of-order marketplace search responses', async () => {
+		const staleSearch = deferred<MarketplaceSkill[]>();
+		const freshSearch = deferred<MarketplaceSkill[]>();
+		const staleSkill = buildMarketplaceSkill({
+			externalId: 'old-org/old-skill',
+			name: 'stale-skill',
+			sourceRepo: 'old-org/skills',
+			sourceUrl: 'https://skills.sh/old-org/old-skill',
+			rawSkillUrl:
+				'https://raw.githubusercontent.com/old-org/skills/main/skills/stale-skill/SKILL.md',
+		});
+		const freshSkill = buildMarketplaceSkill({
+			externalId: 'new-org/react-review',
+			name: 'react-review',
+			sourceRepo: 'new-org/skills',
+			sourceUrl: 'https://skills.sh/new-org/react-review',
+			rawSkillUrl:
+				'https://raw.githubusercontent.com/new-org/skills/main/skills/react-review/SKILL.md',
+		});
+
+		apiMocks.searchMarketplaceSkills.mockImplementation(({ query }: { query: string }) => {
+			if (query === 'frontend') return staleSearch.promise;
+			if (query === 'react') return freshSearch.promise;
+			return Promise.resolve([]);
+		});
+		apiMocks.getMarketplaceSkillMetadata.mockImplementation((skill: MarketplaceSkill) =>
+			Promise.resolve(skill),
+		);
+		apiMocks.getMarketplaceSkillContent.mockImplementation((skill: MarketplaceSkill) =>
+			Promise.resolve({
+				skill,
+				content: `---\nname: ${skill.name}\ndescription: ${skill.description}\n---\n\n# ${skill.name}`,
+			}),
+		);
+
+		const { getByPlaceholderText, getByRole, findAllByText, queryByText } = render(
+			SkillMarketplacePanel,
+			{
+				props: {
+					workspaceId: 'ws-1',
+				},
+			},
+		);
+
+		await fireEvent.input(getByPlaceholderText('Search Vercel skills.sh...'), {
+			target: { value: 'react' },
+		});
+		await fireEvent.click(getByRole('button', { name: 'Search' }));
+
+		freshSearch.resolve([freshSkill]);
+		await findAllByText('react-review');
+
+		staleSearch.resolve([staleSkill]);
+		await waitFor(() => expect(queryByText('stale-skill')).toBeNull());
 	});
 });

@@ -99,6 +99,23 @@ func TestSkillsSHMarketplaceProviderGetContentFallsBackToMaster(t *testing.T) {
 	}
 }
 
+func TestSkillsSHMarketplaceProviderGetContentFailsWithoutRawURL(t *testing.T) {
+	t.Parallel()
+
+	provider := &skillsSHMarketplaceProvider{client: http.DefaultClient}
+	_, err := provider.GetContent(context.Background(), MarketplaceSkill{
+		Provider:   MarketplaceProviderSkillsSh,
+		ExternalID: "anthropics/skills/frontend-design",
+		Name:       "frontend-design",
+	})
+	if err == nil {
+		t.Fatal("expected error for missing raw skill URL, got nil")
+	}
+	if !strings.Contains(err.Error(), "content URL missing") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestEnrichSkillFromDetailPage(t *testing.T) {
 	t.Parallel()
 

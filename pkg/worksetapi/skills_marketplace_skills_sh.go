@@ -130,6 +130,9 @@ func (p *skillsSHMarketplaceProvider) GetContent(ctx context.Context, skill Mark
 		}
 		lastErr = err
 	}
+	if content == "" && lastErr == nil {
+		return MarketplaceSkillContent{}, fmt.Errorf("marketplace content URL missing for %s", skill.ExternalID)
+	}
 	if lastErr != nil {
 		return MarketplaceSkillContent{}, lastErr
 	}

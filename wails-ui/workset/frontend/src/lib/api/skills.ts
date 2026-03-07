@@ -178,14 +178,14 @@ export async function installMarketplaceSkill(
 		externalId: input.skill.externalId,
 		name: input.skill.name,
 		description: input.skill.description,
-			sourceRepo: input.skill.sourceRepo,
-			sourceUrl: input.skill.sourceUrl,
-			listingUrl: input.skill.listingUrl ?? '',
-			rawSkillUrl: input.skill.rawSkillUrl,
-			installCount: input.skill.installCount ?? null,
-			scope: input.scope,
-			dirName: input.dirName,
-			tools: input.tools,
+		sourceRepo: input.skill.sourceRepo,
+		sourceUrl: input.skill.sourceUrl,
+		listingUrl: input.skill.listingUrl ?? '',
+		rawSkillUrl: input.skill.rawSkillUrl,
+		installCount: input.skill.installCount ?? null,
+		scope: input.scope,
+		dirName: input.dirName,
+		tools: input.tools,
 	})) as SkillInfo;
 }
 

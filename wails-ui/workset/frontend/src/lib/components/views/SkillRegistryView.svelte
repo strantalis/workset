@@ -428,7 +428,11 @@ Add task-specific guidance here.
 
 	<div class="main-container">
 		{#if surfaceTab === 'marketplace'}
-			<SkillMarketplacePanel {workspaceId} installedSkills={skills} onInstalled={handleMarketplaceInstalled} />
+			<SkillMarketplacePanel
+				{workspaceId}
+				installedSkills={skills}
+				onInstalled={handleMarketplaceInstalled}
+			/>
 		{:else if creating}
 			<div class="create-view" in:fly={{ y: 20, duration: 420, easing: cubicOut }}>
 				<div class="create-card">

@@ -87,7 +87,8 @@
 		return `${Intl.NumberFormat('en-US', { notation: 'compact' }).format(count)} installs`;
 	};
 
-	const formatScopeLabel = (scope: SkillScope): string => (scope === 'project' ? 'Workset' : 'Global');
+	const formatScopeLabel = (scope: SkillScope): string =>
+		scope === 'project' ? 'Workset' : 'Global';
 
 	const skillKey = (skill: Pick<MarketplaceSkill, 'provider' | 'externalId'>): string =>
 		`${skill.provider}:${skill.externalId}`;
@@ -184,20 +185,23 @@
 			return {
 				label: 'Provider verified',
 				tone: 'good',
-				detail: 'Verification exists, but audit depth is provider-defined rather than enforced by Workset.',
+				detail:
+					'Verification exists, but audit depth is provider-defined rather than enforced by Workset.',
 			};
 		}
 		if (skill.sourceRepo.trim().length > 0) {
 			return {
 				label: 'Public source',
 				tone: 'neutral',
-				detail: 'GitHub source is visible, but no provider audit signal is present. Review before installing.',
+				detail:
+					'GitHub source is visible, but no provider audit signal is present. Review before installing.',
 			};
 		}
 		return {
 			label: 'No audit signal',
 			tone: 'caution',
-			detail: 'No verification or public-source confidence signal is present. Manual review is required.',
+			detail:
+				'No verification or public-source confidence signal is present. Manual review is required.',
 		};
 	};
 
@@ -325,6 +329,9 @@
 				},
 				workspaceId ?? undefined,
 			);
+			if (generation !== searchGeneration) {
+				return;
+			}
 			results = items;
 			void hydrateSearchResults(items, generation);
 			void backfillLegacyInstalledSkills(items, generation);
@@ -340,9 +347,13 @@
 				items.find((entry) => `${entry.provider}:${entry.externalId}` === selectedKey) ?? items[0];
 			await openSkill(nextSelected);
 		} catch (error) {
-			searchError = toErrorMessage(error, 'Failed to search marketplace');
+			if (generation === searchGeneration) {
+				searchError = toErrorMessage(error, 'Failed to search marketplace');
+			}
 		} finally {
-			loading = false;
+			if (generation === searchGeneration) {
+				loading = false;
+			}
 		}
 	};
 
@@ -353,8 +364,7 @@
 		const needsMetadata = items
 			.filter(
 				(skill) =>
-					(skill.auditSummaries?.length ?? 0) === 0 &&
-					(skill.listingUrl?.trim().length ?? 0) > 0,
+					(skill.auditSummaries?.length ?? 0) === 0 && (skill.listingUrl?.trim().length ?? 0) > 0,
 			)
 			.slice(0, 8);
 		if (needsMetadata.length === 0) {
@@ -388,7 +398,9 @@
 	): Promise<void> => {
 		const legacyInstalled = installedSkills.filter((skill) => !skill.marketplace);
 		for (const installed of legacyInstalled) {
-			const candidates = items.filter((item) => slugifyDirName(item) === installed.dirName).slice(0, 4);
+			const candidates = items
+				.filter((item) => slugifyDirName(item) === installed.dirName)
+				.slice(0, 4);
 			if (candidates.length === 0) {
 				continue;
 			}
@@ -564,14 +576,14 @@
 	{/if}
 
 	{#if !searchQuery.trim() && results.length === 0}
-			<div class="marketplace-empty">
-				<div class="marketplace-empty-card">
-					<Sparkles size={18} />
-					<h3>Search Vercel skills.sh</h3>
-					<p>
-						Workset imports remote skills into your local registry so you keep ownership after
-						install.
-					</p>
+		<div class="marketplace-empty">
+			<div class="marketplace-empty-card">
+				<Sparkles size={18} />
+				<h3>Search Vercel skills.sh</h3>
+				<p>
+					Workset imports remote skills into your local registry so you keep ownership after
+					install.
+				</p>
 				<div class="quick-searches">
 					{#each QUICK_SEARCHES as suggestion (suggestion)}
 						<button type="button" class="quick-search" onclick={() => runSearch(suggestion)}>
@@ -599,56 +611,60 @@
 							class:active={selectedKey === `${skill.provider}:${skill.externalId}`}
 							onclick={() => openSkill(skill)}
 						>
-					<div class="marketplace-card-header">
-						<div>
-							<h3>{skill.name}</h3>
-							{#if skill.description}
-								<p>{skill.description}</p>
-							{/if}
-						</div>
-						<div class="card-badges">
-							{#if isInstalled(skill)}
-								{#each getInstalledScopes(skill) as scope (scope)}
-									<span class="installed-badge">{formatScopeLabel(scope)} installed</span>
-								{/each}
-							{/if}
-							<span class="provider-badge">skills.sh</span>
-						</div>
-					</div>
-					<div class="marketplace-security-row">
-						<span class={`security-pill ${getSecuritySignal(skill).tone}`}
-							>{getSecuritySignal(skill).label}</span
-						>
-						<span class="security-detail">{getSecuritySignal(skill).detail}</span>
-					</div>
-					{#if hasAuditSummaries(skill)}
-						<div class="audit-badges">
-							{#each skill.auditSummaries ?? [] as audit (audit.provider)}
-								<span class={`audit-chip ${auditStatusTone(audit.status)}`}>
-									<strong>{auditLabel(audit.provider)}</strong>
-									{audit.status}
-								</span>
-							{/each}
-						</div>
-					{/if}
-						<div class="marketplace-card-footer">
-							<span class="footer-source">{skill.sourceRepo || skill.sourceUrl}</span>
-							<div class="footer-metrics">
-								<span>{formatInstallCount(skill.installCount)}</span>
-								{#if skill.weeklyInstalls != null}
-									<span class="footer-metric">
-										<TrendingUp size={11} />
-										{Intl.NumberFormat('en-US', { notation: 'compact' }).format(skill.weeklyInstalls)}/wk
-									</span>
-								{/if}
-								{#if skill.githubStars != null}
-									<span class="footer-metric">
-										<Star size={11} />
-										{Intl.NumberFormat('en-US', { notation: 'compact' }).format(skill.githubStars)}
-									</span>
-								{/if}
+							<div class="marketplace-card-header">
+								<div>
+									<h3>{skill.name}</h3>
+									{#if skill.description}
+										<p>{skill.description}</p>
+									{/if}
+								</div>
+								<div class="card-badges">
+									{#if isInstalled(skill)}
+										{#each getInstalledScopes(skill) as scope (scope)}
+											<span class="installed-badge">{formatScopeLabel(scope)} installed</span>
+										{/each}
+									{/if}
+									<span class="provider-badge">skills.sh</span>
+								</div>
 							</div>
-						</div>
+							<div class="marketplace-security-row">
+								<span class={`security-pill ${getSecuritySignal(skill).tone}`}
+									>{getSecuritySignal(skill).label}</span
+								>
+								<span class="security-detail">{getSecuritySignal(skill).detail}</span>
+							</div>
+							{#if hasAuditSummaries(skill)}
+								<div class="audit-badges">
+									{#each skill.auditSummaries ?? [] as audit (audit.provider)}
+										<span class={`audit-chip ${auditStatusTone(audit.status)}`}>
+											<strong>{auditLabel(audit.provider)}</strong>
+											{audit.status}
+										</span>
+									{/each}
+								</div>
+							{/if}
+							<div class="marketplace-card-footer">
+								<span class="footer-source">{skill.sourceRepo || skill.sourceUrl}</span>
+								<div class="footer-metrics">
+									<span>{formatInstallCount(skill.installCount)}</span>
+									{#if skill.weeklyInstalls != null}
+										<span class="footer-metric">
+											<TrendingUp size={11} />
+											{Intl.NumberFormat('en-US', { notation: 'compact' }).format(
+												skill.weeklyInstalls,
+											)}/wk
+										</span>
+									{/if}
+									{#if skill.githubStars != null}
+										<span class="footer-metric">
+											<Star size={11} />
+											{Intl.NumberFormat('en-US', { notation: 'compact' }).format(
+												skill.githubStars,
+											)}
+										</span>
+									{/if}
+								</div>
+							</div>
 						</button>
 					{/each}
 				{/if}
@@ -698,7 +714,11 @@
 									<span>{formatInstallCount(selectedResult.weeklyInstalls)} weekly</span>
 								{/if}
 								{#if selectedResult.githubStars != null}
-									<span>{Intl.NumberFormat('en-US', { notation: 'compact' }).format(selectedResult.githubStars)} GitHub stars</span>
+									<span
+										>{Intl.NumberFormat('en-US', { notation: 'compact' }).format(
+											selectedResult.githubStars,
+										)} GitHub stars</span
+									>
 								{/if}
 								{#if selectedResult.firstSeen}
 									<span>First seen {selectedResult.firstSeen}</span>
@@ -739,7 +759,9 @@
 										{#each selectedResult.auditSummaries ?? [] as audit (audit.provider)}
 											<a
 												class={`audit-card ${auditStatusTone(audit.status)}`}
-												href={audit.detailUrl || selectedResult.listingUrl || selectedResult.sourceUrl}
+												href={audit.detailUrl ||
+													selectedResult.listingUrl ||
+													selectedResult.sourceUrl}
 												target="_blank"
 												rel="noreferrer"
 											>
@@ -809,21 +831,27 @@
 										type="button"
 										class="scope-btn"
 										class:active={installScope === 'global'}
-										onclick={() => { installScope = 'global'; }}
-									>Global</button>
+										onclick={() => {
+											installScope = 'global';
+										}}>Global</button
+									>
 									<button
 										type="button"
 										class="scope-btn"
 										class:active={installScope === 'project'}
 										disabled={!workspaceId}
-										onclick={() => { installScope = 'project'; }}
-									>Workset</button>
+										onclick={() => {
+											installScope = 'project';
+										}}>Workset</button
+									>
 								</div>
 								<button
 									type="button"
 									class="install-config-toggle"
 									class:active={installConfigOpen}
-									onclick={() => { installConfigOpen = !installConfigOpen; }}
+									onclick={() => {
+										installConfigOpen = !installConfigOpen;
+									}}
 									title="Install options"
 								>
 									<Settings size={14} />
