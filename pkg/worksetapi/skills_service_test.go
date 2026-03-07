@@ -18,6 +18,13 @@ func writeSkillFile(t *testing.T, base, dirName, content string) {
 	}
 }
 
+func writeSkillMarketplaceMetadata(t *testing.T, base, dirName string, source *SkillMarketplaceSource) {
+	t.Helper()
+	if err := writeSkillMarketplaceSource(filepath.Join(base, dirName), source); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestParseSkillFrontmatter(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -103,6 +110,11 @@ func TestListSkills(t *testing.T) {
 	// Create a project skill
 	projectSkills := filepath.Join(tmp, ".claude", "skills")
 	writeSkillFile(t, projectSkills, "proj-skill", "---\nname: Project Skill\ndescription: Project only\n---\n")
+	writeSkillMarketplaceMetadata(t, projectSkills, "proj-skill", &SkillMarketplaceSource{
+		Provider:   MarketplaceProviderSkillsSh,
+		ExternalID: "anthropics/skills/proj-skill",
+		SourceRepo: "anthropics/skills",
+	})
 
 	svc := &Service{}
 	skills, err := svc.ListSkills(context.Background(), tmp)
@@ -139,6 +151,9 @@ func TestListSkills(t *testing.T) {
 	}
 	if projSkill == nil {
 		t.Fatal("project proj-skill not found")
+	}
+	if projSkill.Marketplace == nil || projSkill.Marketplace.ExternalID != "anthropics/skills/proj-skill" {
+		t.Fatalf("expected marketplace provenance on project skill, got %+v", projSkill.Marketplace)
 	}
 }
 

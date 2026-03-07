@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { fly, fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import {
@@ -16,7 +17,6 @@
 		Plus,
 		RefreshCw,
 		Search,
-		Sparkles,
 		Trash2,
 	} from '@lucide/svelte';
 	import DOMPurify from 'dompurify';
@@ -29,32 +29,27 @@
 		resolvePreferredTool,
 		saveSkillContent,
 	} from '../../view-models/skillsViewModel';
-
-	// No props needed — this view is self-contained.
+	import SkillMarketplacePanel from './SkillMarketplacePanel.svelte';
 
 	type ToolOption = {
 		id: string;
 		label: string;
-		hint?: string; // subtitle shown below label
-		globalOnly?: boolean; // false = no global dir (project-only)
+		globalOnly?: boolean;
 	};
-
-	const TOOL_OPTIONS: ToolOption[] = [
-		{
-			id: 'agents',
-			label: 'Agents',
-			hint: 'Universal standard — Amp, Factory, Crush, Pi, Cline, Windsurf',
-		},
-		{ id: 'claude', label: 'Claude' },
-		{ id: 'codex', label: 'Codex' },
-		{ id: 'copilot', label: 'Copilot', hint: 'Project-scoped only', globalOnly: false },
-		{ id: 'cursor', label: 'Cursor' },
-		{ id: 'opencode', label: 'OpenCode' },
-	];
 
 	type ScopeFilter = 'all' | 'global' | 'project';
 	type SkillScope = 'global' | 'project';
 	type DetailTab = 'rendered' | 'raw';
+	type SurfaceTab = 'installed' | 'marketplace';
+
+	const TOOL_OPTIONS: ToolOption[] = [
+		{ id: 'agents', label: 'Agents' },
+		{ id: 'claude', label: 'Claude' },
+		{ id: 'codex', label: 'Codex' },
+		{ id: 'copilot', label: 'Copilot', globalOnly: false },
+		{ id: 'cursor', label: 'Cursor' },
+		{ id: 'opencode', label: 'OpenCode' },
+	];
 
 	const INITIAL_SKILL = `---
 name: example-skill
@@ -66,7 +61,6 @@ description: one sentence about what this skill does
 Add task-specific guidance here.
 `;
 
-	// Color palette for skill card icons
 	const ICON_COLORS = [
 		'#5E6AD2',
 		'#EF4444',
@@ -78,10 +72,12 @@ Add task-specific guidance here.
 		'#8B5CF6',
 	];
 
+	const { workspaceId = null }: { workspaceId?: string | null } = $props();
+
 	const getIconColor = (name: string): string => {
 		let hash = 0;
-		for (let i = 0; i < name.length; i++) {
-			hash = (hash << 5) - hash + name.charCodeAt(i);
+		for (let index = 0; index < name.length; index += 1) {
+			hash = (hash << 5) - hash + name.charCodeAt(index);
 			hash |= 0;
 		}
 		return ICON_COLORS[Math.abs(hash) % ICON_COLORS.length];
@@ -89,15 +85,25 @@ Add task-specific guidance here.
 
 	const skillKey = (skill: Pick<SkillInfo, 'scope' | 'dirName'>): string =>
 		`${skill.scope}:${skill.dirName}`;
+	const scopeLabel = (scope: SkillScope): string => (scope === 'project' ? 'workset' : 'global');
 
 	const toErrorMessage = (error: unknown, fallback: string): string =>
 		error instanceof Error ? error.message : fallback;
+
+	const stripFrontmatter = (raw: string): string => {
+		const trimmed = raw.trimStart();
+		if (!trimmed.startsWith('---')) return raw;
+		const end = trimmed.indexOf('---', 3);
+		if (end === -1) return raw;
+		return trimmed.slice(end + 3).trimStart();
+	};
 
 	let loading = $state(true);
 	let detailLoading = $state(false);
 	let saving = $state(false);
 	let deleting = $state(false);
 	let creating = $state(false);
+	let surfaceTab = $state<SurfaceTab>('installed');
 
 	let error = $state<string | null>(null);
 	let success = $state<string | null>(null);
@@ -114,10 +120,10 @@ Add task-specific guidance here.
 
 	let newDirName = $state('');
 	let newScope = $state<SkillScope>('global');
-	let newTools = $state<Set<string>>(new Set(['agents']));
+	const newTools = new SvelteSet<string>(['agents']);
 	let newContent = $state(INITIAL_SKILL);
-
 	let copySuccess = $state(false);
+	let lastLoadedWorkspaceId: string | null = null;
 
 	const sortedSkills = $derived.by<SkillInfo[]>(() => {
 		const priority = { global: 0, project: 1 };
@@ -144,56 +150,44 @@ Add task-specific guidance here.
 		() => skills.find((entry) => skillKey(entry) === selectedKey) ?? null,
 	);
 
-	type ViewMode = 'grid' | 'detail' | 'create' | 'loading';
-
-	const viewMode = $derived.by<ViewMode>(() => {
-		if (creating) return 'create';
-		if (selectedSkill && !detailLoading) return 'detail';
-		if (detailLoading) return 'loading';
-		return 'grid';
-	});
-
-	/** Strip YAML frontmatter (--- delimited block) before rendering. */
-	const stripFrontmatter = (raw: string): string => {
-		const trimmed = raw.trimStart();
-		if (!trimmed.startsWith('---')) return raw;
-		const end = trimmed.indexOf('---', 3);
-		if (end === -1) return raw;
-		return trimmed.slice(end + 3).trimStart();
-	};
-
 	const renderedMarkdown = $derived.by(() => {
 		if (!editorContent) return '';
 		try {
-			const body = stripFrontmatter(editorContent);
-			const rendered = marked.parse(body, { async: false }) as string;
+			const rendered = marked.parse(stripFrontmatter(editorContent), { async: false }) as string;
 			return DOMPurify.sanitize(rendered);
 		} catch {
 			return '<p>Failed to render markdown.</p>';
 		}
 	});
 
-	const rawLines = $derived.by(() => {
-		if (!editorContent) return [];
-		return editorContent.split('\n');
-	});
+	const rawLines = $derived.by(() => editorContent.split('\n'));
 
 	const hasUnsavedChanges = $derived(
 		!creating && selectedSkill !== null && editorContent !== originalContent,
 	);
 
 	const canCreate = $derived(
-		creating &&
-			newDirName.trim().length > 0 &&
+		newDirName.trim().length > 0 &&
 			/^[a-z0-9_-]+$/.test(newDirName.trim()) &&
 			newTools.size > 0 &&
 			newContent.trim().length > 0,
 	);
 
+	const availableToolOptions = $derived.by(() =>
+		TOOL_OPTIONS.filter((option) => !(newScope === 'global' && option.globalOnly === false)),
+	);
+
+	$effect(() => {
+		if (!workspaceId && newScope === 'project') {
+			newScope = 'global';
+		}
+	});
+
 	const resetCreateForm = (): void => {
 		newDirName = '';
-		newScope = 'global';
-		newTools = new Set(['agents']);
+		newScope = workspaceId ? 'project' : 'global';
+		newTools.clear();
+		newTools.add('agents');
 		newContent = INITIAL_SKILL;
 	};
 
@@ -205,20 +199,45 @@ Add task-specific guidance here.
 		detailTab = 'rendered';
 	};
 
+	const refreshSkills = async (targetKey?: string | null): Promise<void> => {
+		loading = true;
+		error = null;
+		const desiredKey = targetKey ?? selectedKey;
+		try {
+			const state = await loadSkillsState(workspaceId ?? undefined);
+			skills = state.items;
+			if (state.error) {
+				error = state.error;
+			}
+
+			if (desiredKey) {
+				const selected = state.items.find((entry) => skillKey(entry) === desiredKey);
+				if (selected) {
+					await openSkillDetail(selected);
+				}
+			}
+		} catch (refreshError) {
+			error = toErrorMessage(refreshError, 'Failed to load skills');
+		} finally {
+			loading = false;
+		}
+	};
+
 	const openSkillDetail = async (skill: SkillInfo): Promise<void> => {
 		detailLoading = true;
 		error = null;
 		success = null;
-		selectedKey = skillKey(skill);
+		surfaceTab = 'installed';
 		creating = false;
+		selectedKey = skillKey(skill);
 		detailTab = 'rendered';
 		try {
-			const content = await loadSkillContent(skill);
+			const content = await loadSkillContent(skill, workspaceId ?? undefined);
 			editorTool = resolvePreferredTool(skill);
 			editorContent = content.content;
 			originalContent = content.content;
 		} catch (loadError) {
-			error = toErrorMessage(loadError, 'Failed to load skill content');
+			error = toErrorMessage(loadError, `Failed to load ${skill.name}`);
 			editorContent = '';
 			originalContent = '';
 		} finally {
@@ -226,43 +245,20 @@ Add task-specific guidance here.
 		}
 	};
 
-	const goBackToGrid = (): void => {
-		clearDetail();
-		creating = false;
+	const showInstalledSurface = (): void => {
+		surfaceTab = 'installed';
 	};
 
-	const MIN_SPIN_MS = 600;
-
-	const refreshSkills = async (targetKey?: string | null): Promise<void> => {
-		loading = true;
+	const showMarketplaceSurface = (): void => {
+		surfaceTab = 'marketplace';
+		creating = false;
+		clearDetail();
 		error = null;
 		success = null;
-		const spinStart = Date.now();
-		try {
-			const state = await loadSkillsState();
-			skills = state.items;
-			if (state.error) {
-				error = state.error;
-			}
-			const desiredKey = targetKey ?? selectedKey;
-			if (desiredKey) {
-				const selected = state.items.find((entry) => skillKey(entry) === desiredKey);
-				if (selected) {
-					await openSkillDetail(selected);
-				}
-			}
-		} catch (loadError) {
-			error = toErrorMessage(loadError, 'Failed to load skills');
-		} finally {
-			const elapsed = Date.now() - spinStart;
-			if (elapsed < MIN_SPIN_MS) {
-				await new Promise((resolve) => setTimeout(resolve, MIN_SPIN_MS - elapsed));
-			}
-			loading = false;
-		}
 	};
 
 	const startCreate = (): void => {
+		surfaceTab = 'installed';
 		creating = true;
 		error = null;
 		success = null;
@@ -273,7 +269,15 @@ Add task-specific guidance here.
 	const cancelCreate = async (): Promise<void> => {
 		creating = false;
 		resetCreateForm();
-		await refreshSkills(selectedKey);
+		await refreshSkills();
+	};
+
+	const toggleTool = (toolId: string): void => {
+		if (newTools.has(toolId)) {
+			newTools.delete(toolId);
+		} else {
+			newTools.add(toolId);
+		}
 	};
 
 	const saveSelected = async (): Promise<void> => {
@@ -282,7 +286,13 @@ Add task-specific guidance here.
 		error = null;
 		success = null;
 		try {
-			await saveSkillContent(selectedSkill.scope, selectedSkill.dirName, editorTool, editorContent);
+			await saveSkillContent(
+				selectedSkill.scope,
+				selectedSkill.dirName,
+				editorTool,
+				editorContent,
+				workspaceId ?? undefined,
+			);
 			originalContent = editorContent;
 			success = `Saved ${selectedSkill.name}.`;
 			await refreshSkills(skillKey(selectedSkill));
@@ -293,21 +303,6 @@ Add task-specific guidance here.
 		}
 	};
 
-	const toggleTool = (toolId: string): void => {
-		const next = new Set(newTools);
-		if (next.has(toolId)) {
-			next.delete(toolId);
-		} else {
-			next.add(toolId);
-		}
-		newTools = next;
-	};
-
-	/** Derive the visible tool options – filter out project-only tools when scope is global. */
-	const availableToolOptions = $derived.by(() =>
-		TOOL_OPTIONS.filter((opt) => !(newScope === 'global' && opt.globalOnly === false)),
-	);
-
 	const createSkill = async (): Promise<void> => {
 		if (!canCreate) return;
 		saving = true;
@@ -316,9 +311,8 @@ Add task-specific guidance here.
 		const dirName = newDirName.trim();
 		const tools = [...newTools];
 		try {
-			// Save to each selected tool directory
 			for (const tool of tools) {
-				await saveSkillContent(newScope, dirName, tool, newContent);
+				await saveSkillContent(newScope, dirName, tool, newContent, workspaceId ?? undefined);
 			}
 			creating = false;
 			success = `Created ${dirName} for ${tools.join(', ')}.`;
@@ -339,7 +333,7 @@ Add task-specific guidance here.
 		success = null;
 		const deletedName = selectedSkill.name;
 		try {
-			await removeSkill(selectedSkill);
+			await removeSkill(selectedSkill, workspaceId ?? undefined);
 			success = `Deleted ${deletedName}.`;
 			clearDetail();
 			await refreshSkills();
@@ -357,17 +351,31 @@ Add task-specific guidance here.
 			copySuccess = true;
 			setTimeout(() => (copySuccess = false), 2000);
 		} catch {
-			// Fallback: ignore clipboard errors
+			// Clipboard failure should not block editing.
 		}
 	};
 
+	const handleMarketplaceInstalled = async ({ message }: { message: string }): Promise<void> => {
+		success = message;
+		surfaceTab = 'installed';
+		await refreshSkills();
+	};
+
 	onMount(() => {
+		lastLoadedWorkspaceId = workspaceId;
+		void refreshSkills();
+	});
+
+	$effect(() => {
+		if (lastLoadedWorkspaceId === workspaceId) return;
+		lastLoadedWorkspaceId = workspaceId;
+		resetCreateForm();
+		clearDetail();
 		void refreshSkills();
 	});
 </script>
 
 <div class="registry-shell">
-	<!-- Header -->
 	<header class="reg-header">
 		<div>
 			<h1>Skill Registry</h1>
@@ -376,22 +384,38 @@ Add task-specific guidance here.
 		<div class="header-actions">
 			<button
 				type="button"
-				class="refresh-btn"
-				class:refreshing={loading}
-				onclick={() => refreshSkills(selectedKey)}
-				disabled={loading}
-				title="Refresh skills"
+				class="btn-marketplace"
+				class:active={surfaceTab === 'installed'}
+				onclick={showInstalledSurface}
 			>
-				<RefreshCw size={14} />
+				<FileCode2 size={16} />
+				Installed
 			</button>
-			<button type="button" class="btn-primary" onclick={startCreate} disabled={loading}>
-				<Plus size={16} />
-				New Skill
-			</button>
-			<button type="button" class="btn-marketplace">
+			<button
+				type="button"
+				class="btn-marketplace"
+				class:active={surfaceTab === 'marketplace'}
+				onclick={showMarketplaceSurface}
+			>
 				<Download size={16} />
 				Marketplace
 			</button>
+			{#if surfaceTab === 'installed'}
+				<button
+					type="button"
+					class="refresh-btn"
+					class:refreshing={loading}
+					onclick={() => refreshSkills(selectedKey)}
+					disabled={loading}
+					title="Refresh skills"
+				>
+					<RefreshCw size={14} />
+				</button>
+				<button type="button" class="btn-primary" onclick={startCreate} disabled={loading}>
+					<Plus size={16} />
+					New Skill
+				</button>
+			{/if}
 		</div>
 	</header>
 
@@ -402,10 +426,14 @@ Add task-specific guidance here.
 		<div class="banner success">{success}</div>
 	{/if}
 
-	<!-- Main container -->
 	<div class="main-container">
-		{#if viewMode === 'create'}
-			<!-- Create skill form -->
+		{#if surfaceTab === 'marketplace'}
+			<SkillMarketplacePanel
+				{workspaceId}
+				installedSkills={skills}
+				onInstalled={handleMarketplaceInstalled}
+			/>
+		{:else if creating}
 			<div class="create-view" in:fly={{ y: 20, duration: 420, easing: cubicOut }}>
 				<div class="create-card">
 					<div class="create-head">
@@ -432,39 +460,25 @@ Add task-specific guidance here.
 							<div class="select-wrap">
 								<select id="create-skill-scope" bind:value={newScope}>
 									<option value="global">Global</option>
-									<option value="project">Project</option>
+									<option value="project" disabled={!workspaceId}>Workset</option>
 								</select>
 							</div>
 						</div>
 						<div class="input-group">
-							<p class="input-label">
-								Target tools
-								<span class="field-hint"
-									>— skill will be written to each selected tool's directory</span
-								>
-							</p>
+							<p class="input-label">Target tools</p>
 							<div class="tool-chips">
-								{#each availableToolOptions as opt (opt.id)}
+								{#each availableToolOptions as option (option.id)}
 									<button
 										type="button"
 										class="tool-chip"
-										class:selected={newTools.has(opt.id)}
-										onclick={() => toggleTool(opt.id)}
+										class:selected={newTools.has(option.id)}
+										onclick={() => toggleTool(option.id)}
 									>
-										<span class="chip-check">{newTools.has(opt.id) ? '✓' : ''}</span>
-										<span class="chip-label">{opt.label}</span>
+										<span class="chip-check">{newTools.has(option.id) ? '✓' : ''}</span>
+										<span class="chip-label">{option.label}</span>
 									</button>
 								{/each}
 							</div>
-							{#if newTools.has('agents')}
-								<p class="tool-hint">
-									<Sparkles size={11} />
-									<span
-										><strong>Agents</strong> is the universal standard — covers Amp, Factory AI, Crush,
-										Pi, Cline, Windsurf, and more.</span
-									>
-								</p>
-							{/if}
 						</div>
 						<div class="input-group">
 							<label for="create-skill-content">SKILL.md content</label>
@@ -479,9 +493,9 @@ Add task-specific guidance here.
 						</div>
 					</div>
 					<div class="create-actions">
-						<button type="button" class="btn-ghost" onclick={cancelCreate} disabled={saving}
-							>Cancel</button
-						>
+						<button type="button" class="btn-ghost" onclick={cancelCreate} disabled={saving}>
+							Cancel
+						</button>
 						<button
 							type="button"
 							class="btn-primary"
@@ -493,17 +507,25 @@ Add task-specific guidance here.
 					</div>
 				</div>
 			</div>
-		{:else if viewMode === 'detail' && selectedSkill}
-			<!-- Detail view wrapper for transition -->
+		{:else if detailLoading}
+			<div class="loading-state" in:fade={{ duration: 120 }}>
+				<LoaderCircle size={16} class="spin" />
+				Loading skill content...
+			</div>
+		{:else if selectedSkill}
 			<div class="detail-wrapper" in:fly={{ x: 30, duration: 420, easing: cubicOut }}>
 				<div class="detail-header-bar">
-					<button type="button" class="back-link" onclick={goBackToGrid}>
+					<button
+						type="button"
+						class="back-link"
+						onclick={() => {
+							clearDetail();
+						}}
+					>
 						<ArrowLeft size={16} />
 						Back
 					</button>
-
 					<div class="header-sep"></div>
-
 					<div class="detail-identity">
 						<div class="detail-icon" style="color: {getIconColor(selectedSkill.name)};">
 							<FileCode2 size={18} />
@@ -511,7 +533,7 @@ Add task-specific guidance here.
 						<div class="detail-name-block">
 							<span class="detail-name">{selectedSkill.name}</span>
 							<div class="detail-meta-inline">
-								<span class="scope-badge">{selectedSkill.scope}</span>
+								<span class="scope-badge">{scopeLabel(selectedSkill.scope as SkillScope)}</span>
 								<span class="detail-path">
 									<FolderOpen size={9} />
 									{selectedSkill.path}
@@ -519,8 +541,6 @@ Add task-specific guidance here.
 							</div>
 						</div>
 					</div>
-
-					<!-- View mode toggle -->
 					<div class="view-toggle">
 						<button
 							type="button"
@@ -541,8 +561,6 @@ Add task-specific guidance here.
 							Raw
 						</button>
 					</div>
-
-					<!-- Actions -->
 					<div class="detail-header-actions">
 						<button type="button" class="hdr-action" onclick={copyContent}>
 							{#if copySuccess}
@@ -563,7 +581,6 @@ Add task-specific guidance here.
 					</div>
 				</div>
 
-				<!-- Content area -->
 				<div class="detail-content-area">
 					{#if detailTab === 'rendered'}
 						<div class="rendered-wrap" in:fade={{ duration: 250 }}>
@@ -580,9 +597,9 @@ Add task-specific guidance here.
 								<span class="raw-line-count">{rawLines.length} lines</span>
 							</div>
 							<div class="raw-source">
-								{#each rawLines as line, i (i)}
+								{#each rawLines as line, index (index)}
 									<div class="raw-line">
-										<span class="line-no">{i + 1}</span>
+										<span class="line-no">{index + 1}</span>
 										<span class="line-text">{line}</span>
 									</div>
 								{/each}
@@ -591,14 +608,15 @@ Add task-specific guidance here.
 					{/if}
 				</div>
 
-				<!-- Save bar (only when there are changes) -->
 				{#if hasUnsavedChanges}
 					<div class="save-bar">
 						<span class="save-hint">You have unsaved changes</span>
 						<button
 							type="button"
 							class="btn-ghost"
-							onclick={() => (editorContent = originalContent)}
+							onclick={() => {
+								editorContent = originalContent;
+							}}
 							disabled={saving}
 						>
 							Reset
@@ -609,21 +627,15 @@ Add task-specific guidance here.
 					</div>
 				{/if}
 			</div>
-		{:else if viewMode === 'loading'}
-			<div class="loading-state" in:fade={{ duration: 120 }}>
-				<LoaderCircle size={16} class="spin" /> Loading skill content...
-			</div>
 		{:else}
-			<!-- Grid wrapper for transition -->
 			<div class="grid-wrapper" in:fly={{ x: -30, duration: 420, easing: cubicOut }}>
-				<!-- Toolbar -->
 				<div class="toolbar">
 					<label class="search-input">
 						<Search size={16} />
 						<input
 							type="text"
 							bind:value={searchQuery}
-							placeholder="Search skills..."
+							placeholder="Search installed skills..."
 							autocapitalize="off"
 							autocorrect="off"
 							spellcheck="false"
@@ -633,16 +645,15 @@ Add task-specific guidance here.
 						<select bind:value={scopeFilter}>
 							<option value="all">All Scopes</option>
 							<option value="global">Global</option>
-							<option value="project">Project</option>
+							<option value="project">Workset</option>
 						</select>
 					</div>
 				</div>
-
-				<!-- Grid content -->
 				<div class="grid-content">
 					{#if loading}
 						<div class="loading-state">
-							<LoaderCircle size={16} class="spin" /> Loading skills...
+							<LoaderCircle size={16} class="spin" />
+							Loading skills...
 						</div>
 					{:else if filteredSkills.length === 0}
 						<div class="empty-state ws-empty-state">No skills matched your current filters.</div>
@@ -660,7 +671,7 @@ Add task-specific guidance here.
 										<p>{skill.description || 'No description'}</p>
 									</div>
 									<div class="card-footer">
-										<span class="scope-badge">{skill.scope}</span>
+										<span class="scope-badge">{scopeLabel(skill.scope as SkillScope)}</span>
 										<span class="skill-md-label">
 											<FileText size={10} />
 											SKILL.md

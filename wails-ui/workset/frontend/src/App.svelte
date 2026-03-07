@@ -916,7 +916,7 @@
 								/>
 							{/if}
 						{:else if currentView === 'skill-registry'}
-							<SkillRegistryView />
+							<SkillRegistryView workspaceId={$activeWorkspaceId} />
 						{:else}
 							<OnboardingView
 								busy={onboardingBusy}

@@ -121,6 +121,12 @@
 	background: color-mix(in srgb, var(--accent) 10%, var(--panel-strong));
 }
 
+.btn-marketplace.active {
+	border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+	background: color-mix(in srgb, var(--accent) 12%, var(--panel-strong));
+	color: var(--text);
+}
+
 .btn-ghost {
 	padding: 8px 14px;
 	border-radius: 8px;
@@ -510,6 +516,12 @@
 	overflow-y: auto;
 }
 
+.input-label {
+	font-size: var(--text-sm);
+	font-weight: 600;
+	color: var(--text);
+}
+
 /* Rendered markdown */
 .rendered-wrap {
 	padding: 32px;
@@ -838,33 +850,6 @@
 
 .chip-label {
 	line-height: 1;
-}
-
-.field-hint {
-	font-weight: 400;
-	text-transform: none;
-	letter-spacing: 0;
-	font-size: var(--text-xs);
-	color: color-mix(in srgb, var(--muted) 60%, transparent);
-}
-
-.tool-hint {
-	display: flex;
-	align-items: flex-start;
-	gap: 6px;
-	margin: 0;
-	padding: 8px 12px;
-	border-radius: 8px;
-	background: color-mix(in srgb, var(--accent) 6%, transparent);
-	font-size: var(--text-xs);
-	line-height: 1.5;
-	color: color-mix(in srgb, var(--muted) 80%, var(--accent));
-}
-
-.tool-hint :global(svg) {
-	flex-shrink: 0;
-	margin-top: 2px;
-	color: var(--accent);
 }
 
 .input-group {
