@@ -239,9 +239,20 @@ button.pr-row:hover {
 	display: flex;
 	align-items: center;
 	gap: 6px;
+	width: 100%;
 	padding: 4px 0;
 	font-size: var(--text-2xs);
+	border: none;
+	background: transparent;
 	color: var(--muted);
+	text-align: left;
+	cursor: pointer;
+	transition: color 120ms ease;
+}
+
+.repo-file-row:hover,
+.repo-file-row.active {
+	color: var(--text);
 }
 
 .repo-file-icon {
@@ -258,6 +269,10 @@ button.pr-row:hover {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.repo-file-row.active .repo-file-name {
+	color: var(--accent);
 }
 
 .repo-file-add {

@@ -44,6 +44,7 @@
 	import {
 		applyPrStatusEvent,
 		applyTrackedPrCreated,
+		buildReadyViewSyntheticPr,
 		buildFileDiffCacheKeyForSource,
 		commitPushStageLabel as formatCommitPushStageLabel,
 		createPrViewInteractionHandlers,
@@ -87,17 +88,13 @@
 		);
 		return { active, merged, tracked, readyToPR };
 	});
-
 	let viewMode: 'active' | 'ready' = $state('active'),
 		selectedItemId: string | null = $state(null),
 		lastAppliedFocusKey = $state<string | null>(null);
-
 	let activeTab: 'overview' | 'files' | 'checks' = $state('overview');
-
 	let trackedPr: PullRequestCreated | null = $state(null),
 		trackedPrLoading = $state(false),
 		trackedPrRequestId = 0;
-
 	let diffSummary: RepoDiffSummary | null = $state(null),
 		localSummary: RepoDiffSummary | null = $state(null),
 		diffSummaryLoading = $state(false),
@@ -113,18 +110,14 @@
 		diffSummaryRequestId = 0,
 		localSummaryRequestId = 0,
 		fileDiffRequestId = 0;
-
 	let prStatus: PullRequestStatusResult | null = $state(null),
 		prStatusLoading = $state(false),
 		prStatusRequestId = 0;
-
 	let prReviews: PullRequestReviewComment[] = $state([]),
 		prReviewsLoading = $state(false),
 		currentUserId: number | null = $state(null);
-
 	let prComposerItemId: string | null = $state(null);
 	let prComposerMode: 'pull_request' | 'local_merge' = $state('pull_request');
-
 	let repoLocalStatus: RepoLocalStatus | null = $state(null),
 		commitPushLoading = $state(false),
 		commitPushRepoId: string | null = $state(null),
@@ -582,6 +575,21 @@
 			startPushForRepo,
 			handleTrackedPrCreated,
 		});
+	const resolveRepoFileSelectionIndex = (itemId: string, filePath: string): number => {
+		const item = prItems.find((entry) => entry.id === itemId);
+		const index =
+			workspace?.repos
+				.find((repo) => repo.id === item?.repoId)
+				?.files.findIndex((file) => file.path === filePath) ?? -1;
+		return index >= 0 ? index : 0;
+	};
+	const handleSelectRepoFile = (itemId: string, filePath: string): void => {
+		const index = resolveRepoFileSelectionIndex(itemId, filePath);
+		if (viewMode !== 'ready') setViewMode('ready');
+		selectedSource = 'pr';
+		if (selectedItemId !== itemId) selectItem(itemId);
+		selectedFileIdx = index;
+	};
 
 	const openExternalUrl = (url: string | undefined | null): void =>
 		void (url && Browser.OpenURL(url));
@@ -609,30 +617,12 @@
 		if (!selectedItem || currentWsId === '' || currentRepoId === '') {
 			return;
 		}
-
-		// In "ready" mode with no tracked PR but commits ahead, synthesize a
-		// lightweight PR-like object so loadDiffSummary performs a branch diff
-		// (current branch vs default branch) instead of only local uncommitted changes.
-		let effectivePr = trackedPr ?? undefined;
-		if (!effectivePr && viewMode === 'ready' && selectedItem.ahead > 0 && selectedRepo) {
-			const base = selectedRepo.defaultBranch ?? 'main';
-			const head = selectedItem.branch;
-			if (base && head && base !== head) {
-				effectivePr = {
-					repo: selectedItem.repoName,
-					number: 0,
-					url: '',
-					title: '',
-					state: 'open',
-					draft: false,
-					baseRepo: '',
-					baseBranch: base,
-					headRepo: '',
-					headBranch: head,
-				} as PullRequestCreated;
-			}
-		}
-
+		const effectivePr = buildReadyViewSyntheticPr({
+			viewMode,
+			trackedPr,
+			selectedItem,
+			selectedRepo,
+		});
 		const targetKey = buildDiffTargetKey(currentWsId, currentRepoId, effectivePr);
 		if (targetKey === lastDiffSummaryTargetKey) {
 			return;
@@ -677,8 +667,6 @@
 			clearInterval(timer);
 		};
 	});
-
-	// Load reviews eagerly when an active PR is selected
 	$effect(() => {
 		if (trackedPr && selectedItem && !prReviewsLoading && prReviews.length === 0) {
 			void loadReviews();
@@ -693,8 +681,6 @@
 			}
 		}
 	});
-
-	// Subscribe to commit & push operation events
 	$effect(() => {
 		const unsub = subscribeGitHubOperationEvent((status: GitHubOperationStatus) => {
 			if (!workspace) return;
@@ -814,7 +800,6 @@
 		persistSidebarCollapsed(false);
 	});
 
-	// Load file diff when selection changes
 	$effect(() => {
 		const currentWsId = wsId;
 		const currentRepoId = selectedRepoId;
@@ -848,8 +833,6 @@
 			fileDiffLoading = false;
 		}
 	});
-
-	// Stop diff watch on component teardown
 	$effect(() => {
 		return () => {
 			void stopActiveWatch();
@@ -1316,8 +1299,6 @@
 						{totalAdd}
 						{totalDel}
 						{diffSummaryLoading}
-						fallbackFiles={selectedRepo?.files ?? []}
-						{selectedSource}
 						{selectedFileIdx}
 						{fileDiffError}
 						{fileDiffContent}
@@ -1327,10 +1308,6 @@
 						onPushFromSidebar={handlePushFromSidebar}
 						onPullRequestCreated={(created) => {
 							handlePullRequestCreated(selectedItem.repoId, created);
-						}}
-						onSelectSourceFile={(source, index) => {
-							selectedSource = source;
-							selectedFileIdx = index;
 						}}
 						onRefreshReadyState={() =>
 							refreshReadyDetail({
@@ -1391,10 +1368,12 @@
 					{selectedItemId}
 					{prComposerItemId}
 					{prComposerMode}
+					selectedFilePath={viewMode === 'ready' ? selectedFilePath : null}
 					{resolveTrackedTitle}
 					onToggleSidebar={toggleSidebar}
 					onViewModeChange={setViewMode}
 					onSelectItem={selectItem}
+					onSelectRepoFile={handleSelectRepoFile}
 					onOpenPrComposer={openPrComposer}
 				/>
 

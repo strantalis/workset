@@ -5,14 +5,13 @@
 	import TerminalWorkspace from '../TerminalWorkspace.svelte';
 	import PROrchestrationView from './PROrchestrationView.svelte';
 	import ResizablePanel from '../ui/ResizablePanel.svelte';
+	import { resolveWorkbenchLayout, type SurfaceTab } from './spacesWorkbenchView.helpers';
 
 	type WorksetGroup = {
 		id: string;
 		label: string;
 		threads: Workspace[];
 	};
-
-	type SurfaceTab = 'terminal' | 'pull-requests';
 
 	interface Props {
 		workspaces: Workspace[];
@@ -141,6 +140,7 @@
 	});
 
 	const activeSurface = $derived(preferredSurface);
+	const layoutMode = $derived(resolveWorkbenchLayout(activeSurface, documentSession !== null));
 
 	const setSurface = (surface: SurfaceTab): void => {
 		onSurfaceChange(surface);
@@ -254,7 +254,28 @@
 					</div>
 				{/if}
 				<div class="spaces-main-body">
-					{#if documentSession}
+					{#if layoutMode === 'terminal-with-prs'}
+						<ResizablePanel
+							direction="horizontal"
+							initialRatio={0.62}
+							minRatio={0.35}
+							maxRatio={0.78}
+							storageKey="workset-pr-panel"
+						>
+							<div class="spaces-surface">
+								<TerminalWorkspace
+									workspaceId={activeThread.id}
+									workspaceName={activeThread.name}
+								/>
+							</div>
+
+							{#snippet second()}
+								<aside class="spaces-side-pane spaces-pr-pane">
+									<PROrchestrationView workspace={activeThread} />
+								</aside>
+							{/snippet}
+						</ResizablePanel>
+					{:else if layoutMode === 'terminal-with-document' && documentSession}
 						<ResizablePanel
 							direction="horizontal"
 							initialRatio={0.58}
@@ -262,32 +283,22 @@
 							maxRatio={0.7}
 							storageKey="workset-document-panel"
 						>
-							{#if activeSurface === 'terminal'}
-								<div class="spaces-surface">
-									<TerminalWorkspace
-										workspaceId={activeThread.id}
-										workspaceName={activeThread.name}
-									/>
-								</div>
-							{:else}
-								<div class="spaces-surface">
-									<PROrchestrationView workspace={activeThread} />
-								</div>
-							{/if}
+							<div class="spaces-surface">
+								<TerminalWorkspace
+									workspaceId={activeThread.id}
+									workspaceName={activeThread.name}
+								/>
+							</div>
 
 							{#snippet second()}
-								<aside class="spaces-document-pane">
+								<aside class="spaces-side-pane spaces-document-pane">
 									<DocumentViewer session={documentSession} onClose={onCloseDocument} />
 								</aside>
 							{/snippet}
 						</ResizablePanel>
-					{:else if activeSurface === 'terminal'}
-						<div class="spaces-surface">
-							<TerminalWorkspace workspaceId={activeThread.id} workspaceName={activeThread.name} />
-						</div>
 					{:else}
 						<div class="spaces-surface">
-							<PROrchestrationView workspace={activeThread} />
+							<TerminalWorkspace workspaceId={activeThread.id} workspaceName={activeThread.name} />
 						</div>
 					{/if}
 				</div>
@@ -472,10 +483,20 @@
 		min-height: 0;
 	}
 
-	.spaces-document-pane {
+	.spaces-side-pane {
 		min-height: 0;
 		height: 100%;
 		overflow: hidden;
+		border-left: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+		background: color-mix(in srgb, var(--panel) 76%, transparent);
+	}
+
+	.spaces-pr-pane {
+		min-width: 420px;
+	}
+
+	.spaces-document-pane {
+		min-width: 320px;
 	}
 
 	.spaces-main-header {

@@ -452,11 +452,39 @@ describe('ExplorerPanel', () => {
 			},
 		});
 
-		const filesButton = getByRole('button', { name: 'Open files' });
+		const filesButton = getByRole('button', { name: 'Toggle files pane' });
 		expect(filesButton).toHaveClass('active');
 
 		await fireEvent.click(filesButton);
 		expect(onOpenFiles).toHaveBeenCalledTimes(1);
+	});
+
+	test('opens pull requests from the footer pane toggles and marks the control active', async () => {
+		const onOpenPullRequests = vi.fn();
+		const alpha = buildWorkspace({
+			id: 'thread-alpha',
+			name: 'alpha',
+			workset: 'Core',
+			worksetKey: 'workset:core',
+			worksetLabel: 'Core',
+		});
+
+		const { getByRole } = render(ExplorerPanel, {
+			props: {
+				workspaces: [alpha],
+				activeWorkspaceId: alpha.id,
+				shortcutMap: new Map<string, number>(),
+				activeSurface: 'pull-requests',
+				onSelectWorkspace: vi.fn(),
+				onOpenPullRequests,
+			},
+		});
+
+		const prButton = getByRole('button', { name: 'Toggle pull requests pane' });
+		expect(prButton).toHaveClass('active');
+
+		await fireEvent.click(prButton);
+		expect(onOpenPullRequests).toHaveBeenCalledTimes(1);
 	});
 
 	test('renders review feedback badge for threads with tracked PR feedback', () => {
