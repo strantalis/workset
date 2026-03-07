@@ -331,6 +331,38 @@ export const getPullRequestFeedbackCounts = (
 	};
 };
 
+export const buildReadyViewSyntheticPr = (deps: {
+	viewMode: ViewMode;
+	trackedPr: PullRequestCreated | null;
+	selectedItem: { repoName: string; ahead: number; branch: string } | null;
+	selectedRepo: { defaultBranch?: string } | null;
+}): PullRequestCreated | undefined => {
+	if (deps.trackedPr) return deps.trackedPr;
+	if (
+		deps.viewMode !== 'ready' ||
+		!deps.selectedItem ||
+		deps.selectedItem.ahead <= 0 ||
+		!deps.selectedRepo
+	) {
+		return undefined;
+	}
+	const base = deps.selectedRepo.defaultBranch ?? 'main';
+	const head = deps.selectedItem.branch;
+	if (!base || !head || base === head) return undefined;
+	return {
+		repo: deps.selectedItem.repoName,
+		number: 0,
+		url: '',
+		title: '',
+		state: 'open',
+		draft: false,
+		baseRepo: '',
+		baseBranch: base,
+		headRepo: '',
+		headBranch: head,
+	};
+};
+
 export const mapPrStatusEventToTrackedPr = (
 	payload: RepoDiffPrStatusEvent,
 ): PullRequestCreated => ({

@@ -32,6 +32,7 @@
 		EVENT_WORKSPACE_POPOUT_OPENED,
 	} from './lib/events';
 	import { subscribeRepoDiffEvent } from './lib/repoDiffService';
+	import { resolveCockpitPaneState, type CockpitSurface } from './lib/appPaneState';
 	import { releaseWorkspaceTerminals } from './lib/terminal/terminalService';
 	import { shouldClearPreviousWorkspaceTerminalActivity } from './lib/terminal/terminalActivity';
 	import { subscribeWailsEvent } from './lib/wailsEventRegistry';
@@ -82,8 +83,6 @@
 		| 'remove-workspace'
 		| 'remove-repo'
 		| null;
-
-	type CockpitSurface = 'terminal' | 'pull-requests';
 
 	const EXPLORER_OPEN_STORAGE_KEY = 'workset:app:explorerOpen';
 	const AUTO_GITHUB_AUTH_CHECK = false;
@@ -622,9 +621,15 @@
 		if (key === 'p' && $activeWorkspaceId) {
 			event.preventDefault();
 			commandPaletteOpen = false;
-			documentSession = documentSession
-				? null
-				: openDefaultDocumentSession($activeWorkspaceId, threadVisibleWorkspaces);
+			const nextPane = resolveCockpitPaneState({
+				surface: cockpitSurface,
+				filesOpen: documentSession !== null,
+				intent: 'files',
+			});
+			cockpitSurface = nextPane.surface;
+			documentSession = nextPane.filesOpen
+				? openDefaultDocumentSession($activeWorkspaceId, threadVisibleWorkspaces)
+				: null;
 			return;
 		}
 		if (popoutMode) return;
@@ -652,9 +657,15 @@
 			setView('terminal-cockpit');
 		}
 		commandPaletteOpen = false;
-		documentSession = documentSession
-			? null
-			: openDefaultDocumentSession($activeWorkspaceId, threadVisibleWorkspaces);
+		const nextPane = resolveCockpitPaneState({
+			surface: cockpitSurface,
+			filesOpen: documentSession !== null,
+			intent: 'files',
+		});
+		cockpitSurface = nextPane.surface;
+		documentSession = nextPane.filesOpen
+			? openDefaultDocumentSession($activeWorkspaceId, threadVisibleWorkspaces)
+			: null;
 	};
 
 	let repoStatusUnsubscribe: (() => void) | null = null,
@@ -817,16 +828,19 @@
 						onCreateThread={handleCreateThread}
 						onAddRepo={handleAddRepoToWorkset}
 						onRemoveThread={handleRemoveThread}
-						onOpenCockpit={() => {
-							cockpitSurface = 'terminal';
-							setView('terminal-cockpit');
-						}}
 						onOpenPullRequests={() => {
-							cockpitSurface = 'pull-requests';
+							const nextPane = resolveCockpitPaneState({
+								surface: cockpitSurface,
+								filesOpen: documentSession !== null,
+								intent: 'pull-requests',
+							});
+							cockpitSurface = nextPane.surface;
+							documentSession = nextPane.filesOpen ? documentSession : null;
 							setView('terminal-cockpit');
 						}}
 						onOpenFiles={handleOpenFiles}
-						onOpenSkills={() => setView('skill-registry')}
+						onOpenSkills={() =>
+							setView(currentView === 'skill-registry' ? 'terminal-cockpit' : 'skill-registry')}
 						onOpenSettings={() => (settingsOpen = true)}
 						onCollapse={() => (explorerOpen = false)}
 					/>

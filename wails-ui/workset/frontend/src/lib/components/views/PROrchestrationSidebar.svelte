@@ -15,7 +15,7 @@
 		MessageSquare,
 		XCircle,
 	} from '@lucide/svelte';
-	import type { Workspace } from '../../types';
+	import type { RepoDiffFileSummary, Workspace } from '../../types';
 	import type { PrListItem } from '../../view-models/prViewModel';
 
 	type Partitions = {
@@ -35,10 +35,13 @@
 		selectedItemId: string | null;
 		prComposerItemId: string | null;
 		prComposerMode?: 'pull_request' | 'local_merge';
+		selectedReadyRepoFiles?: RepoDiffFileSummary[];
+		selectedFilePath?: string | null;
 		resolveTrackedTitle: (repoId: string, fallbackTitle: string) => string;
 		onToggleSidebar: () => void;
 		onViewModeChange: (mode: 'active' | 'ready') => void;
 		onSelectItem: (itemId: string) => void;
+		onSelectRepoFile: (itemId: string, filePath: string) => void;
 		onOpenPrComposer: (itemId: string, mode?: 'pull_request' | 'local_merge') => void;
 	}
 
@@ -52,10 +55,13 @@
 		selectedItemId,
 		prComposerItemId,
 		prComposerMode = 'pull_request',
+		selectedReadyRepoFiles = [],
+		selectedFilePath = null,
 		resolveTrackedTitle,
 		onToggleSidebar,
 		onViewModeChange,
 		onSelectItem,
+		onSelectRepoFile,
 		onOpenPrComposer,
 	}: Props = $props();
 
@@ -102,9 +108,17 @@
 		return parts[parts.length - 1] || path;
 	};
 
-	const fileTone = (
-		file: Workspace['repos'][number]['files'][number],
-	): 'added' | 'removed' | 'changed' => {
+	type SidebarRepoFile = Workspace['repos'][number]['files'][number] | RepoDiffFileSummary;
+
+	const resolveReadyRepoFiles = (
+		repo: Workspace['repos'][number] | undefined,
+		isActive: boolean,
+	): SidebarRepoFile[] => {
+		if (viewMode === 'ready' && isActive) return selectedReadyRepoFiles;
+		return repo?.files ?? [];
+	};
+
+	const fileTone = (file: SidebarRepoFile): 'added' | 'removed' | 'changed' => {
 		if (file.added > 0 && file.removed === 0) return 'added';
 		if (file.removed > 0 && file.added === 0) return 'removed';
 		return 'changed';
@@ -144,6 +158,7 @@
 					{@const isComposerActive = isActive && prComposerItemId === item.id}
 					{@const isPullRequestActive = isComposerActive && prComposerMode === 'pull_request'}
 					{@const isLocalMergeActive = isComposerActive && prComposerMode === 'local_merge'}
+					{@const repoFiles = resolveReadyRepoFiles(repo, isActive)}
 					<div class="repo-block" class:active={isActive}>
 						<button
 							type="button"
@@ -171,9 +186,14 @@
 						</button>
 						{#if isActive && repo}
 							<div class="repo-files">
-								{#each repo.files as file (`${item.id}:${file.path}`)}
+								{#each repoFiles as file (`${item.id}:${file.path}`)}
 									{@const tone = fileTone(file)}
-									<div class="repo-file-row">
+									<button
+										type="button"
+										class="repo-file-row"
+										class:active={selectedFilePath === file.path}
+										onclick={() => onSelectRepoFile(item.id, file.path)}
+									>
 										<span class="repo-file-icon">
 											{#if tone === 'added'}
 												<FilePlus size={10} />
@@ -188,7 +208,7 @@
 										{#if file.removed > 0}
 											<span class="repo-file-remove">-{file.removed}</span>
 										{/if}
-									</div>
+									</button>
 								{/each}
 								<div class="repo-actions">
 									<button

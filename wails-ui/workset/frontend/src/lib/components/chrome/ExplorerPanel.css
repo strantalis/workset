@@ -753,9 +753,10 @@
 }
 
 .footer-nav {
-	display: inline-flex;
+	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 6px;
+	flex-wrap: wrap;
 }
 
 .footer-utils {
@@ -770,4 +771,34 @@
 	align-items: center;
 	color: var(--muted);
 	font-size: 11px;
+}
+
+.footer-pane-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border-radius: 7px;
+	border: 1px solid transparent;
+	background: transparent;
+	color: var(--muted);
+	cursor: pointer;
+	transition:
+		color var(--transition-fast),
+		background var(--transition-fast),
+		border-color var(--transition-fast);
+}
+
+.footer-pane-btn:hover {
+	color: var(--text);
+	background: color-mix(in srgb, var(--panel-strong) 65%, transparent);
+	border-color: var(--border);
+}
+
+.footer-pane-btn.active {
+	color: var(--text);
+	background: color-mix(in srgb, var(--accent) 14%, var(--panel-strong));
+	border-color: color-mix(in srgb, var(--accent) 46%, var(--border));
 }

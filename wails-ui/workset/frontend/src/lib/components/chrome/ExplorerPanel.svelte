@@ -15,7 +15,6 @@
 		Search,
 		Sparkles,
 		Settings,
-		Terminal,
 		Trash2,
 	} from '@lucide/svelte';
 	import type { Workspace } from '../../types';
@@ -55,7 +54,6 @@
 		onCreateThread?: (worksetId: string) => void;
 		onAddRepo?: (worksetId: string) => void;
 		onRemoveThread?: (threadId: string) => void;
-		onOpenCockpit?: () => void;
 		onOpenPullRequests?: () => void;
 		onOpenFiles?: () => void;
 		onOpenSkills?: () => void;
@@ -78,7 +76,6 @@
 		onCreateThread = () => {},
 		onAddRepo = () => {},
 		onRemoveThread = () => {},
-		onOpenCockpit = () => {},
 		onOpenPullRequests = () => {},
 		onOpenFiles = () => {},
 		onOpenSkills = () => {},
@@ -812,40 +809,30 @@
 			<div class="footer-nav">
 				<button
 					type="button"
-					class="icon-btn"
-					class:active={activeView !== 'skill-registry' && activeSurface === 'terminal'}
-					title="Cockpit"
-					aria-label="Open cockpit"
-					onclick={onOpenCockpit}
-				>
-					<Terminal size={13} />
-				</button>
-				<button
-					type="button"
-					class="icon-btn"
+					class="footer-pane-btn"
 					class:active={activeView !== 'skill-registry' && activeSurface === 'pull-requests'}
-					title="Pull Requests"
-					aria-label="Open pull requests"
+					title="Toggle pull requests pane"
+					aria-label="Toggle pull requests pane"
 					onclick={onOpenPullRequests}
 				>
 					<GitPullRequest size={13} />
 				</button>
 				<button
 					type="button"
-					class="icon-btn"
+					class="footer-pane-btn"
 					class:active={filesActive}
-					title="Files"
-					aria-label="Open files"
+					title="Toggle files pane"
+					aria-label="Toggle files pane"
 					onclick={onOpenFiles}
 				>
 					<FolderTree size={13} />
 				</button>
 				<button
 					type="button"
-					class="icon-btn"
+					class="footer-pane-btn"
 					class:active={activeView === 'skill-registry'}
-					title="Skills"
-					aria-label="Open skills"
+					title="Toggle skills view"
+					aria-label="Toggle skills view"
 					onclick={onOpenSkills}
 				>
 					<Sparkles size={13} />

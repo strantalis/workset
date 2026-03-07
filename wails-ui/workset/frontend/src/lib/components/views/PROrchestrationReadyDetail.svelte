@@ -29,12 +29,6 @@
 		hasLocalDiff: boolean;
 	}
 
-	type FallbackFile = {
-		path: string;
-		added: number;
-		removed: number;
-	};
-
 	interface Props {
 		selectedItem: ReadyDetailItem;
 		workspaceName: string;
@@ -46,8 +40,6 @@
 		totalAdd: number;
 		totalDel: number;
 		diffSummaryLoading: boolean;
-		fallbackFiles: FallbackFile[];
-		selectedSource: 'pr' | 'local';
 		selectedFileIdx: number;
 		fileDiffError: string | null;
 		fileDiffContent: RepoFileDiff | null;
@@ -56,7 +48,6 @@
 		commitPushRepoId: string | null;
 		onPushFromSidebar: (itemId: string) => Promise<void> | void;
 		onPullRequestCreated: (created: PullRequestCreated) => Promise<void> | void;
-		onSelectSourceFile: (source: 'pr' | 'local', index: number) => void;
 		onRefreshReadyState: () => Promise<void> | void;
 		diffContainer?: HTMLElement | null;
 	}
@@ -73,8 +64,6 @@
 		totalAdd,
 		totalDel,
 		diffSummaryLoading,
-		fallbackFiles,
-		selectedSource,
 		selectedFileIdx,
 		fileDiffError,
 		fileDiffContent,
@@ -83,7 +72,6 @@
 		commitPushRepoId,
 		onPushFromSidebar,
 		onPullRequestCreated,
-		onSelectSourceFile,
 		onRefreshReadyState,
 		diffContainer = $bindable(null),
 	}: Props = $props();
@@ -106,22 +94,6 @@
 	let pushBaseSuccess = $state(false);
 	let composerContextKey = '';
 	let prSuggestionContextKey = '';
-
-	const getAddBarCount = (file: RepoDiffFileSummary): number =>
-		Math.min(
-			5,
-			file.added > 0
-				? Math.max(1, Math.ceil((file.added / (file.added + file.removed || 1)) * 5))
-				: 0,
-		);
-
-	const getDelBarCount = (file: RepoDiffFileSummary): number =>
-		Math.min(
-			5,
-			file.removed > 0
-				? Math.max(1, Math.ceil((file.removed / (file.added + file.removed || 1)) * 5))
-				: 0,
-		);
 
 	const resetComposerState = (): void => {
 		prTitle = '';
@@ -494,72 +466,13 @@
 {/if}
 
 <div class="cd-body">
-	<div class="cd-file-sidebar">
-		<div class="cd-file-head">Changed Files</div>
-		<div class="cd-file-list">
-			{#if diffSummaryLoading}
-				<div class="cd-file-loading">Loading files...</div>
-			{:else if filesForDetail.length > 0}
-				{#each filesForDetail as file, i (file.path)}
-					{@const fname = file.path.split('/').pop() ?? file.path}
-					{@const dir = file.path.substring(0, file.path.lastIndexOf('/'))}
-					<button
-						type="button"
-						class="cd-file-card"
-						class:active={selectedSource === 'local' ? false : i === selectedFileIdx}
-						onclick={() => onSelectSourceFile('pr', i)}
-					>
-						<div class="cd-file-top">
-							<FileCode size={11} class="cd-file-icon" />
-							<span class="cd-file-name">{fname}</span>
-						</div>
-						{#if dir}
-							<div class="cd-file-dir">{dir}</div>
-						{/if}
-						<div class="cd-file-stats">
-							<div class="cd-diff-bars">
-								{#each Array.from({ length: getAddBarCount(file) }) as _, addBarIndex (addBarIndex)}
-									<div class="cd-bar cd-bar-add"></div>
-								{/each}
-								{#each Array.from({ length: getDelBarCount(file) }) as _, delBarIndex (delBarIndex)}
-									<div class="cd-bar cd-bar-del"></div>
-								{/each}
-							</div>
-							<span class="cd-file-add">+{file.added}</span>
-							{#if file.removed > 0}
-								<span class="cd-file-del">-{file.removed}</span>
-							{/if}
-						</div>
-					</button>
-				{/each}
-			{:else if fallbackFiles.length > 0}
-				{#each fallbackFiles as file, i (file.path)}
-					<button
-						type="button"
-						class="cd-file-card"
-						class:active={i === selectedFileIdx}
-						onclick={() => onSelectSourceFile('pr', i)}
-					>
-						<div class="cd-file-top">
-							<FileCode size={11} class="cd-file-icon" />
-							<span class="cd-file-name">{file.path.split('/').pop() ?? file.path}</span>
-						</div>
-						<div class="cd-file-stats">
-							<span class="cd-file-add">+{file.added}</span>
-							{#if file.removed > 0}
-								<span class="cd-file-del">-{file.removed}</span>
-							{/if}
-						</div>
-					</button>
-				{/each}
-			{:else}
-				<div class="cd-file-loading">No files detected</div>
-			{/if}
-		</div>
-	</div>
-
 	<div class="fp-diff">
-		{#if filesForDetail[selectedFileIdx]}
+		{#if diffSummaryLoading}
+			<div class="diff-placeholder full">
+				<Loader2 size={20} class="spin" />
+				<p>Loading files...</p>
+			</div>
+		{:else if filesForDetail[selectedFileIdx]}
 			{@const activeFile = filesForDetail[selectedFileIdx]}
 			<div class="diff-card">
 				<div class="diff-header">
@@ -613,7 +526,7 @@
 		{:else}
 			<div class="diff-placeholder full">
 				<FileCode size={24} />
-				<p>Select a file to view its diff</p>
+				<p>No changed files detected</p>
 			</div>
 		{/if}
 	</div>

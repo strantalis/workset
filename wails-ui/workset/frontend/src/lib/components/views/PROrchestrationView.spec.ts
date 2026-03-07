@@ -503,4 +503,48 @@ describe('PROrchestrationView sidebar collapse', () => {
 		expect(getByText(/Squash merge/)).toBeInTheDocument();
 		expect(getByRole('button', { name: 'Merge into main' })).toBeInTheDocument();
 	});
+
+	test('uses ready diff summary files for repository file rows when workspace snapshot files are empty', async () => {
+		vi.mocked(githubApi.fetchTrackedPullRequest).mockResolvedValue(null);
+		vi.mocked(repoDiffApi.fetchBranchDiffSummary).mockResolvedValue({
+			files: [
+				{ path: 'README.md', added: 2, removed: 0, status: 'modified', binary: false },
+				{ path: 'docs/guide.md', added: 1, removed: 0, status: 'modified', binary: false },
+			],
+			totalAdded: 3,
+			totalRemoved: 0,
+		});
+
+		const workspace = buildWorkspaceWithoutTrackedPr();
+		workspace.repos[0] = {
+			...workspace.repos[0],
+			diff: { added: 3, removed: 0 },
+			files: [],
+		};
+
+		const { getByText, getByRole, queryByText } = render(PROrchestrationView, {
+			props: { workspace },
+		});
+
+		const repoRow = getByText('feature/sidebar-collapse').closest('button');
+		expect(repoRow).toBeTruthy();
+		await fireEvent.click(repoRow!);
+
+		await waitFor(() => {
+			expect(getByRole('button', { name: /guide\.md/i })).toBeInTheDocument();
+		});
+		await fireEvent.click(getByRole('button', { name: /guide\.md/i }));
+
+		await waitFor(() => {
+			expect(vi.mocked(repoDiffApi.fetchBranchFileDiff)).toHaveBeenLastCalledWith(
+				'ws-1',
+				'repo-1',
+				'main',
+				'feature/sidebar-collapse',
+				'docs/guide.md',
+				'',
+			);
+		});
+		expect(queryByText('Changed Files')).not.toBeInTheDocument();
+	});
 });
