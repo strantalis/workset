@@ -104,6 +104,7 @@ describe('prViewModel', () => {
 		expect(open?.draft).toBe(false);
 		expect(open?.author).toBe('');
 		expect(open?.commentsCount).toBe(0);
+		expect(open?.reviewCommentsCount).toBe(0);
 		expect(merged?.status).toBe('merged');
 
 		expect(running?.title).toBe('repo-running');
@@ -123,6 +124,7 @@ describe('prViewModel', () => {
 			draft: true,
 			author: 'alice',
 			commentsCount: 5,
+			reviewCommentsCount: 3,
 		};
 
 		const items = mapWorkspaceToPrItems(ws);
@@ -131,5 +133,6 @@ describe('prViewModel', () => {
 		expect(open?.draft).toBe(true);
 		expect(open?.author).toBe('alice');
 		expect(open?.commentsCount).toBe(5);
+		expect(open?.reviewCommentsCount).toBe(3);
 	});
 });

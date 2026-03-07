@@ -14,11 +14,8 @@
 	import { buildLineAnnotations } from '../repo-diff/annotations';
 	import type { DiffLineAnnotation, ReviewAnnotation } from '../repo-diff/annotations';
 	import { createReviewAnnotationActionsController } from '../repo-diff/reviewAnnotationActions';
-	import type {
-		FileDiffRenderOptions,
-		FileDiffRenderer,
-		FileDiffRendererModule,
-	} from '../repo-diff/diffRenderController';
+	// prettier-ignore
+	import type { FileDiffRenderOptions, FileDiffRenderer, FileDiffRendererModule } from '../repo-diff/diffRenderController';
 	import { buildDiffRenderOptions } from '../repo-diff/diffRenderOptions';
 	import RepoDiffAnnotationStyles from '../repo-diff/RepoDiffAnnotationStyles.svelte';
 	import {
@@ -34,11 +31,8 @@
 	import { EVENT_REPO_DIFF_PR_STATUS } from '../../events';
 	import { subscribeRepoDiffEvent } from '../../repoDiffService';
 	import { refreshWorkspacesStatus } from '../../state';
-	import {
-		buildSummaryLocalCacheKey,
-		buildSummaryPrCacheKey,
-		repoDiffCache,
-	} from '../../cache/repoDiffCache';
+	// prettier-ignore
+	import { buildSummaryLocalCacheKey, buildSummaryPrCacheKey, repoDiffCache } from '../../cache/repoDiffCache';
 	import { resolveBranchRefs } from '../../diff/branchRefs';
 	import ResizablePanel from '../ui/ResizablePanel.svelte';
 	import PROrchestrationChecksPanel from './PROrchestrationChecksPanel.svelte';
@@ -53,6 +47,8 @@
 		createPrViewInteractionHandlers,
 		createTrackedPrMapCoordinator,
 		createTrackedPrStateReconciler,
+		getPullRequestFeedbackCounts,
+		hasTrackedPrMetadataChanged,
 		persistSidebarCollapsed,
 		readSidebarCollapsed,
 		shouldClearSelectedItem,
@@ -71,17 +67,6 @@
 	const PR_STATUS_SYNC_INTERVAL_MS = 8000;
 	const isMergedTrackedPr = (pr: PullRequestCreated | undefined | null): boolean =>
 		Boolean(pr && (pr.merged === true || pr.state.toLowerCase() === 'merged'));
-	const hasTrackedStateTransition = (
-		previousPr: PullRequestCreated | null,
-		nextPr: PullRequestStatusResult['pullRequest'],
-	): boolean => {
-		if (!previousPr) return true;
-		const previousState = previousPr.state.trim().toLowerCase();
-		const nextState = nextPr.state.trim().toLowerCase();
-		const previousMerged = isMergedTrackedPr(previousPr);
-		const nextMerged = nextPr.merged === true || nextState === 'merged';
-		return previousState !== nextState || previousMerged !== nextMerged;
-	};
 	let trackedPrMap = $state<Map<string, PullRequestCreated>>(new Map());
 	const trackedPrMapCoordinator = createTrackedPrMapCoordinator();
 	const partitions = $derived.by(() => {
@@ -158,6 +143,9 @@
 	const selectedItem = $derived(prItems.find((item) => item.id === selectedItemId) ?? null),
 		wsId = $derived(workspace?.id ?? ''),
 		selectedRepoId = $derived(selectedItem?.repoId ?? '');
+	const feedbackCounts = $derived.by(() =>
+		getPullRequestFeedbackCounts(trackedPr, prStatus, selectedItem),
+	);
 
 	const selectedRepo = $derived.by(() =>
 		!selectedItem || !workspace
@@ -504,7 +492,7 @@
 
 			if (
 				options.reconcileTracked &&
-				hasTrackedStateTransition(previousTracked, result.pullRequest)
+				hasTrackedPrMetadataChanged(previousTracked, result.pullRequest)
 			) {
 				await loadTrackedPr(wsId, repoId);
 				await refreshWorkspacesStatus(true);
@@ -1217,12 +1205,21 @@
 
 									<div class="ov-sidebar-section">
 										<div class="ov-stats">
-											{#if selectedItem.commentsCount > 0}
+											{#if feedbackCounts.reviewComments > 0}
+												<div class="ov-stat-row">
+													<span>Review feedback</span>
+													<span class="ov-stat-value">
+														<MessageSquare size={9} />
+														{feedbackCounts.reviewComments}
+													</span>
+												</div>
+											{/if}
+											{#if feedbackCounts.conversationComments > 0}
 												<div class="ov-stat-row">
 													<span>Comments</span>
 													<span class="ov-stat-value">
 														<MessageSquare size={9} />
-														{selectedItem.commentsCount}
+														{feedbackCounts.conversationComments}
 													</span>
 												</div>
 											{/if}

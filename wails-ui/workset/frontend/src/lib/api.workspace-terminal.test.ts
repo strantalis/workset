@@ -120,6 +120,8 @@ describe('workspace + terminal API compatibility exports', () => {
 							headBranch: 'feature/redesign',
 							updatedAt: '2026-02-09T10:00:00.000Z',
 							merged: false,
+							commentsCount: 0,
+							reviewCommentsCount: 0,
 						},
 						diff: { added: 2, removed: 1 },
 						files: [{ path: 'README.md', added: 2, removed: 1, hunks: [] }],

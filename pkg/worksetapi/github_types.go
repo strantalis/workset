@@ -42,20 +42,21 @@ type ListRemotesResult struct {
 
 // PullRequestCreatedJSON describes a created pull request.
 type PullRequestCreatedJSON struct {
-	Repo          string `json:"repo"`
-	Number        int    `json:"number"`
-	URL           string `json:"url"`
-	Title         string `json:"title"`
-	Body          string `json:"body,omitempty"`
-	Draft         bool   `json:"draft"`
-	State         string `json:"state"`
-	Merged        bool   `json:"merged"`
-	BaseRepo      string `json:"base_repo"`
-	BaseBranch    string `json:"base_branch"`
-	HeadRepo      string `json:"head_repo"`
-	HeadBranch    string `json:"head_branch"`
-	Author        string `json:"author,omitempty"`
-	CommentsCount int    `json:"comments_count,omitempty"`
+	Repo                string `json:"repo"`
+	Number              int    `json:"number"`
+	URL                 string `json:"url"`
+	Title               string `json:"title"`
+	Body                string `json:"body,omitempty"`
+	Draft               bool   `json:"draft"`
+	State               string `json:"state"`
+	Merged              bool   `json:"merged"`
+	BaseRepo            string `json:"base_repo"`
+	BaseBranch          string `json:"base_branch"`
+	HeadRepo            string `json:"head_repo"`
+	HeadBranch          string `json:"head_branch"`
+	Author              string `json:"author,omitempty"`
+	CommentsCount       int    `json:"comments_count,omitempty"`
+	ReviewCommentsCount int    `json:"review_comments_count,omitempty"`
 }
 
 // PullRequestCreateResult wraps PR creation payload with config metadata.
@@ -74,18 +75,20 @@ type PullRequestStatusInput struct {
 
 // PullRequestStatusJSON summarizes a pull request.
 type PullRequestStatusJSON struct {
-	Repo       string `json:"repo"`
-	Number     int    `json:"number"`
-	URL        string `json:"url"`
-	Title      string `json:"title"`
-	State      string `json:"state"`
-	Draft      bool   `json:"draft"`
-	Merged     bool   `json:"merged"`
-	BaseRepo   string `json:"base_repo"`
-	BaseBranch string `json:"base_branch"`
-	HeadRepo   string `json:"head_repo"`
-	HeadBranch string `json:"head_branch"`
-	Mergeable  string `json:"mergeable,omitempty"`
+	Repo                string `json:"repo"`
+	Number              int    `json:"number"`
+	URL                 string `json:"url"`
+	Title               string `json:"title"`
+	State               string `json:"state"`
+	Draft               bool   `json:"draft"`
+	Merged              bool   `json:"merged"`
+	BaseRepo            string `json:"base_repo"`
+	BaseBranch          string `json:"base_branch"`
+	HeadRepo            string `json:"head_repo"`
+	HeadBranch          string `json:"head_branch"`
+	Mergeable           string `json:"mergeable,omitempty"`
+	CommentsCount       int    `json:"comments_count,omitempty"`
+	ReviewCommentsCount int    `json:"review_comments_count,omitempty"`
 }
 
 // PullRequestCheckJSON describes a single check run.

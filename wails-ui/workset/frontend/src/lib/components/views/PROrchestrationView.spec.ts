@@ -345,6 +345,35 @@ describe('PROrchestrationView sidebar collapse', () => {
 		expect(queryByText('No open PRs')).not.toBeInTheDocument();
 	});
 
+	test('refreshes tracked PR feedback counts when status sync sees new review comments', async () => {
+		const refreshedTrackedPr: PullRequestCreated = {
+			...trackedPr,
+			commentsCount: 1,
+			reviewCommentsCount: 1,
+		};
+		vi.mocked(githubApi.fetchTrackedPullRequest)
+			.mockResolvedValueOnce(trackedPr)
+			.mockResolvedValueOnce(refreshedTrackedPr);
+		vi.mocked(githubApi.fetchPullRequestStatus).mockResolvedValue({
+			pullRequest: refreshedTrackedPr,
+			checks: [],
+		});
+
+		const workspace = buildWorkspace();
+		const { getByText, findByText } = render(PROrchestrationView, {
+			props: { workspace },
+		});
+
+		const listRow = getByText('Test PR title').closest('button');
+		expect(listRow).toBeTruthy();
+		await fireEvent.click(listRow!);
+
+		await waitFor(() => {
+			expect(state.refreshWorkspacesStatus).toHaveBeenCalledWith(true);
+		});
+		expect(await findByText('Review feedback')).toBeInTheDocument();
+	});
+
 	test('creates a pull request from ready detail after selecting Open PR', async () => {
 		vi.mocked(githubApi.fetchTrackedPullRequest).mockResolvedValue(null);
 		const workspace = buildWorkspaceWithoutTrackedPr();

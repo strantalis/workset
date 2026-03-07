@@ -81,20 +81,21 @@ func (s *Service) CreatePullRequest(ctx context.Context, input PullRequestCreate
 	}
 
 	payload := PullRequestCreatedJSON{
-		Repo:          resolution.Repo.Name,
-		Number:        pr.Number,
-		URL:           pr.URL,
-		Title:         pr.Title,
-		Body:          pr.Body,
-		Draft:         pr.Draft,
-		State:         pr.State,
-		Merged:        pr.Merged,
-		BaseRepo:      fmt.Sprintf("%s/%s", baseInfo.Owner, baseInfo.Repo),
-		BaseBranch:    baseBranch,
-		HeadRepo:      fmt.Sprintf("%s/%s", headInfo.Owner, headInfo.Repo),
-		HeadBranch:    headBranch,
-		Author:        pr.Author,
-		CommentsCount: pr.CommentsCount + pr.ReviewCommentsCount,
+		Repo:                resolution.Repo.Name,
+		Number:              pr.Number,
+		URL:                 pr.URL,
+		Title:               pr.Title,
+		Body:                pr.Body,
+		Draft:               pr.Draft,
+		State:               pr.State,
+		Merged:              pr.Merged,
+		BaseRepo:            fmt.Sprintf("%s/%s", baseInfo.Owner, baseInfo.Repo),
+		BaseBranch:          baseBranch,
+		HeadRepo:            fmt.Sprintf("%s/%s", headInfo.Owner, headInfo.Repo),
+		HeadBranch:          headBranch,
+		Author:              pr.Author,
+		CommentsCount:       pr.CommentsCount + pr.ReviewCommentsCount,
+		ReviewCommentsCount: pr.ReviewCommentsCount,
 	}
 	s.recordPullRequest(ctx, resolution, payload)
 	return PullRequestCreateResult{Payload: payload, Config: resolution.ConfigInfo}, nil

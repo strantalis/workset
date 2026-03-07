@@ -370,6 +370,7 @@ export type PullRequestSummary = {
 	mergeable?: string;
 	author?: string;
 	commentsCount?: number;
+	reviewCommentsCount?: number;
 };
 
 export type CheckAnnotation = {

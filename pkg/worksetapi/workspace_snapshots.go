@@ -82,21 +82,22 @@ func (s *Service) ListWorkspaceSnapshots(ctx context.Context, opts WorkspaceSnap
 			var trackedPR *TrackedPullRequestSnapshotJSON
 			if pr, ok := state.PullRequests[repo.Name]; ok {
 				trackedPR = &TrackedPullRequestSnapshotJSON{
-					Repo:          pr.Repo,
-					Number:        pr.Number,
-					URL:           pr.URL,
-					Title:         pr.Title,
-					Body:          pr.Body,
-					State:         pr.State,
-					Draft:         pr.Draft,
-					Merged:        pr.Merged,
-					BaseRepo:      pr.BaseRepo,
-					BaseBranch:    pr.BaseBranch,
-					HeadRepo:      pr.HeadRepo,
-					HeadBranch:    pr.HeadBranch,
-					UpdatedAt:     pr.UpdatedAt,
-					Author:        pr.Author,
-					CommentsCount: pr.CommentsCount,
+					Repo:                pr.Repo,
+					Number:              pr.Number,
+					URL:                 pr.URL,
+					Title:               pr.Title,
+					Body:                pr.Body,
+					State:               pr.State,
+					Draft:               pr.Draft,
+					Merged:              pr.Merged,
+					BaseRepo:            pr.BaseRepo,
+					BaseBranch:          pr.BaseBranch,
+					HeadRepo:            pr.HeadRepo,
+					HeadBranch:          pr.HeadBranch,
+					UpdatedAt:           pr.UpdatedAt,
+					Author:              pr.Author,
+					CommentsCount:       pr.CommentsCount,
+					ReviewCommentsCount: pr.ReviewCommentsCount,
 				}
 			}
 			repos = append(repos, RepoSnapshotJSON{

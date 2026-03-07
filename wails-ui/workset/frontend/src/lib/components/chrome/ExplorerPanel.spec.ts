@@ -458,4 +458,52 @@ describe('ExplorerPanel', () => {
 		await fireEvent.click(filesButton);
 		expect(onOpenFiles).toHaveBeenCalledTimes(1);
 	});
+
+	test('renders review feedback badge for threads with tracked PR feedback', () => {
+		const workspace = buildWorkspace({
+			id: 'thread-alpha',
+			name: 'alpha',
+			workset: 'Core',
+			worksetKey: 'workset:core',
+			worksetLabel: 'Core',
+			repos: [
+				{
+					id: 'repo-1',
+					name: 'repo-one',
+					path: '/tmp/ws-1/repo-one',
+					defaultBranch: 'main',
+					dirty: false,
+					missing: false,
+					diff: { added: 0, removed: 0 },
+					files: [],
+					trackedPullRequest: {
+						repo: 'repo-one',
+						number: 198,
+						url: 'https://github.com/strantalis/workset/pull/198',
+						title: 'fix hover delete',
+						state: 'open',
+						draft: false,
+						baseRepo: 'strantalis/workset',
+						baseBranch: 'main',
+						headRepo: 'strantalis/workset',
+						headBranch: 'fix-buggy-hover-delete',
+						commentsCount: 1,
+						reviewCommentsCount: 1,
+					},
+				},
+			],
+		});
+		const { container } = render(ExplorerPanel, {
+			props: {
+				workspaces: [workspace],
+				activeWorkspaceId: workspace.id,
+				shortcutMap: new Map<string, number>(),
+				onSelectWorkspace: vi.fn(),
+			},
+		});
+
+		const badge = container.querySelector('.thread-feedback-indicator');
+		expect(badge).not.toBeNull();
+		expect(badge?.textContent).toContain('1');
+	});
 });

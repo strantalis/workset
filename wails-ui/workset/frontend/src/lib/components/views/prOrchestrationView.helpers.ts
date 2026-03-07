@@ -26,6 +26,8 @@ export type RepoDiffPrStatusEvent = {
 			head_repo: string;
 			head_branch: string;
 			mergeable?: string;
+			comments_count?: number;
+			review_comments_count?: number;
 		};
 		checks: Array<{
 			name: string;
@@ -53,8 +55,40 @@ type PrListItemRef = { id: string };
 type RepoListItemRef = PrListItemRef & { repoId: string };
 type PrBranches = { base: string; head: string };
 type TrackedPrMap = Map<string, PullRequestCreated>;
+type TrackedPrComparableField =
+	| 'number'
+	| 'url'
+	| 'title'
+	| 'draft'
+	| 'state'
+	| 'merged'
+	| 'baseRepo'
+	| 'baseBranch'
+	| 'headRepo'
+	| 'headBranch'
+	| 'commentsCount'
+	| 'reviewCommentsCount';
+type PrFeedbackCounts = {
+	comments: number;
+	reviewComments: number;
+	conversationComments: number;
+};
 
 const SIDEBAR_COLLAPSED_KEY = 'workset:pr-orchestration:sidebarCollapsed';
+const TRACKED_PR_COMPARABLE_FIELDS: readonly TrackedPrComparableField[] = [
+	'number',
+	'url',
+	'title',
+	'draft',
+	'state',
+	'merged',
+	'baseRepo',
+	'baseBranch',
+	'headRepo',
+	'headBranch',
+	'commentsCount',
+	'reviewCommentsCount',
+];
 
 export const buildTrackedPrMap = (workspace: Workspace | null): Map<string, PullRequestCreated> => {
 	const nextMap = new Map<string, PullRequestCreated>();
@@ -110,16 +144,7 @@ export const trackedPrMapsEqual = (left: TrackedPrMap, right: TrackedPrMap): boo
 	for (const [repoId, leftPr] of left) {
 		const rightPr = right.get(repoId);
 		if (!rightPr) return false;
-		if (
-			leftPr.number !== rightPr.number ||
-			leftPr.url !== rightPr.url ||
-			leftPr.state !== rightPr.state ||
-			leftPr.merged !== rightPr.merged ||
-			leftPr.baseRepo !== rightPr.baseRepo ||
-			leftPr.baseBranch !== rightPr.baseBranch ||
-			leftPr.headRepo !== rightPr.headRepo ||
-			leftPr.headBranch !== rightPr.headBranch
-		) {
+		if (!TRACKED_PR_COMPARABLE_FIELDS.every((field) => leftPr[field] === rightPr[field])) {
 			return false;
 		}
 	}
@@ -268,6 +293,44 @@ export const commitPushStageLabel = (stage: GitHubOperationStage | null): string
 	return stage ? (labels[stage] ?? 'Processing...') : null;
 };
 
+export const hasTrackedPrMetadataChanged = (
+	previousPr: PullRequestCreated | null,
+	nextPr: PullRequestStatusResult['pullRequest'],
+): boolean => {
+	if (!previousPr) return true;
+	return (
+		previousPr.title !== nextPr.title ||
+		previousPr.draft !== nextPr.draft ||
+		previousPr.state.trim().toLowerCase() !== nextPr.state.trim().toLowerCase() ||
+		(previousPr.merged === true || previousPr.state.trim().toLowerCase() === 'merged') !==
+			(nextPr.merged === true || nextPr.state.trim().toLowerCase() === 'merged') ||
+		(previousPr.commentsCount ?? 0) !== (nextPr.commentsCount ?? 0) ||
+		(previousPr.reviewCommentsCount ?? 0) !== (nextPr.reviewCommentsCount ?? 0)
+	);
+};
+
+export const getPullRequestFeedbackCounts = (
+	trackedPr: PullRequestCreated | null,
+	prStatus: PullRequestStatusResult | null,
+	selectedItem: { commentsCount: number; reviewCommentsCount: number } | null | undefined,
+): PrFeedbackCounts => {
+	const comments =
+		trackedPr?.commentsCount ??
+		prStatus?.pullRequest.commentsCount ??
+		selectedItem?.commentsCount ??
+		0;
+	const reviewComments =
+		trackedPr?.reviewCommentsCount ??
+		prStatus?.pullRequest.reviewCommentsCount ??
+		selectedItem?.reviewCommentsCount ??
+		0;
+	return {
+		comments,
+		reviewComments,
+		conversationComments: Math.max(0, comments - reviewComments),
+	};
+};
+
 export const mapPrStatusEventToTrackedPr = (
 	payload: RepoDiffPrStatusEvent,
 ): PullRequestCreated => ({
@@ -284,6 +347,8 @@ export const mapPrStatusEventToTrackedPr = (
 	baseBranch: payload.status.pullRequest.base_branch,
 	headRepo: payload.status.pullRequest.head_repo,
 	headBranch: payload.status.pullRequest.head_branch,
+	commentsCount: payload.status.pullRequest.comments_count,
+	reviewCommentsCount: payload.status.pullRequest.review_comments_count,
 });
 
 export const mapPrStatusEventToStatus = (
@@ -304,6 +369,8 @@ export const mapPrStatusEventToStatus = (
 		headRepo: payload.status.pullRequest.head_repo,
 		headBranch: payload.status.pullRequest.head_branch,
 		mergeable: payload.status.pullRequest.mergeable,
+		commentsCount: payload.status.pullRequest.comments_count,
+		reviewCommentsCount: payload.status.pullRequest.review_comments_count,
 	},
 	checks: (payload.status.checks ?? []).map((check) => ({
 		name: check.name,

@@ -131,6 +131,12 @@
 		return tracked.merged === true || tracked.state.toLowerCase() === 'merged';
 	};
 
+	const getThreadReviewFeedbackCount = (workspace: Workspace): number =>
+		workspace.repos.reduce(
+			(total, repo) => total + (repo.trackedPullRequest?.reviewCommentsCount ?? 0),
+			0,
+		);
+
 	const buildWorksetDescription = (threads: Workspace[]): string => {
 		const explicit = threads.find((thread) => (thread.description ?? '').trim().length > 0);
 		if (explicit?.description) return explicit.description.trim();
@@ -699,6 +705,12 @@
 							{/if}
 							{#if thread.repos.some((repo) => isOpenTrackedPullRequest(repo))}
 								<span class="thread-pr-indicator">PR</span>
+							{/if}
+							{#if getThreadReviewFeedbackCount(thread) > 0}
+								<span class="thread-feedback-indicator">
+									<MessageSquare size={8} />
+									{getThreadReviewFeedbackCount(thread)}
+								</span>
 							{/if}
 						</button>
 						{#if canManageRepos}

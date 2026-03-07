@@ -455,6 +455,22 @@
 	font-family: var(--font-mono);
 }
 
+.thread-feedback-indicator {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	height: 16px;
+	padding: 0 5px;
+	border-radius: 999px;
+	border: 1px solid color-mix(in srgb, #d28a1f 58%, transparent);
+	background: color-mix(in srgb, #d28a1f 14%, transparent);
+	color: color-mix(in srgb, #d28a1f 82%, white);
+	font-size: 9px;
+	font-family: var(--font-mono);
+	font-weight: 600;
+	line-height: 1;
+}
+
 .thread-live-indicator {
 	display: inline-flex;
 	align-items: center;

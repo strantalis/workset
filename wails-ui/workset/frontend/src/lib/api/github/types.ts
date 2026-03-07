@@ -14,6 +14,8 @@ export type PullRequestStatusResponse = {
 		head_repo: string;
 		head_branch: string;
 		mergeable?: string;
+		comments_count?: number;
+		review_comments_count?: number;
 	};
 	checks: Array<{
 		name: string;
@@ -39,6 +41,8 @@ export type PullRequestCreateResponse = {
 	base_branch: string;
 	head_repo: string;
 	head_branch: string;
+	comments_count?: number;
+	review_comments_count?: number;
 };
 
 export type TrackedPullRequestResponse = {
