@@ -51,7 +51,7 @@
 		"@lucide/svelte": "^0.575.0",
 		"@pierre/diffs": "^1.0.11",
 		"@wailsio/runtime": "^3.0.0-alpha.79",
-		"@xterm/addon-fit": "0.12.0-beta.167",
+		"@xterm/addon-fit": "0.12.0-beta.169",
 		"@xterm/addon-image": "0.10.0-beta.167",
 		"@xterm/addon-search": "0.17.0-beta.167",
 		"@xterm/addon-web-links": "0.13.0-beta.167",
