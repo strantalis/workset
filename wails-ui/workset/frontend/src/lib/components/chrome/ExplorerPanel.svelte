@@ -5,6 +5,7 @@
 		ChevronDown,
 		ChevronRight,
 		Clock3,
+		FolderTree,
 		FolderGit2,
 		GitPullRequest,
 		MessageSquare,
@@ -48,6 +49,7 @@
 		canManageRepos?: boolean;
 		activeView?: 'terminal-cockpit' | 'skill-registry';
 		activeSurface?: 'terminal' | 'pull-requests';
+		filesActive?: boolean;
 		onSelectWorkspace: (workspaceId: string) => void;
 		onCreateWorkspace?: () => void;
 		onCreateThread?: (worksetId: string) => void;
@@ -55,6 +57,7 @@
 		onRemoveThread?: (threadId: string) => void;
 		onOpenCockpit?: () => void;
 		onOpenPullRequests?: () => void;
+		onOpenFiles?: () => void;
 		onOpenSkills?: () => void;
 		onOpenSettings?: () => void;
 		onCollapse?: () => void;
@@ -69,6 +72,7 @@
 		canManageRepos = true,
 		activeView = 'terminal-cockpit',
 		activeSurface = 'terminal',
+		filesActive = false,
 		onSelectWorkspace,
 		onCreateWorkspace = () => {},
 		onCreateThread = () => {},
@@ -76,6 +80,7 @@
 		onRemoveThread = () => {},
 		onOpenCockpit = () => {},
 		onOpenPullRequests = () => {},
+		onOpenFiles = () => {},
 		onOpenSkills = () => {},
 		onOpenSettings = () => {},
 		onCollapse = () => {},
@@ -812,6 +817,16 @@
 					onclick={onOpenPullRequests}
 				>
 					<GitPullRequest size={13} />
+				</button>
+				<button
+					type="button"
+					class="icon-btn"
+					class:active={filesActive}
+					title="Files"
+					aria-label="Open files"
+					onclick={onOpenFiles}
+				>
+					<FolderTree size={13} />
 				</button>
 				<button
 					type="button"

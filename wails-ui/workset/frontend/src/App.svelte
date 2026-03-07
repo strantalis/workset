@@ -23,6 +23,7 @@
 	} from './lib/api/workspaces';
 	import type { RepoLocalStatus } from './lib/api/github';
 	import { fetchGitHubAuthInfo } from './lib/api/github';
+	import { openDefaultDocumentSession, reconcileDocumentSession } from './lib/documentSessionState';
 	import {
 		EVENT_TERMINAL_DATA,
 		EVENT_TERMINAL_INPUT,
@@ -47,7 +48,7 @@
 		OnboardingDraft,
 		OnboardingStartResult,
 	} from './lib/components/views/OnboardingView.utils';
-	import type { Workspace } from './lib/types';
+	import type { DocumentSession, Workspace } from './lib/types';
 	import SkillRegistryView from './lib/components/views/SkillRegistryView.svelte';
 	import SpacesWorkbenchView from './lib/components/views/SpacesWorkbenchView.svelte';
 	import { workspaceActionMutations } from './lib/services/workspaceActionService';
@@ -142,6 +143,8 @@
 	let onboardingRepoRegistry = $state<RegisteredRepo[]>([]);
 	let onboardingLoaded = $state(false);
 	let cockpitSurface = $state<CockpitSurface>('terminal');
+	// eslint-disable-next-line svelte/prefer-writable-derived
+	let documentSession = $state<DocumentSession | null>(null);
 	let activeTerminalWorkspaces = $state<Record<string, true>>({});
 	const activeTerminalWorkspaceIds = $derived.by(() => Object.keys(activeTerminalWorkspaces));
 
@@ -393,24 +396,14 @@
 		}
 	};
 
-	const handleAuthClose = (): void => {
-		authModalOpen = false;
-		authModalDismissed = true;
-	};
+	const handleAuthClose = (): void => void ((authModalOpen = false), (authModalDismissed = true));
 
-	const handleAuthSuccess = (): void => {
-		authModalOpen = false;
-		authModalDismissed = true;
-	};
+	const handleAuthSuccess = (): void => void ((authModalOpen = false), (authModalDismissed = true));
 
 	const setView = (view: AppView): void => {
-		if (popoutMode && !popoutViews.has(view)) {
-			return;
-		}
+		if (popoutMode && !popoutViews.has(view)) return;
 		currentView = view;
-		if (hasRepo) {
-			clearRepo();
-		}
+		if (hasRepo) clearRepo();
 		if (view === 'onboarding') {
 			void ensureOnboardingCatalog();
 		}
@@ -475,9 +468,7 @@
 	};
 
 	const handleCreateWorkspace = (): void => {
-		if (popoutMode) {
-			return;
-		}
+		if (popoutMode) return;
 		setView('onboarding');
 		clearRepo();
 	};
@@ -547,9 +538,7 @@
 	};
 
 	const handleAddRepoToWorkset = (worksetId: string): void => {
-		if (popoutMode) {
-			return;
-		}
+		if (popoutMode) return;
 		const threads = visibleWorkspaces.filter((workspace) => {
 			if (workspace.placeholder) return false;
 			const identity = deriveWorksetIdentity(workspace);
@@ -615,9 +604,8 @@
 		currentView = 'terminal-cockpit';
 	};
 
-	const handleOnboardingPreviewHooks = async (source: string): Promise<string[]> => {
-		return previewRepoHooks(source);
-	};
+	const handleOnboardingPreviewHooks = async (source: string): Promise<string[]> =>
+		previewRepoHooks(source);
 
 	const handleShortcutSwitch = (index: number): void => {
 		if (popoutMode) return;
@@ -629,9 +617,17 @@
 	};
 
 	const handleGlobalKeydown = (event: KeyboardEvent): void => {
-		if (popoutMode) return;
 		if (!(event.metaKey || event.ctrlKey)) return;
 		const key = event.key.toLowerCase();
+		if (key === 'p' && $activeWorkspaceId) {
+			event.preventDefault();
+			commandPaletteOpen = false;
+			documentSession = documentSession
+				? null
+				: openDefaultDocumentSession($activeWorkspaceId, threadVisibleWorkspaces);
+			return;
+		}
+		if (popoutMode) return;
 		if (key === 'k') {
 			event.preventDefault();
 			commandPaletteOpen = !commandPaletteOpen;
@@ -648,37 +644,40 @@
 		}
 	};
 
-	let repoStatusUnsubscribe: (() => void) | null = null;
-	let popoutOpenedUnsubscribe: (() => void) | null = null;
-	let popoutClosedUnsubscribe: (() => void) | null = null;
-	let terminalDataUnsubscribe: (() => void) | null = null;
-	let terminalInputUnsubscribe: (() => void) | null = null;
+	const closeDocument = (): void => void (documentSession = null);
 
-	const handleOpenPopout = async (workspaceId: string): Promise<void> => {
-		if (!workspaceId || popoutBusy) return;
-		const popoutWorkspaceId = resolvePopoutWorkspaceId(workspaceId);
-		if (!popoutWorkspaceId) return;
-		popoutBusy = true;
-		try {
-			const state = await openWorkspacePopout(popoutWorkspaceId);
-			updateWorkspacePopoutState(state.workspaceId, state.windowName, state.open);
-		} catch {
-			// ignore popout launch errors in UI
-		} finally {
-			popoutBusy = false;
+	const handleOpenFiles = (): void => {
+		if (!$activeWorkspaceId) return;
+		if (currentView !== 'terminal-cockpit') {
+			setView('terminal-cockpit');
 		}
+		commandPaletteOpen = false;
+		documentSession = documentSession
+			? null
+			: openDefaultDocumentSession($activeWorkspaceId, threadVisibleWorkspaces);
 	};
 
-	const handleClosePopout = async (workspaceId: string): Promise<void> => {
+	let repoStatusUnsubscribe: (() => void) | null = null,
+		popoutOpenedUnsubscribe: (() => void) | null = null,
+		popoutClosedUnsubscribe: (() => void) | null = null,
+		terminalDataUnsubscribe: (() => void) | null = null,
+		terminalInputUnsubscribe: (() => void) | null = null;
+
+	const handleWorkspacePopout = async (workspaceId: string, open: boolean): Promise<void> => {
 		if (!workspaceId || popoutBusy) return;
 		const popoutWorkspaceId = resolvePopoutWorkspaceId(workspaceId);
 		if (!popoutWorkspaceId) return;
 		popoutBusy = true;
 		try {
-			await closeWorkspacePopout(popoutWorkspaceId);
-			updateWorkspacePopoutState(popoutWorkspaceId, '', false);
+			if (open) {
+				const state = await openWorkspacePopout(popoutWorkspaceId);
+				updateWorkspacePopoutState(state.workspaceId, state.windowName, state.open);
+			} else {
+				await closeWorkspacePopout(popoutWorkspaceId);
+				updateWorkspacePopoutState(popoutWorkspaceId, '', false);
+			}
 		} catch {
-			// ignore popout close errors in UI
+			// ignore popout action errors in UI
 		} finally {
 			popoutBusy = false;
 		}
@@ -752,6 +751,10 @@
 	});
 
 	$effect(() => {
+		documentSession = reconcileDocumentSession(documentSession, $activeWorkspaceId, $workspaces);
+	});
+
+	$effect(() => {
 		if (!fixedWorkspaceId || popoutSelectionApplied || $loadingWorkspaces) return;
 		if ($workspaces.length === 0) return;
 		const target = $workspaces.find(
@@ -787,10 +790,10 @@
 					const workspaceId = $activeWorkspaceId;
 					if (!workspaceId) return;
 					if (isWorkspacePoppedOut(workspaceId)) {
-						void handleClosePopout(workspaceId);
+						void handleWorkspacePopout(workspaceId, false);
 						return;
 					}
-					void handleOpenPopout(workspaceId);
+					void handleWorkspacePopout(workspaceId, true);
 				}}
 				onOpenPalette={() => (commandPaletteOpen = true)}
 			/>
@@ -807,6 +810,7 @@
 						canManageRepos={!popoutMode}
 						activeView={currentView === 'skill-registry' ? 'skill-registry' : 'terminal-cockpit'}
 						activeSurface={cockpitSurface}
+						filesActive={documentSession !== null}
 						{activeTerminalWorkspaceIds}
 						onSelectWorkspace={handleSelectWorkspace}
 						onCreateWorkspace={handleCreateWorkspace}
@@ -821,6 +825,7 @@
 							cockpitSurface = 'pull-requests';
 							setView('terminal-cockpit');
 						}}
+						onOpenFiles={handleOpenFiles}
 						onOpenSkills={() => setView('skill-registry')}
 						onOpenSettings={() => (settingsOpen = true)}
 						onCollapse={() => (explorerOpen = false)}
@@ -875,9 +880,10 @@
 									title="This workset is open in a popout"
 									body="Use the popout window to continue. Return it here anytime."
 									actionLabel="Focus Popout"
-									onAction={() => void handleOpenPopout($activeWorkspaceId ?? '')}
+									onAction={() => void handleWorkspacePopout($activeWorkspaceId ?? '', true)}
 									secondaryActionLabel="Return To Main Window"
-									onSecondaryAction={() => void handleClosePopout($activeWorkspaceId ?? '')}
+									onSecondaryAction={() =>
+										void handleWorkspacePopout($activeWorkspaceId ?? '', false)}
 									variant="centered"
 								/>
 							{:else}
@@ -887,10 +893,12 @@
 									{popoutMode}
 									useGlobalExplorer={showExplorer}
 									preferredSurface={cockpitSurface}
+									{documentSession}
 									onSurfaceChange={(surface) => (cockpitSurface = surface)}
 									onSelectWorkspace={handleSelectWorkspace}
 									onCreateWorkspace={handleCreateWorkspace}
 									onCreateThread={handleCreateThread}
+									onCloseDocument={closeDocument}
 								/>
 							{/if}
 						{:else if currentView === 'skill-registry'}

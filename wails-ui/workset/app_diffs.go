@@ -130,19 +130,7 @@ func (a *App) resolveRepoPath(ctx context.Context, workspaceID, repoID string) (
 	}
 	for _, repo := range repos.Repos {
 		if workspaceID+"::"+repo.Name == repoID {
-			if repo.RepoDir != "" && workspacePath != "" {
-				worktreePath := filepath.Join(workspacePath, repo.RepoDir)
-				if stat, err := os.Stat(worktreePath); err == nil && stat.IsDir() {
-					return worktreePath, nil
-				}
-			}
-			if repo.LocalPath != "" {
-				if stat, err := os.Stat(repo.LocalPath); err == nil && stat.IsDir() {
-					return repo.LocalPath, nil
-				}
-				return "", fmt.Errorf("repo path unavailable: %s", repo.LocalPath)
-			}
-			return "", errors.New("repo path not found")
+			return resolveWorkspaceRepoRoot(workspacePath, repo.RepoDir, repo.LocalPath)
 		}
 	}
 	return "", fmt.Errorf("repo %q not found in workspace %q", repoID, workspaceID)

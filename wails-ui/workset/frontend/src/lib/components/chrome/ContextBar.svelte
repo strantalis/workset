@@ -199,7 +199,8 @@
 
 	.worksets-link,
 	.palette-hint,
-	.popout-action {
+	.popout-action,
+	.quick-open-action {
 		-webkit-app-region: no-drag;
 	}
 
@@ -309,7 +310,8 @@
 	}
 
 	.palette-hint,
-	.popout-action {
+	.popout-action,
+	.quick-open-action {
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
@@ -323,7 +325,8 @@
 	}
 
 	.palette-hint:hover,
-	.popout-action:hover {
+	.popout-action:hover,
+	.quick-open-action:hover {
 		border-color: var(--border);
 		color: var(--text);
 	}
