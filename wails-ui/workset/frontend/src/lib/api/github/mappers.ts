@@ -50,6 +50,7 @@ export function mapGitHubOperationStatus(
 		error: result.error,
 		pullRequest: result.pullRequest ? mapPullRequest(result.pullRequest) : undefined,
 		commitPush: result.commitPush,
+		localMerge: result.localMerge,
 	};
 }
 

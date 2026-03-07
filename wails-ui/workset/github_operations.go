@@ -17,20 +17,25 @@ type GitHubOperationType string
 const (
 	GitHubOperationTypeCreatePR   GitHubOperationType = "create_pr"
 	GitHubOperationTypeCommitPush GitHubOperationType = "commit_push"
+	GitHubOperationTypeLocalMerge GitHubOperationType = "local_merge"
 )
 
 type GitHubOperationStage string
 
 const (
-	GitHubOperationStageQueued            GitHubOperationStage = "queued"
-	GitHubOperationStageGenerating        GitHubOperationStage = "generating"
-	GitHubOperationStageCreating          GitHubOperationStage = "creating"
-	GitHubOperationStageGeneratingMessage GitHubOperationStage = "generating_message"
-	GitHubOperationStageStaging           GitHubOperationStage = "staging"
-	GitHubOperationStageCommitting        GitHubOperationStage = "committing"
-	GitHubOperationStagePushing           GitHubOperationStage = "pushing"
-	GitHubOperationStageCompleted         GitHubOperationStage = "completed"
-	GitHubOperationStageFailed            GitHubOperationStage = "failed"
+	GitHubOperationStageQueued             GitHubOperationStage = "queued"
+	GitHubOperationStageGenerating         GitHubOperationStage = "generating"
+	GitHubOperationStageCreating           GitHubOperationStage = "creating"
+	GitHubOperationStageGeneratingMessage  GitHubOperationStage = "generating_message"
+	GitHubOperationStageStaging            GitHubOperationStage = "staging"
+	GitHubOperationStageCommitting         GitHubOperationStage = "committing"
+	GitHubOperationStagePushing            GitHubOperationStage = "pushing"
+	GitHubOperationStagePreparingBase      GitHubOperationStage = "preparing_base"
+	GitHubOperationStageMerging            GitHubOperationStage = "merging"
+	GitHubOperationStageCommittingBase     GitHubOperationStage = "committing_base"
+	GitHubOperationStageCommittingWorktree GitHubOperationStage = "committing_worktree"
+	GitHubOperationStageCompleted          GitHubOperationStage = "completed"
+	GitHubOperationStageFailed             GitHubOperationStage = "failed"
 )
 
 type GitHubOperationState string
@@ -53,6 +58,7 @@ type GitHubOperationStatusPayload struct {
 	Error       string                              `json:"error,omitempty"`
 	PullRequest *worksetapi.PullRequestCreatedJSON  `json:"pullRequest,omitempty"`
 	CommitPush  *worksetapi.CommitAndPushResultJSON `json:"commitPush,omitempty"`
+	LocalMerge  *worksetapi.LocalMergeResultJSON    `json:"localMerge,omitempty"`
 }
 
 type githubOperationKey struct {
@@ -168,6 +174,7 @@ func (m *githubOperationManager) completeCreatePR(key githubOperationKey, result
 	status.FinishedAt = m.now().UTC().Format(time.RFC3339)
 	status.PullRequest = &result
 	status.CommitPush = nil
+	status.LocalMerge = nil
 	now := m.now()
 	m.status[key] = githubOperationRecord{
 		status:      status,
@@ -191,6 +198,31 @@ func (m *githubOperationManager) completeCommitPush(key githubOperationKey, resu
 	status.FinishedAt = m.now().UTC().Format(time.RFC3339)
 	status.PullRequest = nil
 	status.CommitPush = &result
+	status.LocalMerge = nil
+	now := m.now()
+	m.status[key] = githubOperationRecord{
+		status:      status,
+		lastUpdated: now,
+	}
+	m.cleanupLocked(now)
+	return status, true
+}
+
+func (m *githubOperationManager) completeLocalMerge(key githubOperationKey, result worksetapi.LocalMergeResultJSON) (GitHubOperationStatusPayload, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	record, ok := m.status[key]
+	if !ok {
+		return GitHubOperationStatusPayload{}, false
+	}
+	status := record.status
+	status.Stage = GitHubOperationStageCompleted
+	status.State = GitHubOperationStateCompleted
+	status.Error = ""
+	status.FinishedAt = m.now().UTC().Format(time.RFC3339)
+	status.PullRequest = nil
+	status.CommitPush = nil
+	status.LocalMerge = &result
 	now := m.now()
 	m.status[key] = githubOperationRecord{
 		status:      status,
@@ -283,6 +315,8 @@ func parseGitHubOperationType(raw string) (GitHubOperationType, error) {
 		return GitHubOperationTypeCreatePR, nil
 	case GitHubOperationTypeCommitPush:
 		return GitHubOperationTypeCommitPush, nil
+	case GitHubOperationTypeLocalMerge:
+		return GitHubOperationTypeLocalMerge, nil
 	default:
 		return "", worksetapi.ValidationError{
 			Message: fmt.Sprintf("invalid operation type %q", strings.TrimSpace(raw)),
@@ -385,6 +419,46 @@ func (a *App) runCommitAndPushAsync(ctx context.Context, key githubOperationKey,
 	}
 
 	if status, ok := manager.completeCommitPush(key, result.Payload); ok {
+		a.emitGitHubOperation(status)
+	}
+}
+
+func (a *App) runLocalMergeAsync(ctx context.Context, key githubOperationKey, repoName string, input StartLocalMergeAsyncRequest) {
+	manager := a.ensureGitHubOperationManager()
+	svc := a.ensureService()
+
+	result, err := svc.LocalMerge(ctx, worksetapi.LocalMergeInput{
+		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
+		Repo:      repoName,
+		Base:      input.Base,
+		Message:   input.Message,
+		OnStage: func(stage worksetapi.LocalMergeStage) {
+			statusStage := GitHubOperationStageMerging
+			switch stage {
+			case worksetapi.LocalMergeStageGeneratingMessage:
+				statusStage = GitHubOperationStageGeneratingMessage
+			case worksetapi.LocalMergeStageCommittingWorktree:
+				statusStage = GitHubOperationStageCommittingWorktree
+			case worksetapi.LocalMergeStagePreparingBase:
+				statusStage = GitHubOperationStagePreparingBase
+			case worksetapi.LocalMergeStageMerging:
+				statusStage = GitHubOperationStageMerging
+			case worksetapi.LocalMergeStageCommittingBase:
+				statusStage = GitHubOperationStageCommittingBase
+			}
+			if status, ok := manager.setStage(key, statusStage); ok {
+				a.emitGitHubOperation(status)
+			}
+		},
+	})
+	if err != nil {
+		if status, ok := manager.fail(key, err); ok {
+			a.emitGitHubOperation(status)
+		}
+		return
+	}
+
+	if status, ok := manager.completeLocalMerge(key, result.Payload); ok {
 		a.emitGitHubOperation(status)
 	}
 }

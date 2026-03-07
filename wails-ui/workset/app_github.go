@@ -300,6 +300,26 @@ type StartCommitAndPushAsyncRequest struct {
 	Message     string `json:"message,omitempty"`
 }
 
+type LocalMergeRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	RepoID      string `json:"repoId"`
+	Base        string `json:"base,omitempty"`
+	Message     string `json:"message,omitempty"`
+}
+
+type StartLocalMergeAsyncRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	RepoID      string `json:"repoId"`
+	Base        string `json:"base,omitempty"`
+	Message     string `json:"message,omitempty"`
+}
+
+type PushBranchRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	RepoID      string `json:"repoId"`
+	Branch      string `json:"branch"`
+}
+
 type GitHubOperationStatusRequest struct {
 	WorkspaceID string `json:"workspaceId"`
 	RepoID      string `json:"repoId"`
@@ -384,6 +404,51 @@ func (a *App) StartCommitAndPushAsync(input StartCommitAndPushAsyncRequest) (Git
 	return status, nil
 }
 
+func (a *App) LocalMerge(input LocalMergeRequest) (worksetapi.LocalMergeResultJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	a.ensureService()
+	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
+	if err != nil {
+		return worksetapi.LocalMergeResultJSON{}, err
+	}
+	result, err := a.service.LocalMerge(ctx, worksetapi.LocalMergeInput{
+		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
+		Repo:      repoName,
+		Base:      input.Base,
+		Message:   input.Message,
+	})
+	if err != nil {
+		return worksetapi.LocalMergeResultJSON{}, err
+	}
+	return result.Payload, nil
+}
+
+func (a *App) StartLocalMergeAsync(input StartLocalMergeAsyncRequest) (GitHubOperationStatusPayload, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	a.ensureService()
+
+	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
+	if err != nil {
+		return GitHubOperationStatusPayload{}, err
+	}
+
+	manager := a.ensureGitHubOperationManager()
+	key, status, err := manager.start(input.WorkspaceID, input.RepoID, GitHubOperationTypeLocalMerge)
+	if err != nil {
+		return GitHubOperationStatusPayload{}, err
+	}
+	a.emitGitHubOperation(status)
+
+	go a.runLocalMergeAsync(ctx, key, repoName, input)
+	return status, nil
+}
+
 func (a *App) GetGitHubOperationStatus(input GitHubOperationStatusRequest) (GitHubOperationStatusPayload, error) {
 	opType, err := parseGitHubOperationType(input.Type)
 	if err != nil {
@@ -418,6 +483,27 @@ func (a *App) GetRepoLocalStatus(input RepoLocalStatusRequest) (worksetapi.RepoL
 	})
 	if err != nil {
 		return worksetapi.RepoLocalStatusJSON{}, err
+	}
+	return result.Payload, nil
+}
+
+func (a *App) PushBranch(input PushBranchRequest) (worksetapi.PushBranchResultJSON, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	a.ensureService()
+	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
+	if err != nil {
+		return worksetapi.PushBranchResultJSON{}, err
+	}
+	result, err := a.service.PushBranch(ctx, worksetapi.PushBranchInput{
+		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
+		Repo:      repoName,
+		Branch:    input.Branch,
+	})
+	if err != nil {
+		return worksetapi.PushBranchResultJSON{}, err
 	}
 	return result.Payload, nil
 }

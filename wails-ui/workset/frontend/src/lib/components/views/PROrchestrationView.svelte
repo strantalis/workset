@@ -1,6 +1,6 @@
 <script lang="ts">
 	// prettier-ignore
-	import { AlertCircle, CheckCircle2, ChevronRight, Circle, Clock, ExternalLink, FileCode, GitCommit, GitMerge, GitPullRequest, Loader2, MessageSquare, ThumbsDown, ThumbsUp, Upload, XCircle } from '@lucide/svelte';
+	import { AlertCircle, CheckCircle2, ChevronRight, Circle, FileCode, GitCommit, GitPullRequest, Loader2, MessageSquare, Upload, XCircle } from '@lucide/svelte';
 	import { Browser } from '@wailsio/runtime';
 	// prettier-ignore
 	import type { PullRequestCreated, PullRequestReviewComment, PullRequestStatusResult, RepoFileDiff, RepoDiffFileSummary, RepoDiffSummary, Workspace } from '../../types';
@@ -36,12 +36,14 @@
 	import { resolveBranchRefs } from '../../diff/branchRefs';
 	import ResizablePanel from '../ui/ResizablePanel.svelte';
 	import PROrchestrationChecksPanel from './PROrchestrationChecksPanel.svelte';
+	import PROrchestrationActiveHeader from './PROrchestrationActiveHeader.svelte';
 	import PROrchestrationReadyDetail from './PROrchestrationReadyDetail.svelte';
 	import PROrchestrationSidebar from './PROrchestrationSidebar.svelte';
 	import { mapWorkspaceToPrItems } from '../../view-models/prViewModel';
 	import { buildCheckStats, buildDiffTargetKey } from './prOrchestrationHelpers';
 	import {
 		applyPrStatusEvent,
+		applyTrackedPrCreated,
 		buildFileDiffCacheKeyForSource,
 		commitPushStageLabel as formatCommitPushStageLabel,
 		createPrViewInteractionHandlers,
@@ -49,6 +51,7 @@
 		createTrackedPrStateReconciler,
 		getPullRequestFeedbackCounts,
 		hasTrackedPrMetadataChanged,
+		refreshReadyDetail,
 		persistSidebarCollapsed,
 		readSidebarCollapsed,
 		shouldClearSelectedItem,
@@ -120,6 +123,7 @@
 		currentUserId: number | null = $state(null);
 
 	let prComposerItemId: string | null = $state(null);
+	let prComposerMode: 'pull_request' | 'local_merge' = $state('pull_request');
 
 	let repoLocalStatus: RepoLocalStatus | null = $state(null),
 		commitPushLoading = $state(false),
@@ -551,16 +555,20 @@
 		await startPushForRepo(selectedItem.repoId);
 	};
 
-	const handleTrackedPrCreated = (repoId: string, created: PullRequestCreated): void => {
-		trackedPrMapCoordinator.markResolved(repoId, created, trackedPrMap.get(repoId) ?? null);
-		trackedPrMap = withTrackedPr(trackedPrMap, repoId, created);
-		trackedPr = created;
-		setViewMode('active');
-		activeTab = 'overview';
-		void refreshWorkspacesStatus(true);
-		void loadChecks();
-		void loadReviews();
-	};
+	const handleTrackedPrCreated = (repoId: string, created: PullRequestCreated): void =>
+		applyTrackedPrCreated({
+			repoId,
+			created,
+			trackedPrMapCoordinator,
+			trackedPrMap,
+			setTrackedPrMap: (next) => (trackedPrMap = next),
+			setTrackedPr: (next) => (trackedPr = next),
+			setViewMode,
+			setActiveTab: (tab) => (activeTab = tab),
+			refreshWorkspacesStatus: () => void refreshWorkspacesStatus(true),
+			loadChecks: () => void loadChecks(),
+			loadReviews: () => void loadReviews(),
+		});
 	const { openPrComposer, handlePushFromSidebar, handlePullRequestCreated } =
 		createPrViewInteractionHandlers({
 			findItem: (itemId) => prItems.find((entry) => entry.id === itemId),
@@ -569,6 +577,7 @@
 			getSelectedItemId: () => selectedItemId,
 			getPrComposerItemId: () => prComposerItemId,
 			setPrComposerItemId: (itemId) => (prComposerItemId = itemId),
+			setPrComposerMode: (mode) => (prComposerMode = mode),
 			selectItem,
 			startPushForRepo,
 			handleTrackedPrCreated,
@@ -965,102 +974,18 @@
 		{#snippet detailPanel()}
 			<main class="detail">
 				{#if isActiveDetail && selectedItem && workspace}
-					<div class="pr-header">
-						<div class="prh-top">
-							<div class="prh-icon">
-								{#if trackedPr && isMergedTrackedPr(trackedPr)}
-									<GitMerge size={16} class="prh-icon-merged" />
-								{:else if trackedPr?.draft}
-									<GitPullRequest size={16} class="prh-icon-draft" />
-								{:else}
-									<GitPullRequest size={16} class="prh-icon-open" />
-								{/if}
-							</div>
-							<div class="prh-left">
-								<h1 class="prh-title">
-									{trackedPrMap.get(selectedItem.repoId)?.title ?? selectedItem.title}
-								</h1>
-								<div class="prh-meta">
-									<span class="prh-meta-mono">{selectedItem.repoName}</span>
-									<span class="prh-meta-dot">·</span>
-									<span>{workspace.name}</span>
-									<span class="prh-meta-dot">·</span>
-									<span class="prh-meta-accent">{selectedItem.branch}</span>
-									<span class="prh-meta-arrow">→</span>
-									<span class="prh-meta-mono">{trackedPr?.baseBranch ?? 'main'}</span>
-									{#if selectedItem.author}
-										<span class="prh-meta-dot">·</span>
-										<span>by {selectedItem.author}</span>
-									{/if}
-									<span class="prh-meta-dot">·</span>
-									<Clock size={10} />
-									<span>{selectedItem.updatedAtLabel}</span>
-								</div>
-							</div>
-							{#if trackedPr?.draft}
-								<span class="prh-draft-badge">Draft</span>
-							{/if}
-						</div>
-
-						<div class="prh-actions-row">
-							<div class="prh-actions">
-								{#if trackedPr && !isMergedTrackedPr(trackedPr) && trackedPr.state === 'open'}
-									<button type="button" class="prh-btn prh-btn-approve">
-										<ThumbsUp size={12} />
-										Approve
-									</button>
-									<button type="button" class="prh-btn prh-btn-neutral">
-										<ThumbsDown size={12} />
-										Request Changes
-									</button>
-									<button
-										type="button"
-										class="prh-btn prh-btn-merge"
-										class:prh-btn-disabled={checkStats.failed > 0 || checkStats.pending > 0}
-										disabled={checkStats.failed > 0 || checkStats.pending > 0}
-									>
-										<GitMerge size={12} />
-										Merge PR
-									</button>
-								{/if}
-								{#if trackedPr}
-									<button
-										type="button"
-										class="prh-btn-icon"
-										title="Open in GitHub"
-										onclick={() => openExternalUrl(trackedPr?.url)}
-									>
-										<ExternalLink size={12} />
-									</button>
-								{:else if trackedPrLoading}
-									<span class="prh-loading"><Loader2 size={14} class="spin" /></span>
-								{/if}
-							</div>
-
-							<div class="prh-tab-switcher">
-								<button
-									type="button"
-									class="prh-tab-seg"
-									class:active={activeTab === 'overview'}
-									onclick={() => (activeTab = 'overview')}
-								>
-									Overview
-								</button>
-								<button
-									type="button"
-									class="prh-tab-seg"
-									class:active={activeTab === 'files'}
-									onclick={() => (activeTab = 'files')}
-								>
-									<FileCode size={10} />
-									Files
-									<span class="prh-tab-count"
-										>{filesForDetail.length || selectedItem.dirtyFiles}</span
-									>
-								</button>
-							</div>
-						</div>
-					</div>
+					<PROrchestrationActiveHeader
+						{trackedPr}
+						{trackedPrLoading}
+						{selectedItem}
+						workspaceName={workspace.name}
+						trackedTitle={trackedPrMap.get(selectedItem.repoId)?.title ?? selectedItem.title}
+						{checkStats}
+						activeTab={activeTab === 'checks' ? 'overview' : activeTab}
+						filesCount={filesForDetail.length || selectedItem.dirtyFiles}
+						onActiveTabChange={(tab) => (activeTab = tab)}
+						onOpenExternalUrl={openExternalUrl}
+					/>
 
 					<div class="tab-content">
 						{#if activeTab === 'overview'}
@@ -1384,6 +1309,7 @@
 						{selectedItem}
 						workspaceName={workspace.name}
 						showCreatePanel={prComposerItemId === selectedItem.id}
+						initialMode={prComposerMode}
 						workspaceId={workspace.id}
 						baseBranch={selectedRepo?.defaultBranch ?? ''}
 						{filesForDetail}
@@ -1406,6 +1332,16 @@
 							selectedSource = source;
 							selectedFileIdx = index;
 						}}
+						onRefreshReadyState={() =>
+							refreshReadyDetail({
+								workspace,
+								selectedItem,
+								trackedPr,
+								refreshWorkspacesStatus: () => refreshWorkspacesStatus(true),
+								loadRepoLocalStatus,
+								loadLocalSummary,
+								loadDiffSummary,
+							})}
 						bind:diffContainer
 					/>
 				{:else}
@@ -1415,7 +1351,7 @@
 							<p class="ws-empty-state-copy">Select a tracked PR to view details</p>
 						{:else}
 							<Upload size={48} />
-							<p class="ws-empty-state-copy">Select a branch to create a PR</p>
+							<p class="ws-empty-state-copy">Select a branch to prepare a PR or local merge</p>
 						{/if}
 					</div>
 				{/if}
@@ -1454,9 +1390,8 @@
 					{prItems}
 					{selectedItemId}
 					{prComposerItemId}
+					{prComposerMode}
 					{resolveTrackedTitle}
-					pushInProgressRepoId={commitPushRepoId}
-					onStartPush={handlePushFromSidebar}
 					onToggleSidebar={toggleSidebar}
 					onViewModeChange={setViewMode}
 					onSelectItem={selectItem}

@@ -5,12 +5,15 @@ import {
 	StartCommitAndPushAsync,
 	StartCreatePullRequestAsync,
 } from '../../../../bindings/workset/app';
+import { Call } from '@wailsio/runtime';
 import { isOperationStatusNotFound, mapGitHubOperationStatus } from './mappers';
 import type {
 	CommitAndPushResult,
 	GitHubOperationStatus,
 	GitHubOperationStatusResponse,
 	GitHubOperationType,
+	LocalMergeResult,
+	PushBranchResult,
 	RepoLocalStatus,
 } from './types';
 
@@ -45,6 +48,24 @@ export async function startCommitAndPushAsync(
 		workspaceId,
 		repoId,
 		message: message ?? '',
+	})) as GitHubOperationStatusResponse;
+
+	return mapGitHubOperationStatus(result);
+}
+
+export async function startLocalMergeAsync(
+	workspaceId: string,
+	repoId: string,
+	payload: {
+		base?: string;
+		message?: string;
+	},
+): Promise<GitHubOperationStatus> {
+	const result = (await Call.ByName('main.App.StartLocalMergeAsync', {
+		workspaceId,
+		repoId,
+		base: payload.base ?? '',
+		message: payload.message ?? '',
 	})) as GitHubOperationStatusResponse;
 
 	return mapGitHubOperationStatus(result);
@@ -98,6 +119,38 @@ export async function commitAndPush(
 		repoId,
 		message: message ?? '',
 	})) as CommitAndPushResult;
+
+	return result;
+}
+
+export async function localMerge(
+	workspaceId: string,
+	repoId: string,
+	payload: {
+		base?: string;
+		message?: string;
+	},
+): Promise<LocalMergeResult> {
+	const result = (await Call.ByName('main.App.LocalMerge', {
+		workspaceId,
+		repoId,
+		base: payload.base ?? '',
+		message: payload.message ?? '',
+	})) as LocalMergeResult;
+
+	return result;
+}
+
+export async function pushBranch(
+	workspaceId: string,
+	repoId: string,
+	branch: string,
+): Promise<PushBranchResult> {
+	const result = (await Call.ByName('main.App.PushBranch', {
+		workspaceId,
+		repoId,
+		branch,
+	})) as PushBranchResult;
 
 	return result;
 }

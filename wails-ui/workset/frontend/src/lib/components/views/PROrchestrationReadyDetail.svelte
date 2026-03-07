@@ -1,6 +1,22 @@
 <script lang="ts">
-	import { AlertCircle, FileCode, GitBranch, Loader2, Upload } from '@lucide/svelte';
-	import { createPullRequest, generatePullRequestText } from '../../api/github';
+	import {
+		AlertCircle,
+		CheckCircle2,
+		FileCode,
+		GitBranch,
+		GitMerge,
+		Loader2,
+		Upload,
+	} from '@lucide/svelte';
+	import {
+		createPullRequest,
+		generatePullRequestText,
+		pushBranch,
+		startLocalMergeAsync,
+		type LocalMergeResult,
+		type GitHubOperationStatus,
+	} from '../../api/github';
+	import { subscribeGitHubOperationEvent } from '../../githubOperationService';
 	import type { PullRequestCreated, RepoDiffFileSummary, RepoFileDiff } from '../../types';
 
 	interface ReadyDetailItem {
@@ -23,6 +39,7 @@
 		selectedItem: ReadyDetailItem;
 		workspaceName: string;
 		showCreatePanel: boolean;
+		initialMode?: 'pull_request' | 'local_merge';
 		workspaceId: string;
 		baseBranch: string;
 		filesForDetail: RepoDiffFileSummary[];
@@ -40,6 +57,7 @@
 		onPushFromSidebar: (itemId: string) => Promise<void> | void;
 		onPullRequestCreated: (created: PullRequestCreated) => Promise<void> | void;
 		onSelectSourceFile: (source: 'pr' | 'local', index: number) => void;
+		onRefreshReadyState: () => Promise<void> | void;
 		diffContainer?: HTMLElement | null;
 	}
 
@@ -48,6 +66,7 @@
 		selectedItem,
 		workspaceName,
 		showCreatePanel,
+		initialMode = 'pull_request',
 		workspaceId,
 		baseBranch,
 		filesForDetail,
@@ -65,6 +84,7 @@
 		onPushFromSidebar,
 		onPullRequestCreated,
 		onSelectSourceFile,
+		onRefreshReadyState,
 		diffContainer = $bindable(null),
 	}: Props = $props();
 	/* eslint-enable prefer-const */
@@ -76,7 +96,16 @@
 	let isDraft = $state(false);
 	let isCreating = $state(false);
 	let prCreateError: string | null = $state(null);
+	let detailMode = $state<'pull_request' | 'local_merge'>('pull_request');
+	let localMergeLoading = $state(false);
+	let localMergeStage = $state<string | null>(null);
+	let localMergeError: string | null = $state(null);
+	let localMergeResult: LocalMergeResult | null = $state(null);
+	let pushingBase = $state(false);
+	let pushBaseError: string | null = $state(null);
+	let pushBaseSuccess = $state(false);
 	let composerContextKey = '';
+	let prSuggestionContextKey = '';
 
 	const getAddBarCount = (file: RepoDiffFileSummary): number =>
 		Math.min(
@@ -102,6 +131,24 @@
 		prCreateError = null;
 		prTextGenerating = false;
 		prTextGenerationRequestId += 1;
+		prSuggestionContextKey = '';
+	};
+
+	const localMergeStageLabel = (stage: string | null): string => {
+		switch (stage) {
+			case 'generating_message':
+				return 'Drafting commit...';
+			case 'committing_worktree':
+				return 'Committing branch...';
+			case 'preparing_base':
+				return 'Preparing base...';
+			case 'merging':
+				return 'Merging locally...';
+			case 'committing_base':
+				return 'Committing base...';
+			default:
+				return 'Merging locally...';
+		}
 	};
 
 	const loadSuggestedPrText = async (wsId: string, repoId: string): Promise<void> => {
@@ -148,6 +195,47 @@
 		}
 	};
 
+	const handleStartLocalMerge = async (): Promise<void> => {
+		if (!showCreatePanel || localMergeLoading) return;
+		localMergeLoading = true;
+		localMergeStage = 'queued';
+		localMergeError = null;
+		pushBaseError = null;
+		pushBaseSuccess = false;
+		try {
+			await startLocalMergeAsync(workspaceId, selectedItem.repoId, {
+				base: baseBranch,
+			});
+		} catch (err) {
+			localMergeLoading = false;
+			localMergeStage = null;
+			localMergeError = err instanceof Error ? err.message : 'Failed to start local merge.';
+		}
+	};
+
+	const handlePushBaseBranch = async (): Promise<void> => {
+		if (!localMergeResult?.baseBranch || pushingBase) return;
+		pushingBase = true;
+		pushBaseError = null;
+		pushBaseSuccess = false;
+		try {
+			const result = await pushBranch(
+				workspaceId,
+				selectedItem.repoId,
+				localMergeResult.baseBranch,
+			);
+			if (result.pushed) {
+				localMergeResult = { ...localMergeResult, baseBranchPushed: true };
+				pushBaseSuccess = true;
+				await onRefreshReadyState();
+			}
+		} catch (err) {
+			pushBaseError = err instanceof Error ? err.message : 'Failed to push base branch.';
+		} finally {
+			pushingBase = false;
+		}
+	};
+
 	$effect(() => {
 		if (!showCreatePanel) {
 			composerContextKey = '';
@@ -157,10 +245,60 @@
 		}
 
 		const nextKey = `${workspaceId}:${selectedItem.repoId}:${selectedItem.branch}`;
-		if (composerContextKey === nextKey) return;
+		if (composerContextKey === nextKey && detailMode === initialMode) return;
 		composerContextKey = nextKey;
 		resetComposerState();
+		localMergeLoading = false;
+		localMergeStage = null;
+		localMergeError = null;
+		localMergeResult = null;
+		pushingBase = false;
+		pushBaseError = null;
+		pushBaseSuccess = false;
+		detailMode = initialMode;
+		if (initialMode === 'pull_request') {
+			prSuggestionContextKey = nextKey;
+			void loadSuggestedPrText(workspaceId, selectedItem.repoId);
+		}
+	});
+
+	$effect(() => {
+		if (!showCreatePanel || detailMode !== 'pull_request' || composerContextKey === '') {
+			return;
+		}
+		if (prSuggestionContextKey === composerContextKey) {
+			return;
+		}
+		prSuggestionContextKey = composerContextKey;
 		void loadSuggestedPrText(workspaceId, selectedItem.repoId);
+	});
+
+	$effect(() => {
+		const unsub = subscribeGitHubOperationEvent((status: GitHubOperationStatus) => {
+			if (status.workspaceId !== workspaceId) return;
+			if (status.repoId !== selectedItem.repoId) return;
+			if (status.type !== 'local_merge') return;
+
+			if (status.state === 'running') {
+				localMergeLoading = true;
+				localMergeStage = status.stage;
+				localMergeError = null;
+				pushBaseSuccess = false;
+				return;
+			}
+			if (status.state === 'completed') {
+				localMergeLoading = false;
+				localMergeStage = null;
+				localMergeError = null;
+				localMergeResult = status.localMerge ?? null;
+				void onRefreshReadyState();
+				return;
+			}
+			localMergeLoading = false;
+			localMergeStage = null;
+			localMergeError = status.error || 'Local merge failed.';
+		});
+		return unsub;
 	});
 </script>
 
@@ -212,70 +350,145 @@
 
 {#if showCreatePanel}
 	<div class="cd-create-panel">
-		{#if prTextGenerating}
+		{#if detailMode === 'pull_request' && prTextGenerating}
 			<div class="cd-generating" role="status" aria-live="polite">
 				<Loader2 size={12} class="spin" />
 				AI is drafting title and description...
 			</div>
 		{/if}
-		<div class="cd-create-fields">
-			<label class="cd-create-field">
-				<span class="cd-create-label">PR Title</span>
-				<input
-					type="text"
-					class="cd-create-input"
-					class:cd-input-generating={prTextGenerating && !prTitle}
-					value={prTitle}
-					oninput={(event) => {
-						prTitle = (event.currentTarget as HTMLInputElement).value;
-						if (prCreateError) prCreateError = null;
-					}}
-					placeholder={prTextGenerating && !prTitle ? 'Generating title...' : 'Enter PR title...'}
-				/>
-			</label>
-			<label class="cd-create-field">
-				<span class="cd-create-label">Description</span>
-				<textarea
-					class="cd-create-textarea"
-					class:cd-input-generating={prTextGenerating && !prBody}
-					rows={3}
-					value={prBody}
-					oninput={(event) => {
-						prBody = (event.currentTarget as HTMLTextAreaElement).value;
-					}}
-					placeholder={prTextGenerating && !prBody
-						? 'Generating description...'
-						: 'Describe the changes in this PR...'}
-				></textarea>
-			</label>
-		</div>
-		<div class="cd-create-actions">
-			<label class="cd-draft-toggle">
-				<input
-					type="checkbox"
-					checked={isDraft}
-					onchange={(event) => {
-						isDraft = (event.currentTarget as HTMLInputElement).checked;
-					}}
-				/>
-				<span>Create as draft</span>
-			</label>
-			<button
-				type="button"
-				class="cd-create-btn"
-				disabled={isCreating || !prTitle.trim()}
-				onclick={() => void handleCreatePr()}
-			>
-				{#if isCreating}
-					<Loader2 size={12} class="spin" />
-					Creating...
-				{:else}
-					Create PR
+		{#if detailMode === 'pull_request'}
+			<div class="cd-create-fields">
+				<label class="cd-create-field">
+					<span class="cd-create-label">PR Title</span>
+					<input
+						type="text"
+						class="cd-create-input"
+						class:cd-input-generating={prTextGenerating && !prTitle}
+						value={prTitle}
+						oninput={(event) => {
+							prTitle = (event.currentTarget as HTMLInputElement).value;
+							if (prCreateError) prCreateError = null;
+						}}
+						placeholder={prTextGenerating && !prTitle ? 'Generating title...' : 'Enter PR title...'}
+					/>
+				</label>
+				<label class="cd-create-field">
+					<span class="cd-create-label">Description</span>
+					<textarea
+						class="cd-create-textarea"
+						class:cd-input-generating={prTextGenerating && !prBody}
+						rows={3}
+						value={prBody}
+						oninput={(event) => {
+							prBody = (event.currentTarget as HTMLTextAreaElement).value;
+						}}
+						placeholder={prTextGenerating && !prBody
+							? 'Generating description...'
+							: 'Describe the changes in this PR...'}
+					></textarea>
+				</label>
+			</div>
+			<div class="cd-create-actions">
+				<label class="cd-draft-toggle">
+					<input
+						type="checkbox"
+						checked={isDraft}
+						onchange={(event) => {
+							isDraft = (event.currentTarget as HTMLInputElement).checked;
+						}}
+					/>
+					<span>Create as draft</span>
+				</label>
+				<button
+					type="button"
+					class="cd-create-btn"
+					disabled={isCreating || !prTitle.trim()}
+					onclick={() => void handleCreatePr()}
+				>
+					{#if isCreating}
+						<Loader2 size={12} class="spin" />
+						Creating...
+					{:else}
+						Create PR
+					{/if}
+				</button>
+			</div>
+			{#if prCreateError}
+				<div class="cd-create-error">{prCreateError}</div>
+			{/if}
+		{:else}
+			<div class="cd-create-fields">
+				<div class="cd-create-field">
+					<span class="cd-create-label">Local Merge</span>
+					<p class="field-hint">
+						Squash merge <strong>{selectedItem.branch}</strong> into
+						<strong>{baseBranch || 'main'}</strong> locally.
+					</p>
+				</div>
+				<div class="cd-create-field">
+					<span class="cd-create-label">Behavior</span>
+					<p class="field-hint">
+						Uncommitted workspace changes will be committed first if needed. Pushing {baseBranch ||
+							'main'} remains a separate step.
+					</p>
+				</div>
+			</div>
+			<div class="cd-create-actions cd-create-actions-right">
+				{#if localMergeResult?.pushable}
+					<button
+						type="button"
+						class="cd-create-btn cd-create-btn-secondary"
+						disabled={pushingBase || localMergeLoading}
+						onclick={() => void handlePushBaseBranch()}
+					>
+						{#if pushingBase}
+							<Loader2 size={12} class="spin" />
+							Pushing...
+						{:else}
+							<Upload size={12} />
+							Push {localMergeResult.baseBranch}
+						{/if}
+					</button>
 				{/if}
-			</button>
-		</div>
-		{#if prCreateError}
-			<div class="cd-create-error">{prCreateError}</div>
+				<button
+					type="button"
+					class="cd-create-btn"
+					disabled={localMergeLoading || localMergeResult !== null}
+					onclick={() => void handleStartLocalMerge()}
+				>
+					{#if localMergeLoading}
+						<Loader2 size={12} class="spin" />
+						{localMergeStageLabel(localMergeStage)}
+					{:else if localMergeResult}
+						<CheckCircle2 size={12} />
+						Merged into {baseBranch || 'main'}
+					{:else}
+						<GitMerge size={12} />
+						Merge into {baseBranch || 'main'}
+					{/if}
+				</button>
+			</div>
+			{#if localMergeResult}
+				<div class="cd-generating" role="status" aria-live="polite">
+					<CheckCircle2 size={12} />
+					Local merge complete on {localMergeResult.baseBranch} at {localMergeResult.baseSHA?.slice(
+						0,
+						7,
+					)}
+				</div>
+			{/if}
+			{#if pushBaseSuccess}
+				<div class="cd-generating" role="status" aria-live="polite">
+					<CheckCircle2 size={12} />
+					Pushed {localMergeResult?.baseBranch} to {localMergeResult?.pushRemote}
+				</div>
+			{/if}
+			{#if localMergeError}
+				<div class="cd-create-error">{localMergeError}</div>
+			{/if}
+			{#if pushBaseError}
+				<div class="cd-create-error">{pushBaseError}</div>
+			{/if}
 		{/if}
 	</div>
 {/if}
