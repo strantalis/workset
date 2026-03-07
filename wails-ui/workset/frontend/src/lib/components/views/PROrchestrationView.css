@@ -63,9 +63,6 @@
 	background: var(--bg);
 }
 
-
-
-
 /* ── Push Status Bar ──────────────────────────────────────── */
 .pr-push-bar {
 	display: flex;
