@@ -64,9 +64,11 @@
 		workspace: Workspace | null;
 		focusRepoId?: string | null;
 		focusToken?: number;
+		onOpenDocument?: (repoId: string, path: string) => void;
 	}
 
-	const { workspace, focusRepoId = null, focusToken = 0 }: Props = $props();
+	const { workspace, focusRepoId = null, focusToken = 0, onOpenDocument = () => {} }: Props =
+		$props();
 	const prItems = $derived(mapWorkspaceToPrItems(workspace));
 	const PR_STATUS_SYNC_INTERVAL_MS = 8000;
 	const isMergedTrackedPr = (pr: PullRequestCreated | undefined | null): boolean =>
@@ -215,6 +217,11 @@
 	);
 
 	const commitPushStageLabel = $derived(formatCommitPushStageLabel(commitPushStage));
+
+	const openSelectedFileDocument = (): void => {
+		if (!selectedItem || !selectedFilePath) return;
+		onOpenDocument(selectedItem.repoId, selectedFilePath);
+	};
 
 	const annotationController = createReviewAnnotationActionsController({
 		document,
@@ -1316,7 +1323,14 @@
 										<div class="diff-card">
 											<div class="diff-header">
 												<span>{activeFile.path}</span>
-												<span>
+												<span class="diff-header-actions">
+													<button
+														type="button"
+														class="diff-open-file"
+														onclick={openSelectedFileDocument}
+													>
+														Open File
+													</button>
 													{#if activeFile.added > 0}<span class="text-green"
 															>+{activeFile.added}</span
 														>{/if}

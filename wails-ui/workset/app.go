@@ -21,6 +21,8 @@ type App struct {
 	mainWindowName   string
 	service          *worksetapi.Service
 	serviceOnce      sync.Once
+	repoFileIndexMu  sync.Mutex
+	repoFileIndexes  map[string]repoFileIndexCacheEntry
 	terminalMu       sync.Mutex
 	terminals        map[string]*terminalSession
 	sessiondMu       sync.Mutex
@@ -39,6 +41,7 @@ func NewApp() *App {
 	return &App{
 		service:          nil,
 		mainWindowName:   mainWindowName,
+		repoFileIndexes:  map[string]repoFileIndexCacheEntry{},
 		terminals:        map[string]*terminalSession{},
 		sessiondStart:    &sessiondStartState{},
 		sessiondRestart:  &sessiondRestartState{},
@@ -74,6 +77,9 @@ func (a *App) shutdown(_ context.Context) {
 	a.popouts = map[string]string{}
 	a.terminalOwners = map[string]string{}
 	a.popoutMu.Unlock()
+	a.repoFileIndexMu.Lock()
+	a.repoFileIndexes = map[string]repoFileIndexCacheEntry{}
+	a.repoFileIndexMu.Unlock()
 	a.terminalMu.Lock()
 	defer a.terminalMu.Unlock()
 	for _, session := range a.terminals {

@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { GitBranch, GitPullRequest, Plus, Terminal } from '@lucide/svelte';
-	import type { Workspace } from '../../types';
+	import type { DocumentSession, Workspace } from '../../types';
+	import DocumentViewer from '../DocumentViewer.svelte';
 	import TerminalWorkspace from '../TerminalWorkspace.svelte';
 	import PROrchestrationView from './PROrchestrationView.svelte';
+	import ResizablePanel from '../ui/ResizablePanel.svelte';
 
 	type WorksetGroup = {
 		id: string;
@@ -18,10 +20,13 @@
 		popoutMode?: boolean;
 		useGlobalExplorer?: boolean;
 		preferredSurface?: SurfaceTab;
+		documentSession?: DocumentSession | null;
 		onSelectWorkspace: (workspaceId: string) => void;
 		onCreateWorkspace: () => void;
 		onCreateThread?: (worksetId: string) => void;
 		onSurfaceChange?: (surface: SurfaceTab) => void;
+		onCloseDocument?: () => void;
+		onOpenDocument?: (repoId: string, path: string) => void;
 	}
 
 	const {
@@ -30,10 +35,13 @@
 		popoutMode = false,
 		useGlobalExplorer = false,
 		preferredSurface = 'terminal',
+		documentSession = null,
 		onSelectWorkspace,
 		onCreateWorkspace,
 		onCreateThread = () => {},
 		onSurfaceChange = () => {},
+		onCloseDocument = () => {},
+		onOpenDocument = () => {},
 	}: Props = $props();
 
 	const deriveWorksetIdentity = (workspace: Workspace): { id: string; label: string } => {
@@ -248,10 +256,44 @@
 					</div>
 				{/if}
 				<div class="spaces-main-body">
-					{#if activeSurface === 'terminal'}
-						<TerminalWorkspace workspaceId={activeThread.id} workspaceName={activeThread.name} />
+					{#if documentSession}
+						<ResizablePanel
+							direction="horizontal"
+							initialRatio={0.58}
+							minRatio={0.3}
+							maxRatio={0.7}
+							storageKey="workset-document-panel"
+						>
+							{#if activeSurface === 'terminal'}
+								<div class="spaces-surface">
+									<TerminalWorkspace workspaceId={activeThread.id} workspaceName={activeThread.name} />
+								</div>
+							{:else}
+								<div class="spaces-surface">
+									<PROrchestrationView
+										workspace={activeThread}
+										onOpenDocument={(repoId, path) => onOpenDocument(repoId, path)}
+									/>
+								</div>
+							{/if}
+
+							{#snippet second()}
+								<aside class="spaces-document-pane">
+									<DocumentViewer session={documentSession} onClose={onCloseDocument} />
+								</aside>
+							{/snippet}
+						</ResizablePanel>
+					{:else if activeSurface === 'terminal'}
+						<div class="spaces-surface">
+							<TerminalWorkspace workspaceId={activeThread.id} workspaceName={activeThread.name} />
+						</div>
 					{:else}
-						<PROrchestrationView workspace={activeThread} />
+						<div class="spaces-surface">
+							<PROrchestrationView
+								workspace={activeThread}
+								onOpenDocument={(repoId, path) => onOpenDocument(repoId, path)}
+							/>
+						</div>
 					{/if}
 				</div>
 			{:else}
@@ -420,6 +462,27 @@
 		min-width: 0;
 	}
 
+	.spaces-main-body {
+		height: 100%;
+		display: flex;
+		min-height: 0;
+		min-width: 0;
+		flex: 1;
+		padding-top: 4px;
+	}
+
+	.spaces-surface {
+		flex: 1;
+		min-width: 0;
+		min-height: 0;
+	}
+
+	.spaces-document-pane {
+		min-height: 0;
+		height: 100%;
+		overflow: hidden;
+	}
+
 	.spaces-main-header {
 		padding: 10px 14px;
 		border-bottom: 1px solid var(--border);
@@ -514,12 +577,6 @@
 		font-family: var(--font-mono);
 		background: color-mix(in srgb, var(--accent) 18%, transparent);
 		color: var(--accent);
-	}
-
-	.spaces-main-body {
-		flex: 1;
-		min-height: 0;
-		padding-top: 4px;
 	}
 
 	.spaces-empty-state {

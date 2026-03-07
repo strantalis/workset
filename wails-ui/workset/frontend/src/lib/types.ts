@@ -5,6 +5,40 @@ export type DiffFile = {
 	hunks: string[];
 };
 
+export type RepoFileSearchResult = {
+	workspaceId: string;
+	repoId: string;
+	repoName: string;
+	path: string;
+	isMarkdown: boolean;
+	sizeBytes: number;
+	score: number;
+};
+
+export type RepoFileContent = {
+	workspaceId: string;
+	repoId: string;
+	repoName: string;
+	path: string;
+	content: string;
+	isMarkdown: boolean;
+	isBinary: boolean;
+	isTruncated: boolean;
+	sizeBytes: number;
+};
+
+export type DocumentRenderMode = 'rendered' | 'raw';
+
+export type DocumentSession = {
+	workspaceId: string;
+	workspaceName: string;
+	repoId: string;
+	repoName: string;
+	path: string;
+	openedAt: number;
+	preferredMode?: DocumentRenderMode;
+};
+
 export type Repo = {
 	id: string;
 	name: string;

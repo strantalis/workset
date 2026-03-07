@@ -46,7 +46,7 @@
 		OnboardingDraft,
 		OnboardingStartResult,
 	} from './lib/components/views/OnboardingView.utils';
-	import type { Workspace } from './lib/types';
+	import type { DocumentSession, Workspace } from './lib/types';
 	import SkillRegistryView from './lib/components/views/SkillRegistryView.svelte';
 	import SpacesWorkbenchView from './lib/components/views/SpacesWorkbenchView.svelte';
 	import { workspaceActionMutations } from './lib/services/workspaceActionService';
@@ -141,6 +141,7 @@
 	let onboardingRepoRegistry = $state<RegisteredRepo[]>([]);
 	let onboardingLoaded = $state(false);
 	let cockpitSurface = $state<CockpitSurface>('terminal');
+	let documentSession = $state<DocumentSession | null>(null);
 	let activeTerminalWorkspaces = $state<Record<string, true>>({});
 	const activeTerminalWorkspaceIds = $derived.by(() => Object.keys(activeTerminalWorkspaces));
 
@@ -600,9 +601,15 @@
 	};
 
 	const handleGlobalKeydown = (event: KeyboardEvent): void => {
-		if (popoutMode) return;
 		if (!(event.metaKey || event.ctrlKey)) return;
 		const key = event.key.toLowerCase();
+		if (key === 'p' && $activeWorkspaceId) {
+			event.preventDefault();
+			commandPaletteOpen = false;
+			handleOpenFiles();
+			return;
+		}
+		if (popoutMode) return;
 		if (key === 'k') {
 			event.preventDefault();
 			commandPaletteOpen = !commandPaletteOpen;
@@ -617,6 +624,62 @@
 			event.preventDefault();
 			explorerOpen = !explorerOpen;
 		}
+	};
+
+	const openDocument = (
+		workspaceId: string,
+		workspaceName: string,
+		repoId: string,
+		repoName: string,
+		path: string,
+		preferredMode?: DocumentSession['preferredMode'],
+	): void => {
+		documentSession = {
+			workspaceId,
+			workspaceName,
+			repoId,
+			repoName,
+			path,
+			openedAt: Date.now(),
+			preferredMode,
+		};
+	};
+
+	const handleOpenWorkspaceDocument = (repoId: string, path: string): void => {
+		const workspaceId = $activeWorkspaceId?.trim() ?? '';
+		const workspace = threadVisibleWorkspaces.find((entry) => entry.id === workspaceId);
+		if (!workspace) return;
+		const repo = workspace.repos.find((entry) => entry.id === repoId);
+		if (!repo) return;
+		openDocument(workspace.id, workspace.name, repo.id, repo.name, path);
+	};
+
+	const closeDocument = (): void => {
+		documentSession = null;
+	};
+
+	const handleOpenFiles = (): void => {
+		if (!$activeWorkspaceId) return;
+		if (currentView !== 'terminal-cockpit') {
+			setView('terminal-cockpit');
+		}
+		commandPaletteOpen = false;
+		if (documentSession) {
+			documentSession = null;
+			return;
+		}
+		const workspace = threadVisibleWorkspaces.find((entry) => entry.id === $activeWorkspaceId);
+		if (!workspace) return;
+		const repo = workspace.repos[0];
+		if (!repo) return;
+		documentSession = {
+			workspaceId: workspace.id,
+			workspaceName: workspace.name,
+			repoId: repo.id,
+			repoName: repo.name,
+			path: '',
+			openedAt: Date.now(),
+		};
 	};
 
 	let repoStatusUnsubscribe: (() => void) | null = null;
@@ -723,6 +786,23 @@
 	});
 
 	$effect(() => {
+		if (!documentSession) return;
+		const currentWorkspaceId = $activeWorkspaceId ?? '';
+		if (documentSession.workspaceId === currentWorkspaceId) return;
+		const activeWorkspace = $workspaces.find((w) => w.id === currentWorkspaceId);
+		if (!activeWorkspace) {
+			documentSession = null;
+			return;
+		}
+		documentSession = {
+			...documentSession,
+			workspaceId: currentWorkspaceId,
+			workspaceName: activeWorkspace.name,
+			openedAt: Date.now(),
+		};
+	});
+
+	$effect(() => {
 		if (!fixedWorkspaceId || popoutSelectionApplied || $loadingWorkspaces) return;
 		if ($workspaces.length === 0) return;
 		const target = $workspaces.find(
@@ -778,6 +858,7 @@
 						canManageRepos={!popoutMode}
 						activeView={currentView === 'skill-registry' ? 'skill-registry' : 'terminal-cockpit'}
 						activeSurface={cockpitSurface}
+						filesActive={documentSession !== null}
 						{activeTerminalWorkspaceIds}
 						onSelectWorkspace={handleSelectWorkspace}
 						onCreateWorkspace={handleCreateWorkspace}
@@ -792,6 +873,7 @@
 							cockpitSurface = 'pull-requests';
 							setView('terminal-cockpit');
 						}}
+						onOpenFiles={handleOpenFiles}
 						onOpenSkills={() => setView('skill-registry')}
 						onOpenSettings={() => (settingsOpen = true)}
 						onCollapse={() => (explorerOpen = false)}
@@ -858,10 +940,13 @@
 									{popoutMode}
 									useGlobalExplorer={showExplorer}
 									preferredSurface={cockpitSurface}
+									{documentSession}
 									onSurfaceChange={(surface) => (cockpitSurface = surface)}
 									onSelectWorkspace={handleSelectWorkspace}
 									onCreateWorkspace={handleCreateWorkspace}
 									onCreateThread={handleCreateThread}
+									onCloseDocument={closeDocument}
+									onOpenDocument={handleOpenWorkspaceDocument}
 								/>
 							{/if}
 						{:else if currentView === 'skill-registry'}

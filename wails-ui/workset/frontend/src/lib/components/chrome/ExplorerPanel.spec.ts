@@ -326,4 +326,32 @@ describe('ExplorerPanel', () => {
 
 		expect(queryByText('Live')).toBeNull();
 	});
+
+	test('opens files from the footer nav and marks the icon active', async () => {
+		const onOpenFiles = vi.fn();
+		const alpha = buildWorkspace({
+			id: 'thread-alpha',
+			name: 'alpha',
+			workset: 'Core',
+			worksetKey: 'workset:core',
+			worksetLabel: 'Core',
+		});
+
+		const { getByRole } = render(ExplorerPanel, {
+			props: {
+				workspaces: [alpha],
+				activeWorkspaceId: alpha.id,
+				shortcutMap: new Map<string, number>(),
+				filesActive: true,
+				onSelectWorkspace: vi.fn(),
+				onOpenFiles,
+			},
+		});
+
+		const filesButton = getByRole('button', { name: 'Open files' });
+		expect(filesButton).toHaveClass('active');
+
+		await fireEvent.click(filesButton);
+		expect(onOpenFiles).toHaveBeenCalledTimes(1);
+	});
 });
