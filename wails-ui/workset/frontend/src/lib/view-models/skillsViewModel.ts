@@ -13,9 +13,9 @@ export type SkillRegistryState = {
 	error: string | null;
 };
 
-export const loadSkillsState = async (): Promise<SkillRegistryState> => {
+export const loadSkillsState = async (workspaceId?: string): Promise<SkillRegistryState> => {
 	try {
-		const items = await listSkills();
+		const items = await listSkills(workspaceId);
 		return { items, loading: false, error: null };
 	} catch (error) {
 		return {
@@ -33,9 +33,12 @@ export const resolvePreferredTool = (skill: SkillInfo): string => {
 	return skill.tools[0] ?? 'agents';
 };
 
-export const loadSkillContent = async (skill: SkillInfo): Promise<SkillContent> => {
+export const loadSkillContent = async (
+	skill: SkillInfo,
+	workspaceId?: string,
+): Promise<SkillContent> => {
 	const tool = resolvePreferredTool(skill);
-	return getSkill(skill.scope, skill.dirName, tool);
+	return getSkill(skill.scope, skill.dirName, tool, workspaceId);
 };
 
 export const saveSkillContent = async (
@@ -43,11 +46,12 @@ export const saveSkillContent = async (
 	dirName: string,
 	tool: string,
 	content: string,
+	workspaceId?: string,
 ): Promise<void> => {
-	await saveSkill(scope, dirName, tool, content);
+	await saveSkill(scope, dirName, tool, content, workspaceId);
 };
 
-export const removeSkill = async (skill: SkillInfo): Promise<void> => {
+export const removeSkill = async (skill: SkillInfo, workspaceId?: string): Promise<void> => {
 	const tool = resolvePreferredTool(skill);
-	await deleteSkill(skill.scope, skill.dirName, tool);
+	await deleteSkill(skill.scope, skill.dirName, tool, workspaceId);
 };

@@ -99,7 +99,7 @@
 						)}
 				>
 					<option value="global">Global</option>
-					<option value="project">Project</option>
+					<option value="project">Workset</option>
 				</select>
 			</label>
 			<label class="ws-field">

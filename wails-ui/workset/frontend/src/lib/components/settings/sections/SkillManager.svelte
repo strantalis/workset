@@ -382,7 +382,7 @@
 					{/each}
 				{/if}
 				{#if projectSkills.length > 0}
-					<div class="scope-header">Project</div>
+					<div class="scope-header">Workset</div>
 					{#each projectSkills as skill (skill.dirName + skill.scope)}
 						<button
 							class="list-item"

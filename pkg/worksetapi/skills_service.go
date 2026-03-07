@@ -2,6 +2,7 @@ package worksetapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -12,12 +13,22 @@ import (
 
 // SkillInfo describes a discovered SKILL.md file.
 type SkillInfo struct {
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	DirName     string   `json:"dirName"`
-	Scope       string   `json:"scope"` // "global" or "project"
-	Tools       []string `json:"tools"` // e.g. ["agents","claude","codex","copilot","cursor","opencode"]
-	Path        string   `json:"path"`  // primary SKILL.md path (first found)
+	Name        string                  `json:"name"`
+	Description string                  `json:"description"`
+	DirName     string                  `json:"dirName"`
+	Scope       string                  `json:"scope"` // "global" or "project"
+	Tools       []string                `json:"tools"` // e.g. ["agents","claude","codex","copilot","cursor","opencode"]
+	Path        string                  `json:"path"`  // primary SKILL.md path (first found)
+	Marketplace *SkillMarketplaceSource `json:"marketplace,omitempty"`
+}
+
+type SkillMarketplaceSource struct {
+	Provider    string `json:"provider"`
+	ExternalID  string `json:"externalId"`
+	SourceRepo  string `json:"sourceRepo,omitempty"`
+	SourceURL   string `json:"sourceUrl,omitempty"`
+	ListingURL  string `json:"listingUrl,omitempty"`
+	RawSkillURL string `json:"rawSkillUrl,omitempty"`
 }
 
 // SkillContent is a SkillInfo plus the raw SKILL.md content.
@@ -33,6 +44,8 @@ type skillToolDir struct {
 	globalDir string // glob-expanded dir under $HOME (empty = no global)
 	localDir  string // dir relative to project root
 }
+
+const marketplaceMetadataFileName = ".workset-marketplace.json"
 
 var skillToolDirs = []skillToolDir{
 	{name: "agents", globalDir: ".agents/skills", localDir: ".agents/skills"},
@@ -119,6 +132,7 @@ func (s *Service) scanSkillDir(base, scope, tool string, index map[skillKey]*Ski
 			if name == "" {
 				name = dirName
 			}
+			marketplace, _ := readSkillMarketplaceSource(filepath.Join(base, dirName))
 			index[key] = &SkillInfo{
 				Name:        name,
 				Description: desc,
@@ -126,6 +140,7 @@ func (s *Service) scanSkillDir(base, scope, tool string, index map[skillKey]*Ski
 				Scope:       scope,
 				Tools:       []string{tool},
 				Path:        skillPath,
+				Marketplace: marketplace,
 			}
 		}
 	}
@@ -162,6 +177,7 @@ func getSkillFromPath(scope, dirName, tool, projectRoot string) (SkillContent, e
 			Scope:       scope,
 			Tools:       []string{tool},
 			Path:        path,
+			Marketplace: loadSkillMarketplaceSource(filepath.Dir(path)),
 		},
 		Content: string(data),
 	}, nil
@@ -178,6 +194,28 @@ func (s *Service) SaveSkillWithRoot(_ context.Context, scope, dirName, tool, con
 	return saveSkillToPath(scope, dirName, tool, content, projectRoot)
 }
 
+func (s *Service) AttachSkillMarketplaceSource(_ context.Context, scope, dirName string, tools []string, source SkillMarketplaceSource, projectRoot string) error {
+	if strings.TrimSpace(scope) == "" {
+		return errors.New("scope is required")
+	}
+	if strings.TrimSpace(dirName) == "" {
+		return errors.New("dirName is required")
+	}
+	if len(tools) == 0 {
+		return errors.New("at least one tool is required")
+	}
+	for _, tool := range tools {
+		path, err := resolveSkillPathWithRoot(scope, dirName, tool, projectRoot)
+		if err != nil {
+			return err
+		}
+		if err := writeSkillMarketplaceSource(filepath.Dir(path), &source); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func saveSkillToPath(scope, dirName, tool, content, projectRoot string) error {
 	path, err := resolveSkillPathWithRoot(scope, dirName, tool, projectRoot)
 	if err != nil {
@@ -191,6 +229,47 @@ func saveSkillToPath(scope, dirName, tool, content, projectRoot string) error {
 		return fmt.Errorf("cannot write skill: %w", err)
 	}
 	return nil
+}
+
+func writeSkillMarketplaceSource(dir string, source *SkillMarketplaceSource) error {
+	if source == nil {
+		return nil
+	}
+	if strings.TrimSpace(source.Provider) == "" || strings.TrimSpace(source.ExternalID) == "" {
+		return nil
+	}
+	data, err := json.MarshalIndent(source, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal marketplace metadata: %w", err)
+	}
+	path := filepath.Join(dir, marketplaceMetadataFileName)
+	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+		return fmt.Errorf("write marketplace metadata: %w", err)
+	}
+	return nil
+}
+
+func loadSkillMarketplaceSource(dir string) *SkillMarketplaceSource {
+	source, _ := readSkillMarketplaceSource(dir)
+	return source
+}
+
+func readSkillMarketplaceSource(dir string) (*SkillMarketplaceSource, error) {
+	data, err := os.ReadFile(filepath.Join(dir, marketplaceMetadataFileName))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var source SkillMarketplaceSource
+	if err := json.Unmarshal(data, &source); err != nil {
+		return nil, fmt.Errorf("decode marketplace metadata: %w", err)
+	}
+	if strings.TrimSpace(source.Provider) == "" || strings.TrimSpace(source.ExternalID) == "" {
+		return nil, nil
+	}
+	return &source, nil
 }
 
 // DeleteSkill removes a skill directory for a specific tool.
