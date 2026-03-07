@@ -10,10 +10,9 @@
 		FileMinus,
 		FilePlus,
 		GitBranch,
+		GitMerge,
 		GitPullRequest,
 		MessageSquare,
-		Plus,
-		Upload,
 		XCircle,
 	} from '@lucide/svelte';
 	import type { Workspace } from '../../types';
@@ -35,13 +34,12 @@
 		prItems: PrListItem[];
 		selectedItemId: string | null;
 		prComposerItemId: string | null;
+		prComposerMode?: 'pull_request' | 'local_merge';
 		resolveTrackedTitle: (repoId: string, fallbackTitle: string) => string;
-		onStartPush: (itemId: string) => void;
-		pushInProgressRepoId?: string | null;
 		onToggleSidebar: () => void;
 		onViewModeChange: (mode: 'active' | 'ready') => void;
 		onSelectItem: (itemId: string) => void;
-		onOpenPrComposer: (itemId: string) => void;
+		onOpenPrComposer: (itemId: string, mode?: 'pull_request' | 'local_merge') => void;
 	}
 
 	const {
@@ -53,9 +51,8 @@
 		prItems,
 		selectedItemId,
 		prComposerItemId,
+		prComposerMode = 'pull_request',
 		resolveTrackedTitle,
-		onStartPush,
-		pushInProgressRepoId = null,
 		onToggleSidebar,
 		onViewModeChange,
 		onSelectItem,
@@ -82,7 +79,6 @@
 	const repoCount = $derived(prItems.length);
 	const changedCount = $derived(changedItems.length);
 	const openPrCount = $derived(partitions.active.length);
-	const canPushItem = (item: PrListItem): boolean => item.hasLocalDiff || item.ahead > 0;
 
 	const selectRepo = (itemId: string): void => {
 		if (viewMode !== 'ready') onViewModeChange('ready');
@@ -146,6 +142,8 @@
 					{@const repo = repoById.get(item.repoId)}
 					{@const isActive = selectedItemId === item.id && viewMode === 'ready'}
 					{@const isComposerActive = isActive && prComposerItemId === item.id}
+					{@const isPullRequestActive = isComposerActive && prComposerMode === 'pull_request'}
+					{@const isLocalMergeActive = isComposerActive && prComposerMode === 'local_merge'}
 					<div class="repo-block" class:active={isActive}>
 						<button
 							type="button"
@@ -196,28 +194,28 @@
 									<button
 										type="button"
 										class="repo-action-btn"
-										disabled={!canPushItem(item) || pushInProgressRepoId === item.repoId}
+										class:primary={isPullRequestActive}
+										aria-pressed={isPullRequestActive}
 										onclick={(event) => {
 											event.stopPropagation();
-											selectRepo(item.id);
-											onStartPush(item.id);
+											onOpenPrComposer(item.id, 'pull_request');
 										}}
 									>
-										<Upload size={10} />
-										{pushInProgressRepoId === item.repoId ? 'Pushing…' : 'Push'}
+										<GitPullRequest size={10} />
+										Pull Request
 									</button>
 									<button
 										type="button"
 										class="repo-action-btn"
-										class:primary={isComposerActive}
-										aria-pressed={isComposerActive}
+										class:primary={isLocalMergeActive}
+										aria-pressed={isLocalMergeActive}
 										onclick={(event) => {
 											event.stopPropagation();
-											onOpenPrComposer(item.id);
+											onOpenPrComposer(item.id, 'local_merge');
 										}}
 									>
-										<Plus size={10} />
-										Open PR
+										<GitMerge size={10} />
+										Local Merge
 									</button>
 								</div>
 							</div>

@@ -251,3 +251,77 @@ func gitHeadSHA(ctx context.Context, repoPath string, runner CommandRunner) (str
 	}
 	return strings.TrimSpace(result.Stdout), nil
 }
+
+func gitResolveRef(ctx context.Context, repoPath, ref string, runner CommandRunner) (string, error) {
+	if strings.TrimSpace(ref) == "" {
+		return "", errors.New("ref required")
+	}
+	result, err := runner(ctx, repoPath, []string{"git", "rev-parse", ref}, os.Environ(), "")
+	if err != nil || result.ExitCode != 0 {
+		message := strings.TrimSpace(result.Stderr)
+		if message == "" && err != nil {
+			message = err.Error()
+		}
+		if message == "" {
+			message = "unable to resolve ref"
+		}
+		return "", ValidationError{Message: message}
+	}
+	return strings.TrimSpace(result.Stdout), nil
+}
+
+func gitMergeSquash(ctx context.Context, repoPath, branch string, runner CommandRunner) error {
+	branch = strings.TrimSpace(branch)
+	if branch == "" {
+		return ValidationError{Message: "branch required"}
+	}
+	result, err := runner(ctx, repoPath, []string{"git", "merge", "--squash", "--no-commit", branch}, os.Environ(), "")
+	if err != nil || result.ExitCode != 0 {
+		message := strings.TrimSpace(result.Stderr)
+		if message == "" {
+			message = strings.TrimSpace(result.Stdout)
+		}
+		if message == "" && err != nil {
+			message = err.Error()
+		}
+		if message == "" {
+			message = "git merge --squash failed"
+		}
+		return ValidationError{Message: message}
+	}
+	return nil
+}
+
+func gitResetHardHead(ctx context.Context, repoPath string, runner CommandRunner) error {
+	result, err := runner(ctx, repoPath, []string{"git", "reset", "--hard", "HEAD"}, os.Environ(), "")
+	if err != nil || result.ExitCode != 0 {
+		message := strings.TrimSpace(result.Stderr)
+		if message == "" && err != nil {
+			message = err.Error()
+		}
+		if message == "" {
+			message = "git reset --hard failed"
+		}
+		return ValidationError{Message: message}
+	}
+	return nil
+}
+
+func gitDeleteBranch(ctx context.Context, repoPath, branch string, runner CommandRunner) error {
+	branch = strings.TrimSpace(branch)
+	if branch == "" {
+		return ValidationError{Message: "branch required"}
+	}
+	result, err := runner(ctx, repoPath, []string{"git", "branch", "-D", branch}, os.Environ(), "")
+	if err != nil || result.ExitCode != 0 {
+		message := strings.TrimSpace(result.Stderr)
+		if message == "" && err != nil {
+			message = err.Error()
+		}
+		if message == "" {
+			message = "git branch delete failed"
+		}
+		return ValidationError{Message: message}
+	}
+	return nil
+}

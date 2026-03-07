@@ -367,6 +367,65 @@ type CommitAndPushResult struct {
 	Config  config.GlobalConfigLoadInfo
 }
 
+// LocalMergeInput describes inputs for merging a workspace branch into the base branch locally.
+type LocalMergeInput struct {
+	Workspace WorkspaceSelector
+	Repo      string
+	Base      string
+	Message   string // Empty = auto-generate via agent
+	OnStage   func(stage LocalMergeStage)
+}
+
+// LocalMergeStage describes progress phases for local merge.
+type LocalMergeStage string
+
+const (
+	LocalMergeStageGeneratingMessage  LocalMergeStage = "generating_message"
+	LocalMergeStageCommittingWorktree LocalMergeStage = "committing_worktree"
+	LocalMergeStagePreparingBase      LocalMergeStage = "preparing_base"
+	LocalMergeStageMerging            LocalMergeStage = "merging"
+	LocalMergeStageCommittingBase     LocalMergeStage = "committing_base"
+)
+
+// LocalMergeResultJSON describes the result of a local merge operation.
+type LocalMergeResultJSON struct {
+	BaseBranch           string `json:"baseBranch"`
+	BaseBranchPushed     bool   `json:"baseBranchPushed"`
+	FeatureBranch        string `json:"featureBranch"`
+	FeatureCommitted     bool   `json:"featureCommitted"`
+	FeatureCommitMessage string `json:"featureCommitMessage,omitempty"`
+	BaseCommitMessage    string `json:"baseCommitMessage"`
+	BaseSHA              string `json:"baseSHA,omitempty"`
+	PushRemote           string `json:"pushRemote,omitempty"`
+	Pushable             bool   `json:"pushable"`
+}
+
+// LocalMergeResult wraps local merge metadata with config metadata.
+type LocalMergeResult struct {
+	Payload LocalMergeResultJSON
+	Config  config.GlobalConfigLoadInfo
+}
+
+// PushBranchInput describes inputs for pushing a named branch to the repo remote.
+type PushBranchInput struct {
+	Workspace WorkspaceSelector
+	Repo      string
+	Branch    string
+}
+
+// PushBranchResultJSON describes the result of pushing a branch.
+type PushBranchResultJSON struct {
+	Branch string `json:"branch"`
+	Remote string `json:"remote"`
+	Pushed bool   `json:"pushed"`
+}
+
+// PushBranchResult wraps push-branch metadata with config metadata.
+type PushBranchResult struct {
+	Payload PushBranchResultJSON
+	Config  config.GlobalConfigLoadInfo
+}
+
 // RepoLocalStatusInput describes inputs for checking local repo status.
 type RepoLocalStatusInput struct {
 	Workspace WorkspaceSelector

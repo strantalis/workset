@@ -82,7 +82,12 @@ export async function registerRepo(
 	remote: string,
 	defaultBranch: string,
 ): Promise<void> {
-	await CreateAlias({ name, source, remote, defaultBranch });
+	await CreateAlias({
+		name,
+		source,
+		remote,
+		defaultBranch,
+	} as Parameters<typeof CreateAlias>[0]);
 }
 
 export async function updateRegisteredRepo(
@@ -91,7 +96,12 @@ export async function updateRegisteredRepo(
 	remote: string,
 	defaultBranch: string,
 ): Promise<void> {
-	await UpdateAlias({ name, source, remote, defaultBranch });
+	await UpdateAlias({
+		name,
+		source,
+		remote,
+		defaultBranch,
+	} as Parameters<typeof UpdateAlias>[0]);
 }
 
 export async function unregisterRepo(name: string): Promise<void> {

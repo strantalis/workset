@@ -90,6 +90,7 @@ export type GitHubOperationStatusResponse = {
 	error?: string;
 	pullRequest?: PullRequestCreateResponse;
 	commitPush?: CommitAndPushResult;
+	localMerge?: LocalMergeResult;
 };
 
 export type RemoteInfoResponse = {
@@ -112,7 +113,25 @@ export type CommitAndPushResult = {
 	sha?: string;
 };
 
-export type GitHubOperationType = 'create_pr' | 'commit_push';
+export type LocalMergeResult = {
+	baseBranch: string;
+	baseBranchPushed: boolean;
+	featureBranch: string;
+	featureCommitted: boolean;
+	featureCommitMessage?: string;
+	baseCommitMessage: string;
+	baseSHA?: string;
+	pushRemote?: string;
+	pushable: boolean;
+};
+
+export type PushBranchResult = {
+	branch: string;
+	remote: string;
+	pushed: boolean;
+};
+
+export type GitHubOperationType = 'create_pr' | 'commit_push' | 'local_merge';
 
 export type GitHubOperationStage =
 	| 'queued'
@@ -122,6 +141,10 @@ export type GitHubOperationStage =
 	| 'staging'
 	| 'committing'
 	| 'pushing'
+	| 'preparing_base'
+	| 'merging'
+	| 'committing_base'
+	| 'committing_worktree'
 	| 'completed'
 	| 'failed';
 
@@ -139,6 +162,7 @@ export type GitHubOperationStatus = {
 	error?: string;
 	pullRequest?: PullRequestCreated;
 	commitPush?: CommitAndPushResult;
+	localMerge?: LocalMergeResult;
 };
 
 export type GitHubUser = {

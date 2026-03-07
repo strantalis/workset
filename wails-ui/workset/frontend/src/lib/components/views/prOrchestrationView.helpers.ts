@@ -492,18 +492,20 @@ export const createPrViewInteractionHandlers = (deps: {
 	getSelectedItemId: () => string | null;
 	getPrComposerItemId: () => string | null;
 	setPrComposerItemId: (itemId: string | null) => void;
+	setPrComposerMode: (mode: 'pull_request' | 'local_merge') => void;
 	selectItem: (itemId: string) => void;
 	startPushForRepo: (repoId: string) => Promise<void>;
 	handleTrackedPrCreated: (repoId: string, created: PullRequestCreated) => void;
 }): {
-	openPrComposer: (itemId: string) => void;
+	openPrComposer: (itemId: string, mode?: 'pull_request' | 'local_merge') => void;
 	handlePushFromSidebar: (itemId: string) => void;
 	handlePullRequestCreated: (repoId: string, created: PullRequestCreated) => void;
 } => ({
-	openPrComposer: (itemId: string): void => {
+	openPrComposer: (itemId: string, mode: 'pull_request' | 'local_merge' = 'pull_request'): void => {
 		if (deps.getViewMode() !== 'ready') {
 			deps.setViewMode('ready');
 		}
+		deps.setPrComposerMode(mode);
 		if (deps.getSelectedItemId() === itemId && deps.getPrComposerItemId() === itemId) return;
 		deps.setPrComposerItemId(itemId);
 		deps.selectItem(itemId);
@@ -519,6 +521,53 @@ export const createPrViewInteractionHandlers = (deps: {
 		deps.handleTrackedPrCreated(repoId, created);
 	},
 });
+
+export const applyTrackedPrCreated = (deps: {
+	repoId: string;
+	created: PullRequestCreated;
+	trackedPrMapCoordinator: TrackedPrMapCoordinator;
+	trackedPrMap: TrackedPrMap;
+	setTrackedPrMap: (next: TrackedPrMap) => void;
+	setTrackedPr: (next: PullRequestCreated) => void;
+	setViewMode: (mode: ViewMode) => void;
+	setActiveTab: (tab: 'overview' | 'files' | 'checks') => void;
+	refreshWorkspacesStatus: () => void;
+	loadChecks: () => void;
+	loadReviews: () => void;
+}): void => {
+	deps.trackedPrMapCoordinator.markResolved(
+		deps.repoId,
+		deps.created,
+		deps.trackedPrMap.get(deps.repoId) ?? null,
+	);
+	deps.setTrackedPrMap(withTrackedPr(deps.trackedPrMap, deps.repoId, deps.created));
+	deps.setTrackedPr(deps.created);
+	deps.setViewMode('active');
+	deps.setActiveTab('overview');
+	deps.refreshWorkspacesStatus();
+	deps.loadChecks();
+	deps.loadReviews();
+};
+
+export const refreshReadyDetail = async (deps: {
+	workspace: Workspace | null;
+	selectedItem: RepoListItemRef | null;
+	trackedPr: PullRequestCreated | null;
+	refreshWorkspacesStatus: () => Promise<void>;
+	loadRepoLocalStatus: (wsId: string, repoId: string) => Promise<void>;
+	loadLocalSummary: (wsId: string, repoId: string) => Promise<void>;
+	loadDiffSummary: (wsId: string, repoId: string, pr?: PullRequestCreated) => Promise<void>;
+}): Promise<void> => {
+	if (!deps.workspace || !deps.selectedItem) return;
+	await deps.refreshWorkspacesStatus();
+	await deps.loadRepoLocalStatus(deps.workspace.id, deps.selectedItem.repoId);
+	await deps.loadLocalSummary(deps.workspace.id, deps.selectedItem.repoId);
+	await deps.loadDiffSummary(
+		deps.workspace.id,
+		deps.selectedItem.repoId,
+		deps.trackedPr ?? undefined,
+	);
+};
 
 export const getCheckIcon = (check: PullRequestCheck): string => {
 	if (check.conclusion === 'success') return 'success';

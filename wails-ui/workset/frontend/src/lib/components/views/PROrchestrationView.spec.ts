@@ -18,9 +18,11 @@ vi.mock('../../api/github', () => ({
 	fetchTrackedPullRequest: vi.fn(),
 	generatePullRequestText: vi.fn(),
 	listRemotes: vi.fn(),
+	pushBranch: vi.fn(),
 	replyToReviewComment: vi.fn(),
 	resolveReviewThread: vi.fn(),
 	startCommitAndPushAsync: vi.fn(),
+	startLocalMergeAsync: vi.fn(),
 }));
 
 vi.mock('../../api/repo-diff', () => ({
@@ -182,6 +184,20 @@ describe('PROrchestrationView sidebar collapse', () => {
 			stage: 'queued',
 			state: 'running',
 			startedAt: '2026-02-17T00:00:00Z',
+		});
+		vi.mocked(githubApi.startLocalMergeAsync).mockResolvedValue({
+			operationId: 'op-2',
+			workspaceId: 'ws-1',
+			repoId: 'repo-1',
+			type: 'local_merge',
+			stage: 'queued',
+			state: 'running',
+			startedAt: '2026-02-17T00:00:00Z',
+		});
+		vi.mocked(githubApi.pushBranch).mockResolvedValue({
+			branch: 'main',
+			remote: 'origin',
+			pushed: true,
 		});
 
 		vi.mocked(repoDiffApi.fetchBranchDiffSummary).mockResolvedValue(emptySummary);
@@ -386,9 +402,9 @@ describe('PROrchestrationView sidebar collapse', () => {
 		await fireEvent.click(repoRow!);
 
 		await waitFor(() => {
-			expect(getByRole('button', { name: 'Open PR' })).toBeInTheDocument();
+			expect(getByRole('button', { name: 'Pull Request' })).toBeInTheDocument();
 		});
-		await fireEvent.click(getByRole('button', { name: 'Open PR' }));
+		await fireEvent.click(getByRole('button', { name: 'Pull Request' }));
 		await fireEvent.input(getByPlaceholderText('Enter PR title...'), {
 			target: { value: 'Create PR from ready detail' },
 		});
@@ -425,7 +441,7 @@ describe('PROrchestrationView sidebar collapse', () => {
 		expect(queryByPlaceholderText('Enter PR title...')).not.toBeInTheDocument();
 		expect(vi.mocked(githubApi.generatePullRequestText)).not.toHaveBeenCalled();
 
-		await fireEvent.click(getByRole('button', { name: 'Open PR' }));
+		await fireEvent.click(getByRole('button', { name: 'Pull Request' }));
 
 		await waitFor(() => {
 			expect(queryByPlaceholderText('Enter PR title...')).toBeInTheDocument();
@@ -456,7 +472,7 @@ describe('PROrchestrationView sidebar collapse', () => {
 		const repoRow = getByText('feature/sidebar-collapse').closest('button');
 		expect(repoRow).toBeTruthy();
 		await fireEvent.click(repoRow!);
-		await fireEvent.click(getByRole('button', { name: 'Open PR' }));
+		await fireEvent.click(getByRole('button', { name: 'Pull Request' }));
 
 		await waitFor(() => {
 			expect(getByText('AI is drafting title and description...')).toBeInTheDocument();
@@ -469,5 +485,22 @@ describe('PROrchestrationView sidebar collapse', () => {
 		expect((getByPlaceholderText('Enter PR title...') as HTMLInputElement).value).toBe(
 			'AI generated title',
 		);
+	});
+
+	test('shows local merge controls for local-merge repos', async () => {
+		vi.mocked(githubApi.fetchTrackedPullRequest).mockResolvedValue(null);
+		const workspace = buildWorkspaceWithoutTrackedPr();
+		const { getByText, getByRole } = render(PROrchestrationView, {
+			props: { workspace },
+		});
+
+		const repoRow = getByText('feature/sidebar-collapse').closest('button');
+		expect(repoRow).toBeTruthy();
+		await fireEvent.click(repoRow!);
+
+		await fireEvent.click(getByRole('button', { name: 'Local Merge' }));
+
+		expect(getByText(/Squash merge/)).toBeInTheDocument();
+		expect(getByRole('button', { name: 'Merge into main' })).toBeInTheDocument();
 	});
 });

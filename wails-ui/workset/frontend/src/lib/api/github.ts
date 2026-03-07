@@ -5,6 +5,8 @@ export type {
 	GitHubOperationStatus,
 	GitHubOperationType,
 	GitHubUser,
+	LocalMergeResult,
+	PushBranchResult,
 	RepoLocalStatus,
 } from './github/types';
 
@@ -32,8 +34,11 @@ export {
 	commitAndPush,
 	fetchGitHubOperationStatus,
 	fetchRepoLocalStatus,
+	localMerge,
+	pushBranch,
 	startCommitAndPushAsync,
 	startCreatePullRequestAsync,
+	startLocalMergeAsync,
 } from './github/operations';
 
 export {

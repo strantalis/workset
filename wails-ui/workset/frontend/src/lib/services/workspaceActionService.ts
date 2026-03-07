@@ -198,8 +198,17 @@ export type WorkspaceActionMutationService = {
 	removeRepo: (input: RemoveRepoMutationInput) => Promise<RemoveRepoMutationResult>;
 };
 
+const registerRepoForWorkspaceAction = async (
+	name: string,
+	source: string,
+	_description: string,
+	_repoDir: string,
+): Promise<void> => {
+	await registerRepoMutation(name, source, 'origin', 'main');
+};
+
 export const workspaceActionMutationGateway: WorkspaceActionMutationGateway = {
-	registerRepo: registerRepoMutation,
+	registerRepo: registerRepoForWorkspaceAction,
 	createWorkspace: createWorkspaceMutation,
 	addRepo: addRepoMutation,
 	addReposToWorkset: addReposToWorksetMutation,

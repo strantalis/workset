@@ -188,6 +188,10 @@
 	gap: 10px;
 }
 
+.cd-create-actions-right {
+	justify-content: flex-end;
+}
+
 .cd-draft-toggle {
 	display: inline-flex;
 	align-items: center;
@@ -213,6 +217,17 @@
 .cd-create-btn:disabled {
 	opacity: 0.5;
 	cursor: not-allowed;
+}
+
+.cd-create-btn-secondary {
+	border-color: var(--border);
+	background: transparent;
+	color: var(--muted);
+}
+
+.cd-create-btn-secondary:not(:disabled):hover {
+	color: var(--text);
+	border-color: color-mix(in srgb, var(--border) 140%, transparent);
 }
 
 .cd-create-error {
