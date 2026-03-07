@@ -55,6 +55,19 @@ type PrListItemRef = { id: string };
 type RepoListItemRef = PrListItemRef & { repoId: string };
 type PrBranches = { base: string; head: string };
 type TrackedPrMap = Map<string, PullRequestCreated>;
+type TrackedPrComparableField =
+	| 'number'
+	| 'url'
+	| 'title'
+	| 'draft'
+	| 'state'
+	| 'merged'
+	| 'baseRepo'
+	| 'baseBranch'
+	| 'headRepo'
+	| 'headBranch'
+	| 'commentsCount'
+	| 'reviewCommentsCount';
 type PrFeedbackCounts = {
 	comments: number;
 	reviewComments: number;
@@ -62,6 +75,20 @@ type PrFeedbackCounts = {
 };
 
 const SIDEBAR_COLLAPSED_KEY = 'workset:pr-orchestration:sidebarCollapsed';
+const TRACKED_PR_COMPARABLE_FIELDS: readonly TrackedPrComparableField[] = [
+	'number',
+	'url',
+	'title',
+	'draft',
+	'state',
+	'merged',
+	'baseRepo',
+	'baseBranch',
+	'headRepo',
+	'headBranch',
+	'commentsCount',
+	'reviewCommentsCount',
+];
 
 export const buildTrackedPrMap = (workspace: Workspace | null): Map<string, PullRequestCreated> => {
 	const nextMap = new Map<string, PullRequestCreated>();
@@ -117,20 +144,7 @@ export const trackedPrMapsEqual = (left: TrackedPrMap, right: TrackedPrMap): boo
 	for (const [repoId, leftPr] of left) {
 		const rightPr = right.get(repoId);
 		if (!rightPr) return false;
-		if (
-			leftPr.number !== rightPr.number ||
-			leftPr.url !== rightPr.url ||
-			leftPr.title !== rightPr.title ||
-			leftPr.draft !== rightPr.draft ||
-			leftPr.state !== rightPr.state ||
-			leftPr.merged !== rightPr.merged ||
-			leftPr.baseRepo !== rightPr.baseRepo ||
-			leftPr.baseBranch !== rightPr.baseBranch ||
-			leftPr.headRepo !== rightPr.headRepo ||
-			leftPr.headBranch !== rightPr.headBranch ||
-			leftPr.commentsCount !== rightPr.commentsCount ||
-			leftPr.reviewCommentsCount !== rightPr.reviewCommentsCount
-		) {
+		if (!TRACKED_PR_COMPARABLE_FIELDS.every((field) => leftPr[field] === rightPr[field])) {
 			return false;
 		}
 	}
