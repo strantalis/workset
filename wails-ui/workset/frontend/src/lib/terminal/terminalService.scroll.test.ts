@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const createdTerminals: MockTerminal[] = [];
-let webLinkHandler: ((event: MouseEvent, uri: string) => void) | undefined;
+type RegisteredLinkProvider = {
+	provideLinks: (
+		y: number,
+		callback: (
+			links: { text: string; range: unknown; activate?: (event: MouseEvent) => void }[] | undefined,
+		) => void,
+	) => void;
+	dispose?: () => void;
+};
 
 class MockTerminal {
 	public buffer = {
@@ -18,17 +25,13 @@ class MockTerminal {
 	public scrollToBottom = vi.fn(() => {
 		this.buffer.active.viewportY = this.buffer.active.baseY;
 	});
-	public refresh = vi.fn();
 	public write = vi.fn((_data: string, cb?: () => void) => cb?.());
+	public dispose = vi.fn();
 	public focus = vi.fn();
 	public clear = vi.fn();
 	public reset = vi.fn();
-	public attachCustomWheelEventHandler = vi.fn((handler: (event: WheelEvent) => boolean) => {
-		this.customWheelEventHandler = handler;
-	});
-	public customWheelEventHandler: ((event: WheelEvent) => boolean) | null = null;
 	public onDataCallback: ((data: string) => void) | null = null;
-	public onBinaryCallback: ((data: string) => void) | null = null;
+	public registeredProviders: RegisteredLinkProvider[] = [];
 
 	constructor(options: Record<string, unknown>) {
 		this.options = options;
@@ -44,37 +47,113 @@ class MockTerminal {
 		return { dispose: () => undefined };
 	}
 
-	onBinary(callback: (data: string) => void): { dispose: () => void } {
-		this.onBinaryCallback = callback;
-		return { dispose: () => undefined };
-	}
-
-	onRender(): { dispose: () => void } {
-		return { dispose: () => undefined };
-	}
-
 	open(container: HTMLElement): void {
 		this.element = { parentElement: container };
+	}
+
+	registerLinkProvider(provider: RegisteredLinkProvider): void {
+		this.registeredProviders.push(provider);
 	}
 
 	emitData(data: string): void {
 		this.onDataCallback?.(data);
 	}
+}
 
-	emitBinary(data: string): void {
-		this.onBinaryCallback?.(data);
+class MockWebSocket {
+	static CONNECTING = 0;
+	static OPEN = 1;
+	static CLOSING = 2;
+	static CLOSED = 3;
+
+	public binaryType = 'blob';
+	public readyState = MockWebSocket.CONNECTING;
+	public readonly sent: unknown[] = [];
+	private listeners = new Map<string, Set<(event: unknown) => void>>();
+
+	constructor(public readonly url: string) {
+		createdSockets.push(this);
+	}
+
+	addEventListener(type: string, listener: (event: unknown) => void): void {
+		const current = this.listeners.get(type) ?? new Set();
+		current.add(listener);
+		this.listeners.set(type, current);
+	}
+
+	send(data: unknown): void {
+		this.sent.push(data);
+	}
+
+	close(code = 1000, reason = ''): void {
+		this.readyState = MockWebSocket.CLOSED;
+		this.dispatch('close', { code, reason, wasClean: true });
+	}
+
+	open(): void {
+		this.readyState = MockWebSocket.OPEN;
+		this.dispatch('open', {});
+	}
+
+	emitText(data: unknown): void {
+		this.dispatch('message', { data: JSON.stringify(data) });
+	}
+
+	emitBinary(payload: Uint8Array): void {
+		this.dispatch('message', { data: payload.buffer.slice(0) });
+	}
+
+	private dispatch(type: string, event: unknown): void {
+		for (const listener of this.listeners.get(type) ?? []) {
+			listener(event);
+		}
 	}
 }
 
 class MockFitAddon {
 	activate(_terminal: MockTerminal): void {}
+	dispose(): void {}
 	fit = vi.fn();
 	proposeDimensions(): { cols: number; rows: number } {
 		return { cols: 80, rows: 24 };
 	}
 }
 
-const runtimeMock = {
+class MockOSC8LinkProvider {
+	constructor(_terminal: MockTerminal) {}
+	provideLinks(
+		_row: number,
+		callback: (links: { text: string; range: unknown }[] | undefined) => void,
+	): void {
+		callback([{ text: 'https://osc8.example.com', range: {} }]);
+	}
+	dispose(): void {}
+}
+
+class MockUrlRegexProvider {
+	constructor(_terminal: MockTerminal) {}
+	provideLinks(
+		_row: number,
+		callback: (links: { text: string; range: unknown }[] | undefined) => void,
+	): void {
+		callback([{ text: 'https://urlregex.example.com', range: {} }]);
+	}
+	dispose(): void {}
+}
+
+const createdTerminals: MockTerminal[] = [];
+const createdSockets: MockWebSocket[] = [];
+
+const encodeChunk = (seq: number, value: string): Uint8Array => {
+	const text = new TextEncoder().encode(value);
+	const payload = new Uint8Array(8 + text.length);
+	const view = new DataView(payload.buffer);
+	view.setBigUint64(0, BigInt(seq), false);
+	payload.set(text, 8);
+	return payload;
+};
+
+const runtimeMock = vi.hoisted(() => ({
 	Browser: {
 		OpenURL: vi.fn(),
 	},
@@ -82,57 +161,67 @@ const runtimeMock = {
 		On: vi.fn(),
 		Off: vi.fn(),
 	},
-};
+}));
 
-const appMock = {
-	ResizeWorkspaceTerminalForWindowName: vi.fn().mockResolvedValue(undefined),
-	StartWorkspaceTerminalForWindowName: vi.fn().mockResolvedValue(undefined),
-	WriteWorkspaceTerminalForWindowName: vi.fn().mockResolvedValue(undefined),
-};
+const appMock = vi.hoisted(() => ({
+	LogTerminalDebug: vi.fn().mockResolvedValue(undefined),
+	StartWorkspaceTerminalSessionForWindow: vi.fn().mockResolvedValue({
+		workspaceId: 'ws',
+		terminalId: 'term',
+		sessionId: 'ws::term',
+		windowName: 'main',
+		owner: 'main',
+		canWrite: true,
+		running: true,
+		currentOffset: 0,
+		socketUrl: 'ws://127.0.0.1:9001/stream',
+		socketToken: 'token',
+		transport: 'sessiond-websocket',
+	}),
+	StopWorkspaceTerminalForWindow: vi.fn().mockResolvedValue(undefined),
+	GetSessiondStatus: vi.fn().mockResolvedValue({ available: false }),
+	GetSettings: vi.fn().mockResolvedValue({ defaults: {} }),
+}));
 
-const apiMock = {
+const apiMock = vi.hoisted(() => ({
 	fetchSessiondStatus: vi.fn().mockResolvedValue({ available: false }),
 	fetchSettings: vi.fn().mockResolvedValue({ defaults: {} }),
 	fetchTerminalBootstrap: vi.fn().mockResolvedValue({
 		workspaceId: 'ws',
 		terminalId: 'term',
+		sessionId: 'ws::term',
+		windowName: 'main',
+		owner: 'main',
+		canWrite: true,
+		running: true,
+		currentOffset: 0,
+		socketUrl: 'ws://127.0.0.1:9001/stream',
+		socketToken: 'token',
+		transport: 'sessiond-websocket',
 	}),
 	logTerminalDebug: vi.fn().mockResolvedValue(undefined),
 	stopWorkspaceTerminal: vi.fn().mockResolvedValue(undefined),
-};
+}));
 
-vi.mock('@xterm/xterm', () => ({
+vi.mock('ghostty-web', () => ({
+	init: vi.fn(async () => undefined),
 	Terminal: MockTerminal,
-}));
-
-vi.mock('@xterm/addon-fit', () => ({
 	FitAddon: MockFitAddon,
-}));
-vi.mock('@xterm/addon-image', () => ({
-	ImageAddon: class MockImageAddon {
-		activate(): void {}
-		dispose(): void {}
-	},
-}));
-vi.mock('@xterm/addon-search', () => ({
-	SearchAddon: class MockSearchAddon {
-		activate(): void {}
-		dispose(): void {}
-	},
-}));
-vi.mock('@xterm/addon-web-links', () => ({
-	WebLinksAddon: class MockWebLinksAddon {
-		constructor(handler?: (event: MouseEvent, uri: string) => void) {
-			webLinkHandler = handler;
-		}
-		activate(): void {}
-		dispose(): void {}
-	},
+	OSC8LinkProvider: MockOSC8LinkProvider,
+	UrlRegexProvider: MockUrlRegexProvider,
 }));
 
 vi.mock('@wailsio/runtime', () => runtimeMock);
 vi.mock('../../../bindings/workset/app', () => appMock);
-vi.mock('../api', () => apiMock);
+vi.mock('../api/settings', () => ({
+	fetchSessiondStatus: apiMock.fetchSessiondStatus,
+	fetchSettings: apiMock.fetchSettings,
+}));
+vi.mock('../api/terminal-layout', () => ({
+	fetchTerminalBootstrap: apiMock.fetchTerminalBootstrap,
+	logTerminalDebug: apiMock.logTerminalDebug,
+	stopWorkspaceTerminal: apiMock.stopWorkspaceTerminal,
+}));
 
 const loadService = async () => import('./terminalService');
 
@@ -167,9 +256,13 @@ describe('terminalService resize flow', () => {
 		vi.resetModules();
 		vi.clearAllMocks();
 		createdTerminals.length = 0;
-		webLinkHandler = undefined;
+		createdSockets.length = 0;
 		Object.defineProperty(globalThis, 'ResizeObserver', {
 			value: MockResizeObserver,
+			configurable: true,
+		});
+		Object.defineProperty(globalThis, 'WebSocket', {
+			value: MockWebSocket,
 			configurable: true,
 		});
 		Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
@@ -193,42 +286,11 @@ describe('terminalService resize flow', () => {
 			container,
 			active: false,
 		});
-		await Promise.resolve();
-		await Promise.resolve();
-
-		expect(createdTerminals).toHaveLength(1);
+		await vi.waitFor(() => {
+			expect(createdTerminals).toHaveLength(1);
+		});
 		const terminal = createdTerminals[0];
 		expect(terminal.scrollToBottom).not.toHaveBeenCalled();
-	});
-
-	it('attaches a custom wheel handler that consumes browser scroll', async () => {
-		const service = await loadService();
-		const container = document.createElement('div') as HTMLDivElement;
-
-		service.syncTerminal({
-			workspaceId: 'ws',
-			terminalId: 'term',
-			container,
-			active: true,
-		});
-		await vi.waitFor(() => {
-			expect(appMock.StartWorkspaceTerminalForWindowName).toHaveBeenCalled();
-		});
-
-		expect(createdTerminals).toHaveLength(1);
-		const terminal = createdTerminals[0];
-		expect(terminal.attachCustomWheelEventHandler).toHaveBeenCalledTimes(1);
-		expect(terminal.customWheelEventHandler).toBeTypeOf('function');
-
-		const preventDefault = vi.fn();
-		const stopPropagation = vi.fn();
-		const handled = terminal.customWheelEventHandler?.({
-			preventDefault,
-			stopPropagation,
-		} as unknown as WheelEvent);
-		expect(handled).toBe(true);
-		expect(preventDefault).toHaveBeenCalledTimes(1);
-		expect(stopPropagation).toHaveBeenCalledTimes(1);
 	});
 
 	it('forwards wheel input after attaching terminal host in another document', async () => {
@@ -242,7 +304,13 @@ describe('terminalService resize flow', () => {
 			active: true,
 		});
 		await vi.waitFor(() => {
-			expect(appMock.StartWorkspaceTerminalForWindowName).toHaveBeenCalled();
+			expect(createdSockets).toHaveLength(1);
+		});
+		const socket = createdSockets[0];
+		socket.open();
+		socket.emitText({ type: 'ready', ready: { running: true } });
+		await vi.waitFor(() => {
+			expect(apiMock.fetchTerminalBootstrap).toHaveBeenCalled();
 		});
 
 		expect(createdTerminals).toHaveLength(1);
@@ -269,16 +337,18 @@ describe('terminalService resize flow', () => {
 
 		terminal.emitData('\x1b[<64;10;10M');
 		await vi.waitFor(() => {
-			expect(appMock.WriteWorkspaceTerminalForWindowName).toHaveBeenCalledWith(
-				'ws',
-				'term',
-				'\x1b[<64;10;10M',
-				expect.any(String),
+			expect(socket.sent).toContainEqual(
+				JSON.stringify({
+					protocolVersion: 2,
+					type: 'input',
+					data: '\x1b[<64;10;10M',
+					owner: 'main',
+				}),
 			);
 		});
 	});
 
-	it('opens terminal web links via Browser.OpenURL', async () => {
+	it('opens terminal links via Browser.OpenURL', async () => {
 		const service = await loadService();
 		const container = document.createElement('div') as HTMLDivElement;
 
@@ -289,24 +359,101 @@ describe('terminalService resize flow', () => {
 			active: true,
 		});
 		await vi.waitFor(() => {
-			expect(appMock.StartWorkspaceTerminalForWindowName).toHaveBeenCalled();
+			expect(apiMock.fetchTerminalBootstrap).toHaveBeenCalled();
 		});
+		expect(createdTerminals).toHaveLength(1);
+		const terminal = createdTerminals[0];
+		expect(terminal.registeredProviders.length).toBeGreaterThan(0);
 
-		expect(webLinkHandler).toBeTypeOf('function');
+		let activatedUrl = '';
 		const preventDefault = vi.fn();
 		const stopPropagation = vi.fn();
-		webLinkHandler?.(
-			{ preventDefault, stopPropagation } as unknown as MouseEvent,
-			'https://example.com',
-		);
+		const provider = terminal.registeredProviders[0];
+		provider.provideLinks(0, (links) => {
+			links?.[0]?.activate?.({
+				preventDefault,
+				stopPropagation,
+			} as unknown as MouseEvent);
+			activatedUrl = links?.[0]?.text ?? '';
+		});
+
 		await Promise.resolve();
 
+		expect(activatedUrl).toBe('https://osc8.example.com');
 		expect(preventDefault).toHaveBeenCalledTimes(1);
 		expect(stopPropagation).toHaveBeenCalledTimes(1);
-		expect(runtimeMock.Browser.OpenURL).toHaveBeenCalledWith('https://example.com');
+		expect(runtimeMock.Browser.OpenURL).toHaveBeenCalledWith('https://osc8.example.com');
 	});
 
-	it('refits attached terminals on window focus so handoff does not require manual resize', async () => {
+	it('batches websocket output frames into a single terminal write', async () => {
+		const service = await loadService();
+		const container = document.createElement('div') as HTMLDivElement;
+
+		service.syncTerminal({
+			workspaceId: 'ws',
+			terminalId: 'term',
+			container,
+			active: true,
+		});
+
+		await vi.waitFor(() => {
+			expect(createdTerminals).toHaveLength(1);
+			expect(createdSockets).toHaveLength(1);
+		});
+
+		const terminal = createdTerminals[0];
+		const socket = createdSockets[0];
+		socket.open();
+		socket.emitText({ type: 'ready', ready: { running: true } });
+
+		terminal.write.mockClear();
+		socket.emitBinary(encodeChunk(5, 'hello '));
+		socket.emitBinary(encodeChunk(11, 'world'));
+
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(terminal.write).toHaveBeenCalledTimes(1);
+		const merged = terminal.write.mock.calls[0][0] as unknown as Uint8Array;
+		expect(new TextDecoder().decode(merged)).toBe('hello world');
+	});
+
+	it('stops a live terminal over websocket before falling back to Wails stop', async () => {
+		const service = await loadService();
+		const container = document.createElement('div') as HTMLDivElement;
+
+		service.syncTerminal({
+			workspaceId: 'ws',
+			terminalId: 'term',
+			container,
+			active: true,
+		});
+
+		await vi.waitFor(() => {
+			expect(createdSockets).toHaveLength(1);
+		});
+
+		const socket = createdSockets[0];
+		socket.open();
+		socket.emitText({ type: 'ready', ready: { running: true } });
+		await vi.waitFor(() => {
+			expect(apiMock.fetchTerminalBootstrap).toHaveBeenCalled();
+		});
+		socket.sent.length = 0;
+
+		await service.closeTerminal('ws', 'term');
+
+		expect(socket.sent).toContainEqual(
+			JSON.stringify({
+				protocolVersion: 2,
+				type: 'stop',
+				owner: 'main',
+			}),
+		);
+		expect(apiMock.stopWorkspaceTerminal).not.toHaveBeenCalled();
+	});
+
+	it('does not restart or refit healthy terminals on window focus', async () => {
 		const service = await loadService();
 		const container = document.createElement('div') as HTMLDivElement;
 		const widthDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
@@ -339,19 +486,21 @@ describe('terminalService resize flow', () => {
 				active: true,
 			});
 			await vi.waitFor(() => {
-				expect(appMock.StartWorkspaceTerminalForWindowName).toHaveBeenCalled();
+				expect(createdSockets).toHaveLength(1);
 			});
+			const socket = createdSockets[0];
+			socket.open();
+			socket.emitText({ type: 'ready', ready: { running: true } });
 			await vi.runAllTimersAsync();
-			expect(appMock.ResizeWorkspaceTerminalForWindowName).not.toHaveBeenCalled();
-			appMock.ResizeWorkspaceTerminalForWindowName.mockClear();
-			appMock.StartWorkspaceTerminalForWindowName.mockClear();
+			apiMock.fetchTerminalBootstrap.mockClear();
+			socket.sent.length = 0;
 
 			document.body.appendChild(container);
 			window.dispatchEvent(new Event('focus'));
 			await vi.runAllTimersAsync();
 
-			expect(appMock.ResizeWorkspaceTerminalForWindowName.mock.calls.length).toBeGreaterThan(0);
-			expect(appMock.StartWorkspaceTerminalForWindowName.mock.calls.length).toBeGreaterThan(0);
+			expect(apiMock.fetchTerminalBootstrap).not.toHaveBeenCalled();
+			expect(socket.sent).toHaveLength(0);
 		} finally {
 			container.remove();
 			restoreClientMetrics();

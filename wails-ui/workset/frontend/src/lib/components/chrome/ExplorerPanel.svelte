@@ -46,7 +46,7 @@
 		activeTerminalWorkspaceIds?: string[];
 		lockWorksetSelection?: boolean;
 		canManageRepos?: boolean;
-		activeView?: 'terminal-cockpit' | 'skill-registry';
+		activeView?: 'workspaces' | 'skill-registry';
 		activeSurface?: 'terminal' | 'pull-requests';
 		filesActive?: boolean;
 		onSelectWorkspace: (workspaceId: string) => void;
@@ -68,7 +68,7 @@
 		activeTerminalWorkspaceIds = [],
 		lockWorksetSelection = false,
 		canManageRepos = true,
-		activeView = 'terminal-cockpit',
+		activeView = 'workspaces',
 		activeSurface = 'terminal',
 		filesActive = false,
 		onSelectWorkspace,

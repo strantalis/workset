@@ -37,3 +37,21 @@ func TestTerminalBufferTruncation(t *testing.T) {
 		t.Fatalf("expected truncation when reading from offset 0")
 	}
 }
+
+func TestTerminalBufferSnapshotOffsets(t *testing.T) {
+	buf := newTerminalBuffer(64 * 1024)
+	first := make([]byte, 24*1024)
+	second := make([]byte, 24*1024)
+	third := make([]byte, 24*1024)
+	buf.Append(first)
+	buf.Append(second)
+	buf.Append(third)
+
+	oldest, total := buf.SnapshotOffsets()
+	if oldest != int64(len(first)) {
+		t.Fatalf("expected oldest retained offset %d, got %d", len(first), oldest)
+	}
+	if total != int64(len(first)+len(second)+len(third)) {
+		t.Fatalf("expected total offset %d, got %d", len(first)+len(second)+len(third), total)
+	}
+}

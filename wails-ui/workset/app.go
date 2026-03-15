@@ -33,7 +33,6 @@ type App struct {
 	githubOps        *githubOperationManager
 	popoutMu         sync.Mutex
 	popouts          map[string]string
-	terminalOwners   map[string]string
 }
 
 // NewApp creates a new App application struct
@@ -48,7 +47,6 @@ func NewApp() *App {
 		repoDiffWatchers: newRepoDiffWatchManager(),
 		githubOps:        newGitHubOperationManager(),
 		popouts:          map[string]string{},
-		terminalOwners:   map[string]string{},
 	}
 }
 
@@ -75,7 +73,6 @@ func (a *App) shutdown(_ context.Context) {
 	}
 	a.popoutMu.Lock()
 	a.popouts = map[string]string{}
-	a.terminalOwners = map[string]string{}
 	a.popoutMu.Unlock()
 	a.repoFileIndexMu.Lock()
 	a.repoFileIndexes = map[string]repoFileIndexCacheEntry{}

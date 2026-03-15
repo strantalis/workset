@@ -17,6 +17,7 @@ const createHandle = (): TerminalAttachOpenHandle => {
 	return {
 		terminal,
 		container: host,
+		opened: false,
 	};
 };
 
@@ -32,7 +33,7 @@ const setElementSize = (element: HTMLElement, width: number, height: number): vo
 };
 
 describe('terminalAttachOpenLifecycle', () => {
-	it('mounts a single host, opens terminal, fits, nudges, and focuses when active', () => {
+	it('mounts a single host, opens terminal, fits, and focuses when active', () => {
 		const container = document.createElement('div') as HTMLDivElement;
 		document.body.append(container);
 		container.append(document.createElement('div'));
@@ -42,12 +43,10 @@ describe('terminalAttachOpenLifecycle', () => {
 		const fitTerminal = vi.fn();
 		const flushOutput = vi.fn();
 		const markAttached = vi.fn();
-		const nudgeRenderer = vi.fn();
 		const lifecycle = createTerminalAttachOpenLifecycle({
 			fitTerminal,
 			flushOutput,
 			markAttached,
-			nudgeRenderer,
 		});
 
 		lifecycle.attach({
@@ -61,30 +60,28 @@ describe('terminalAttachOpenLifecycle', () => {
 		expect(container.firstElementChild).toBe(handle.container);
 		expect(handle.terminal.open).toHaveBeenCalledTimes(1);
 		expect(fitTerminal).toHaveBeenCalledWith('ws::term');
-		expect(nudgeRenderer).toHaveBeenCalledWith('ws::term', handle, true);
 		expect(handle.terminal.focus).toHaveBeenCalledTimes(1);
 		expect(flushOutput).toHaveBeenCalledWith('ws::term', false);
 		expect(markAttached).toHaveBeenCalledWith('ws::term');
 	});
 
-	it('does not reopen or nudge when host is already mounted and inactive', () => {
+	it('does not reopen when host is already mounted and inactive', () => {
 		const container = document.createElement('div') as HTMLDivElement;
 		document.body.append(container);
 		const handle = createHandle();
 		setElementSize(container, 800, 600);
 		setElementSize(handle.container, 800, 600);
 		handle.terminal.element = { parentElement: handle.container };
+		handle.opened = true;
 		handle.openWindow = container.ownerDocument.defaultView;
 		container.replaceChildren(handle.container);
 		const fitTerminal = vi.fn();
 		const flushOutput = vi.fn();
 		const markAttached = vi.fn();
-		const nudgeRenderer = vi.fn();
 		const lifecycle = createTerminalAttachOpenLifecycle({
 			fitTerminal,
 			flushOutput,
 			markAttached,
-			nudgeRenderer,
 		});
 
 		lifecycle.attach({
@@ -97,28 +94,26 @@ describe('terminalAttachOpenLifecycle', () => {
 		expect(handle.terminal.open).not.toHaveBeenCalled();
 		expect(handle.terminal.focus).not.toHaveBeenCalled();
 		expect(fitTerminal).toHaveBeenCalledWith('ws::term');
-		expect(nudgeRenderer).not.toHaveBeenCalled();
 	});
 
-	it('focuses and nudges with rebuild on inactive -> active transition', () => {
+	it('focuses on inactive -> active transition', () => {
 		const container = document.createElement('div') as HTMLDivElement;
 		document.body.append(container);
 		const handle = createHandle();
 		setElementSize(container, 800, 600);
 		setElementSize(handle.container, 800, 600);
 		handle.terminal.element = { parentElement: handle.container };
+		handle.opened = true;
 		handle.openWindow = container.ownerDocument.defaultView;
 		handle.container.setAttribute('data-active', 'false');
 		container.replaceChildren(handle.container);
 		const fitTerminal = vi.fn();
 		const flushOutput = vi.fn();
 		const markAttached = vi.fn();
-		const nudgeRenderer = vi.fn();
 		const lifecycle = createTerminalAttachOpenLifecycle({
 			fitTerminal,
 			flushOutput,
 			markAttached,
-			nudgeRenderer,
 		});
 
 		lifecycle.attach({
@@ -129,7 +124,6 @@ describe('terminalAttachOpenLifecycle', () => {
 		});
 
 		expect(handle.terminal.open).not.toHaveBeenCalled();
-		expect(nudgeRenderer).toHaveBeenCalledWith('ws::term', handle, true);
 		expect(handle.terminal.focus).toHaveBeenCalledTimes(1);
 	});
 
@@ -141,15 +135,14 @@ describe('terminalAttachOpenLifecycle', () => {
 		setElementSize(secondContainer, 800, 600);
 		setElementSize(handle.container, 800, 600);
 		handle.terminal.element = { parentElement: handle.container };
+		handle.opened = true;
 		handle.openWindow = firstContainer.ownerDocument.defaultView;
 		firstContainer.replaceChildren(handle.container);
 		const fitTerminal = vi.fn();
-		const nudgeRenderer = vi.fn();
 		const lifecycle = createTerminalAttachOpenLifecycle({
 			fitTerminal,
 			flushOutput: vi.fn(),
 			markAttached: vi.fn(),
-			nudgeRenderer,
 		});
 
 		lifecycle.attach({
@@ -163,13 +156,13 @@ describe('terminalAttachOpenLifecycle', () => {
 		expect(secondContainer.firstElementChild).toBe(handle.container);
 		expect(handle.terminal.open).not.toHaveBeenCalled();
 		expect(fitTerminal).toHaveBeenCalledTimes(1);
-		expect(nudgeRenderer).toHaveBeenCalledWith('ws::term', handle, true);
 	});
 
-	it('reopens terminal when moving across different windows', () => {
+	it('moves host across different windows without reopening terminal', () => {
 		const container = document.createElement('div') as HTMLDivElement;
 		const handle = createHandle();
 		handle.terminal.element = { parentElement: handle.container };
+		handle.opened = true;
 		handle.openWindow = {} as unknown as Window;
 		container.replaceChildren(handle.container);
 		const lifecycle = createTerminalAttachOpenLifecycle({
@@ -185,23 +178,21 @@ describe('terminalAttachOpenLifecycle', () => {
 			active: false,
 		});
 
-		expect(handle.terminal.open).toHaveBeenCalledTimes(1);
+		expect(handle.terminal.open).not.toHaveBeenCalled();
 		expect(handle.openWindow).toBe(container.ownerDocument.defaultView);
 	});
 
-	it('skips fit and nudge when host/container are not renderable yet', () => {
+	it('skips fit when host/container are not renderable yet', () => {
 		const container = document.createElement('div') as HTMLDivElement;
 		const handle = createHandle();
 		setElementSize(container, 0, 0);
 		setElementSize(handle.container, 0, 0);
 		const fitTerminal = vi.fn();
-		const nudgeRenderer = vi.fn();
 		const traceAttach = vi.fn();
 		const lifecycle = createTerminalAttachOpenLifecycle({
 			fitTerminal,
 			flushOutput: vi.fn(),
 			markAttached: vi.fn(),
-			nudgeRenderer,
 			traceAttach,
 		});
 
@@ -213,7 +204,6 @@ describe('terminalAttachOpenLifecycle', () => {
 		});
 
 		expect(fitTerminal).not.toHaveBeenCalled();
-		expect(nudgeRenderer).not.toHaveBeenCalled();
 		expect(traceAttach).toHaveBeenCalledWith(
 			'ws::term',
 			'attach_fit_skip_not_renderable',

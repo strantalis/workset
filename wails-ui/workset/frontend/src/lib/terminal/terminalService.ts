@@ -6,10 +6,6 @@ import { createTerminalLifecycle } from './terminalLifecycle';
 import { createTerminalStreamOrchestrator } from './terminalStreamOrchestrator';
 import { createTerminalResizeBridge } from './terminalResizeBridge';
 import { createTerminalAttachState } from './terminalAttachRendererState';
-import {
-	createTerminalEventSubscriptions,
-	type TerminalPayload,
-} from './terminalEventSubscriptions';
 import { type TerminalInstanceHandle } from './terminalInstanceManager';
 import { createTerminalInputOrchestrator } from './terminalInputOrchestrator';
 import { createTerminalViewportResizeController } from './terminalViewportResizeController';
@@ -23,21 +19,19 @@ import {
 	clearLocalTerminalDebugPreference,
 	createTerminalSessionBridge,
 	createTerminalResourceLifecycleDeps,
-	createTerminalSessionTransport,
 	createTerminalSyncControllerDeps,
 	ensureTerminalGlobals,
 } from './terminalServiceDeps';
 import { createTerminalServiceState } from './terminalServiceState';
 import { createTerminalServiceRuntime } from './terminalServiceRuntime';
-import { getCurrentWindowNameHint } from '../windowContext';
+import { createTerminalSocketStream } from './terminalSocketStream';
+import { emitTerminalActivity } from './terminalActivityBus';
 
 export type TerminalViewState = {
 	status: string;
 	message: string;
 	health: 'unknown' | 'checking' | 'ok' | 'stale';
 	healthMessage: string;
-	renderer: 'unknown' | 'webgl';
-	rendererMode: 'webgl';
 	sessiondAvailable: boolean | null;
 	sessiondChecked: boolean;
 	debugEnabled: boolean;
@@ -50,33 +44,27 @@ export type TerminalViewState = {
 };
 
 type TerminalHandle = TerminalInstanceHandle;
+type TerminalPendingWrite = {
+	seq: number;
+	chunk: Uint8Array;
+	bytes: number;
+	source: 'stream' | 'buffer';
+};
+type TerminalWriteQueueState = {
+	queue: TerminalPendingWrite[];
+	inFlight: boolean;
+	scheduled: boolean;
+};
 
 const terminalHandles = new Map<string, TerminalHandle>();
+const terminalWriteQueues = new Map<string, TerminalWriteQueueState>();
 const terminalContextRegistry = createTerminalContextRegistry();
 const terminalStores = new TerminalStateStore<TerminalViewState>();
 const DISPOSE_TTL_MS = 10 * 60 * 1000;
-const STREAM_REORDER_DELAY_MS = 8;
-const STREAM_REORDER_FORCE_FLUSH_THRESHOLD = 24;
 let globalsInitialized = false;
 const terminalServiceState = createTerminalServiceState();
 const { pendingInput } = terminalServiceState;
-const streamFlushTimers = new Map<string, number>();
 const lastInboundSeq = new Map<string, { seq: number; bytes: number; at: number }>();
-const TERMINAL_SERVICE_GLOBAL_KEY = '__worksetTerminalServiceGlobal';
-
-type TerminalServiceGlobalState = {
-	terminalEventCleanup?: () => void;
-};
-
-const getTerminalServiceGlobalState = (): TerminalServiceGlobalState => {
-	const root = globalThis as typeof globalThis & {
-		[TERMINAL_SERVICE_GLOBAL_KEY]?: TerminalServiceGlobalState;
-	};
-	root[TERMINAL_SERVICE_GLOBAL_KEY] ??= {};
-	return root[TERMINAL_SERVICE_GLOBAL_KEY]!;
-};
-
-const terminalServiceGlobalState = getTerminalServiceGlobalState();
 
 const buildTerminalKey = terminalContextRegistry.buildTerminalKey;
 
@@ -129,10 +117,7 @@ const runtime = createTerminalServiceRuntime<TerminalHandle>({
 const getToken = (name: string, fallback: string): string =>
 	getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 
-const terminalSessionBridge = createTerminalSessionBridge(
-	() => terminalSessionCoordinator,
-	() => terminalEventSubscriptions.ensureListeners(),
-);
+const terminalSessionBridge = createTerminalSessionBridge(() => terminalSessionCoordinator);
 const {
 	ensureSessionActive,
 	beginTerminal,
@@ -151,34 +136,29 @@ const terminalInputOrchestrator = createTerminalInputOrchestrator({
 		}),
 	getWorkspaceId,
 	getTerminalId,
-	isContextActive: (id) => getContext(id)?.active ?? false,
-	isTerminalFocused: (id) => {
-		const handle = terminalHandles.get(id);
-		if (!handle) return false;
-		if (typeof document === 'undefined') return true;
-		const ownerDocument = handle.container.ownerDocument;
-		const activeElement = ownerDocument?.activeElement ?? document.activeElement;
-		if (!activeElement) return false;
-		return handle.container.contains(activeElement);
+	markActivity: (workspaceId) => emitTerminalActivity(workspaceId),
+	write: async (workspaceId, terminalId, data) => {
+		terminalSocketStream.write(buildTerminalKey(workspaceId, terminalId), data);
 	},
-	write: (workspaceId, terminalId, data) => terminalTransport.write(workspaceId, terminalId, data),
 	markStopped: (id) => lifecycle.markStopped(id),
 	trace: (id, event, details) => runtime.logDebug(id, event, details),
 });
 
 const sendInput = (id: string, data: string): void => terminalInputOrchestrator.sendInput(id, data);
+const sendProtocolResponse = (id: string, data: string): void =>
+	terminalInputOrchestrator.sendProtocolResponse(id, data);
 
 const terminalResizeBridge = createTerminalResizeBridge({
 	getWorkspaceId,
 	getTerminalId,
-	resize: (workspaceId, terminalId, cols, rows) =>
-		terminalTransport.resize(workspaceId, terminalId, cols, rows),
+	resize: async (workspaceId, terminalId, cols, rows) => {
+		terminalSocketStream.resize(buildTerminalKey(workspaceId, terminalId), cols, rows);
+	},
 });
 
 const terminalViewportResizeController = createTerminalViewportResizeController<TerminalHandle>({
 	getHandle: (id) => terminalHandles.get(id),
 	hasStarted: (id) => lifecycle.hasStarted(id),
-	forceRedraw: runtime.forceRedraw,
 	resizeToFit: (id, handle) => terminalResizeBridge.resizeToFit(id, handle),
 	resizeOverlay: (_handle) => undefined,
 });
@@ -191,13 +171,12 @@ const terminalInstanceOrchestration = createTerminalInstanceOrchestration({
 			getToken,
 		}),
 	openURL: (url) => terminalTransport.openURL(url),
-	setRenderer: (id, renderer) => lifecycle.setRenderer(id, renderer),
-	setRendererMode: (id, mode) => lifecycle.setRendererMode(id, mode),
 	setStatusAndMessage: (id, status, message) => lifecycle.setStatusAndMessage(id, status, message),
 	setHealth: (id, state, message) => runtime.setHealth(id, state, message),
 	emitState,
 	setInput: (id, value) => lifecycle.setInput(id, value),
 	sendInput,
+	sendProtocolResponse,
 	captureCpr: runtime.captureCpr,
 	fitTerminal: (id, started) => terminalViewportResizeController.fitTerminal(id, started),
 	hasStarted: (id) => lifecycle.hasStarted(id),
@@ -211,7 +190,7 @@ const terminalFontSizeController = terminalInstanceOrchestration.terminalFontSiz
 const terminalInstanceManager = terminalInstanceOrchestration.terminalInstanceManager;
 const attachTerminal = terminalInstanceOrchestration.attachTerminal;
 
-const terminalResourceLifecycle = createTerminalResourceLifecycle<TerminalHandle>(
+const baseTerminalResourceLifecycle = createTerminalResourceLifecycle<TerminalHandle>(
 	createTerminalResourceLifecycleDeps({
 		terminalViewportResizeController,
 		terminalStores,
@@ -223,13 +202,6 @@ const terminalResourceLifecycle = createTerminalResourceLifecycle<TerminalHandle
 		terminalHandles,
 	}),
 );
-
-const decodeBase64ToBytes = (value: string | undefined): Uint8Array => {
-	if (!value) return new Uint8Array();
-	if (typeof atob !== 'function') return new Uint8Array();
-	const binary = atob(value);
-	return Uint8Array.from(binary, (char) => char.charCodeAt(0));
-};
 
 const summarizeChunk = (chunk: Uint8Array, limit = 48): Record<string, unknown> => {
 	const max = Math.min(chunk.length, limit);
@@ -256,85 +228,118 @@ const summarizeChunk = (chunk: Uint8Array, limit = 48): Record<string, unknown> 
 	};
 };
 
-const resolvePayloadBytes = (payload: TerminalPayload, chunkLength: number): number => {
-	return payload.bytes && payload.bytes > 0 ? payload.bytes : chunkLength;
+const getTerminalWriteQueueState = (id: string): TerminalWriteQueueState => {
+	const existing = terminalWriteQueues.get(id);
+	if (existing) return existing;
+	const created: TerminalWriteQueueState = {
+		queue: [],
+		inFlight: false,
+		scheduled: false,
+	};
+	terminalWriteQueues.set(id, created);
+	return created;
+};
+
+const concatChunks = (chunks: Uint8Array[]): Uint8Array => {
+	if (chunks.length === 1) return chunks[0];
+	let total = 0;
+	for (const chunk of chunks) {
+		total += chunk.length;
+	}
+	const merged = new Uint8Array(total);
+	let offset = 0;
+	for (const chunk of chunks) {
+		merged.set(chunk, offset);
+		offset += chunk.length;
+	}
+	return merged;
+};
+
+const scheduleTerminalWriteQueue = (id: string): void => {
+	const state = terminalWriteQueues.get(id);
+	if (!state || state.inFlight || state.scheduled) return;
+	state.scheduled = true;
+	terminalWriteQueues.set(id, state);
+	queueMicrotask(() => {
+		const current = terminalWriteQueues.get(id);
+		if (!current) return;
+		current.scheduled = false;
+		terminalWriteQueues.set(id, current);
+		pumpTerminalWriteQueue(id);
+	});
+};
+
+const clearTerminalWriteQueue = (id: string): void => {
+	terminalWriteQueues.delete(id);
+};
+
+const pumpTerminalWriteQueue = (id: string): void => {
+	const state = terminalWriteQueues.get(id);
+	if (!state || state.inFlight) return;
+	const next = state.queue[0];
+	if (!next) {
+		terminalWriteQueues.delete(id);
+		return;
+	}
+	const handle = terminalHandles.get(id);
+	if (!handle) return;
+
+	const batch = state.queue.slice();
+	const chunks = batch.map((item) => item.chunk);
+	const mergedChunk = concatChunks(chunks);
+	let mergedBytes = 0;
+	for (const item of batch) {
+		mergedBytes += item.bytes;
+	}
+	const first = batch[0];
+	const last = batch[batch.length - 1];
+
+	state.inFlight = true;
+	terminalWriteQueues.set(id, state);
+	runtime.logDebug(id, 'frontend_output_chunk_batch', {
+		firstSeq: first.seq,
+		lastSeq: last.seq,
+		chunks: batch.length,
+		bytes: mergedBytes,
+		sources: Array.from(new Set(batch.map((item) => item.source))),
+		...summarizeChunk(mergedChunk),
+	});
+	runtime.updateStats(id, (stats) => {
+		stats.bytesIn += mergedBytes;
+	});
+	handle.terminal.write(mergedChunk, () => {
+		runtime.updateStatsLastOutput(id);
+		const current = terminalWriteQueues.get(id);
+		if (!current) return;
+		if (current.queue.length > 0) {
+			current.queue.splice(0, batch.length);
+		}
+		current.inFlight = false;
+		if (current.queue.length === 0) {
+			terminalWriteQueues.delete(id);
+		} else {
+			terminalWriteQueues.set(id, current);
+			scheduleTerminalWriteQueue(id);
+		}
+	});
 };
 
 const writeChunkToHandle = (
 	id: string,
-	handle: TerminalHandle,
 	seq: number,
 	chunk: Uint8Array,
 	bytes: number,
 	source: 'stream' | 'buffer',
 ): void => {
-	runtime.logDebug(id, 'frontend_output_chunk', {
+	const state = getTerminalWriteQueueState(id);
+	state.queue.push({
 		seq,
+		chunk,
+		bytes,
 		source,
-		...summarizeChunk(chunk),
 	});
-	runtime.updateStats(id, (stats) => {
-		stats.bytesIn += bytes;
-	});
-	handle.terminal.write(chunk, () => {
-		runtime.updateStatsLastOutput(id);
-	});
-};
-
-const clearStreamFlushTimer = (id: string): void => {
-	const timer = streamFlushTimers.get(id);
-	if (timer === undefined) return;
-	window.clearTimeout(timer);
-	streamFlushTimers.delete(id);
-};
-
-const clearStreamOrderingState = (id: string): void => {
-	clearStreamFlushTimer(id);
-	terminalServiceState.resetOrderedStream(id);
-};
-
-const flushOrderedStreamOutput = (id: string, force: boolean): void => {
-	const handle = terminalHandles.get(id);
-	if (!handle) return;
-	const flushed = terminalServiceState.consumeOrderedStreamChunks(id, {
-		force,
-		minAgeMs: STREAM_REORDER_DELAY_MS,
-	});
-	if (flushed.chunks.length === 0) {
-		const snapshot = terminalServiceState.getOrderedStreamSnapshot(id);
-		if (snapshot.queuedChunks > 0) {
-			runtime.logDebug(id, 'frontend_output_flush_ordered_blocked', {
-				force,
-				queuedChunks: snapshot.queuedChunks,
-				queuedBytes: snapshot.queuedBytes,
-				firstSeq: snapshot.firstSeq,
-				lastSeq: snapshot.lastSeq,
-				lastDeliveredSeq: snapshot.lastDeliveredSeq,
-			});
-		}
-		return;
-	}
-	runtime.logDebug(id, 'frontend_output_flush_ordered', {
-		force,
-		chunks: flushed.chunks.length,
-		firstSeq: flushed.chunks[0]?.seq ?? 0,
-		lastSeq: flushed.chunks[flushed.chunks.length - 1]?.seq ?? 0,
-		droppedStaleChunks: flushed.droppedStaleChunks,
-	});
-	for (const item of flushed.chunks) {
-		writeChunkToHandle(id, handle, item.seq, item.chunk, item.bytes, 'stream');
-	}
-};
-
-const scheduleStreamFlush = (id: string): void => {
-	if (streamFlushTimers.has(id)) return;
-	streamFlushTimers.set(
-		id,
-		window.setTimeout(() => {
-			streamFlushTimers.delete(id);
-			flushOrderedStreamOutput(id, true);
-		}, STREAM_REORDER_DELAY_MS),
-	);
+	terminalWriteQueues.set(id, state);
+	scheduleTerminalWriteQueue(id);
 };
 
 const flushBufferedOutput = (id: string, writeAll: boolean): void => {
@@ -353,39 +358,40 @@ const flushBufferedOutput = (id: string, writeAll: boolean): void => {
 		writeAll,
 	});
 	for (const item of queued) {
-		writeChunkToHandle(id, handle, item.seq, item.chunk, item.bytes, 'buffer');
+		writeChunkToHandle(id, item.seq, item.chunk, item.bytes, 'buffer');
 	}
 };
 
-const writeTerminalDataDirect = (id: string, payload: TerminalPayload): void => {
-	if (!payload.dataB64 || payload.dataB64.length === 0) return;
-	const chunk = decodeBase64ToBytes(payload.dataB64);
+const writeTerminalChunkDirect = (
+	id: string,
+	seq: number,
+	chunk: Uint8Array,
+	bytes: number,
+): void => {
 	if (chunk.length === 0) return;
-
-	const seq = payload.seq ?? 0;
-	const bytes = resolvePayloadBytes(payload, chunk.length);
-	if (seq > 0) {
-		const now = Date.now();
-		const previous = lastInboundSeq.get(id);
-		if (previous?.seq === seq) {
-			runtime.logDebug(id, 'frontend_output_seq_duplicate_received', {
-				seq,
-				bytes,
-				previousBytes: previous.bytes,
-				deltaMs: now - previous.at,
-			});
-		}
-		lastInboundSeq.set(id, {
+	const normalizedBytes = bytes > 0 ? bytes : chunk.length;
+	const now = Date.now();
+	const previous = lastInboundSeq.get(id);
+	if (previous && seq <= previous.seq) {
+		runtime.logDebug(id, 'frontend_output_seq_stale_received', {
 			seq,
-			bytes,
-			at: now,
+			bytes: normalizedBytes,
+			previousSeq: previous.seq,
+			previousBytes: previous.bytes,
+			deltaMs: now - previous.at,
 		});
+		return;
 	}
+	lastInboundSeq.set(id, {
+		seq,
+		bytes: normalizedBytes,
+		at: now,
+	});
 	const handle = terminalHandles.get(id);
 	if (!handle) {
 		const buffered = terminalServiceState.bufferOutputChunk(id, {
 			seq,
-			bytes,
+			bytes: normalizedBytes,
 			chunk,
 		});
 		runtime.logDebug(id, 'frontend_output_buffered_no_handle', {
@@ -399,7 +405,7 @@ const writeTerminalDataDirect = (id: string, payload: TerminalPayload): void => 
 		if (buffered.droppedChunks > 0) {
 			runtime.logDebug(id, 'frontend_output_dropped_no_handle', {
 				seq,
-				bytes,
+				bytes: normalizedBytes,
 				reason: 'buffer_limit',
 				droppedChunks: buffered.droppedChunks,
 				droppedBytes: buffered.droppedBytes,
@@ -411,31 +417,13 @@ const writeTerminalDataDirect = (id: string, payload: TerminalPayload): void => 
 	if (buffered.bufferedChunks > 0) {
 		flushBufferedOutput(id, false);
 	}
-	const ordered = terminalServiceState.enqueueOrderedStreamChunk(id, {
-		seq,
-		bytes,
-		chunk,
-		receivedAt: Date.now(),
-	});
-	runtime.logDebug(id, 'frontend_output_enqueued_ordered', {
-		seq,
-		queuedChunks: ordered.queuedChunks,
-		queuedBytes: ordered.queuedBytes,
-		droppedStaleChunks: ordered.droppedStaleChunks,
-		droppedDuplicateChunks: ordered.droppedDuplicateChunks,
-	});
-	if (ordered.queuedChunks >= STREAM_REORDER_FORCE_FLUSH_THRESHOLD) {
-		clearStreamFlushTimer(id);
-		flushOrderedStreamOutput(id, true);
-		return;
-	}
-	scheduleStreamFlush(id);
+	writeChunkToHandle(id, seq, chunk, normalizedBytes, 'stream');
 };
 
 const resetSessionState = (id: string): void => {
-	clearStreamOrderingState(id);
+	clearTerminalWriteQueue(id);
 	lastInboundSeq.delete(id);
-	terminalResourceLifecycle.resetSessionState(id);
+	baseTerminalResourceLifecycle.resetSessionState(id);
 	const buffered = terminalServiceState.consumeBufferedOutput(id);
 	if (buffered.length === 0) return;
 	let bytes = 0;
@@ -448,50 +436,78 @@ const resetSessionState = (id: string): void => {
 	});
 };
 
-const handleTerminalDataEvent = (id: string, payload: TerminalPayload): void => {
-	const payloadWindowName = payload.windowName?.trim() ?? '';
-	const currentWindowName = getCurrentWindowNameHint();
-	if (payloadWindowName && payloadWindowName !== currentWindowName) {
-		runtime.logDebug(id, 'frontend_output_drop_window_mismatch', {
-			seq: payload.seq ?? 0,
-			payloadWindowName,
-			currentWindowName,
-		});
-		return;
-	}
-	lifecycle.markInput(id);
-	if (lifecycle.getStatus(id) !== 'ready') {
-		lifecycle.setStatusAndMessage(id, 'ready', '');
-		runtime.setHealth(id, 'ok', 'Session active.');
-		emitState(id);
-	}
-	writeTerminalDataDirect(id, payload);
-};
-
-const terminalEventSubscriptions = createTerminalEventSubscriptions({
-	subscribeEvent: (event, handler) => terminalTransport.onEvent(event, handler),
-	buildTerminalKey,
-	isWorkspaceMismatch: (id, payloadWorkspaceId, payloadTerminalId) => {
-		const context = getContext(id);
-		if (!context) return true;
-		if (payloadWorkspaceId && context.workspaceId !== payloadWorkspaceId) return true;
-		if (payloadTerminalId && context.terminalId !== payloadTerminalId) return true;
-		return false;
+const terminalSocketStream = createTerminalSocketStream({
+	logDebug: (id, event, details) => runtime.logDebug(id, event, details),
+	onReady: (id, ready) => {
+		runtime.logDebug(id, 'frontend_socket_ready', ready);
+		const requestedOffset = ready.requestedOffset ?? 0;
+		const replayStart = ready.replayStart ?? requestedOffset;
+		if (ready.replaySkipped || ready.replayTruncated || replayStart !== requestedOffset) {
+			clearTerminalWriteQueue(id);
+			lastInboundSeq.delete(id);
+			baseTerminalResourceLifecycle.resetTerminalInstance(id);
+		}
 	},
-	onTerminalData: handleTerminalDataEvent,
+	onChunk: (id, nextOffset, chunk) => {
+		const bytes = chunk.length;
+		runtime.logDebug(id, 'frontend_output_event_received', {
+			seq: nextOffset,
+			bytes,
+			source: 'sessiond-websocket',
+		});
+		lifecycle.markInput(id);
+		const workspaceId = getWorkspaceId(id);
+		if (workspaceId) {
+			emitTerminalActivity(workspaceId);
+		}
+		if (lifecycle.getStatus(id) !== 'ready') {
+			lifecycle.setStatusAndMessage(id, 'ready', '');
+			runtime.setHealth(id, 'ok', 'Session active.');
+			emitState(id);
+		}
+		writeTerminalChunkDirect(id, nextOffset, chunk, bytes);
+	},
+	onError: (id, error) => {
+		runtime.logDebug(id, 'frontend_socket_error', { error });
+	},
+	onClosed: (id, details) => {
+		runtime.logDebug(id, 'frontend_socket_closed', details);
+		if (details.intentional) {
+			return;
+		}
+		lifecycle.markStopped(id);
+		lifecycle.setInput(id, false);
+		lifecycle.setStatusAndMessage(id, 'error', 'Terminal stream disconnected.');
+		runtime.setHealth(id, 'stale', 'Terminal stream disconnected.');
+		emitState(id);
+	},
 });
 
-// In dev/HMR, older module instances can keep terminal:data listeners alive.
-// Tear down the previous instance listener set before installing the new one.
-terminalServiceGlobalState.terminalEventCleanup?.();
-terminalServiceGlobalState.terminalEventCleanup = () =>
-	terminalEventSubscriptions.cleanupListeners();
+const terminalResourceLifecycle = {
+	resetSessionState: (id: string): void => {
+		terminalSocketStream.disconnect(id);
+		clearTerminalWriteQueue(id);
+		baseTerminalResourceLifecycle.resetSessionState(id);
+	},
+	disposeTerminalResources: (id: string): void => {
+		terminalSocketStream.disconnect(id);
+		clearTerminalWriteQueue(id);
+		baseTerminalResourceLifecycle.disposeTerminalResources(id);
+	},
+};
 
 const terminalSessionCoordinator = createTerminalSessionCoordinator({
 	lifecycle,
 	getWorkspaceId,
 	getTerminalId,
-	transport: createTerminalSessionTransport(terminalTransport),
+	transport: {
+		start: (workspaceId, terminalId) => terminalTransport.start(workspaceId, terminalId),
+		write: async (workspaceId, terminalId, data) => {
+			terminalSocketStream.write(buildTerminalKey(workspaceId, terminalId), data);
+		},
+		fetchSettings: () => terminalTransport.fetchSettings(),
+		fetchSessiondStatus: () => terminalTransport.fetchSessiondStatus(),
+	},
 	setHealth: runtime.setHealth,
 	emitState,
 	pendingInput,
@@ -502,23 +518,23 @@ const terminalSessionCoordinator = createTerminalSessionCoordinator({
 	setDebugOverlayPreference: (value) => terminalDebugState.setDebugOverlayPreference(value),
 	clearLocalDebugPreference: clearLocalTerminalDebugPreference,
 	syncDebugEnabled: () => terminalDebugState.syncDebugEnabled(),
-	onSessionReady: (id) => {
+	onSessionReady: async (id, descriptor) => {
+		try {
+			await terminalSocketStream.connect(id, descriptor, lastInboundSeq.get(id)?.seq ?? 0);
+		} catch (error) {
+			runtime.logDebug(id, 'frontend_socket_connect_failed', {
+				error: String(error),
+			});
+			lifecycle.markStopped(id);
+			lifecycle.setInput(id, false);
+			lifecycle.setStatusAndMessage(id, 'error', String(error));
+			runtime.setHealth(id, 'stale', 'Failed to attach terminal stream.');
+			emitState(id);
+			throw error;
+		}
 		terminalViewportResizeController.fitTerminal(id, true);
-		window.setTimeout(() => {
-			terminalViewportResizeController.fitTerminal(id, true);
-		}, 64);
 	},
 });
-
-const runFocusRefit = (id: string): void => {
-	// Use a deterministic two-pass refit on focus regain:
-	// 1) immediate pass if viewport is already renderable
-	// 2) next-frame pass after pending layout settles
-	terminalViewportResizeController.fitTerminal(id, lifecycle.hasStarted(id));
-	window.requestAnimationFrame(() => {
-		terminalViewportResizeController.fitTerminal(id, lifecycle.hasStarted(id));
-	});
-};
 
 const terminalStreamOrchestrator = createTerminalStreamOrchestrator({
 	initTerminal,
@@ -540,14 +556,7 @@ const ensureGlobals = (): void =>
 		refreshSessiondStatus,
 		onFocus: (callback) => window.addEventListener('focus', callback),
 		forEachAttached: (callback) => terminalAttachState.forEachAttached(callback),
-		ensureSessionActive: async (id) => {
-			try {
-				await beginTerminal(id, false);
-			} finally {
-				// Refit after focus regain so popout->main handoff does not need manual resize.
-				runFocusRefit(id);
-			}
-		},
+		ensureSessionActive: async (id) => ensureSessionActive(id),
 	});
 
 const terminalServiceExports = createTerminalServiceExports<TerminalViewState>({
@@ -564,10 +573,16 @@ const terminalServiceExports = createTerminalServiceExports<TerminalViewState>({
 		terminalViewportResizeController,
 		terminalStreamOrchestrator,
 		terminalAttachState,
-		terminalTransport,
+		stopTerminal: async (workspaceId: string, terminalId: string) => {
+			const id = buildTerminalKey(workspaceId, terminalId);
+			if (terminalSocketStream.hasLiveConnection(id)) {
+				terminalSocketStream.stop(id);
+				return;
+			}
+			await terminalTransport.stop(workspaceId, terminalId);
+		},
 		terminalResourceLifecycle: {
 			disposeTerminalResources: (id: string) => {
-				clearStreamOrderingState(id);
 				terminalResourceLifecycle.disposeTerminalResources(id);
 			},
 		},
@@ -588,21 +603,15 @@ export const releaseWorkspaceTerminals = (workspaceId: string): void => {
 	if (!targetWorkspace) return;
 	for (const key of terminalContextRegistry.keys()) {
 		if (getWorkspaceId(key) !== targetWorkspace) continue;
-		clearStreamOrderingState(key);
 		terminalResourceLifecycle.disposeTerminalResources(key);
 		terminalContextRegistry.deleteContext(key);
 	}
 };
 
 export const shutdownTerminalService = (): void => {
-	terminalEventSubscriptions.cleanupListeners();
-	const globalState = getTerminalServiceGlobalState();
-	if (globalState.terminalEventCleanup) {
-		globalState.terminalEventCleanup = undefined;
-	}
+	terminalSocketStream.disconnectAll();
 };
 
-// Font size controls (VS Code style Cmd/Ctrl +/-)
 export const increaseFontSize = (): void => terminalFontSizeController.increaseFontSize();
 export const decreaseFontSize = (): void => terminalFontSizeController.decreaseFontSize();
 export const resetFontSize = (): void => terminalFontSizeController.resetFontSize();

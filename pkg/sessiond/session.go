@@ -46,8 +46,6 @@ type Session struct {
 	debugOutputSeq atomic.Uint64
 	modeState      terminalModeState
 	modeParser     terminalModeParser
-	inputFilter    terminalInputFilter
-	outputFilter   terminalOutputFilter
 }
 
 func newSession(opts Options, id, cwd string) *Session {
@@ -75,26 +73,34 @@ func (s *Session) info() SessionInfo {
 	}
 }
 
+func (s *Session) inspect() InspectResponse {
+	s.mu.Lock()
+	resp := InspectResponse{
+		SessionID:  s.id,
+		Cwd:        s.cwd,
+		StartedAt:  s.startedAt.Format(time.RFC3339),
+		LastActive: s.lastActivity.Format(time.RFC3339),
+		Running:    s.cmd != nil && !s.closed,
+		Owner:      s.inputOwner,
+	}
+	s.mu.Unlock()
+	if s.buffer != nil {
+		_, resp.CurrentOffset = s.buffer.SnapshotOffsets()
+	}
+	return resp
+}
+
 func (s *Session) writeForOwner(ctx context.Context, data, owner string) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	owner = strings.TrimSpace(owner)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.pty == nil {
 		return errors.New("terminal not started")
 	}
-	currentOwner := strings.TrimSpace(s.inputOwner)
-	switch {
-	case owner == "":
-		if currentOwner != "" {
-			return fmt.Errorf("terminal input lease held by %q", currentOwner)
-		}
-	case currentOwner == "":
-		s.inputOwner = owner
-	case currentOwner != owner:
-		return fmt.Errorf("terminal input lease held by %q", currentOwner)
+	if err := s.enforceOwnerLocked(owner); err != nil {
+		return err
 	}
 	sanitizedInput := s.sanitizeProtocolInput(ctx, []byte(data))
 	if len(sanitizedInput) == 0 {
@@ -116,6 +122,22 @@ func (s *Session) writeForOwner(ctx context.Context, data, owner string) error {
 	return nil
 }
 
+func (s *Session) enforceOwnerLocked(owner string) error {
+	owner = strings.TrimSpace(owner)
+	currentOwner := strings.TrimSpace(s.inputOwner)
+	switch {
+	case owner == "":
+		if currentOwner != "" {
+			return fmt.Errorf("terminal lease held by %q", currentOwner)
+		}
+	case currentOwner == "":
+		s.inputOwner = owner
+	case currentOwner != owner:
+		return fmt.Errorf("terminal lease held by %q", currentOwner)
+	}
+	return nil
+}
+
 func (s *Session) setInputOwner(owner string) string {
 	owner = strings.TrimSpace(owner)
 	s.mu.Lock()
@@ -131,9 +153,12 @@ func (s *Session) getInputOwner() string {
 	return owner
 }
 
-func (s *Session) resize(cols, rows int) error {
+func (s *Session) resizeForOwner(cols, rows int, owner string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.enforceOwnerLocked(owner); err != nil {
+		return err
+	}
 	if s.pty == nil {
 		return errors.New("terminal not started")
 	}
@@ -148,6 +173,17 @@ func (s *Session) resize(cols, rows int) error {
 		debugLogf("session_resize id=%s cols=%d rows=%d", s.id, cols, rows)
 	}
 	return err
+}
+
+func (s *Session) stopForOwner(owner string) error {
+	s.mu.Lock()
+	if err := s.enforceOwnerLocked(owner); err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	s.mu.Unlock()
+	s.closeWithReason("closed")
+	return nil
 }
 
 func (s *Session) isClosed() bool {

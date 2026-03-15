@@ -27,7 +27,6 @@ export {
 	fetchTrackedPullRequest,
 	generatePullRequestText,
 	listRemotes,
-	sendPullRequestReviewsToTerminal,
 } from './github/pull-request';
 
 export {

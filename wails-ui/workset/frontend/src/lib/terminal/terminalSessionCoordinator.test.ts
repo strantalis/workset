@@ -1,17 +1,31 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createTerminalSessionCoordinator } from './terminalSessionCoordinator';
+import type { TerminalSessionDescriptor } from '../../../bindings/workset/models';
+
+const defaultDescriptor: TerminalSessionDescriptor = {
+	workspaceId: 'ws',
+	terminalId: 'term',
+	sessionId: 'ws::term',
+	windowName: 'main',
+	owner: 'main',
+	canWrite: true,
+	running: true,
+	currentOffset: 0,
+	socketUrl: 'ws://127.0.0.1:9001/stream',
+	socketToken: 'token',
+	transport: 'sessiond-websocket',
+};
 
 const createCoordinator = (input?: {
-	start?: () => Promise<void>;
+	start?: () => Promise<TerminalSessionDescriptor>;
 	write?: () => Promise<void>;
 	pendingInput?: Map<string, string>;
-	onSessionReady?: (id: string) => void;
+	onSessionReady?: (id: string, descriptor: TerminalSessionDescriptor) => void;
 }) => {
 	const started = new Set<string>();
 	const startInFlight = new Set<string>();
 	const setStatusAndMessage = vi.fn();
 	const setInput = vi.fn();
-	const ensureRendererDefaults = vi.fn();
 	const emitState = vi.fn();
 	const setHealth = vi.fn();
 	const clearStartupTimeout = vi.fn();
@@ -19,7 +33,7 @@ const createCoordinator = (input?: {
 	const pendingInput = input?.pendingInput ?? new Map<string, string>();
 	const logDebug = vi.fn();
 	const transport = {
-		start: vi.fn(input?.start ?? (async () => undefined)),
+		start: vi.fn(input?.start ?? (async () => defaultDescriptor)),
 		write: vi.fn(input?.write ?? (async () => undefined)),
 		fetchSettings: vi.fn(async () => null),
 		fetchSessiondStatus: vi.fn(async () => null),
@@ -34,7 +48,6 @@ const createCoordinator = (input?: {
 			markStopped: (id) => started.delete(id),
 			setStatusAndMessage,
 			setInput,
-			ensureRendererDefaults,
 			markStartInFlight: (id) => startInFlight.add(id),
 			clearStartInFlight,
 			clearStartupTimeout,
@@ -65,7 +78,6 @@ const createCoordinator = (input?: {
 		setStatusAndMessage,
 		setInput,
 		setHealth,
-		ensureRendererDefaults,
 		clearStartupTimeout,
 		clearStartInFlight,
 		logDebug,
@@ -113,15 +125,15 @@ describe('terminalSessionCoordinator', () => {
 		);
 	});
 
-	it('reasserts start when begin is called repeatedly for a started terminal', async () => {
+	it('skips restart when begin is called repeatedly for a started terminal', async () => {
 		const { coordinator, transport, logDebug } = createCoordinator();
 		await coordinator.beginTerminal('ws::term');
 		await coordinator.beginTerminal('ws::term');
 
-		expect(transport.start).toHaveBeenCalledTimes(2);
+		expect(transport.start).toHaveBeenCalledTimes(1);
 		expect(logDebug).toHaveBeenCalledWith(
 			'ws::term',
-			'session_begin_reassert_ok',
+			'session_begin_skip_started',
 			expect.objectContaining({
 				quiet: false,
 			}),
@@ -134,6 +146,6 @@ describe('terminalSessionCoordinator', () => {
 
 		await coordinator.beginTerminal('ws::term');
 
-		expect(onSessionReady).toHaveBeenCalledWith('ws::term');
+		expect(onSessionReady).toHaveBeenCalledWith('ws::term', defaultDescriptor);
 	});
 });

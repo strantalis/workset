@@ -1,20 +1,8 @@
+import { type FitAddonLike, type TerminalViewportLike } from './terminalEmulatorContracts';
+
 export type TerminalViewportResizeHandle = {
-	terminal: {
-		element?: {
-			parentElement: Element | null;
-		} | null;
-		buffer: {
-			active: {
-				baseY: number;
-				viewportY: number;
-			};
-		};
-		scrollToBottom: () => void;
-		focus: () => void;
-	};
-	fitAddon: {
-		fit: () => void;
-	};
+	terminal: TerminalViewportLike;
+	fitAddon: FitAddonLike;
 };
 
 type TerminalResizeObserver = {
@@ -25,7 +13,6 @@ type TerminalResizeObserver = {
 type TerminalViewportResizeControllerOptions<T extends TerminalViewportResizeHandle> = {
 	getHandle: (id: string) => T | undefined;
 	hasStarted: (id: string) => boolean;
-	forceRedraw: (id: string) => void;
 	resizeToFit: (id: string, handle: T) => void;
 	resizeOverlay: (handle: T) => void;
 	resizeDebounceMs?: number;
@@ -39,8 +26,6 @@ export const createTerminalViewportResizeController = <T extends TerminalViewpor
 ) => {
 	const resizeObservers = new Map<string, TerminalResizeObserver>();
 	const resizeTimers = new Map<string, number>();
-	const focusRetryTimers = new Map<string, number>();
-	const focusRefitTimers = new Map<string, number>();
 	const resizeDebounceMs = options.resizeDebounceMs ?? 100;
 	const setTimeoutFn =
 		options.setTimeoutFn ??
@@ -78,7 +63,6 @@ export const createTerminalViewportResizeController = <T extends TerminalViewpor
 		if (!hasRenderableViewport(handle)) return;
 		handle.fitAddon.fit();
 		options.resizeOverlay(handle);
-		options.forceRedraw(id);
 		if (!resizeSession) return;
 		options.resizeToFit(id, handle);
 	};
@@ -119,30 +103,8 @@ export const createTerminalViewportResizeController = <T extends TerminalViewpor
 	const focusTerminal = (id: string): void => {
 		if (!id) return;
 		const handle = options.getHandle(id);
-		if (handle) {
-			fitTerminal(id, options.hasStarted(id));
-			handle.terminal.focus();
-			clearTimerMap(focusRefitTimers, id);
-			focusRefitTimers.set(
-				id,
-				setTimeoutFn(() => {
-					focusRefitTimers.delete(id);
-					fitTerminal(id, options.hasStarted(id));
-				}, 0),
-			);
-			return;
-		}
-		if (focusRetryTimers.has(id)) return;
-		focusRetryTimers.set(
-			id,
-			setTimeoutFn(() => {
-				focusRetryTimers.delete(id);
-				const current = options.getHandle(id);
-				if (!current) return;
-				fitTerminal(id, options.hasStarted(id));
-				current.terminal.focus();
-			}, 0),
-		);
+		if (!handle) return;
+		handle.terminal.focus();
 	};
 
 	const scrollToBottom = (id: string): void => {
@@ -159,8 +121,6 @@ export const createTerminalViewportResizeController = <T extends TerminalViewpor
 	};
 
 	const destroy = (id: string): void => {
-		clearTimerMap(focusRetryTimers, id);
-		clearTimerMap(focusRefitTimers, id);
 		detachResizeObserver(id);
 	};
 

@@ -49,11 +49,25 @@ func (c *Client) SendWithOwner(ctx context.Context, sessionID, data, owner strin
 }
 
 func (c *Client) Resize(ctx context.Context, sessionID string, cols, rows int) error {
-	return c.call(ctx, "resize", ResizeRequest{SessionID: sessionID, Cols: cols, Rows: rows}, nil)
+	return c.ResizeWithOwner(ctx, sessionID, cols, rows, "")
+}
+
+func (c *Client) ResizeWithOwner(ctx context.Context, sessionID string, cols, rows int, owner string) error {
+	return c.call(ctx, "resize", ResizeRequest{SessionID: sessionID, Cols: cols, Rows: rows, Owner: owner}, nil)
 }
 
 func (c *Client) Stop(ctx context.Context, sessionID string) error {
-	return c.call(ctx, "stop", StopRequest{SessionID: sessionID}, nil)
+	return c.StopWithOwner(ctx, sessionID, "")
+}
+
+func (c *Client) StopWithOwner(ctx context.Context, sessionID, owner string) error {
+	return c.call(ctx, "stop", StopRequest{SessionID: sessionID, Owner: owner}, nil)
+}
+
+func (c *Client) Inspect(ctx context.Context, sessionID string) (InspectResponse, error) {
+	var resp InspectResponse
+	err := c.call(ctx, "inspect", InspectRequest{SessionID: sessionID}, &resp)
+	return resp, err
 }
 
 func (c *Client) List(ctx context.Context) (ListResponse, error) {
@@ -95,6 +109,8 @@ func (c *Client) Attach(ctx context.Context, sessionID string, since int64, with
 		Type:            "attach",
 		SessionID:       sessionID,
 		StreamID:        streamID,
+		Since:           since,
+		WithBuffer:      withBuffer,
 	}); err != nil {
 		_ = conn.Close()
 		return nil, StreamMessage{}, err

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/strantalis/workset/pkg/worksetapi"
@@ -64,7 +63,6 @@ type PullRequestReviewsRequest struct {
 	RepoID      string `json:"repoId"`
 	Number      int    `json:"number,omitempty"`
 	Branch      string `json:"branch,omitempty"`
-	TerminalID  string `json:"terminalId,omitempty"`
 }
 
 type PullRequestReviewCommentsPayload struct {
@@ -243,49 +241,6 @@ func (a *App) GeneratePullRequestText(input PullRequestGenerateRequest) (workset
 		return worksetapi.PullRequestGeneratedJSON{}, err
 	}
 	return result.Payload, nil
-}
-
-func (a *App) SendPullRequestReviewsToTerminal(input PullRequestReviewsRequest) error {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
-	if err != nil {
-		return err
-	}
-	result, err := a.service.ListPullRequestReviewComments(ctx, worksetapi.PullRequestReviewsInput{
-		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
-		Repo:      repoName,
-		Number:    input.Number,
-		Branch:    input.Branch,
-	})
-	if err != nil {
-		return err
-	}
-	summary := formatReviewSummary(result.Comments)
-	if summary == "" {
-		return fmt.Errorf("no review comments to send")
-	}
-	terminalID := strings.TrimSpace(input.TerminalID)
-	if terminalID == "" {
-		if latest := a.latestTerminalForWorkspace(input.WorkspaceID); latest != nil {
-			terminalID = latest.terminalID
-		}
-	}
-	if terminalID == "" {
-		created, err := a.CreateWorkspaceTerminal(input.WorkspaceID)
-		if err != nil {
-			return err
-		}
-		terminalID = created.TerminalID
-	}
-	windowName := a.workspaceTerminalOwner(input.WorkspaceID)
-	if err := a.StartWorkspaceTerminalForWindowName(ctx, input.WorkspaceID, terminalID, windowName); err != nil {
-		return err
-	}
-	return a.WriteWorkspaceTerminalForWindowName(ctx, input.WorkspaceID, terminalID, summary, windowName)
 }
 
 type CommitAndPushRequest struct {
@@ -719,25 +674,4 @@ func resolveRepoAlias(workspaceID, repoID string) (string, error) {
 		}
 	}
 	return repoID, nil
-}
-
-func formatReviewSummary(comments []worksetapi.PullRequestReviewCommentJSON) string {
-	if len(comments) == 0 {
-		return ""
-	}
-	builder := strings.Builder{}
-	builder.WriteString("Pull request review feedback:\n")
-	for _, comment := range comments {
-		location := comment.Path
-		if comment.Line > 0 {
-			location = fmt.Sprintf("%s:%d", location, comment.Line)
-		}
-		body := strings.TrimSpace(comment.Body)
-		if body == "" {
-			continue
-		}
-		builder.WriteString(fmt.Sprintf("- %s (%s): %s\n", location, comment.Author, body))
-	}
-	builder.WriteString("\n")
-	return builder.String()
 }

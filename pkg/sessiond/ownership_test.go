@@ -61,6 +61,14 @@ func TestSessionOwnerClaimAndEnforcement(t *testing.T) {
 	if owner.Owner != "workspace-test-popout" {
 		t.Fatalf("expected owner to remain unchanged, got %q", owner.Owner)
 	}
+
+	if err := client.ResizeWithOwner(ctx, "owner-set", 120, 40, "main"); err == nil {
+		t.Fatal("expected resize to fail for non-owner")
+	}
+
+	if err := client.StopWithOwner(ctx, "owner-set", "main"); err == nil {
+		t.Fatal("expected stop to fail for non-owner")
+	}
 }
 
 func TestSessionOwnerTransferViaSetOwner(t *testing.T) {
@@ -88,5 +96,13 @@ func TestSessionOwnerTransferViaSetOwner(t *testing.T) {
 	}
 	if owner.Owner != "main" {
 		t.Fatalf("expected owner main after transfer, got %q", owner.Owner)
+	}
+
+	if err := client.ResizeWithOwner(ctx, "owner-transfer", 100, 30, "main"); err != nil {
+		t.Fatalf("resize after transfer: %v", err)
+	}
+
+	if err := client.StopWithOwner(ctx, "owner-transfer", "main"); err != nil {
+		t.Fatalf("stop after transfer: %v", err)
 	}
 }

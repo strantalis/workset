@@ -1,9 +1,5 @@
-import { FitAddon } from '@xterm/addon-fit';
-import { ImageAddon } from '@xterm/addon-image';
-import { SearchAddon } from '@xterm/addon-search';
-import { WebglAddon } from '@xterm/addon-webgl';
-import { WebLinksAddon } from '@xterm/addon-web-links';
-import type { Terminal } from '@xterm/xterm';
+import { FitAddon, OSC8LinkProvider, Terminal, UrlRegexProvider } from 'ghostty-web';
+import type { TerminalLinkProviderLike, TerminalLinkRange } from './terminalEmulatorContracts';
 import { createTerminalAttachOpenLifecycle } from './terminalAttachOpenLifecycle';
 import { createTerminalFontSizeController } from './terminalFontSizeController';
 import {
@@ -13,15 +9,14 @@ import {
 
 type TerminalInstanceOrchestrationDependencies = {
 	terminalHandles: Map<string, TerminalInstanceHandle>;
-	createTerminalInstance: (fontSize: number) => Terminal;
+	createTerminalInstance: (fontSize: number) => Promise<Terminal>;
 	openURL: (url: string) => Promise<void>;
-	setRenderer: (id: string, renderer: 'unknown' | 'webgl') => void;
-	setRendererMode: (id: string, mode: 'webgl') => void;
 	setStatusAndMessage: (id: string, status: string, message: string) => void;
 	setHealth: (id: string, state: 'unknown' | 'checking' | 'ok' | 'stale', message?: string) => void;
 	emitState: (id: string) => void;
 	setInput: (id: string, value: boolean) => void;
 	sendInput: (id: string, data: string) => void;
+	sendProtocolResponse: (id: string, data: string) => void;
 	captureCpr: (id: string, data: string) => void;
 	fitTerminal: (id: string, started: boolean) => void;
 	hasStarted: (id: string) => boolean;
@@ -31,18 +26,53 @@ type TerminalInstanceOrchestrationDependencies = {
 	traceRenderer?: (id: string, event: string, details: Record<string, unknown>) => void;
 };
 
+type LinkProviderSource = {
+	provideLinks: (
+		y: number,
+		callback: (links: { text: string; range: TerminalLinkRange }[] | undefined) => void,
+	) => void;
+	dispose?: () => void;
+};
+
+const wrapLinkProvider = (
+	provider: LinkProviderSource,
+	openURL: (url: string) => Promise<void>,
+): TerminalLinkProviderLike => ({
+	provideLinks: (row, callback) => {
+		provider.provideLinks(row, (links) => {
+			if (!links) {
+				callback(undefined);
+				return;
+			}
+			callback(
+				links.map((link) => ({
+					...link,
+					activate: (event: MouseEvent) => {
+						event.preventDefault();
+						event.stopPropagation();
+						void openURL(link.text).catch(() => undefined);
+					},
+				})),
+			);
+		});
+	},
+	dispose: () => {
+		provider.dispose?.();
+	},
+});
+
+const createLinkProviders = (
+	terminal: unknown,
+	openURL: (url: string) => Promise<void>,
+): TerminalLinkProviderLike[] => {
+	const osc8Provider = new OSC8LinkProvider(terminal as never);
+	const urlProvider = new UrlRegexProvider(terminal as never);
+	return [osc8Provider, urlProvider].map((provider) => wrapLinkProvider(provider, openURL));
+};
+
 export const createTerminalInstanceOrchestration = (
 	deps: TerminalInstanceOrchestrationDependencies,
 ) => {
-	// WebGL enabled. Image addon remains off pending separate validation.
-	const ENABLE_WEBGL_RENDERER = true;
-	const ENABLE_IMAGE_ADDON = false;
-
-	// nudgeRenderer captures this callback and invokes it after manager creation.
-	const reinitWebgl = (id: string): void => {
-		terminalInstanceManager.reinitWebgl(id);
-	};
-
 	const terminalAttachOpenLifecycle = createTerminalAttachOpenLifecycle<TerminalInstanceHandle>({
 		fitTerminal: (id) => {
 			deps.fitTerminal(id, deps.hasStarted(id));
@@ -50,25 +80,6 @@ export const createTerminalInstanceOrchestration = (
 		flushOutput: deps.flushOutput,
 		markAttached: deps.markAttached,
 		traceAttach: deps.traceAttach,
-		nudgeRenderer: (id, handle, rebuildAtlas) => {
-			const refresh = (): void => {
-				if (handle.terminal.rows < 1) {
-					return;
-				}
-				const end = Math.max(0, handle.terminal.rows - 1);
-				handle.terminal.refresh(0, end);
-			};
-			if (rebuildAtlas) {
-				// Dispose and recreate the WebGL addon so the renderer re-initializes
-				// against the current container geometry. clearTextureAtlas() alone is
-				// not sufficient: the WebGL canvas pixel dimensions can go stale when
-				// the terminal's DOM node moves between containers, causing glyphs to
-				// render at wrong pixel offsets until the next scroll-triggered repaint.
-				reinitWebgl(id);
-			}
-			deps.fitTerminal(id, deps.hasStarted(id));
-			refresh();
-		},
 	});
 
 	const applyFontSizeToAllTerminals = (fontSize: number): void => {
@@ -88,33 +99,17 @@ export const createTerminalInstanceOrchestration = (
 
 	const terminalInstanceManager = createTerminalInstanceManager({
 		terminalHandles: deps.terminalHandles,
-		enableWebgl: ENABLE_WEBGL_RENDERER,
-		enableImageAddon: ENABLE_IMAGE_ADDON,
 		createTerminalInstance: () =>
 			deps.createTerminalInstance(terminalFontSizeController.getCurrentFontSize()),
 		createFitAddon: () => new FitAddon(),
-		createSearchAddon: () => new SearchAddon(),
-		createWebLinksAddon: () =>
-			new WebLinksAddon((event, uri) => {
-				event.preventDefault();
-				event.stopPropagation();
-				void deps.openURL(uri).catch(() => undefined);
-			}),
-		createImageAddon: () => new ImageAddon(),
-		createWebglAddon: () => new WebglAddon(),
+		createLinkProviders: (terminal) => createLinkProviders(terminal, deps.openURL),
 		onData: (id, data) => {
 			deps.setInput(id, true);
-			deps.captureCpr(id, data);
 			deps.sendInput(id, data);
 		},
-		onRendererResolved: (id, renderer) => {
-			deps.setRenderer(id, renderer);
-			deps.setRendererMode(id, 'webgl');
-			deps.traceRenderer?.(id, 'renderer_resolved', { renderer });
-			if (renderer === 'webgl') {
-				deps.setHealth(id, 'ok', 'Session active.');
-			}
-			deps.emitState(id);
+		onResponse: (id, data) => {
+			deps.captureCpr(id, data);
+			deps.sendProtocolResponse(id, data);
 		},
 		onRendererError: (id, message) => {
 			deps.traceRenderer?.(id, 'renderer_error', { message });
@@ -122,9 +117,7 @@ export const createTerminalInstanceOrchestration = (
 			deps.setHealth(id, 'stale', message);
 			deps.emitState(id);
 		},
-		onRendererDebug: (id, event, details) => {
-			deps.traceRenderer?.(id, event, details);
-		},
+		onRendererDebug: deps.traceRenderer,
 		attachOpen: ({ id, handle, container, active }) => {
 			terminalAttachOpenLifecycle.attach({ id, handle, container, active });
 		},
@@ -134,7 +127,7 @@ export const createTerminalInstanceOrchestration = (
 		id: string,
 		container: HTMLDivElement | null,
 		active: boolean,
-	): TerminalInstanceHandle => {
+	): Promise<TerminalInstanceHandle> => {
 		return terminalInstanceManager.attach(id, container, active);
 	};
 

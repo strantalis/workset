@@ -8,15 +8,16 @@ import (
 	"time"
 )
 
-func (s *Session) recordOutput(data []byte) {
+func (s *Session) recordOutput(data []byte) int64 {
+	nextOffset := int64(0)
 	if s.buffer != nil {
-		s.buffer.Append(data)
+		nextOffset = s.buffer.Append(data)
 	}
 	s.mu.Lock()
 	file := s.transcriptFile
 	s.mu.Unlock()
 	if file == nil {
-		return
+		return nextOffset
 	}
 	if _, err := file.Write(data); err == nil {
 		s.mu.Lock()
@@ -24,6 +25,7 @@ func (s *Session) recordOutput(data []byte) {
 		s.mu.Unlock()
 	}
 	s.trimTranscript()
+	return nextOffset
 }
 
 func (s *Session) openTranscript() error {
@@ -119,6 +121,31 @@ func (s *Session) readTranscriptTail(maxBytes int64) ([]byte, bool, error) {
 		return nil, false, err
 	}
 	return buf, truncated, nil
+}
+
+func (s *Session) readTranscriptSince(currentOffset, since int64) ([]byte, int64, bool, error) {
+	if currentOffset <= 0 || s.opts.TranscriptTailBytes <= 0 {
+		return nil, currentOffset, false, nil
+	}
+	data, tailTruncated, err := s.readTranscriptTail(s.opts.TranscriptTailBytes)
+	if err != nil || len(data) == 0 {
+		return nil, currentOffset, false, err
+	}
+	start := currentOffset - int64(len(data))
+	if start < 0 {
+		start = 0
+	}
+	truncated := tailTruncated && since < start
+	if since > start {
+		offset := int(since - start)
+		if offset >= len(data) {
+			return nil, since, false, nil
+		}
+		data = data[offset:]
+		start = since
+		truncated = false
+	}
+	return data, start, truncated, nil
 }
 
 func (s *Session) trimTranscript() {

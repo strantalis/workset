@@ -44,7 +44,7 @@ describe('terminalSyncController', () => {
 		});
 		expect(attachTerminal).toHaveBeenCalledWith('ws::term', container, true);
 		expect(attachResizeObserver).toHaveBeenCalledWith('ws::term', container);
-		expect(focusTerminal).toHaveBeenCalledWith('ws::term');
+		expect(focusTerminal).not.toHaveBeenCalled();
 		expect(syncTerminalStream).toHaveBeenCalledWith('ws::term');
 	});
 
@@ -160,12 +160,11 @@ describe('terminalSyncController', () => {
 		expect(syncTerminalStream).toHaveBeenCalledTimes(2);
 	});
 
-	it('treats active-only flips as attach+focus updates with stream reassert on activation', () => {
+	it('treats active-only flips as attach updates with stream reassert on activation', () => {
 		const attachTerminal = vi.fn();
 		const attachResizeObserver = vi.fn();
 		const syncTerminalStream = vi.fn();
 		const focusTerminal = vi.fn();
-		const trace = vi.fn();
 		const controller = createTerminalSyncController({
 			ensureGlobals: vi.fn(),
 			buildTerminalKey: (workspaceId, terminalId) => `${workspaceId}::${terminalId}`,
@@ -181,7 +180,6 @@ describe('terminalSyncController', () => {
 			focusTerminal,
 			scrollToBottom: vi.fn(),
 			isAtBottom: vi.fn(() => true),
-			trace,
 		});
 		const container = document.createElement('div') as HTMLDivElement;
 
@@ -203,15 +201,7 @@ describe('terminalSyncController', () => {
 		expect(attachTerminal).toHaveBeenCalledTimes(2);
 		expect(attachResizeObserver).toHaveBeenCalledTimes(2);
 		expect(syncTerminalStream).toHaveBeenCalledTimes(2);
-		expect(focusTerminal).toHaveBeenCalledWith('ws::term');
-		expect(trace).toHaveBeenCalledWith(
-			'ws::term',
-			'sync_terminal_active_flip_attach',
-			expect.objectContaining({
-				previousActive: false,
-				active: true,
-			}),
-		);
+		expect(focusTerminal).not.toHaveBeenCalled();
 	});
 
 	it('keeps attach updates on active -> inactive flips for the same container', () => {
@@ -256,16 +246,8 @@ describe('terminalSyncController', () => {
 
 		expect(attachTerminal).toHaveBeenCalledTimes(2);
 		expect(attachResizeObserver).toHaveBeenCalledTimes(2);
-		expect(syncTerminalStream).toHaveBeenCalledTimes(1);
-		expect(focusTerminal).toHaveBeenCalledTimes(1);
-		expect(trace).toHaveBeenCalledWith(
-			'ws::term',
-			'sync_terminal_active_flip_attach',
-			expect.objectContaining({
-				previousActive: true,
-				active: false,
-			}),
-		);
+		expect(syncTerminalStream).toHaveBeenCalledTimes(2);
+		expect(focusTerminal).not.toHaveBeenCalled();
 	});
 
 	it('detaches displaced terminal when another terminal reuses the same container', () => {

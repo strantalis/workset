@@ -1,11 +1,11 @@
-export type CockpitSurface = 'terminal' | 'pull-requests';
-export type CockpitPaneIntent = 'pull-requests' | 'files';
+export type WorkbenchSurface = 'terminal' | 'pull-requests';
+export type WorkbenchPaneIntent = 'pull-requests' | 'files';
 
-export const resolveCockpitPaneState = (input: {
-	surface: CockpitSurface;
+export const resolveWorkbenchPaneState = (input: {
+	surface: WorkbenchSurface;
 	filesOpen: boolean;
-	intent: CockpitPaneIntent;
-}): { surface: CockpitSurface; filesOpen: boolean } => {
+	intent: WorkbenchPaneIntent;
+}): { surface: WorkbenchSurface; filesOpen: boolean } => {
 	if (input.intent === 'pull-requests') {
 		return {
 			surface: input.surface === 'pull-requests' ? 'terminal' : 'pull-requests',

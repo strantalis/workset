@@ -2,254 +2,284 @@ package main
 
 import (
 	"context"
-	"errors"
-	"sync/atomic"
+	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/strantalis/workset/pkg/sessiond"
 )
 
-func TestAllowWorkspaceTerminalStartMainOwnerAllowsClaim(t *testing.T) {
-	app := NewApp()
+func startSessiondClientForTerminalOwnershipTest(t *testing.T) (*sessiond.Client, func()) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("pty not supported on windows")
+	}
+	t.Setenv("TMPDIR", "/tmp")
+	tmp := t.TempDir()
+	opts := sessiond.DefaultOptions()
+	opts.SocketPath = filepath.Join(tmp, "sessiond.sock")
+	opts.TranscriptDir = filepath.Join(tmp, "terminal_logs")
+	opts.RecordDir = filepath.Join(tmp, "records")
 
-	if err := app.allowWorkspaceTerminalStart("test-workspace", "workspace-test-popout"); err != nil {
-		t.Fatalf("expected popout claim to succeed when main owns workspace: %v", err)
+	server := sessiond.NewServer(opts)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = server.Listen(ctx)
+	}()
+
+	client := sessiond.NewClient(opts.SocketPath)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		pingCtx, pingCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		err := client.Ping(pingCtx)
+		pingCancel()
+		if err == nil {
+			return client, func() {
+				cancel()
+				select {
+				case <-done:
+				case <-time.After(2 * time.Second):
+					t.Fatal("sessiond server did not stop")
+				}
+			}
+		}
+		time.Sleep(25 * time.Millisecond)
 	}
-	if got := app.GetWorkspaceTerminalOwner("test-workspace"); got != "workspace-test-popout" {
-		t.Fatalf("expected owner workspace-test-popout, got %q", got)
-	}
+	cancel()
+	t.Fatal("sessiond server did not start")
+	return nil, nil
 }
 
-func TestAllowWorkspaceTerminalStartAllowsHandoff(t *testing.T) {
-	app := NewApp()
-	app.claimWorkspaceTerminalOwner("test-workspace", "workspace-test-popout")
-
-	if err := app.allowWorkspaceTerminalStart("test-workspace", "main"); err != nil {
-		t.Fatalf("expected ownership handoff to succeed: %v", err)
-	}
-	if got := app.GetWorkspaceTerminalOwner("test-workspace"); got != "main" {
-		t.Fatalf("expected owner main after handoff, got %q", got)
-	}
+func registerTerminalSession(
+	app *App,
+	workspaceID string,
+	terminalID string,
+	client *sessiond.Client,
+	lastActivity time.Time,
+) *terminalSession {
+	session := newTerminalSession(workspaceID, terminalID, "/tmp")
+	session.client = client
+	session.lastActivity = lastActivity
+	session.markReady(nil)
+	app.terminals[session.id] = session
+	return session
 }
 
-func TestAllowWorkspaceTerminalStartAllowsCurrentOwner(t *testing.T) {
+func TestWorkspaceTerminalSessionDescriptorReturnsDescriptor(t *testing.T) {
+	client, cleanup := startSessiondClientForTerminalOwnershipTest(t)
+	defer cleanup()
+
 	app := NewApp()
-	app.claimWorkspaceTerminalOwner("test-workspace", "workspace-test-popout")
+	app.sessiondClient = client
 
-	if err := app.allowWorkspaceTerminalStart("test-workspace", "workspace-test-popout"); err != nil {
-		t.Fatalf("expected current owner to restart terminal: %v", err)
-	}
-	if got := app.GetWorkspaceTerminalOwner("test-workspace"); got != "workspace-test-popout" {
-		t.Fatalf("expected owner workspace-test-popout, got %q", got)
-	}
-}
-
-func TestResizeWorkspaceTerminalForWindowNameReturnsMissingTerminal(t *testing.T) {
-	app := NewApp()
-
-	if err := app.ResizeWorkspaceTerminalForWindowName(
-		context.Background(),
-		"test-workspace",
-		"missing-terminal",
-		80,
-		24,
-		"main",
-	); err == nil {
-		t.Fatal("expected missing terminal resize to return an error")
-	}
-}
-
-func TestResizeWorkspaceTerminalForWindowNameRejectsMissingWorkspaceID(t *testing.T) {
-	app := NewApp()
-
-	err := app.ResizeWorkspaceTerminalForWindowName(
-		context.Background(),
-		"",
-		"term-1",
-		80,
-		24,
-		"main",
-	)
-	if err == nil {
-		t.Fatal("expected missing workspace id to fail")
-	}
-}
-
-func TestResizeWorkspaceTerminalForWindowNameIgnoresTerminalNotStarted(t *testing.T) {
-	app := NewApp()
 	workspaceID := "test-workspace"
 	terminalID := "term-1"
-	session := newTerminalSession(workspaceID, terminalID, "/tmp")
-	session.markReady(nil)
-	app.terminals[terminalSessionID(workspaceID, terminalID)] = session
+	sessionID := terminalSessionID(workspaceID, terminalID)
 
-	err := app.ResizeWorkspaceTerminalForWindowName(
-		context.Background(),
-		workspaceID,
-		terminalID,
-		80,
-		24,
-		"main",
-	)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := client.Create(ctx, sessionID, "/tmp"); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := client.SetOwner(ctx, sessionID, "workspace-test-popout"); err != nil {
+		t.Fatalf("set owner: %v", err)
+	}
+
+	desc, err := app.workspaceTerminalSessionDescriptor(workspaceID, terminalID, "workspace-test-popout")
 	if err != nil {
-		t.Fatalf("expected transient not-started resize to be ignored, got %v", err)
+		t.Fatalf("get descriptor: %v", err)
+	}
+	if desc.SessionID != sessionID {
+		t.Fatalf("expected session id %q, got %q", sessionID, desc.SessionID)
+	}
+	if desc.Owner != "workspace-test-popout" {
+		t.Fatalf("expected owner workspace-test-popout, got %q", desc.Owner)
+	}
+	if !desc.CanWrite {
+		t.Fatalf("expected owner to have write access, got %+v", desc)
+	}
+	if !desc.Running {
+		t.Fatalf("expected running descriptor, got %+v", desc)
+	}
+	if desc.SocketURL == "" {
+		t.Fatalf("expected socket URL, got %+v", desc)
+	}
+	if desc.SocketToken == "" {
+		t.Fatalf("expected socket token, got %+v", desc)
+	}
+	if desc.Transport != "sessiond-websocket" {
+		t.Fatalf("expected transport sessiond-websocket, got %q", desc.Transport)
 	}
 }
 
-func TestRestartTerminalStreamForHandoffSkipsWhenStreamOwnerMatches(t *testing.T) {
+func TestWorkspaceTerminalSessionDescriptorDeniesWriteToNonOwner(t *testing.T) {
+	client, cleanup := startSessiondClientForTerminalOwnershipTest(t)
+	defer cleanup()
+
 	app := NewApp()
+	app.sessiondClient = client
+
 	workspaceID := "test-workspace"
 	terminalID := "term-1"
-	session := newTerminalSession(workspaceID, terminalID, "/tmp")
-	stream := &stubTerminalStream{id: "existing"}
-	session.markReady(nil)
-	session.stream = stream
-	session.streamCancel = func() {}
-	session.streamOwner = "workspace-test-popout"
-	app.terminals[terminalSessionID(workspaceID, terminalID)] = session
+	sessionID := terminalSessionID(workspaceID, terminalID)
 
-	app.restartTerminalStreamForHandoff(workspaceID, terminalID, "main", "workspace-test-popout")
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := client.Create(ctx, sessionID, "/tmp"); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := client.SetOwner(ctx, sessionID, "workspace-test-popout"); err != nil {
+		t.Fatalf("set owner: %v", err)
+	}
 
-	if session.stream != stream {
-		t.Fatal("expected existing stream to remain attached when stream owner matches")
+	desc, err := app.workspaceTerminalSessionDescriptor(workspaceID, terminalID, "main")
+	if err != nil {
+		t.Fatalf("get descriptor: %v", err)
+	}
+	if desc.CanWrite {
+		t.Fatalf("expected non-owner to be read-only, got %+v", desc)
 	}
 }
 
-func TestRestartTerminalStreamForHandoffRestartsWhenStreamOwnerDiffers(t *testing.T) {
-	originalAttach := attachSessionStream
-	t.Cleanup(func() {
-		attachSessionStream = originalAttach
-	})
+func TestTransferWorkspaceTerminalOwnerUpdatesDaemonLease(t *testing.T) {
+	client, cleanup := startSessiondClientForTerminalOwnershipTest(t)
+	defer cleanup()
 
 	app := NewApp()
-	workspaceID := "test-workspace"
-	terminalID := "term-1"
-	oldStream := &stubTerminalStream{id: "existing"}
-	session := newTerminalSession(workspaceID, terminalID, "/tmp")
-	session.markReady(nil)
-	session.client = &sessiond.Client{}
-	session.stream = oldStream
-	session.streamCancel = func() {}
-	session.streamOwner = "main"
-	app.terminals[terminalSessionID(workspaceID, terminalID)] = session
+	app.sessiondClient = client
 
-	var attachCalls atomic.Int32
-	attachSessionStream = func(
-		_ *sessiond.Client,
-		_ context.Context,
-		_ string,
-		_ int64,
-		_ bool,
-		_ string,
-	) (terminalStream, sessiond.StreamMessage, error) {
-		attachCalls.Add(1)
-		return &stubTerminalStream{id: "replacement", nextErr: errors.New("done")}, sessiond.StreamMessage{Type: "ready"}, nil
+	workspaceID := "test-workspace"
+	sessionIDs := []string{
+		terminalSessionID(workspaceID, "term-1"),
+		terminalSessionID(workspaceID, "term-2"),
 	}
 
-	app.restartTerminalStreamForHandoff(workspaceID, terminalID, "workspace-test-popout", "workspace-test-popout")
-
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if attachCalls.Load() > 0 {
-			break
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	for _, sessionID := range sessionIDs {
+		if _, err := client.Create(ctx, sessionID, "/tmp"); err != nil {
+			t.Fatalf("create session %s: %v", sessionID, err)
 		}
-		time.Sleep(5 * time.Millisecond)
 	}
-	if got := attachCalls.Load(); got != 1 {
-		t.Fatalf("expected stream replay restart to reattach once, got %d", got)
+
+	registerTerminalSession(app, workspaceID, "term-1", client, time.Now().Add(-time.Minute))
+	registerTerminalSession(app, workspaceID, "term-2", client, time.Now())
+
+	if err := app.transferWorkspaceTerminalOwner(workspaceID, "workspace-test-popout"); err != nil {
+		t.Fatalf("transfer workspace owner: %v", err)
 	}
-	if got := atomic.LoadInt32(&oldStream.closeCalls); got != 1 {
-		t.Fatalf("expected previous stream to close once, got %d", got)
+
+	for _, sessionID := range sessionIDs {
+		owner, err := client.GetOwner(ctx, sessionID)
+		if err != nil {
+			t.Fatalf("get owner for %s: %v", sessionID, err)
+		}
+		if owner.Owner != "workspace-test-popout" {
+			t.Fatalf("expected owner workspace-test-popout for %s, got %q", sessionID, owner.Owner)
+		}
 	}
 }
 
-func TestRestartTerminalStreamForHandoffRestartsWhenStreamInactive(t *testing.T) {
-	originalAttach := attachSessionStream
-	t.Cleanup(func() {
-		attachSessionStream = originalAttach
-	})
+func TestGetWorkspaceTerminalOwnerReflectsDaemonLease(t *testing.T) {
+	client, cleanup := startSessiondClientForTerminalOwnershipTest(t)
+	defer cleanup()
 
 	app := NewApp()
+	app.sessiondClient = client
+
 	workspaceID := "test-workspace"
-	terminalID := "term-1"
-	session := newTerminalSession(workspaceID, terminalID, "/tmp")
-	session.markReady(nil)
-	session.client = &sessiond.Client{}
-	app.terminals[terminalSessionID(workspaceID, terminalID)] = session
+	olderSessionID := terminalSessionID(workspaceID, "term-1")
+	newerSessionID := terminalSessionID(workspaceID, "term-2")
 
-	var attachCalls atomic.Int32
-	attachSessionStream = func(
-		_ *sessiond.Client,
-		_ context.Context,
-		_ string,
-		_ int64,
-		_ bool,
-		_ string,
-	) (terminalStream, sessiond.StreamMessage, error) {
-		attachCalls.Add(1)
-		return &stubTerminalStream{id: "replacement", nextErr: errors.New("done")}, sessiond.StreamMessage{Type: "ready"}, nil
-	}
-
-	app.restartTerminalStreamForHandoff(workspaceID, terminalID, "main", "main")
-
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if attachCalls.Load() > 0 {
-			break
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	for _, sessionID := range []string{olderSessionID, newerSessionID} {
+		if _, err := client.Create(ctx, sessionID, "/tmp"); err != nil {
+			t.Fatalf("create session %s: %v", sessionID, err)
 		}
-		time.Sleep(5 * time.Millisecond)
 	}
-	if got := attachCalls.Load(); got != 1 {
-		t.Fatalf("expected inactive stream handoff to start stream once, got %d", got)
+	if err := client.SetOwner(ctx, olderSessionID, "main"); err != nil {
+		t.Fatalf("set older owner: %v", err)
+	}
+	if err := client.SetOwner(ctx, newerSessionID, "workspace-test-popout"); err != nil {
+		t.Fatalf("set newer owner: %v", err)
+	}
+
+	registerTerminalSession(app, workspaceID, "term-1", client, time.Now().Add(-time.Minute))
+	registerTerminalSession(app, workspaceID, "term-2", client, time.Now())
+
+	if got := app.GetWorkspaceTerminalOwner(workspaceID); got != "workspace-test-popout" {
+		t.Fatalf("expected latest daemon owner workspace-test-popout, got %q", got)
 	}
 }
 
-func TestRestartTerminalStreamForHandoffCancelsInFlightAttachOnOwnerChange(t *testing.T) {
-	originalAttach := attachSessionStream
-	t.Cleanup(func() {
-		attachSessionStream = originalAttach
-	})
+func TestGetWorkspaceTerminalOwnerDefaultsToMainWithoutSessions(t *testing.T) {
+	app := NewApp()
+
+	if got := app.GetWorkspaceTerminalOwner("test-workspace"); got != "main" {
+		t.Fatalf("expected main fallback owner, got %q", got)
+	}
+}
+
+func TestStopWorkspaceTerminalForWindowRejectsNonOwner(t *testing.T) {
+	client, cleanup := startSessiondClientForTerminalOwnershipTest(t)
+	defer cleanup()
 
 	app := NewApp()
+	app.sessiondClient = client
+
 	workspaceID := "test-workspace"
 	terminalID := "term-1"
-	session := newTerminalSession(workspaceID, terminalID, "/tmp")
-	session.markReady(nil)
-	session.client = &sessiond.Client{}
-	var cancelCalls atomic.Int32
-	session.streamCancel = func() {
-		cancelCalls.Add(1)
-	}
-	session.streamOwner = "main"
-	app.terminals[terminalSessionID(workspaceID, terminalID)] = session
+	sessionID := terminalSessionID(workspaceID, terminalID)
 
-	var attachCalls atomic.Int32
-	attachSessionStream = func(
-		_ *sessiond.Client,
-		_ context.Context,
-		_ string,
-		_ int64,
-		_ bool,
-		_ string,
-	) (terminalStream, sessiond.StreamMessage, error) {
-		attachCalls.Add(1)
-		return &stubTerminalStream{id: "replacement", nextErr: errors.New("done")}, sessiond.StreamMessage{Type: "ready"}, nil
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := client.Create(ctx, sessionID, "/tmp"); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := client.SetOwner(ctx, sessionID, "workspace-test-popout"); err != nil {
+		t.Fatalf("set owner: %v", err)
 	}
 
-	app.restartTerminalStreamForHandoff(workspaceID, terminalID, "main", "workspace-test-popout")
+	registerTerminalSession(app, workspaceID, terminalID, client, time.Now())
 
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if attachCalls.Load() > 0 {
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
+	if err := app.StopWorkspaceTerminalForWindow(context.Background(), workspaceID, terminalID); err == nil {
+		t.Fatal("expected non-owner stop to fail")
 	}
-	if got := cancelCalls.Load(); got != 1 {
-		t.Fatalf("expected in-flight attach cancel to be called once, got %d", got)
+	if app.terminals[sessionID] == nil {
+		t.Fatal("expected terminal session to remain registered after rejected stop")
 	}
-	if got := attachCalls.Load(); got != 1 {
-		t.Fatalf("expected owner handoff to reattach once, got %d", got)
+}
+
+func TestStopWorkspaceTerminalForWindowAllowsOwnerAndCleansUp(t *testing.T) {
+	client, cleanup := startSessiondClientForTerminalOwnershipTest(t)
+	defer cleanup()
+
+	app := NewApp()
+	app.sessiondClient = client
+
+	workspaceID := "test-workspace"
+	terminalID := "term-1"
+	sessionID := terminalSessionID(workspaceID, terminalID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := client.Create(ctx, sessionID, "/tmp"); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := client.SetOwner(ctx, sessionID, "main"); err != nil {
+		t.Fatalf("set owner: %v", err)
+	}
+
+	registerTerminalSession(app, workspaceID, terminalID, client, time.Now())
+
+	if err := app.StopWorkspaceTerminalForWindow(context.Background(), workspaceID, terminalID); err != nil {
+		t.Fatalf("stop terminal for owner: %v", err)
+	}
+	if app.terminals[sessionID] != nil {
+		t.Fatal("expected terminal session to be removed after successful stop")
 	}
 }

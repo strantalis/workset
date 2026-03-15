@@ -17,8 +17,8 @@ func TestHandleProtocolOutputForwardsText(t *testing.T) {
 
 	select {
 	case event := <-sub.ch:
-		if !bytes.Equal(event, raw) {
-			t.Fatalf("expected raw bytes to pass through, got %x", event)
+		if !bytes.Equal(event.data, raw) {
+			t.Fatalf("expected raw bytes to pass through, got %x", event.data)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("expected stream event")
@@ -35,8 +35,8 @@ func TestHandleProtocolOutputForwardsKittyAPC(t *testing.T) {
 
 	select {
 	case event := <-sub.ch:
-		if !bytes.Equal(event, kittyAPC) {
-			t.Fatalf("expected kitty APC bytes to pass through, got %x", event)
+		if !bytes.Equal(event.data, kittyAPC) {
+			t.Fatalf("expected kitty APC bytes to pass through, got %x", event.data)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("expected stream event")
@@ -53,8 +53,8 @@ func TestHandleProtocolOutputForwardsRawC1BytesUnchanged(t *testing.T) {
 
 	select {
 	case event := <-sub.ch:
-		if !bytes.Equal(event, raw) {
-			t.Fatalf("expected raw C1 bytes to pass through unchanged, got %x", event)
+		if !bytes.Equal(event.data, raw) {
+			t.Fatalf("expected raw C1 bytes to pass through unchanged, got %x", event.data)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("expected stream event")
@@ -72,8 +72,8 @@ func TestHandleProtocolOutputForwardsUTF8ContinuationBytes(t *testing.T) {
 
 	select {
 	case event := <-sub.ch:
-		if !bytes.Equal(event, raw) {
-			t.Fatalf("expected UTF-8 bytes to pass through unchanged, got %x", event)
+		if !bytes.Equal(event.data, raw) {
+			t.Fatalf("expected UTF-8 bytes to pass through unchanged, got %x", event.data)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("expected stream event")
@@ -90,8 +90,8 @@ func TestHandleProtocolOutputForwardsKittyAPC7Bit(t *testing.T) {
 
 	select {
 	case event := <-sub.ch:
-		if !bytes.Equal(event, raw) {
-			t.Fatalf("expected kitty APC bytes to pass through, got %q (%x)", string(event), event)
+		if !bytes.Equal(event.data, raw) {
+			t.Fatalf("expected kitty APC bytes to pass through, got %q (%x)", string(event.data), event.data)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("expected stream event")
@@ -110,13 +110,13 @@ func TestHandleProtocolOutputForwardsKittyAPCAcrossChunks(t *testing.T) {
 	first := <-sub.ch
 	second := <-sub.ch
 	third := <-sub.ch
-	if string(first) != "A\x1b_" {
-		t.Fatalf("expected first chunk to pass through APC prefix, got %q", string(first))
+	if string(first.data) != "A\x1b_" {
+		t.Fatalf("expected first chunk to pass through APC prefix, got %q", string(first.data))
 	}
-	if string(second) != "Gi=31;AAAA" {
-		t.Fatalf("expected second chunk to pass through APC payload, got %q", string(second))
+	if string(second.data) != "Gi=31;AAAA" {
+		t.Fatalf("expected second chunk to pass through APC payload, got %q", string(second.data))
 	}
-	if string(third) != "\x1b\\B" {
-		t.Fatalf("expected third chunk to retain APC terminator and suffix, got %q", string(third))
+	if string(third.data) != "\x1b\\B" {
+		t.Fatalf("expected third chunk to retain APC terminator and suffix, got %q", string(third.data))
 	}
 }

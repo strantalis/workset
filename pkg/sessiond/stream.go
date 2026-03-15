@@ -2,7 +2,12 @@ package sessiond
 
 import "sync"
 
-func enqueueStreamEvent(sub *subscriber, data []byte) (sent bool) {
+type streamEvent struct {
+	data       []byte
+	nextOffset int64
+}
+
+func enqueueStreamEvent(sub *subscriber, event streamEvent) (sent bool) {
 	defer func() {
 		if recover() != nil {
 			sent = false
@@ -11,13 +16,15 @@ func enqueueStreamEvent(sub *subscriber, data []byte) (sent bool) {
 	select {
 	case <-sub.done:
 		return false
-	case sub.ch <- data:
+	case sub.ch <- event:
 		return true
+	default:
+		return false
 	}
 }
 
 type subscriber struct {
-	ch       chan []byte
+	ch       chan streamEvent
 	streamID string
 	done     chan struct{}
 	closed   bool
@@ -38,7 +45,7 @@ func (s *subscriber) close() {
 
 func newSubscriber(streamID string) *subscriber {
 	return &subscriber{
-		ch:       make(chan []byte, 128),
+		ch:       make(chan streamEvent, 128),
 		streamID: streamID,
 		done:     make(chan struct{}),
 	}
@@ -59,22 +66,15 @@ func (s *Session) subscribe(streamID string) *subscriber {
 func (s *Session) unsubscribe(sub *subscriber) {
 	s.subscribersMu.Lock()
 	_, ok := s.subscribers[sub]
-	clearMouseModes := false
 	if ok {
 		delete(s.subscribers, sub)
 		if sub.streamID != "" {
 			delete(s.streams, sub.streamID)
 		}
-		clearMouseModes = len(s.subscribers) == 0
 	}
 	s.subscribersMu.Unlock()
 	if !ok {
 		return
-	}
-	if clearMouseModes {
-		s.outputMu.Lock()
-		s.modeState.clearMouseModes()
-		s.outputMu.Unlock()
 	}
 	sub.close()
 }
@@ -93,19 +93,29 @@ func (s *Session) closeSubscribers() {
 	}
 }
 
-func (s *Session) broadcast(data []byte) {
+func (s *Session) broadcast(data []byte, nextOffset int64) {
 	if len(data) == 0 {
 		return
 	}
 	// Read loop buffers are reused; clone once so queued stream events remain immutable.
-	payload := append([]byte(nil), data...)
+	event := streamEvent{
+		data:       append([]byte(nil), data...),
+		nextOffset: nextOffset,
+	}
 	s.subscribersMu.Lock()
 	subs := make([]*subscriber, 0, len(s.subscribers))
 	for sub := range s.subscribers {
 		subs = append(subs, sub)
 	}
 	s.subscribersMu.Unlock()
+	var stalled []*subscriber
 	for _, sub := range subs {
-		_ = enqueueStreamEvent(sub, payload)
+		if enqueueStreamEvent(sub, event) {
+			continue
+		}
+		stalled = append(stalled, sub)
+	}
+	for _, sub := range stalled {
+		s.unsubscribe(sub)
 	}
 }

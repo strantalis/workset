@@ -3,9 +3,6 @@ export const EVENT_GITHUB_OPERATION = 'github:operation' as const;
 
 export const EVENT_SESSIOND_RESTARTED = 'sessiond:restarted' as const;
 
-export const EVENT_TERMINAL_DATA = 'terminal:data' as const;
-export const EVENT_TERMINAL_INPUT = 'terminal:input' as const;
-
 export const EVENT_WORKSPACE_POPOUT_OPENED = 'workspace:popout-opened' as const;
 export const EVENT_WORKSPACE_POPOUT_CLOSED = 'workspace:popout-closed' as const;
 
