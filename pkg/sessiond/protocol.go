@@ -96,15 +96,19 @@ type AttachRequest struct {
 	Token           string `json:"token,omitempty"`
 	Since           int64  `json:"since,omitempty"`
 	WithBuffer      bool   `json:"withBuffer,omitempty"`
+	Cols            int    `json:"cols,omitempty"`
+	Rows            int    `json:"rows,omitempty"`
 }
 
 type WebsocketControlRequest struct {
-	ProtocolVersion int    `json:"protocolVersion,omitempty"`
-	Type            string `json:"type"`
-	Data            string `json:"data,omitempty"`
-	Cols            int    `json:"cols,omitempty"`
-	Rows            int    `json:"rows,omitempty"`
-	Owner           string `json:"owner,omitempty"`
+	ProtocolVersion int             `json:"protocolVersion,omitempty"`
+	Type            string          `json:"type"`
+	Data            string          `json:"data,omitempty"`
+	Cols            int             `json:"cols,omitempty"`
+	Rows            int             `json:"rows,omitempty"`
+	Owner           string          `json:"owner,omitempty"`
+	RequestID       string          `json:"requestId,omitempty"`
+	Snapshot        json.RawMessage `json:"snapshot,omitempty"`
 }
 
 type AttachReady struct {
@@ -127,12 +131,14 @@ type InfoResponse struct {
 }
 
 type StreamMessage struct {
-	Type       string       `json:"type"`
-	SessionID  string       `json:"sessionId,omitempty"`
-	StreamID   string       `json:"streamId,omitempty"`
-	DataB64    string       `json:"dataB64,omitempty"`
-	Len        int          `json:"len,omitempty"`
-	NextOffset int64        `json:"nextOffset,omitempty"`
-	Ready      *AttachReady `json:"ready,omitempty"`
-	Error      string       `json:"error,omitempty"`
+	Type       string          `json:"type"`
+	SessionID  string          `json:"sessionId,omitempty"`
+	StreamID   string          `json:"streamId,omitempty"`
+	RequestID  string          `json:"requestId,omitempty"`
+	DataB64    string          `json:"dataB64,omitempty"`
+	Len        int             `json:"len,omitempty"`
+	NextOffset int64           `json:"nextOffset,omitempty"`
+	Ready      *AttachReady    `json:"ready,omitempty"`
+	Snapshot   json.RawMessage `json:"snapshot,omitempty"`
+	Error      string          `json:"error,omitempty"`
 }

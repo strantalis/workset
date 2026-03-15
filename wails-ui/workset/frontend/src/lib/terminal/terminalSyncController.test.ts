@@ -1,8 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createTerminalSyncController } from './terminalSyncController';
 
+const flushSyncTerminal = async (): Promise<void> => {
+	await Promise.resolve();
+	await Promise.resolve();
+};
+
 describe('terminalSyncController', () => {
-	it('attaches, observes, and syncs stream for mounted terminals', () => {
+	it('attaches, observes, and syncs stream for mounted terminals', async () => {
 		const ensureGlobals = vi.fn();
 		const ensureContext = vi.fn((input) => input);
 		const attachTerminal = vi.fn();
@@ -33,6 +38,7 @@ describe('terminalSyncController', () => {
 			container,
 			active: true,
 		});
+		await flushSyncTerminal();
 
 		expect(ensureGlobals).toHaveBeenCalledTimes(1);
 		expect(ensureContext).toHaveBeenCalledWith({
@@ -46,6 +52,99 @@ describe('terminalSyncController', () => {
 		expect(attachResizeObserver).toHaveBeenCalledWith('ws::term', container);
 		expect(focusTerminal).not.toHaveBeenCalled();
 		expect(syncTerminalStream).toHaveBeenCalledWith('ws::term');
+	});
+
+	it('waits for async attach to finish before syncing the stream', async () => {
+		let resolveAttach: (() => void) | undefined;
+		const attachTerminal = vi.fn(
+			() =>
+				new Promise<void>((resolve) => {
+					resolveAttach = resolve;
+				}),
+		);
+		const syncTerminalStream = vi.fn();
+		const attachResizeObserver = vi.fn();
+		const controller = createTerminalSyncController({
+			ensureGlobals: vi.fn(),
+			buildTerminalKey: (workspaceId, terminalId) => `${workspaceId}::${terminalId}`,
+			ensureContext: (input) => input,
+			deleteContext: vi.fn(),
+			attachTerminal,
+			attachResizeObserver,
+			detachResizeObserver: vi.fn(),
+			syncTerminalStream,
+			markDetached: vi.fn(),
+			stopTerminal: vi.fn(async () => undefined),
+			disposeTerminalResources: vi.fn(),
+			focusTerminal: vi.fn(),
+			scrollToBottom: vi.fn(),
+			isAtBottom: vi.fn(() => true),
+		});
+		const container = document.createElement('div') as HTMLDivElement;
+
+		controller.syncTerminal({
+			workspaceId: 'ws',
+			terminalId: 'term',
+			container,
+			active: true,
+		});
+
+		await Promise.resolve();
+		expect(syncTerminalStream).not.toHaveBeenCalled();
+		expect(attachResizeObserver).not.toHaveBeenCalled();
+
+		resolveAttach?.();
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(attachResizeObserver).toHaveBeenCalledWith('ws::term', container);
+		expect(syncTerminalStream).toHaveBeenCalledWith('ws::term');
+	});
+
+	it('retries the same sync after an attach failure', async () => {
+		const attachTerminal = vi
+			.fn()
+			.mockRejectedValueOnce(new Error('boom'))
+			.mockResolvedValueOnce(undefined);
+		const syncTerminalStream = vi.fn();
+		const controller = createTerminalSyncController({
+			ensureGlobals: vi.fn(),
+			buildTerminalKey: (workspaceId, terminalId) => `${workspaceId}::${terminalId}`,
+			ensureContext: (input) => input,
+			deleteContext: vi.fn(),
+			attachTerminal,
+			attachResizeObserver: vi.fn(),
+			detachResizeObserver: vi.fn(),
+			syncTerminalStream,
+			markDetached: vi.fn(),
+			stopTerminal: vi.fn(async () => undefined),
+			disposeTerminalResources: vi.fn(),
+			focusTerminal: vi.fn(),
+			scrollToBottom: vi.fn(),
+			isAtBottom: vi.fn(() => true),
+		});
+		const container = document.createElement('div') as HTMLDivElement;
+
+		controller.syncTerminal({
+			workspaceId: 'ws',
+			terminalId: 'term',
+			container,
+			active: true,
+		});
+		await Promise.resolve();
+		await Promise.resolve();
+
+		controller.syncTerminal({
+			workspaceId: 'ws',
+			terminalId: 'term',
+			container,
+			active: true,
+		});
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(attachTerminal).toHaveBeenCalledTimes(2);
+		expect(syncTerminalStream).toHaveBeenCalledTimes(1);
 	});
 
 	it('skips attach and stream when container is missing', () => {
@@ -79,7 +178,7 @@ describe('terminalSyncController', () => {
 		expect(syncTerminalStream).not.toHaveBeenCalled();
 	});
 
-	it('skips unchanged sync payloads', () => {
+	it('skips unchanged sync payloads', async () => {
 		const attachTerminal = vi.fn();
 		const attachResizeObserver = vi.fn();
 		const syncTerminalStream = vi.fn();
@@ -107,19 +206,21 @@ describe('terminalSyncController', () => {
 			container,
 			active: false,
 		});
+		await flushSyncTerminal();
 		controller.syncTerminal({
 			workspaceId: 'ws',
 			terminalId: 'term',
 			container,
 			active: false,
 		});
+		await flushSyncTerminal();
 
 		expect(attachTerminal).toHaveBeenCalledTimes(1);
 		expect(attachResizeObserver).toHaveBeenCalledTimes(1);
 		expect(syncTerminalStream).toHaveBeenCalledTimes(1);
 	});
 
-	it('re-attaches and re-syncs stream on container churn', () => {
+	it('re-attaches and re-syncs stream on container churn', async () => {
 		const attachTerminal = vi.fn();
 		const attachResizeObserver = vi.fn();
 		const syncTerminalStream = vi.fn();
@@ -148,19 +249,21 @@ describe('terminalSyncController', () => {
 			container: first,
 			active: true,
 		});
+		await flushSyncTerminal();
 		controller.syncTerminal({
 			workspaceId: 'ws',
 			terminalId: 'term',
 			container: second,
 			active: true,
 		});
+		await flushSyncTerminal();
 
 		expect(attachTerminal).toHaveBeenCalledTimes(2);
 		expect(attachResizeObserver).toHaveBeenCalledTimes(2);
 		expect(syncTerminalStream).toHaveBeenCalledTimes(2);
 	});
 
-	it('treats active-only flips as attach updates with stream reassert on activation', () => {
+	it('treats active-only flips as attach updates with stream reassert on activation', async () => {
 		const attachTerminal = vi.fn();
 		const attachResizeObserver = vi.fn();
 		const syncTerminalStream = vi.fn();
@@ -190,6 +293,7 @@ describe('terminalSyncController', () => {
 			active: false,
 			source: 'controller.initial',
 		});
+		await flushSyncTerminal();
 		controller.syncTerminal({
 			workspaceId: 'ws',
 			terminalId: 'term',
@@ -197,6 +301,7 @@ describe('terminalSyncController', () => {
 			active: true,
 			source: 'controller.active_change',
 		});
+		await flushSyncTerminal();
 
 		expect(attachTerminal).toHaveBeenCalledTimes(2);
 		expect(attachResizeObserver).toHaveBeenCalledTimes(2);
@@ -204,7 +309,7 @@ describe('terminalSyncController', () => {
 		expect(focusTerminal).not.toHaveBeenCalled();
 	});
 
-	it('keeps attach updates on active -> inactive flips for the same container', () => {
+	it('keeps attach updates on active -> inactive flips for the same container', async () => {
 		const attachTerminal = vi.fn();
 		const attachResizeObserver = vi.fn();
 		const syncTerminalStream = vi.fn();
@@ -236,6 +341,7 @@ describe('terminalSyncController', () => {
 			active: true,
 			source: 'controller.initial',
 		});
+		await flushSyncTerminal();
 		controller.syncTerminal({
 			workspaceId: 'ws',
 			terminalId: 'term',
@@ -243,6 +349,7 @@ describe('terminalSyncController', () => {
 			active: false,
 			source: 'controller.active_change',
 		});
+		await flushSyncTerminal();
 
 		expect(attachTerminal).toHaveBeenCalledTimes(2);
 		expect(attachResizeObserver).toHaveBeenCalledTimes(2);
@@ -452,7 +559,7 @@ describe('terminalSyncController', () => {
 		expect(deleteContext).toHaveBeenCalledWith('ws::term');
 	});
 
-	it('clears stale local state when context registry no longer has the terminal key', () => {
+	it('clears stale local state when context registry no longer has the terminal key', async () => {
 		let hasContext = true;
 		const attachTerminal = vi.fn();
 		const syncTerminalStream = vi.fn();
@@ -484,6 +591,7 @@ describe('terminalSyncController', () => {
 			container: first,
 			active: true,
 		});
+		await flushSyncTerminal();
 
 		hasContext = false;
 		controller.syncTerminal({
@@ -492,6 +600,7 @@ describe('terminalSyncController', () => {
 			container: second,
 			active: true,
 		});
+		await flushSyncTerminal();
 
 		expect(attachTerminal).toHaveBeenCalledTimes(2);
 		expect(syncTerminalStream).toHaveBeenCalledTimes(2);

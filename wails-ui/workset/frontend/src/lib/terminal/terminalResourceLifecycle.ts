@@ -7,6 +7,7 @@ export type ResettableTerminalHandle = {
 	fitAddon: {
 		fit: () => void;
 	};
+	opened?: boolean;
 };
 
 type TerminalResourceLifecycleDependencies<THandle extends ResettableTerminalHandle> = {
@@ -34,6 +35,7 @@ export const createTerminalResourceLifecycle = <THandle extends ResettableTermin
 	const resetTerminalInstance = (id: string): void => {
 		const handle = deps.getHandle(id);
 		if (!handle) return;
+		if (handle.opened !== true) return;
 		handle.terminal.reset();
 		handle.terminal.clear();
 		handle.terminal.scrollToBottom();

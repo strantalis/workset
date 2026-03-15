@@ -1,5 +1,5 @@
-import ghosttyWasmUrl from 'ghostty-web/ghostty-vt.wasm?url';
-import { init } from 'ghostty-web';
+import ghosttyWasmUrl from '@strantalis/workset-ghostty-web/ghostty-vt.wasm?url';
+import { init } from '@strantalis/workset-ghostty-web';
 
 let initialized = false;
 let initPromise: Promise<void> | null = null;
@@ -14,7 +14,7 @@ export const ensureGhosttyInitialized = async (): Promise<void> => {
 			() => {
 				initialized = false;
 				initPromise = null;
-				throw new Error('ghostty-web initialization failed');
+				throw new Error('@strantalis/workset-ghostty-web initialization failed');
 			},
 		);
 	}

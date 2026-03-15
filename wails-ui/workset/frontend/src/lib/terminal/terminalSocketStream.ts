@@ -1,9 +1,12 @@
 import { getCurrentWindowName } from '../windowContext';
+import type { TerminalSnapshotLike } from './terminalEmulatorContracts';
 
 type TerminalSocketDescriptor = {
 	sessionId: string;
 	socketUrl?: string;
 	socketToken?: string;
+	cols?: number;
+	rows?: number;
 };
 
 type TerminalSocketAttachReady = {
@@ -21,24 +24,57 @@ type TerminalSocketAttachReady = {
 type TerminalSocketControlMessage = {
 	type?: string;
 	error?: string;
+	requestId?: string;
 	ready?: TerminalSocketAttachReady;
+	snapshot?: TerminalSnapshotLike;
 };
 
 type TerminalSocketClientControlRequest = {
-	type: 'input' | 'resize' | 'set_owner' | 'stop';
+	type: 'input' | 'resize' | 'set_owner' | 'stop' | 'snapshot';
 	data?: string;
 	cols?: number;
 	rows?: number;
 	owner?: string;
+	requestId?: string;
+	snapshot?: TerminalSnapshotLike;
+};
+
+type SnapshotAckWaiter = {
+	resolve: () => void;
+	reject: (error: Error) => void;
 };
 
 type TerminalSocketDependencies = {
 	createWebSocket?: (url: string) => WebSocket;
 	getWindowName?: () => Promise<string>;
+	setTimeoutFn?: (callback: () => void, timeoutMs: number) => ReturnType<typeof setTimeout>;
+	clearTimeoutFn?: (handle: ReturnType<typeof setTimeout>) => void;
 	logDebug?: (id: string, event: string, details: Record<string, unknown>) => void;
 	onReady?: (id: string, ready: TerminalSocketAttachReady) => void;
+	onSnapshot?: (
+		id: string,
+		snapshot: TerminalSnapshotLike,
+		ready: TerminalSocketAttachReady,
+	) => Promise<void> | void;
 	onChunk: (id: string, nextOffset: number, chunk: Uint8Array) => void;
-	onClosed?: (id: string, details: { intentional: boolean; reason: string; code: number }) => void;
+	onClosed?: (
+		id: string,
+		details: {
+			intentional: boolean;
+			reason: string;
+			code: number;
+			sessionID: string;
+			streamID: string;
+			windowName: string;
+			socketURL: string;
+			since: number;
+			ready: boolean;
+			canWrite: boolean;
+			readyMeta: TerminalSocketAttachReady;
+			pendingMessages: number;
+			pendingSnapshotAcks: number;
+		},
+	) => void;
 	onError?: (id: string, error: string) => void;
 };
 
@@ -51,10 +87,16 @@ type ActiveSocket = {
 	socketToken: string;
 	windowName: string;
 	ready: boolean;
+	readyMeta: TerminalSocketAttachReady;
+	canWrite: boolean;
 	pendingMessages: string[];
+	deliveryQueue: Array<() => Promise<void> | void>;
+	deliveryDraining: boolean;
+	pendingSnapshotAcks: Map<string, SnapshotAckWaiter>;
 };
 
 const SOCKET_HEADER_BYTES = 8;
+const SNAPSHOT_ACK_TIMEOUT_MS = 750;
 
 const resolveSocketURL = (descriptor: TerminalSocketDescriptor): string => {
 	const value = descriptor.socketUrl?.trim() ?? '';
@@ -79,10 +121,7 @@ const decodeNextOffset = (buffer: ArrayBuffer): number => {
 	return high * 2 ** 32 + low;
 };
 
-const decodeBinaryMessage = async (
-	value: ArrayBuffer | Blob,
-): Promise<{ nextOffset: number; chunk: Uint8Array }> => {
-	const buffer = value instanceof Blob ? await value.arrayBuffer() : value;
+const decodeBinaryBuffer = (buffer: ArrayBuffer): { nextOffset: number; chunk: Uint8Array } => {
 	if (buffer.byteLength < SOCKET_HEADER_BYTES) {
 		throw new Error('terminal socket frame missing offset header');
 	}
@@ -93,11 +132,20 @@ const decodeBinaryMessage = async (
 	};
 };
 
+const decodeBinaryMessage = async (
+	value: Blob,
+): Promise<{ nextOffset: number; chunk: Uint8Array }> =>
+	decodeBinaryBuffer(await value.arrayBuffer());
+
 export const createTerminalSocketStream = (deps: TerminalSocketDependencies) => {
 	const activeSockets = new Map<string, ActiveSocket>();
 	let nextConnectKey = 1;
+	let nextRequestID = 1;
 	const createWebSocket = deps.createWebSocket ?? ((url: string) => new WebSocket(url));
 	const getWindowName = deps.getWindowName ?? getCurrentWindowName;
+	const setTimeoutFn =
+		deps.setTimeoutFn ?? ((callback, timeoutMs) => setTimeout(callback, timeoutMs));
+	const clearTimeoutFn = deps.clearTimeoutFn ?? ((handle) => clearTimeout(handle));
 
 	const encodeControlPayload = (message: TerminalSocketClientControlRequest): string =>
 		JSON.stringify({
@@ -132,6 +180,9 @@ export const createTerminalSocketStream = (deps: TerminalSocketDependencies) => 
 			...message,
 			owner,
 		});
+		if (message.type === 'set_owner') {
+			active.canWrite = !owner || owner === active.windowName;
+		}
 		if (active.ready && active.socket.readyState === WebSocket.OPEN) {
 			active.socket.send(payload);
 			deps.logDebug?.(id, 'socket_control_send', {
@@ -170,6 +221,7 @@ export const createTerminalSocketStream = (deps: TerminalSocketDependencies) => 
 		if (!sessionID) {
 			throw new Error('terminal session ID missing');
 		}
+
 		const existing = activeSockets.get(id);
 		if (
 			existing &&
@@ -187,13 +239,29 @@ export const createTerminalSocketStream = (deps: TerminalSocketDependencies) => 
 			});
 			return;
 		}
+
+		deps.logDebug?.(id, 'socket_connect_begin', {
+			socketURL,
+			sessionID,
+			since,
+			hasExisting: Boolean(existing),
+			existingReadyState: existing?.socket.readyState,
+			existingReady: existing?.ready,
+			existingCanWrite: existing?.canWrite,
+			cols: descriptor.cols,
+			rows: descriptor.rows,
+		});
+
 		disconnect(id);
+
 		const windowName = await getWindowName();
 		const streamID = `browser-${windowName}-${Date.now()}`;
 		const connectKey = nextConnectKey;
 		nextConnectKey += 1;
+
 		const socket = createWebSocket(socketURL);
 		socket.binaryType = 'arraybuffer';
+
 		const active: ActiveSocket = {
 			socket,
 			intentional: false,
@@ -203,9 +271,24 @@ export const createTerminalSocketStream = (deps: TerminalSocketDependencies) => 
 			socketToken,
 			windowName,
 			ready: false,
+			readyMeta: {},
+			canWrite: false,
 			pendingMessages: [],
+			deliveryQueue: [],
+			deliveryDraining: false,
+			pendingSnapshotAcks: new Map(),
 		};
 		activeSockets.set(id, active);
+		deps.logDebug?.(id, 'socket_connect_created', {
+			socketURL,
+			sessionID,
+			streamID,
+			windowName,
+			since,
+			connectKey,
+			cols: descriptor.cols,
+			rows: descriptor.rows,
+		});
 
 		await new Promise<void>((resolve, reject) => {
 			let settled = false;
@@ -221,6 +304,39 @@ export const createTerminalSocketStream = (deps: TerminalSocketDependencies) => 
 
 			const getCurrent = (): ActiveSocket | undefined => activeSockets.get(id);
 			const isCurrent = (): boolean => getCurrent()?.connectKey === connectKey;
+			const drainDeliveries = async (): Promise<void> => {
+				const current = getCurrent();
+				if (!current || current.deliveryDraining) return;
+				current.deliveryDraining = true;
+				try {
+					while (current.deliveryQueue.length > 0) {
+						const next = current.deliveryQueue.shift();
+						if (!next) continue;
+						const result = next();
+						if (result && typeof (result as PromiseLike<void>).then === 'function') {
+							await result;
+						}
+						if (!isCurrent()) {
+							return;
+						}
+					}
+				} catch (error) {
+					fail(String(error));
+				} finally {
+					const latest = getCurrent();
+					if (latest?.connectKey === connectKey) {
+						latest.deliveryDraining = false;
+					}
+				}
+			};
+			const queueDelivery = (run: () => Promise<void> | void): void => {
+				const current = getCurrent();
+				if (!current) return;
+				current.deliveryQueue.push(run);
+				if (!current.deliveryDraining) {
+					void drainDeliveries();
+				}
+			};
 
 			socket.addEventListener('open', () => {
 				if (!isCurrent()) return;
@@ -230,6 +346,8 @@ export const createTerminalSocketStream = (deps: TerminalSocketDependencies) => 
 					streamID,
 					windowName,
 					since,
+					cols: descriptor.cols,
+					rows: descriptor.rows,
 				});
 				socket.send(
 					JSON.stringify({
@@ -241,12 +359,15 @@ export const createTerminalSocketStream = (deps: TerminalSocketDependencies) => 
 						token: socketToken,
 						since,
 						withBuffer: true,
+						cols: descriptor.cols,
+						rows: descriptor.rows,
 					}),
 				);
 			});
 
 			socket.addEventListener('message', (event) => {
 				if (!isCurrent()) return;
+
 				if (typeof event.data === 'string') {
 					let message: TerminalSocketControlMessage;
 					try {
@@ -259,6 +380,9 @@ export const createTerminalSocketStream = (deps: TerminalSocketDependencies) => 
 						const current = getCurrent();
 						if (current) {
 							current.ready = true;
+							current.readyMeta = message.ready ?? {};
+							current.canWrite =
+								!current.readyMeta.owner || current.readyMeta.owner === current.windowName;
 							current.pendingMessages.unshift(
 								encodeControlPayload({
 									type: 'set_owner',
@@ -282,7 +406,37 @@ export const createTerminalSocketStream = (deps: TerminalSocketDependencies) => 
 						}
 						return;
 					}
+					if (message.type === 'snapshot' && message.snapshot) {
+						queueDelivery(async () => {
+							await deps.onSnapshot?.(
+								id,
+								message.snapshot as TerminalSnapshotLike,
+								getCurrent()?.readyMeta ?? {},
+							);
+						});
+						return;
+					}
+					if (message.type === 'snapshot_ack') {
+						const current = getCurrent();
+						if (!current || !message.requestId) {
+							return;
+						}
+						const waiter = current.pendingSnapshotAcks.get(message.requestId);
+						if (!waiter) {
+							return;
+						}
+						current.pendingSnapshotAcks.delete(message.requestId);
+						waiter.resolve();
+						return;
+					}
 					if (message.type === 'error') {
+						const current = getCurrent();
+						if (current) {
+							for (const waiter of current.pendingSnapshotAcks.values()) {
+								waiter.reject(new Error(message.error?.trim() || 'terminal socket request failed'));
+							}
+							current.pendingSnapshotAcks.clear();
+						}
 						fail(message.error?.trim() || 'terminal socket attach failed');
 						return;
 					}
@@ -296,14 +450,20 @@ export const createTerminalSocketStream = (deps: TerminalSocketDependencies) => 
 					return;
 				}
 
-				void decodeBinaryMessage(event.data as ArrayBuffer | Blob)
-					.then(({ nextOffset, chunk }) => {
+				if (event.data instanceof Blob) {
+					queueDelivery(async () => {
+						const { nextOffset, chunk } = await decodeBinaryMessage(event.data);
 						if (!isCurrent()) return;
 						deps.onChunk(id, nextOffset, chunk);
-					})
-					.catch((error) => {
-						fail(String(error));
 					});
+					return;
+				}
+
+				const { nextOffset, chunk } = decodeBinaryBuffer(event.data as ArrayBuffer);
+				queueDelivery(() => {
+					if (!isCurrent()) return;
+					deps.onChunk(id, nextOffset, chunk);
+				});
 			});
 
 			socket.addEventListener('error', () => {
@@ -313,6 +473,28 @@ export const createTerminalSocketStream = (deps: TerminalSocketDependencies) => 
 			socket.addEventListener('close', (event) => {
 				const current = getCurrent();
 				const intentional = current?.intentional ?? false;
+				const closeDetails = {
+					intentional,
+					reason: event.reason || 'closed',
+					code: event.code,
+					sessionID,
+					streamID,
+					windowName,
+					socketURL,
+					since,
+					ready: current?.ready ?? false,
+					canWrite: current?.canWrite ?? false,
+					readyMeta: current?.readyMeta ?? {},
+					pendingMessages: current?.pendingMessages.length ?? 0,
+					pendingSnapshotAcks: current?.pendingSnapshotAcks.size ?? 0,
+				};
+				deps.logDebug?.(id, 'socket_close', closeDetails);
+				if (current?.connectKey === connectKey) {
+					for (const waiter of current.pendingSnapshotAcks.values()) {
+						waiter.reject(new Error(event.reason || `terminal socket closed (${event.code})`));
+					}
+					current.pendingSnapshotAcks.clear();
+				}
 				if (current?.connectKey === connectKey) {
 					activeSockets.delete(id);
 				}
@@ -321,11 +503,7 @@ export const createTerminalSocketStream = (deps: TerminalSocketDependencies) => 
 					reject(new Error(event.reason || `terminal socket closed (${event.code})`));
 					return;
 				}
-				deps.onClosed?.(id, {
-					intentional,
-					reason: event.reason || 'closed',
-					code: event.code,
-				});
+				deps.onClosed?.(id, closeDetails);
 			});
 		});
 	};
@@ -335,6 +513,10 @@ export const createTerminalSocketStream = (deps: TerminalSocketDependencies) => 
 		hasLiveConnection: (id: string): boolean => {
 			const active = activeSockets.get(id);
 			return Boolean(active && active.ready && active.socket.readyState === WebSocket.OPEN);
+		},
+		canWrite: (id: string): boolean => {
+			const active = activeSockets.get(id);
+			return Boolean(active?.canWrite);
 		},
 		write: (id: string, data: string): void => {
 			if (!data) return;
@@ -358,6 +540,50 @@ export const createTerminalSocketStream = (deps: TerminalSocketDependencies) => 
 			active.intentional = true;
 			sendControl(id, {
 				type: 'stop',
+			});
+		},
+		publishSnapshot: async (
+			id: string,
+			snapshot: TerminalSnapshotLike,
+			awaitAck = false,
+		): Promise<void> => {
+			if (!awaitAck) {
+				sendControl(id, {
+					type: 'snapshot',
+					snapshot,
+				});
+				return;
+			}
+			const active = activeSockets.get(id);
+			if (!active) {
+				throw new Error('terminal socket not connected');
+			}
+			const requestId = `snapshot-${nextRequestID}`;
+			nextRequestID += 1;
+			await new Promise<void>((resolve, reject) => {
+				const timeout = setTimeoutFn(() => {
+					active.pendingSnapshotAcks.delete(requestId);
+					reject(new Error('terminal snapshot acknowledgement timed out'));
+				}, SNAPSHOT_ACK_TIMEOUT_MS);
+				const finish = (fn: () => void): void => {
+					clearTimeoutFn(timeout);
+					fn();
+				};
+				active.pendingSnapshotAcks.set(requestId, {
+					resolve: () => finish(resolve),
+					reject: (error) => finish(() => reject(error)),
+				});
+				try {
+					sendControl(id, {
+						type: 'snapshot',
+						requestId,
+						snapshot,
+					});
+				} catch (error) {
+					clearTimeoutFn(timeout);
+					active.pendingSnapshotAcks.delete(requestId);
+					reject(error instanceof Error ? error : new Error(String(error)));
+				}
 			});
 		},
 		disconnect,

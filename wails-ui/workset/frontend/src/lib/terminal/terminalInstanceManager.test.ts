@@ -194,6 +194,8 @@ describe('terminalInstanceManager', () => {
 		const terminalHandles = new Map<string, TerminalInstanceHandle>();
 		terminalHandles.set('ws::term', {
 			terminal: {
+				cols: 80,
+				rows: 24,
 				dispose: vi.fn(() => calls.push('terminal')),
 				scrollToBottom: vi.fn(),
 				focus: vi.fn(),
@@ -236,5 +238,39 @@ describe('terminalInstanceManager', () => {
 
 		expect(calls).toEqual(['data', 'link-provider', 'terminal']);
 		expect(terminalHandles.has('ws::term')).toBe(false);
+	});
+
+	it('drops a failed attach-open handle so the next attach can recreate it', async () => {
+		const terminalHandles = new Map<string, TerminalInstanceHandle>();
+		const firstListenerState = createEventState();
+		const secondListenerState = createEventState();
+		const firstTerminal = createTerminalMock(firstListenerState);
+		const secondTerminal = createTerminalMock(secondListenerState);
+		const createTerminalInstance = vi
+			.fn()
+			.mockResolvedValueOnce(firstTerminal)
+			.mockResolvedValueOnce(secondTerminal);
+		const attachOpen = vi
+			.fn()
+			.mockRejectedValueOnce(new Error('Failed to open terminal: boom'))
+			.mockResolvedValueOnce(undefined);
+		const manager = createTerminalInstanceManager({
+			terminalHandles,
+			createTerminalInstance,
+			createFitAddon: createFitAddon,
+			onData: vi.fn(),
+			attachOpen,
+		});
+		const container = document.createElement('div') as HTMLDivElement;
+
+		await expect(manager.attach('ws::term', container, true)).rejects.toThrow(
+			'Failed to open terminal: boom',
+		);
+		expect(firstTerminal.dispose).toHaveBeenCalledTimes(1);
+		expect(terminalHandles.has('ws::term')).toBe(false);
+
+		const recovered = await manager.attach('ws::term', container, true);
+		expect(createTerminalInstance).toHaveBeenCalledTimes(2);
+		expect(recovered.terminal).toBe(secondTerminal);
 	});
 });

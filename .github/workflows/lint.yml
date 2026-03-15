@@ -6,10 +6,6 @@ on:
       - main
   pull_request:
 
-env:
-  GHOSTTY_WEB_REPOSITORY: ${{ vars.GHOSTTY_WEB_REPOSITORY || 'strantalis/ghostty-web' }}
-  GHOSTTY_WEB_REF: ${{ vars.GHOSTTY_WEB_REF || 'main' }}
-
 permissions:
   contents: read
 
@@ -88,11 +84,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
-      - name: Checkout ghostty-web sibling
-        shell: bash
-        env:
-          GHOSTTY_WEB_CHECKOUT_TOKEN: ${{ secrets.GHOSTTY_WEB_CHECKOUT_TOKEN }}
-        run: .github/scripts/checkout-ghostty-web.sh
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
@@ -114,11 +105,6 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
         with:
           fetch-depth: 0
-      - name: Checkout ghostty-web sibling
-        shell: bash
-        env:
-          GHOSTTY_WEB_CHECKOUT_TOKEN: ${{ secrets.GHOSTTY_WEB_CHECKOUT_TOKEN }}
-        run: .github/scripts/checkout-ghostty-web.sh
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:

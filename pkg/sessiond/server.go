@@ -401,7 +401,7 @@ func (s *Server) handleAttach(conn net.Conn, line []byte) {
 	}
 	session.outputMu.Lock()
 	snapshot := session.snapshotAttachLocked(req)
-	sub := session.subscribe(streamID)
+	sub := session.subscribe(streamID, snapshot.ready.ReplayNext)
 	session.outputMu.Unlock()
 	defer session.unsubscribe(sub)
 	if err := enc.Encode(StreamMessage{
@@ -411,6 +411,16 @@ func (s *Server) handleAttach(conn net.Conn, line []byte) {
 		Ready:     &snapshot.ready,
 	}); err != nil {
 		return
+	}
+	if len(snapshot.snapshot) > 0 {
+		if err := enc.Encode(StreamMessage{
+			Type:      "snapshot",
+			SessionID: req.SessionID,
+			StreamID:  streamID,
+			Snapshot:  snapshot.snapshot,
+		}); err != nil {
+			return
+		}
 	}
 	if len(snapshot.replay) > 0 {
 		if err := enc.Encode(StreamMessage{
@@ -424,14 +434,18 @@ func (s *Server) handleAttach(conn net.Conn, line []byte) {
 			return
 		}
 	}
-	for event := range sub.ch {
+	for range sub.notify {
+		data, nextOffset, _ := session.pullBuffer(sub)
+		if len(data) == 0 {
+			continue
+		}
 		if err := enc.Encode(StreamMessage{
 			Type:       "data",
 			SessionID:  req.SessionID,
 			StreamID:   streamID,
-			DataB64:    base64.StdEncoding.EncodeToString(event.data),
-			Len:        len(event.data),
-			NextOffset: event.nextOffset,
+			DataB64:    base64.StdEncoding.EncodeToString(data),
+			Len:        len(data),
+			NextOffset: nextOffset,
 		}); err != nil {
 			return
 		}

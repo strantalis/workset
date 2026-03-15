@@ -1,4 +1,4 @@
-import { type ITerminalOptions, type ITheme, Terminal } from 'ghostty-web';
+import { Terminal, type ITerminalOptions, type ITheme } from '@strantalis/workset-ghostty-web';
 import { ensureGhosttyInitialized } from './ghosttyRuntime';
 
 type TokenResolver = (name: string, fallback: string) => string;

@@ -3,10 +3,7 @@ package sessiond
 import "context"
 
 func (s *Session) handleProtocolOutput(ctx context.Context, raw []byte) {
-	var (
-		sanitized  []byte
-		nextOffset int64
-	)
+	var sanitized []byte
 	s.outputMu.Lock()
 
 	s.recordRaw(raw)
@@ -32,9 +29,9 @@ func (s *Session) handleProtocolOutput(ctx context.Context, raw []byte) {
 	s.mu.Lock()
 	s.bumpActivityLocked()
 	s.mu.Unlock()
-	nextOffset = s.recordOutput(sanitized)
+	s.recordOutput(sanitized)
 	s.outputMu.Unlock()
-	s.broadcast(sanitized, nextOffset)
+	s.notifySubscribers()
 }
 
 func (s *Session) sanitizeProtocolOutput(_ context.Context, raw []byte) []byte {

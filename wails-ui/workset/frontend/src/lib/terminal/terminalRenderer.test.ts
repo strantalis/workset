@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const terminalCtor = vi.fn();
 
-vi.mock('ghostty-web', () => ({
+vi.mock('@strantalis/workset-ghostty-web', () => ({
 	Terminal: function MockTerminal(options: unknown) {
 		terminalCtor(options);
 	},
@@ -17,7 +17,7 @@ describe('createTerminalInstance', () => {
 		terminalCtor.mockClear();
 	});
 
-	it('uses the ghostty-web defaults and terminal theme colors', async () => {
+	it('uses the packaged ghostty-web defaults and terminal theme colors', async () => {
 		const { createTerminalInstance } = await import('./terminalRenderer');
 
 		await createTerminalInstance({

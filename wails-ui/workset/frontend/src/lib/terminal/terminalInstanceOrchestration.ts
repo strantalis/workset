@@ -1,4 +1,9 @@
-import { FitAddon, OSC8LinkProvider, Terminal, UrlRegexProvider } from 'ghostty-web';
+import {
+	FitAddon,
+	OSC8LinkProvider,
+	Terminal,
+	UrlRegexProvider,
+} from '@strantalis/workset-ghostty-web';
 import type { TerminalLinkProviderLike, TerminalLinkRange } from './terminalEmulatorContracts';
 import { createTerminalAttachOpenLifecycle } from './terminalAttachOpenLifecycle';
 import { createTerminalFontSizeController } from './terminalFontSizeController';

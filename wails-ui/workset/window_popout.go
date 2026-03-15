@@ -114,9 +114,11 @@ func (a *App) OpenWorkspacePopout(workspaceID string) (WorkspacePopoutPayload, e
 func (a *App) unregisterWorkspacePopout(workspaceID, windowName string) {
 	a.popoutMu.Lock()
 	current := strings.TrimSpace(a.popouts[workspaceID])
-	if current == windowName {
-		delete(a.popouts, workspaceID)
+	if current != windowName {
+		a.popoutMu.Unlock()
+		return
 	}
+	delete(a.popouts, workspaceID)
 	a.popoutMu.Unlock()
 	a.bestEffortTransferWorkspaceTerminalOwner(workspaceID, a.mainWindowName)
 	emitRuntimeEvent(a.ctx, EventWorkspacePopoutClosed, WorkspacePopoutPayload{
@@ -143,6 +145,7 @@ func (a *App) CloseWorkspacePopout(workspaceID string) error {
 	}
 	if win, ok := a.runtimeApp.Window.Get(windowName); ok && win != nil {
 		win.Close()
+		return nil
 	}
 	a.unregisterWorkspacePopout(workspaceID, windowName)
 	return nil

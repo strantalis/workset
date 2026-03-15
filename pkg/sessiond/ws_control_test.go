@@ -2,6 +2,7 @@ package sessiond
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 )
 
@@ -10,7 +11,7 @@ func TestHandleWebsocketControlRequestSetOwnerAndStop(t *testing.T) {
 	session := newSession(DefaultOptions(), "ws-control", "/tmp")
 	server.sessions[session.id] = session
 
-	if err := server.handleWebsocketControlRequest(context.Background(), session, WebsocketControlRequest{
+	if _, err := server.handleWebsocketControlRequest(context.Background(), session, WebsocketControlRequest{
 		Type:  "set_owner",
 		Owner: "popout",
 	}); err != nil {
@@ -20,7 +21,7 @@ func TestHandleWebsocketControlRequestSetOwnerAndStop(t *testing.T) {
 		t.Fatalf("expected websocket owner to be updated, got %q", owner)
 	}
 
-	if err := server.handleWebsocketControlRequest(context.Background(), session, WebsocketControlRequest{
+	if _, err := server.handleWebsocketControlRequest(context.Background(), session, WebsocketControlRequest{
 		Type:  "stop",
 		Owner: "popout",
 	}); err != nil {
@@ -37,7 +38,7 @@ func TestHandleWebsocketControlRequestRejectsStopForNonOwner(t *testing.T) {
 	session.setInputOwner("popout")
 	server.sessions[session.id] = session
 
-	err := server.handleWebsocketControlRequest(context.Background(), session, WebsocketControlRequest{
+	_, err := server.handleWebsocketControlRequest(context.Background(), session, WebsocketControlRequest{
 		Type:  "stop",
 		Owner: "main",
 	})
@@ -53,10 +54,33 @@ func TestHandleWebsocketControlRequestRejectsUnsupportedMessages(t *testing.T) {
 	server := NewServer(DefaultOptions())
 	session := newSession(DefaultOptions(), "ws-control", "/tmp")
 
-	err := server.handleWebsocketControlRequest(context.Background(), session, WebsocketControlRequest{
+	_, err := server.handleWebsocketControlRequest(context.Background(), session, WebsocketControlRequest{
 		Type: "unknown",
 	})
 	if err == nil {
 		t.Fatal("expected unsupported control message to fail")
+	}
+}
+
+func TestHandleWebsocketControlRequestStoresSnapshot(t *testing.T) {
+	server := NewServer(DefaultOptions())
+	session := newSession(DefaultOptions(), "ws-control", "/tmp")
+	session.setInputOwner("main")
+	server.sessions[session.id] = session
+
+	response, err := server.handleWebsocketControlRequest(context.Background(), session, WebsocketControlRequest{
+		Type:      "snapshot",
+		Owner:     "main",
+		RequestID: "req-1",
+		Snapshot:  json.RawMessage(testSnapshotPayload),
+	})
+	if err != nil {
+		t.Fatalf("snapshot publish: %v", err)
+	}
+	if response == nil || response.Type != "snapshot_ack" || response.RequestID != "req-1" {
+		t.Fatalf("expected snapshot ack response, got %+v", response)
+	}
+	if session.snapshot.nextOffset != 5 {
+		t.Fatalf("expected snapshot offset 5, got %d", session.snapshot.nextOffset)
 	}
 }

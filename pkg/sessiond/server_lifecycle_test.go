@@ -14,6 +14,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/coder/websocket"
 )
 
 func requireAttachReady(t *testing.T, msg StreamMessage) *AttachReady {
@@ -237,7 +239,8 @@ func TestAttachStreamsLiveEvents(t *testing.T) {
 		t.Fatalf("expected current offset 0, got %+v", ready)
 	}
 
-	session.broadcast([]byte("hello"), int64(len("hello")))
+	session.buffer.Append([]byte("hello"))
+	session.notifySubscribers()
 
 	var second StreamMessage
 	if err := dec.Decode(&second); err != nil {
@@ -260,6 +263,93 @@ func TestAttachStreamsLiveEvents(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("attach handler did not exit")
+	}
+}
+
+func TestWebsocketAttachAcceptsLargeSnapshotControlMessage(t *testing.T) {
+	client, server, cleanup := startTestServerWithOptionsAndServer(t, nil)
+	defer cleanup()
+
+	session := newSession(server.opts, "large-snapshot", "/tmp")
+	session.cmd = &exec.Cmd{}
+	session.setInputOwner("main")
+	server.sessions[session.id] = session
+
+	infoCtx, infoCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer infoCancel()
+	info, err := client.Info(infoCtx)
+	if err != nil {
+		t.Fatalf("sessiond info: %v", err)
+	}
+
+	wsCtx, wsCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer wsCancel()
+	conn, _, err := websocket.Dial(wsCtx, info.WebSocketURL, nil)
+	if err != nil {
+		t.Fatalf("websocket dial: %v", err)
+	}
+	defer func() {
+		_ = conn.Close(websocket.StatusNormalClosure, "test done")
+	}()
+
+	attachLine, err := json.Marshal(AttachRequest{
+		ProtocolVersion: ProtocolVersion,
+		Type:            "attach",
+		SessionID:       session.id,
+		StreamID:        "large-snapshot-stream",
+		ClientID:        "test-client",
+		Token:           info.WebSocketToken,
+		Cols:            80,
+		Rows:            24,
+	})
+	if err != nil {
+		t.Fatalf("marshal attach: %v", err)
+	}
+	if err := conn.Write(wsCtx, websocket.MessageText, attachLine); err != nil {
+		t.Fatalf("write attach: %v", err)
+	}
+
+	_, payload, err := conn.Read(wsCtx)
+	if err != nil {
+		t.Fatalf("read ready: %v", err)
+	}
+	var readyMsg StreamMessage
+	if err := json.Unmarshal(payload, &readyMsg); err != nil {
+		t.Fatalf("decode ready: %v", err)
+	}
+	requireAttachReady(t, readyMsg)
+
+	largeSnapshot := json.RawMessage(
+		`{"version":1,"nextOffset":5,"cols":80,"rows":24,"activeBuffer":"normal","normalViewportY":0,"cursor":{"x":0,"y":0,"visible":true},"modes":{"dec":[],"ansi":[]},"normalTail":["` +
+			strings.Repeat("x", 40000) +
+			`"]}`,
+	)
+	controlLine, err := json.Marshal(WebsocketControlRequest{
+		Type:      "snapshot",
+		Owner:     "main",
+		RequestID: "large-snapshot",
+		Snapshot:  largeSnapshot,
+	})
+	if err != nil {
+		t.Fatalf("marshal snapshot control: %v", err)
+	}
+	if err := conn.Write(wsCtx, websocket.MessageText, controlLine); err != nil {
+		t.Fatalf("write snapshot control: %v", err)
+	}
+
+	_, payload, err = conn.Read(wsCtx)
+	if err != nil {
+		t.Fatalf("read snapshot ack: %v", err)
+	}
+	var ackMsg StreamMessage
+	if err := json.Unmarshal(payload, &ackMsg); err != nil {
+		t.Fatalf("decode snapshot ack: %v", err)
+	}
+	if ackMsg.Type != "snapshot_ack" || ackMsg.RequestID != "large-snapshot" {
+		t.Fatalf("expected snapshot ack, got %+v", ackMsg)
+	}
+	if session.snapshot.nextOffset != 5 {
+		t.Fatalf("expected snapshot offset 5, got %d", session.snapshot.nextOffset)
 	}
 }
 
@@ -461,7 +551,8 @@ func TestAttachDropsLeadingOrphanSGRFromFirstLiveChunkInAltScreen(t *testing.T) 
 		t.Fatalf("expected data replay event, got %+v", replay)
 	}
 
-	session.broadcast([]byte("[38;2;0;166;84mhello"), int64(len("hello")))
+	session.buffer.Append([]byte("[38;2;0;166;84mhello"))
+	session.notifySubscribers()
 
 	var firstLive StreamMessage
 	if err := dec.Decode(&firstLive); err != nil {
@@ -893,7 +984,7 @@ func TestAttachPreservesMouseModesAcrossSubscriberGap(t *testing.T) {
 		[]byte("\x1b[?1049h\x1b[?1002h\x1b[?1006hfull-screen-frame"),
 	)
 
-	firstSub := session.subscribe("first-stream")
+	firstSub := session.subscribe("first-stream", 0)
 	session.unsubscribe(firstSub)
 
 	server := &Server{

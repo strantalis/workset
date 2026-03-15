@@ -5,21 +5,31 @@ import {
 } from './api/terminal-layout';
 import { fetchWorkspaces, previewRepoHooks, removeWorkspace } from './api/workspaces';
 import {
+	CloseWorkspacePopout,
 	GetWorkspaceTerminalLayout,
 	ListWorkspaceSnapshots,
+	OpenWorkspacePopout,
 	PreviewRepoHooks,
 	RemoveWorkspace,
 	SetWorkspaceTerminalLayout,
 } from '../../bindings/workset/app';
 import type { TerminalLayout } from './types';
 
+vi.mock('./terminal/terminalService', () => ({
+	flushWorkspaceTerminalSnapshots: vi.fn(),
+}));
+
 vi.mock('../../bindings/workset/app', () => ({
 	GetWorkspaceTerminalLayout: vi.fn(),
 	ListWorkspaceSnapshots: vi.fn(),
+	CloseWorkspacePopout: vi.fn(),
+	OpenWorkspacePopout: vi.fn(),
 	PreviewRepoHooks: vi.fn(),
 	RemoveWorkspace: vi.fn(),
 	SetWorkspaceTerminalLayout: vi.fn(),
 }));
+
+import { flushWorkspaceTerminalSnapshots } from './terminal/terminalService';
 
 describe('workspace + terminal API compatibility exports', () => {
 	beforeEach(() => {
@@ -198,5 +208,33 @@ describe('workspace + terminal API compatibility exports', () => {
 			workspacePath: '/tmp/ws-1',
 			layout,
 		});
+	});
+
+	test('openWorkspacePopout flushes terminal snapshots before opening the popout window', async () => {
+		vi.mocked(OpenWorkspacePopout).mockResolvedValue({
+			workspaceId: 'ws-1',
+			windowName: 'workspace-ws-1-popout',
+			open: true,
+		} as Awaited<ReturnType<typeof OpenWorkspacePopout>>);
+
+		const { openWorkspacePopout } = await import('./api/workspaces');
+		await openWorkspacePopout('ws-1');
+
+		expect(flushWorkspaceTerminalSnapshots).toHaveBeenCalledWith('ws-1');
+		expect(OpenWorkspacePopout).toHaveBeenCalledWith('ws-1');
+		expect(vi.mocked(flushWorkspaceTerminalSnapshots).mock.invocationCallOrder[0]).toBeLessThan(
+			vi.mocked(OpenWorkspacePopout).mock.invocationCallOrder[0],
+		);
+	});
+
+	test('closeWorkspacePopout flushes terminal snapshots before returning the popout window', async () => {
+		const { closeWorkspacePopout } = await import('./api/workspaces');
+		await closeWorkspacePopout('ws-1');
+
+		expect(flushWorkspaceTerminalSnapshots).toHaveBeenCalledWith('ws-1');
+		expect(CloseWorkspacePopout).toHaveBeenCalledWith('ws-1');
+		expect(vi.mocked(flushWorkspaceTerminalSnapshots).mock.invocationCallOrder[0]).toBeLessThan(
+			vi.mocked(CloseWorkspacePopout).mock.invocationCallOrder[0],
+		);
 	});
 });
