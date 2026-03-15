@@ -46,6 +46,7 @@ type Session struct {
 	debugOutputSeq atomic.Uint64
 	modeState      terminalModeState
 	modeParser     terminalModeParser
+	snapshot       sessionSnapshotState
 }
 
 func newSession(opts Options, id, cwd string) *Session {

@@ -20,6 +20,7 @@ import (
 const (
 	websocketStreamPath       = "/stream"
 	websocketBinaryHeaderSize = 8
+	websocketReadLimitBytes   = 1 << 20
 )
 
 func (s *Server) startWebsocketServer() (net.Listener, *http.Server, error) {
@@ -55,6 +56,7 @@ func (s *Server) handleWebsocketAttach(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+	conn.SetReadLimit(websocketReadLimitBytes)
 	defer func() {
 		_ = conn.Close(websocket.StatusNormalClosure, "closed")
 	}()
@@ -63,6 +65,7 @@ func (s *Server) handleWebsocketAttach(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	messageType, payload, err := conn.Read(ctx)
 	if err != nil {
+		logServerf("ws_attach_handshake_failed remote=%s err=%v", r.RemoteAddr, err)
 		return
 	}
 	if messageType != websocket.MessageText {
@@ -112,9 +115,66 @@ func (s *Server) handleWebsocketAttach(w http.ResponseWriter, r *http.Request) {
 
 	session.outputMu.Lock()
 	snapshot := session.snapshotAttachLocked(req)
-	sub := session.subscribe(streamID)
+	sub := session.subscribe(streamID, snapshot.ready.ReplayNext)
 	session.outputMu.Unlock()
-	defer session.unsubscribe(sub)
+	state := session.getStreamState()
+	logServerf(
+		"ws_attach_open session=%s stream=%s client=%q remote=%s since=%d cols=%d rows=%d owner=%q subscribers=%d streams=%q replay_next=%d replay_bytes=%d snapshot=%t snapshot_bytes=%d replay_truncated=%t replay_skipped=%t",
+		req.SessionID,
+		streamID,
+		req.ClientID,
+		r.RemoteAddr,
+		req.Since,
+		req.Cols,
+		req.Rows,
+		snapshot.ready.Owner,
+		state.Count,
+		state.StreamIDs,
+		snapshot.ready.ReplayNext,
+		len(snapshot.replay),
+		len(snapshot.snapshot) > 0,
+		len(snapshot.snapshot),
+		snapshot.ready.ReplayTruncated,
+		snapshot.ready.ReplaySkipped,
+	)
+
+	closeReason := "handler_exit"
+	closeCode := websocket.StatusNormalClosure
+	closeText := "closed"
+	var closeMu sync.Mutex
+	setClose := func(reason string, code websocket.StatusCode, text string) {
+		closeMu.Lock()
+		closeReason = reason
+		closeCode = code
+		closeText = text
+		closeMu.Unlock()
+	}
+	getClose := func() (string, websocket.StatusCode, string) {
+		closeMu.Lock()
+		reason := closeReason
+		code := closeCode
+		text := closeText
+		closeMu.Unlock()
+		return reason, code, text
+	}
+	defer func() {
+		reason, code, text := getClose()
+		session.unsubscribeWithReason(sub, reason)
+		state := session.getStreamState()
+		logServerf(
+			"ws_attach_close session=%s stream=%s client=%q reason=%s code=%d text=%q owner=%q subscribers=%d streams=%q sub_offset=%d",
+			req.SessionID,
+			streamID,
+			req.ClientID,
+			reason,
+			code,
+			text,
+			session.getInputOwner(),
+			state.Count,
+			state.StreamIDs,
+			sub.getOffset(),
+		)
+	}()
 
 	streamCtx, streamCancel := context.WithCancel(r.Context())
 	defer streamCancel()
@@ -138,7 +198,19 @@ func (s *Server) handleWebsocketAttach(w http.ResponseWriter, r *http.Request) {
 		StreamID:  streamID,
 		Ready:     &snapshot.ready,
 	}); err != nil {
+		setClose("write_ready_failed", websocket.StatusNormalClosure, err.Error())
 		return
+	}
+	if len(snapshot.snapshot) > 0 {
+		if err := writeControl(streamCtx, StreamMessage{
+			Type:      "snapshot",
+			SessionID: req.SessionID,
+			StreamID:  streamID,
+			Snapshot:  snapshot.snapshot,
+		}); err != nil {
+			setClose("write_snapshot_failed", websocket.StatusNormalClosure, err.Error())
+			return
+		}
 	}
 
 	go func() {
@@ -153,8 +225,10 @@ func (s *Server) handleWebsocketAttach(w http.ResponseWriter, r *http.Request) {
 				if errors.As(err, &closeErr) &&
 					(closeErr.Code == websocket.StatusNormalClosure ||
 						closeErr.Code == websocket.StatusGoingAway) {
+					setClose("client_closed", closeErr.Code, closeErr.Reason)
 					return
 				}
+				setClose("client_read_failed", websocket.StatusNormalClosure, err.Error())
 				return
 			}
 			if messageType != websocket.MessageText {
@@ -162,12 +236,18 @@ func (s *Server) handleWebsocketAttach(w http.ResponseWriter, r *http.Request) {
 					Type:  "error",
 					Error: "control request must be a text frame",
 				})
+				setClose(
+					"invalid_control_frame",
+					websocket.StatusPolicyViolation,
+					"control request must be a text frame",
+				)
 				return
 			}
 
 			var controlReq WebsocketControlRequest
 			if err := json.Unmarshal(payload, &controlReq); err != nil {
 				_ = writeControl(streamCtx, StreamMessage{Type: "error", Error: err.Error()})
+				logServerf("ws_control_decode_failed session=%s stream=%s err=%v", req.SessionID, streamID, err)
 				continue
 			}
 			if controlReq.ProtocolVersion != 0 && controlReq.ProtocolVersion != ProtocolVersion {
@@ -181,11 +261,24 @@ func (s *Server) handleWebsocketAttach(w http.ResponseWriter, r *http.Request) {
 				})
 				continue
 			}
-			if err := s.handleWebsocketControlRequest(streamCtx, session, controlReq); err != nil {
+			response, err := s.handleWebsocketControlRequest(streamCtx, session, controlReq)
+			if err != nil {
 				_ = writeControl(streamCtx, StreamMessage{Type: "error", Error: err.Error()})
+				logServerf(
+					"ws_control_failed session=%s stream=%s type=%s owner=%q err=%v",
+					req.SessionID,
+					streamID,
+					controlReq.Type,
+					controlReq.Owner,
+					err,
+				)
 				continue
 			}
+			if response != nil {
+				_ = writeControl(streamCtx, *response)
+			}
 			if controlReq.Type == "stop" {
+				setClose("stop_request", websocket.StatusNormalClosure, "stop requested")
 				return
 			}
 		}
@@ -193,6 +286,7 @@ func (s *Server) handleWebsocketAttach(w http.ResponseWriter, r *http.Request) {
 
 	if len(snapshot.replay) > 0 {
 		if err := writeBinary(streamCtx, snapshot.ready.ReplayNext, snapshot.replay); err != nil {
+			setClose("write_replay_failed", websocket.StatusNormalClosure, err.Error())
 			return
 		}
 	}
@@ -200,17 +294,31 @@ func (s *Server) handleWebsocketAttach(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-streamCtx.Done():
+			reason, _, _ := getClose()
+			if reason == "handler_exit" {
+				text := "context done"
+				if err := streamCtx.Err(); err != nil {
+					text = err.Error()
+				}
+				setClose("context_done", websocket.StatusNormalClosure, text)
+			}
 			return
-		case event, ok := <-sub.ch:
+		case _, ok := <-sub.notify:
 			if !ok {
 				_ = writeControl(streamCtx, StreamMessage{
 					Type:      "closed",
 					SessionID: req.SessionID,
 					StreamID:  streamID,
 				})
+				setClose("session_closed", websocket.StatusNormalClosure, "subscriber closed")
 				return
 			}
-			if err := writeBinary(streamCtx, event.nextOffset, event.data); err != nil {
+			data, nextOffset, _ := session.pullBuffer(sub)
+			if len(data) == 0 {
+				continue
+			}
+			if err := writeBinary(streamCtx, nextOffset, data); err != nil {
+				setClose("write_chunk_failed", websocket.StatusNormalClosure, err.Error())
 				return
 			}
 		}
@@ -221,25 +329,53 @@ func (s *Server) handleWebsocketControlRequest(
 	ctx context.Context,
 	session *Session,
 	req WebsocketControlRequest,
-) error {
+) (*StreamMessage, error) {
 	switch req.Type {
 	case "input":
-		return session.writeForOwner(ctx, req.Data, req.Owner)
+		return nil, session.writeForOwner(ctx, req.Data, req.Owner)
 	case "resize":
-		return session.resizeForOwner(req.Cols, req.Rows, req.Owner)
+		err := session.resizeForOwner(req.Cols, req.Rows, req.Owner)
+		if err == nil {
+			logServerf("ws_control session=%s type=resize owner=%q cols=%d rows=%d", session.id, req.Owner, req.Cols, req.Rows)
+		}
+		return nil, err
 	case "set_owner":
 		session.setInputOwner(req.Owner)
-		return nil
+		logServerf("ws_control session=%s type=set_owner owner=%q", session.id, req.Owner)
+		return nil, nil
 	case "stop":
 		if err := session.stopForOwner(req.Owner); err != nil {
-			return err
+			return nil, err
 		}
+		logServerf("ws_control session=%s type=stop owner=%q", session.id, req.Owner)
 		s.remove(session.id)
-		return nil
+		return nil, nil
+	case "snapshot":
+		var envelope terminalSnapshotEnvelope
+		if err := json.Unmarshal(req.Snapshot, &envelope); err != nil {
+			return nil, errors.New("invalid terminal snapshot: " + err.Error())
+		}
+		if err := session.storeSnapshotForOwner(req.Snapshot, req.Owner); err != nil {
+			return nil, err
+		}
+		logServerf(
+			"ws_control session=%s type=snapshot owner=%q request_id=%q next_offset=%d cols=%d rows=%d",
+			session.id,
+			req.Owner,
+			req.RequestID,
+			envelope.NextOffset,
+			envelope.Cols,
+			envelope.Rows,
+		)
+		return &StreamMessage{
+			Type:      "snapshot_ack",
+			SessionID: session.id,
+			RequestID: req.RequestID,
+		}, nil
 	case "ping":
-		return nil
+		return nil, nil
 	default:
-		return fmt.Errorf("unsupported websocket request type %q", req.Type)
+		return nil, fmt.Errorf("unsupported websocket request type %q", req.Type)
 	}
 }
 

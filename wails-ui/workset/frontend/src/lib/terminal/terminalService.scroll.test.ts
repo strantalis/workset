@@ -203,7 +203,7 @@ const apiMock = vi.hoisted(() => ({
 	stopWorkspaceTerminal: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('ghostty-web', () => ({
+vi.mock('@strantalis/workset-ghostty-web', () => ({
 	init: vi.fn(async () => undefined),
 	Terminal: MockTerminal,
 	FitAddon: MockFitAddon,
@@ -410,10 +410,9 @@ describe('terminalService resize flow', () => {
 		socket.emitBinary(encodeChunk(5, 'hello '));
 		socket.emitBinary(encodeChunk(11, 'world'));
 
-		await Promise.resolve();
-		await Promise.resolve();
-
-		expect(terminal.write).toHaveBeenCalledTimes(1);
+		await vi.waitFor(() => {
+			expect(terminal.write).toHaveBeenCalledTimes(1);
+		});
 		const merged = terminal.write.mock.calls[0][0] as unknown as Uint8Array;
 		expect(new TextDecoder().decode(merged)).toBe('hello world');
 	});

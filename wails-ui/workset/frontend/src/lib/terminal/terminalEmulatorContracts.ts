@@ -2,6 +2,27 @@ export type TerminalDisposable = {
 	dispose: () => void;
 };
 
+export type TerminalSnapshotLike = {
+	version: number;
+	nextOffset: number;
+	cols: number;
+	rows: number;
+	activeBuffer: 'normal' | 'alternate';
+	normalViewportY: number;
+	cursor: {
+		x: number;
+		y: number;
+		visible: boolean;
+	};
+	modes: {
+		dec: number[];
+		ansi: number[];
+	};
+	normalTail: string[];
+	normalScreen?: string[];
+	alternateScreen?: string[];
+};
+
 type BivariantHandler<T> = {
 	bivarianceHack: (value: T) => void;
 }['bivarianceHack'];
@@ -51,6 +72,8 @@ export type TerminalWritableLike = {
 export type TerminalEventLike = {
 	onData: (callback: (data: string) => void) => TerminalDisposable;
 	onResponse?: (callback: (data: string) => void) => TerminalDisposable;
+	onResize?: (callback: (event: { cols: number; rows: number }) => void) => TerminalDisposable;
+	onScroll?: (callback: (viewportY: number) => void) => TerminalDisposable;
 };
 
 export type TerminalAddonLike = TerminalDisposable;
@@ -82,6 +105,13 @@ export type TerminalLike = TerminalAttachOpenLike &
 	TerminalWritableLike &
 	TerminalEventLike &
 	TerminalDisposable & {
+		cols: number;
+		rows: number;
+		serializeState?: (options?: {
+			nextOffset?: number;
+			normalTailRows?: number;
+		}) => TerminalSnapshotLike;
+		restoreState?: (snapshot: TerminalSnapshotLike) => Promise<void> | void;
 		options: {
 			fontSize: number;
 		};

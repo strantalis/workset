@@ -60,12 +60,12 @@ export const createTerminalSyncController = (deps: TerminalSyncControllerDepende
 	const attachmentState = new Map<string, TerminalAttachmentState>();
 	const containerOwners = new Map<HTMLDivElement, string>();
 
-	const requestAttach = (
+	const requestAttach = async (
 		id: string,
 		container: HTMLDivElement,
 		active: boolean,
 		trace: TerminalAttachTraceMeta,
-	): void => {
+	): Promise<boolean> => {
 		const displacedId = containerOwners.get(container);
 		if (displacedId && displacedId !== id) {
 			requestDetach(displacedId, {
@@ -99,9 +99,22 @@ export const createTerminalSyncController = (deps: TerminalSyncControllerDepende
 				reason: trace.reason,
 				source: trace.source ?? '',
 			});
-			return;
+			return true;
 		}
-		deps.attachTerminal(id, container, active);
+		const attachResult = deps.attachTerminal(id, container, active);
+		if (attachResult && typeof (attachResult as Promise<unknown>).then === 'function') {
+			try {
+				await attachResult;
+			} catch (error) {
+				deps.trace?.(id, 'mount_attach_failed', {
+					active,
+					reason: trace.reason,
+					source: trace.source ?? '',
+					error: String(error),
+				});
+				return false;
+			}
+		}
 		deps.attachResizeObserver(id, container);
 		attachmentState.set(id, { container, active });
 		containerOwners.set(container, id);
@@ -113,6 +126,7 @@ export const createTerminalSyncController = (deps: TerminalSyncControllerDepende
 			containerWidth: container.clientWidth,
 			containerHeight: container.clientHeight,
 		});
+		return true;
 	};
 
 	const requestDetach = (
@@ -144,65 +158,79 @@ export const createTerminalSyncController = (deps: TerminalSyncControllerDepende
 
 	const syncTerminal = (input: TerminalSyncInput): void => {
 		if (!input.terminalId || !input.workspaceId) return;
-		deps.ensureGlobals();
-		const terminalKey = deps.buildTerminalKey(input.workspaceId, input.terminalId);
-		if (!terminalKey) return;
-		const source = input.source?.trim() || 'unspecified';
-		let previous = lastSyncState.get(terminalKey);
-		if (previous && deps.hasContext && !deps.hasContext(terminalKey)) {
-			lastSyncState.delete(terminalKey);
-			attachmentState.delete(terminalKey);
-			deps.trace?.(terminalKey, 'sync_terminal_clear_stale_state', {
-				source,
-			});
-			previous = undefined;
-		}
+		void (async () => {
+			deps.ensureGlobals();
+			const terminalKey = deps.buildTerminalKey(input.workspaceId, input.terminalId);
+			if (!terminalKey) return;
+			const source = input.source?.trim() || 'unspecified';
+			let previous = lastSyncState.get(terminalKey);
+			if (previous && deps.hasContext && !deps.hasContext(terminalKey)) {
+				lastSyncState.delete(terminalKey);
+				attachmentState.delete(terminalKey);
+				deps.trace?.(terminalKey, 'sync_terminal_clear_stale_state', {
+					source,
+				});
+				previous = undefined;
+			}
 
-		if (
-			previous &&
-			previous.workspaceId === input.workspaceId &&
-			previous.terminalId === input.terminalId &&
-			previous.container === input.container &&
-			previous.active === input.active
-		) {
-			deps.trace?.(terminalKey, 'sync_terminal_skip_unchanged', {
-				source,
-				hasContainer: Boolean(input.container),
+			if (
+				previous &&
+				previous.workspaceId === input.workspaceId &&
+				previous.terminalId === input.terminalId &&
+				previous.container === input.container &&
+				previous.active === input.active
+			) {
+				deps.trace?.(terminalKey, 'sync_terminal_skip_unchanged', {
+					source,
+					hasContainer: Boolean(input.container),
+					active: input.active,
+				});
+				return;
+			}
+
+			lastSyncState.set(terminalKey, {
+				workspaceId: input.workspaceId,
+				terminalId: input.terminalId,
+				container: input.container,
 				active: input.active,
 			});
-			return;
-		}
-
-		lastSyncState.set(terminalKey, {
-			workspaceId: input.workspaceId,
-			terminalId: input.terminalId,
-			container: input.container,
-			active: input.active,
-		});
-		deps.ensureContext({
-			terminalKey,
-			workspaceId: input.workspaceId,
-			terminalId: input.terminalId,
-			container: input.container,
-			active: input.active,
-		});
-
-		if (!input.container) {
-			deps.trace?.(terminalKey, 'sync_terminal_skip_stream_no_container', {
-				source,
+			deps.ensureContext({
+				terminalKey,
+				workspaceId: input.workspaceId,
+				terminalId: input.terminalId,
+				container: input.container,
 				active: input.active,
 			});
-			return;
-		}
 
-		requestAttach(terminalKey, input.container, input.active, {
-			reason: 'sync_terminal_attach',
-			source,
-		});
-		deps.syncTerminalStream(terminalKey);
-		deps.trace?.(terminalKey, 'sync_terminal_stream_requested', {
-			source,
-		});
+			if (!input.container) {
+				deps.trace?.(terminalKey, 'sync_terminal_skip_stream_no_container', {
+					source,
+					active: input.active,
+				});
+				return;
+			}
+
+			const attached = await requestAttach(terminalKey, input.container, input.active, {
+				reason: 'sync_terminal_attach',
+				source,
+			});
+			if (!attached) {
+				const current = lastSyncState.get(terminalKey);
+				if (
+					current?.workspaceId === input.workspaceId &&
+					current?.terminalId === input.terminalId &&
+					current?.container === input.container &&
+					current?.active === input.active
+				) {
+					lastSyncState.delete(terminalKey);
+				}
+				return;
+			}
+			deps.syncTerminalStream(terminalKey);
+			deps.trace?.(terminalKey, 'sync_terminal_stream_requested', {
+				source,
+			});
+		})();
 	};
 
 	const detachTerminal = (

@@ -14,6 +14,7 @@ const api = {
 
 vi.mock('../../api/settings', () => ({
 	fetchSettings: vi.fn(),
+	fetchSessiondStatus: vi.fn(),
 	setDefaultSetting: vi.fn(),
 	restartSessiond: vi.fn(),
 }));
@@ -28,8 +29,10 @@ vi.mock('../../api/updates', () => ({
 }));
 
 vi.mock('../../api/terminal-layout', () => ({
+	fetchTerminalBootstrap: vi.fn(),
 	fetchWorkspaceTerminalLayout: vi.fn(),
 	createWorkspaceTerminal: vi.fn(),
+	logTerminalDebug: vi.fn(),
 	persistWorkspaceTerminalLayout: vi.fn(),
 	stopWorkspaceTerminal: vi.fn(),
 }));

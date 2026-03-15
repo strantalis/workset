@@ -8,7 +8,7 @@ This document describes the current Workset desktop terminal stack.
 
 ## Components
 
-- **Frontend (Svelte + `ghostty-web`)** renders terminal state and emits user input plus protocol responses.
+- **Frontend (Svelte + `@strantalis/workset-ghostty-web`)** renders terminal state and emits user input plus protocol responses.
 - **Wails app (Go)** is a thin desktop broker for bootstrap, window identity, and app integration.
 - **`workset-sessiond` daemon** owns PTYs, terminal leases, replay buffers, and the live websocket stream.
 - **Shell process** runs inside the PTY.
@@ -16,7 +16,7 @@ This document describes the current Workset desktop terminal stack.
 
 ```mermaid
 flowchart LR
-  UI[Frontend<br/>Svelte + ghostty-web] <-- bootstrap via Wails --> App[Wails app]
+  UI[Frontend<br/>Svelte + @strantalis/workset-ghostty-web] <-- bootstrap via Wails --> App[Wails app]
   App <-- unix socket control --> D[workset-sessiond]
   UI <-- localhost websocket live I/O --> D
   D <-- PTY I/O --> Shell[User shell + commands]
@@ -29,7 +29,7 @@ The PTY stream is the source of truth, and `workset-sessiond` is the source of t
 
 - `sessiond` owns PTY creation, replay buffers, terminal ownership, and live stream fanout.
 - The Wails app does not keep an independent owner map.
-- The frontend renders terminal bytes via `ghostty-web` and sends input over the live websocket.
+- The frontend renders terminal bytes via the published `@strantalis/workset-ghostty-web` package and sends input over the live websocket.
 
 ## Session lifecycle
 

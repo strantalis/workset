@@ -224,6 +224,43 @@ func TestGetWorkspaceTerminalOwnerDefaultsToMainWithoutSessions(t *testing.T) {
 	}
 }
 
+func TestUnregisterWorkspacePopoutIgnoresStaleWindowName(t *testing.T) {
+	client, cleanup := startSessiondClientForTerminalOwnershipTest(t)
+	defer cleanup()
+
+	app := NewApp()
+	app.sessiondClient = client
+
+	workspaceID := "test-workspace"
+	terminalID := "term-1"
+	sessionID := terminalSessionID(workspaceID, terminalID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := client.Create(ctx, sessionID, "/tmp"); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := client.SetOwner(ctx, sessionID, "workspace-test-popout"); err != nil {
+		t.Fatalf("set owner: %v", err)
+	}
+
+	registerTerminalSession(app, workspaceID, terminalID, client, time.Now())
+	app.popouts[workspaceID] = "workspace-test-popout"
+
+	app.unregisterWorkspacePopout(workspaceID, "stale-window")
+
+	if got := app.popouts[workspaceID]; got != "workspace-test-popout" {
+		t.Fatalf("expected popout to remain registered, got %q", got)
+	}
+	owner, err := client.GetOwner(ctx, sessionID)
+	if err != nil {
+		t.Fatalf("get owner: %v", err)
+	}
+	if owner.Owner != "workspace-test-popout" {
+		t.Fatalf("expected stale unregister to keep popout owner, got %q", owner.Owner)
+	}
+}
+
 func TestStopWorkspaceTerminalForWindowRejectsNonOwner(t *testing.T) {
 	client, cleanup := startSessiondClientForTerminalOwnershipTest(t)
 	defer cleanup()

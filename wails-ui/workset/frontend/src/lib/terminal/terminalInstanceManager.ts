@@ -9,6 +9,8 @@ type TerminalInstanceHandle = {
 	fitAddon: FitAddonLike;
 	linkProviders?: TerminalLinkProviderLike[];
 	linkProvidersRegistered?: boolean;
+	opened?: boolean;
+	openWindow?: Window | null;
 	dataDisposable: {
 		dispose: () => void;
 	};
@@ -108,6 +110,18 @@ const registerLinkProviders = (
 export const createTerminalInstanceManager = (deps: TerminalInstanceManagerDeps) => {
 	const creatingTerminalPromises = new Map<string, Promise<TerminalInstanceHandle>>();
 
+	const disposeHandle = (id: string, handle: TerminalInstanceHandle): void => {
+		creatingTerminalPromises.delete(id);
+		handle.dataDisposable?.dispose();
+		for (const provider of handle.linkProviders ?? []) {
+			provider.dispose?.();
+		}
+		handle.terminal.dispose();
+		if (deps.terminalHandles.get(id) === handle) {
+			deps.terminalHandles.delete(id);
+		}
+	};
+
 	const createHandle = async (
 		id: string,
 		container: HTMLDivElement | null,
@@ -168,7 +182,19 @@ export const createTerminalInstanceManager = (deps: TerminalInstanceManagerDeps)
 				active,
 				hasContainer: Boolean(container),
 			});
-			await deps.attachOpen({ id, handle, container, active });
+			try {
+				await deps.attachOpen({ id, handle, container, active });
+			} catch (error) {
+				const message =
+					error instanceof Error ? error.message : 'Failed to attach/open terminal instance';
+				deps.onRendererDebug?.(id, 'terminal_attach_open_failed', {
+					active,
+					hasContainer: Boolean(container),
+					message,
+				});
+				disposeHandle(id, handle);
+				throw error;
+			}
 			registerLinkProviders(id, deps, handle);
 			return handle;
 		},
@@ -176,13 +202,7 @@ export const createTerminalInstanceManager = (deps: TerminalInstanceManagerDeps)
 		dispose: (id: string): void => {
 			const handle = deps.terminalHandles.get(id);
 			if (!handle) return;
-			creatingTerminalPromises.delete(id);
-			handle.dataDisposable?.dispose();
-			for (const provider of handle.linkProviders ?? []) {
-				provider.dispose?.();
-			}
-			handle.terminal.dispose();
-			deps.terminalHandles.delete(id);
+			disposeHandle(id, handle);
 			deps.onRendererDebug?.(id, 'terminal_instance_disposed', {});
 		},
 	};

@@ -19,10 +19,6 @@ on:
         default: false
         type: boolean
 
-env:
-  GHOSTTY_WEB_REPOSITORY: ${{ vars.GHOSTTY_WEB_REPOSITORY || 'strantalis/ghostty-web' }}
-  GHOSTTY_WEB_REF: ${{ vars.GHOSTTY_WEB_REF || 'main' }}
-
 permissions:
   actions: write
   contents: write
@@ -205,11 +201,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
-      - name: Checkout ghostty-web sibling
-        shell: bash
-        env:
-          GHOSTTY_WEB_CHECKOUT_TOKEN: ${{ secrets.GHOSTTY_WEB_CHECKOUT_TOKEN }}
-        run: .github/scripts/checkout-ghostty-web.sh
       - name: Set up Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
@@ -461,11 +452,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
-      - name: Checkout ghostty-web sibling
-        shell: bash
-        env:
-          GHOSTTY_WEB_CHECKOUT_TOKEN: ${{ secrets.GHOSTTY_WEB_CHECKOUT_TOKEN }}
-        run: .github/scripts/checkout-ghostty-web.sh
       - name: Set up Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
@@ -594,11 +580,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
-      - name: Checkout ghostty-web sibling
-        shell: bash
-        env:
-          GHOSTTY_WEB_CHECKOUT_TOKEN: ${{ secrets.GHOSTTY_WEB_CHECKOUT_TOKEN }}
-        run: .github/scripts/checkout-ghostty-web.sh
       - name: Set up Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
@@ -850,11 +831,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
-      - name: Checkout ghostty-web sibling
-        shell: bash
-        env:
-          GHOSTTY_WEB_CHECKOUT_TOKEN: ${{ secrets.GHOSTTY_WEB_CHECKOUT_TOKEN }}
-        run: .github/scripts/checkout-ghostty-web.sh
       - name: Set up Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
