@@ -168,44 +168,18 @@ func setEnv(env []string, key, value string) []string {
 	return append(env, prefix+value)
 }
 
-func unsetEnv(env []string, key string) []string {
+func envValue(env []string, key string) string {
 	prefix := key + "="
-	filtered := env[:0]
 	for _, entry := range env {
 		if strings.HasPrefix(entry, prefix) {
-			continue
+			return strings.TrimPrefix(entry, prefix)
 		}
-		filtered = append(filtered, entry)
 	}
-	return filtered
-}
-
-func unsetEnvPrefix(env []string, keyPrefix string) []string {
-	filtered := env[:0]
-	for _, entry := range env {
-		key, _, found := strings.Cut(entry, "=")
-		if found && strings.HasPrefix(key, keyPrefix) {
-			continue
-		}
-		filtered = append(filtered, entry)
-	}
-	return filtered
+	return ""
 }
 
 func buildSessionEnv(shellPath, workspaceID, cwd string) []string {
 	env := append([]string(nil), os.Environ()...)
-	// Remove host-terminal hints that cause TUIs to emit unsupported graphics
-	// protocols (kitty/iTerm specific) inside xterm.js.
-	env = unsetEnvPrefix(env, "KITTY_")
-	env = unsetEnv(env, "TERM_PROGRAM")
-	env = unsetEnv(env, "TERM_PROGRAM_VERSION")
-	env = unsetEnv(env, "ITERM_SESSION_ID")
-	env = unsetEnv(env, "LC_TERMINAL")
-	env = unsetEnv(env, "LC_TERMINAL_VERSION")
-
-	env = setEnv(env, "TERM", "xterm-256color")
-	env = setEnv(env, "COLORTERM", "truecolor")
-	env = setEnv(env, "TERM_PROGRAM", "workset")
 	env = setEnv(env, "SHELL", shellPath)
 	env = setEnv(env, "WORKSET_WORKSPACE", workspaceID)
 	env = setEnv(env, "WORKSET_ROOT", cwd)

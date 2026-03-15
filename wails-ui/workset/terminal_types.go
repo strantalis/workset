@@ -10,22 +10,6 @@ import (
 	"github.com/strantalis/workset/pkg/sessiond"
 )
 
-type TerminalPayload struct {
-	WorkspaceID string `json:"workspaceId"`
-	TerminalID  string `json:"terminalId"`
-	WindowName  string `json:"windowName,omitempty"`
-	DataB64     string `json:"dataB64,omitempty"`
-	Bytes       int    `json:"bytes"`
-	Seq         int64  `json:"seq,omitempty"`
-}
-
-type TerminalStatusPayload struct {
-	WorkspaceID string `json:"workspaceId"`
-	TerminalID  string `json:"terminalId,omitempty"`
-	Active      bool   `json:"active"`
-	Error       string `json:"error,omitempty"`
-}
-
 type TerminalDebugPayload struct {
 	WorkspaceID string `json:"workspaceId"`
 	TerminalID  string `json:"terminalId"`
@@ -38,10 +22,18 @@ type TerminalCreatePayload struct {
 	TerminalID  string `json:"terminalId"`
 }
 
-type terminalStream interface {
-	Next(*sessiond.StreamMessage) error
-	ID() string
-	Close() error
+type TerminalSessionDescriptor struct {
+	WorkspaceID   string `json:"workspaceId"`
+	TerminalID    string `json:"terminalId"`
+	SessionID     string `json:"sessionId"`
+	WindowName    string `json:"windowName,omitempty"`
+	Owner         string `json:"owner,omitempty"`
+	CanWrite      bool   `json:"canWrite"`
+	Running       bool   `json:"running"`
+	CurrentOffset int64  `json:"currentOffset"`
+	SocketURL     string `json:"socketUrl,omitempty"`
+	SocketToken   string `json:"socketToken,omitempty"`
+	Transport     string `json:"transport"`
 }
 
 type terminalSession struct {
@@ -51,10 +43,7 @@ type terminalSession struct {
 	path        string
 	mu          sync.Mutex
 
-	client       *sessiond.Client
-	stream       terminalStream
-	streamCancel context.CancelFunc
-	streamOwner  string
+	client *sessiond.Client
 
 	starting bool
 	startErr error
@@ -65,7 +54,6 @@ type terminalSession struct {
 	idleTimer    *time.Timer
 	closed       bool
 	closeReason  string
-	resumed      bool
 }
 
 const terminalSessionSeparator = "::"
@@ -178,32 +166,8 @@ func (s *terminalSession) Close() error {
 	return s.CloseWithReason("closed")
 }
 
-func (s *terminalSession) releaseStream(stream terminalStream) (releasedCurrent bool) {
-	if stream != nil {
-		_ = stream.Close()
-	}
-	s.mu.Lock()
-	if s.stream == stream {
-		s.stream = nil
-		s.streamCancel = nil
-		s.streamOwner = ""
-		releasedCurrent = true
-	}
-	s.mu.Unlock()
-	return releasedCurrent
-}
-
 func (s *terminalSession) CloseWithReason(reason string) error {
 	s.mu.Lock()
-	if s.streamCancel != nil {
-		s.streamCancel()
-		s.streamCancel = nil
-	}
-	if s.stream != nil {
-		_ = s.stream.Close()
-		s.stream = nil
-	}
-	s.streamOwner = ""
 	defer s.mu.Unlock()
 	if s.closed {
 		return nil

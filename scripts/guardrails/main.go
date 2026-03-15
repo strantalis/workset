@@ -76,6 +76,9 @@ func loadHeadLOC(cfg guardrails.CompiledConfig) (map[string]int, error) {
 
 		data, err := os.ReadFile(filepath.Clean(p))
 		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
 			return nil, fmt.Errorf("read %q: %w", p, err)
 		}
 		headLOC[p] = guardrails.CountLOC(p, data)

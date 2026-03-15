@@ -15,7 +15,6 @@ import {
 	GetPullRequestStatus,
 	GetTrackedPullRequest,
 	ListRemotes,
-	SendPullRequestReviewsToTerminal,
 } from '../../../../bindings/workset/app';
 import {
 	mapCheckAnnotations,
@@ -128,7 +127,6 @@ export async function fetchPullRequestReviews(
 		repoId,
 		number: number ?? 0,
 		branch: branch ?? '',
-		terminalId: '',
 	})) as unknown as PullRequestReviewsResponse;
 
 	return mapPullRequestReviewComments(result.comments ?? []);
@@ -144,20 +142,4 @@ export async function generatePullRequestText(
 	})) as PullRequestGenerated;
 
 	return result;
-}
-
-export async function sendPullRequestReviewsToTerminal(
-	workspaceId: string,
-	repoId: string,
-	number?: number,
-	branch?: string,
-	terminalId?: string,
-): Promise<void> {
-	await SendPullRequestReviewsToTerminal({
-		workspaceId,
-		repoId,
-		number: number ?? 0,
-		branch: branch ?? '',
-		terminalId: terminalId ?? '',
-	});
 }

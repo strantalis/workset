@@ -1,13 +1,6 @@
 import type { TerminalDebugStats } from './terminalServiceState';
 
-type RuntimeHandle = {
-	terminal: {
-		rows: number;
-		refresh: (start: number, end: number) => void;
-	};
-};
-
-type RuntimeDeps<THandle extends RuntimeHandle> = {
+type RuntimeDeps<THandle> = {
 	lifecycle: {
 		setHealth: (
 			id: string,
@@ -38,9 +31,7 @@ type RuntimeDeps<THandle extends RuntimeHandle> = {
 	terminalHandles: Map<string, THandle>;
 };
 
-export const createTerminalServiceRuntime = <THandle extends RuntimeHandle>(
-	deps: RuntimeDeps<THandle>,
-) => {
+export const createTerminalServiceRuntime = <THandle>(deps: RuntimeDeps<THandle>) => {
 	const setHealth = (
 		id: string,
 		state: 'unknown' | 'checking' | 'ok' | 'stale',
@@ -80,18 +71,11 @@ export const createTerminalServiceRuntime = <THandle extends RuntimeHandle>(
 		void deps.terminalTransport.logDebug(workspaceId, terminalId, event, JSON.stringify(details));
 	};
 
-	const forceRedraw = (id: string): void => {
-		const handle = deps.terminalHandles.get(id);
-		if (!handle) return;
-		handle.terminal.refresh(0, handle.terminal.rows - 1);
-	};
-
 	return {
 		setHealth,
 		updateStats,
 		updateStatsLastOutput,
 		captureCpr,
 		logDebug,
-		forceRedraw,
 	};
 };

@@ -22,9 +22,12 @@ func newTerminalBuffer(maxBytes int) *terminalBuffer {
 	return &terminalBuffer{maxBytes: maxBytes}
 }
 
-func (b *terminalBuffer) Append(data []byte) {
+func (b *terminalBuffer) Append(data []byte) int64 {
 	if len(data) == 0 {
-		return
+		b.mu.Lock()
+		total := b.total
+		b.mu.Unlock()
+		return total
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -41,6 +44,7 @@ func (b *terminalBuffer) Append(data []byte) {
 		b.chunks = b.chunks[1:]
 		b.size -= len(oldest.data)
 	}
+	return b.total
 }
 
 func (b *terminalBuffer) ReadSince(offset int64) ([]byte, int64, bool) {
@@ -71,4 +75,13 @@ func (b *terminalBuffer) ReadSince(offset int64) ([]byte, int64, bool) {
 		out = append(out, chunk.data...)
 	}
 	return out, b.total, truncated
+}
+
+func (b *terminalBuffer) SnapshotOffsets() (int64, int64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if len(b.chunks) == 0 {
+		return b.total, b.total
+	}
+	return b.chunks[0].start, b.total
 }

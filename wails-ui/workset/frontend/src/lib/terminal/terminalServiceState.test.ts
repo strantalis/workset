@@ -190,7 +190,7 @@ describe('terminalServiceState output buffering', () => {
 		expect(delayed.chunks.map((item) => item.seq)).toEqual([1]);
 	});
 
-	it('holds across seq gaps in normal mode and recovers on forced flush', () => {
+	it('accepts monotonic non-contiguous seq values for a single terminal', () => {
 		const state = createTerminalServiceState();
 
 		state.enqueueOrderedStreamChunk('ws::term', {
@@ -212,17 +212,11 @@ describe('terminalServiceState output buffering', () => {
 			receivedAt: 3,
 		});
 
-		const first = state.consumeOrderedStreamChunks('ws::term');
-		expect(first.chunks.map((item) => item.seq)).toEqual([248, 249]);
-
-		const blocked = state.consumeOrderedStreamChunks('ws::term');
-		expect(blocked.chunks).toHaveLength(0);
-
-		const recovered = state.consumeOrderedStreamChunks('ws::term', {
+		const flushed = state.consumeOrderedStreamChunks('ws::term', {
 			force: true,
 		});
-		expect(recovered.chunks.map((item) => item.seq)).toEqual([251]);
-		expect(recovered.droppedStaleChunks).toBe(1);
+		expect(flushed.chunks.map((item) => item.seq)).toEqual([248, 249, 251]);
+		expect(flushed.droppedStaleChunks).toBe(0);
 
 		const stale = state.enqueueOrderedStreamChunk('ws::term', {
 			seq: 250,

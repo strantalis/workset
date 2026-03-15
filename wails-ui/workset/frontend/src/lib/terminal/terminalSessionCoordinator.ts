@@ -1,3 +1,5 @@
+import type { TerminalSessionStartResult } from './terminalTransport';
+
 type TerminalSettingsPayload = {
 	defaults?: {
 		terminalDebugOverlay?: string;
@@ -16,7 +18,6 @@ type TerminalCoordinatorLifecycle = {
 	markStopped: (id: string) => void;
 	setStatusAndMessage: (id: string, status: string, message: string) => void;
 	setInput: (id: string, value: boolean) => void;
-	ensureRendererDefaults: (id: string) => void;
 	markStartInFlight: (id: string) => void;
 	clearStartInFlight: (id: string) => void;
 	clearStartupTimeout: (id: string) => void;
@@ -29,7 +30,7 @@ type TerminalCoordinatorDependencies = {
 	getWorkspaceId: (id: string) => string;
 	getTerminalId: (id: string) => string;
 	transport: {
-		start: (workspaceId: string, terminalId: string) => Promise<void>;
+		start: (workspaceId: string, terminalId: string) => Promise<TerminalSessionStartResult>;
 		write: (workspaceId: string, terminalId: string, data: string) => Promise<void>;
 		fetchSettings: () => Promise<TerminalSettingsPayload | null>;
 		fetchSessiondStatus: () => Promise<TerminalSessiondStatusPayload | null>;
@@ -44,10 +45,22 @@ type TerminalCoordinatorDependencies = {
 	setDebugOverlayPreference: (value: 'on' | 'off' | '') => void;
 	clearLocalDebugPreference: () => void;
 	syncDebugEnabled: () => void;
-	onSessionReady?: (id: string) => void;
+	onSessionReady?: (id: string, descriptor: TerminalSessionStartResult) => Promise<void> | void;
 };
 
 export const createTerminalSessionCoordinator = (deps: TerminalCoordinatorDependencies) => {
+	const summarizeStartResult = (
+		descriptor: TerminalSessionStartResult,
+	): Record<string, unknown> => ({
+		sessionId: descriptor.sessionId,
+		windowName: descriptor.windowName ?? '',
+		owner: descriptor.owner ?? '',
+		canWrite: descriptor.canWrite,
+		running: descriptor.running,
+		currentOffset: descriptor.currentOffset,
+		transport: descriptor.transport,
+	});
+
 	const log = (id: string, event: string, details: Record<string, unknown>): void => {
 		deps.logDebug(id, event, details);
 	};
@@ -77,31 +90,6 @@ export const createTerminalSessionCoordinator = (deps: TerminalCoordinatorDepend
 			return;
 		}
 		if (deps.lifecycle.hasStarted(id)) {
-			if (quiet) {
-				log(id, 'session_begin_skip_started', { quiet });
-				return;
-			}
-			log(id, 'session_begin_reassert_start', { quiet, workspaceId, terminalId });
-			try {
-				await deps.transport.start(workspaceId, terminalId);
-				deps.lifecycle.setInput(id, true);
-				deps.lifecycle.setStatusAndMessage(id, 'ready', '');
-				deps.setHealth(id, 'ok', 'Session active.');
-				deps.lifecycle.ensureRendererDefaults(id);
-				deps.onSessionReady?.(id);
-				deps.emitState(id);
-				log(id, 'session_begin_reassert_ok', { quiet });
-				return;
-			} catch (error) {
-				// Fall through to full start path if the backend no longer has the session.
-				deps.lifecycle.markStopped(id);
-				log(id, 'session_begin_reassert_error', {
-					quiet,
-					error: String(error),
-				});
-			}
-		}
-		if (deps.lifecycle.hasStarted(id)) {
 			log(id, 'session_begin_skip_started', { quiet });
 			return;
 		}
@@ -123,16 +111,15 @@ export const createTerminalSessionCoordinator = (deps: TerminalCoordinatorDepend
 
 		try {
 			log(id, 'session_begin_transport_start', {});
-			await deps.transport.start(workspaceId, terminalId);
+			const descriptor = await deps.transport.start(workspaceId, terminalId);
+			await deps.onSessionReady?.(id, descriptor);
 			deps.lifecycle.markStarted(id);
-			deps.lifecycle.setInput(id, true);
+			deps.lifecycle.setInput(id, descriptor.canWrite);
 			deps.lifecycle.setStatusAndMessage(id, 'ready', '');
 			deps.setHealth(id, 'ok', 'Session active.');
-			deps.lifecycle.ensureRendererDefaults(id);
-			deps.onSessionReady?.(id);
-			log(id, 'session_begin_transport_ok', {});
+			log(id, 'session_begin_transport_ok', summarizeStartResult(descriptor));
 			const queued = deps.pendingInput.get(id);
-			if (queued) {
+			if (queued && descriptor.canWrite) {
 				log(id, 'session_begin_flush_pending', {
 					bytes: queued.length,
 				});
@@ -148,6 +135,12 @@ export const createTerminalSessionCoordinator = (deps: TerminalCoordinatorDepend
 						bytes: queued.length,
 					});
 				}
+			} else if (queued) {
+				deps.pendingInput.delete(id);
+				log(id, 'session_begin_drop_pending_read_only', {
+					bytes: queued.length,
+					...summarizeStartResult(descriptor),
+				});
 			}
 			deps.emitState(id);
 		} catch (error) {
@@ -170,17 +163,10 @@ export const createTerminalSessionCoordinator = (deps: TerminalCoordinatorDepend
 		await beginTerminal(id, true);
 	};
 
-	const initTerminal = async (
-		id: string,
-		options: {
-			ensureListeners: () => void;
-		},
-	): Promise<void> => {
+	const initTerminal = async (id: string): Promise<void> => {
 		if (!id) return;
 		log(id, 'session_init_start', {});
-		options.ensureListeners();
 		deps.lifecycle.dropHealthCheck(id);
-		deps.lifecycle.ensureRendererDefaults(id);
 		if (!deps.lifecycle.hasStarted(id) && !deps.lifecycle.hasStartInFlight(id)) {
 			deps.lifecycle.setStatusAndMessage(id, 'standby', '');
 			deps.setHealth(id, 'unknown');

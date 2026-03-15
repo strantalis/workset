@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,6 +24,8 @@ type Server struct {
 	creating map[string]*createCall
 	mu       sync.Mutex
 	shutdown func()
+	wsURL    string
+	wsToken  string
 }
 
 type createCall struct {
@@ -88,6 +91,21 @@ func (s *Server) Listen(ctx context.Context) error {
 	if s.opts.SocketPath == "" {
 		return errors.New("socket path required")
 	}
+	wsListener, wsServer, err := s.startWebsocketServer()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		defer cancel()
+		_ = wsServer.Shutdown(shutdownCtx)
+		_ = wsListener.Close()
+	}()
+	go func() {
+		if err := wsServer.Serve(wsListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logServerf("websocket_listen_failed addr=%s err=%v", wsListener.Addr().String(), err)
+		}
+	}()
 	if err := os.MkdirAll(filepath.Dir(s.opts.SocketPath), 0o755); err != nil {
 		logServerf("mkdir_error path=%s err=%v", filepath.Dir(s.opts.SocketPath), err)
 		return err
@@ -208,6 +226,18 @@ func (s *Server) handleControl(ctx context.Context, conn net.Conn, line []byte) 
 			return
 		}
 		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true})
+	case "inspect":
+		var params InspectRequest
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			s.writeError(conn, err)
+			return
+		}
+		session := s.get(params.SessionID)
+		if session == nil {
+			s.writeError(conn, errors.New("session not found"))
+			return
+		}
+		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true, Result: session.inspect()})
 	case "resize":
 		var params ResizeRequest
 		if err := json.Unmarshal(req.Params, &params); err != nil {
@@ -219,7 +249,7 @@ func (s *Server) handleControl(ctx context.Context, conn net.Conn, line []byte) 
 			s.writeError(conn, errors.New("session not found"))
 			return
 		}
-		if err := session.resize(params.Cols, params.Rows); err != nil {
+		if err := session.resizeForOwner(params.Cols, params.Rows, params.Owner); err != nil {
 			s.writeError(conn, err)
 			return
 		}
@@ -232,7 +262,10 @@ func (s *Server) handleControl(ctx context.Context, conn net.Conn, line []byte) 
 		}
 		session := s.get(params.SessionID)
 		if session != nil {
-			session.closeWithReason("closed")
+			if err := session.stopForOwner(params.Owner); err != nil {
+				s.writeError(conn, err)
+				return
+			}
 			s.remove(params.SessionID)
 		}
 		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true})
@@ -303,8 +336,10 @@ func (s *Server) handleControl(ctx context.Context, conn net.Conn, line []byte) 
 		_ = json.NewEncoder(conn).Encode(ControlResponse{
 			OK: true,
 			Result: InfoResponse{
-				Executable: exe,
-				BinaryHash: hash,
+				Executable:     exe,
+				BinaryHash:     hash,
+				WebSocketURL:   s.wsURL,
+				WebSocketToken: s.wsToken,
 			},
 		})
 	case "shutdown":
@@ -364,44 +399,39 @@ func (s *Server) handleAttach(conn net.Conn, line []byte) {
 	if streamID == "" {
 		streamID = newStreamID()
 	}
-	var replay []byte
-	// Snapshot buffered output before subscribing while the output lock is held
-	// so newly attached viewers can reconstruct terminal mode/state.
 	session.outputMu.Lock()
-	prefix := session.modeReplayPrefixLocked()
-	if session.buffer != nil {
-		replay, _, _ = session.buffer.ReadSince(0)
-	}
-	if len(prefix) > 0 {
-		withPrefix := make([]byte, 0, len(prefix)+len(replay))
-		withPrefix = append(withPrefix, prefix...)
-		withPrefix = append(withPrefix, replay...)
-		replay = withPrefix
-	}
+	snapshot := session.snapshotAttachLocked(req)
 	sub := session.subscribe(streamID)
 	session.outputMu.Unlock()
 	defer session.unsubscribe(sub)
-	if err := enc.Encode(StreamMessage{Type: "ready", SessionID: req.SessionID, StreamID: streamID}); err != nil {
+	if err := enc.Encode(StreamMessage{
+		Type:      "ready",
+		SessionID: req.SessionID,
+		StreamID:  streamID,
+		Ready:     &snapshot.ready,
+	}); err != nil {
 		return
 	}
-	if len(replay) > 0 {
+	if len(snapshot.replay) > 0 {
 		if err := enc.Encode(StreamMessage{
-			Type:      "data",
-			SessionID: req.SessionID,
-			StreamID:  streamID,
-			DataB64:   base64.StdEncoding.EncodeToString(replay),
-			Len:       len(replay),
+			Type:       "data",
+			SessionID:  req.SessionID,
+			StreamID:   streamID,
+			DataB64:    base64.StdEncoding.EncodeToString(snapshot.replay),
+			Len:        len(snapshot.replay),
+			NextOffset: snapshot.ready.ReplayNext,
 		}); err != nil {
 			return
 		}
 	}
 	for event := range sub.ch {
 		if err := enc.Encode(StreamMessage{
-			Type:      "data",
-			SessionID: req.SessionID,
-			StreamID:  streamID,
-			DataB64:   base64.StdEncoding.EncodeToString(event),
-			Len:       len(event),
+			Type:       "data",
+			SessionID:  req.SessionID,
+			StreamID:   streamID,
+			DataB64:    base64.StdEncoding.EncodeToString(event.data),
+			Len:        len(event.data),
+			NextOffset: event.nextOffset,
 		}); err != nil {
 			return
 		}

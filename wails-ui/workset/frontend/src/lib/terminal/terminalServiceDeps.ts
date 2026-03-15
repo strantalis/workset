@@ -1,10 +1,4 @@
 import type { TerminalSyncControllerDependencies } from './terminalSyncController';
-import type { TerminalTransport } from './terminalTransport';
-
-type SessionTransportAdapter = Pick<
-	TerminalTransport,
-	'start' | 'write' | 'fetchSettings' | 'fetchSessiondStatus'
->;
 
 type ResourceLifecycleDepsInput<THandle> = {
 	terminalViewportResizeController: {
@@ -58,21 +52,11 @@ type SyncControllerDepsInput = {
 	terminalAttachState: {
 		markDetached: (id: string) => void;
 	};
-	terminalTransport: {
-		stop: (workspaceId: string, terminalId: string) => Promise<void>;
-	};
+	stopTerminal: (workspaceId: string, terminalId: string) => Promise<void>;
 	terminalResourceLifecycle: {
 		disposeTerminalResources: (id: string) => void;
 	};
 };
-
-export const createTerminalSessionTransport = (transport: SessionTransportAdapter) => ({
-	start: (workspaceId: string, terminalId: string) => transport.start(workspaceId, terminalId),
-	write: (workspaceId: string, terminalId: string, data: string) =>
-		transport.write(workspaceId, terminalId, data),
-	fetchSettings: () => transport.fetchSettings(),
-	fetchSessiondStatus: () => transport.fetchSessiondStatus(),
-});
 
 export const createTerminalResourceLifecycleDeps = <THandle>(
 	input: ResourceLifecycleDepsInput<THandle>,
@@ -106,7 +90,7 @@ export const createTerminalSyncControllerDeps = (
 	syncTerminalStream: (id: string) => input.terminalStreamOrchestrator.syncTerminalStream(id),
 	markDetached: (id: string) => input.terminalAttachState.markDetached(id),
 	stopTerminal: (workspaceId: string, terminalId: string) =>
-		input.terminalTransport.stop(workspaceId, terminalId),
+		input.stopTerminal(workspaceId, terminalId),
 	disposeTerminalResources: (id: string) =>
 		input.terminalResourceLifecycle.disposeTerminalResources(id),
 	focusTerminal: (id: string) => input.terminalViewportResizeController.focusTerminal(id),
@@ -120,27 +104,16 @@ type SessionCoordinatorBridge = {
 	beginTerminal: (id: string, quiet?: boolean) => Promise<void>;
 	loadTerminalDefaults: () => Promise<void>;
 	refreshSessiondStatus: () => Promise<void>;
-	initTerminal: (
-		id: string,
-		options: {
-			ensureListeners: () => void;
-		},
-	) => Promise<void>;
+	initTerminal: (id: string) => Promise<void>;
 };
 
-export const createTerminalSessionBridge = (
-	getCoordinator: () => SessionCoordinatorBridge,
-	ensureListeners: () => void,
-) => ({
+export const createTerminalSessionBridge = (getCoordinator: () => SessionCoordinatorBridge) => ({
 	ensureSessionActive: (id: string): Promise<void> => getCoordinator().ensureSessionActive(id),
 	beginTerminal: (id: string, quiet = false): Promise<void> =>
 		getCoordinator().beginTerminal(id, quiet),
 	loadTerminalDefaults: (): Promise<void> => getCoordinator().loadTerminalDefaults(),
 	refreshSessiondStatus: (): Promise<void> => getCoordinator().refreshSessiondStatus(),
-	initTerminal: (id: string): Promise<void> =>
-		getCoordinator().initTerminal(id, {
-			ensureListeners,
-		}),
+	initTerminal: (id: string): Promise<void> => getCoordinator().initTerminal(id),
 });
 
 type EnsureTerminalGlobalsDeps = {

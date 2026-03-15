@@ -54,7 +54,7 @@
 		groupMode?: WorksetGroupMode;
 		onSelectWorkspace: (workspaceId: string) => void;
 		onCreateWorkspace: () => void;
-		onOpenCockpit?: () => void;
+		onOpenWorkspaces?: () => void;
 		onAddRepo: (workspaceId: string) => void;
 		onRemoveWorkspace: (workspaceId: string) => void;
 		onTogglePin: (workspaceId: string, nextPinned: boolean) => void;
@@ -74,7 +74,7 @@
 		activeWorkspaceId,
 		onSelectWorkspace,
 		onCreateWorkspace,
-		onOpenCockpit = () => {},
+		onOpenWorkspaces = () => {},
 		onAddRepo,
 		onRemoveWorkspace,
 		onTogglePin,
@@ -395,9 +395,9 @@
 							<span class="daemon-dot"></span>
 							Daemon Active
 						</div>
-						<button type="button" class="cockpit-btn" onclick={onOpenCockpit}>
+						<button type="button" class="open-workspaces-btn" onclick={onOpenWorkspaces}>
 							<Terminal size={12} />
-							Open Cockpit
+							Open Workspaces
 						</button>
 					</div>
 				</div>

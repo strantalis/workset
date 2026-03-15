@@ -22,7 +22,9 @@ const createHandle = (input: {
 		focus: vi.fn(),
 	};
 	const fitAddon: TerminalViewportResizeHandle['fitAddon'] = {
+		dispose: vi.fn(),
 		fit: vi.fn(),
+		proposeDimensions: vi.fn(),
 	};
 	return {
 		terminal,
@@ -73,12 +75,10 @@ describe('terminalViewportResizeController', () => {
 		const id = 'ws::term';
 		const handle = createHandle({ baseY: 10, viewportY: 10 });
 		const resizeToFit = vi.fn();
-		const forceRedraw = vi.fn();
 		const resizeOverlay = vi.fn();
 		const controller = createTerminalViewportResizeController({
 			getHandle: (key) => (key === id ? handle : undefined),
 			hasStarted: () => true,
-			forceRedraw,
 			resizeToFit,
 			resizeOverlay,
 		});
@@ -87,7 +87,6 @@ describe('terminalViewportResizeController', () => {
 
 		expect(handle.fitAddon.fit).toHaveBeenCalledTimes(1);
 		expect(resizeOverlay).toHaveBeenCalledWith(handle);
-		expect(forceRedraw).toHaveBeenCalledTimes(1);
 		expect(resizeToFit).toHaveBeenCalledWith(id, handle);
 	});
 
@@ -95,14 +94,12 @@ describe('terminalViewportResizeController', () => {
 		const id = 'ws::term';
 		const handle = createHandle({ baseY: 10, viewportY: 10 });
 		const resizeToFit = vi.fn();
-		const forceRedraw = vi.fn();
 		const resizeOverlay = vi.fn();
 		const hiddenHost = document.createElement('div');
 		handle.terminal.element = { parentElement: hiddenHost };
 		const controller = createTerminalViewportResizeController({
 			getHandle: (key) => (key === id ? handle : undefined),
 			hasStarted: () => true,
-			forceRedraw,
 			resizeToFit,
 			resizeOverlay,
 		});
@@ -111,7 +108,6 @@ describe('terminalViewportResizeController', () => {
 
 		expect(handle.fitAddon.fit).not.toHaveBeenCalled();
 		expect(resizeOverlay).not.toHaveBeenCalled();
-		expect(forceRedraw).not.toHaveBeenCalled();
 		expect(resizeToFit).not.toHaveBeenCalled();
 	});
 
@@ -119,12 +115,10 @@ describe('terminalViewportResizeController', () => {
 		const id = 'ws::term';
 		const handle = createHandle({ baseY: 10, viewportY: 10 });
 		const resizeToFit = vi.fn();
-		const forceRedraw = vi.fn();
 		const observers: MockObserver[] = [];
 		const controller = createTerminalViewportResizeController({
 			getHandle: (key) => (key === id ? handle : undefined),
 			hasStarted: () => true,
-			forceRedraw,
 			resizeToFit,
 			resizeOverlay: vi.fn(),
 			resizeDebounceMs: 100,
@@ -144,7 +138,6 @@ describe('terminalViewportResizeController', () => {
 
 		vi.advanceTimersByTime(1);
 		expect(handle.fitAddon.fit).toHaveBeenCalledTimes(1);
-		expect(forceRedraw).toHaveBeenCalledTimes(1);
 		expect(resizeToFit).toHaveBeenCalledTimes(1);
 
 		observers[0].trigger();
@@ -154,70 +147,25 @@ describe('terminalViewportResizeController', () => {
 		expect(handle.fitAddon.fit).toHaveBeenCalledTimes(1);
 	});
 
-	it('focuses eagerly or with deferred retry and exposes bottom helpers', () => {
-		const forceRedraw = vi.fn();
-		const resizeToFit = vi.fn();
+	it('focuses only when a handle exists and exposes bottom helpers', () => {
 		const state: { handle?: TerminalViewportResizeHandle } = {};
 		const controller = createTerminalViewportResizeController({
 			getHandle: () => state.handle,
 			hasStarted: () => true,
-			forceRedraw,
-			resizeToFit,
+			resizeToFit: vi.fn(),
 			resizeOverlay: vi.fn(),
 		});
 
 		controller.focusTerminal('ws::term');
-		controller.focusTerminal('ws::term');
 
 		state.handle = createHandle({ baseY: 15, viewportY: 9 });
-		vi.runAllTimers();
-		expect(state.handle.terminal.focus).toHaveBeenCalledTimes(1);
-		expect(state.handle.fitAddon.fit).toHaveBeenCalledTimes(1);
-		expect(forceRedraw).toHaveBeenCalledTimes(1);
-		expect(resizeToFit).toHaveBeenCalledTimes(1);
-
 		controller.focusTerminal('ws::term');
-		expect(state.handle.terminal.focus).toHaveBeenCalledTimes(2);
-		expect(state.handle.fitAddon.fit).toHaveBeenCalledTimes(2);
-		expect(forceRedraw).toHaveBeenCalledTimes(2);
-		expect(resizeToFit).toHaveBeenCalledTimes(2);
 
-		vi.runAllTimers();
-		expect(state.handle.fitAddon.fit).toHaveBeenCalledTimes(3);
-		expect(forceRedraw).toHaveBeenCalledTimes(3);
-		expect(resizeToFit).toHaveBeenCalledTimes(3);
-
+		expect(state.handle.terminal.focus).toHaveBeenCalledTimes(1);
+		expect(state.handle.fitAddon.fit).not.toHaveBeenCalled();
 		expect(controller.isAtBottom('ws::term')).toBe(false);
 		controller.scrollToBottom('ws::term');
 		expect(controller.isAtBottom('ws::term')).toBe(true);
 		expect(controller.isAtBottom('missing')).toBe(true);
-	});
-
-	it('does not let refit timers suppress focus retry scheduling', () => {
-		const forceRedraw = vi.fn();
-		const resizeToFit = vi.fn();
-		const state: { handle?: TerminalViewportResizeHandle } = {};
-		const controller = createTerminalViewportResizeController({
-			getHandle: () => state.handle,
-			hasStarted: () => true,
-			forceRedraw,
-			resizeToFit,
-			resizeOverlay: vi.fn(),
-		});
-
-		const first = createHandle({ baseY: 5, viewportY: 5 });
-		const second = createHandle({ baseY: 8, viewportY: 6 });
-		state.handle = first;
-		controller.focusTerminal('ws::term');
-		expect(first.terminal.focus).toHaveBeenCalledTimes(1);
-
-		// Simulate pane churn where a second focus request lands while handle is unavailable.
-		state.handle = undefined;
-		controller.focusTerminal('ws::term');
-		state.handle = second;
-
-		vi.runAllTimers();
-		expect(second.terminal.focus).toHaveBeenCalledTimes(1);
-		expect(second.fitAddon.fit).toHaveBeenCalledTimes(2);
 	});
 });

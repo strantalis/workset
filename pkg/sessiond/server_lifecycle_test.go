@@ -16,6 +16,17 @@ import (
 	"time"
 )
 
+func requireAttachReady(t *testing.T, msg StreamMessage) *AttachReady {
+	t.Helper()
+	if msg.Type != "ready" {
+		t.Fatalf("expected ready, got %+v", msg)
+	}
+	if msg.Ready == nil {
+		t.Fatalf("expected ready metadata, got %+v", msg)
+	}
+	return msg.Ready
+}
+
 func TestConcurrentCreateSinglePTY(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("pty not supported on windows")
@@ -215,11 +226,18 @@ func TestAttachStreamsLiveEvents(t *testing.T) {
 	if err := dec.Decode(&first); err != nil {
 		t.Fatalf("attach ready response: %v", err)
 	}
-	if first.Type != "ready" {
-		t.Fatalf("expected ready, got %+v", first)
+	ready := requireAttachReady(t, first)
+	if !ready.Running {
+		t.Fatalf("expected running attach metadata, got %+v", ready)
+	}
+	if ready.ReplayRequested {
+		t.Fatalf("did not expect replay request, got %+v", ready)
+	}
+	if ready.CurrentOffset != 0 {
+		t.Fatalf("expected current offset 0, got %+v", ready)
 	}
 
-	session.broadcast([]byte("hello"))
+	session.broadcast([]byte("hello"), int64(len("hello")))
 
 	var second StreamMessage
 	if err := dec.Decode(&second); err != nil {
@@ -265,6 +283,7 @@ func TestAttachReplaysBufferedEvents(t *testing.T) {
 		Type:            "attach",
 		SessionID:       "running-session",
 		StreamID:        "running-stream",
+		WithBuffer:      true,
 	})
 	if err != nil {
 		t.Fatalf("marshal attach: %v", err)
@@ -282,8 +301,15 @@ func TestAttachReplaysBufferedEvents(t *testing.T) {
 	if err := dec.Decode(&first); err != nil {
 		t.Fatalf("attach ready response: %v", err)
 	}
-	if first.Type != "ready" {
-		t.Fatalf("expected ready, got %+v", first)
+	ready := requireAttachReady(t, first)
+	if !ready.ReplayRequested {
+		t.Fatalf("expected replay request metadata, got %+v", ready)
+	}
+	if ready.ReplayTruncated || ready.ReplaySkipped {
+		t.Fatalf("did not expect replay truncation or skip, got %+v", ready)
+	}
+	if ready.ReplayStart != 0 || ready.ReplayNext != int64(len("\x1b[?1049h\x1b[?1002h")) {
+		t.Fatalf("unexpected replay cursor metadata: %+v", ready)
 	}
 
 	var second StreamMessage
@@ -310,27 +336,162 @@ func TestAttachReplaysBufferedEvents(t *testing.T) {
 	}
 }
 
-func TestAttachReplaysTerminalModesAfterBufferRollover(t *testing.T) {
+func TestAttachSkipsBufferedReplayWhileAltScreenActive(t *testing.T) {
 	opts := DefaultOptions()
-	opts.BufferBytes = 64 * 1024
 	session := newSession(opts, "running-session", "/tmp")
 	session.cmd = &exec.Cmd{}
-
-	// Enable alt screen + mouse tracking once, then emit enough output to evict
-	// those setup bytes from the ring buffer.
-	session.handleProtocolOutput(
-		context.Background(),
-		[]byte("\x1b[?1049h\x1b[?1002h\x1b[?1006h"+strings.Repeat("x", 96*1024)),
-	)
-	session.handleProtocolOutput(context.Background(), []byte("tail"))
-
-	session.outputMu.Lock()
-	buffered, _, _ := session.buffer.ReadSince(0)
-	session.outputMu.Unlock()
-	if strings.Contains(string(buffered), "\x1b[?1049h") || strings.Contains(string(buffered), "\x1b[?1002h") || strings.Contains(string(buffered), "\x1b[?1006h") {
-		t.Fatalf("expected ring buffer to roll over setup modes, got %q", string(buffered))
+	session.handleProtocolOutput(context.Background(), []byte("\x1b[?1049hfull-screen-frame"))
+	server := &Server{
+		opts:     opts,
+		sessions: map[string]*Session{"running-session": session},
 	}
 
+	clientConn, serverConn := net.Pipe()
+	defer func() {
+		_ = clientConn.Close()
+	}()
+
+	attachLine, err := json.Marshal(AttachRequest{
+		ProtocolVersion: ProtocolVersion,
+		Type:            "attach",
+		SessionID:       "running-session",
+		StreamID:        "running-stream",
+		WithBuffer:      true,
+	})
+	if err != nil {
+		t.Fatalf("marshal attach: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() { _ = serverConn.Close() }()
+		server.handleAttach(serverConn, attachLine)
+	}()
+
+	dec := json.NewDecoder(clientConn)
+	var first StreamMessage
+	if err := dec.Decode(&first); err != nil {
+		t.Fatalf("attach ready response: %v", err)
+	}
+	ready := requireAttachReady(t, first)
+	if !ready.ReplayRequested || !ready.ReplaySkipped {
+		t.Fatalf("expected replay skip metadata, got %+v", ready)
+	}
+	if ready.ReplayTruncated {
+		t.Fatalf("did not expect replay truncation, got %+v", ready)
+	}
+
+	var second StreamMessage
+	if err := dec.Decode(&second); err != nil {
+		t.Fatalf("attach replay response: %v", err)
+	}
+	if second.Type != "data" {
+		t.Fatalf("expected data replay event, got %+v", second)
+	}
+	payload, err := base64.StdEncoding.DecodeString(second.DataB64)
+	if err != nil {
+		t.Fatalf("decode replay payload: %v", err)
+	}
+	got := string(payload)
+	if !strings.Contains(got, "\x1b[?1049h") {
+		t.Fatalf("expected replay payload to keep alt-screen prefix, got %q", got)
+	}
+	if strings.Contains(got, "full-screen-frame") {
+		t.Fatalf("did not expect buffered alt-screen frame replay, got %q", got)
+	}
+
+	_ = clientConn.Close()
+	session.closeSubscribers()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("attach handler did not exit")
+	}
+}
+
+func TestAttachDropsLeadingOrphanSGRFromFirstLiveChunkInAltScreen(t *testing.T) {
+	opts := DefaultOptions()
+	session := newSession(opts, "running-session", "/tmp")
+	session.cmd = &exec.Cmd{}
+	session.handleProtocolOutput(context.Background(), []byte("\x1b[?1049hfull-screen-frame"))
+	server := &Server{
+		opts:     opts,
+		sessions: map[string]*Session{"running-session": session},
+	}
+
+	clientConn, serverConn := net.Pipe()
+	defer func() {
+		_ = clientConn.Close()
+	}()
+
+	attachLine, err := json.Marshal(AttachRequest{
+		ProtocolVersion: ProtocolVersion,
+		Type:            "attach",
+		SessionID:       "running-session",
+		StreamID:        "running-stream",
+		WithBuffer:      true,
+	})
+	if err != nil {
+		t.Fatalf("marshal attach: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() { _ = serverConn.Close() }()
+		server.handleAttach(serverConn, attachLine)
+	}()
+
+	dec := json.NewDecoder(clientConn)
+	var ready StreamMessage
+	if err := dec.Decode(&ready); err != nil {
+		t.Fatalf("attach ready response: %v", err)
+	}
+	readyMeta := requireAttachReady(t, ready)
+	if !readyMeta.ReplaySkipped {
+		t.Fatalf("expected replay skip metadata, got %+v", readyMeta)
+	}
+
+	var replay StreamMessage
+	if err := dec.Decode(&replay); err != nil {
+		t.Fatalf("attach replay response: %v", err)
+	}
+	if replay.Type != "data" {
+		t.Fatalf("expected data replay event, got %+v", replay)
+	}
+
+	session.broadcast([]byte("[38;2;0;166;84mhello"), int64(len("hello")))
+
+	var firstLive StreamMessage
+	if err := dec.Decode(&firstLive); err != nil {
+		t.Fatalf("attach first live response: %v", err)
+	}
+	if firstLive.Type != "data" {
+		t.Fatalf("expected data live event, got %+v", firstLive)
+	}
+	payload, err := base64.StdEncoding.DecodeString(firstLive.DataB64)
+	if err != nil {
+		t.Fatalf("decode live payload: %v", err)
+	}
+	if got := string(payload); got != "[38;2;0;166;84mhello" {
+		t.Fatalf("expected first live chunk to pass through unchanged, got %q", got)
+	}
+
+	_ = clientConn.Close()
+	session.closeSubscribers()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("attach handler did not exit")
+	}
+}
+
+func TestAttachSkipsReplayWhenBufferNotRequested(t *testing.T) {
+	opts := DefaultOptions()
+	session := newSession(opts, "running-session", "/tmp")
+	session.cmd = &exec.Cmd{}
+	session.recordOutput([]byte("history"))
 	server := &Server{
 		opts:     opts,
 		sessions: map[string]*Session{"running-session": session},
@@ -363,8 +524,336 @@ func TestAttachReplaysTerminalModesAfterBufferRollover(t *testing.T) {
 	if err := dec.Decode(&first); err != nil {
 		t.Fatalf("attach ready response: %v", err)
 	}
-	if first.Type != "ready" {
-		t.Fatalf("expected ready, got %+v", first)
+	ready := requireAttachReady(t, first)
+	if ready.ReplayRequested {
+		t.Fatalf("did not expect replay request metadata, got %+v", ready)
+	}
+	if ready.CurrentOffset != int64(len("history")) {
+		t.Fatalf("expected current offset to reflect retained history, got %+v", ready)
+	}
+
+	_ = clientConn.Close()
+	session.closeSubscribers()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("attach handler did not exit")
+	}
+}
+
+func TestAttachReplaysBufferedEventsSinceOffset(t *testing.T) {
+	opts := DefaultOptions()
+	session := newSession(opts, "running-session", "/tmp")
+	session.cmd = &exec.Cmd{}
+	session.recordOutput([]byte("prefix"))
+	session.recordOutput([]byte("suffix"))
+	server := &Server{
+		opts:     opts,
+		sessions: map[string]*Session{"running-session": session},
+	}
+
+	clientConn, serverConn := net.Pipe()
+	defer func() {
+		_ = clientConn.Close()
+	}()
+
+	attachLine, err := json.Marshal(AttachRequest{
+		ProtocolVersion: ProtocolVersion,
+		Type:            "attach",
+		SessionID:       "running-session",
+		StreamID:        "running-stream",
+		Since:           int64(len("prefix")),
+		WithBuffer:      true,
+	})
+	if err != nil {
+		t.Fatalf("marshal attach: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() { _ = serverConn.Close() }()
+		server.handleAttach(serverConn, attachLine)
+	}()
+
+	dec := json.NewDecoder(clientConn)
+	var first StreamMessage
+	if err := dec.Decode(&first); err != nil {
+		t.Fatalf("attach ready response: %v", err)
+	}
+	ready := requireAttachReady(t, first)
+	if !ready.ReplayRequested {
+		t.Fatalf("expected replay request metadata, got %+v", ready)
+	}
+	if ready.ReplayTruncated || ready.ReplaySkipped {
+		t.Fatalf("did not expect replay truncation or skip, got %+v", ready)
+	}
+	if ready.RequestedOffset != int64(len("prefix")) {
+		t.Fatalf("unexpected requested offset metadata: %+v", ready)
+	}
+	if ready.ReplayStart != int64(len("prefix")) {
+		t.Fatalf("expected replay start at suffix boundary, got %+v", ready)
+	}
+
+	var second StreamMessage
+	if err := dec.Decode(&second); err != nil {
+		t.Fatalf("attach replay response: %v", err)
+	}
+	if second.Type != "data" {
+		t.Fatalf("expected data replay event, got %+v", second)
+	}
+	payload, err := base64.StdEncoding.DecodeString(second.DataB64)
+	if err != nil {
+		t.Fatalf("decode replay payload: %v", err)
+	}
+	if got := string(payload); got != "suffix" {
+		t.Fatalf("expected replay payload %q, got %q", "suffix", got)
+	}
+	if second.NextOffset != ready.ReplayNext {
+		t.Fatalf("expected replay next offset %d, got %d", ready.ReplayNext, second.NextOffset)
+	}
+
+	_ = clientConn.Close()
+	session.closeSubscribers()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("attach handler did not exit")
+	}
+}
+
+func TestAttachMarksTruncatedReplayWhenRequestedCursorFallsBehindBuffer(t *testing.T) {
+	opts := DefaultOptions()
+	opts.BufferBytes = 64 * 1024
+	session := newSession(opts, "running-session", "/tmp")
+	session.cmd = &exec.Cmd{}
+	chunkA := strings.Repeat("a", 24*1024)
+	chunkB := strings.Repeat("b", 24*1024)
+	chunkC := strings.Repeat("c", 24*1024)
+	session.recordOutput([]byte(chunkA))
+	session.recordOutput([]byte(chunkB))
+	session.recordOutput([]byte(chunkC))
+	server := &Server{
+		opts:     opts,
+		sessions: map[string]*Session{"running-session": session},
+	}
+
+	clientConn, serverConn := net.Pipe()
+	defer func() {
+		_ = clientConn.Close()
+	}()
+
+	attachLine, err := json.Marshal(AttachRequest{
+		ProtocolVersion: ProtocolVersion,
+		Type:            "attach",
+		SessionID:       "running-session",
+		StreamID:        "running-stream",
+		Since:           0,
+		WithBuffer:      true,
+	})
+	if err != nil {
+		t.Fatalf("marshal attach: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() { _ = serverConn.Close() }()
+		server.handleAttach(serverConn, attachLine)
+	}()
+
+	dec := json.NewDecoder(clientConn)
+	var first StreamMessage
+	if err := dec.Decode(&first); err != nil {
+		t.Fatalf("attach ready response: %v", err)
+	}
+	ready := requireAttachReady(t, first)
+	if !ready.ReplayRequested || !ready.ReplayTruncated {
+		t.Fatalf("expected replay truncation metadata, got %+v", ready)
+	}
+	if ready.ReplaySkipped {
+		t.Fatalf("did not expect replay skip metadata, got %+v", ready)
+	}
+	if ready.ReplayStart != int64(len(chunkA)) {
+		t.Fatalf("expected replay start at oldest retained offset %d, got %+v", len(chunkA), ready)
+	}
+	if ready.ReplayNext != int64(len(chunkA)+len(chunkB)+len(chunkC)) {
+		t.Fatalf("unexpected replay next offset metadata: %+v", ready)
+	}
+
+	var second StreamMessage
+	if err := dec.Decode(&second); err != nil {
+		t.Fatalf("attach replay response: %v", err)
+	}
+	if second.Type != "data" {
+		t.Fatalf("expected data replay event, got %+v", second)
+	}
+	payload, err := base64.StdEncoding.DecodeString(second.DataB64)
+	if err != nil {
+		t.Fatalf("decode replay payload: %v", err)
+	}
+	if got := string(payload); got != chunkB+chunkC {
+		t.Fatalf("expected retained replay payload, got length %d", len(got))
+	}
+	if second.NextOffset != ready.ReplayNext {
+		t.Fatalf("expected replay next offset %d, got %d", ready.ReplayNext, second.NextOffset)
+	}
+
+	_ = clientConn.Close()
+	session.closeSubscribers()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("attach handler did not exit")
+	}
+}
+
+func TestAttachPrefersTranscriptTailWhenItCoversRequestedReplay(t *testing.T) {
+	opts := DefaultOptions()
+	opts.BufferBytes = 64 * 1024
+	opts.TranscriptDir = t.TempDir()
+	opts.TranscriptTailBytes = 256 * 1024
+	session := newSession(opts, "running-session", "/tmp")
+	if err := session.openTranscript(); err != nil {
+		t.Fatalf("open transcript: %v", err)
+	}
+	session.cmd = &exec.Cmd{}
+	chunkA := strings.Repeat("a", 24*1024)
+	chunkB := strings.Repeat("b", 24*1024)
+	chunkC := strings.Repeat("c", 24*1024)
+	session.recordOutput([]byte(chunkA))
+	session.recordOutput([]byte(chunkB))
+	session.recordOutput([]byte(chunkC))
+	server := &Server{
+		opts:     opts,
+		sessions: map[string]*Session{"running-session": session},
+	}
+
+	clientConn, serverConn := net.Pipe()
+	defer func() {
+		_ = clientConn.Close()
+	}()
+
+	attachLine, err := json.Marshal(AttachRequest{
+		ProtocolVersion: ProtocolVersion,
+		Type:            "attach",
+		SessionID:       "running-session",
+		StreamID:        "running-stream",
+		Since:           0,
+		WithBuffer:      true,
+	})
+	if err != nil {
+		t.Fatalf("marshal attach: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() { _ = serverConn.Close() }()
+		server.handleAttach(serverConn, attachLine)
+	}()
+
+	dec := json.NewDecoder(clientConn)
+	var first StreamMessage
+	if err := dec.Decode(&first); err != nil {
+		t.Fatalf("attach ready response: %v", err)
+	}
+	ready := requireAttachReady(t, first)
+	if !ready.ReplayRequested {
+		t.Fatalf("expected replay metadata, got %+v", ready)
+	}
+	if ready.ReplayTruncated {
+		t.Fatalf("did not expect replay truncation when transcript tail covers replay, got %+v", ready)
+	}
+	if ready.ReplayStart != 0 {
+		t.Fatalf("expected replay to start at session origin, got %+v", ready)
+	}
+	if ready.ReplayNext != int64(len(chunkA)+len(chunkB)+len(chunkC)) {
+		t.Fatalf("unexpected replay next offset metadata: %+v", ready)
+	}
+
+	var second StreamMessage
+	if err := dec.Decode(&second); err != nil {
+		t.Fatalf("attach replay response: %v", err)
+	}
+	if second.Type != "data" {
+		t.Fatalf("expected data replay event, got %+v", second)
+	}
+	payload, err := base64.StdEncoding.DecodeString(second.DataB64)
+	if err != nil {
+		t.Fatalf("decode replay payload: %v", err)
+	}
+	if got := string(payload); got != chunkA+chunkB+chunkC {
+		t.Fatalf("expected transcript-backed replay payload, got length %d", len(got))
+	}
+	if second.NextOffset != ready.ReplayNext {
+		t.Fatalf("expected replay next offset %d, got %d", ready.ReplayNext, second.NextOffset)
+	}
+
+	_ = clientConn.Close()
+	session.closeSubscribers()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("attach handler did not exit")
+	}
+}
+
+func TestAttachReplaysOnlyTerminalModesAfterBufferRolloverInAltScreen(t *testing.T) {
+	opts := DefaultOptions()
+	opts.BufferBytes = 64 * 1024
+	session := newSession(opts, "running-session", "/tmp")
+	session.cmd = &exec.Cmd{}
+
+	session.handleProtocolOutput(
+		context.Background(),
+		[]byte("\x1b[?1049h\x1b[?1002h\x1b[?1006h"+strings.Repeat("x", 96*1024)),
+	)
+	session.handleProtocolOutput(context.Background(), []byte("tail"))
+
+	session.outputMu.Lock()
+	buffered, _, _ := session.buffer.ReadSince(0)
+	session.outputMu.Unlock()
+	if strings.Contains(string(buffered), "\x1b[?1049h") || strings.Contains(string(buffered), "\x1b[?1002h") || strings.Contains(string(buffered), "\x1b[?1006h") {
+		t.Fatalf("expected ring buffer to roll over setup modes, got %q", string(buffered))
+	}
+
+	server := &Server{
+		opts:     opts,
+		sessions: map[string]*Session{"running-session": session},
+	}
+
+	clientConn, serverConn := net.Pipe()
+	defer func() {
+		_ = clientConn.Close()
+	}()
+
+	attachLine, err := json.Marshal(AttachRequest{
+		ProtocolVersion: ProtocolVersion,
+		Type:            "attach",
+		SessionID:       "running-session",
+		StreamID:        "running-stream",
+		WithBuffer:      true,
+	})
+	if err != nil {
+		t.Fatalf("marshal attach: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() { _ = serverConn.Close() }()
+		server.handleAttach(serverConn, attachLine)
+	}()
+
+	dec := json.NewDecoder(clientConn)
+	var first StreamMessage
+	if err := dec.Decode(&first); err != nil {
+		t.Fatalf("attach ready response: %v", err)
+	}
+	ready := requireAttachReady(t, first)
+	if !ready.ReplayRequested || !ready.ReplaySkipped {
+		t.Fatalf("expected replay skip metadata, got %+v", ready)
 	}
 
 	var second StreamMessage
@@ -382,8 +871,83 @@ func TestAttachReplaysTerminalModesAfterBufferRollover(t *testing.T) {
 	if !strings.Contains(got, "\x1b[?1049h") || !strings.Contains(got, "\x1b[?1002h") || !strings.Contains(got, "\x1b[?1006h") {
 		t.Fatalf("expected replay payload to include synthesized terminal modes, got %q", got)
 	}
-	if !strings.Contains(got, "tail") {
-		t.Fatalf("expected replay payload to include latest buffered output, got %q", got)
+	if strings.Contains(got, "tail") {
+		t.Fatalf("did not expect buffered alt-screen output replay, got %q", got)
+	}
+
+	_ = clientConn.Close()
+	session.closeSubscribers()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("attach handler did not exit")
+	}
+}
+
+func TestAttachPreservesMouseModesAcrossSubscriberGap(t *testing.T) {
+	opts := DefaultOptions()
+	session := newSession(opts, "running-session", "/tmp")
+	session.cmd = &exec.Cmd{}
+	session.handleProtocolOutput(
+		context.Background(),
+		[]byte("\x1b[?1049h\x1b[?1002h\x1b[?1006hfull-screen-frame"),
+	)
+
+	firstSub := session.subscribe("first-stream")
+	session.unsubscribe(firstSub)
+
+	server := &Server{
+		opts:     opts,
+		sessions: map[string]*Session{"running-session": session},
+	}
+
+	clientConn, serverConn := net.Pipe()
+	defer func() {
+		_ = clientConn.Close()
+	}()
+
+	attachLine, err := json.Marshal(AttachRequest{
+		ProtocolVersion: ProtocolVersion,
+		Type:            "attach",
+		SessionID:       "running-session",
+		StreamID:        "running-stream",
+		WithBuffer:      true,
+	})
+	if err != nil {
+		t.Fatalf("marshal attach: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() { _ = serverConn.Close() }()
+		server.handleAttach(serverConn, attachLine)
+	}()
+
+	dec := json.NewDecoder(clientConn)
+	var first StreamMessage
+	if err := dec.Decode(&first); err != nil {
+		t.Fatalf("attach ready response: %v", err)
+	}
+	ready := requireAttachReady(t, first)
+	if !ready.ReplayRequested || !ready.ReplaySkipped {
+		t.Fatalf("expected replay skip metadata, got %+v", ready)
+	}
+
+	var second StreamMessage
+	if err := dec.Decode(&second); err != nil {
+		t.Fatalf("attach replay response: %v", err)
+	}
+	if second.Type != "data" {
+		t.Fatalf("expected data replay event, got %+v", second)
+	}
+	payload, err := base64.StdEncoding.DecodeString(second.DataB64)
+	if err != nil {
+		t.Fatalf("decode replay payload: %v", err)
+	}
+	got := string(payload)
+	if !strings.Contains(got, "\x1b[?1049h") || !strings.Contains(got, "\x1b[?1002h") || !strings.Contains(got, "\x1b[?1006h") {
+		t.Fatalf("expected replay payload to preserve terminal modes after unsubscribe gap, got %q", got)
 	}
 
 	_ = clientConn.Close()

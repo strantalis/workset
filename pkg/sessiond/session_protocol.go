@@ -3,15 +3,19 @@ package sessiond
 import "context"
 
 func (s *Session) handleProtocolOutput(ctx context.Context, raw []byte) {
+	var (
+		sanitized  []byte
+		nextOffset int64
+	)
 	s.outputMu.Lock()
-	defer s.outputMu.Unlock()
 
 	s.recordRaw(raw)
 	if len(raw) == 0 {
+		s.outputMu.Unlock()
 		return
 	}
 	outSeq := s.debugOutputSeq.Add(1)
-	sanitized := s.sanitizeProtocolOutput(raw)
+	sanitized = s.sanitizeProtocolOutput(ctx, raw)
 	debugLogf(
 		"session_output id=%s seq=%d raw={%s} sanitized={%s}",
 		s.id,
@@ -20,6 +24,7 @@ func (s *Session) handleProtocolOutput(ctx context.Context, raw []byte) {
 		summarizeBytes(sanitized, 48),
 	)
 	if len(sanitized) == 0 {
+		s.outputMu.Unlock()
 		return
 	}
 	s.trackTerminalModes(sanitized)
@@ -27,13 +32,14 @@ func (s *Session) handleProtocolOutput(ctx context.Context, raw []byte) {
 	s.mu.Lock()
 	s.bumpActivityLocked()
 	s.mu.Unlock()
-	s.recordOutput(sanitized)
-	s.broadcast(sanitized)
+	nextOffset = s.recordOutput(sanitized)
+	s.outputMu.Unlock()
+	s.broadcast(sanitized, nextOffset)
 }
 
-func (s *Session) sanitizeProtocolOutput(raw []byte) []byte {
+func (s *Session) sanitizeProtocolOutput(_ context.Context, raw []byte) []byte {
 	if len(raw) == 0 {
 		return nil
 	}
-	return sanitizeTerminalOutputStreaming(raw, &s.outputFilter)
+	return sanitizeTerminalOutputStreaming(raw)
 }

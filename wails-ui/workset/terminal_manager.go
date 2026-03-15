@@ -25,14 +25,7 @@ func (a *App) StartWorkspaceTerminal(workspaceID, terminalID string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	root, err := a.resolveWorkspaceRoot(ctx, workspaceID)
-	if err != nil {
-		return err
-	}
-	root, err = filepath.Abs(root)
-	if err != nil {
-		return err
-	}
+	root := ""
 
 	for {
 		a.terminalMu.Lock()
@@ -46,15 +39,21 @@ func (a *App) StartWorkspaceTerminal(workspaceID, terminalID string) error {
 				return err
 			}
 			existing.mu.Lock()
-			hasSession := existing.client != nil
-			streamActive := existing.stream != nil || existing.streamCancel != nil
+			client := existing.client
 			existing.mu.Unlock()
-			if hasSession {
-				if streamActive {
+			if client != nil {
+				inspectCtx, inspectCancel := context.WithTimeout(ctx, 2*time.Second)
+				info, inspectErr := client.Inspect(inspectCtx, sessionID)
+				inspectCancel()
+				if inspectErr == nil && info.Running {
 					return nil
 				}
-				go a.streamTerminal(existing)
-				return nil
+				existing.mu.Lock()
+				if root == "" {
+					root = existing.path
+				}
+				existing.client = nil
+				existing.mu.Unlock()
 			}
 			a.terminalMu.Lock()
 			if current := a.terminals[sessionID]; current == existing {
@@ -63,22 +62,33 @@ func (a *App) StartWorkspaceTerminal(workspaceID, terminalID string) error {
 			a.terminalMu.Unlock()
 			continue
 		}
+		a.terminalMu.Unlock()
+
+		if root == "" {
+			resolvedRoot, err := a.resolveWorkspaceRoot(ctx, workspaceID)
+			if err != nil {
+				return err
+			}
+			resolvedRoot, err = filepath.Abs(resolvedRoot)
+			if err != nil {
+				return err
+			}
+			root = resolvedRoot
+		}
 
 		session := newTerminalSession(workspaceID, terminalID, root)
 		client, err := a.getSessiondClient()
 		if err != nil {
-			a.terminalMu.Unlock()
 			return err
 		}
 		session.client = client
+		a.terminalMu.Lock()
 		a.terminals[sessionID] = session
 		a.terminalMu.Unlock()
 
 		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		resp, createErr := session.client.Create(ctx, sessionID, root)
-		if createErr == nil && resp.Existing {
-			session.resumed = true
-		}
+		_ = resp
 		err = createErr
 		cancel()
 		if err == nil {
@@ -96,7 +106,6 @@ func (a *App) StartWorkspaceTerminal(workspaceID, terminalID string) error {
 			return err
 		}
 		a.ensureIdleWatcher(session)
-		go a.streamTerminal(session)
 		return nil
 	}
 }
@@ -114,75 +123,6 @@ func (a *App) LogTerminalDebug(payload TerminalDebugPayload) {
 	logTerminalDebug(payload)
 }
 
-func (a *App) GetWorkspaceTerminalStatus(workspaceID, terminalID string) TerminalStatusPayload {
-	workspaceID = strings.TrimSpace(workspaceID)
-	if workspaceID == "" {
-		return TerminalStatusPayload{Active: false, Error: "workspace id required"}
-	}
-	terminalID = strings.TrimSpace(terminalID)
-	if terminalID == "" {
-		return TerminalStatusPayload{WorkspaceID: workspaceID, Active: false, Error: "terminal id required"}
-	}
-	sessionID := terminalSessionID(workspaceID, terminalID)
-	a.terminalMu.Lock()
-	session := a.terminals[sessionID]
-	a.terminalMu.Unlock()
-	if session != nil {
-		session.mu.Lock()
-		hasSession := !session.closed && session.client != nil
-		session.mu.Unlock()
-		if hasSession {
-			logTerminalDebug(TerminalDebugPayload{
-				WorkspaceID: workspaceID,
-				TerminalID:  terminalID,
-				Event:       "status_active_memory",
-				Details:     "{}",
-			})
-			return TerminalStatusPayload{WorkspaceID: workspaceID, TerminalID: terminalID, Active: true}
-		}
-	}
-	client, err := a.getSessiondClient()
-	if err != nil {
-		logTerminalDebug(TerminalDebugPayload{
-			WorkspaceID: workspaceID,
-			TerminalID:  terminalID,
-			Event:       "status_client_error",
-			Details:     err.Error(),
-		})
-		return TerminalStatusPayload{WorkspaceID: workspaceID, TerminalID: terminalID, Active: false, Error: err.Error()}
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	list, err := client.List(ctx)
-	if err != nil {
-		logTerminalDebug(TerminalDebugPayload{
-			WorkspaceID: workspaceID,
-			TerminalID:  terminalID,
-			Event:       "status_list_error",
-			Details:     err.Error(),
-		})
-		return TerminalStatusPayload{WorkspaceID: workspaceID, TerminalID: terminalID, Active: false, Error: err.Error()}
-	}
-	for _, info := range list.Sessions {
-		if info.SessionID == sessionID && info.Running {
-			logTerminalDebug(TerminalDebugPayload{
-				WorkspaceID: workspaceID,
-				TerminalID:  terminalID,
-				Event:       "status_active_sessiond",
-				Details:     "{}",
-			})
-			return TerminalStatusPayload{WorkspaceID: workspaceID, TerminalID: terminalID, Active: true}
-		}
-	}
-	logTerminalDebug(TerminalDebugPayload{
-		WorkspaceID: workspaceID,
-		TerminalID:  terminalID,
-		Event:       "status_inactive",
-		Details:     "{}",
-	})
-	return TerminalStatusPayload{WorkspaceID: workspaceID, TerminalID: terminalID, Active: false}
-}
-
 func (a *App) ResizeWorkspaceTerminal(workspaceID, terminalID string, cols, rows int) error {
 	session, err := a.getTerminal(workspaceID, terminalID)
 	if err != nil {
@@ -198,6 +138,10 @@ func (a *App) ResizeWorkspaceTerminal(workspaceID, terminalID string, cols, rows
 }
 
 func (a *App) StopWorkspaceTerminal(workspaceID, terminalID string) error {
+	return a.stopWorkspaceTerminalWithOwner(workspaceID, terminalID, "")
+}
+
+func (a *App) stopWorkspaceTerminalWithOwner(workspaceID, terminalID, owner string) error {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
 		return fmt.Errorf("workspace id required")
@@ -209,9 +153,6 @@ func (a *App) StopWorkspaceTerminal(workspaceID, terminalID string) error {
 	a.terminalMu.Lock()
 	sessionID := terminalSessionID(workspaceID, terminalID)
 	session, ok := a.terminals[sessionID]
-	if ok {
-		delete(a.terminals, sessionID)
-	}
 	a.terminalMu.Unlock()
 	if !ok {
 		return nil
@@ -221,9 +162,22 @@ func (a *App) StopWorkspaceTerminal(workspaceID, terminalID string) error {
 	session.mu.Unlock()
 	if client != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		_ = client.Stop(ctx, sessionID)
+		err := client.StopWithOwner(ctx, sessionID, owner)
 		cancel()
+		if err != nil {
+			if !isTransientTerminalCallError(err) {
+				return err
+			}
+			session.mu.Lock()
+			session.client = nil
+			session.mu.Unlock()
+		}
 	}
+	a.terminalMu.Lock()
+	if current := a.terminals[sessionID]; current == session {
+		delete(a.terminals, sessionID)
+	}
+	a.terminalMu.Unlock()
 	err := session.CloseWithReason("closed")
 	return err
 }

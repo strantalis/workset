@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { createTerminalPerformanceSampler } from '../terminal/terminalPerformance';
 	import TerminalController from '../terminal/TerminalController.svelte';
 
 	interface Props {
@@ -26,39 +27,66 @@
 
 	let hoveringBottomRight = $state(false);
 	let notAtBottom = $state(false);
-	let scrollCheckInterval: ReturnType<typeof setInterval> | null = null;
+	let pendingScrollStateFrame: number | null = null;
+	let performanceSnapshot = $state({
+		fps: 0,
+		frameTimeMs: 0,
+		renderer: 'unknown',
+	});
+
+	const refreshScrollState = (): void => {
+		notAtBottom = !(controller?.checkAtBottom?.() ?? true);
+	};
+
+	const scheduleScrollStateRefresh = (): void => {
+		if (!hoveringBottomRight) return;
+		if (pendingScrollStateFrame !== null) {
+			cancelAnimationFrame(pendingScrollStateFrame);
+		}
+		pendingScrollStateFrame = requestAnimationFrame(() => {
+			pendingScrollStateFrame = null;
+			refreshScrollState();
+		});
+	};
 
 	$effect(() => {
-		if (hoveringBottomRight) {
-			notAtBottom = !(controller?.checkAtBottom?.() ?? true);
-			scrollCheckInterval = setInterval(() => {
-				notAtBottom = !(controller?.checkAtBottom?.() ?? true);
-			}, 300);
-		} else {
-			if (scrollCheckInterval) {
-				clearInterval(scrollCheckInterval);
-				scrollCheckInterval = null;
-			}
-		}
 		return () => {
-			if (scrollCheckInterval) {
-				clearInterval(scrollCheckInterval);
-				scrollCheckInterval = null;
+			if (pendingScrollStateFrame !== null) {
+				cancelAnimationFrame(pendingScrollStateFrame);
+				pendingScrollStateFrame = null;
 			}
 		};
 	});
+
+	const handleScrollZoneEnter = (): void => {
+		hoveringBottomRight = true;
+		refreshScrollState();
+	};
+
+	const handleScrollZoneLeave = (): void => {
+		hoveringBottomRight = false;
+		notAtBottom = false;
+		if (pendingScrollStateFrame !== null) {
+			cancelAnimationFrame(pendingScrollStateFrame);
+			pendingScrollStateFrame = null;
+		}
+	};
 
 	const handleScrollToBottom = (): void => {
 		controller?.scrollToBottom?.();
 		notAtBottom = false;
 	};
+
+	const resolveRendererLabel = (): string => {
+		const canvas = terminalContainer?.querySelector('canvas');
+		return canvas?.dataset.terminalRenderer ?? 'unknown';
+	};
+
 	let controllerState = $state({
 		status: '',
 		message: '',
 		health: 'unknown' as 'unknown' | 'checking' | 'ok' | 'stale',
 		healthMessage: '',
-		renderer: 'unknown' as 'unknown' | 'webgl',
-		rendererMode: 'webgl' as const,
 		sessiondAvailable: null as boolean | null,
 		sessiondChecked: false,
 		debugEnabled: false,
@@ -83,10 +111,51 @@
 	const activeMessage = $derived(controllerState.message);
 	const activeHealth = $derived(controllerState.health);
 	const activeHealthMessage = $derived(controllerState.healthMessage);
-	const activeRenderer = $derived(controllerState.renderer);
 	const sessiondAvailable = $derived(controllerState.sessiondAvailable);
 	const debugEnabled = $derived(controllerState.debugEnabled);
 	const debugStats = $derived(controllerState.debugStats);
+	const rendererLabel = $derived(performanceSnapshot.renderer);
+	const fpsLabel = $derived(Math.round(performanceSnapshot.fps));
+	const frameTimeLabel = $derived(Math.round(performanceSnapshot.frameTimeMs * 10) / 10);
+
+	$effect(() => {
+		if (!active || !debugEnabled) {
+			performanceSnapshot = {
+				fps: 0,
+				frameTimeMs: 0,
+				renderer: resolveRendererLabel(),
+			};
+			return;
+		}
+
+		const sampler = createTerminalPerformanceSampler();
+		let frameHandle = 0;
+		let lastPublishedAt = 0;
+
+		const updatePerformance = (timestamp: number): void => {
+			const next = sampler.sampleFrame(timestamp);
+			const renderer = resolveRendererLabel();
+			if (
+				lastPublishedAt === 0 ||
+				timestamp - lastPublishedAt >= 250 ||
+				performanceSnapshot.renderer !== renderer
+			) {
+				performanceSnapshot = {
+					fps: next.fps,
+					frameTimeMs: next.frameTimeMs,
+					renderer,
+				};
+				lastPublishedAt = timestamp;
+			}
+			frameHandle = requestAnimationFrame(updatePerformance);
+		};
+
+		frameHandle = requestAnimationFrame(updatePerformance);
+		return () => {
+			cancelAnimationFrame(frameHandle);
+			sampler.reset();
+		};
+	});
 </script>
 
 <section class="terminal" class:compact>
@@ -99,9 +168,12 @@
 		{terminalContainer}
 		onStateChange={handleStateChange}
 	/>
+
 	{#if !compact}
 		<header class="terminal-header">
-			<div class="title">Terminal</div>
+			<div class="title-group">
+				<div class="title">Terminal</div>
+			</div>
 			<div class="terminal-actions">
 				<span
 					class="health-indicator"
@@ -112,7 +184,7 @@
 						? 'daemon'
 						: sessiondAvailable === false
 							? 'local'
-							: 'checking'} | {activeRenderer} | {activeHealth}"
+							: 'checking'} | ghostty | {activeHealth}"
 				></span>
 				{#if debugEnabled}
 					<div
@@ -131,13 +203,6 @@
 							local
 						{:else}
 							checking
-						{/if}
-					</div>
-					<div class="renderer-status" title="Terminal renderer">
-						{#if activeRenderer === 'webgl'}
-							WebGL
-						{:else}
-							?
 						{/if}
 					</div>
 				{/if}
@@ -174,6 +239,9 @@
 		{/if}
 		{#if debugEnabled}
 			<div class="terminal-debug">
+				<div>renderer: {rendererLabel}</div>
+				<div>fps: {fpsLabel}</div>
+				<div>frame: {frameTimeLabel} ms</div>
 				<div>bytes in: {debugStats.bytesIn}</div>
 				<div>bytes out: {debugStats.bytesOut}</div>
 				<div>
@@ -188,13 +256,13 @@
 				</div>
 			</div>
 		{/if}
-		<div class="terminal-surface">
+		<div class="terminal-surface" onwheel={scheduleScrollStateRefresh}>
 			<div class="terminal-mount" bind:this={terminalContainer}></div>
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
 				class="scroll-hover-zone"
-				onmouseenter={() => (hoveringBottomRight = true)}
-				onmouseleave={() => (hoveringBottomRight = false)}
+				onmouseenter={handleScrollZoneEnter}
+				onmouseleave={handleScrollZoneLeave}
 			>
 				{#if hoveringBottomRight && notAtBottom}
 					<button
@@ -248,6 +316,12 @@
 		color: var(--muted);
 	}
 
+	.title-group {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
 	.terminal-body {
 		background: var(--panel);
 		border: none;
@@ -291,16 +365,6 @@
 		color: var(--warning);
 		border-color: color-mix(in srgb, var(--warning) 50%, var(--border));
 		background: color-mix(in srgb, var(--warning) 12%, transparent);
-	}
-
-	.renderer-status {
-		font-size: var(--text-xs);
-		color: var(--muted);
-		border: 1px solid var(--border);
-		border-radius: 999px;
-		padding: 2px 8px;
-		background: rgba(255, 255, 255, 0.02);
-		letter-spacing: 0.02em;
 	}
 
 	@keyframes pulse {
@@ -376,12 +440,19 @@
 		border-radius: 10px;
 		overflow: hidden;
 		position: relative;
+		isolation: isolate;
+		contain: layout paint;
 	}
 
 	.terminal-mount {
 		position: absolute;
 		inset: 8px;
 		z-index: 1;
+		overflow: hidden;
+		background: var(--panel-strong);
+		border-radius: 8px;
+		isolation: isolate;
+		contain: layout paint;
 	}
 
 	.scroll-hover-zone {
@@ -429,28 +500,17 @@
 		pointer-events: auto;
 		z-index: 1;
 		overflow: hidden;
+		background: var(--panel-strong);
+		isolation: isolate;
+		contain: layout paint;
 	}
 
-	:global(.terminal-instance .xterm) {
-		position: relative;
-		z-index: 1;
+	:global(.terminal-instance canvas) {
+		display: block;
+		background: var(--panel-strong);
 	}
 
-	:global(.terminal-instance .xterm-viewport) {
-		background: transparent;
-		scrollbar-width: none;
-		-ms-overflow-style: none;
-	}
-
-	:global(.terminal-instance .xterm-viewport::-webkit-scrollbar) {
-		width: 0;
-		height: 0;
-	}
-
-	:global(.terminal-instance .xterm-scrollable-element > .xterm-scrollbar) {
-		display: none !important;
-		overflow: hidden;
-	}
+	/* ghostty terminal host */
 
 	:global(.terminal-instance[data-active='true']) {
 		visibility: visible;

@@ -5,6 +5,7 @@ go 1.25.6
 require (
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250319133953-166f707985bc
 	github.com/cli/go-gh/v2 v2.13.0
+	github.com/coder/websocket v1.8.14
 	github.com/creack/pty v1.1.24
 	github.com/knadh/koanf/parsers/yaml v1.1.0
 	github.com/knadh/koanf/providers/confmap v1.0.0

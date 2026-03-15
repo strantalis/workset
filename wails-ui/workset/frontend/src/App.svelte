@@ -25,16 +25,15 @@
 	import { fetchGitHubAuthInfo } from './lib/api/github';
 	import { openDefaultDocumentSession, reconcileDocumentSession } from './lib/documentSessionState';
 	import {
-		EVENT_TERMINAL_DATA,
-		EVENT_TERMINAL_INPUT,
 		EVENT_REPO_DIFF_LOCAL_STATUS,
 		EVENT_WORKSPACE_POPOUT_CLOSED,
 		EVENT_WORKSPACE_POPOUT_OPENED,
 	} from './lib/events';
 	import { subscribeRepoDiffEvent } from './lib/repoDiffService';
-	import { resolveCockpitPaneState, type CockpitSurface } from './lib/appPaneState';
+	import { resolveWorkbenchPaneState, type WorkbenchSurface } from './lib/appPaneState';
 	import { releaseWorkspaceTerminals } from './lib/terminal/terminalService';
 	import { shouldClearPreviousWorkspaceTerminalActivity } from './lib/terminal/terminalActivity';
+	import { subscribeTerminalActivity } from './lib/terminal/terminalActivityBus';
 	import { subscribeWailsEvent } from './lib/wailsEventRegistry';
 	import { startRepoStatusWatch, stopRepoStatusWatch } from './lib/api/repo-diff';
 	import EmptyState from './lib/components/EmptyState.svelte';
@@ -70,9 +69,6 @@
 		windowName: string;
 		open: boolean;
 	};
-	type TerminalActivityEvent = {
-		workspaceId: string;
-	};
 
 	type WorkspaceActionMode =
 		| 'create'
@@ -95,23 +91,26 @@
 		return stored === 'true';
 	};
 
-	const contextViews: AppView[] = ['terminal-cockpit', 'skill-registry'];
-	const popoutViews = new Set<AppView>(['terminal-cockpit']);
-	const appViews = new Set<AppView>(['terminal-cockpit', 'skill-registry', 'onboarding']);
+	const contextViews: AppView[] = ['workspaces', 'skill-registry'];
+	const popoutViews = new Set<AppView>(['workspaces']);
+	const appViews = new Set<AppView>(['workspaces', 'skill-registry', 'onboarding']);
 	const searchParams =
 		typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
 	const popoutMode = searchParams?.get('popout') === '1';
 	const requestedWorkspace = searchParams?.get('workspace')?.trim() ?? '';
 	const requestedView = searchParams?.get('view')?.trim() ?? '';
-	const requestedAppView = appViews.has(requestedView as AppView)
-		? (requestedView as AppView)
-		: null;
+	const normalizeAppView = (value: string): AppView | null => {
+		const trimmed = value.trim();
+		if (trimmed === 'terminal-cockpit') return 'workspaces';
+		return appViews.has(trimmed as AppView) ? (trimmed as AppView) : null;
+	};
+	const requestedAppView = normalizeAppView(requestedView);
 	const fixedWorkspaceId = popoutMode && requestedWorkspace !== '' ? requestedWorkspace : null;
 	const initialView: AppView = popoutMode
 		? requestedAppView && popoutViews.has(requestedAppView)
 			? requestedAppView
-			: 'terminal-cockpit'
-		: (requestedAppView ?? 'terminal-cockpit');
+			: 'workspaces'
+		: (requestedAppView ?? 'workspaces');
 
 	const repoStatusWatchers = new Map<string, { workspaceId: string; repoId: string }>();
 	const terminalActivityExpiryTimers = new Map<string, number>();
@@ -141,7 +140,7 @@
 	let onboardingError = $state<string | null>(null);
 	let onboardingRepoRegistry = $state<RegisteredRepo[]>([]);
 	let onboardingLoaded = $state(false);
-	let cockpitSurface = $state<CockpitSurface>('terminal');
+	let workbenchSurface = $state<WorkbenchSurface>('terminal');
 	// eslint-disable-next-line svelte/prefer-writable-derived
 	let documentSession = $state<DocumentSession | null>(null);
 	let activeTerminalWorkspaces = $state<Record<string, true>>({});
@@ -302,7 +301,7 @@
 	const showContextBar = $derived.by(
 		() => !hasRepo && hasWorkspaces && contextViews.includes(currentView),
 	);
-	const explorerViews = new Set<AppView>(['terminal-cockpit', 'skill-registry']);
+	const explorerViews = new Set<AppView>(['workspaces', 'skill-registry']);
 	const showExplorer = $derived.by(() => hasWorkspaces && explorerViews.has(currentView));
 
 	const updateRepoStatusWatchers = (): void => {
@@ -441,7 +440,7 @@
 			clearWorkspaceTerminalActivity(previousWorkspaceId);
 		}
 		if (currentView === 'onboarding') {
-			currentView = 'terminal-cockpit';
+			currentView = 'workspaces';
 		}
 	};
 
@@ -462,7 +461,7 @@
 		) {
 			clearWorkspaceTerminalActivity(previousWorkspaceId);
 		}
-		currentView = 'terminal-cockpit';
+		currentView = 'workspaces';
 		clearRepo();
 	};
 
@@ -600,7 +599,7 @@
 		await loadWorkspaces(true);
 		selectWorkspace(workspaceName);
 		clearRepo();
-		currentView = 'terminal-cockpit';
+		currentView = 'workspaces';
 	};
 
 	const handleOnboardingPreviewHooks = async (source: string): Promise<string[]> =>
@@ -621,12 +620,12 @@
 		if (key === 'p' && $activeWorkspaceId) {
 			event.preventDefault();
 			commandPaletteOpen = false;
-			const nextPane = resolveCockpitPaneState({
-				surface: cockpitSurface,
+			const nextPane = resolveWorkbenchPaneState({
+				surface: workbenchSurface,
 				filesOpen: documentSession !== null,
 				intent: 'files',
 			});
-			cockpitSurface = nextPane.surface;
+			workbenchSurface = nextPane.surface;
 			documentSession = nextPane.filesOpen
 				? openDefaultDocumentSession($activeWorkspaceId, threadVisibleWorkspaces)
 				: null;
@@ -653,16 +652,16 @@
 
 	const handleOpenFiles = (): void => {
 		if (!$activeWorkspaceId) return;
-		if (currentView !== 'terminal-cockpit') {
-			setView('terminal-cockpit');
+		if (currentView !== 'workspaces') {
+			setView('workspaces');
 		}
 		commandPaletteOpen = false;
-		const nextPane = resolveCockpitPaneState({
-			surface: cockpitSurface,
+		const nextPane = resolveWorkbenchPaneState({
+			surface: workbenchSurface,
 			filesOpen: documentSession !== null,
 			intent: 'files',
 		});
-		cockpitSurface = nextPane.surface;
+		workbenchSurface = nextPane.surface;
 		documentSession = nextPane.filesOpen
 			? openDefaultDocumentSession($activeWorkspaceId, threadVisibleWorkspaces)
 			: null;
@@ -671,8 +670,7 @@
 	let repoStatusUnsubscribe: (() => void) | null = null,
 		popoutOpenedUnsubscribe: (() => void) | null = null,
 		popoutClosedUnsubscribe: (() => void) | null = null,
-		terminalDataUnsubscribe: (() => void) | null = null,
-		terminalInputUnsubscribe: (() => void) | null = null;
+		terminalActivityUnsubscribe: (() => void) | null = null;
 
 	const handleWorkspacePopout = async (workspaceId: string, open: boolean): Promise<void> => {
 		if (!workspaceId || popoutBusy) return;
@@ -718,18 +716,9 @@
 				updateWorkspacePopoutState(payload.workspaceId, payload.windowName, false);
 			},
 		);
-		terminalDataUnsubscribe = subscribeWailsEvent<TerminalActivityEvent>(
-			EVENT_TERMINAL_DATA,
-			(payload) => {
-				markWorkspaceTerminalActivity(payload.workspaceId);
-			},
-		);
-		terminalInputUnsubscribe = subscribeWailsEvent<TerminalActivityEvent>(
-			EVENT_TERMINAL_INPUT,
-			(payload) => {
-				markWorkspaceTerminalActivity(payload.workspaceId);
-			},
-		);
+		terminalActivityUnsubscribe = subscribeTerminalActivity((payload) => {
+			markWorkspaceTerminalActivity(payload.workspaceId);
+		});
 	});
 
 	onDestroy(() => {
@@ -740,10 +729,8 @@
 		popoutOpenedUnsubscribe = null;
 		popoutClosedUnsubscribe?.();
 		popoutClosedUnsubscribe = null;
-		terminalDataUnsubscribe?.();
-		terminalDataUnsubscribe = null;
-		terminalInputUnsubscribe?.();
-		terminalInputUnsubscribe = null;
+		terminalActivityUnsubscribe?.();
+		terminalActivityUnsubscribe = null;
 		for (const timer of terminalActivityExpiryTimers.values()) {
 			window.clearTimeout(timer);
 		}
@@ -779,7 +766,7 @@
 		selectWorkspace(target.id);
 		clearRepo();
 		if (!popoutViews.has(currentView)) {
-			currentView = 'terminal-cockpit';
+			currentView = 'workspaces';
 		}
 		popoutSelectionApplied = true;
 	});
@@ -819,8 +806,8 @@
 						{shortcutMap}
 						lockWorksetSelection={popoutMode}
 						canManageRepos={!popoutMode}
-						activeView={currentView === 'skill-registry' ? 'skill-registry' : 'terminal-cockpit'}
-						activeSurface={cockpitSurface}
+						activeView={currentView === 'skill-registry' ? 'skill-registry' : 'workspaces'}
+						activeSurface={workbenchSurface}
 						filesActive={documentSession !== null}
 						{activeTerminalWorkspaceIds}
 						onSelectWorkspace={handleSelectWorkspace}
@@ -829,18 +816,18 @@
 						onAddRepo={handleAddRepoToWorkset}
 						onRemoveThread={handleRemoveThread}
 						onOpenPullRequests={() => {
-							const nextPane = resolveCockpitPaneState({
-								surface: cockpitSurface,
+							const nextPane = resolveWorkbenchPaneState({
+								surface: workbenchSurface,
 								filesOpen: documentSession !== null,
 								intent: 'pull-requests',
 							});
-							cockpitSurface = nextPane.surface;
+							workbenchSurface = nextPane.surface;
 							documentSession = nextPane.filesOpen ? documentSession : null;
-							setView('terminal-cockpit');
+							setView('workspaces');
 						}}
 						onOpenFiles={handleOpenFiles}
 						onOpenSkills={() =>
-							setView(currentView === 'skill-registry' ? 'terminal-cockpit' : 'skill-registry')}
+							setView(currentView === 'skill-registry' ? 'workspaces' : 'skill-registry')}
 						onOpenSettings={() => (settingsOpen = true)}
 						onCollapse={() => (explorerOpen = false)}
 					/>
@@ -888,7 +875,7 @@
 								onAction={handleCreateWorkspace}
 								variant="centered"
 							/>
-						{:else if currentView === 'terminal-cockpit'}
+						{:else if currentView === 'workspaces'}
 							{#if !popoutMode && isWorkspacePoppedOut($activeWorkspaceId)}
 								<EmptyState
 									title="This workset is open in a popout"
@@ -906,9 +893,9 @@
 									activeWorkspaceId={$activeWorkspaceId}
 									{popoutMode}
 									useGlobalExplorer={showExplorer}
-									preferredSurface={cockpitSurface}
+									preferredSurface={workbenchSurface}
 									{documentSession}
-									onSurfaceChange={(surface) => (cockpitSurface = surface)}
+									onSurfaceChange={(surface) => (workbenchSurface = surface)}
 									onSelectWorkspace={handleSelectWorkspace}
 									onCreateWorkspace={handleCreateWorkspace}
 									onCreateThread={handleCreateThread}
@@ -928,7 +915,7 @@
 								onStart={handleOnboardingStart}
 								onPreviewHooks={handleOnboardingPreviewHooks}
 								onComplete={handleOnboardingComplete}
-								onCancel={() => setView('terminal-cockpit')}
+								onCancel={() => setView('workspaces')}
 							/>
 						{/if}
 					</div>

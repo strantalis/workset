@@ -195,39 +195,10 @@ export const createTerminalSyncController = (deps: TerminalSyncControllerDepende
 			return;
 		}
 
-		const activeFlipOnSameContainer =
-			source === 'controller.active_change' &&
-			previous !== undefined &&
-			previous.container === input.container &&
-			previous.active !== input.active;
-
 		requestAttach(terminalKey, input.container, input.active, {
 			reason: 'sync_terminal_attach',
 			source,
 		});
-
-		if (activeFlipOnSameContainer) {
-			const previousActive = previous?.active ?? false;
-			deps.trace?.(terminalKey, 'sync_terminal_active_flip_attach', {
-				source,
-				previousActive,
-				active: input.active,
-				hasContainer: true,
-			});
-			if (input.active) {
-				deps.focusTerminal(terminalKey);
-				deps.syncTerminalStream(terminalKey);
-				deps.trace?.(terminalKey, 'sync_terminal_stream_requested', {
-					source,
-					reason: 'active_flip',
-				});
-			}
-			return;
-		}
-
-		if (input.active) {
-			deps.focusTerminal(terminalKey);
-		}
 		deps.syncTerminalStream(terminalKey);
 		deps.trace?.(terminalKey, 'sync_terminal_stream_requested', {
 			source,

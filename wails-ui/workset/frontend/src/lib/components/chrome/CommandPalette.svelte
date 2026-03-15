@@ -2,7 +2,7 @@
 	import { Search, Command, Box, Terminal, GitBranch, Sparkles, Plus } from '@lucide/svelte';
 	import type { WorksetSummary } from '../../view-models/worksetViewModel';
 
-	export type AppView = 'terminal-cockpit' | 'skill-registry' | 'onboarding';
+	export type AppView = 'workspaces' | 'skill-registry' | 'onboarding';
 
 	type PaletteItem = {
 		id: string;
@@ -30,11 +30,11 @@
 
 	const viewItems: PaletteItem[] = [
 		{
-			id: 'view:terminal-cockpit',
+			id: 'view:workspaces',
 			type: 'view',
-			label: 'Engineering Cockpit',
-			description: 'Workspace terminal control surface',
-			view: 'terminal-cockpit',
+			label: 'Workspaces',
+			description: 'Open workspace terminals and pull requests',
+			view: 'workspaces',
 		},
 		{
 			id: 'view:skill-registry',
@@ -223,7 +223,7 @@
 								onclick={() => selectItem(item)}
 							>
 								<span class="icon">
-									{#if item.view === 'terminal-cockpit'}
+									{#if item.view === 'workspaces'}
 										<Terminal size={14} />
 									{:else if item.view === 'skill-registry'}
 										<Sparkles size={14} />

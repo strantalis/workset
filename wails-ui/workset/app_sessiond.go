@@ -206,6 +206,90 @@ func (a *App) GetSessiondStatus() SessiondStatus {
 	return SessiondStatus{Available: true}
 }
 
+func isUnknownSessiondMethodError(err error, method string) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	if method != "" && strings.Contains(message, strings.ToLower(fmt.Sprintf("unknown method %q", method))) {
+		return true
+	}
+	return strings.Contains(message, "unknown method")
+}
+
+func (a *App) ensureSessiondDescriptorSupport() error {
+	client, err := a.getSessiondClient()
+	if err != nil {
+		return err
+	}
+
+	probeInspect := func(c *sessiond.Client) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+		_, err := c.Inspect(ctx, "__descriptor_probe__")
+		if err == nil {
+			return nil
+		}
+		if isUnknownSessiondMethodError(err, "inspect") {
+			return err
+		}
+		if strings.Contains(strings.ToLower(err.Error()), "session not found") {
+			return nil
+		}
+		return err
+	}
+
+	probeInfo := func(c *sessiond.Client) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+		_, err := c.Info(ctx)
+		if err == nil {
+			return nil
+		}
+		if isUnknownSessiondMethodError(err, "info") {
+			return err
+		}
+		return err
+	}
+
+	if err := probeInspect(client); err != nil {
+		if !isUnknownSessiondMethodError(err, "inspect") {
+			return err
+		}
+		logRestartf("descriptor_support_restart reason=inspect err=%v", err)
+		status := a.restartSessiond("upgrade")
+		if !status.Available || status.Error != "" {
+			if status.Error != "" {
+				return fmt.Errorf("restart sessiond for inspect support: %s", status.Error)
+			}
+			return fmt.Errorf("restart sessiond for inspect support failed")
+		}
+		client, err = a.getSessiondClient()
+		if err != nil {
+			return err
+		}
+		if err := probeInspect(client); err != nil {
+			return err
+		}
+	}
+
+	if err := probeInfo(client); err != nil {
+		if !isUnknownSessiondMethodError(err, "info") {
+			return err
+		}
+		logRestartf("descriptor_support_restart reason=info err=%v", err)
+		status := a.restartSessiond("upgrade")
+		if !status.Available || status.Error != "" {
+			if status.Error != "" {
+				return fmt.Errorf("restart sessiond for info support: %s", status.Error)
+			}
+			return fmt.Errorf("restart sessiond for info support failed")
+		}
+	}
+
+	return nil
+}
+
 func (a *App) RestartSessiond() SessiondStatus {
 	return a.restartSessiond("manual")
 }

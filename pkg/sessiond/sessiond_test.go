@@ -27,6 +27,12 @@ func TestSessiondInfo(t *testing.T) {
 	if info.BinaryHash == "" {
 		t.Fatalf("expected binary hash")
 	}
+	if info.WebSocketURL == "" {
+		t.Fatalf("expected websocket URL")
+	}
+	if info.WebSocketToken == "" {
+		t.Fatalf("expected websocket token")
+	}
 	if _, err := os.Stat(info.Executable); err != nil {
 		t.Fatalf("stat executable: %v", err)
 	}

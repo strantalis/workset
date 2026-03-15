@@ -273,27 +273,10 @@ export const createTerminalServiceState = (input: TerminalServiceStateInput = {}
 		while (cursor < state.chunks.length) {
 			const item = state.chunks[cursor];
 			if (item.seq > 0) {
-				if (state.lastSeq > 0) {
-					if (item.seq <= state.lastSeq) {
-						droppedStaleChunks += 1;
-						cursor += 1;
-						continue;
-					}
-					const expectedSeq = state.lastSeq + 1;
-					// Preserve strict in-order delivery for control sequences.
-					// If there is a gap, keep newer chunks queued until missing seq arrives.
-					if (item.seq !== expectedSeq) {
-						if (!options.force) {
-							break;
-						}
-						// Forced flush mode is a recovery path: if one seq is dropped,
-						// move forward so output rendering does not deadlock indefinitely.
-						droppedStaleChunks += item.seq - expectedSeq;
-						state.lastSeq = item.seq - 1;
-					}
-					if (item.seq !== state.lastSeq + 1) {
-						break;
-					}
+				if (state.lastSeq > 0 && item.seq <= state.lastSeq) {
+					droppedStaleChunks += 1;
+					cursor += 1;
+					continue;
 				}
 				ready.push({
 					seq: item.seq,

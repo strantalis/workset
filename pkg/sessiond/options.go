@@ -9,6 +9,7 @@ import (
 
 type Options struct {
 	SocketPath              string
+	WebSocketHost           string
 	TranscriptDir           string
 	RecordDir               string
 	IdleTimeout             time.Duration
@@ -26,11 +27,12 @@ type Options struct {
 
 func DefaultOptions() Options {
 	return Options{
+		WebSocketHost:           "127.0.0.1",
 		IdleTimeout:             30 * time.Minute,
 		BufferBytes:             512 * 1024,
 		TranscriptMaxBytes:      5 * 1024 * 1024,
 		TranscriptTrimThreshold: 6 * 1024 * 1024,
-		TranscriptTailBytes:     512 * 1024,
+		TranscriptTailBytes:     4 * 1024 * 1024,
 		RecordPty:               false,
 	}
 }

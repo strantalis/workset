@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import '@xterm/xterm/css/xterm.css';
 	import {
 		detachTerminal,
 		focusTerminalInstance,

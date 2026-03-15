@@ -2,15 +2,16 @@ import type { TerminalLayout, TerminalLayoutPayload } from '../types';
 import type {
 	TerminalLayout as BoundTerminalLayout,
 	TerminalLayoutRequest as BoundTerminalLayoutRequest,
+	TerminalSessionDescriptor,
 } from '../../../bindings/workset/models';
 import {
 	CreateWorkspaceTerminal,
 	GetWorkspaceTerminalLayout,
 	LogTerminalDebug,
 	SetWorkspaceTerminalLayout,
-	StopWorkspaceTerminalForWindowName,
+	StartWorkspaceTerminalSessionForWindow,
+	StopWorkspaceTerminalForWindow,
 } from '../../../bindings/workset/app';
-import { getCurrentWindowName } from '../windowContext';
 
 export async function logTerminalDebug(
 	workspaceId: string,
@@ -27,12 +28,18 @@ export async function createWorkspaceTerminal(
 	return CreateWorkspaceTerminal(workspaceId);
 }
 
+export async function fetchTerminalBootstrap(
+	workspaceId: string,
+	terminalId: string,
+): Promise<TerminalSessionDescriptor> {
+	return StartWorkspaceTerminalSessionForWindow(workspaceId, terminalId);
+}
+
 export async function stopWorkspaceTerminal(
 	workspaceId: string,
 	terminalId: string,
 ): Promise<void> {
-	const windowName = await getCurrentWindowName();
-	await StopWorkspaceTerminalForWindowName(workspaceId, terminalId, windowName);
+	await StopWorkspaceTerminalForWindow(workspaceId, terminalId);
 }
 
 export async function fetchWorkspaceTerminalLayout(

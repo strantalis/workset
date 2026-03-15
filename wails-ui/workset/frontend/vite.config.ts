@@ -4,8 +4,18 @@ import { svelteTesting } from '@testing-library/svelte/vite';
 import tailwindcss from '@tailwindcss/vite';
 import wails from '@wailsio/runtime/plugins/vite';
 
+// Wails dev mode runs a background Vite dev server and a foreground Vite build at
+// the same time. Sharing node_modules/.vite causes cache cleanup races.
+const resolveCacheDir = (command: 'serve' | 'build', mode?: string): string => {
+	if (mode === 'test') return 'node_modules/.vite-test';
+	if (command === 'serve') return 'node_modules/.vite-dev';
+	if (mode === 'development') return 'node_modules/.vite-build-dev';
+	return 'node_modules/.vite-build';
+};
+
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ command, mode }) => ({
+	cacheDir: resolveCacheDir(command, mode),
 	plugins: [
 		tailwindcss(),
 		svelte({
