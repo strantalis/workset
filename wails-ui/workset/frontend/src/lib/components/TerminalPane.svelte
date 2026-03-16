@@ -175,17 +175,24 @@
 				<div class="title">Terminal</div>
 			</div>
 			<div class="terminal-actions">
-				<span
-					class="health-indicator"
-					class:ok={activeHealth === 'ok'}
-					class:stale={activeHealth === 'stale'}
-					class:checking={activeHealth === 'checking'}
-					title="{sessiondAvailable === true
-						? 'daemon'
-						: sessiondAvailable === false
-							? 'local'
-							: 'checking'} | ghostty | {activeHealth}"
-				></span>
+				{#if activeHealth === 'stale' || activeHealth === 'checking'}
+					<div
+						class="health-badge"
+						class:stale={activeHealth === 'stale'}
+						class:checking={activeHealth === 'checking'}
+						title="{sessiondAvailable === true
+							? 'daemon'
+							: sessiondAvailable === false
+								? 'local'
+								: 'checking'} | ghostty | {activeHealth}"
+					>
+						{#if activeHealth === 'stale'}
+							stale
+						{:else}
+							checking
+						{/if}
+					</div>
+				{/if}
 				{#if debugEnabled}
 					<div
 						class="daemon-status"
@@ -211,29 +218,44 @@
 	{/if}
 	<div class="terminal-body">
 		{#if activeStatus && activeStatus !== 'ready' && activeStatus !== 'standby'}
-			<div class="terminal-status">
-				<div class="status-text">
-					{#if activeStatus === 'idle'}
-						Terminal suspended due to inactivity.
-					{:else if activeStatus === 'error'}
-						Terminal error.
-					{:else if activeStatus === 'closed'}
-						Terminal closed.
-					{:else if activeStatus === 'starting'}
-						Starting terminal…
-					{:else if activeStatus === 'standby'}
-						Terminal is ready to start.
-					{/if}
-					{#if activeMessage}
-						<span class="status-message">{activeMessage}</span>
-					{/if}
-				</div>
+			<div
+				class="terminal-status"
+				class:is-error={activeStatus === 'error'}
+				class:is-idle={activeStatus === 'idle'}
+				class:is-closed={activeStatus === 'closed'}
+				class:is-starting={activeStatus === 'starting'}
+			>
+				{#if activeStatus === 'starting'}
+					<div class="status-content">
+						<div class="status-spinner"></div>
+						<span class="status-label">Starting terminal…</span>
+					</div>
+				{:else if activeStatus === 'error'}
+					<div class="status-content">
+						<span class="status-label">Terminal encountered an error</span>
+						{#if activeMessage}
+							<span class="status-detail">{activeMessage}</span>
+						{/if}
+					</div>
+				{:else if activeStatus === 'idle'}
+					<div class="status-content">
+						<span class="status-label">Terminal paused due to inactivity</span>
+						<span class="status-detail">Click or type to resume</span>
+					</div>
+				{:else if activeStatus === 'closed'}
+					<div class="status-content">
+						<span class="status-label">Terminal session ended</span>
+						{#if activeMessage}
+							<span class="status-detail">{activeMessage}</span>
+						{/if}
+					</div>
+				{/if}
 			</div>
 		{/if}
 		{#if activeHealthMessage && activeHealth !== 'ok'}
 			<div class="terminal-status subtle">
-				<div class="status-text">
-					{activeHealthMessage}
+				<div class="status-content">
+					<span class="status-detail">{activeHealthMessage}</span>
 				</div>
 			</div>
 		{/if}
@@ -294,12 +316,12 @@
 	.terminal {
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
+		gap: 0;
 		height: 100%;
 	}
 
 	.terminal.compact {
-		gap: 6px;
+		gap: 0;
 	}
 
 	.terminal-header {
@@ -337,7 +359,7 @@
 	.terminal-actions {
 		display: flex;
 		align-items: center;
-		gap: 10px;
+		gap: 8px;
 	}
 
 	.terminal.compact .terminal-body {
@@ -377,49 +399,93 @@
 		}
 	}
 
-	.health-indicator {
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		background: var(--muted);
-		cursor: help;
-		transition: background var(--transition-fast);
+	/* Health badge — only shown when degraded (stale/checking) */
+	.health-badge {
+		font-size: var(--text-xs);
+		color: var(--muted);
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		padding: 2px 8px;
+		background: rgba(255, 255, 255, 0.02);
+		letter-spacing: 0.02em;
 	}
 
-	.health-indicator.ok {
-		background: var(--success);
+	.health-badge.stale {
+		color: var(--warning);
+		border-color: color-mix(in srgb, var(--warning) 50%, var(--border));
+		background: color-mix(in srgb, var(--warning) 12%, transparent);
 	}
 
-	.health-indicator.stale {
-		background: var(--warning);
-	}
-
-	.health-indicator.checking {
-		background: var(--accent);
+	.health-badge.checking {
+		color: var(--accent);
+		border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
 		animation: pulse 1.5s ease-in-out infinite;
 	}
 
+	/* Terminal status banners */
 	.terminal-status {
 		display: flex;
-		justify-content: space-between;
 		align-items: center;
 		gap: 12px;
 		padding: 10px 12px;
-		border-radius: var(--radius-md);
-		border: 1px solid var(--warning-soft);
-		background: var(--warning-subtle);
+		border-radius: 0;
+		border-bottom: 1px solid var(--border);
+		background: var(--panel-soft);
 		color: var(--text);
 		font-size: var(--text-sm);
 	}
 
-	.terminal-status.subtle {
-		background: var(--panel-soft);
-		border-color: var(--border);
+	.terminal-status.is-error {
+		border-bottom-color: var(--danger-soft);
+		background: color-mix(in srgb, var(--danger) 6%, var(--panel-soft));
 	}
 
-	.status-message {
-		margin-left: 8px;
+	.terminal-status.is-idle {
+		border-bottom-color: var(--warning-soft);
+		background: color-mix(in srgb, var(--warning) 4%, var(--panel-soft));
+	}
+
+	.terminal-status.is-closed {
+		border-bottom-color: var(--border);
+	}
+
+	.terminal-status.is-starting {
+		border-bottom-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+	}
+
+	.terminal-status.subtle {
+		background: var(--panel-soft);
+		border-bottom-color: var(--border);
+	}
+
+	.status-content {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.status-label {
+		font-weight: 500;
+	}
+
+	.status-detail {
 		color: var(--muted);
+		font-size: var(--text-xs);
+	}
+
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+
+	.status-spinner {
+		width: 14px;
+		height: 14px;
+		border: 2px solid var(--border);
+		border-top-color: var(--accent);
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
 	}
 
 	.terminal-debug {
@@ -429,28 +495,30 @@
 		grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
 		gap: 6px 12px;
 		border: 1px dashed var(--border);
-		border-radius: var(--radius-sm);
+		border-radius: 0;
 		padding: 8px;
 		background: rgba(255, 255, 255, 0.02);
 	}
 
+	/* Terminal surface — edge-to-edge, no rounded corners */
 	.terminal-surface {
 		flex: 1;
 		background: var(--panel-strong);
-		border-radius: 10px;
+		border-radius: 0;
 		overflow: hidden;
 		position: relative;
 		isolation: isolate;
 		contain: layout paint;
 	}
 
+	/* Reduced inset padding — 4px instead of 8px for a more immersive feel */
 	.terminal-mount {
 		position: absolute;
-		inset: 8px;
+		inset: 4px;
 		z-index: 1;
 		overflow: hidden;
 		background: var(--panel-strong);
-		border-radius: 8px;
+		border-radius: 0;
 		isolation: isolate;
 		contain: layout paint;
 	}
@@ -488,7 +556,7 @@
 	.scroll-to-bottom:hover {
 		opacity: 1;
 		background: var(--accent);
-		color: #081018;
+		color: var(--on-accent);
 		border-color: var(--accent);
 	}
 

@@ -31,12 +31,11 @@
 		position: absolute;
 		background: color-mix(in srgb, var(--accent) 10%, transparent);
 		border: 1px solid transparent;
-		border-radius: 8px;
+		border-radius: 0;
 		opacity: 0;
 		transition:
 			opacity 0.15s ease,
 			border-color 0.15s ease;
-		backdrop-filter: blur(2px);
 	}
 
 	.drop-zone.active {

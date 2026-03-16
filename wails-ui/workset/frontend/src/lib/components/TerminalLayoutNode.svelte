@@ -140,6 +140,97 @@
 		}
 	};
 
+	// Tab scrolling
+	let tabsRef = $state<HTMLDivElement | null>(null);
+	let canScrollLeft = $state(false);
+	let canScrollRight = $state(false);
+	let scrollRepeatTimer: number | null = null;
+
+	const TAB_SCROLL_STEP = 80;
+
+	const updateScrollIndicators = (): void => {
+		if (!tabsRef) {
+			canScrollLeft = false;
+			canScrollRight = false;
+			return;
+		}
+		canScrollLeft = tabsRef.scrollLeft > 0;
+		canScrollRight = tabsRef.scrollLeft + tabsRef.clientWidth < tabsRef.scrollWidth - 1;
+	};
+
+	const scrollTabs = (direction: -1 | 1): void => {
+		if (!tabsRef) return;
+		tabsRef.scrollBy({ left: direction * TAB_SCROLL_STEP, behavior: 'smooth' });
+		requestAnimationFrame(updateScrollIndicators);
+	};
+
+	const startScrollRepeat = (direction: -1 | 1): void => {
+		stopScrollRepeat();
+		scrollTabs(direction);
+		// After initial delay, repeat faster while held
+		scrollRepeatTimer = window.setTimeout(() => {
+			scrollRepeatTimer = window.setInterval(() => scrollTabs(direction), 120);
+		}, 300);
+	};
+
+	const stopScrollRepeat = (): void => {
+		if (scrollRepeatTimer !== null) {
+			window.clearTimeout(scrollRepeatTimer);
+			window.clearInterval(scrollRepeatTimer);
+			scrollRepeatTimer = null;
+		}
+	};
+
+	const scrollActiveTabIntoView = (): void => {
+		if (!tabsRef) return;
+		const activeEl = tabsRef.querySelector(
+			'[class*="pane-tab"][class*="active"]',
+		) as HTMLElement | null;
+		if (!activeEl) return;
+		// Manual scroll calculation — scrollIntoView can scroll parent containers
+		const containerRect = tabsRef.getBoundingClientRect();
+		const tabRect = activeEl.getBoundingClientRect();
+		if (tabRect.left < containerRect.left) {
+			tabsRef.scrollLeft -= containerRect.left - tabRect.left + 8;
+		} else if (tabRect.right > containerRect.right) {
+			tabsRef.scrollLeft += tabRect.right - containerRect.right + 8;
+		}
+		requestAnimationFrame(updateScrollIndicators);
+	};
+
+	// Attach wheel listener imperatively with { passive: false } so
+	// preventDefault() works — Svelte 5 onwheel is passive by default.
+	$effect(() => {
+		const el = tabsRef;
+		if (!el) return;
+		const onWheel = (event: WheelEvent): void => {
+			if (el.scrollWidth <= el.clientWidth) return;
+			event.preventDefault();
+			el.scrollLeft += event.deltaY !== 0 ? event.deltaY : event.deltaX;
+			updateScrollIndicators();
+		};
+		el.addEventListener('wheel', onWheel, { passive: false });
+		return () => el.removeEventListener('wheel', onWheel);
+	});
+
+	$effect(() => {
+		// Re-check overflow whenever tabs change or container mounts
+		if (!tabsRef || !isPane(node)) return;
+		// Access node.activeTabId and node.tabs.length to create reactive dependencies
+		void node?.activeTabId;
+		void node?.tabs?.length;
+		// Defer to next frame so DOM has updated
+		requestAnimationFrame(() => {
+			updateScrollIndicators();
+			scrollActiveTabIntoView();
+		});
+	});
+
+	// Clean up scroll repeat on destroy
+	$effect(() => {
+		return () => stopScrollRepeat();
+	});
+
 	// Tab drag handlers
 	let dropTargetIndex = $state<number | null>(null);
 	let activeDropZone = $state<DropZone>(null);
@@ -251,7 +342,9 @@
 </script>
 
 {#if !node}
-	<div class="pane-empty">No terminals</div>
+	<div class="pane-empty">
+		<span class="empty-label">No terminals</span>
+	</div>
 {:else if isSplit(node)}
 	<div
 		class="split {node?.direction ?? 'row'}"
@@ -321,9 +414,13 @@
 		</div>
 	</div>
 {:else if (node?.tabs?.length ?? 0) === 0}
-	<div class="pane-empty">No terminals</div>
+	<div class="pane-empty">
+		<span class="empty-label">No terminals</span>
+	</div>
 {:else if !isPane(node)}
-	<div class="pane-empty">Terminal layout unavailable</div>
+	<div class="pane-empty">
+		<span class="empty-label">Terminal layout unavailable</span>
+	</div>
 {:else}
 	{@const paneTabs = node?.tabs ?? []}
 	{@const paneId = node?.id ?? ''}
@@ -360,7 +457,27 @@
 			ondragover={handleHeaderDragOver}
 			ondrop={handleHeaderDrop}
 		>
-			<div class="pane-tabs">
+			{#if canScrollLeft}
+				<button
+					type="button"
+					class="tab-scroll-btn left"
+					aria-label="Scroll tabs left"
+					onpointerdown={() => startScrollRepeat(-1)}
+					onpointerup={stopScrollRepeat}
+					onpointerleave={stopScrollRepeat}
+				>
+					<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+						<path
+							d="M7.5 2.5L4 6l3.5 3.5"
+							stroke="currentColor"
+							stroke-width="1.5"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
+					</svg>
+				</button>
+			{/if}
+			<div class="pane-tabs" bind:this={tabsRef} onscroll={updateScrollIndicators}>
 				{#each paneTabs as tab, index (tab.id)}
 					<TerminalPaneTab
 						{tab}
@@ -379,6 +496,26 @@
 					/>
 				{/each}
 			</div>
+			{#if canScrollRight}
+				<button
+					type="button"
+					class="tab-scroll-btn right"
+					aria-label="Scroll tabs right"
+					onpointerdown={() => startScrollRepeat(1)}
+					onpointerup={stopScrollRepeat}
+					onpointerleave={stopScrollRepeat}
+				>
+					<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+						<path
+							d="M4.5 2.5L8 6l-3.5 3.5"
+							stroke="currentColor"
+							stroke-width="1.5"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
+					</svg>
+				</button>
+			{/if}
 			<TerminalPaneActions {paneId} {onAddTab} {onSplitPane} />
 		</div>
 		<div
@@ -511,30 +648,45 @@
 		border-radius: 0;
 		overflow: hidden;
 		border: none;
-		transition: all 0.2s ease;
 		box-shadow: none;
+		position: relative;
+	}
+
+	/* Left-edge accent bar for focused pane (VS Code-style indicator) */
+	.pane::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		top: 0;
+		bottom: 0;
+		width: 2px;
+		background: transparent;
+		z-index: 5;
+		transition: background 0.15s ease;
+	}
+
+	.pane.focused::before {
+		background: var(--accent);
 	}
 
 	.pane.focused {
-		box-shadow:
-			0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent),
-			var(--shadow-lg);
-		border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+		box-shadow: none;
 	}
 
 	.pane.drag-active {
-		box-shadow: var(--shadow-md);
+		box-shadow: none;
 	}
 
 	.pane-header {
 		display: flex;
 		align-items: center;
 		padding: 0 4px;
-		background: color-mix(in srgb, var(--panel-strong) 84%, var(--panel));
-		transition: background 0.2s ease;
-		border-bottom: 1px solid color-mix(in srgb, var(--border) 56%, transparent);
+		background: var(--panel-strong);
+		transition: background 0.15s ease;
+		border-bottom: 1px solid var(--border);
 	}
 
+	/* Active tab connects to content by matching its background to pane-body */
 	.pane-header.drop-target {
 		background: color-mix(in srgb, var(--accent) 8%, var(--panel-strong));
 	}
@@ -554,26 +706,57 @@
 		display: none;
 	}
 
+	.tab-scroll-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		width: 20px;
+		height: 100%;
+		border: none;
+		background: var(--panel-strong);
+		color: var(--muted);
+		cursor: pointer;
+		padding: 0;
+		transition:
+			color 0.12s ease,
+			background 0.12s ease;
+	}
+
+	.tab-scroll-btn:hover {
+		color: var(--text);
+		background: color-mix(in srgb, var(--panel-strong) 80%, var(--panel));
+	}
+
+	.tab-scroll-btn:active {
+		color: var(--accent);
+	}
+
 	.pane-body {
 		flex: 1;
 		min-height: 0;
 		padding: 0;
 		position: relative;
+		transition: opacity 0.15s ease;
 	}
 
-	/* Dim the terminal area of inactive panes. Applied to pane-body only so
-	   the tab header stays at full brightness and remains readable. */
+	/* Subtle dimming for inactive panes — keep content readable (~85%) */
 	.pane:not(.focused) .pane-body {
-		opacity: 0.45;
-		transition: opacity 0.2s ease;
+		opacity: 0.85;
 	}
 
 	.pane-empty {
 		flex: 1;
 		display: flex;
+		flex-direction: column;
 		align-items: center;
 		justify-content: center;
+		gap: 8px;
 		color: var(--muted);
 		font-size: var(--text-sm);
+	}
+
+	.empty-label {
+		opacity: 0.6;
 	}
 </style>
