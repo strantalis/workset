@@ -491,12 +491,33 @@
 	<div class="workspace-container">
 		{#if initError}
 			<div class="terminal-error">
-				<div class="status-text">Terminal startup error.</div>
-				<div class="status-message">{initError}</div>
-				<button type="button" class="retry-action" onclick={() => initWorkspace()}>Retry</button>
+				<div class="error-icon">
+					<svg
+						width="24"
+						height="24"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
+						<circle cx="12" cy="12" r="10" />
+						<line x1="12" y1="8" x2="12" y2="12" />
+						<line x1="12" y1="16" x2="12.01" y2="16" />
+					</svg>
+				</div>
+				<div class="error-title">Failed to start terminal</div>
+				<div class="error-detail">{initError}</div>
+				<button type="button" class="retry-action" onclick={() => initWorkspace()}>
+					Restart
+				</button>
 			</div>
 		{:else if loading || !layout}
-			<div class="terminal-loading">Preparing terminals…</div>
+			<div class="terminal-loading">
+				<div class="loading-spinner"></div>
+				<span>Starting workspace terminals…</span>
+			</div>
 		{:else}
 			{@const rootNode = layout?.root ?? null}
 			{@const totalPaneCount = rootNode ? collectPaneIds(rootNode).length : 0}
@@ -543,7 +564,33 @@
 		overflow: hidden;
 	}
 
-	.terminal-loading,
+	.terminal-loading {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 12px;
+		padding: 16px;
+		color: var(--muted);
+		font-size: var(--text-sm);
+	}
+
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+
+	.loading-spinner {
+		width: 20px;
+		height: 20px;
+		border: 2px solid var(--border);
+		border-top-color: var(--accent);
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+	}
+
 	.terminal-error {
 		flex: 1;
 		display: flex;
@@ -551,31 +598,44 @@
 		align-items: center;
 		justify-content: center;
 		gap: 8px;
-		padding: 16px;
-		color: var(--muted);
-		font-size: var(--text-sm);
-	}
-
-	.terminal-error {
+		padding: 24px;
 		color: var(--text);
+		font-size: var(--text-sm);
+		text-align: center;
 	}
 
-	.terminal-error .status-message {
+	.error-icon {
+		color: var(--danger);
+		margin-bottom: 4px;
+	}
+
+	.error-title {
+		font-weight: 500;
+		font-size: var(--text-md);
+	}
+
+	.error-detail {
 		color: var(--muted);
+		max-width: 400px;
+		word-break: break-word;
 	}
 
 	.retry-action {
 		margin-top: 8px;
-		border: 1px solid var(--border);
+		border: 1px solid var(--danger-soft);
 		border-radius: 6px;
-		padding: 6px 12px;
+		padding: 6px 16px;
 		font-size: var(--text-sm);
-		background: transparent;
+		background: color-mix(in srgb, var(--danger) 10%, transparent);
 		color: var(--text);
 		cursor: pointer;
+		transition:
+			background var(--transition-fast),
+			border-color var(--transition-fast);
 	}
 
 	.retry-action:hover {
-		border-color: var(--accent);
+		border-color: var(--danger);
+		background: color-mix(in srgb, var(--danger) 18%, transparent);
 	}
 </style>

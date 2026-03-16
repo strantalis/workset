@@ -9,7 +9,7 @@
 </script>
 
 <div class="pane-actions">
-	<button type="button" class="add-btn" title="New tab" onclick={() => onAddTab(paneId)}>
+	<button type="button" class="add-btn" title="New tab (⌘T)" onclick={() => onAddTab(paneId)}>
 		<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
 			<path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
 		</svg>
@@ -18,7 +18,7 @@
 		<button
 			type="button"
 			class="split-btn"
-			title="Split vertical"
+			title="Split vertical (⌘\)"
 			onclick={() => onSplitPane(paneId, 'row')}
 		>
 			<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -37,7 +37,7 @@
 		<button
 			type="button"
 			class="split-btn"
-			title="Split horizontal"
+			title="Split horizontal (⌘⇧\)"
 			onclick={() => onSplitPane(paneId, 'column')}
 		>
 			<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -69,20 +69,22 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 22px;
-		height: 22px;
+		width: 28px;
+		height: 28px;
 		border: none;
 		border-radius: 4px;
 		background: transparent;
-		color: var(--muted);
+		color: var(--text);
 		cursor: pointer;
+		opacity: 0.7;
 		transition:
 			color 0.12s ease,
-			background 0.12s ease;
+			background 0.12s ease,
+			opacity 0.12s ease;
 	}
 
 	.add-btn:hover {
-		color: var(--text);
+		opacity: 1;
 		background: color-mix(in srgb, var(--panel-strong) 60%, transparent);
 	}
 
@@ -94,7 +96,7 @@
 		display: flex;
 		align-items: center;
 		gap: 1px;
-		margin-left: 4px;
+		margin-left: 2px;
 		padding-left: 6px;
 		border-left: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
 	}
@@ -103,14 +105,14 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 22px;
-		height: 22px;
+		width: 28px;
+		height: 28px;
 		border: none;
 		border-radius: 4px;
 		background: transparent;
 		color: var(--muted);
 		cursor: pointer;
-		opacity: 0.5;
+		opacity: 0.7;
 		transition:
 			color 0.12s ease,
 			background 0.12s ease,

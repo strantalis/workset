@@ -83,7 +83,7 @@
 				onCloseTab(paneId, tab.id);
 			}}
 		>
-			<X size={18} />
+			<X size={14} />
 		</button>
 	{/if}
 </div>
@@ -93,15 +93,15 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
-		padding: 8px 14px;
-		font-size: var(--text-mono-sm);
-		font-family: var(--font-mono);
+		padding: 6px 12px;
+		font-size: var(--text-sm);
+		font-family: var(--font-body);
 		background: transparent;
 		color: var(--muted);
 		cursor: grab;
 		border: none;
-		border-radius: 8px 8px 0 0;
-		box-shadow: inset 0 2px 0 transparent;
+		border-radius: 0;
+		box-shadow: none;
 		transition:
 			color 0.15s ease,
 			background 0.15s ease,
@@ -120,11 +120,9 @@
 	}
 
 	.pane-tab.active {
-		color: var(--accent);
-		background: color-mix(in srgb, var(--panel) 84%, var(--panel-strong));
-		box-shadow:
-			inset 0 2px 0 color-mix(in srgb, var(--accent) 92%, transparent),
-			inset 0 -1px 0 color-mix(in srgb, var(--panel) 94%, transparent);
+		color: var(--text);
+		background: var(--panel);
+		box-shadow: inset 0 2px 0 var(--accent);
 	}
 
 	.pane-tab.dragging {
@@ -156,9 +154,9 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 22px;
-		height: 22px;
-		margin-left: 8px;
+		width: 18px;
+		height: 18px;
+		margin-left: 6px;
 		color: var(--muted);
 		border: none;
 		background: transparent;
