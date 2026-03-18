@@ -23,7 +23,6 @@ func TestExecUsesProvidedRunner(t *testing.T) {
 		ConfigStore:    FileConfigStore{},
 		WorkspaceStore: FileWorkspaceStore{},
 		Git:            env.git,
-		SessionRunner:  env.runner,
 		ExecFunc: func(_ context.Context, root string, command []string, env []string) error {
 			gotRoot = root
 			gotCommand = command
@@ -93,7 +92,7 @@ func TestExecUsesDefaultWorkspace(t *testing.T) {
 	root := env.createWorkspace(context.Background(), "demo")
 
 	cfg := env.loadConfig()
-	cfg.Defaults.Workspace = "demo"
+	cfg.Defaults.Thread = "demo"
 	env.saveConfig(cfg)
 
 	called := false
@@ -102,7 +101,6 @@ func TestExecUsesDefaultWorkspace(t *testing.T) {
 		ConfigStore:    FileConfigStore{},
 		WorkspaceStore: FileWorkspaceStore{},
 		Git:            env.git,
-		SessionRunner:  env.runner,
 		ExecFunc: func(_ context.Context, gotRoot string, _ []string, _ []string) error {
 			if gotRoot != root {
 				t.Fatalf("unexpected root: %s", gotRoot)

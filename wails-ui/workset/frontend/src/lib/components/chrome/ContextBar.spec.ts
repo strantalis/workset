@@ -55,7 +55,7 @@ describe('ContextBar', () => {
 			},
 		});
 
-		const popoutButton = getByRole('button', { name: 'Open workspace popout' });
+		const popoutButton = getByRole('button', { name: 'Open thread popout' });
 		expect(popoutButton).toBeInTheDocument();
 		expect(popoutButton.textContent).toContain('Popout');
 
@@ -74,7 +74,7 @@ describe('ContextBar', () => {
 			},
 		});
 
-		const returnButton = getByRole('button', { name: 'Return workspace to main window' });
+		const returnButton = getByRole('button', { name: 'Return thread to main window' });
 		expect(returnButton).toBeInTheDocument();
 		expect(returnButton.textContent).toContain('Return');
 	});
@@ -88,8 +88,8 @@ describe('ContextBar', () => {
 			},
 		});
 
-		expect(queryByRole('button', { name: 'Open workspace popout' })).toBeNull();
-		expect(queryByRole('button', { name: 'Return workspace to main window' })).toBeNull();
+		expect(queryByRole('button', { name: 'Open thread popout' })).toBeNull();
+		expect(queryByRole('button', { name: 'Return thread to main window' })).toBeNull();
 	});
 
 	test('treats unknown activity timestamp as active', () => {

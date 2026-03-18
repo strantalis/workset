@@ -1,5 +1,5 @@
 import { runRepoHooks, trustRepoHooks } from '../api/workspaces';
-import { listAliases, openDirectoryDialog } from '../api/settings';
+import { listRegisteredRepos, openDirectoryDialog } from '../api/settings';
 import type { Alias, HookExecution, Workspace } from '../types';
 import {
 	loadWorkspaceActionContext,
@@ -20,7 +20,7 @@ interface WorkspaceContextLoadParams {
 		| 'rename'
 		| 'add-repo'
 		| 'archive'
-		| 'remove-workspace'
+		| 'remove-thread'
 		| 'remove-repo'
 		| null;
 	workspaceId: string | null;
@@ -45,7 +45,7 @@ export async function loadWorkspaceActionModalContext(
 		{
 			loadWorkspaces: deps.loadWorkspaces,
 			getWorkspaces: deps.getWorkspaces,
-			listAliases,
+			listRegisteredRepos,
 		},
 	);
 }

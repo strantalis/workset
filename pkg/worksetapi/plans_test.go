@@ -12,18 +12,9 @@ func TestBuildNewWorkspaceRepoPlans(t *testing.T) {
 		Repos: map[string]config.RegisteredRepo{
 			"app": {URL: "https://example.com/app.git", DefaultBranch: "dev"},
 		},
-		Groups: map[string]config.Group{
-			"core": {
-				Members: []config.GroupMember{
-					{
-						Repo: "app",
-					},
-				},
-			},
-		},
 	}
 
-	plans, err := buildNewWorkspaceRepoPlans(cfg, []string{"core"}, []string{"app"})
+	plans, err := buildNewWorkspaceRepoPlans(cfg, []string{"app"})
 	if err != nil {
 		t.Fatalf("build plans: %v", err)
 	}
@@ -41,18 +32,9 @@ func TestBuildNewWorkspaceRepoPlansNoConflict(t *testing.T) {
 		Repos: map[string]config.RegisteredRepo{
 			"app": {URL: "https://example.com/app.git"},
 		},
-		Groups: map[string]config.Group{
-			"core": {
-				Members: []config.GroupMember{
-					{
-						Repo: "app",
-					},
-				},
-			},
-		},
 	}
 
-	plans, err := buildNewWorkspaceRepoPlans(cfg, []string{"core"}, []string{"app"})
+	plans, err := buildNewWorkspaceRepoPlans(cfg, []string{"app"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -72,20 +54,6 @@ func TestResolveAliasPlanErrors(t *testing.T) {
 		"empty": {},
 	}
 	_, err = resolveAliasPlan(cfg, "empty")
-	if err == nil {
-		t.Fatalf("expected missing source error")
-	}
-}
-
-func TestResolveGroupMemberPlanErrors(t *testing.T) {
-	cfg := config.GlobalConfig{}
-	_, err := resolveGroupMemberPlan(cfg, config.GroupMember{Repo: "missing"})
-	if err == nil {
-		t.Fatalf("expected missing alias error")
-	}
-
-	cfg.Repos = map[string]config.RegisteredRepo{"empty": {}}
-	_, err = resolveGroupMemberPlan(cfg, config.GroupMember{Repo: "empty"})
 	if err == nil {
 		t.Fatalf("expected missing source error")
 	}

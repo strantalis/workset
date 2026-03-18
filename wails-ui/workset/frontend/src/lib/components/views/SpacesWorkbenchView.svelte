@@ -535,11 +535,9 @@
 		height: 48px;
 		padding: 6px 10px 0;
 		border-bottom: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
-		background: color-mix(in srgb, var(--panel-strong) 84%, var(--panel));
+		background: var(--panel-strong);
 		gap: 4px;
 		flex-shrink: 0;
-		backdrop-filter: blur(12px);
-		-webkit-backdrop-filter: blur(12px);
 	}
 
 	.surface-tab {

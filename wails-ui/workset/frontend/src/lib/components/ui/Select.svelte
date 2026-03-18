@@ -13,6 +13,7 @@
 		placeholder?: string;
 		disabled?: boolean;
 		onchange?: (value: string) => void;
+		'aria-describedby'?: string;
 	}
 
 	let {
@@ -22,6 +23,7 @@
 		placeholder = 'Select...', // eslint-disable-line prefer-const
 		disabled = false, // eslint-disable-line prefer-const
 		onchange, // eslint-disable-line prefer-const
+		'aria-describedby': ariaDescribedBy, // eslint-disable-line prefer-const
 	}: Props = $props();
 
 	let open = $state(false);
@@ -154,6 +156,7 @@
 		class:placeholder={!selectedOption}
 		aria-haspopup="listbox"
 		aria-expanded={open}
+		aria-describedby={ariaDescribedBy}
 		{disabled}
 		onclick={toggle}
 		onkeydown={handleKeydown}
@@ -318,7 +321,7 @@
 
 	.select-option:hover,
 	.select-option.highlighted {
-		background: rgba(255, 255, 255, 0.06);
+		background: rgba(255, 255, 255, 0.1);
 	}
 
 	.select-option.selected {

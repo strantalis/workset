@@ -163,10 +163,10 @@ describe('workspaceActionContextService', () => {
 		).toEqual([{ name: 'repo-b' }]);
 	});
 
-	it('loads base context without alias/group fetch when mode does not require it', async () => {
+	it('loads base context without registered repo fetch when mode does not require it', async () => {
 		const workspace = buildWorkspace();
 		const loadWorkspaces = vi.fn(async () => undefined);
-		const listAliases = vi.fn(async (): Promise<Alias[]> => [{ name: 'unused' }]);
+		const listRegisteredRepos = vi.fn(async (): Promise<Alias[]> => [{ name: 'unused' }]);
 
 		const result = await loadWorkspaceActionContext(
 			{
@@ -177,23 +177,23 @@ describe('workspaceActionContextService', () => {
 			{
 				loadWorkspaces,
 				getWorkspaces: () => [workspace],
-				listAliases,
+				listRegisteredRepos,
 			},
 		);
 
 		expect(loadWorkspaces).toHaveBeenCalledTimes(1);
 		expect(loadWorkspaces).toHaveBeenCalledWith(true);
-		expect(listAliases).not.toHaveBeenCalled();
+		expect(listRegisteredRepos).not.toHaveBeenCalled();
 		expect(result.workspace?.id).toBe('ws-1');
 		expect(result.repo?.name).toBe('repo-b');
 		expect(result.renameName).toBe('alpha');
 		expect(result.aliasItems).toEqual([]);
 	});
 
-	it('loads alias context for create mode without template groups', async () => {
+	it('loads registered repo context for create mode', async () => {
 		const loadWorkspaces = vi.fn(async () => undefined);
 		const aliases: Alias[] = [{ name: 'alias-a', path: '/tmp/repos/a' }];
-		const listAliases = vi.fn(async () => aliases);
+		const listRegisteredRepos = vi.fn(async () => aliases);
 
 		const result = await loadWorkspaceActionContext(
 			{
@@ -204,23 +204,23 @@ describe('workspaceActionContextService', () => {
 			{
 				loadWorkspaces,
 				getWorkspaces: () => [],
-				listAliases,
+				listRegisteredRepos,
 			},
 		);
 
 		expect(loadWorkspaces).not.toHaveBeenCalled();
-		expect(listAliases).toHaveBeenCalledTimes(1);
+		expect(listRegisteredRepos).toHaveBeenCalledTimes(1);
 		expect(result.workspace).toBeNull();
 		expect(result.repo).toBeNull();
 		expect(result.renameName).toBe('');
 		expect(result.aliasItems).toEqual(aliases);
 	});
 
-	it('loads alias context for create-thread mode without forcing workspace snapshot reload', async () => {
+	it('loads registered repo context for create-thread mode without forcing workspace snapshot reload', async () => {
 		const workspace = buildWorkspace();
 		const loadWorkspaces = vi.fn(async () => undefined);
 		const aliases: Alias[] = [{ name: 'repo-a', path: '/tmp/repos/a' }];
-		const listAliases = vi.fn(async () => aliases);
+		const listRegisteredRepos = vi.fn(async () => aliases);
 
 		const result = await loadWorkspaceActionContext(
 			{
@@ -231,12 +231,12 @@ describe('workspaceActionContextService', () => {
 			{
 				loadWorkspaces,
 				getWorkspaces: () => [workspace],
-				listAliases,
+				listRegisteredRepos,
 			},
 		);
 
 		expect(loadWorkspaces).not.toHaveBeenCalled();
-		expect(listAliases).toHaveBeenCalledTimes(1);
+		expect(listRegisteredRepos).toHaveBeenCalledTimes(1);
 		expect(result.workspace?.id).toBe('ws-1');
 		expect(result.repo).toBeNull();
 		expect(result.aliasItems).toEqual(aliases);

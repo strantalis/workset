@@ -1,6 +1,7 @@
 SHELL := /bin/bash
 PYTHON ?= python3
 VENV ?= .venv
+PORT ?= 8000
 GOLANGCI_LINT_CACHE ?= /tmp/golangci-lint-cache
 
 UV := $(shell command -v uv 2>/dev/null)
@@ -11,7 +12,7 @@ BASE_SHA ?= $(shell git merge-base HEAD origin/main 2>/dev/null)
 help:
 	@printf "%s\n" "Targets:" \
 		"  docs-venv   Create/refresh docs venv and install requirements" \
-		"  docs-serve  Run MkDocs dev server" \
+		"  docs-serve  Run MkDocs dev server (override with PORT=8001)" \
 		"  docs-build  Build MkDocs site" \
 		"  test        Run Go and frontend tests" \
 		"  lint        Run golangci-lint and frontend ESLint" \
@@ -33,7 +34,7 @@ docs-venv:
 	uv pip install -r requirements.txt
 
 docs-serve: docs-venv
-	$(VENV)/bin/mkdocs serve --livereload --watch docs --watch mkdocs.yml
+	$(VENV)/bin/mkdocs serve --dev-addr 127.0.0.1:$(PORT) --livereload --watch docs --watch mkdocs.yml
 
 docs-build: docs-venv
 	$(VENV)/bin/mkdocs build
@@ -69,6 +70,6 @@ guardrails:
 	fi
 
 deprecations:
-	go run ./scripts/deprecations --config docs/architecture/deprecation-register.yaml
+	go run ./scripts/deprecations --config docs-internal/architecture/deprecation-register.yaml
 
 check: fmt test lint guardrails deprecations

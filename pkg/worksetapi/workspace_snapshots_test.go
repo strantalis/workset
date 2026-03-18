@@ -135,6 +135,7 @@ func TestListWorkspaceSnapshotsUsesExplicitWorksetIdentity(t *testing.T) {
 	refB := cfg.Workspaces["thread-b"]
 	refB.Workset = "Platform Core"
 	cfg.Workspaces["thread-b"] = refB
+	cfg.WorksetRepos = map[string][]string{"Platform Core": nil}
 	env.saveConfig(cfg)
 
 	result, err := env.svc.ListWorkspaceSnapshots(context.Background(), WorkspaceSnapshotOptions{})

@@ -163,10 +163,10 @@ describe('WorkspaceActionCreateForm', () => {
 			},
 		});
 
-		expect(getByText('Post-Checkout Hooks')).toBeInTheDocument();
+		expect(getByText('Hooks')).toBeInTheDocument();
 		expect(getByText('auth-service')).toBeInTheDocument();
-		expect(getByText('+ npm install')).toBeInTheDocument();
-		expect(getByText('+ npm run build')).toBeInTheDocument();
-		expect(getByText('Repo source unavailable in catalog.')).toBeInTheDocument();
+		expect(getByText('npm install')).toBeInTheDocument();
+		expect(getByText('npm run build')).toBeInTheDocument();
+		expect(getByText('No source in catalog')).toBeInTheDocument();
 	});
 });

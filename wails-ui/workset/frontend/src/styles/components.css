@@ -26,7 +26,6 @@
 	}
 
 	.ws-field-input,
-	.ws-field-select,
 	.ws-field-textarea {
 		background: var(--panel-soft);
 		border: 1px solid var(--border);
@@ -40,7 +39,6 @@
 	}
 
 	.ws-field-input:focus-visible,
-	.ws-field-select:focus-visible,
 	.ws-field-textarea:focus-visible {
 		outline: none;
 		border-color: var(--accent);

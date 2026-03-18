@@ -13,21 +13,12 @@ import (
 )
 
 func (s *Service) loadGlobal(ctx context.Context) (config.GlobalConfig, config.GlobalConfigLoadInfo, error) {
-	cfg, info, err := s.configs.Load(ctx, s.configPath)
-	if err == nil {
-		if migrateErr := s.runGlobalConfigMigrations(ctx, &cfg, info.Path, info); migrateErr != nil {
-			return config.GlobalConfig{}, info, migrateErr
-		}
-	}
-	return cfg, info, err
+	return s.configs.Load(ctx, s.configPath)
 }
 
 func (s *Service) updateGlobal(ctx context.Context, fn func(cfg *config.GlobalConfig, info config.GlobalConfigLoadInfo) error) (config.GlobalConfigLoadInfo, error) {
 	if updater, ok := s.configs.(ConfigUpdater); ok {
-		return updater.Update(ctx, s.configPath, func(cfg *config.GlobalConfig, info config.GlobalConfigLoadInfo) error {
-			s.applyLegacyGroupRemotes(cfg)
-			return fn(cfg, info)
-		})
+		return updater.Update(ctx, s.configPath, fn)
 	}
 	cfg, info, err := s.loadGlobal(ctx)
 	if err != nil {
@@ -42,7 +33,7 @@ func (s *Service) updateGlobal(ctx context.Context, fn func(cfg *config.GlobalCo
 	return info, nil
 }
 
-func registerWorkspace(cfg *config.GlobalConfig, name, path string, now time.Time, template string) {
+func registerWorkspace(cfg *config.GlobalConfig, name, path string, now time.Time, workset string) {
 	if cfg.Workspaces == nil {
 		cfg.Workspaces = map[string]config.WorkspaceRef{}
 	}
@@ -54,8 +45,8 @@ func registerWorkspace(cfg *config.GlobalConfig, name, path string, now time.Tim
 		}
 	}
 	if ref.Workset == "" {
-		if template != "" {
-			ref.Workset = template
+		if workset != "" {
+			ref.Workset = workset
 		} else {
 			ref.Workset = name
 		}
@@ -75,45 +66,35 @@ func registerWorkspace(cfg *config.GlobalConfig, name, path string, now time.Tim
 }
 
 func workspaceRefWorkset(ref config.WorkspaceRef) string {
-	workset := strings.TrimSpace(ref.Workset)
-	if workset != "" {
-		return workset
-	}
-	return strings.TrimSpace(ref.Template)
+	return strings.TrimSpace(ref.Workset)
 }
 
-func resolveWorkspaceTarget(arg string, cfg *config.GlobalConfig) (string, string, error) {
+func resolveThreadTarget(arg string, cfg *config.GlobalConfig) (string, string, error) {
 	target := strings.TrimSpace(arg)
 	if target == "" {
-		target = strings.TrimSpace(cfg.Defaults.Workspace)
+		target = strings.TrimSpace(cfg.Defaults.Thread)
 	}
 	if target == "" {
-		return "", "", ValidationError{Message: "workspace required"}
+		return "", "", ValidationError{Message: "thread required"}
 	}
 	if ref, ok := cfg.Workspaces[target]; ok {
 		return target, ref.Path, nil
 	}
-	if !filepath.IsAbs(target) && cfg.Defaults.WorkspaceRoot != "" {
-		candidate := filepath.Join(cfg.Defaults.WorkspaceRoot, target)
-		if _, err := os.Stat(candidate); err == nil {
-			return target, candidate, nil
-		}
-	}
 	if filepath.IsAbs(target) {
-		name := workspaceNameByPath(cfg, target)
+		name := threadNameByPath(cfg, target)
 		return name, target, nil
 	}
-	return "", "", NotFoundError{Message: fmt.Sprintf("workspace not found: %q", target)}
+	return "", "", NotFoundError{Message: fmt.Sprintf("thread not found: %q", target)}
 }
 
 func resolveWorkspaceSelector(cfg *config.GlobalConfig, selector WorkspaceSelector) (string, string, error) {
 	if selector.Value == "" && !selector.Require {
-		return resolveWorkspaceTarget("", cfg)
+		return resolveThreadTarget("", cfg)
 	}
-	return resolveWorkspaceTarget(selector.Value, cfg)
+	return resolveThreadTarget(selector.Value, cfg)
 }
 
-func workspaceNameByPath(cfg *config.GlobalConfig, path string) string {
+func threadNameByPath(cfg *config.GlobalConfig, path string) string {
 	clean := filepath.Clean(path)
 	for name, ref := range cfg.Workspaces {
 		if filepath.Clean(ref.Path) == clean {

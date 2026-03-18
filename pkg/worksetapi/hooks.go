@@ -58,7 +58,7 @@ func (s *Service) RunHooks(ctx context.Context, input HooksRunInput) (HooksRunRe
 
 	wsName := wsConfig.Name
 	if wsName == "" {
-		wsName = workspaceNameByPath(&cfg, wsRoot)
+		wsName = threadNameByPath(&cfg, wsRoot)
 	}
 	if wsName == "" {
 		wsName = filepath.Base(wsRoot)
@@ -173,7 +173,7 @@ func (s *Service) runWorktreeCreatedHooks(ctx context.Context, cfg config.Global
 			Status: HookRunStatusSkipped,
 			Reason: "untrusted",
 		}
-		warn := fmt.Sprintf("repo %s defines hooks; run `workset hooks run -w %s %s` to execute or trust", repo.Name, wsName, repo.Name)
+		warn := fmt.Sprintf("repo %s defines hooks; run `workset hooks run -t %s %s` to execute or trust", repo.Name, wsName, repo.Name)
 		return pending, nil, []string{warn}, nil
 	}
 

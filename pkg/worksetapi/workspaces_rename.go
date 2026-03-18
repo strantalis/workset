@@ -22,7 +22,7 @@ func (s *Service) RenameWorkspace(ctx context.Context, input WorkspaceRenameInpu
 		}
 		newName := strings.TrimSpace(input.NewName)
 		if newName == "" {
-			return ValidationError{Message: "new workspace name required"}
+			return ValidationError{Message: "new thread name required"}
 		}
 
 		wsConfig, err := s.workspaces.LoadConfig(ctx, root)
@@ -33,7 +33,7 @@ func (s *Service) RenameWorkspace(ctx context.Context, input WorkspaceRenameInpu
 			currentName = strings.TrimSpace(wsConfig.Name)
 		}
 		if currentName == "" {
-			return ValidationError{Message: "workspace name required"}
+			return ValidationError{Message: "thread name required"}
 		}
 		if currentName == newName {
 			ref = cfg.Workspaces[currentName]
@@ -46,7 +46,7 @@ func (s *Service) RenameWorkspace(ctx context.Context, input WorkspaceRenameInpu
 
 		if existing, ok := cfg.Workspaces[newName]; ok {
 			if filepath.Clean(existing.Path) != filepath.Clean(root) && existing.Path != "" {
-				return ConflictError{Message: "workspace name already registered to a different path"}
+				return ConflictError{Message: "thread name already registered to a different path"}
 			}
 		}
 

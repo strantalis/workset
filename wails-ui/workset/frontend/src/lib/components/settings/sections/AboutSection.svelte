@@ -6,6 +6,7 @@
 		UpdatePreferences,
 		UpdateState,
 	} from '../../../types';
+	import Select from '../../ui/Select.svelte';
 
 	interface Props {
 		appVersion: AppVersion | null;
@@ -63,9 +64,8 @@
 		}
 	};
 
-	const handleChannelChange = (event: Event): void => {
-		const target = event.currentTarget as HTMLSelectElement;
-		onUpdateChannelChange(target.value);
+	const handleChannelChange = (value: string): void => {
+		onUpdateChannelChange(value);
 	};
 </script>
 
@@ -148,14 +148,16 @@
 			{/if}
 			<div class="version-row">
 				<span class="row-label">Channel</span>
-				<select
-					class="channel-select"
-					value={updatePreferences.channel}
-					onchange={handleChannelChange}
-				>
-					<option value="stable">Stable</option>
-					<option value="alpha">Alpha</option>
-				</select>
+				<div class="channel-select-wrap">
+					<Select
+						value={updatePreferences.channel}
+						options={[
+							{ label: 'Stable', value: 'stable' },
+							{ label: 'Alpha', value: 'alpha' },
+						]}
+						onchange={handleChannelChange}
+					/>
+				</div>
 			</div>
 		</div>
 	{/if}
@@ -333,19 +335,8 @@
 		background: var(--success-soft, var(--accent-soft));
 	}
 
-	.channel-select {
-		background: var(--panel-strong);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-sm);
-		padding: 4px 8px;
-		color: var(--text);
-		font-size: var(--text-base);
-		cursor: pointer;
-	}
-
-	.channel-select:focus {
-		outline: none;
-		border-color: var(--accent);
+	.channel-select-wrap {
+		width: 120px;
 	}
 
 	.action-links {

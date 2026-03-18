@@ -58,7 +58,7 @@ test.describe('redesign core flows', () => {
 		await expect(page.getByRole('button', { name: 'Back to terminal' })).toHaveCount(0);
 	});
 
-	test('loads onboarding templates from API-backed catalog', async ({ page }) => {
+	test('loads onboarding repo catalog from API-backed catalog', async ({ page }) => {
 		await gotoApp(page);
 		await page.getByRole('complementary').getByRole('button', { name: 'New Workset' }).click();
 		await expect(page.getByRole('heading', { name: 'Create Workset' })).toBeVisible();
@@ -67,14 +67,14 @@ test.describe('redesign core flows', () => {
 			.getByRole('textbox', { name: 'Workset Name' })
 			.fill(`playwright-redesign-${Date.now()}`);
 		await page.getByRole('button', { name: 'Continue' }).click();
-		await page.getByRole('button', { name: /From Template/i }).click();
+		await page.getByRole('button', { name: /From Catalog/i }).click();
 
-		const noTemplates = page.getByText('No templates found. Add templates in Settings.');
-		await expect(noTemplates).toHaveCount(0);
+		const noRepos = page.getByText('No matching repos in your catalog yet.');
+		await expect(noRepos).toHaveCount(0);
 
-		const templateRows = page.locator('.template-row');
-		await expect(templateRows.first()).toBeVisible();
-		await templateRows.first().click();
+		const repoRows = page.locator('.topology-candidate');
+		await expect(repoRows.first()).toBeVisible();
+		await repoRows.first().click();
 		await page.getByRole('button', { name: 'Next Step' }).click();
 
 		const reviewRepoRows = page.locator('.review-repo-header');

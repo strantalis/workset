@@ -1,34 +1,19 @@
-import type {
-	Alias,
-	AgentCLIStatus,
-	EnvSnapshotResult,
-	Group,
-	GroupSummary,
-	SettingsSnapshot,
-} from '../types';
+import type { AgentCLIStatus, EnvSnapshotResult, RegisteredRepo, SettingsSnapshot } from '../types';
 import {
-	AddGroupMember,
-	ApplyGroup,
 	CheckAgentStatus,
-	CreateAlias,
-	CreateGroup,
-	DeleteAlias,
-	DeleteGroup,
-	GetGroup,
 	GetSettings,
 	GetSessiondStatus,
-	ListAliases,
-	ListGroups,
+	ListRegisteredRepos,
 	OpenDirectoryDialog,
 	OpenFileDialog,
+	RegisterRepo,
 	ReloadLoginEnv,
-	RemoveGroupMember,
 	RestartSessiond,
 	RestartSessiondWithReason,
 	SetAgentCLIPath,
 	SetDefaultSetting,
-	UpdateAlias,
-	UpdateGroup,
+	UnregisterRepo,
+	UpdateRegisteredRepo,
 } from '../../../bindings/workset/app';
 
 export type SessiondStatusResponse = {
@@ -72,8 +57,8 @@ export async function restartSessiond(reason?: string): Promise<SessiondStatusRe
 	return RestartSessiond();
 }
 
-export async function listRegisteredRepos(): Promise<Alias[]> {
-	return ListAliases();
+export async function listRegisteredRepos(): Promise<RegisteredRepo[]> {
+	return ListRegisteredRepos();
 }
 
 export async function registerRepo(
@@ -82,12 +67,12 @@ export async function registerRepo(
 	remote: string,
 	defaultBranch: string,
 ): Promise<void> {
-	await CreateAlias({
+	await RegisterRepo({
 		name,
 		source,
 		remote,
 		defaultBranch,
-	} as Parameters<typeof CreateAlias>[0]);
+	} as Parameters<typeof RegisterRepo>[0]);
 }
 
 export async function updateRegisteredRepo(
@@ -96,66 +81,16 @@ export async function updateRegisteredRepo(
 	remote: string,
 	defaultBranch: string,
 ): Promise<void> {
-	await UpdateAlias({
+	await UpdateRegisteredRepo({
 		name,
 		source,
 		remote,
 		defaultBranch,
-	} as Parameters<typeof UpdateAlias>[0]);
+	} as Parameters<typeof UpdateRegisteredRepo>[0]);
 }
 
 export async function unregisterRepo(name: string): Promise<void> {
-	await DeleteAlias(name);
-}
-
-/** @deprecated Use listRegisteredRepos instead */
-export const listAliases = listRegisteredRepos;
-
-/** @deprecated Use registerRepo instead */
-export const createAlias = registerRepo;
-
-/** @deprecated Use updateRegisteredRepo instead */
-export const updateAlias = updateRegisteredRepo;
-
-/** @deprecated Use unregisterRepo instead */
-export const deleteAlias = unregisterRepo;
-
-export async function listGroups(): Promise<GroupSummary[]> {
-	return ListGroups();
-}
-
-export async function getGroup(name: string): Promise<Group> {
-	return GetGroup(name);
-}
-
-export async function createGroup(name: string, description: string): Promise<void> {
-	await CreateGroup({ name, description });
-}
-
-export async function updateGroup(name: string, description: string): Promise<void> {
-	await UpdateGroup({ name, description });
-}
-
-export async function deleteGroup(name: string): Promise<void> {
-	await DeleteGroup(name);
-}
-
-export async function addGroupMember(groupName: string, repoName: string): Promise<void> {
-	await AddGroupMember({
-		groupName,
-		repoName,
-	});
-}
-
-export async function removeGroupMember(groupName: string, repoName: string): Promise<void> {
-	await RemoveGroupMember({
-		groupName,
-		repoName,
-	});
-}
-
-export async function applyGroup(workspaceId: string, groupName: string): Promise<void> {
-	await ApplyGroup(workspaceId, groupName);
+	await UnregisterRepo(name);
 }
 
 export async function fetchSettings(): Promise<SettingsSnapshot> {

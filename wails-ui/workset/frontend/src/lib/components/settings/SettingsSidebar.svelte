@@ -1,18 +1,24 @@
 <script lang="ts">
-	import { Folder, Bot, Terminal, Github, Database, Info } from '@lucide/svelte';
+	import { Settings2, Terminal, Wrench, Github, Database, Info } from '@lucide/svelte';
 
 	interface Props {
 		activeSection: string;
 		onSelectSection: (section: string) => void;
 		aliasCount?: number;
+		dirtySections?: Set<string>;
 	}
 
-	const { activeSection, onSelectSection, aliasCount = 0 }: Props = $props();
+	const {
+		activeSection,
+		onSelectSection,
+		aliasCount = 0,
+		dirtySections = new Set(),
+	}: Props = $props();
 
 	type SidebarItem = {
 		id: string;
 		label: string;
-		icon: typeof Folder;
+		icon: typeof Settings2;
 		count?: number;
 	};
 
@@ -25,8 +31,7 @@
 		{
 			title: 'GENERAL',
 			items: [
-				{ id: 'workspace', label: 'Workspace', icon: Folder },
-				{ id: 'agent', label: 'Agent', icon: Bot },
+				{ id: 'defaults', label: 'Defaults', icon: Settings2 },
 				{ id: 'session', label: 'Terminal', icon: Terminal },
 			],
 		},
@@ -39,6 +44,10 @@
 			items: [{ id: 'aliases', label: 'Repo Catalog', icon: Database, count: aliasCount }],
 		},
 		{
+			title: 'SYSTEM',
+			items: [{ id: 'system', label: 'System', icon: Wrench }],
+		},
+		{
 			title: 'INFO',
 			items: [{ id: 'about', label: 'About', icon: Info }],
 		},
@@ -47,7 +56,7 @@
 
 <nav class="sidebar">
 	<div class="sidebar-header">
-		<h2 class="sidebar-title">Settings</h2>
+		<h1 class="sidebar-title">Settings</h1>
 		<p class="sidebar-subtitle">Configure your workset environment.</p>
 	</div>
 
@@ -59,10 +68,14 @@
 					class="item"
 					class:active={activeSection === item.id}
 					type="button"
+					aria-current={activeSection === item.id ? 'page' : undefined}
 					onclick={() => onSelectSection(item.id)}
 				>
 					<item.icon size={16} class="item-icon" />
 					<span class="label">{item.label}</span>
+					{#if dirtySections.has(item.id)}
+						<span class="dirty-dot" title="Unsaved changes"></span>
+					{/if}
 					{#if item.count !== undefined && item.count > 0}
 						<span class="badge">{item.count}</span>
 					{/if}
@@ -181,6 +194,18 @@
 	.item.active .badge {
 		background: rgba(0, 0, 0, 0.25);
 		color: white;
+	}
+
+	.dirty-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--warning);
+		flex-shrink: 0;
+	}
+
+	.item.active .dirty-dot {
+		background: rgba(255, 255, 255, 0.7);
 	}
 
 	@media (max-width: 720px) {

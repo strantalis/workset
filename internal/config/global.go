@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 
@@ -33,73 +32,11 @@ func GlobalConfigPath() (string, error) {
 	return filepath.Join(home, ".workset", "config.yaml"), nil
 }
 
-func legacyGlobalConfigPaths() ([]string, error) {
-	paths := make([]string, 0, 3)
-	configDir, err := os.UserConfigDir()
-	if err == nil && configDir != "" {
-		paths = append(paths, filepath.Join(configDir, "workset", "config.yaml"))
-	}
-	home, err := os.UserHomeDir()
-	if err == nil && home != "" {
-		if runtime.GOOS == "darwin" {
-			paths = append(paths, filepath.Join(home, "Library", "Application Support", "workset", "config.yaml"))
-		}
-		paths = append(paths, filepath.Join(home, ".config", "workset", "config.yaml"))
-	}
-	seen := map[string]struct{}{}
-	unique := make([]string, 0, len(paths))
-	for _, path := range paths {
-		if path == "" {
-			continue
-		}
-		if _, ok := seen[path]; ok {
-			continue
-		}
-		seen[path] = struct{}{}
-		unique = append(unique, path)
-	}
-	return unique, nil
-}
-
-func migrateLegacyGlobalConfig(path, legacyPath string) error {
-	if legacyPath == "" || legacyPath == path {
-		return nil
-	}
-	if _, err := os.Stat(legacyPath); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		return err
-	}
-	if _, err := os.Stat(path); err == nil {
-		return nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	if err := os.Rename(legacyPath, path); err == nil {
-		return nil
-	}
-	data, err := os.ReadFile(legacyPath)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o644)
-}
-
 type GlobalConfigLoadInfo struct {
-	Path                     string
-	LegacyPath               string
-	Migrated                 bool
-	UsedLegacy               bool
-	Exists                   bool
-	ConfigVersion            int
-	ConfigVersionPresent     bool
-	UsedLegacyWorkspacesKey  bool
-	UsedFlatWorksetsShape    bool
-	UsedLegacyWorksetCatalog bool
+	Path                 string
+	Exists               bool
+	ConfigVersion        int
+	ConfigVersionPresent bool
 }
 
 type serializedWorksetGroup struct {
@@ -114,7 +51,6 @@ type serializedGlobalConfig struct {
 	Agent         AgentConfig                       `yaml:"agent,omitempty" json:"agent,omitempty"`
 	Hooks         HooksConfig                       `yaml:"hooks,omitempty" json:"hooks,omitempty"`
 	Repos         map[string]RegisteredRepo         `yaml:"repos" json:"repos"`
-	Groups        map[string]Group                  `yaml:"groups,omitempty" json:"groups,omitempty"`
 	Worksets      map[string]serializedWorksetGroup `yaml:"worksets,omitempty" json:"worksets,omitempty"`
 }
 
@@ -136,33 +72,6 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 		path, err = GlobalConfigPath()
 		if err != nil {
 			return GlobalConfig{}, info, err
-		}
-		legacyPaths, legacyErr := legacyGlobalConfigPaths()
-		if legacyErr == nil && len(legacyPaths) > 0 {
-			newExists := true
-			if _, statErr := os.Stat(path); statErr != nil {
-				if errors.Is(statErr, os.ErrNotExist) {
-					newExists = false
-				} else {
-					return GlobalConfig{}, info, statErr
-				}
-			}
-			if !newExists {
-				for _, legacyPath := range legacyPaths {
-					if err := migrateLegacyGlobalConfig(path, legacyPath); err == nil {
-						if _, statErr := os.Stat(path); statErr == nil {
-							info.Migrated = true
-							info.LegacyPath = legacyPath
-							break
-						}
-					} else {
-						path = legacyPath
-						info.UsedLegacy = true
-						info.LegacyPath = legacyPath
-						break
-					}
-				}
-			}
 		}
 	}
 	info.Path = path
@@ -195,19 +104,6 @@ func loadGlobal(path string) (GlobalConfig, GlobalConfigLoadInfo, error) {
 		if err := k.Load(file.Provider(path), koanfyaml.Parser()); err != nil {
 			return GlobalConfig{}, info, err
 		}
-		if k.Exists("workspaces") {
-			info.UsedLegacyWorkspacesKey = true
-		}
-		usedFlatShape, err := hasFlatWorksetsShape(rawData)
-		if err != nil {
-			return GlobalConfig{}, info, err
-		}
-		info.UsedFlatWorksetsShape = usedFlatShape
-		usedWorksetCatalog, err := hasTopLevelKey(rawData, "workset_catalog")
-		if err != nil {
-			return GlobalConfig{}, info, err
-		}
-		info.UsedLegacyWorksetCatalog = usedWorksetCatalog
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return GlobalConfig{}, info, err
 	}
@@ -320,49 +216,7 @@ func SaveGlobal(path string, cfg GlobalConfig) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
-func stripLegacyGroupRemotes(cfg GlobalConfig) GlobalConfig {
-	if cfg.Groups == nil {
-		return cfg
-	}
-	for name, group := range cfg.Groups {
-		if len(group.Members) == 0 {
-			continue
-		}
-		updated := false
-		for i := range group.Members {
-			if group.Members[i].LegacyRemotes != nil {
-				group.Members[i].LegacyRemotes = nil
-				updated = true
-			}
-		}
-		if updated {
-			cfg.Groups[name] = group
-		}
-	}
-	return cfg
-}
-
-func stripLegacyWorkspaceTemplates(cfg GlobalConfig) GlobalConfig {
-	if cfg.Workspaces == nil {
-		return cfg
-	}
-	for name, ref := range cfg.Workspaces {
-		template := strings.TrimSpace(ref.Template)
-		if template == "" {
-			continue
-		}
-		if strings.TrimSpace(ref.Workset) == "" {
-			ref.Workset = template
-		}
-		ref.Template = ""
-		cfg.Workspaces[name] = ref
-	}
-	return cfg
-}
-
 func sanitizeGlobalForSave(cfg GlobalConfig) GlobalConfig {
-	cfg = stripLegacyGroupRemotes(cfg)
-	cfg = stripLegacyWorkspaceTemplates(cfg)
 	for name, ref := range cfg.Workspaces {
 		ref.RepoOverrides = normalizeRepoList(ref.RepoOverrides)
 		cfg.Workspaces[name] = ref
@@ -371,7 +225,6 @@ func sanitizeGlobalForSave(cfg GlobalConfig) GlobalConfig {
 		cfg.WorksetRepos[workset] = normalizeRepoList(repos)
 	}
 	cfg.ConfigVersion = ensureCurrentConfigVersion(cfg.ConfigVersion)
-	cfg.LegacyWorkspaces = nil
 	return cfg
 }
 
@@ -386,7 +239,6 @@ func toSerializedGlobalConfig(cfg GlobalConfig) serializedGlobalConfig {
 		if worksetName == "" {
 			worksetName = normalizedThread
 		}
-		ref.Template = ""
 		ref.RepoOverrides = normalizeRepoList(ref.RepoOverrides)
 		group := worksets[worksetName]
 		if group.Threads == nil {
@@ -412,7 +264,6 @@ func toSerializedGlobalConfig(cfg GlobalConfig) serializedGlobalConfig {
 		Agent:         cfg.Agent,
 		Hooks:         cfg.Hooks,
 		Repos:         cfg.Repos,
-		Groups:        cfg.Groups,
 		Worksets:      worksets,
 	}
 }
@@ -483,45 +334,11 @@ func parseNestedWorksets(raw []byte) (map[string]WorkspaceRef, map[string][]stri
 			if strings.TrimSpace(ref.Workset) == "" && normalizedWorksetName != normalizedThread {
 				ref.Workset = normalizedWorksetName
 			}
-			ref.Template = ""
 			ref.RepoOverrides = normalizeRepoList(ref.RepoOverrides)
 			flattened[normalizedThread] = ref
 		}
 	}
 	return flattened, worksetRepos, true, nil
-}
-
-func hasFlatWorksetsShape(raw []byte) (bool, error) {
-	if len(bytes.TrimSpace(raw)) == 0 {
-		return false, nil
-	}
-	var root map[string]any
-	if err := yaml.Unmarshal(raw, &root); err != nil {
-		return false, err
-	}
-	worksetsValue, ok := root["worksets"]
-	if !ok {
-		return false, nil
-	}
-	worksetsMap, ok := asStringAnyMap(worksetsValue)
-	if !ok {
-		return false, nil
-	}
-	seenEntries := false
-	for _, rawGroup := range worksetsMap {
-		groupMap, ok := asStringAnyMap(rawGroup)
-		if !ok {
-			continue
-		}
-		seenEntries = true
-		if _, ok := groupMap["threads"]; ok {
-			return false, nil
-		}
-		if _, ok := groupMap["repos"]; ok {
-			return false, nil
-		}
-	}
-	return seenEntries, nil
 }
 
 func normalizeRepoList(repos []string) []string {
@@ -548,18 +365,6 @@ func normalizeRepoList(repos []string) []string {
 	return normalized
 }
 
-func hasTopLevelKey(raw []byte, key string) (bool, error) {
-	if len(bytes.TrimSpace(raw)) == 0 {
-		return false, nil
-	}
-	var root map[string]any
-	if err := yaml.Unmarshal(raw, &root); err != nil {
-		return false, err
-	}
-	_, ok := root[key]
-	return ok, nil
-}
-
 func asStringAnyMap(value any) (map[string]any, bool) {
 	switch typed := value.(type) {
 	case map[string]any:
@@ -581,29 +386,21 @@ func asStringAnyMap(value any) (map[string]any, bool) {
 
 func defaultConfigMap(defaults GlobalConfig) map[string]any {
 	return map[string]any{
-		"defaults.remote":                    defaults.Defaults.Remote,
-		"defaults.base_branch":               defaults.Defaults.BaseBranch,
-		"defaults.workspace":                 defaults.Defaults.Workspace,
-		"defaults.workset_root":              defaults.Defaults.WorksetRoot,
-		"defaults.workspace_root":            defaults.Defaults.WorkspaceRoot,
-		"defaults.repo_store_root":           defaults.Defaults.RepoStoreRoot,
-		"defaults.session_backend":           defaults.Defaults.SessionBackend,
-		"defaults.session_name_format":       defaults.Defaults.SessionNameFormat,
-		"defaults.session_theme":             defaults.Defaults.SessionTheme,
-		"defaults.session_tmux_status_style": defaults.Defaults.SessionTmuxStyle,
-		"defaults.session_tmux_status_left":  defaults.Defaults.SessionTmuxLeft,
-		"defaults.session_tmux_status_right": defaults.Defaults.SessionTmuxRight,
-		"defaults.session_screen_hardstatus": defaults.Defaults.SessionScreenHard,
-		"defaults.agent":                     defaults.Defaults.Agent,
-		"defaults.agent_model":               defaults.Defaults.AgentModel,
-		"defaults.terminal_idle_timeout":     defaults.Defaults.TerminalIdleTimeout,
-		"defaults.terminal_protocol_log":     defaults.Defaults.TerminalProtocolLog,
-		"defaults.terminal_debug_overlay":    defaults.Defaults.TerminalDebugOverlay,
-		"defaults.terminal_keybindings":      defaults.Defaults.TerminalKeybindings,
-		"github.cli_path":                    defaults.GitHub.CLIPath,
-		"hooks.enabled":                      defaults.Hooks.Enabled,
-		"hooks.on_error":                     defaults.Hooks.OnError,
-		"hooks.repo_hooks.trusted_repos":     defaults.Hooks.RepoHooks.TrustedRepos,
+		"defaults.remote":                 defaults.Defaults.Remote,
+		"defaults.base_branch":            defaults.Defaults.BaseBranch,
+		"defaults.thread":                 defaults.Defaults.Thread,
+		"defaults.workset_root":           defaults.Defaults.WorksetRoot,
+		"defaults.repo_store_root":        defaults.Defaults.RepoStoreRoot,
+		"defaults.agent":                  defaults.Defaults.Agent,
+		"defaults.agent_model":            defaults.Defaults.AgentModel,
+		"defaults.terminal_idle_timeout":  defaults.Defaults.TerminalIdleTimeout,
+		"defaults.terminal_protocol_log":  defaults.Defaults.TerminalProtocolLog,
+		"defaults.terminal_debug_overlay": defaults.Defaults.TerminalDebugOverlay,
+		"defaults.terminal_keybindings":   defaults.Defaults.TerminalKeybindings,
+		"github.cli_path":                 defaults.GitHub.CLIPath,
+		"hooks.enabled":                   defaults.Hooks.Enabled,
+		"hooks.on_error":                  defaults.Hooks.OnError,
+		"hooks.repo_hooks.trusted_repos":  defaults.Hooks.RepoHooks.TrustedRepos,
 	}
 }
 
@@ -632,45 +429,14 @@ func finalizeGlobal(cfg *GlobalConfig, defaults GlobalConfig) {
 	if cfg.Defaults.BaseBranch == "" {
 		cfg.Defaults = defaults.Defaults
 	}
-	if cfg.Defaults.Workspace == "" {
-		cfg.Defaults.Workspace = defaults.Defaults.Workspace
-	}
-	if cfg.Defaults.WorksetRoot == "" && cfg.Defaults.WorkspaceRoot != "" {
-		candidate := filepath.Clean(cfg.Defaults.WorkspaceRoot)
-		if filepath.Base(candidate) == "workspaces" {
-			candidate = filepath.Dir(candidate)
-		}
-		cfg.Defaults.WorksetRoot = candidate
+	if cfg.Defaults.Thread == "" {
+		cfg.Defaults.Thread = defaults.Defaults.Thread
 	}
 	if cfg.Defaults.WorksetRoot == "" {
 		cfg.Defaults.WorksetRoot = defaults.Defaults.WorksetRoot
 	}
-	if cfg.Defaults.WorkspaceRoot == "" {
-		cfg.Defaults.WorkspaceRoot = filepath.Join(cfg.Defaults.WorksetRoot, "workspaces")
-	}
 	if cfg.Defaults.RepoStoreRoot == "" {
 		cfg.Defaults.RepoStoreRoot = defaults.Defaults.RepoStoreRoot
-	}
-	if cfg.Defaults.SessionBackend == "" {
-		cfg.Defaults.SessionBackend = defaults.Defaults.SessionBackend
-	}
-	if cfg.Defaults.SessionNameFormat == "" {
-		cfg.Defaults.SessionNameFormat = defaults.Defaults.SessionNameFormat
-	}
-	if cfg.Defaults.SessionTheme == "" {
-		cfg.Defaults.SessionTheme = defaults.Defaults.SessionTheme
-	}
-	if cfg.Defaults.SessionTmuxStyle == "" {
-		cfg.Defaults.SessionTmuxStyle = defaults.Defaults.SessionTmuxStyle
-	}
-	if cfg.Defaults.SessionTmuxLeft == "" {
-		cfg.Defaults.SessionTmuxLeft = defaults.Defaults.SessionTmuxLeft
-	}
-	if cfg.Defaults.SessionTmuxRight == "" {
-		cfg.Defaults.SessionTmuxRight = defaults.Defaults.SessionTmuxRight
-	}
-	if cfg.Defaults.SessionScreenHard == "" {
-		cfg.Defaults.SessionScreenHard = defaults.Defaults.SessionScreenHard
 	}
 	if cfg.Defaults.Agent == "" {
 		cfg.Defaults.Agent = defaults.Defaults.Agent

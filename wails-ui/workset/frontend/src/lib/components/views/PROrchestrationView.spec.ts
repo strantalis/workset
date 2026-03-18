@@ -343,7 +343,7 @@ describe('PROrchestrationView sidebar collapse', () => {
 		await waitFor(() => {
 			expect(vi.mocked(repoDiffApi.stopRepoDiffWatch)).toHaveBeenCalledWith('ws-1', 'repo-1');
 		});
-		expect(await findByText('No open PRs')).toBeInTheDocument();
+		expect(await findByText('Push a branch to open a PR')).toBeInTheDocument();
 	});
 
 	test('keeps active PR list stable when workspace refresh temporarily omits tracked PR', async () => {
@@ -353,12 +353,12 @@ describe('PROrchestrationView sidebar collapse', () => {
 		});
 
 		expect(getByText('Test PR title')).toBeInTheDocument();
-		expect(queryByText('No open PRs')).not.toBeInTheDocument();
+		expect(queryByText('Push a branch to open a PR')).not.toBeInTheDocument();
 
 		await rerender({ workspace: buildWorkspaceWithoutTrackedPr() });
 
 		expect(getByText('Test PR title')).toBeInTheDocument();
-		expect(queryByText('No open PRs')).not.toBeInTheDocument();
+		expect(queryByText('Push a branch to open a PR')).not.toBeInTheDocument();
 	});
 
 	test('refreshes tracked PR feedback counts when status sync sees new review comments', async () => {

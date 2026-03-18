@@ -516,7 +516,7 @@
 		{:else if loading || !layout}
 			<div class="terminal-loading">
 				<div class="loading-spinner"></div>
-				<span>Starting workspace terminals…</span>
+				<span>Starting thread terminals…</span>
 			</div>
 		{:else}
 			{@const rootNode = layout?.root ?? null}

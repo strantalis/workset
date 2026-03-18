@@ -1,88 +1,106 @@
 ---
-description: Desktop UI for Workset with terminals, workspace management, and GitHub workflows.
+description: Desktop UI for Workset with terminals, thread management, and GitHub workflows.
 ---
 
 # Desktop App
 
-Workset includes a desktop UI built with Wails (Go backend + Svelte frontend). Production builds use the same worksetapi service, config, and workspace state as the CLI. In `wails3 dev`, app state is isolated under `~/.workset/dev`.
+Workset includes a native desktop app built with Wails (Go backend + Svelte frontend). It shares the same config, thread state, and worksetapi service as the CLI.
 
-## What it does
+<div class="app-frame">
+  <div class="app-frame__titlebar"><span></span><span></span><span></span></div>
+  <div class="app-frame__content">
+    <img src="../assets/screenshots/workspace.png" alt="Workset desktop app — thread management">
+  </div>
+</div>
 
-- Manage workspaces (create, rename, archive, delete).
-- Add/remove repos and inspect status.
-- Embedded terminals per workspace (xterm.js renderer).
-- Diffs for local changes and PR branches.
-- GitHub workflows: auth, PR status, create PRs, review comments, and generated PR text.
-- Settings for defaults, aliases, groups, and GitHub auth.
+---
 
-## Run locally
+<div class="ws-feature-row" markdown>
+<div class="ws-feature-row__text" markdown>
 
-```bash
-cd wails-ui/workset
-wails3 dev
-wails3 package
-```
+### Thread Management
 
-You'll need the Wails CLI plus Go and Node.js installed locally.
+Create, rename, archive, and delete threads. Add and remove repos, inspect status, and browse local changes — all from the cockpit.
 
-Note: `wails3 dev` reads/writes config, workspaces, repo store, and UI state under `~/.workset/dev`.
+</div>
+<div>
+  <div class="app-frame">
+    <div class="app-frame__titlebar"><span></span><span></span><span></span></div>
+    <div class="app-frame__content">
+      <img src="../assets/screenshots/workspace.png" alt="Thread management view">
+    </div>
+  </div>
+</div>
+</div>
 
-## GitHub auth
+---
 
-The app defaults to GitHub CLI. Open Settings -> GitHub to connect via CLI or a personal access token. Tokens are stored in your OS keychain.
+<div class="ws-feature-row ws-feature-row--reverse" markdown>
+<div class="ws-feature-row__text" markdown>
+
+### Integrated Terminals
+
+Embedded terminals per thread powered by Ghostty Web. Clickable links, clipboard support, and proper emoji rendering included.
+
+</div>
+<div>
+  <div class="app-frame">
+    <div class="app-frame__titlebar"><span></span><span></span><span></span></div>
+    <div class="app-frame__content">
+      <img src="../assets/screenshots/terminal.png" alt="Integrated terminal view">
+    </div>
+  </div>
+</div>
+</div>
+
+---
+
+<div class="ws-feature-row" markdown>
+<div class="ws-feature-row__text" markdown>
+
+### GitHub Workflows
+
+Authenticate via GitHub CLI or personal access token. Create PRs, view status, read review comments, and generate PR descriptions with AI — directly from the app.
+
+</div>
+<div>
+  <div class="app-frame">
+    <div class="app-frame__titlebar"><span></span><span></span><span></span></div>
+    <div class="app-frame__content">
+      <img src="../assets/screenshots/github.png" alt="GitHub workflow view">
+    </div>
+  </div>
+</div>
+</div>
+
+---
+
+## Install
+
+Download the latest macOS build from [GitHub Releases](https://github.com/strantalis/workset/releases).
+
+!!! tip "Looking for the CLI?"
+    The CLI is a separate binary. Install it via Homebrew (`brew install workset`) or `go install`. See [Getting Started](getting-started.md) for details.
 
 ## In-app updates (macOS)
 
-The desktop app now supports a custom updater flow from **Settings -> About**:
+The desktop app supports a custom updater flow from **Settings → About**:
 
 - Choose an update channel (`stable` or `alpha`).
 - Click **Check for Updates**.
 - If a newer version exists, click **Update and Restart**.
 
-Update manifests are fetched from `WORKSET_UPDATES_BASE_URL` when set, otherwise from:
+Update manifests are fetched from `WORKSET_UPDATES_BASE_URL` when set, otherwise from `https://strantalis.github.io/workset/updates`. The updater requires both SHA256 match and matching macOS signing Team ID from the manifest.
 
-```text
-https://strantalis.github.io/workset/updates
-```
-
-The updater requires both:
-
-- SHA256 match for the update archive.
-- Matching macOS signing Team ID from the manifest.
-
-Security and rollback boundaries:
-
-- Remote update assets must use `https://` (dev-only exception: loopback `http://` with `WORKSET_UPDATES_ALLOW_INSECURE_HTTP=1`).
-- Archive extraction rejects path traversal and symlink targets that escape the staging root.
-- Validation happens before apply (checksum + signing Team ID checks).
-- On update failure, the app records a failed update state and leaves the current installed bundle unchanged.
-
-### Manifest helper script
-
-Release automation publishes `updates/{stable,alpha}.json` to `workset.dev`. You can still generate a manifest manually for local testing:
-
-Use `scripts/generate_update_manifest.sh` to create channel manifests:
-
-```bash
-scripts/generate_update_manifest.sh \
-  --channel stable \
-  --version 0.3.0 \
-  --asset-url https://github.com/strantalis/workset/releases/download/v0.3.0/workset-v0.3.0-macos-update.zip \
-  --sha256 <sha256> \
-  --team-id <apple-team-id> \
-  --notes-url https://github.com/strantalis/workset/releases/tag/v0.3.0 \
-  --output docs/updates/stable.json
-```
-
-## Terminal settings
+<details markdown>
+<summary>Terminal settings</summary>
 
 - `defaults.terminal_idle_timeout` controls idle shutdown for GUI terminals.
 - `defaults.terminal_protocol_log` enables sessiond protocol logging (restart daemon to apply).
 - `defaults.terminal_debug_overlay` shows the terminal debug overlay.
-- Terminal links open with Cmd/Ctrl+click for `https://` URLs (disabled while TUI mouse mode is active).
-- OSC 52 clipboard writes are supported (clipboard reads are blocked).
-- Unicode 11 width handling is enabled for improved emoji alignment.
 - `defaults.agent` controls the generator used for PR/commit text and the default coding agent for terminals (supported values: `codex`, `claude`).
 - `defaults.agent_model` optionally overrides the model used for PR/commit text generation (terminal launcher is unaffected).
 
-For the full terminal architecture, see [Terminal Architecture](architecture/terminal.md).
+See [Config](config.md#defaults) for the full field reference.
+
+</details>

@@ -19,15 +19,15 @@ func (s *Service) Exec(ctx context.Context, input ExecInput) error {
 		return err
 	}
 
-	workspaceArg := strings.TrimSpace(input.Workspace.Value)
-	if workspaceArg == "" {
-		workspaceArg = strings.TrimSpace(cfg.Defaults.Workspace)
+	threadArg := strings.TrimSpace(input.Workspace.Value)
+	if threadArg == "" {
+		threadArg = strings.TrimSpace(cfg.Defaults.Thread)
 	}
-	if workspaceArg == "" {
-		return ValidationError{Message: "workspace required"}
+	if threadArg == "" {
+		return ValidationError{Message: "thread required"}
 	}
 
-	name, root, err := resolveWorkspaceTarget(workspaceArg, &cfg)
+	name, root, err := resolveThreadTarget(threadArg, &cfg)
 	if err != nil {
 		return err
 	}

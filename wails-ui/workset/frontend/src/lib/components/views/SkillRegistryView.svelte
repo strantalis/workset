@@ -18,6 +18,7 @@
 		RefreshCw,
 		Search,
 		Trash2,
+		X,
 	} from '@lucide/svelte';
 	import DOMPurify from 'dompurify';
 	import { marked } from 'marked';
@@ -30,6 +31,8 @@
 		saveSkillContent,
 	} from '../../view-models/skillsViewModel';
 	import SkillMarketplacePanel from './SkillMarketplacePanel.svelte';
+	import Button from '../../components/ui/Button.svelte';
+	import Select from '../../components/ui/Select.svelte';
 
 	type ToolOption = {
 		id: string;
@@ -72,7 +75,8 @@ Add task-specific guidance here.
 		'#8B5CF6',
 	];
 
-	const { workspaceId = null }: { workspaceId?: string | null } = $props();
+	const { workspaceId = null, onClose }: { workspaceId?: string | null; onClose?: () => void } =
+		$props();
 
 	const getIconColor = (name: string): string => {
 		let hash = 0;
@@ -109,6 +113,7 @@ Add task-specific guidance here.
 	let success = $state<string | null>(null);
 
 	let searchQuery = $state('');
+	let marketplaceSearchQuery = $state('');
 	let scopeFilter = $state<ScopeFilter>('all');
 	let skills = $state<SkillInfo[]>([]);
 	let selectedKey = $state<string | null>(null);
@@ -124,6 +129,7 @@ Add task-specific guidance here.
 	let newContent = $state(INITIAL_SKILL);
 	let copySuccess = $state(false);
 	let lastLoadedWorkspaceId: string | null = null;
+	let searchInputEl = $state<HTMLInputElement | null>(null);
 
 	const sortedSkills = $derived.by<SkillInfo[]>(() => {
 		const priority = { global: 0, project: 1 };
@@ -361,6 +367,19 @@ Add task-specific guidance here.
 		await refreshSkills();
 	};
 
+	const handleShellKeydown = (event: KeyboardEvent): void => {
+		if (event.key === '/' && !event.metaKey && !event.ctrlKey) {
+			const tag = (event.target as HTMLElement)?.tagName;
+			if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+			event.preventDefault();
+			searchInputEl?.focus();
+		}
+		if (event.key === 'Escape' && onClose && !selectedSkill && !creating) {
+			event.preventDefault();
+			onClose();
+		}
+	};
+
 	onMount(() => {
 		lastLoadedWorkspaceId = workspaceId;
 		void refreshSkills();
@@ -375,45 +394,18 @@ Add task-specific guidance here.
 	});
 </script>
 
-<div class="registry-shell">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="registry-shell" onkeydown={handleShellKeydown}>
 	<header class="reg-header">
-		<div>
-			<h1>Skill Registry</h1>
-			<p>Markdown-defined capabilities that shape how your agent works.</p>
-		</div>
+		<h1>Skill Registry</h1>
 		<div class="header-actions">
-			<button
-				type="button"
-				class="btn-marketplace"
-				class:active={surfaceTab === 'installed'}
-				onclick={showInstalledSurface}
-			>
-				<FileCode2 size={16} />
-				Installed
-			</button>
-			<button
-				type="button"
-				class="btn-marketplace"
-				class:active={surfaceTab === 'marketplace'}
-				onclick={showMarketplaceSurface}
-			>
-				<Download size={16} />
-				Marketplace
-			</button>
-			{#if surfaceTab === 'installed'}
-				<button
-					type="button"
-					class="refresh-btn"
-					class:refreshing={loading}
-					onclick={() => refreshSkills(selectedKey)}
-					disabled={loading}
-					title="Refresh skills"
-				>
-					<RefreshCw size={14} />
-				</button>
-				<button type="button" class="btn-primary" onclick={startCreate} disabled={loading}>
-					<Plus size={16} />
-					New Skill
+			<Button variant="primary" onclick={startCreate} disabled={loading}>
+				<Plus size={16} />
+				New Skill
+			</Button>
+			{#if onClose}
+				<button type="button" class="close-btn" onclick={onClose} aria-label="Close skill registry">
+					<X size={16} />
 				</button>
 			{/if}
 		</div>
@@ -427,11 +419,79 @@ Add task-specific guidance here.
 	{/if}
 
 	<div class="main-container">
+		<div class="toolbar">
+			<div class="toolbar-tabs">
+				<button
+					type="button"
+					class="btn-tab"
+					class:active={surfaceTab === 'installed'}
+					onclick={showInstalledSurface}
+				>
+					Installed
+				</button>
+				<button
+					type="button"
+					class="btn-tab"
+					class:active={surfaceTab === 'marketplace'}
+					onclick={showMarketplaceSurface}
+				>
+					Marketplace
+				</button>
+			</div>
+			<div class="toolbar-sep"></div>
+			{#if !creating && !selectedSkill}
+				<label class="search-input">
+					<Search size={16} />
+					<input
+						type="text"
+						bind:this={searchInputEl}
+						value={surfaceTab === 'installed' ? searchQuery : marketplaceSearchQuery}
+						oninput={(e) => {
+							const val = e.currentTarget.value;
+							if (surfaceTab === 'installed') {
+								searchQuery = val;
+							} else {
+								marketplaceSearchQuery = val;
+							}
+						}}
+						placeholder={surfaceTab === 'installed' ? 'Search skills…' : 'Search marketplace…'}
+						autocapitalize="off"
+						autocorrect="off"
+						spellcheck="false"
+					/>
+				</label>
+				{#if surfaceTab === 'installed'}
+					<div class="scope-select">
+						<Select
+							value={scopeFilter}
+							options={[
+								{ label: 'All Scopes', value: 'all' },
+								{ label: 'Global', value: 'global' },
+								{ label: 'Workset', value: 'project' },
+							]}
+							onchange={(val) => (scopeFilter = val as ScopeFilter)}
+						/>
+					</div>
+				{/if}
+			{/if}
+			<button
+				type="button"
+				class="refresh-btn"
+				class:refreshing={loading}
+				onclick={() => refreshSkills(selectedKey)}
+				disabled={loading}
+				title="Refresh skills"
+			>
+				<RefreshCw size={14} />
+			</button>
+		</div>
 		{#if surfaceTab === 'marketplace'}
 			<SkillMarketplacePanel
 				{workspaceId}
 				installedSkills={skills}
 				onInstalled={handleMarketplaceInstalled}
+				externalSearchQuery={marketplaceSearchQuery}
+				onSearchQueryChange={(q) => (marketplaceSearchQuery = q)}
 			/>
 		{:else if creating}
 			<div class="create-view" in:fly={{ y: 20, duration: 420, easing: cubicOut }}>
@@ -457,12 +517,15 @@ Add task-specific guidance here.
 						</div>
 						<div class="input-group">
 							<label for="create-skill-scope">Scope</label>
-							<div class="select-wrap">
-								<select id="create-skill-scope" bind:value={newScope}>
-									<option value="global">Global</option>
-									<option value="project" disabled={!workspaceId}>Workset</option>
-								</select>
-							</div>
+							<Select
+								id="create-skill-scope"
+								value={newScope}
+								options={[
+									{ label: 'Global', value: 'global' },
+									{ label: 'Workset', value: 'project' },
+								]}
+								onchange={(val) => (newScope = val as SkillScope)}
+							/>
 						</div>
 						<div class="input-group">
 							<p class="input-label">Target tools</p>
@@ -496,14 +559,9 @@ Add task-specific guidance here.
 						<button type="button" class="btn-ghost" onclick={cancelCreate} disabled={saving}>
 							Cancel
 						</button>
-						<button
-							type="button"
-							class="btn-primary"
-							onclick={createSkill}
-							disabled={!canCreate || saving}
-						>
+						<Button variant="primary" onclick={createSkill} disabled={!canCreate || saving}>
 							{saving ? 'Creating...' : 'Create Skill'}
-						</button>
+						</Button>
 					</div>
 				</div>
 			</div>
@@ -621,64 +679,79 @@ Add task-specific guidance here.
 						>
 							Reset
 						</button>
-						<button type="button" class="btn-primary" onclick={saveSelected} disabled={saving}>
+						<Button variant="primary" onclick={saveSelected} disabled={saving}>
 							{saving ? 'Saving...' : 'Save Changes'}
-						</button>
+						</Button>
 					</div>
 				{/if}
 			</div>
 		{:else}
 			<div class="grid-wrapper" in:fly={{ x: -30, duration: 420, easing: cubicOut }}>
-				<div class="toolbar">
-					<label class="search-input">
-						<Search size={16} />
-						<input
-							type="text"
-							bind:value={searchQuery}
-							placeholder="Search installed skills..."
-							autocapitalize="off"
-							autocorrect="off"
-							spellcheck="false"
-						/>
-					</label>
-					<div class="scope-select">
-						<select bind:value={scopeFilter}>
-							<option value="all">All Scopes</option>
-							<option value="global">Global</option>
-							<option value="project">Workset</option>
-						</select>
-					</div>
-				</div>
 				<div class="grid-content">
 					{#if loading}
 						<div class="loading-state">
 							<LoaderCircle size={16} class="spin" />
 							Loading skills...
 						</div>
+					{:else if skills.length === 0}
+						<div class="empty-state empty-first-use">
+							<div class="empty-icon">
+								<Download size={24} />
+							</div>
+							<p class="empty-headline">No skills installed yet</p>
+							<p>
+								Skills teach your agent how to handle specific tasks. Install one from the
+								Marketplace to get started.
+							</p>
+							<button
+								type="button"
+								class="empty-browse-link empty-primary"
+								onclick={showMarketplaceSurface}
+							>
+								<Download size={14} />
+								Browse Marketplace
+							</button>
+						</div>
 					{:else if filteredSkills.length === 0}
-						<div class="empty-state ws-empty-state">No skills matched your current filters.</div>
+						<div class="empty-state">
+							<p>No skills matched your filters.</p>
+							<button
+								type="button"
+								class="empty-browse-link"
+								onclick={() => {
+									searchQuery = '';
+									scopeFilter = 'all';
+								}}
+							>
+								Clear filters
+							</button>
+						</div>
 					{:else}
-						<div class="card-grid">
-							{#each filteredSkills as skill (skillKey(skill))}
-								<button type="button" class="skill-card" onclick={() => openSkillDetail(skill)}>
-									<div class="card-top">
-										<div class="card-icon" style="color: {getIconColor(skill.name)};">
-											<FileCode2 size={20} />
-										</div>
-									</div>
-									<div class="card-body">
-										<h3>{skill.name}</h3>
-										<p>{skill.description || 'No description'}</p>
-									</div>
-									<div class="card-footer">
-										<span class="scope-badge">{scopeLabel(skill.scope as SkillScope)}</span>
-										<span class="skill-md-label">
-											<FileText size={10} />
-											SKILL.md
-										</span>
-									</div>
-								</button>
-							{/each}
+						{@const globalSkills = filteredSkills.filter((s) => s.scope === 'global')}
+						{@const projectSkills = filteredSkills.filter((s) => s.scope === 'project')}
+						<div class="skill-list">
+							{#if globalSkills.length > 0 && scopeFilter !== 'project'}
+								<div class="scope-group-header">Global</div>
+								{#each globalSkills as skill (skillKey(skill))}
+									<button type="button" class="skill-row" onclick={() => openSkillDetail(skill)}>
+										<span class="row-name">{skill.name}</span>
+										{#if skill.description}
+											<span class="row-desc">{skill.description}</span>
+										{/if}
+									</button>
+								{/each}
+							{/if}
+							{#if projectSkills.length > 0 && scopeFilter !== 'global'}
+								<div class="scope-group-header">Project</div>
+								{#each projectSkills as skill (skillKey(skill))}
+									<button type="button" class="skill-row" onclick={() => openSkillDetail(skill)}>
+										<span class="row-name">{skill.name}</span>
+										{#if skill.description}
+											<span class="row-desc">{skill.description}</span>
+										{/if}
+									</button>
+								{/each}
+							{/if}
 						</div>
 					{/if}
 				</div>

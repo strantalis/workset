@@ -9,48 +9,9 @@
 		draft: Record<FieldId, string>;
 		baseline: Record<FieldId, string>;
 		onUpdate: (id: FieldId, value: string) => void;
-		onRestartSessiond: () => void;
-		onResetTerminalLayout: () => void;
-		restartingSessiond?: boolean;
-		resettingTerminalLayout?: boolean;
 	}
 
-	const {
-		draft,
-		baseline,
-		onUpdate,
-		onRestartSessiond,
-		onResetTerminalLayout,
-		restartingSessiond = false,
-		resettingTerminalLayout = false,
-	}: Props = $props();
-
-	let restartCompleted = $state(false);
-	let previousRestarting = $state(false);
-	let resetCompleted = $state(false);
-	let previousResetting = $state(false);
-
-	$effect(() => {
-		const isRestarting = restartingSessiond;
-		if (previousRestarting && !isRestarting) {
-			restartCompleted = true;
-			setTimeout(() => {
-				restartCompleted = false;
-			}, 1500);
-		}
-		previousRestarting = isRestarting;
-	});
-
-	$effect(() => {
-		const isResetting = resettingTerminalLayout;
-		if (previousResetting && !isResetting) {
-			resetCompleted = true;
-			setTimeout(() => {
-				resetCompleted = false;
-			}, 1500);
-		}
-		previousResetting = isResetting;
-	});
+	const { draft, baseline, onUpdate }: Props = $props();
 
 	type Field = {
 		id: FieldId;
@@ -84,7 +45,7 @@
 		},
 		{
 			id: 'terminalIdleTimeout',
-			label: 'Terminal idle timeout',
+			label: 'Idle timeout',
 			description: 'Idle terminals are closed after this duration. Use 0 to disable.',
 			placeholder: '0',
 		},
@@ -100,7 +61,7 @@
 	};
 </script>
 
-<SettingsSection title="Terminal defaults" description="Defaults for the GUI terminal launcher.">
+<SettingsSection title="Terminal" description="Preferences for the GUI terminal launcher.">
 	<div class="compact-fields">
 		{#each fields as field (field.id)}
 			<div class="compact-field" class:changed={isChanged(field.id)}>
@@ -112,6 +73,7 @@
 							value={getValue(field.id)}
 							options={field.options ?? []}
 							onchange={(val) => onUpdate(field.id, val)}
+							aria-describedby="{field.id}-hint"
 						/>
 					{:else}
 						<input
@@ -123,56 +85,14 @@
 							autocapitalize="off"
 							autocorrect="off"
 							spellcheck="false"
+							aria-describedby="{field.id}-hint"
 							oninput={(event) => handleInput(field.id, event)}
 						/>
 					{/if}
-					<span class="hint ws-hint">{field.description}</span>
+					<span class="hint ws-hint" id="{field.id}-hint">{field.description}</span>
 				</div>
 			</div>
 		{/each}
-	</div>
-
-	<div class="sessiond-actions" class:restart-completed={restartCompleted}>
-		<span class="hint ws-hint"
-			>Restart if terminals get stuck or after changing daemon settings.</span
-		>
-		<button
-			class="restart"
-			type="button"
-			onclick={onRestartSessiond}
-			disabled={restartingSessiond}
-			class:restarting={restartingSessiond}
-		>
-			{#if restartingSessiond}
-				<span class="spin-icon">⟳</span> Restarting…
-			{:else}
-				Restart daemon
-			{/if}
-		</button>
-	</div>
-
-	<div class="sessiond-actions reset-layout" class:reset-completed={resetCompleted}>
-		<span class="hint ws-hint">
-			{#if resetCompleted}
-				Terminal layout and sessions reset.
-			{:else}
-				Reset the terminal layout for the current workspace and stop running sessions.
-			{/if}
-		</span>
-		<button
-			class="restart"
-			type="button"
-			onclick={onResetTerminalLayout}
-			disabled={resettingTerminalLayout}
-			class:restarting={resettingTerminalLayout}
-			title="Resets layout and stops running terminal sessions."
-		>
-			{#if resettingTerminalLayout}
-				Resetting…
-			{:else}
-				Reset terminal layout
-			{/if}
-		</button>
 	</div>
 </SettingsSection>
 
@@ -218,87 +138,6 @@
 		width: 100px;
 		background: var(--panel-strong);
 		padding: 8px 12px;
-	}
-
-	.sessiond-actions {
-		margin-top: 16px;
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		padding: 10px 14px;
-		border-radius: 10px;
-		border: 1px dashed var(--border);
-		background: color-mix(in srgb, var(--text) 2%, transparent);
-	}
-
-	.sessiond-actions .hint {
-		flex: 1;
-	}
-
-	.restart {
-		background: var(--panel-strong);
-		border: 1px solid var(--border);
-		color: var(--text);
-		border-radius: var(--radius-md);
-		padding: 6px 12px;
-		font-size: var(--text-sm);
-		cursor: pointer;
-		white-space: nowrap;
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		transition:
-			border-color var(--transition-fast),
-			color var(--transition-fast),
-			transform var(--transition-fast),
-			box-shadow var(--transition-fast);
-	}
-
-	.restart:hover {
-		border-color: var(--accent);
-	}
-
-	.restart:active {
-		transform: scale(0.96) translateY(1px);
-	}
-
-	.restart.restarting {
-		border-color: var(--warning);
-		color: var(--warning);
-	}
-
-	.spin-icon {
-		display: inline-block;
-		animation: spin 1s linear infinite;
-	}
-
-	@keyframes spin {
-		from {
-			transform: rotate(0deg);
-		}
-		to {
-			transform: rotate(360deg);
-		}
-	}
-
-	.sessiond-actions.restart-completed,
-	.sessiond-actions.reset-completed {
-		animation: containerPulse 1.2s ease-out;
-		border-color: var(--success-soft);
-		border-style: solid;
-	}
-
-	@keyframes containerPulse {
-		0% {
-			box-shadow: 0 0 0 0 rgba(var(--success-rgb), 0.4);
-		}
-		50% {
-			box-shadow: 0 0 16px 6px rgba(var(--success-rgb), 0.15);
-			border-color: var(--success);
-		}
-		100% {
-			box-shadow: 0 0 0 0 rgba(var(--success-rgb), 0);
-		}
 	}
 
 	@media (max-width: 600px) {

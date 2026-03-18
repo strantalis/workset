@@ -7,40 +7,35 @@ description: CLI overview, command syntax, and output modes for Workset.
 ## Commands
 
 ```
-workset new <name> [--path <path>] [--group <name> ...] [--repo <alias> ...]
+workset new <name> [--path <path>] [--workset <name>] [--repo <alias|url|path> ...]
 workset ls
-workset exec [<workspace>] [-- <command> [args...]]
-workset hooks run -w <workspace> <repo> [--event <event>] [--reason <reason>] [--trust]
-workset session start [<workspace>] [-- <command> [args...]] [--yes] [--attach]
-workset session attach [<workspace>] [<name>] [--yes]
-workset session stop [<workspace>] [<name>] [--yes]
-workset session show [<workspace>] [<name>]
-workset session ls [<workspace>]
+workset hooks run -t <thread> <repo> [--event <event>] [--reason <reason>] [--trust]
 workset version
 workset --version
 workset config show|set
-workset repo alias ls|add|set|rm
-workset repo add -w <workspace> <source> [--name] [--repo-dir]
-workset repo ls -w <workspace>
-workset repo rm -w <workspace> <name> [--delete-worktrees] [--delete-local]
-workset status -w <workspace>
-workset group ls|show|create|rm|add|remove
-workset group apply -w <workspace> <name>
-workset rm -w <name|path> [--delete]
+workset config recover [--workset-root <path>] [--rebuild-repos] [--dry-run]
+workset repo registry ls|add|set|rm
+workset repo add -t <thread> <source> [--name] [--repo-dir]
+workset repo ls -t <thread>
+workset repo rm -t <thread> <name> [--delete-worktrees] [--delete-local]
+workset status -t <thread>
+workset rm -t <name|path> [--delete]
 workset completion <bash|zsh|fish|powershell>
 ```
 
-Commands that operate on a workspace require an explicit target: pass `-w <workspace>` (name or path) or set `defaults.workspace`. Most flags should appear before positional args; `-w/--workspace`, `--path`, `--group`, `--repo`, `--json`, `--plain`, `--config`, and `--verbose` are also recognized after args.
+Commands that operate on a thread require an explicit target: pass `-t <thread>` (name or path) or set `defaults.thread`. Most flags should appear before positional args; `-t/--thread`, `--path`, `--workset`, `--repo`, `--json`, `--plain`, `--config`, and `--verbose` are also recognized after args.
 
 ## GitHub auth
 
-Workset uses your GitHub CLI session by default. In the desktop app, configure auth in Settings -> GitHub. For CLI-only usage, run:
+Workset uses your **GitHub CLI** session by default. This works for both the CLI and the desktop app.
 
 ```
 gh auth login
 ```
 
-To import a PAT without the GUI, set `WORKSET_GITHUB_PAT` in your environment. This stores the token in your OS keychain and switches auth mode to PAT.
+In the desktop app, confirm your connection in **Settings → GitHub**. If you prefer a **personal access token** instead, switch to PAT mode in Settings → GitHub and save a token with repo access. Workset stores it in your OS keychain.
+
+For CLI-only usage (no GUI), set `WORKSET_GITHUB_PAT` in your environment to import a PAT into the keychain:
 
 ```
 WORKSET_GITHUB_PAT=ghp_... workset <command>
@@ -48,7 +43,7 @@ WORKSET_GITHUB_PAT=ghp_... workset <command>
 
 If `gh` is not on PATH (e.g., Nix), set the override in `~/.workset/config.yaml`:
 
-```
+```yaml
 github:
   cli_path: /Users/you/.nix-profile/bin/gh
 ```
@@ -56,21 +51,6 @@ github:
 ## Safety checks
 
 `workset rm --delete` and `workset repo rm --delete-*` run safety checks before removing files. Branches are treated as merged when the base branch already contains the same file contents (covers squash merges).
-
-## Sessions
-
-`workset session start` starts a persistent session. By default it uses `tmux` if available, falls back to `screen`, and finally runs the command directly (`exec` backend). You can force a backend with `--backend`. Use `--interactive`/`--pty` only with `--backend exec`. Use `--attach` to immediately attach for tmux/screen (ignored for exec). To enable the built-in tmux/screen status line, set `defaults.session_theme` to `workset` in the global config (see [Config](config.md)).
-
-```
-workset session start demo -- zsh
-workset session start demo --backend exec --interactive
-workset session attach demo
-workset session attach demo --yes
-workset session show demo
-workset session stop demo
-```
-
-Session metadata is stored locally in `<workspace>/.workset/state.json`.
 
 ## Shell completion
 
@@ -93,15 +73,15 @@ workset completion powershell > workset.ps1
 . ./workset.ps1
 ```
 
-Completion includes hints for workspace names, group names, repo aliases, repo names within a workspace, and recorded session names when commands expect those positional args.
+Completion includes hints for thread names, registered repo names, and repo names within a thread when commands expect those positional args.
 
 ## Output modes
 
 ```
 workset new --json
 workset new demo --plain
-workset repo ls -w demo --json
-workset status -w demo --json
+workset repo ls -t demo --json
+workset status -t demo --json
 ```
 
 ## Next steps

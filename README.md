@@ -9,23 +9,25 @@
   <img src="docs/assets/workset.png" alt="Workset" width="560">
 </p>
 
-Workset is a Go CLI for managing **multi-repo workspaces** with **linked Git worktrees** by default. It captures intent ("these repos move together") and keeps multi-repo work safe, explicit, and predictable. It also includes a Wails desktop app in `wails-ui/workset`.
+Workset is a Go CLI for managing **multi-repo threads** with **linked Git worktrees** by default. It captures intent ("these repos move together") and keeps multi-repo work safe, explicit, and predictable. It also includes a Wails desktop app in `wails-ui/workset`.
 
 ## Why Workset
 
-- **Workspaces first**: treat related repos as a single unit of work.
+Every dev has that one side project that started as "I'll just write a quick script" and somehow ended up with a build pipeline. This is mine.
+
+The problem was simple: I work across multiple repos and kept losing track of which branches went together. The reasonable fix was a shell alias. What I built instead has a CLI, a desktop app with embedded terminals, AI-generated pull requests, a daemon that manages PTY sessions, and a skill marketplace. At no point did anyone ask for this.
+
+If you're here, you either have the same multi-repo problem or you're morbidly curious about what happens when scope creep goes unsupervised. Either way, welcome.
+
+- **Threads first**: treat related repos as a single unit of work.
 - **Linked worktrees by default**: branch work happens in isolated directories without duplicating repos.
-- **Repo defaults**: remote + default branch come from aliases or global defaults.
-- **Templates**: reusable repo sets that expand into workspace config.
+- **Worksets**: reusable repo bundles — spin up new threads from the same set with one command.
 - **Safe defaults**: no destructive actions without explicit flags.
-- **Desktop app**: GUI for workspace management, terminals, and GitHub workflows.
+- **Desktop app**: GUI for thread management, terminals, and GitHub workflows.
+- **AI-powered**: generate PR text and commit messages with pluggable agents (Codex, Claude).
 
-## Status
-
-Workset is in active development. Current commands focus on workspace creation, repo add, status, and groups/templates. Branch/worktree workflows are next.
-
-> [!WARNING]
-> This project is under active development; interfaces and behavior may change without notice.
+> [!NOTE]
+> Workset is under active development; interfaces and behavior may change without notice.
 
 ## Quickstart
 
@@ -55,42 +57,25 @@ Alternative (Go install):
 go install github.com/strantalis/workset/cmd/workset@latest
 ```
 
-Create a workspace and add repos:
+Create a thread and add repos:
 
 ```bash
 workset new demo
-workset repo add git@github.com:your/org-repo.git -w demo
-workset status -w demo
+workset repo add git@github.com:your/org-repo.git -t demo
+workset status -t demo
 ```
 
-Templates:
+Worksets (reusable repo bundles):
 
 ```bash
-workset group create platform
-workset group add platform repo-alias
-workset group apply platform -w demo
+workset repo registry add platform git@github.com:org/platform.git
+workset repo registry add api git@github.com:org/api.git
+workset new auth-spike --workset platform-core --repo platform --repo api
 ```
-
-Sessions (tmux/screen/exec):
-
-```bash
-workset session start demo -- zsh
-workset session attach demo
-workset session show demo
-workset session stop demo
-```
-
-## Concepts
-
-- **Workspace**: a directory with `workset.yaml` and `.workset/` state.
-- **Repo sources**: local paths stay put; URL clones land in `~/.workset/repos` (configurable).
-- **Worktrees**: worktrees live under `<workspace>/<repo>` by default.
-- **Repo defaults**: aliases and global defaults supply the remote + default branch.
-- **Templates**: global repo sets applied into a workspace.
 
 ## Docs
 
-Docs are built with **MkDocs + Material**. The site config is `mkdocs.yml`, markdown content lives in `docs/`, and the published site is `workset.dev` (see `docs/desktop-app.md` and `docs/architecture/terminal.md` for the GUI and terminal internals).
+Docs are built with **MkDocs + Material**. The site config is `mkdocs.yml`, markdown content lives in `docs/`, and the published site is [workset.dev](https://workset.dev).
 
 Local dev (requires `uv`):
 
@@ -98,8 +83,3 @@ Local dev (requires `uv`):
 make docs-serve
 ```
 
-## Roadmap
-
-- Branch create/checkout + worktree management
-- Fetch/pull/exec across repos
-- Scoped status and JSON output

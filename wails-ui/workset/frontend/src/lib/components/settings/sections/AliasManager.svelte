@@ -11,11 +11,11 @@
 		Pencil,
 	} from '@lucide/svelte';
 	import {
-		createAlias,
-		deleteAlias,
-		listAliases,
+		listRegisteredRepos,
 		openDirectoryDialog,
-		updateAlias,
+		registerRepo,
+		unregisterRepo,
+		updateRegisteredRepo,
 	} from '../../../api/settings';
 	import { searchGitHubRepositories } from '../../../api/github';
 	import type { Alias, GitHubRepoSearchItem } from '../../../types';
@@ -62,7 +62,7 @@
 
 	const loadAliases = async (): Promise<void> => {
 		try {
-			aliases = await listAliases();
+			aliases = await listRegisteredRepos();
 			onAliasCountChange(aliases.length);
 		} catch (err) {
 			error = toErrorMessage(err, 'An error occurred.');
@@ -335,10 +335,10 @@
 
 		try {
 			if (isEditing) {
-				await updateAlias(name, source, remote, branch);
+				await updateRegisteredRepo(name, source, remote, branch);
 				success = `Updated ${name}.`;
 			} else {
-				await createAlias(name, source, remote, branch);
+				await registerRepo(name, source, remote, branch);
 				success = `Registered ${name}.`;
 			}
 			await loadAliases();
@@ -369,7 +369,7 @@
 		success = null;
 
 		try {
-			await deleteAlias(alias.name);
+			await unregisterRepo(alias.name);
 			success = `Removed ${alias.name}.`;
 			await loadAliases();
 		} catch (err) {
@@ -632,7 +632,12 @@
 		<div class="repo-list-container">
 			<div class="search-bar">
 				<span class="search-icon"><Search size={14} /></span>
-				<input type="text" placeholder="Filter by name..." bind:value={searchQuery} />
+				<input
+					type="text"
+					placeholder="Filter by name..."
+					aria-label="Filter repositories by name"
+					bind:value={searchQuery}
+				/>
 			</div>
 
 			<div class="repo-list">

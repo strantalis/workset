@@ -75,6 +75,8 @@ const reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const RECONNECT_DELAY_MS = 1000;
 const MAX_RECONNECT_ATTEMPTS = 3;
 const reconnectAttempts = new Map<string, number>();
+const replayMuted = new Set<string>();
+const replayEndOffsets = new Map<string, number>();
 
 const buildTerminalKey = terminalContextRegistry.buildTerminalKey;
 
@@ -155,8 +157,16 @@ const terminalInputOrchestrator = createTerminalInputOrchestrator({
 });
 
 const sendInput = (id: string, data: string): void => terminalInputOrchestrator.sendInput(id, data);
-const sendProtocolResponse = (id: string, data: string): void =>
+const sendProtocolResponse = (id: string, data: string): void => {
+	if (replayMuted.has(id)) {
+		runtime.logDebug(id, 'protocol_response_suppressed_replay', {
+			bytes: data.length,
+			preview: data.slice(0, 32),
+		});
+		return;
+	}
 	terminalInputOrchestrator.sendProtocolResponse(id, data);
+};
 
 const terminalResizeBridge = createTerminalResizeBridge({
 	getWorkspaceId,
@@ -331,6 +341,17 @@ const pumpTerminalWriteQueue = (id: string): void => {
 	});
 	handle.terminal.write(mergedChunk, () => {
 		runtime.updateStatsLastOutput(id);
+		if (replayMuted.has(id)) {
+			const replayEnd = replayEndOffsets.get(id);
+			if (replayEnd !== undefined && last.seq >= replayEnd) {
+				replayMuted.delete(id);
+				replayEndOffsets.delete(id);
+				runtime.logDebug(id, 'protocol_response_unmute_replay_complete', {
+					replayEnd,
+					lastSeq: last.seq,
+				});
+			}
+		}
 		const current = terminalWriteQueues.get(id);
 		if (!current) return;
 		if (current.queue.length > 0) {
@@ -448,6 +469,8 @@ const resetSessionState = (id: string): void => {
 	clearTerminalWriteQueue(id);
 	lastInboundSeq.delete(id);
 	lastStreamOffset.delete(id);
+	replayMuted.delete(id);
+	replayEndOffsets.delete(id);
 	baseTerminalResourceLifecycle.resetSessionState(id);
 	const buffered = terminalServiceState.consumeBufferedOutput(id);
 	if (buffered.length === 0) return;
@@ -469,6 +492,25 @@ const terminalSocketStream = createTerminalSocketStream({
 		lastStreamOffset.set(id, currentOffset);
 		const requestedOffset = ready.requestedOffset ?? 0;
 		const replayStart = ready.replayStart ?? requestedOffset;
+		// Mute protocol responses BEFORE any terminal reset to prevent
+		// escape sequence responses (CPR/DA) from leaking to the shell.
+		const replayEnd = ready.replayNext ?? 0;
+		const hasReplayData = ready.replayRequested && replayEnd > replayStart;
+		if (hasReplayData) {
+			replayMuted.add(id);
+			replayEndOffsets.set(id, replayEnd);
+			setTimeout(() => {
+				if (replayMuted.has(id)) {
+					runtime.logDebug(id, 'protocol_response_unmute_timeout', { replayEnd });
+					replayMuted.delete(id);
+					replayEndOffsets.delete(id);
+				}
+			}, 5000);
+		} else if (replayMuted.has(id)) {
+			// Early mute was set (from reset/open) but no replay data — unmute now.
+			replayMuted.delete(id);
+			replayEndOffsets.delete(id);
+		}
 		if (ready.replaySkipped || ready.replayTruncated || replayStart !== requestedOffset) {
 			clearTerminalWriteQueue(id);
 			lastInboundSeq.delete(id);
@@ -530,6 +572,10 @@ const terminalSocketStream = createTerminalSocketStream({
 			const timer = setTimeout(async () => {
 				reconnectTimers.delete(id);
 				const handle = terminalHandles.get(id);
+				// Mute protocol responses before reset — terminal.reset() can
+				// trigger Ghostty to send DA/CPR queries whose responses would
+				// otherwise leak to the shell as garbled text.
+				replayMuted.add(id);
 				// Reset terminal state before reconnect so stale modes (mouse
 				// tracking, etc.) from the old stream don't persist.  The
 				// server will send a snapshot or buffer replay to restore
@@ -584,6 +630,8 @@ const terminalResourceLifecycle = {
 			reconnectTimers.delete(id);
 		}
 		reconnectAttempts.delete(id);
+		replayMuted.delete(id);
+		replayEndOffsets.delete(id);
 		terminalSnapshotManager.clear(id);
 		terminalSocketStream.disconnect(id);
 		clearTerminalWriteQueue(id);
@@ -598,6 +646,8 @@ const terminalResourceLifecycle = {
 			reconnectTimers.delete(id);
 		}
 		reconnectAttempts.delete(id);
+		replayMuted.delete(id);
+		replayEndOffsets.delete(id);
 		terminalSnapshotManager.clear(id);
 		terminalSocketStream.disconnect(id);
 		clearTerminalWriteQueue(id);
@@ -622,6 +672,9 @@ const terminalSnapshotManager = createTerminalSnapshotManager({
 			at: Date.now(),
 		});
 		lastStreamOffset.set(id, snapshot.nextOffset);
+	},
+	afterRestore: (id) => {
+		terminalViewportResizeController.fitTerminal(id, true);
 	},
 });
 

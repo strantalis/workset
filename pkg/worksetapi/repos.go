@@ -198,7 +198,7 @@ func (s *Service) AddRepo(ctx context.Context, input RepoAddInput) (RepoAddResul
 
 	wsName := wsConfig.Name
 	if wsName == "" {
-		wsName = workspaceNameByPath(&cfg, wsRoot)
+		wsName = threadNameByPath(&cfg, wsRoot)
 	}
 	if wsName == "" {
 		wsName = filepath.Base(wsRoot)

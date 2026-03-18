@@ -22,16 +22,16 @@ func TestRepoAddFromRelativePath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rel path: %v", err)
 	}
-	if _, err := runner.runDir(workDir, "repo", "add", relSource, "-w", "demo"); err != nil {
+	if _, err := runner.runDir(workDir, "repo", "add", relSource, "-t", "demo"); err != nil {
 		t.Fatalf("repo add: %v", err)
 	}
 
-	worktreePath := filepath.Join(runner.workspaceRoot(), "demo", "test-repo-1")
+	worktreePath := filepath.Join(runner.threadRoot("demo"), "test-repo-1")
 	if _, err := os.Stat(worktreePath); err != nil {
 		t.Fatalf("expected worktree at repo path, got err=%v", err)
 	}
 
-	out, err := runner.run("repo", "ls", "-w", "demo")
+	out, err := runner.run("repo", "ls", "-t", "demo")
 	if err != nil {
 		t.Fatalf("repo ls: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestRepoAddFromRelativePath(t *testing.T) {
 		t.Fatalf("repo ls missing repo: %s", out)
 	}
 
-	out, err = runner.run("repo", "ls", "-w", "demo", "--json")
+	out, err = runner.run("repo", "ls", "-t", "demo", "--json")
 	if err != nil {
 		t.Fatalf("repo ls --json: %v", err)
 	}
@@ -57,11 +57,11 @@ func TestRepoRemoveDeletesFiles(t *testing.T) {
 	if _, err := runner.run("new", "demo"); err != nil {
 		t.Fatalf("workset new: %v", err)
 	}
-	if _, err := runner.run("repo", "add", "-w", "demo", source); err != nil {
+	if _, err := runner.run("repo", "add", "-t", "demo", source); err != nil {
 		t.Fatalf("repo add: %v", err)
 	}
 
-	if _, err := runner.run("repo", "rm", "-w", "demo", "--delete-worktrees", "--yes", "demo-repo"); err != nil {
+	if _, err := runner.run("repo", "rm", "-t", "demo", "--delete-worktrees", "--yes", "demo-repo"); err != nil {
 		t.Fatalf("repo rm: %v", err)
 	}
 
@@ -78,7 +78,7 @@ func TestInterspersedFlags(t *testing.T) {
 		t.Fatalf("workset new: %v", err)
 	}
 
-	out, err := runner.run("repo", "add", source, "-w", "demo", "--json")
+	out, err := runner.run("repo", "add", source, "-t", "demo", "--json")
 	if err != nil {
 		t.Fatalf("repo add with interspersed flags: %v", err)
 	}
@@ -86,8 +86,8 @@ func TestInterspersedFlags(t *testing.T) {
 		t.Fatalf("repo add json missing status: %s", out)
 	}
 
-	if _, err := runner.run("repo", "rm", "--delete-worktrees", "--yes", "flag-repo", "-w", "demo"); err != nil {
-		t.Fatalf("repo rm with interspersed -w: %v", err)
+	if _, err := runner.run("repo", "rm", "--delete-worktrees", "--yes", "flag-repo", "-t", "demo"); err != nil {
+		t.Fatalf("repo rm with interspersed -t: %v", err)
 	}
 }
 
@@ -104,11 +104,11 @@ func TestRepoAddFromURLUsesRepoStore(t *testing.T) {
 	}
 
 	url := fileURL(source)
-	if _, err := runner.run("repo", "add", "-w", "demo", url, "--name", "url-repo"); err != nil {
+	if _, err := runner.run("repo", "add", "-t", "demo", url, "--name", "url-repo"); err != nil {
 		t.Fatalf("repo add url: %v", err)
 	}
 
-	out, err := runner.run("repo", "ls", "-w", "demo", "--json")
+	out, err := runner.run("repo", "ls", "-t", "demo", "--json")
 	if err != nil {
 		t.Fatalf("repo ls --json: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestRepoAddFromURLUsesRepoStore(t *testing.T) {
 		t.Fatalf("repo ls missing repo_store_root path: %s", out)
 	}
 
-	if _, err := runner.run("repo", "rm", "-w", "demo", "url-repo", "--delete-local", "--yes"); err != nil {
+	if _, err := runner.run("repo", "rm", "-t", "demo", "url-repo", "--delete-local", "--yes"); err != nil {
 		t.Fatalf("repo rm --delete-local: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(store, "url-repo")); !os.IsNotExist(err) {
@@ -156,14 +156,14 @@ func TestRepoRegistryLocalAndURLFlow(t *testing.T) {
 	if _, err := runner.run("new", "demo"); err != nil {
 		t.Fatalf("workset new: %v", err)
 	}
-	if _, err := runner.run("repo", "add", "-w", "demo", "local-reg"); err != nil {
+	if _, err := runner.run("repo", "add", "-t", "demo", "local-reg"); err != nil {
 		t.Fatalf("repo add local registered repo: %v", err)
 	}
-	if _, err := runner.run("repo", "add", "-w", "demo", "url-reg"); err != nil {
+	if _, err := runner.run("repo", "add", "-t", "demo", "url-reg"); err != nil {
 		t.Fatalf("repo add url registered repo: %v", err)
 	}
 
-	out, err = runner.run("repo", "ls", "-w", "demo", "--json")
+	out, err = runner.run("repo", "ls", "-t", "demo", "--json")
 	if err != nil {
 		t.Fatalf("repo ls: %v", err)
 	}
@@ -192,11 +192,11 @@ func TestRepoAddWithRepoDirCreatesWorktree(t *testing.T) {
 	if _, err := runner.run("new", "demo"); err != nil {
 		t.Fatalf("workset new: %v", err)
 	}
-	if _, err := runner.run("repo", "add", "-w", "demo", source, "--repo-dir", "custom-dir"); err != nil {
+	if _, err := runner.run("repo", "add", "-t", "demo", source, "--repo-dir", "custom-dir"); err != nil {
 		t.Fatalf("repo add --repo-dir: %v", err)
 	}
 
-	worktreePath := filepath.Join(runner.workspaceRoot(), "demo", "custom-dir")
+	worktreePath := filepath.Join(runner.threadRoot("demo"), "custom-dir")
 	if _, err := os.Stat(worktreePath); err != nil {
 		t.Fatalf("expected worktree at custom dir: %v", err)
 	}
@@ -212,11 +212,11 @@ func TestRepoRegistryDefaults(t *testing.T) {
 	if _, err := runner.run("repo", "registry", "add", "remotes-repo", source, "--remote", "origin", "--default-branch", "trunk"); err != nil {
 		t.Fatalf("repo registry add: %v", err)
 	}
-	if _, err := runner.run("repo", "add", "-w", "demo", "remotes-repo"); err != nil {
+	if _, err := runner.run("repo", "add", "-t", "demo", "remotes-repo"); err != nil {
 		t.Fatalf("repo add: %v", err)
 	}
 
-	out, err := runner.run("repo", "ls", "-w", "demo", "--json")
+	out, err := runner.run("repo", "ls", "-t", "demo", "--json")
 	if err != nil {
 		t.Fatalf("repo ls: %v", err)
 	}
@@ -236,20 +236,20 @@ func TestRepoRemoveWorktreesSafety(t *testing.T) {
 		t.Fatalf("workset new: %v", err)
 	}
 
-	if _, err := runner.run("repo", "add", "-w", "demo", source); err != nil {
+	if _, err := runner.run("repo", "add", "-t", "demo", source); err != nil {
 		t.Fatalf("repo add: %v", err)
 	}
 
-	worktreePath := filepath.Join(runner.workspaceRoot(), "demo", "dirty-repo")
+	worktreePath := filepath.Join(runner.threadRoot("demo"), "dirty-repo")
 	if err := os.WriteFile(filepath.Join(worktreePath, "dirty.txt"), []byte("dirty"), 0o644); err != nil {
 		t.Fatalf("write dirty: %v", err)
 	}
 
-	if _, err := runner.run("repo", "rm", "-w", "demo", "--delete-worktrees", "--yes", "dirty-repo"); err == nil {
+	if _, err := runner.run("repo", "rm", "-t", "demo", "--delete-worktrees", "--yes", "dirty-repo"); err == nil {
 		t.Fatalf("expected repo rm to fail when dirty")
 	}
 
-	if _, err := runner.run("repo", "rm", "-w", "demo", "--delete-worktrees", "--yes", "--force", "dirty-repo"); err != nil {
+	if _, err := runner.run("repo", "rm", "-t", "demo", "--delete-worktrees", "--yes", "--force", "dirty-repo"); err != nil {
 		t.Fatalf("repo rm --force: %v", err)
 	}
 
@@ -264,10 +264,10 @@ func TestRepoListPlainOutput(t *testing.T) {
 	if _, err := runner.run("new", "demo"); err != nil {
 		t.Fatalf("workset new: %v", err)
 	}
-	if _, err := runner.run("repo", "add", "-w", "demo", source); err != nil {
+	if _, err := runner.run("repo", "add", "-t", "demo", source); err != nil {
 		t.Fatalf("repo add: %v", err)
 	}
-	out, err := runner.run("repo", "ls", "-w", "demo", "--plain")
+	out, err := runner.run("repo", "ls", "-t", "demo", "--plain")
 	if err != nil {
 		t.Fatalf("repo ls --plain: %v", err)
 	}

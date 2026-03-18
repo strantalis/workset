@@ -374,29 +374,36 @@
 	}
 
 	.mode-toggle {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 8px;
+		display: inline-flex;
+		border-radius: 10px;
+		border: 1px solid var(--border);
+		background: color-mix(in srgb, var(--text) 2%, transparent);
+		padding: 3px;
+		gap: 2px;
 		margin-top: 16px;
 	}
 
 	.mode-toggle button {
-		border-radius: 10px;
-		border: 1px solid var(--border);
-		background: color-mix(in srgb, var(--text) 2%, transparent);
+		border-radius: 8px;
+		border: none;
+		background: transparent;
 		color: var(--muted);
-		padding: 8px 12px;
+		padding: 7px 16px;
 		font-size: var(--text-sm);
-		font-weight: 600;
+		font-weight: 500;
 		cursor: pointer;
 		transition: all 0.15s ease;
 	}
 
+	.mode-toggle button:hover:not(.active):not(:disabled) {
+		color: var(--text);
+		background: color-mix(in srgb, var(--text) 4%, transparent);
+	}
+
 	.mode-toggle button.active {
-		border-color: var(--accent);
 		color: white;
 		background: var(--accent);
-		box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 10%, transparent);
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 	}
 
 	.mode-toggle button:disabled {

@@ -6,13 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/strantalis/workset/internal/config"
 	"github.com/strantalis/workset/internal/git"
-	"github.com/strantalis/workset/internal/session"
 )
 
 type testEnv struct {
@@ -23,7 +21,6 @@ type testEnv struct {
 	repoRoot      string
 	now           time.Time
 	git           *fakeGit
-	runner        *stubRunner
 	svc           *Service
 }
 
@@ -31,19 +28,18 @@ func newTestEnv(t *testing.T) *testEnv {
 	t.Helper()
 
 	root := t.TempDir()
-	workspaceRoot := filepath.Join(root, "workspaces")
+	workspaceRoot := filepath.Join(root, "worksets")
 	repoRoot := filepath.Join(root, "repos")
 	cfgPath := filepath.Join(root, "config.yaml")
 	now := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
 
 	cfg := config.GlobalConfig{
 		Defaults: config.Defaults{
-			Remote:            "origin",
-			BaseBranch:        "main",
-			WorkspaceRoot:     workspaceRoot,
-			RepoStoreRoot:     repoRoot,
-			SessionNameFormat: "workset-{workspace}",
-			Agent:             "codex",
+			Remote:        "origin",
+			BaseBranch:    "main",
+			WorksetRoot:   root,
+			RepoStoreRoot: repoRoot,
+			Agent:         "codex",
 		},
 	}
 	if err := config.SaveGlobal(cfgPath, cfg); err != nil {
@@ -51,13 +47,11 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 
 	fakeGit := newFakeGit()
-	stubRunner := newStubRunner()
 	svc := NewService(Options{
-		ConfigPath:    cfgPath,
-		Git:           fakeGit,
-		SessionRunner: stubRunner,
-		Clock:         func() time.Time { return now },
-		Logf:          func(string, ...any) {},
+		ConfigPath: cfgPath,
+		Git:        fakeGit,
+		Clock:      func() time.Time { return now },
+		Logf:       func(string, ...any) {},
 	})
 
 	return &testEnv{
@@ -68,7 +62,6 @@ func newTestEnv(t *testing.T) *testEnv {
 		repoRoot:      repoRoot,
 		now:           now,
 		git:           fakeGit,
-		runner:        stubRunner,
 		svc:           svc,
 	}
 }
@@ -273,47 +266,6 @@ func (f *fakeGit) WorktreeRemove(opts git.WorktreeRemoveOptions) error {
 
 func (f *fakeGit) WorktreeList(_ string) ([]string, error) {
 	return nil, nil
-}
-
-type stubRunner struct {
-	lookPath map[string]error
-	results  map[string]session.CommandResult
-	errors   map[string]error
-	calls    []session.CommandSpec
-}
-
-func newStubRunner() *stubRunner {
-	return &stubRunner{
-		lookPath: map[string]error{},
-		results:  map[string]session.CommandResult{},
-		errors:   map[string]error{},
-	}
-}
-
-func (r *stubRunner) LookPath(name string) error {
-	if err, ok := r.lookPath[name]; ok {
-		return err
-	}
-	return nil
-}
-
-func (r *stubRunner) Run(_ context.Context, spec session.CommandSpec) (session.CommandResult, error) {
-	r.calls = append(r.calls, spec)
-	key := commandKey(spec.Name, spec.Args)
-	if result, ok := r.results[key]; ok {
-		return result, r.errors[key]
-	}
-	if err, ok := r.errors[key]; ok {
-		return session.CommandResult{}, err
-	}
-	return session.CommandResult{ExitCode: 0}, nil
-}
-
-func commandKey(name string, args []string) string {
-	if len(args) == 0 {
-		return name
-	}
-	return name + " " + strings.Join(args, " ")
 }
 
 func refKey(repoPath, ref string) string {

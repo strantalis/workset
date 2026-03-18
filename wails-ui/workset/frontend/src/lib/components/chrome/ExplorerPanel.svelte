@@ -100,17 +100,21 @@
 	const deriveWorksetIdentity = (workspace: Workspace): { id: string; label: string } => {
 		const key = workspace.worksetKey?.trim();
 		const label = workspace.worksetLabel?.trim();
-		const legacy = workspace.workset?.trim() || workspace.template?.trim();
-		const normalizedLegacy = legacy?.toLowerCase().replace(/\s+/g, '-') ?? '';
+		const workset = workspace.workset?.trim();
+		const normalizedWorkset = workset?.toLowerCase().replace(/\s+/g, '-') ?? '';
 		return {
 			id:
 				key && key.length > 0
 					? key
-					: normalizedLegacy.length > 0
-						? `workset:${normalizedLegacy}`
+					: normalizedWorkset.length > 0
+						? `workset:${normalizedWorkset}`
 						: `workspace:${workspace.id.toLowerCase()}`,
 			label:
-				label && label.length > 0 ? label : legacy && legacy.length > 0 ? legacy : workspace.name,
+				label && label.length > 0
+					? label
+					: workset && workset.length > 0
+						? workset
+						: workspace.name,
 		};
 	};
 

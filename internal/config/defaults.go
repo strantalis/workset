@@ -11,17 +11,9 @@ func DefaultConfig() GlobalConfig {
 		Defaults: Defaults{
 			Remote:               "origin",
 			BaseBranch:           "main",
-			Workspace:            "",
+			Thread:               "",
 			WorksetRoot:          defaultWorksetRoot(),
-			WorkspaceRoot:        defaultWorkspaceRoot(),
 			RepoStoreRoot:        defaultRepoStoreRoot(),
-			SessionBackend:       "auto",
-			SessionNameFormat:    "workset-{workspace}",
-			SessionTheme:         "",
-			SessionTmuxStyle:     "",
-			SessionTmuxLeft:      "",
-			SessionTmuxRight:     "",
-			SessionScreenHard:    "",
 			Agent:                "codex",
 			AgentModel:           "",
 			TerminalIdleTimeout:  "0",
@@ -44,7 +36,6 @@ func DefaultConfig() GlobalConfig {
 			Items: []HookSpec{},
 		},
 		Repos:        map[string]RegisteredRepo{},
-		Groups:       map[string]Group{},
 		Workspaces:   map[string]WorkspaceRef{},
 		WorksetRepos: map[string][]string{},
 	}
@@ -54,19 +45,12 @@ func (cfg *GlobalConfig) EnsureMaps() {
 	if cfg.Repos == nil {
 		cfg.Repos = map[string]RegisteredRepo{}
 	}
-	if cfg.Groups == nil {
-		cfg.Groups = map[string]Group{}
-	}
-	if len(cfg.Workspaces) == 0 && len(cfg.LegacyWorkspaces) > 0 {
-		cfg.Workspaces = cfg.LegacyWorkspaces
-	}
 	if cfg.Workspaces == nil {
 		cfg.Workspaces = map[string]WorkspaceRef{}
 	}
 	if cfg.WorksetRepos == nil {
 		cfg.WorksetRepos = map[string][]string{}
 	}
-	cfg.LegacyWorkspaces = nil
 	if cfg.Hooks.RepoHooks.TrustedRepos == nil {
 		cfg.Hooks.RepoHooks.TrustedRepos = []string{}
 	}
@@ -79,14 +63,6 @@ func ApplyRepoDefaults(repo *RepoConfig, defaults Defaults) {
 	if repo.RepoDir == "" {
 		repo.RepoDir = repo.Name
 	}
-}
-
-func defaultWorkspaceRoot() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(home, ".workset", "workspaces")
 }
 
 func defaultWorksetRoot() string {

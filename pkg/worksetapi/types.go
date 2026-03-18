@@ -21,7 +21,6 @@ type WorkspaceRefJSON struct {
 	Name           string `json:"name"`
 	Path           string `json:"path"`
 	Workset        string `json:"workset,omitempty"`
-	Template       string `json:"template,omitempty"`
 	CreatedAt      string `json:"created_at,omitempty"`
 	LastUsed       string `json:"last_used,omitempty"`
 	ArchivedAt     string `json:"archived_at,omitempty"`
@@ -62,7 +61,6 @@ type WorkspaceSnapshotJSON struct {
 	Name           string             `json:"name"`
 	Path           string             `json:"path"`
 	Workset        string             `json:"workset,omitempty"`
-	Template       string             `json:"template,omitempty"`
 	WorksetKey     string             `json:"workset_key,omitempty"`
 	WorksetLabel   string             `json:"workset_label,omitempty"`
 	Placeholder    bool               `json:"placeholder,omitempty"`
@@ -352,76 +350,6 @@ type RegisteredRepoListResult struct {
 type RegisteredRepoMutationResultJSON struct {
 	Status string `json:"status"`
 	Name   string `json:"name"`
-}
-
-// GroupSummaryJSON is the JSON summary view of a group.
-type GroupSummaryJSON struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	RepoCount   int    `json:"repo_count"`
-}
-
-// GroupListResult returns group summaries with config metadata.
-type GroupListResult struct {
-	Groups []GroupSummaryJSON
-	Config config.GlobalConfigLoadInfo
-}
-
-// GroupJSON is the JSON-friendly view of a group with members.
-type GroupJSON struct {
-	Name        string               `json:"name"`
-	Description string               `json:"description,omitempty"`
-	Members     []config.GroupMember `json:"members"`
-}
-
-// GroupApplyResultJSON is the JSON payload for group apply operations.
-type GroupApplyResultJSON struct {
-	Status    string `json:"status"`
-	Template  string `json:"template"`
-	Workspace string `json:"workspace"`
-}
-
-// SessionRecordJSON describes a session entry for list/show calls.
-type SessionRecordJSON struct {
-	Name         string   `json:"name"`
-	Backend      string   `json:"backend"`
-	Command      []string `json:"command,omitempty"`
-	StartedAt    string   `json:"started_at,omitempty"`
-	LastAttached string   `json:"last_attached,omitempty"`
-	Running      bool     `json:"running"`
-}
-
-// SessionListResult returns sessions with config metadata.
-type SessionListResult struct {
-	Sessions []SessionRecordJSON
-	Config   config.GlobalConfigLoadInfo
-}
-
-// SessionNotice provides user-facing guidance for session operations.
-type SessionNotice struct {
-	Title         string
-	Workspace     string
-	Session       string
-	Backend       string
-	ThemeLabel    string
-	ThemeHint     string
-	AttachCommand string
-	AttachNote    string
-	DetachHint    string
-	NameNotice    string
-}
-
-// SessionStartResult captures notices and attachment state for StartSession.
-type SessionStartResult struct {
-	Notice   SessionNotice
-	Attached bool
-	Config   config.GlobalConfigLoadInfo
-}
-
-// SessionActionResult captures notices for attach/stop actions.
-type SessionActionResult struct {
-	Notice SessionNotice
-	Config config.GlobalConfigLoadInfo
 }
 
 // ConfigSetResultJSON is the JSON payload for config set operations.

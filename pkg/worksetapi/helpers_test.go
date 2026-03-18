@@ -12,9 +12,7 @@ import (
 func TestResolveWorkspaceTarget(t *testing.T) {
 	temp := t.TempDir()
 	cfg := config.GlobalConfig{
-		Defaults: config.Defaults{
-			WorkspaceRoot: temp,
-		},
+		Defaults: config.Defaults{},
 		Workspaces: map[string]config.WorkspaceRef{
 			"alpha": {Path: filepath.Join(temp, "alpha")},
 		},
@@ -23,7 +21,7 @@ func TestResolveWorkspaceTarget(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 
-	name, path, err := resolveWorkspaceTarget("alpha", &cfg)
+	name, path, err := resolveThreadTarget("alpha", &cfg)
 	if err != nil {
 		t.Fatalf("resolve registered: %v", err)
 	}
@@ -31,19 +29,11 @@ func TestResolveWorkspaceTarget(t *testing.T) {
 		t.Fatalf("unexpected result: %s %s", name, path)
 	}
 
-	name, path, err = resolveWorkspaceTarget("beta", &cfg)
-	if err != nil {
-		t.Fatalf("resolve relative: %v", err)
-	}
-	if name != "beta" || path != filepath.Join(temp, "beta") {
-		t.Fatalf("unexpected relative: %s %s", name, path)
-	}
-
 	abs := filepath.Join(temp, "gamma")
 	if err := os.MkdirAll(abs, 0o755); err != nil {
 		t.Fatalf("mkdir abs: %v", err)
 	}
-	name, path, err = resolveWorkspaceTarget(abs, &cfg)
+	name, path, err = resolveThreadTarget(abs, &cfg)
 	if err != nil {
 		t.Fatalf("resolve abs: %v", err)
 	}
@@ -51,13 +41,13 @@ func TestResolveWorkspaceTarget(t *testing.T) {
 		t.Fatalf("unexpected abs: %s %s", name, path)
 	}
 
-	_, _, err = resolveWorkspaceTarget("missing", &cfg)
+	_, _, err = resolveThreadTarget("missing", &cfg)
 	_ = requireErrorType[NotFoundError](t, err)
 }
 
 func TestResolveWorkspaceSelectorDefault(t *testing.T) {
 	cfg := config.GlobalConfig{
-		Defaults: config.Defaults{Workspace: "alpha"},
+		Defaults: config.Defaults{Thread: "alpha"},
 		Workspaces: map[string]config.WorkspaceRef{
 			"alpha": {Path: "/tmp/alpha"},
 		},
@@ -151,7 +141,7 @@ func TestLoadGlobalUsesConfigPath(t *testing.T) {
 	if info.Path != env.configPath {
 		t.Fatalf("unexpected config path: %s", info.Path)
 	}
-	if cfg.Defaults.WorkspaceRoot != env.workspaceRoot {
-		t.Fatalf("unexpected defaults: %s", cfg.Defaults.WorkspaceRoot)
+	if cfg.Defaults.WorksetRoot != env.root {
+		t.Fatalf("unexpected defaults: %s", cfg.Defaults.WorksetRoot)
 	}
 }

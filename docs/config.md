@@ -4,14 +4,14 @@ description: Global and thread configuration reference for Workset.
 
 # Config
 
-Global config lives at `~/.workset/config.yaml` and stores defaults, repo aliases, and the workset registry.
+Global config lives at `~/.workset/config.yaml` and stores defaults, registered repos, and the workset registry.
 
 Thread config lives at `<thread>/workset.yaml` and is the source of truth for a thread.
-If you have an existing config at `~/.config/workset/config.yaml`, Workset migrates it to `~/.workset/config.yaml` on next load.
+Workset only reads the canonical config path above; legacy config locations and legacy keys are not part of the supported contract.
 
-`defaults.workspace` can point to a registered thread name or a path. When set, thread commands use it if `-w` is omitted.
+`defaults.thread` can point to a registered thread name or a path. When set, thread commands use it if `-t` is omitted.
 `defaults.repo_store_root` is where URL-based repos are cloned when added to a thread.
-Remote names and default branches come from repo aliases (`repos.<name>.remote` / `repos.<name>.default_branch`) or from `defaults.remote` / `defaults.base_branch`. For local repos, the configured remote must exist or Workset errors.
+Remote names and default branches come from registered repos (`repos.<name>.remote` / `repos.<name>.default_branch`) or from `defaults.remote` / `defaults.base_branch`. For local repos, the configured remote must exist or Workset errors.
 
 ## Global config (`~/.workset/config.yaml`)
 
@@ -22,8 +22,8 @@ Remote names and default branches come from repo aliases (`repos.<name>.remote` 
 | `defaults` | Global defaults for commands and thread/workset behavior. |
 | `github` | GitHub auth defaults and overrides. |
 | `hooks` | Hook execution defaults and repo trust list. |
-| `repos` | Named repo aliases for URL or local path. |
-| `worksets` | Registry of named worksets, each with a `threads` map. Legacy `workspaces` is migrated on load. |
+| `repos` | Registered repos for URL or local path sources. |
+| `worksets` | Registry of named worksets, each with optional `repos` and a `threads` map. |
 
 ### `defaults`
 
@@ -31,17 +31,9 @@ Remote names and default branches come from repo aliases (`repos.<name>.remote` 
 | --- | --- |
 | `remote` | Default remote name for repos (used when aliases omit one). |
 | `base_branch` | Default branch for new worktrees. |
-| `workspace` | Default thread name or absolute path. |
-| `workset_root` | Base directory used for generated workset and thread paths. |
-| `workspace_root` | Legacy fallback root for thread paths (`<workset_root>/workspaces` by default). |
+| `thread` | Default thread name or absolute path. |
+| `workset_root` | Base directory used for generated workset and thread paths. Default thread paths are `<workset_root>/worksets/<workset>/<thread>`. |
 | `repo_store_root` | Where URL-based repos are cloned. |
-| `session_backend` | Default session backend (`auto`, `tmux`, `screen`, `exec`). |
-| `session_name_format` | Format string for session names (supports `{workspace}`). |
-| `session_theme` | Optional session theme for `tmux`/`screen` (`workset` to enable built-in theme). |
-| `session_tmux_status_style` | Override tmux `status-style` when a session theme is enabled. |
-| `session_tmux_status_left` | Override tmux `status-left` when a session theme is enabled. |
-| `session_tmux_status_right` | Override tmux `status-right` when a session theme is enabled. |
-| `session_screen_hardstatus` | Override screen `hardstatus` when a session theme is enabled. |
 | `agent` | Default agent for PR text generation, commit messages, and the GUI terminal launcher. Supported values: `codex`, `claude`. |
 | `agent_model` | Optional model override for PR text generation and commit messages (does not affect the terminal launcher). Examples: `gpt-5.1-codex-mini` (Codex), `haiku` (Claude). |
 | `terminal_idle_timeout` | Idle timeout for GUI terminals/sessiond (duration like `30m`; use `0` to disable). Default is `0`. |
@@ -62,28 +54,23 @@ Remote names and default branches come from repo aliases (`repos.<name>.remote` 
 | --- | --- |
 | `cli_path` | Optional override for the `gh` CLI path (useful for Nix or custom installs). |
 
-### Session themes
-
-Session theming is opt-in. Set `defaults.session_theme` to `workset` to apply the built-in status line to `tmux`/`screen` sessions. Use the override fields to customize the tmux or screen values.
-
-For screen, the `session_screen_hardstatus` value is passed to `screen -X hardstatus` and split on whitespace, so keep it in the same format you would use in a `hardstatus` line.
-
 ### `repos` entries
 
 | Field | Description |
 | --- | --- |
 | `url` | Git URL to clone. |
 | `path` | Local repo path (saved as absolute). |
-| `remote` | Remote name for this repo alias (defaults to `defaults.remote`). |
-| `default_branch` | Default branch for this repo alias. |
+| `remote` | Remote name for this registered repo (defaults to `defaults.remote`). |
+| `default_branch` | Default branch for this registered repo. |
 
 ### `worksets` entries
 
-`worksets` is keyed by workset name. Each entry contains a `threads` map keyed by thread name.
+`worksets` is keyed by workset name. Each entry can define the workset's repo bundle and its registered threads.
 
 | Field | Description |
 | --- | --- |
-| `threads` | Map of thread names to thread refs (`path`, metadata, optional `workset`). |
+| `repos` | Registered repo names associated with the workset. |
+| `threads` | Map of thread names to thread refs (`path`, metadata, optional `repo_overrides`). |
 
 ## Example (global)
 
@@ -91,24 +78,14 @@ For screen, the `session_screen_hardstatus` value is passed to `screen -X hardst
 defaults:
   remote: origin
   base_branch: main
-  workspace: core
+  thread: core
   workset_root: ~/.workset
-  workspace_root: ~/.workset/workspaces
   repo_store_root: ~/.workset/repos
   agent: codex
   # agent_model: gpt-5.1-codex-mini
   terminal_idle_timeout: "0"
   terminal_protocol_log: off
   terminal_debug_overlay: off
-  session_backend: auto
-  session_name_format: workset-{workspace}
-  # optional: enable built-in session theme for tmux/screen
-  session_theme: workset
-  # optional: override tmux or screen status lines
-  # session_tmux_status_style: "bg=colour235,fg=colour250"
-  # session_tmux_status_left: " #[fg=colour39]workset #[fg=colour250]#S "
-  # session_tmux_status_right: " #[fg=colour244]%Y-%m-%d %H:%M "
-  # session_screen_hardstatus: "alwayslastline workset %n %t %=%H:%M %d-%b-%y"
 
 hooks:
   enabled: true
@@ -130,6 +107,7 @@ repos:
 
 worksets:
   core:
+    repos: [platform]
     threads:
       feature-policy-eval:
         path: ~/.workset/worksets/core/feature-policy-eval
@@ -166,8 +144,8 @@ hooks:
 | `repo_dir` | Directory name under the thread. |
 | `local_path` | Path to the repo's main working copy. |
 | `managed` | `true` if Workset owns the clone. |
-| `remote` | Derived from the repo alias or defaults (not stored in thread config). |
-| `default_branch` | Derived from the repo alias or defaults (not stored in thread config). |
+| `remote` | Derived from the registered repo or defaults (not stored in thread config). |
+| `default_branch` | Derived from the registered repo or defaults (not stored in thread config). |
 
 ## Example (thread)
 

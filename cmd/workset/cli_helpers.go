@@ -89,14 +89,14 @@ func enableSuggestions(cmd *cli.Command) {
 	}
 }
 
-func workspaceFlag(required bool) cli.Flag {
-	usage := "Workspace name or path"
+func threadFlag(required bool) cli.Flag {
+	usage := "Thread name or path"
 	if required {
-		usage = "Workspace name or path (required unless defaults.workspace set)"
+		usage = "Thread name or path (required unless defaults.thread set)"
 	}
 	return &cli.StringFlag{
-		Name:    "workspace",
-		Aliases: []string{"w"},
+		Name:    "thread",
+		Aliases: []string{"t"},
 		Usage:   usage,
 	}
 }
@@ -154,11 +154,6 @@ func printConfigLoadInfo(cmd *cli.Command, override string, info config.GlobalCo
 		_, _ = fmt.Fprintf(w, "config: using override %s\n", info.Path)
 	} else if info.Path != "" {
 		_, _ = fmt.Fprintf(w, "config: using %s\n", info.Path)
-	}
-	if info.Migrated && info.LegacyPath != "" {
-		_, _ = fmt.Fprintf(w, "config: migrated %s -> %s\n", info.LegacyPath, info.Path)
-	} else if info.UsedLegacy && info.LegacyPath != "" {
-		_, _ = fmt.Fprintf(w, "config: using legacy %s\n", info.LegacyPath)
 	}
 	if !info.Exists {
 		_, _ = fmt.Fprintln(w, "config: no config file found; using defaults")
@@ -281,7 +276,7 @@ func findSubcommand(cmd *cli.Command, name string) *cli.Command {
 
 func interspersedFlag(token string) (flagSpec, bool) {
 	switch token {
-	case "-w", "--workspace":
+	case "-t", "--thread":
 		return flagSpec{TakesValue: true}, true
 	case "--json", "--plain":
 		return flagSpec{TakesValue: false}, true
@@ -299,7 +294,7 @@ func interspersedFlag(token string) (flagSpec, bool) {
 		return flagSpec{TakesValue: false}, true
 	}
 	switch {
-	case strings.HasPrefix(token, "--workspace="):
+	case strings.HasPrefix(token, "--thread="):
 		return flagSpec{TakesValue: false}, true
 	case strings.HasPrefix(token, "--config="):
 		return flagSpec{TakesValue: false}, true
@@ -351,17 +346,17 @@ func boolFromArgs(args []string, name string) (bool, bool) {
 	return false, false
 }
 
-func workspaceFromArgs(cmd *cli.Command) string {
+func threadFromArgs(cmd *cli.Command) string {
 	args := cmd.Args().Slice()
 	for i := range args {
 		arg := args[i]
-		if arg == "-w" || arg == "--workspace" {
+		if arg == "-t" || arg == "--thread" {
 			if i+1 < len(args) {
 				return strings.TrimSpace(args[i+1])
 			}
 			return ""
 		}
-		if after, ok := strings.CutPrefix(arg, "--workspace="); ok {
+		if after, ok := strings.CutPrefix(arg, "--thread="); ok {
 			return strings.TrimSpace(after)
 		}
 	}
@@ -385,31 +380,25 @@ func confirmPrompt(r io.Reader, w io.Writer, prompt string) (bool, error) {
 	return line == "y" || line == "yes", nil
 }
 
-func resolveWorkspaceTarget(arg string, cfg *config.GlobalConfig) (string, string, error) {
+func resolveThreadTarget(arg string, cfg *config.GlobalConfig) (string, string, error) {
 	target := strings.TrimSpace(arg)
 	if target == "" {
-		target = strings.TrimSpace(cfg.Defaults.Workspace)
+		target = strings.TrimSpace(cfg.Defaults.Thread)
 	}
 	if target == "" {
-		return "", "", errors.New("workspace required: pass -w <name|path> or set defaults.workspace (example: workset rm -w <name> --delete)")
+		return "", "", errors.New("thread required: pass -t <name|path> or set defaults.thread (example: workset rm -t <name> --delete)")
 	}
 	if ref, ok := cfg.Workspaces[target]; ok {
 		return target, ref.Path, nil
 	}
-	if !filepath.IsAbs(target) && cfg.Defaults.WorkspaceRoot != "" {
-		candidate := filepath.Join(cfg.Defaults.WorkspaceRoot, target)
-		if _, err := os.Stat(candidate); err == nil {
-			return target, candidate, nil
-		}
-	}
 	if filepath.IsAbs(target) {
-		name := workspaceNameByPath(cfg, target)
+		name := threadNameByPath(cfg, target)
 		return name, target, nil
 	}
-	return "", "", fmt.Errorf("workspace not found: %q (use a registered name, an absolute path, or a path under defaults.workspace_root)", target)
+	return "", "", fmt.Errorf("thread not found: %q (use a registered name or an absolute path)", target)
 }
 
-func workspaceNameByPath(cfg *config.GlobalConfig, path string) string {
+func threadNameByPath(cfg *config.GlobalConfig, path string) string {
 	clean := filepath.Clean(path)
 	for name, ref := range cfg.Workspaces {
 		if filepath.Clean(ref.Path) == clean {

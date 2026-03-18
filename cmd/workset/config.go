@@ -52,11 +52,11 @@ func configCommand() *cli.Command {
 			},
 			{
 				Name:  "recover",
-				Usage: "Recover workspace registrations from workset.yaml files",
+				Usage: "Recover thread registrations from workset.yaml files",
 				Flags: appendOutputFlags([]cli.Flag{
 					&cli.StringFlag{
-						Name:  "workspace-root",
-						Usage: "Workspace root to scan (defaults to defaults.workspace_root)",
+						Name:  "workset-root",
+						Usage: "Workset root to scan (defaults to defaults.workset_root/worksets)",
 					},
 					&cli.BoolFlag{
 						Name:  "rebuild-repos",
@@ -71,9 +71,9 @@ func configCommand() *cli.Command {
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					svc := apiService(ctx, cmd)
 					result, err := svc.RecoverConfig(ctx, worksetapi.ConfigRecoverInput{
-						WorkspaceRoot: cmd.String("workspace-root"),
-						RebuildRepos:  cmd.Bool("rebuild-repos"),
-						DryRun:        cmd.Bool("dry-run"),
+						WorksetRoot:  cmd.String("workset-root"),
+						RebuildRepos: cmd.Bool("rebuild-repos"),
+						DryRun:       cmd.Bool("dry-run"),
 					})
 					if err != nil {
 						return err
@@ -90,7 +90,7 @@ func configCommand() *cli.Command {
 					if result.Payload.DryRun {
 						status = "recovery preview"
 					}
-					msg := fmt.Sprintf("%s config from %s", status, result.Payload.WorkspaceRoot)
+					msg := fmt.Sprintf("%s config from %s", status, result.Payload.WorksetRoot)
 					if styles.Enabled {
 						msg = styles.Render(styles.Success, msg)
 					}
@@ -98,9 +98,9 @@ func configCommand() *cli.Command {
 						return err
 					}
 					if len(result.Payload.WorkspacesRecovered) > 0 {
-						_, _ = fmt.Fprintf(commandWriter(cmd), "workspaces: %s\n", strings.Join(result.Payload.WorkspacesRecovered, ", "))
+						_, _ = fmt.Fprintf(commandWriter(cmd), "threads: %s\n", strings.Join(result.Payload.WorkspacesRecovered, ", "))
 					} else {
-						_, _ = fmt.Fprintln(commandWriter(cmd), "workspaces: none")
+						_, _ = fmt.Fprintln(commandWriter(cmd), "threads: none")
 					}
 					if len(result.Payload.ReposRecovered) > 0 {
 						_, _ = fmt.Fprintf(commandWriter(cmd), "repos: %s\n", strings.Join(result.Payload.ReposRecovered, ", "))

@@ -102,6 +102,31 @@ const appendRepoChildren = (
 	}
 };
 
+export const computeChildCounts = (results: RepoFileSearchResult[]): Map<string, number> => {
+	const childSets = new Map<string, Set<string>>();
+
+	for (const result of results) {
+		const parts = result.path.split('/');
+		const repoKey = `repo:${result.repoId}`;
+
+		if (!childSets.has(repoKey)) childSets.set(repoKey, new Set());
+		childSets.get(repoKey)!.add(parts[0]);
+
+		for (let i = 1; i < parts.length; i += 1) {
+			const dirPath = parts.slice(0, i).join('/');
+			const dirKey = `dir:${result.repoId}:${dirPath}`;
+			if (!childSets.has(dirKey)) childSets.set(dirKey, new Set());
+			childSets.get(dirKey)!.add(parts[i]);
+		}
+	}
+
+	const counts = new Map<string, number>();
+	for (const [key, children] of childSets) {
+		counts.set(key, children.size);
+	}
+	return counts;
+};
+
 export const buildDocumentViewerTree = (
 	results: RepoFileSearchResult[],
 	expandedNodes: Set<string>,

@@ -73,7 +73,6 @@ func workspaceRefJSON(name string, ref config.WorkspaceRef) WorkspaceRefJSON {
 		Name:           name,
 		Path:           ref.Path,
 		Workset:        workset,
-		Template:       workset,
 		CreatedAt:      ref.CreatedAt,
 		LastUsed:       ref.LastUsed,
 		ArchivedAt:     ref.ArchivedAt,

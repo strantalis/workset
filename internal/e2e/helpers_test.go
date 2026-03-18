@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/strantalis/workset/internal/workspace"
 )
 
 type runner struct {
@@ -39,7 +41,12 @@ func (r *runner) env() []string {
 }
 
 func (r *runner) workspaceRoot() string {
-	return filepath.Join(r.home, ".workset", "workspaces")
+	return filepath.Join(r.home, ".workset", "worksets")
+}
+
+func (r *runner) threadRoot(name string) string {
+	safe := workspace.WorkspaceDirName(name)
+	return filepath.Join(r.workspaceRoot(), safe, safe)
 }
 
 func (r *runner) run(args ...string) (string, error) {

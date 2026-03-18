@@ -12,10 +12,10 @@ func TestStatusJSONOutput(t *testing.T) {
 	if _, err := runner.run("new", "demo"); err != nil {
 		t.Fatalf("workset new: %v", err)
 	}
-	if _, err := runner.run("repo", "add", "-w", "demo", source); err != nil {
+	if _, err := runner.run("repo", "add", "-t", "demo", source); err != nil {
 		t.Fatalf("repo add: %v", err)
 	}
-	out, err := runner.run("status", "-w", "demo", "--json")
+	out, err := runner.run("status", "-t", "demo", "--json")
 	if err != nil {
 		t.Fatalf("status --json: %v", err)
 	}
@@ -33,10 +33,10 @@ func TestStatusPlainOutput(t *testing.T) {
 	if _, err := runner.run("new", "demo"); err != nil {
 		t.Fatalf("workset new: %v", err)
 	}
-	if _, err := runner.run("repo", "add", "-w", "demo", source); err != nil {
+	if _, err := runner.run("repo", "add", "-t", "demo", source); err != nil {
 		t.Fatalf("repo add: %v", err)
 	}
-	out, err := runner.run("status", "-w", "demo", "--plain")
+	out, err := runner.run("status", "-t", "demo", "--plain")
 	if err != nil {
 		t.Fatalf("status --plain: %v", err)
 	}

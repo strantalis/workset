@@ -16,12 +16,81 @@
 
 	let menuElement: HTMLElement | null = $state(null);
 	let menuPosition = $state({ top: 0, left: 0 });
+	let previousFocus: HTMLElement | null = null;
+
+	const getMenuItems = (): HTMLElement[] => {
+		if (!menuElement) return [];
+		return Array.from(menuElement.querySelectorAll<HTMLElement>('button, [role="menuitem"]'));
+	};
+
+	const handleKeydown = (event: KeyboardEvent): void => {
+		const items = getMenuItems();
+		if (items.length === 0) return;
+
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			onClose();
+			return;
+		}
+
+		if (event.key === 'Tab') {
+			event.preventDefault();
+			onClose();
+			return;
+		}
+
+		const currentIndex = items.indexOf(document.activeElement as HTMLElement);
+
+		if (event.key === 'ArrowDown') {
+			event.preventDefault();
+			const next = currentIndex < items.length - 1 ? currentIndex + 1 : 0;
+			items[next]?.focus();
+			return;
+		}
+
+		if (event.key === 'ArrowUp') {
+			event.preventDefault();
+			const prev = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
+			items[prev]?.focus();
+			return;
+		}
+
+		if (event.key === 'Home') {
+			event.preventDefault();
+			items[0]?.focus();
+			return;
+		}
+
+		if (event.key === 'End') {
+			event.preventDefault();
+			items[items.length - 1]?.focus();
+		}
+	};
 
 	$effect(() => {
 		if (open && trigger && menuElement) {
 			tick().then(() => {
 				updatePosition();
 			});
+		}
+	});
+
+	$effect(() => {
+		if (open) {
+			previousFocus = document.activeElement as HTMLElement | null;
+			tick().then(() => {
+				const items = getMenuItems();
+				items.forEach((item) => {
+					if (!item.getAttribute('role')) {
+						item.setAttribute('role', 'menuitem');
+					}
+					item.setAttribute('tabindex', '-1');
+				});
+				items[0]?.focus();
+			});
+		} else if (previousFocus) {
+			previousFocus.focus();
+			previousFocus = null;
 		}
 	});
 
@@ -66,6 +135,8 @@
 		use:portal
 		use:clickOutside={{ callback: onClose, exclude: trigger }}
 		role="menu"
+		tabindex="-1"
+		onkeydown={handleKeydown}
 	>
 		{@render children()}
 	</div>

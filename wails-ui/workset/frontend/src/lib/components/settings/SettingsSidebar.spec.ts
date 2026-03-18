@@ -7,26 +7,26 @@ describe('SettingsSidebar', () => {
 		cleanup();
 	});
 
-	test('renders all section groups including INFO', () => {
+	test('renders all section groups', () => {
 		const { getByText } = render(SettingsSidebar, {
 			props: {
-				activeSection: 'workspace',
+				activeSection: 'defaults',
 				onSelectSection: () => {},
 				aliasCount: 0,
 			},
 		});
 
-		// Check all group titles are present
 		expect(getByText('GENERAL')).toBeInTheDocument();
 		expect(getByText('INTEGRATIONS')).toBeInTheDocument();
 		expect(getByText('LIBRARY')).toBeInTheDocument();
+		expect(getByText('SYSTEM')).toBeInTheDocument();
 		expect(getByText('INFO')).toBeInTheDocument();
 	});
 
 	test('renders About item in INFO section', () => {
 		const { getByText } = render(SettingsSidebar, {
 			props: {
-				activeSection: 'workspace',
+				activeSection: 'defaults',
 				onSelectSection: () => {},
 				aliasCount: 0,
 			},
@@ -38,15 +38,14 @@ describe('SettingsSidebar', () => {
 	test('renders all navigation items', () => {
 		const { getByText } = render(SettingsSidebar, {
 			props: {
-				activeSection: 'workspace',
+				activeSection: 'defaults',
 				onSelectSection: () => {},
 				aliasCount: 0,
 			},
 		});
 
 		// GENERAL items
-		expect(getByText('Workspace')).toBeInTheDocument();
-		expect(getByText('Agent')).toBeInTheDocument();
+		expect(getByText('Defaults')).toBeInTheDocument();
 		expect(getByText('Terminal')).toBeInTheDocument();
 
 		// INTEGRATIONS items
@@ -55,6 +54,9 @@ describe('SettingsSidebar', () => {
 		// LIBRARY items
 		expect(getByText('Repo Catalog')).toBeInTheDocument();
 
+		// SYSTEM items
+		expect(getByText('System')).toBeInTheDocument();
+
 		// INFO items
 		expect(getByText('About')).toBeInTheDocument();
 	});
@@ -62,7 +64,7 @@ describe('SettingsSidebar', () => {
 	test('displays badge counts for repo catalog', () => {
 		const { getByText } = render(SettingsSidebar, {
 			props: {
-				activeSection: 'workspace',
+				activeSection: 'defaults',
 				onSelectSection: () => {},
 				aliasCount: 5,
 			},
@@ -89,7 +91,7 @@ describe('SettingsSidebar', () => {
 		const handleSelect = vi.fn();
 		const { getByText } = render(SettingsSidebar, {
 			props: {
-				activeSection: 'workspace',
+				activeSection: 'defaults',
 				onSelectSection: handleSelect,
 				aliasCount: 0,
 			},

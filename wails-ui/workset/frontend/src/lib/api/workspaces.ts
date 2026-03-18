@@ -1,6 +1,8 @@
 import type {
 	HooksRunResponse,
 	RepoAddResponse,
+	Thread,
+	ThreadCreateResponse,
 	WorksetRepoAddResponse,
 	Workspace,
 	WorkspaceCreateResponse,
@@ -31,26 +33,25 @@ import {
 	UpdateWorkspaceLastUsed,
 } from '../../../bindings/workset/app';
 
-export async function fetchWorkspaces(
+export async function fetchThreads(
 	includeArchived = false,
 	includeStatus = false,
-): Promise<Workspace[]> {
+): Promise<Thread[]> {
 	const snapshots = await ListWorkspaceSnapshots({ includeArchived, includeStatus });
 
-	const mapped: Workspace[] = snapshots.map((workspace) => {
+	const mapped: Thread[] = snapshots.map((workspace) => {
 		const identity = workspace as typeof workspace & {
 			workset?: string;
 			worksetKey?: string;
 			worksetLabel?: string;
 			placeholder?: boolean;
 		};
-		const workset = identity.workset ?? workspace.template;
+		const workset = identity.workset;
 		return {
 			id: workspace.id,
 			name: workspace.name,
 			path: workspace.path,
 			workset,
-			template: workspace.template ?? workset,
 			worksetKey: identity.worksetKey ?? workspace.id,
 			worksetLabel: identity.worksetLabel ?? workspace.name,
 			placeholder: identity.placeholder === true,
@@ -121,25 +122,34 @@ export async function fetchWorkspaces(
 	return mapped;
 }
 
-export async function createWorkspace(
+export const fetchWorkspaces = fetchThreads;
+
+export async function createThread(
 	name: string,
 	path: string,
-	template?: string,
-	aliases?: string[],
-	groups?: string[],
+	workset?: string,
+	repos?: string[],
 	options: { worksetOnly?: boolean } = {},
-): Promise<WorkspaceCreateResponse> {
-	const normalizedTemplate = template?.trim() || undefined;
+): Promise<ThreadCreateResponse> {
+	const normalizedWorkset = workset?.trim() || undefined;
 	const request: Parameters<typeof CreateWorkspace>[0] & { worksetOnly?: boolean } = {
 		name,
 		path,
-		template: normalizedTemplate,
+		workset: normalizedWorkset,
 		worksetOnly: options.worksetOnly === true,
-		repos: aliases,
-		groups,
+		repos,
 	};
-	return CreateWorkspace(request);
+	const response = (await CreateWorkspace(request)) as WorkspaceCreateResponse & {
+		workspace: ThreadCreateResponse['thread'];
+	};
+	return {
+		...response,
+		thread: response.workspace,
+		workspace: response.workspace,
+	};
 }
+
+export const createWorkspace = createThread;
 
 export async function renameWorkspace(workspaceId: string, newName: string): Promise<void> {
 	await RenameWorkspace(workspaceId, newName);
@@ -159,8 +169,16 @@ export type RemoveWorkspaceOptions = {
 	fetchRemotes?: boolean;
 };
 
+export type RemoveThreadOptions = RemoveWorkspaceOptions;
+
 export type WorkspacePopoutState = {
 	workspaceId: string;
+	windowName: string;
+	open: boolean;
+};
+
+export type ThreadPopoutState = {
+	threadId: string;
 	windowName: string;
 	open: boolean;
 };
@@ -172,6 +190,8 @@ export async function removeWorkspace(
 	const { deleteFiles = false, force = false, fetchRemotes = deleteFiles } = options;
 	await RemoveWorkspace({ workspaceId, deleteFiles, force, fetchRemotes });
 }
+
+export const removeThread = removeWorkspace;
 
 export async function addRepo(
 	workspaceId: string,
@@ -240,10 +260,14 @@ export async function pinWorkspace(workspaceId: string, pin: boolean): Promise<W
 	return mapWorkspaceRefToWorkspace(result);
 }
 
+export const pinThread = pinWorkspace;
+
 export async function setWorkspaceColor(workspaceId: string, color: string): Promise<Workspace> {
 	const result = await SetWorkspaceColor(workspaceId, color);
 	return mapWorkspaceRefToWorkspace(result);
 }
+
+export const setThreadColor = setWorkspaceColor;
 
 export async function setWorkspaceDescription(
 	workspaceId: string,
@@ -253,6 +277,8 @@ export async function setWorkspaceDescription(
 	return mapWorkspaceRefToWorkspace(result);
 }
 
+export const setThreadDescription = setWorkspaceDescription;
+
 export async function setWorkspaceExpanded(
 	workspaceId: string,
 	expanded: boolean,
@@ -261,18 +287,33 @@ export async function setWorkspaceExpanded(
 	return mapWorkspaceRefToWorkspace(result);
 }
 
+export const setThreadExpanded = setWorkspaceExpanded;
+
 export async function reorderWorkspaces(orders: Record<string, number>): Promise<Workspace[]> {
 	const result = await ReorderWorkspaces({ orders });
 	return result.map(mapWorkspaceRefToWorkspace);
 }
 
+export const reorderThreads = reorderWorkspaces;
+
 export async function updateWorkspaceLastUsed(workspaceId: string): Promise<void> {
 	await UpdateWorkspaceLastUsed(workspaceId);
 }
 
+export const updateThreadLastUsed = updateWorkspaceLastUsed;
+
 export async function openWorkspacePopout(workspaceId: string): Promise<WorkspacePopoutState> {
 	await flushWorkspaceTerminalSnapshots(workspaceId);
 	return OpenWorkspacePopout(workspaceId);
+}
+
+export async function openThreadPopout(workspaceId: string): Promise<ThreadPopoutState> {
+	const state = await openWorkspacePopout(workspaceId);
+	return {
+		threadId: state.workspaceId,
+		windowName: state.windowName,
+		open: state.open,
+	};
 }
 
 export async function closeWorkspacePopout(workspaceId: string): Promise<void> {
@@ -280,19 +321,27 @@ export async function closeWorkspacePopout(workspaceId: string): Promise<void> {
 	await CloseWorkspacePopout(workspaceId);
 }
 
+export const closeThreadPopout = closeWorkspacePopout;
+
 export async function listWorkspacePopouts(): Promise<WorkspacePopoutState[]> {
 	return ListWorkspacePopouts();
 }
 
+export async function listThreadPopouts(): Promise<ThreadPopoutState[]> {
+	const states = await listWorkspacePopouts();
+	return states.map((state) => ({
+		threadId: state.workspaceId,
+		windowName: state.windowName,
+		open: state.open,
+	}));
+}
+
 function mapWorkspaceRefToWorkspace(ref: WorkspaceRefJSON): Workspace {
-	const legacy = ref as WorkspaceRefJSON & { workset?: string };
-	const workset = legacy.workset ?? ref.template;
 	return {
 		id: ref.name,
 		name: ref.name,
 		path: ref.path,
-		workset,
-		template: ref.template ?? workset,
+		workset: ref.workset,
 		worksetKey: ref.name,
 		worksetLabel: ref.name,
 		archived: ref.archived,

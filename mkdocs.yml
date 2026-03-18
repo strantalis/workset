@@ -1,5 +1,5 @@
 site_name: Workset
-site_description: Multi-repo workspaces with linked worktrees
+site_description: Multi-repo threads with linked worktrees
 site_url: https://workset.dev
 repo_url: https://github.com/strantalis/workset
 repo_name: strantalis/workset
@@ -8,20 +8,34 @@ copyright: © 2026 Sean Strantalis
 
 theme:
   name: material
+  custom_dir: overrides
   logo: assets/logo.png
   favicon: assets/favicon.png
   palette:
-    primary: custom
-    accent: custom
+    - scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
   features:
     - navigation.tabs
     - navigation.sections
+    - navigation.top
+    - navigation.instant
     - content.code.copy
     - content.tabs.link
     - content.action.edit
     - content.action.view
 
 extra_css:
+  - https://fonts.googleapis.com/css2?family=DM+Sans:wght@500;600;700&display=swap
   - stylesheets/extra.css
 
 extra_javascript:
@@ -34,6 +48,8 @@ markdown_extensions:
   - fenced_code
   - meta
   - admonition
+  - attr_list
+  - md_in_html
   - pymdownx.details
   - pymdownx.superfences:
       custom_fences:
@@ -54,14 +70,11 @@ plugins:
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
-  - Concepts: concepts.md
-  - Desktop App: desktop-app.md
   - CLI:
       - Overview: cli.md
       - Command Index: commands.md
-  - Config: config.md
-  - Templates: templates.md
-  - Architecture:
-      - Terminal: architecture/terminal.md
-      - Terminal Ownership Simplification Plan: architecture/terminal-ownership-simplification-plan.md
+  - Desktop App: desktop-app.md
+  - Reference:
+      - Concepts: concepts.md
+      - Config: config.md
   - Releases: releases/index.md

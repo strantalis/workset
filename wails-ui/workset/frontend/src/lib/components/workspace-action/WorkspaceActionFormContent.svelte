@@ -17,7 +17,7 @@
 		| 'rename'
 		| 'add-repo'
 		| 'archive'
-		| 'remove-workspace'
+		| 'remove-thread'
 		| 'remove-repo'
 		| null;
 	type ThreadHookPreviewRow = {
@@ -44,7 +44,6 @@
 		existingRepos: ExistingRepoContext[];
 		addRepoSelectedItems: WorkspaceActionAddRepoSelectedItem[];
 		addRepoTotalItems: number;
-		worksetName: string;
 		onAddSearchQueryInput: (value: string) => void;
 		onAddSourceInput: (value: string) => void;
 		onAddBrowse: () => void;
@@ -112,7 +111,6 @@
 		existingRepos,
 		addRepoSelectedItems,
 		addRepoTotalItems,
-		worksetName,
 		onAddSearchQueryInput,
 		onAddSourceInput,
 		onAddBrowse,
@@ -226,7 +224,6 @@
 		{existingRepos}
 		{addRepoSelectedItems}
 		{addRepoTotalItems}
-		{worksetName}
 		{getAliasSource}
 		onSearchQueryInput={onAddSearchQueryInput}
 		{onAddSourceInput}
@@ -255,7 +252,7 @@
 			{loading ? 'Archiving…' : 'Archive'}
 		</Button>
 	</div>
-{:else if mode === 'remove-workspace'}
+{:else if mode === 'remove-thread'}
 	<WorkspaceActionRemoveWorkspaceForm
 		{loading}
 		{removing}

@@ -68,7 +68,7 @@ func TestCreateWorkspaceDefaultPath(t *testing.T) {
 	if result.Workspace.Path == "" || result.Workspace.Workset == "" {
 		t.Fatalf("missing path/workset")
 	}
-	if _, err := os.Stat(result.Workspace.Workset); err != nil {
+	if _, err := os.Stat(workspace.WorksetFile(result.Workspace.Path)); err != nil {
 		t.Fatalf("workset file missing: %v", err)
 	}
 	cfg := env.loadConfig()
@@ -86,7 +86,11 @@ func TestCreateWorkspaceDefaultPathSanitizesName(t *testing.T) {
 	if result.Workspace.Name != "fix/ws-test" {
 		t.Fatalf("unexpected name: %s", result.Workspace.Name)
 	}
-	expected := filepath.Join(env.workspaceRoot, workspace.WorkspaceDirName("fix/ws-test"))
+	expected := filepath.Join(
+		env.workspaceRoot,
+		workspace.WorkspaceDirName("fix/ws-test"),
+		workspace.WorkspaceDirName("fix/ws-test"),
+	)
 	if result.Workspace.Path != expected {
 		t.Fatalf("unexpected path: got %s want %s", result.Workspace.Path, expected)
 	}
@@ -172,7 +176,11 @@ func TestCreateWorkspaceDuplicateNameBlocked(t *testing.T) {
 func TestCreateWorkspaceExistingWorksetFileReturnsConflict(t *testing.T) {
 	env := newTestEnv(t)
 
-	root := filepath.Join(env.workspaceRoot, workspace.WorkspaceDirName("demo"))
+	root := filepath.Join(
+		env.workspaceRoot,
+		workspace.WorkspaceDirName("demo"),
+		workspace.WorkspaceDirName("demo"),
+	)
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		t.Fatalf("mkdir existing workspace root: %v", err)
 	}
@@ -223,11 +231,10 @@ func TestCreateWorkspaceDuplicateNameBlockedDuringAtomicUpdate(t *testing.T) {
 
 	store := &hideWorkspaceOnFirstLoadStore{name: "demo"}
 	env.svc = NewService(Options{
-		ConfigPath:    env.configPath,
-		ConfigStore:   store,
-		Git:           env.git,
-		SessionRunner: env.runner,
-		Logf:          func(string, ...any) {},
+		ConfigPath:  env.configPath,
+		ConfigStore: store,
+		Git:         env.git,
+		Logf:        func(string, ...any) {},
 	})
 
 	targetPath := filepath.Join(env.root, "new-demo")
@@ -250,25 +257,18 @@ func TestCreateWorkspaceDuplicateNameBlockedDuringAtomicUpdate(t *testing.T) {
 	}
 }
 
-func TestCreateWorkspaceWithSingleGroupDoesNotInferTemplate(t *testing.T) {
+func TestCreateWorkspaceWithSingleRepoDefaultsWorksetToWorkspaceName(t *testing.T) {
 	env := newTestEnv(t)
 	local := env.createLocalRepo("repo-a")
 	cfg := env.loadConfig()
 	cfg.Repos = map[string]config.RegisteredRepo{
 		"repo-a": {Path: local},
 	}
-	cfg.Groups = map[string]config.Group{
-		"core": {
-			Members: []config.GroupMember{
-				{Repo: "repo-a"},
-			},
-		},
-	}
 	env.saveConfig(cfg)
 
 	result, err := env.svc.CreateWorkspace(context.Background(), WorkspaceCreateInput{
-		Name:   "demo",
-		Groups: []string{"core"},
+		Name:  "demo",
+		Repos: []string{"repo-a"},
 	})
 	if err != nil {
 		t.Fatalf("create workspace: %v", err)
@@ -278,7 +278,7 @@ func TestCreateWorkspaceWithSingleGroupDoesNotInferTemplate(t *testing.T) {
 		t.Fatalf("load workspace config: %v", err)
 	}
 	if len(wsCfg.Repos) != 1 || wsCfg.Repos[0].Name != "repo-a" {
-		t.Fatalf("expected repo from group")
+		t.Fatalf("expected repo from request")
 	}
 
 	cfg = env.loadConfig()
@@ -286,15 +286,12 @@ func TestCreateWorkspaceWithSingleGroupDoesNotInferTemplate(t *testing.T) {
 	if !ok {
 		t.Fatalf("workspace not registered")
 	}
-	if ref.Template != "" {
-		t.Fatalf("did not expect template to be auto-derived from group, got %q", ref.Template)
-	}
 	if ref.Workset != "demo" {
 		t.Fatalf("expected workset defaulted to workspace name, got %q", ref.Workset)
 	}
 }
 
-func TestCreateWorkspaceStoresWorksetFromTemplateInput(t *testing.T) {
+func TestCreateWorkspaceStoresExplicitWorksetInput(t *testing.T) {
 	env := newTestEnv(t)
 	cfg := env.loadConfig()
 	cfg.Repos = map[string]config.RegisteredRepo{
@@ -303,9 +300,9 @@ func TestCreateWorkspaceStoresWorksetFromTemplateInput(t *testing.T) {
 	env.saveConfig(cfg)
 
 	result, err := env.svc.CreateWorkspace(context.Background(), WorkspaceCreateInput{
-		Name:     "demo",
-		Repos:    []string{"repo-a"},
-		Template: "Manual Template",
+		Name:    "demo",
+		Repos:   []string{"repo-a"},
+		Workset: "Manual Template",
 	})
 	if err != nil {
 		t.Fatalf("create workspace: %v", err)
@@ -320,11 +317,8 @@ func TestCreateWorkspaceStoresWorksetFromTemplateInput(t *testing.T) {
 	if !ok {
 		t.Fatalf("workspace not registered")
 	}
-	if ref.Template != "" {
-		t.Fatalf("expected template to be omitted after migration, got %q", ref.Template)
-	}
 	if ref.Workset != "Manual Template" {
-		t.Fatalf("expected workset from template input, got %q", ref.Workset)
+		t.Fatalf("expected workset from explicit input, got %q", ref.Workset)
 	}
 }
 
@@ -437,12 +431,11 @@ func TestCreateWorkspaceRunsTrustedHooks(t *testing.T) {
 	env.saveConfig(cfg)
 	runner := &stubHookRunner{}
 	env.svc = NewService(Options{
-		ConfigPath:    env.configPath,
-		Git:           env.git,
-		SessionRunner: env.runner,
-		HookRunner:    runner,
-		Clock:         func() time.Time { return env.now },
-		Logf:          func(string, ...any) {},
+		ConfigPath: env.configPath,
+		Git:        env.git,
+		HookRunner: runner,
+		Clock:      func() time.Time { return env.now },
+		Logf:       func(string, ...any) {},
 	})
 
 	result, err := env.svc.CreateWorkspace(context.Background(), WorkspaceCreateInput{
@@ -551,13 +544,13 @@ func TestDeleteWorkspaceMissingConfigDoesNotWriteDefaults(t *testing.T) {
 	if err := os.Remove(env.configPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("remove config: %v", err)
 	}
-	target := filepath.Join(env.root, ".workset", "workspaces", "orphan")
+	target := filepath.Join(env.root, ".workset", "worksets", "orphan", "orphan")
 	if err := os.MkdirAll(target, 0o755); err != nil {
 		t.Fatalf("mkdir orphan: %v", err)
 	}
 
 	_, err := env.svc.DeleteWorkspace(context.Background(), WorkspaceDeleteInput{
-		Selector:    WorkspaceSelector{Value: "orphan"},
+		Selector:    WorkspaceSelector{Value: target},
 		DeleteFiles: false,
 	})
 	if err != nil {
@@ -628,9 +621,9 @@ func TestDeleteWorkspacePreservesWorksetWhenLastThreadRemoved(t *testing.T) {
 	}
 	env.saveConfig(cfg)
 	if _, err := env.svc.CreateWorkspace(ctx, WorkspaceCreateInput{
-		Name:     "thread-a",
-		Template: "Platform Core",
-		Repos:    []string{"repo-a", "repo-b"},
+		Name:    "thread-a",
+		Workset: "Platform Core",
+		Repos:   []string{"repo-a", "repo-b"},
 	}); err != nil {
 		t.Fatalf("create workspace: %v", err)
 	}
@@ -666,16 +659,16 @@ func TestDeleteWorkspaceRecomputesWorksetReposFromRemainingThread(t *testing.T) 
 	env.saveConfig(cfg)
 
 	if _, err := env.svc.CreateWorkspace(ctx, WorkspaceCreateInput{
-		Name:     "thread-a",
-		Template: "Platform Core",
-		Repos:    []string{"repo-a", "repo-b"},
+		Name:    "thread-a",
+		Workset: "Platform Core",
+		Repos:   []string{"repo-a", "repo-b"},
 	}); err != nil {
 		t.Fatalf("create thread-a: %v", err)
 	}
 	if _, err := env.svc.CreateWorkspace(ctx, WorkspaceCreateInput{
-		Name:     "thread-b",
-		Template: "Platform Core",
-		Repos:    []string{"repo-a", "repo-b", "repo-c"},
+		Name:    "thread-b",
+		Workset: "Platform Core",
+		Repos:   []string{"repo-a", "repo-b", "repo-c"},
 	}); err != nil {
 		t.Fatalf("create thread-b: %v", err)
 	}

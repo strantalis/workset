@@ -1,0 +1,28 @@
+version: 1
+items:
+  - id: defaults.workspace_root-compat
+    scope: global-config
+    summary: Legacy defaults.workspace_root fallback removed in the workset hard cut.
+    introduced: 2026-03-04
+    remove_by: 2026-03-16
+    owner: workset-core
+    tracking_issue: docs/architecture/workset-hierarchy-migration-tracker.md
+    status: completed
+    evidence:
+      - internal/config/global.go
+      - internal/config/types.go
+      - docs/config.md
+
+  - id: groups-template-compat
+    scope: api-config
+    summary: Legacy groups and template compatibility paths removed in the workset hard cut.
+    introduced: 2026-02-01
+    remove_by: 2026-03-16
+    owner: workset-core
+    tracking_issue: docs/architecture/workset-hierarchy-migration-tracker.md
+    status: completed
+    evidence:
+      - pkg/worksetapi/workspaces.go
+      - pkg/worksetapi/registry.go
+      - docs/commands.md
+      - docs/templates.md

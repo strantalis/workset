@@ -949,7 +949,7 @@
 	{#if !workspace}
 		<div class="empty-state ws-empty-state">
 			<GitPullRequest size={48} />
-			<p class="ws-empty-state-copy">Select a workspace to view pull requests</p>
+			<p class="ws-empty-state-copy">Select a thread to view pull requests</p>
 		</div>
 	{:else if prItems.length === 0}
 		<div class="empty-state ws-empty-state">
@@ -1327,10 +1327,12 @@
 				{:else}
 					<div class="empty-state ws-empty-state">
 						{#if viewMode === 'active'}
-							<GitPullRequest size={48} />
-							<p class="ws-empty-state-copy">Select a tracked PR to view details</p>
+							<GitPullRequest size={32} strokeWidth={1.5} />
+							<p class="ws-empty-state-copy">
+								Select a tracked PR to view its diff, checks, and comments
+							</p>
 						{:else}
-							<Upload size={48} />
+							<Upload size={32} strokeWidth={1.5} />
 							<p class="ws-empty-state-copy">Select a branch to prepare a PR or local merge</p>
 						{/if}
 					</div>

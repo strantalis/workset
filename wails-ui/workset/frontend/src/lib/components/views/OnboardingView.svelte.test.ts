@@ -140,7 +140,6 @@ describe('OnboardingView', () => {
 		await clickButton('Continue');
 		await clickButton('api-repo');
 		await clickButton('Next Step');
-		await clickButton('Show review details');
 		await Promise.resolve();
 		await Promise.resolve();
 

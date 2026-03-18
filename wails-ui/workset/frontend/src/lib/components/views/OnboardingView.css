@@ -114,7 +114,6 @@
 	background: var(--accent);
 	border-color: var(--accent);
 	color: white;
-	box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
 .step-dot.completed {
@@ -178,14 +177,14 @@
 .field-hint-inline {
 	margin-left: 8px;
 	font-size: var(--text-xs);
-	color: #8b8aed;
+	color: var(--purple);
 	font-weight: 400;
 }
 
 .field-hint {
 	margin: 4px 0 0;
 	font-size: var(--text-xs);
-	color: #6b7f95;
+	color: var(--subtle);
 }
 
 .field-error {
@@ -225,36 +224,8 @@
 	font-size: var(--text-base);
 }
 
-/* ═══ Primary Button ═══ */
-.btn-primary {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	gap: 8px;
-	padding: 10px 24px;
-	background: var(--accent);
-	border: none;
-	border-radius: 8px;
-	color: white;
-	font-weight: 600;
-	font-size: var(--text-md);
-	font-family: inherit;
-	cursor: pointer;
-	transition:
-		background 0.15s,
-		opacity 0.15s;
-}
-
-.btn-primary:hover:not(:disabled) {
-	background: color-mix(in srgb, var(--accent) 88%, white);
-}
-
-.btn-primary:disabled {
-	opacity: 0.5;
-	cursor: not-allowed;
-}
-
-.btn-primary.wide {
+/* ═══ Step 2 wide button ═══ */
+.step2-nav :global(.wide) {
 	flex: 1;
 }
 
@@ -532,18 +503,6 @@
 	color: var(--text);
 }
 
-@keyframes hubPulse {
-	0%,
-	100% {
-		box-shadow: 0 0 30px color-mix(in srgb, var(--accent) 25%, transparent);
-	}
-	50% {
-		box-shadow:
-			0 0 40px color-mix(in srgb, var(--accent) 40%, transparent),
-			0 0 80px color-mix(in srgb, var(--accent) 10%, transparent);
-	}
-}
-
 /* ═══ Right: Topology ═══ */
 .topo-side {
 	flex: 1;
@@ -567,17 +526,7 @@
 		transparent 70%
 	);
 	pointer-events: none;
-	animation: gradientPulse 4s ease-in-out infinite;
-}
-
-@keyframes gradientPulse {
-	0%,
-	100% {
-		opacity: 0.6;
-	}
-	50% {
-		opacity: 1;
-	}
+	opacity: 0.6;
 }
 
 .topo-title {
@@ -605,8 +554,6 @@
 	border-radius: 50%;
 	background: var(--panel-soft);
 	border: 2px solid var(--accent);
-	box-shadow: 0 0 30px color-mix(in srgb, var(--accent) 30%, transparent);
-	animation: hubPulse 3s ease-in-out infinite;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
@@ -644,8 +591,8 @@
 	max-width: 200px;
 	padding: 6px 12px;
 	border-radius: 8px;
-	background: color-mix(in srgb, #8b8aed 10%, transparent);
-	border: 1px solid color-mix(in srgb, #8b8aed 20%, transparent);
+	background: color-mix(in srgb, var(--purple) 10%, transparent);
+	border: 1px solid color-mix(in srgb, var(--purple) 20%, transparent);
 	text-align: center;
 	z-index: 30;
 }
@@ -653,7 +600,7 @@
 .hub-desc-callout p {
 	margin: 0;
 	font-size: var(--text-xs);
-	color: #8b8aed;
+	color: var(--purple);
 	line-height: 1.4;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -694,9 +641,9 @@
 	position: absolute;
 	left: 50%;
 	top: 50%;
-	width: 56px;
+	width: 72px;
 	height: 56px;
-	margin-left: -28px;
+	margin-left: -36px;
 	margin-top: -28px;
 	border-radius: 12px;
 	background: var(--panel-strong);
@@ -737,7 +684,7 @@
 .repo-node-label {
 	font-size: var(--text-mono-xs);
 	color: var(--muted);
-	max-width: 50px;
+	max-width: 72px;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;

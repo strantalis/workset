@@ -1,23 +1,29 @@
 # Workset
 
-> Workset is a Go CLI for managing multi-repo workspaces with linked Git worktrees.
+> Workset is a Go CLI and desktop app for managing multi-repo workspaces with linked Git worktrees.
 
-This site documents Workset. Start with the overview and Getting Started, then use the reference pages for commands and configuration.
+This site documents Workset. Start with the overview and Getting Started, then use the Reference section for commands and configuration.
 
 ## Start here
 
 - [Home](https://workset.dev/)
 - [Getting Started](https://workset.dev/getting-started/)
-- [Concepts](https://workset.dev/concepts/)
 
-## Reference
+## CLI
 
 - [CLI Overview](https://workset.dev/cli/)
 - [Command Index](https://workset.dev/commands/)
+
+## Desktop App
+
+- [Desktop App](https://workset.dev/desktop-app/)
+
+## Reference
+
+- [Concepts](https://workset.dev/concepts/)
 - [Config](https://workset.dev/config/)
-- [Templates](https://workset.dev/templates/)
 - [Releases](https://workset.dev/releases/)
 
-## Optional
+## Source
 
 - [GitHub repository](https://github.com/strantalis/workset): source code and issues

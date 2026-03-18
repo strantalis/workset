@@ -111,7 +111,7 @@
 			{/if}
 		</div>
 	{:else}
-		<span class="muted">No workset selected</span>
+		<span class="muted">No thread selected</span>
 	{/if}
 
 	<div class="ws-spacer"></div>
@@ -120,8 +120,8 @@
 		<button
 			type="button"
 			class="popout-action"
-			aria-label={workspacePoppedOut ? 'Return workspace to main window' : 'Open workspace popout'}
-			title={workspacePoppedOut ? 'Return to main window' : 'Open workspace popout'}
+			aria-label={workspacePoppedOut ? 'Return thread to main window' : 'Open thread popout'}
+			title={workspacePoppedOut ? 'Return thread to main window' : 'Open thread popout'}
 			onclick={() => onTogglePopout?.()}
 		>
 			{#if workspacePoppedOut}
@@ -149,20 +149,9 @@
 		align-items: center;
 		gap: 8px;
 		padding: 0 10px 0 0;
-		border-bottom: 1px solid var(--glass-border);
-		background:
-			linear-gradient(
-				180deg,
-				rgba(255, 255, 255, 0.1) 0%,
-				rgba(255, 255, 255, 0.03) 44%,
-				rgba(255, 255, 255, 0) 100%
-			),
-			var(--glass-bg);
-		backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-		-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-		box-shadow:
-			var(--inset-highlight),
-			0 6px 18px rgba(5, 10, 20, 0.22);
+		border-bottom: 1px solid var(--border);
+		background: var(--panel);
+		box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 40%, transparent);
 		--wails-draggable: drag;
 		min-width: 0;
 		overflow: hidden;

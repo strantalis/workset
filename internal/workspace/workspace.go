@@ -30,16 +30,7 @@ type Workspace struct {
 
 type State struct {
 	CurrentBranch string                      `json:"current_branch"`
-	Sessions      map[string]SessionState     `json:"sessions,omitempty"`
 	PullRequests  map[string]PullRequestState `json:"pull_requests,omitempty"`
-}
-
-type SessionState struct {
-	Backend      string   `json:"backend,omitempty"`
-	Name         string   `json:"name,omitempty"`
-	Command      []string `json:"command,omitempty"`
-	StartedAt    string   `json:"started_at,omitempty"`
-	LastAttached string   `json:"last_attached,omitempty"`
 }
 
 type PullRequestState struct {
@@ -229,12 +220,6 @@ func saveState(root string, state State) error {
 
 func SaveState(root string, state State) error {
 	return saveState(root, state)
-}
-
-func EnsureSessionState(state *State) {
-	if state.Sessions == nil {
-		state.Sessions = map[string]SessionState{}
-	}
 }
 
 func loadState(root string) (State, error) {

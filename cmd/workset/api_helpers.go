@@ -40,15 +40,7 @@ func printConfigInfo(cmd *cli.Command, info any) {
 		printConfigLoadInfo(cmd, cmd.String("config"), value.Config)
 	case worksetapi.WorkspaceStatusResult:
 		printConfigLoadInfo(cmd, cmd.String("config"), value.Config)
-	case worksetapi.GroupListResult:
-		printConfigLoadInfo(cmd, cmd.String("config"), value.Config)
-	case worksetapi.SessionListResult:
-		printConfigLoadInfo(cmd, cmd.String("config"), value.Config)
 	case worksetapi.RegisteredRepoListResult:
-		printConfigLoadInfo(cmd, cmd.String("config"), value.Config)
-	case worksetapi.SessionStartResult:
-		printConfigLoadInfo(cmd, cmd.String("config"), value.Config)
-	case worksetapi.SessionActionResult:
 		printConfigLoadInfo(cmd, cmd.String("config"), value.Config)
 	case worksetapi.HooksRunResult:
 		printConfigLoadInfo(cmd, cmd.String("config"), value.Config)
