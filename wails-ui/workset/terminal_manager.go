@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func (a *App) StartWorkspaceTerminal(workspaceID, terminalID string) error {
+func (a *App) startWorkspaceTerminal(workspaceID, terminalID string) error {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
 		return fmt.Errorf("workspace id required")
@@ -121,24 +121,6 @@ func (a *App) CreateWorkspaceTerminal(workspaceID string) (TerminalCreatePayload
 
 func (a *App) LogTerminalDebug(payload TerminalDebugPayload) {
 	logTerminalDebug(payload)
-}
-
-func (a *App) ResizeWorkspaceTerminal(workspaceID, terminalID string, cols, rows int) error {
-	session, err := a.getTerminal(workspaceID, terminalID)
-	if err != nil {
-		return err
-	}
-	if cols < 2 {
-		cols = 2
-	}
-	if rows < 1 {
-		rows = 1
-	}
-	return session.Resize(cols, rows)
-}
-
-func (a *App) StopWorkspaceTerminal(workspaceID, terminalID string) error {
-	return a.stopWorkspaceTerminalWithOwner(workspaceID, terminalID, "")
 }
 
 func (a *App) stopWorkspaceTerminalWithOwner(workspaceID, terminalID, owner string) error {

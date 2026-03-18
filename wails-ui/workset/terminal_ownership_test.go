@@ -211,7 +211,7 @@ func TestGetWorkspaceTerminalOwnerReflectsDaemonLease(t *testing.T) {
 	registerTerminalSession(app, workspaceID, "term-1", client, time.Now().Add(-time.Minute))
 	registerTerminalSession(app, workspaceID, "term-2", client, time.Now())
 
-	if got := app.GetWorkspaceTerminalOwner(workspaceID); got != "workspace-test-popout" {
+	if got := app.workspaceTerminalOwner(workspaceID); got != "workspace-test-popout" {
 		t.Fatalf("expected latest daemon owner workspace-test-popout, got %q", got)
 	}
 }
@@ -219,7 +219,7 @@ func TestGetWorkspaceTerminalOwnerReflectsDaemonLease(t *testing.T) {
 func TestGetWorkspaceTerminalOwnerDefaultsToMainWithoutSessions(t *testing.T) {
 	app := NewApp()
 
-	if got := app.GetWorkspaceTerminalOwner("test-workspace"); got != "main" {
+	if got := app.workspaceTerminalOwner("test-workspace"); got != "main" {
 		t.Fatalf("expected main fallback owner, got %q", got)
 	}
 }

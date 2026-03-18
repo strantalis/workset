@@ -1,17 +1,12 @@
 package main
 
-import (
-	"context"
-
-	"github.com/strantalis/workset/pkg/worksetapi"
-)
+import "github.com/strantalis/workset/pkg/worksetapi"
 
 type WorkspaceSnapshot struct {
 	ID             string         `json:"id"`
 	Name           string         `json:"name"`
 	Path           string         `json:"path"`
 	Workset        string         `json:"workset,omitempty"`
-	Template       string         `json:"template,omitempty"`
 	WorksetKey     string         `json:"worksetKey,omitempty"`
 	WorksetLabel   string         `json:"worksetLabel,omitempty"`
 	Placeholder    bool           `json:"placeholder,omitempty"`
@@ -81,13 +76,8 @@ type WorkspaceSnapshotRequest struct {
 
 // ListWorkspaceSnapshots returns workspaces and their repos for the UI.
 func (a *App) ListWorkspaceSnapshots(input WorkspaceSnapshotRequest) ([]WorkspaceSnapshot, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-
-	result, err := a.service.ListWorkspaceSnapshots(ctx, worksetapi.WorkspaceSnapshotOptions{
+	ctx, svc := a.serviceContext()
+	result, err := svc.ListWorkspaceSnapshots(ctx, worksetapi.WorkspaceSnapshotOptions{
 		IncludeArchived: input.IncludeArchived,
 		IncludeStatus:   input.IncludeStatus,
 	})
@@ -135,7 +125,7 @@ func (a *App) ListWorkspaceSnapshots(input WorkspaceSnapshotRequest) ([]Workspac
 			}
 
 			if input.IncludeStatus && !workspace.Placeholder && !repo.Missing {
-				localStatus, localErr := a.service.GetRepoLocalStatus(ctx, worksetapi.RepoLocalStatusInput{
+				localStatus, localErr := svc.GetRepoLocalStatus(ctx, worksetapi.RepoLocalStatusInput{
 					Workspace: worksetapi.WorkspaceSelector{Value: workspace.Name},
 					Repo:      repo.Name,
 				})
@@ -175,7 +165,6 @@ func (a *App) ListWorkspaceSnapshots(input WorkspaceSnapshotRequest) ([]Workspac
 			Name:           workspace.Name,
 			Path:           workspace.Path,
 			Workset:        workspace.Workset,
-			Template:       workspace.Template,
 			WorksetKey:     workspace.WorksetKey,
 			WorksetLabel:   workspace.WorksetLabel,
 			Placeholder:    workspace.Placeholder,

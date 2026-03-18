@@ -1,6 +1,10 @@
 package main
 
-import "github.com/strantalis/workset/pkg/worksetapi"
+import (
+	"context"
+
+	"github.com/strantalis/workset/pkg/worksetapi"
+)
 
 func newWorksetService(observer appHookObserver) *worksetapi.Service {
 	options := serviceOptions()
@@ -15,4 +19,15 @@ func (a *App) ensureService() *worksetapi.Service {
 		}
 	})
 	return a.service
+}
+
+func (a *App) appContext() context.Context {
+	if a.ctx != nil {
+		return a.ctx
+	}
+	return context.Background()
+}
+
+func (a *App) serviceContext() (context.Context, *worksetapi.Service) {
+	return a.appContext(), a.ensureService()
 }

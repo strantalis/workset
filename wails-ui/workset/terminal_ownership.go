@@ -153,7 +153,7 @@ func (a *App) resolveCallerWindowName(ctx context.Context, windowName string) st
 	return a.GetCurrentWindowName(ctx)
 }
 
-func (a *App) GetWorkspaceTerminalOwner(workspaceID string) string {
+func (a *App) workspaceTerminalOwner(workspaceID string) string {
 	session := a.latestTerminalForWorkspace(workspaceID)
 	if session == nil {
 		return a.mainWindowName
@@ -182,7 +182,7 @@ func (a *App) startWorkspaceTerminalForOwner(
 	terminalID,
 	windowName string,
 ) error {
-	if err := a.StartWorkspaceTerminal(workspaceID, terminalID); err != nil {
+	if err := a.startWorkspaceTerminal(workspaceID, terminalID); err != nil {
 		return err
 	}
 	return a.transferWorkspaceTerminalOwner(workspaceID, windowName)

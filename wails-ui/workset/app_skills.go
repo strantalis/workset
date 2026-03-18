@@ -101,66 +101,38 @@ func (a *App) resolveProjectRoot(ctx context.Context, workspaceID string) string
 }
 
 func (a *App) ListSkills(input ListSkillsRequest) ([]worksetapi.SkillInfo, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	return a.service.ListSkills(ctx, a.resolveProjectRoot(ctx, input.WorkspaceID))
+	ctx, svc := a.serviceContext()
+	return svc.ListSkills(ctx, a.resolveProjectRoot(ctx, input.WorkspaceID))
 }
 
 func (a *App) GetSkill(input GetSkillRequest) (worksetapi.SkillContent, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	return a.service.GetSkillWithRoot(ctx, input.Scope, input.DirName, input.Tool, a.resolveProjectRoot(ctx, input.WorkspaceID))
+	ctx, svc := a.serviceContext()
+	return svc.GetSkillWithRoot(ctx, input.Scope, input.DirName, input.Tool, a.resolveProjectRoot(ctx, input.WorkspaceID))
 }
 
 func (a *App) SaveSkill(input SaveSkillRequest) error {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	return a.service.SaveSkillWithRoot(ctx, input.Scope, input.DirName, input.Tool, input.Content, a.resolveProjectRoot(ctx, input.WorkspaceID))
+	ctx, svc := a.serviceContext()
+	return svc.SaveSkillWithRoot(ctx, input.Scope, input.DirName, input.Tool, input.Content, a.resolveProjectRoot(ctx, input.WorkspaceID))
 }
 
 func (a *App) DeleteSkill(input DeleteSkillRequest) error {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	return a.service.DeleteSkillWithRoot(ctx, input.Scope, input.DirName, input.Tool, a.resolveProjectRoot(ctx, input.WorkspaceID))
+	ctx, svc := a.serviceContext()
+	return svc.DeleteSkillWithRoot(ctx, input.Scope, input.DirName, input.Tool, a.resolveProjectRoot(ctx, input.WorkspaceID))
 }
 
 func (a *App) SyncSkill(input SyncSkillRequest) error {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	return a.service.SyncSkillWithRoot(ctx, input.Scope, input.DirName, input.FromTool, input.ToTools, a.resolveProjectRoot(ctx, input.WorkspaceID))
+	ctx, svc := a.serviceContext()
+	return svc.SyncSkillWithRoot(ctx, input.Scope, input.DirName, input.FromTool, input.ToTools, a.resolveProjectRoot(ctx, input.WorkspaceID))
 }
 
 func (a *App) SearchMarketplaceSkills(input SearchMarketplaceSkillsRequest) ([]worksetapi.MarketplaceSkill, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	return a.service.SearchMarketplaceSkills(ctx, input.Provider, input.Query, input.Limit)
+	ctx, svc := a.serviceContext()
+	return svc.SearchMarketplaceSkills(ctx, input.Provider, input.Query, input.Limit)
 }
 
 func (a *App) GetMarketplaceSkillContent(input MarketplaceSkillRequest) (worksetapi.MarketplaceSkillContent, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	return a.service.GetMarketplaceSkillContent(ctx, worksetapi.MarketplaceSkillRequest{
+	ctx, svc := a.serviceContext()
+	return svc.GetMarketplaceSkillContent(ctx, worksetapi.MarketplaceSkillRequest{
 		Provider:     input.Provider,
 		ExternalID:   input.ExternalID,
 		Name:         input.Name,
@@ -174,12 +146,8 @@ func (a *App) GetMarketplaceSkillContent(input MarketplaceSkillRequest) (workset
 }
 
 func (a *App) GetMarketplaceSkillMetadata(input MarketplaceSkillRequest) (worksetapi.MarketplaceSkill, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	return a.service.GetMarketplaceSkillMetadata(ctx, worksetapi.MarketplaceSkillRequest{
+	ctx, svc := a.serviceContext()
+	return svc.GetMarketplaceSkillMetadata(ctx, worksetapi.MarketplaceSkillRequest{
 		Provider:     input.Provider,
 		ExternalID:   input.ExternalID,
 		Name:         input.Name,
@@ -193,12 +161,8 @@ func (a *App) GetMarketplaceSkillMetadata(input MarketplaceSkillRequest) (workse
 }
 
 func (a *App) InstallMarketplaceSkill(input InstallMarketplaceSkillRequest) (worksetapi.SkillInfo, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	return a.service.InstallMarketplaceSkill(ctx, worksetapi.InstallMarketplaceSkillInput{
+	ctx, svc := a.serviceContext()
+	return svc.InstallMarketplaceSkill(ctx, worksetapi.InstallMarketplaceSkillInput{
 		MarketplaceSkillRequest: worksetapi.MarketplaceSkillRequest{
 			Provider:     input.Provider,
 			ExternalID:   input.ExternalID,
@@ -217,12 +181,8 @@ func (a *App) InstallMarketplaceSkill(input InstallMarketplaceSkillRequest) (wor
 }
 
 func (a *App) AttachSkillMarketplaceSource(input AttachSkillMarketplaceSourceRequest) error {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	return a.service.AttachSkillMarketplaceSource(ctx, input.Scope, input.DirName, input.Tools, worksetapi.SkillMarketplaceSource{
+	ctx, svc := a.serviceContext()
+	return svc.AttachSkillMarketplaceSource(ctx, input.Scope, input.DirName, input.Tools, worksetapi.SkillMarketplaceSource{
 		Provider:    input.Provider,
 		ExternalID:  input.ExternalID,
 		SourceRepo:  input.SourceRepo,

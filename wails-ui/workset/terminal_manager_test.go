@@ -32,7 +32,7 @@ func TestStartWorkspaceTerminalRecreatesRemoteClosedSession(t *testing.T) {
 		t.Fatalf("stop remote session: %v", err)
 	}
 
-	if err := app.StartWorkspaceTerminal(workspaceID, terminalID); err != nil {
+	if err := app.startWorkspaceTerminal(workspaceID, terminalID); err != nil {
 		t.Fatalf("restart terminal after remote close: %v", err)
 	}
 

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"strings"
 
 	"github.com/strantalis/workset/pkg/worksetapi"
@@ -10,10 +9,9 @@ import (
 type WorkspaceCreateRequest struct {
 	Name        string   `json:"name"`
 	Path        string   `json:"path"`
-	Template    string   `json:"template,omitempty"`
+	Workset     string   `json:"workset,omitempty"`
 	WorksetOnly bool     `json:"worksetOnly,omitempty"`
 	Repos       []string `json:"repos,omitempty"`
-	Groups      []string `json:"groups,omitempty"`
 }
 
 type WorkspaceCreateResponse struct {
@@ -86,30 +84,15 @@ type AliasUpsertRequest struct {
 	DefaultBranch string `json:"defaultBranch"`
 }
 
-type GroupUpsertRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-}
-
-type GroupMemberRequest struct {
-	GroupName string `json:"groupName"`
-	RepoName  string `json:"repoName"`
-}
-
 func (a *App) CreateWorkspace(input WorkspaceCreateRequest) (WorkspaceCreateResponse, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx, svc := a.serviceContext()
 
-	result, err := a.service.CreateWorkspace(ctx, worksetapi.WorkspaceCreateInput{
+	result, err := svc.CreateWorkspace(ctx, worksetapi.WorkspaceCreateInput{
 		Name:        input.Name,
 		Path:        input.Path,
-		Template:    input.Template,
+		Workset:     input.Workset,
 		WorksetOnly: input.WorksetOnly,
 		Repos:       input.Repos,
-		Groups:      input.Groups,
 	})
 	if err != nil {
 		return WorkspaceCreateResponse{}, err
@@ -132,35 +115,21 @@ func (a *App) CreateWorkspace(input WorkspaceCreateRequest) (WorkspaceCreateResp
 }
 
 func (a *App) ArchiveWorkspace(workspaceID, reason string) (worksetapi.WorkspaceRefJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-
-	result, _, err := a.service.ArchiveWorkspace(ctx, worksetapi.WorkspaceSelector{Value: workspaceID}, reason)
+	ctx, svc := a.serviceContext()
+	result, _, err := svc.ArchiveWorkspace(ctx, worksetapi.WorkspaceSelector{Value: workspaceID}, reason)
 	return result, err
 }
 
 func (a *App) UnarchiveWorkspace(workspaceID string) (worksetapi.WorkspaceRefJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-
-	result, _, err := a.service.UnarchiveWorkspace(ctx, worksetapi.WorkspaceSelector{Value: workspaceID})
+	ctx, svc := a.serviceContext()
+	result, _, err := svc.UnarchiveWorkspace(ctx, worksetapi.WorkspaceSelector{Value: workspaceID})
 	return result, err
 }
 
 func (a *App) RemoveWorkspace(input WorkspaceRemoveRequest) (worksetapi.WorkspaceDeleteResultJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx, svc := a.serviceContext()
 
-	result, err := a.service.DeleteWorkspace(ctx, worksetapi.WorkspaceDeleteInput{
+	result, err := svc.DeleteWorkspace(ctx, worksetapi.WorkspaceDeleteInput{
 		Selector:     worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
 		DeleteFiles:  input.DeleteFiles,
 		Force:        input.Force,
@@ -174,13 +143,8 @@ func (a *App) RemoveWorkspace(input WorkspaceRemoveRequest) (worksetapi.Workspac
 }
 
 func (a *App) RenameWorkspace(workspaceID, newName string) (worksetapi.WorkspaceRefJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-
-	result, err := a.service.RenameWorkspace(ctx, worksetapi.WorkspaceRenameInput{
+	ctx, svc := a.serviceContext()
+	result, err := svc.RenameWorkspace(ctx, worksetapi.WorkspaceRenameInput{
 		Selector: worksetapi.WorkspaceSelector{Value: workspaceID},
 		NewName:  newName,
 	})
@@ -188,11 +152,7 @@ func (a *App) RenameWorkspace(workspaceID, newName string) (worksetapi.Workspace
 }
 
 func (a *App) AddRepo(input RepoAddRequest) (RepoAddResponse, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx, svc := a.serviceContext()
 
 	name := input.Name
 	nameSet := false
@@ -200,7 +160,7 @@ func (a *App) AddRepo(input RepoAddRequest) (RepoAddResponse, error) {
 		nameSet = true
 	}
 
-	result, err := a.service.AddRepo(ctx, worksetapi.RepoAddInput{
+	result, err := svc.AddRepo(ctx, worksetapi.RepoAddInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
 		Source:    input.Source,
 		Name:      name,
@@ -228,13 +188,8 @@ func (a *App) AddRepo(input RepoAddRequest) (RepoAddResponse, error) {
 }
 
 func (a *App) AddReposToWorkset(input WorksetRepoAddRequest) (WorksetRepoAddResponse, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-
-	result, err := a.service.AddReposToWorkset(ctx, worksetapi.WorksetRepoAddInput{
+	ctx, svc := a.serviceContext()
+	result, err := svc.AddReposToWorkset(ctx, worksetapi.WorksetRepoAddInput{
 		Workset: input.Workset,
 		Sources: input.Sources,
 	})
@@ -248,13 +203,8 @@ func (a *App) AddReposToWorkset(input WorksetRepoAddRequest) (WorksetRepoAddResp
 }
 
 func (a *App) RunHooks(input HooksRunRequest) (HooksRunResponse, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-
-	result, err := a.service.RunHooks(ctx, worksetapi.HooksRunInput{
+	ctx, svc := a.serviceContext()
+	result, err := svc.RunHooks(ctx, worksetapi.HooksRunInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
 		Repo:      input.Repo,
 		Event:     input.Event,
@@ -271,23 +221,14 @@ func (a *App) RunHooks(input HooksRunRequest) (HooksRunResponse, error) {
 }
 
 func (a *App) TrustRepoHooks(repoName string) error {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	_, err := a.service.TrustRepoHooks(ctx, repoName)
+	ctx, svc := a.serviceContext()
+	_, err := svc.TrustRepoHooks(ctx, repoName)
 	return err
 }
 
 func (a *App) PreviewRepoHooks(input RepoHooksPreviewRequest) (worksetapi.RepoHooksPreviewJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-
-	result, err := a.service.PreviewRepoHooks(ctx, worksetapi.RepoHooksPreviewInput{
+	ctx, svc := a.serviceContext()
+	result, err := svc.PreviewRepoHooks(ctx, worksetapi.RepoHooksPreviewInput{
 		Source: input.Source,
 		Ref:    input.Ref,
 	})
@@ -298,13 +239,8 @@ func (a *App) PreviewRepoHooks(input RepoHooksPreviewRequest) (worksetapi.RepoHo
 }
 
 func (a *App) RemoveRepo(input RepoRemoveRequest) (worksetapi.RepoRemoveResultJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-
-	result, err := a.service.RemoveRepo(ctx, worksetapi.RepoRemoveInput{
+	ctx, svc := a.serviceContext()
+	result, err := svc.RemoveRepo(ctx, worksetapi.RepoRemoveInput{
 		Workspace:       worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
 		Name:            input.RepoName,
 		DeleteWorktrees: input.DeleteWorktree,
@@ -317,26 +253,18 @@ func (a *App) RemoveRepo(input RepoRemoveRequest) (worksetapi.RepoRemoveResultJS
 	return result.Payload, nil
 }
 
-func (a *App) ListAliases() ([]worksetapi.RegisteredRepoJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	result, err := a.service.ListRegisteredRepos(ctx)
+func (a *App) ListRegisteredRepos() ([]worksetapi.RegisteredRepoJSON, error) {
+	ctx, svc := a.serviceContext()
+	result, err := svc.ListRegisteredRepos(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return result.Repos, nil
 }
 
-func (a *App) CreateAlias(input AliasUpsertRequest) (worksetapi.RegisteredRepoMutationResultJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	result, _, err := a.service.RegisterRepo(ctx, worksetapi.RepoRegistryInput{
+func (a *App) RegisterRepo(input AliasUpsertRequest) (worksetapi.RegisteredRepoMutationResultJSON, error) {
+	ctx, svc := a.serviceContext()
+	result, _, err := svc.RegisterRepo(ctx, worksetapi.RepoRegistryInput{
 		Name:             input.Name,
 		Source:           input.Source,
 		Remote:           input.Remote,
@@ -348,13 +276,9 @@ func (a *App) CreateAlias(input AliasUpsertRequest) (worksetapi.RegisteredRepoMu
 	return result, err
 }
 
-func (a *App) UpdateAlias(input AliasUpsertRequest) (worksetapi.RegisteredRepoMutationResultJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	result, _, err := a.service.UpdateRegisteredRepo(ctx, worksetapi.RepoRegistryInput{
+func (a *App) UpdateRegisteredRepo(input AliasUpsertRequest) (worksetapi.RegisteredRepoMutationResultJSON, error) {
+	ctx, svc := a.serviceContext()
+	result, _, err := svc.UpdateRegisteredRepo(ctx, worksetapi.RepoRegistryInput{
 		Name:             input.Name,
 		Source:           input.Source,
 		Remote:           input.Remote,
@@ -366,161 +290,39 @@ func (a *App) UpdateAlias(input AliasUpsertRequest) (worksetapi.RegisteredRepoMu
 	return result, err
 }
 
-func (a *App) DeleteAlias(name string) (worksetapi.RegisteredRepoMutationResultJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	result, _, err := a.service.UnregisterRepo(ctx, name)
-	return result, err
-}
-
-func (a *App) ListGroups() ([]worksetapi.GroupSummaryJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	result, err := a.service.ListGroups(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return result.Groups, nil
-}
-
-func (a *App) GetGroup(name string) (worksetapi.GroupJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	result, _, err := a.service.GetGroup(ctx, name)
-	return result, err
-}
-
-func (a *App) CreateGroup(input GroupUpsertRequest) (worksetapi.GroupJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	result, _, err := a.service.CreateGroup(ctx, worksetapi.GroupUpsertInput{
-		Name:        input.Name,
-		Description: input.Description,
-	})
-	return result, err
-}
-
-func (a *App) UpdateGroup(input GroupUpsertRequest) (worksetapi.GroupJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	result, _, err := a.service.UpdateGroup(ctx, worksetapi.GroupUpsertInput{
-		Name:        input.Name,
-		Description: input.Description,
-	})
-	return result, err
-}
-
-func (a *App) DeleteGroup(name string) (worksetapi.RegisteredRepoMutationResultJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	result, _, err := a.service.DeleteGroup(ctx, name)
-	return result, err
-}
-
-func (a *App) AddGroupMember(input GroupMemberRequest) (worksetapi.GroupJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	result, _, err := a.service.AddGroupMember(ctx, worksetapi.GroupMemberInput{
-		GroupName: input.GroupName,
-		RepoName:  input.RepoName,
-	})
-	return result, err
-}
-
-func (a *App) RemoveGroupMember(input GroupMemberRequest) (worksetapi.GroupJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	result, _, err := a.service.RemoveGroupMember(ctx, worksetapi.GroupMemberInput{
-		GroupName: input.GroupName,
-		RepoName:  input.RepoName,
-	})
-	return result, err
-}
-
-func (a *App) ApplyGroup(workspaceID, groupName string) (worksetapi.GroupApplyResultJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	result, _, err := a.service.ApplyGroup(ctx, worksetapi.GroupApplyInput{
-		Workspace: worksetapi.WorkspaceSelector{Value: workspaceID},
-		Name:      groupName,
-	})
+func (a *App) UnregisterRepo(name string) (worksetapi.RegisteredRepoMutationResultJSON, error) {
+	ctx, svc := a.serviceContext()
+	result, _, err := svc.UnregisterRepo(ctx, name)
 	return result, err
 }
 
 func (a *App) PinWorkspace(workspaceID string, pin bool) (worksetapi.WorkspaceRefJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	result, _, err := a.service.PinWorkspace(ctx, worksetapi.WorkspaceSelector{Value: workspaceID}, pin)
+	ctx, svc := a.serviceContext()
+	result, _, err := svc.PinWorkspace(ctx, worksetapi.WorkspaceSelector{Value: workspaceID}, pin)
 	return result, err
 }
 
 func (a *App) SetWorkspaceColor(workspaceID, color string) (worksetapi.WorkspaceRefJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	result, _, err := a.service.SetWorkspaceColor(ctx, worksetapi.WorkspaceSelector{Value: workspaceID}, color)
+	ctx, svc := a.serviceContext()
+	result, _, err := svc.SetWorkspaceColor(ctx, worksetapi.WorkspaceSelector{Value: workspaceID}, color)
 	return result, err
 }
 
 func (a *App) SetWorkspaceDescription(workspaceID, description string) (worksetapi.WorkspaceRefJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	result, _, err := a.service.SetWorkspaceDescription(ctx, worksetapi.WorkspaceSelector{Value: workspaceID}, description)
+	ctx, svc := a.serviceContext()
+	result, _, err := svc.SetWorkspaceDescription(ctx, worksetapi.WorkspaceSelector{Value: workspaceID}, description)
 	return result, err
 }
 
 func (a *App) SetWorkspaceExpanded(workspaceID string, expanded bool) (worksetapi.WorkspaceRefJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	result, _, err := a.service.SetWorkspaceExpanded(ctx, worksetapi.WorkspaceSelector{Value: workspaceID}, expanded)
+	ctx, svc := a.serviceContext()
+	result, _, err := svc.SetWorkspaceExpanded(ctx, worksetapi.WorkspaceSelector{Value: workspaceID}, expanded)
 	return result, err
 }
 
 func (a *App) UpdateWorkspaceLastUsed(workspaceID string) (worksetapi.WorkspaceRefJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	result, _, err := a.service.UpdateWorkspaceLastUsed(ctx, worksetapi.WorkspaceSelector{Value: workspaceID})
+	ctx, svc := a.serviceContext()
+	result, _, err := svc.UpdateWorkspaceLastUsed(ctx, worksetapi.WorkspaceSelector{Value: workspaceID})
 	return result, err
 }
 
@@ -529,11 +331,7 @@ type ReorderWorkspacesRequest struct {
 }
 
 func (a *App) ReorderWorkspaces(input ReorderWorkspacesRequest) ([]worksetapi.WorkspaceRefJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	result, _, err := a.service.ReorderWorkspaces(ctx, input.Orders)
+	ctx, svc := a.serviceContext()
+	result, _, err := svc.ReorderWorkspaces(ctx, input.Orders)
 	return result, err
 }
