@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"strings"
 
@@ -93,16 +92,12 @@ type GitHubCLIPathRequest struct {
 }
 
 func (a *App) CreatePullRequest(input PullRequestCreateRequest) (worksetapi.PullRequestCreatedJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx, svc := a.serviceContext()
 	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
 	if err != nil {
 		return worksetapi.PullRequestCreatedJSON{}, err
 	}
-	result, err := a.service.CreatePullRequest(ctx, worksetapi.PullRequestCreateInput{
+	result, err := svc.CreatePullRequest(ctx, worksetapi.PullRequestCreateInput{
 		Workspace:  worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
 		Repo:       repoName,
 		Base:       input.Base,
@@ -121,11 +116,7 @@ func (a *App) CreatePullRequest(input PullRequestCreateRequest) (worksetapi.Pull
 }
 
 func (a *App) StartCreatePullRequestAsync(input StartCreatePullRequestAsyncRequest) (GitHubOperationStatusPayload, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx, _ := a.serviceContext()
 
 	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
 	if err != nil {
@@ -144,16 +135,12 @@ func (a *App) StartCreatePullRequestAsync(input StartCreatePullRequestAsyncReque
 }
 
 func (a *App) GetPullRequestStatus(input PullRequestStatusRequest) (PullRequestStatusPayload, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx, svc := a.serviceContext()
 	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
 	if err != nil {
 		return PullRequestStatusPayload{}, err
 	}
-	result, err := a.service.GetPullRequestStatus(ctx, worksetapi.PullRequestStatusInput{
+	result, err := svc.GetPullRequestStatus(ctx, worksetapi.PullRequestStatusInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
 		Repo:      repoName,
 		Number:    input.Number,
@@ -169,12 +156,8 @@ func (a *App) GetPullRequestStatus(input PullRequestStatusRequest) (PullRequestS
 }
 
 func (a *App) GetCheckAnnotations(input GetCheckAnnotationsRequest) (worksetapi.CheckAnnotationsResult, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	return a.service.GetCheckAnnotations(ctx, worksetapi.GetCheckAnnotationsInput{
+	ctx, svc := a.serviceContext()
+	return svc.GetCheckAnnotations(ctx, worksetapi.GetCheckAnnotationsInput{
 		Owner:      input.Owner,
 		Repo:       input.Repo,
 		CheckRunID: input.CheckRunID,
@@ -182,16 +165,12 @@ func (a *App) GetCheckAnnotations(input GetCheckAnnotationsRequest) (worksetapi.
 }
 
 func (a *App) GetTrackedPullRequest(input PullRequestTrackedRequest) (worksetapi.PullRequestTrackedJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx, svc := a.serviceContext()
 	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
 	if err != nil {
 		return worksetapi.PullRequestTrackedJSON{}, err
 	}
-	result, err := a.service.GetTrackedPullRequest(ctx, worksetapi.PullRequestTrackedInput{
+	result, err := svc.GetTrackedPullRequest(ctx, worksetapi.PullRequestTrackedInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
 		Repo:      repoName,
 	})
@@ -202,16 +181,12 @@ func (a *App) GetTrackedPullRequest(input PullRequestTrackedRequest) (worksetapi
 }
 
 func (a *App) GetPullRequestReviews(input PullRequestReviewsRequest) (PullRequestReviewCommentsPayload, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx, svc := a.serviceContext()
 	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
 	if err != nil {
 		return PullRequestReviewCommentsPayload{}, err
 	}
-	result, err := a.service.ListPullRequestReviewComments(ctx, worksetapi.PullRequestReviewsInput{
+	result, err := svc.ListPullRequestReviewComments(ctx, worksetapi.PullRequestReviewsInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
 		Repo:      repoName,
 		Number:    input.Number,
@@ -224,16 +199,12 @@ func (a *App) GetPullRequestReviews(input PullRequestReviewsRequest) (PullReques
 }
 
 func (a *App) GeneratePullRequestText(input PullRequestGenerateRequest) (worksetapi.PullRequestGeneratedJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx, svc := a.serviceContext()
 	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
 	if err != nil {
 		return worksetapi.PullRequestGeneratedJSON{}, err
 	}
-	result, err := a.service.GeneratePullRequestText(ctx, worksetapi.PullRequestGenerateInput{
+	result, err := svc.GeneratePullRequestText(ctx, worksetapi.PullRequestGenerateInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
 		Repo:      repoName,
 	})
@@ -316,16 +287,12 @@ type RepoLocalStatusRequest struct {
 }
 
 func (a *App) CommitAndPush(input CommitAndPushRequest) (worksetapi.CommitAndPushResultJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx, svc := a.serviceContext()
 	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
 	if err != nil {
 		return worksetapi.CommitAndPushResultJSON{}, err
 	}
-	result, err := a.service.CommitAndPush(ctx, worksetapi.CommitAndPushInput{
+	result, err := svc.CommitAndPush(ctx, worksetapi.CommitAndPushInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
 		Repo:      repoName,
 		Message:   input.Message,
@@ -337,11 +304,7 @@ func (a *App) CommitAndPush(input CommitAndPushRequest) (worksetapi.CommitAndPus
 }
 
 func (a *App) StartCommitAndPushAsync(input StartCommitAndPushAsyncRequest) (GitHubOperationStatusPayload, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx, _ := a.serviceContext()
 
 	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
 	if err != nil {
@@ -360,16 +323,12 @@ func (a *App) StartCommitAndPushAsync(input StartCommitAndPushAsyncRequest) (Git
 }
 
 func (a *App) LocalMerge(input LocalMergeRequest) (worksetapi.LocalMergeResultJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx, svc := a.serviceContext()
 	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
 	if err != nil {
 		return worksetapi.LocalMergeResultJSON{}, err
 	}
-	result, err := a.service.LocalMerge(ctx, worksetapi.LocalMergeInput{
+	result, err := svc.LocalMerge(ctx, worksetapi.LocalMergeInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
 		Repo:      repoName,
 		Base:      input.Base,
@@ -382,11 +341,7 @@ func (a *App) LocalMerge(input LocalMergeRequest) (worksetapi.LocalMergeResultJS
 }
 
 func (a *App) StartLocalMergeAsync(input StartLocalMergeAsyncRequest) (GitHubOperationStatusPayload, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx, _ := a.serviceContext()
 
 	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
 	if err != nil {
@@ -423,16 +378,12 @@ func (a *App) GetGitHubOperationStatus(input GitHubOperationStatusRequest) (GitH
 }
 
 func (a *App) GetRepoLocalStatus(input RepoLocalStatusRequest) (worksetapi.RepoLocalStatusJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx, svc := a.serviceContext()
 	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
 	if err != nil {
 		return worksetapi.RepoLocalStatusJSON{}, err
 	}
-	result, err := a.service.GetRepoLocalStatus(ctx, worksetapi.RepoLocalStatusInput{
+	result, err := svc.GetRepoLocalStatus(ctx, worksetapi.RepoLocalStatusInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
 		Repo:      repoName,
 	})
@@ -443,16 +394,12 @@ func (a *App) GetRepoLocalStatus(input RepoLocalStatusRequest) (worksetapi.RepoL
 }
 
 func (a *App) PushBranch(input PushBranchRequest) (worksetapi.PushBranchResultJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx, svc := a.serviceContext()
 	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
 	if err != nil {
 		return worksetapi.PushBranchResultJSON{}, err
 	}
-	result, err := a.service.PushBranch(ctx, worksetapi.PushBranchInput{
+	result, err := svc.PushBranch(ctx, worksetapi.PushBranchInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
 		Repo:      repoName,
 		Branch:    input.Branch,
@@ -464,16 +411,12 @@ func (a *App) PushBranch(input PushBranchRequest) (worksetapi.PushBranchResultJS
 }
 
 func (a *App) ListRemotes(input ListRemotesRequest) ([]worksetapi.RemoteInfoJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx, svc := a.serviceContext()
 	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
 	if err != nil {
 		return nil, err
 	}
-	result, err := a.service.ListRemotes(ctx, worksetapi.ListRemotesInput{
+	result, err := svc.ListRemotes(ctx, worksetapi.ListRemotesInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
 		Repo:      repoName,
 	})
@@ -484,16 +427,12 @@ func (a *App) ListRemotes(input ListRemotesRequest) ([]worksetapi.RemoteInfoJSON
 }
 
 func (a *App) GetCurrentGitHubUser(input GitHubUserRequest) (worksetapi.GitHubUserJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx, svc := a.serviceContext()
 	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
 	if err != nil {
 		return worksetapi.GitHubUserJSON{}, err
 	}
-	result, err := a.service.GetCurrentGitHubUser(ctx, worksetapi.GitHubUserInput{
+	result, err := svc.GetCurrentGitHubUser(ctx, worksetapi.GitHubUserInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
 		Repo:      repoName,
 	})
@@ -504,12 +443,8 @@ func (a *App) GetCurrentGitHubUser(input GitHubUserRequest) (worksetapi.GitHubUs
 }
 
 func (a *App) SearchGitHubRepositories(query string, limit int) ([]worksetapi.GitHubRepoSearchItemJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	result, err := a.service.SearchGitHubRepositories(ctx, worksetapi.GitHubRepoSearchInput{
+	ctx, svc := a.serviceContext()
+	result, err := svc.SearchGitHubRepositories(ctx, worksetapi.GitHubRepoSearchInput{
 		Query: query,
 		Limit: limit,
 	})
@@ -520,73 +455,45 @@ func (a *App) SearchGitHubRepositories(query string, limit int) ([]worksetapi.Gi
 }
 
 func (a *App) GetGitHubAuthStatus() (worksetapi.GitHubAuthStatusJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	return a.service.GetGitHubAuthStatus(ctx)
+	ctx, svc := a.serviceContext()
+	return svc.GetGitHubAuthStatus(ctx)
 }
 
 func (a *App) GetGitHubAuthInfo() (worksetapi.GitHubAuthInfoJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	return a.service.GetGitHubAuthInfo(ctx)
+	ctx, svc := a.serviceContext()
+	return svc.GetGitHubAuthInfo(ctx)
 }
 
 func (a *App) SetGitHubToken(input GitHubTokenRequest) (worksetapi.GitHubAuthStatusJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	return a.service.SetGitHubToken(ctx, worksetapi.GitHubTokenInput{
+	ctx, svc := a.serviceContext()
+	return svc.SetGitHubToken(ctx, worksetapi.GitHubTokenInput{
 		Token:  input.Token,
 		Source: input.Source,
 	})
 }
 
 func (a *App) SetGitHubAuthMode(input GitHubAuthModeRequest) (worksetapi.GitHubAuthInfoJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	return a.service.SetGitHubAuthMode(ctx, input.Mode)
+	ctx, svc := a.serviceContext()
+	return svc.SetGitHubAuthMode(ctx, input.Mode)
 }
 
 func (a *App) SetGitHubCLIPath(input GitHubCLIPathRequest) (worksetapi.GitHubAuthInfoJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	return a.service.SetGitHubCLIPath(ctx, input.Path)
+	ctx, svc := a.serviceContext()
+	return svc.SetGitHubCLIPath(ctx, input.Path)
 }
 
 func (a *App) DisconnectGitHub() error {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
-	return a.service.ClearGitHubAuth(ctx)
+	ctx, svc := a.serviceContext()
+	return svc.ClearGitHubAuth(ctx)
 }
 
 func (a *App) ReplyToReviewComment(input ReplyToReviewCommentRequest) (worksetapi.PullRequestReviewCommentJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx, svc := a.serviceContext()
 	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
 	if err != nil {
 		return worksetapi.PullRequestReviewCommentJSON{}, err
 	}
-	result, err := a.service.ReplyToReviewComment(ctx, worksetapi.ReplyToReviewCommentInput{
+	result, err := svc.ReplyToReviewComment(ctx, worksetapi.ReplyToReviewCommentInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
 		Repo:      repoName,
 		Number:    input.Number,
@@ -601,16 +508,12 @@ func (a *App) ReplyToReviewComment(input ReplyToReviewCommentRequest) (worksetap
 }
 
 func (a *App) EditReviewComment(input EditReviewCommentRequest) (worksetapi.PullRequestReviewCommentJSON, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx, svc := a.serviceContext()
 	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
 	if err != nil {
 		return worksetapi.PullRequestReviewCommentJSON{}, err
 	}
-	result, err := a.service.EditReviewComment(ctx, worksetapi.EditReviewCommentInput{
+	result, err := svc.EditReviewComment(ctx, worksetapi.EditReviewCommentInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
 		Repo:      repoName,
 		CommentID: input.CommentID,
@@ -623,16 +526,12 @@ func (a *App) EditReviewComment(input EditReviewCommentRequest) (worksetapi.Pull
 }
 
 func (a *App) DeleteReviewComment(input DeleteReviewCommentRequest) error {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx, svc := a.serviceContext()
 	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
 	if err != nil {
 		return err
 	}
-	_, err = a.service.DeleteReviewComment(ctx, worksetapi.DeleteReviewCommentInput{
+	_, err = svc.DeleteReviewComment(ctx, worksetapi.DeleteReviewCommentInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
 		Repo:      repoName,
 		CommentID: input.CommentID,
@@ -641,16 +540,12 @@ func (a *App) DeleteReviewComment(input DeleteReviewCommentRequest) error {
 }
 
 func (a *App) ResolveReviewThread(input ResolveReviewThreadRequest) (bool, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx, svc := a.serviceContext()
 	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
 	if err != nil {
 		return false, err
 	}
-	result, err := a.service.ResolveReviewThread(ctx, worksetapi.ResolveReviewThreadInput{
+	result, err := svc.ResolveReviewThread(ctx, worksetapi.ResolveReviewThreadInput{
 		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
 		Repo:      repoName,
 		ThreadID:  input.ThreadID,

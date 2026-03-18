@@ -87,11 +87,7 @@ type repoFileIndexCacheEntry struct {
 }
 
 func (a *App) SearchWorkspaceRepoFiles(input RepoFileSearchRequest) ([]RepoFileSearchResult, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx := a.appContext()
 
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	if workspaceID == "" {
@@ -151,11 +147,7 @@ func (a *App) SearchWorkspaceRepoFiles(input RepoFileSearchRequest) ([]RepoFileS
 }
 
 func (a *App) ReadWorkspaceRepoFile(input RepoFileReadRequest) (RepoFileReadResponse, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx := a.appContext()
 
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	repoID := strings.TrimSpace(input.RepoID)
@@ -212,7 +204,8 @@ func (a *App) resolveWorkspaceRepos(ctx context.Context, workspaceID string) ([]
 		return nil, err
 	}
 
-	repos, err := a.service.ListRepos(ctx, worksetapi.WorkspaceSelector{Value: workspaceID})
+	_, svc := a.serviceContext()
+	repos, err := svc.ListRepos(ctx, worksetapi.WorkspaceSelector{Value: workspaceID})
 	if err != nil {
 		return nil, err
 	}

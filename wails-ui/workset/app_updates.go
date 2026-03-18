@@ -164,10 +164,6 @@ func (a *App) GetUpdateState() (UpdateState, error) {
 	return state, nil
 }
 
-func (a *App) CancelUpdate() error {
-	return nil
-}
-
 func (a *App) resolveUpdateChannel(raw string) (UpdateChannel, error) {
 	channel := normalizeUpdateChannel(raw)
 	if channel != "" {

@@ -42,11 +42,7 @@ type RepoFileDiffSnapshot struct {
 
 // GetRepoDiff returns a unified patch for the selected repo.
 func (a *App) GetRepoDiff(workspaceID, repoID string) (RepoDiffSnapshot, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx := a.appContext()
 
 	repoPath, err := a.resolveRepoPath(ctx, workspaceID, repoID)
 	if err != nil {
@@ -61,11 +57,7 @@ func (a *App) GetRepoDiff(workspaceID, repoID string) (RepoDiffSnapshot, error) 
 
 // GetRepoDiffSummary returns a list of changed files with stats.
 func (a *App) GetRepoDiffSummary(workspaceID, repoID string) (RepoDiffSummary, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx := a.appContext()
 
 	repoPath, err := a.resolveRepoPath(ctx, workspaceID, repoID)
 	if err != nil {
@@ -87,11 +79,7 @@ func (a *App) GetRepoDiffSummary(workspaceID, repoID string) (RepoDiffSummary, e
 
 // GetRepoFileDiff returns a patch for a single file.
 func (a *App) GetRepoFileDiff(workspaceID, repoID, path, prevPath, status string) (RepoFileDiffSnapshot, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx := a.appContext()
 
 	repoPath, err := a.resolveRepoPath(ctx, workspaceID, repoID)
 	if err != nil {
@@ -124,7 +112,8 @@ func (a *App) resolveRepoPath(ctx context.Context, workspaceID, repoID string) (
 		return "", err
 	}
 
-	repos, err := a.service.ListRepos(ctx, worksetapi.WorkspaceSelector{Value: workspaceID})
+	_, svc := a.serviceContext()
+	repos, err := svc.ListRepos(ctx, worksetapi.WorkspaceSelector{Value: workspaceID})
 	if err != nil {
 		return "", err
 	}
@@ -137,7 +126,8 @@ func (a *App) resolveRepoPath(ctx context.Context, workspaceID, repoID string) (
 }
 
 func (a *App) resolveWorkspacePath(ctx context.Context, workspaceID string) (string, error) {
-	result, err := a.service.ListWorkspaces(ctx)
+	_, svc := a.serviceContext()
+	result, err := svc.ListWorkspaces(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -706,11 +696,7 @@ const (
 
 // GetBranchDiffSummary returns a list of changed files between two refs (for PR view).
 func (a *App) GetBranchDiffSummary(workspaceID, repoID, base, head string) (RepoDiffSummary, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx := a.appContext()
 
 	repoPath, err := a.resolveRepoPath(ctx, workspaceID, repoID)
 	if err != nil {
@@ -739,11 +725,7 @@ func (a *App) GetBranchDiffSummary(workspaceID, repoID, base, head string) (Repo
 
 // GetBranchFileDiff returns a patch for a single file between two refs (for PR view).
 func (a *App) GetBranchFileDiff(workspaceID, repoID, base, head, path, prevPath string) (RepoFileDiffSnapshot, error) {
-	ctx := a.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	a.ensureService()
+	ctx := a.appContext()
 
 	repoPath, err := a.resolveRepoPath(ctx, workspaceID, repoID)
 	if err != nil {

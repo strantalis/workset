@@ -12,8 +12,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/strantalis/workset/internal/config"
 	"github.com/strantalis/workset/pkg/sessiond"
-	"github.com/strantalis/workset/pkg/worksetapi"
 )
 
 var buildInfo = "dev"
@@ -109,8 +109,7 @@ func handleShutdownSignals(cancel context.CancelFunc) {
 }
 
 func loadIdleTimeout() string {
-	svc := worksetapi.NewService(worksetapi.Options{})
-	cfg, _, err := svc.GetConfig(context.Background())
+	cfg, err := config.LoadGlobal("")
 	if err != nil {
 		return ""
 	}
