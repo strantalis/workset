@@ -19,12 +19,9 @@ func newCommand() *cli.Command {
 			Name:  "path",
 			Usage: "Target directory (defaults to ./<name>)",
 		},
-		&cli.StringSliceFlag{
-			Name:  "group",
-			Usage: "Group to apply (repeatable)",
-			Config: cli.StringConfig{
-				TrimSpace: true,
-			},
+		&cli.StringFlag{
+			Name:  "workset",
+			Usage: "Canonical workset name to place the thread under",
 		},
 		&cli.StringSliceFlag{
 			Name:  "repo",
@@ -37,20 +34,20 @@ func newCommand() *cli.Command {
 	flags = append(flags, outputFlags()...)
 	return &cli.Command{
 		Name:      "new",
-		Usage:     "Create a new workspace in a new directory",
+		Usage:     "Create a new thread in a new directory",
 		ArgsUsage: "<name...>",
 		Flags:     flags,
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			name := strings.TrimSpace(strings.Join(cmd.Args().Slice(), " "))
 			if name == "" {
-				return usageError(ctx, cmd, "workspace name required")
+				return usageError(ctx, cmd, "thread name required")
 			}
 			svc := apiService(ctx, cmd)
 			result, err := svc.CreateWorkspace(ctx, worksetapi.WorkspaceCreateInput{
-				Name:   name,
-				Path:   cmd.String("path"),
-				Groups: cmd.StringSlice("group"),
-				Repos:  cmd.StringSlice("repo"),
+				Name:    name,
+				Path:    cmd.String("path"),
+				Workset: cmd.String("workset"),
+				Repos:   cmd.StringSlice("repo"),
 			})
 			if err != nil {
 				return err
@@ -85,7 +82,7 @@ func newCommand() *cli.Command {
 							Workspace: worksetapi.WorkspaceSelector{Value: result.Workspace.Name},
 							Repo:      pending.Repo,
 							Event:     pending.Event,
-							Reason:    "workspace.create",
+							Reason:    "thread.create",
 						})
 						if err != nil {
 							return err
@@ -120,7 +117,7 @@ func newCommand() *cli.Command {
 				}
 				_, _ = fmt.Fprintf(
 					os.Stderr,
-					"warning: repo %s hooks pending approval; run `workset hooks run -w %s %s` to execute\n",
+					"warning: repo %s hooks pending approval; run `workset hooks run -t %s %s` to execute\n",
 					pending.Repo,
 					shellQuoteArg(result.Workspace.Name),
 					shellQuoteArg(pending.Repo),
@@ -170,7 +167,7 @@ func listCommand() *cli.Command {
 	flags := outputFlags()
 	return &cli.Command{
 		Name:  "ls",
-		Usage: "List registered workspaces",
+		Usage: "List registered threads",
 		Flags: flags,
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			svc := apiService(ctx, cmd)
@@ -185,7 +182,7 @@ func listCommand() *cli.Command {
 				if mode.JSON {
 					return output.WriteJSON(commandWriter(cmd), []any{})
 				}
-				msg := "no workspaces registered"
+				msg := "no threads registered"
 				if styles.Enabled {
 					msg = styles.Render(styles.Muted, msg)
 				}
@@ -212,12 +209,12 @@ func listCommand() *cli.Command {
 func removeWorkspaceCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "rm",
-		Usage: "Remove a workspace (use --delete to remove files and stop sessions)",
+		Usage: "Remove a thread (use --delete to remove files on disk)",
 		Flags: appendOutputFlags([]cli.Flag{
-			workspaceFlag(false),
+			threadFlag(false),
 			&cli.BoolFlag{
 				Name:  "delete",
-				Usage: "Delete the workspace directory",
+				Usage: "Delete the thread directory",
 			},
 			&cli.BoolFlag{
 				Name:  "force",
@@ -230,13 +227,13 @@ func removeWorkspaceCommand() *cli.Command {
 		}),
 		ShellComplete: func(ctx context.Context, cmd *cli.Command) {
 			if cmd.NArg() == 0 {
-				completeWorkspaceNames(cmd)
+				completeThreadNames(cmd)
 			}
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			arg := strings.TrimSpace(cmd.Args().First())
 			if arg == "" {
-				arg = strings.TrimSpace(cmd.String("workspace"))
+				arg = strings.TrimSpace(cmd.String("thread"))
 			}
 			deleteRequested := cmd.Bool("delete")
 			svc := apiService(ctx, cmd)
@@ -286,7 +283,7 @@ func removeWorkspaceCommand() *cli.Command {
 			}
 			styles := output.NewStyles(commandWriter(cmd), mode.Plain)
 			if deleteRequested {
-				msg := fmt.Sprintf("workspace %s deleted", result.Payload.Path)
+				msg := fmt.Sprintf("thread %s deleted", result.Payload.Path)
 				if styles.Enabled {
 					msg = styles.Render(styles.Success, msg)
 				}
@@ -295,14 +292,14 @@ func removeWorkspaceCommand() *cli.Command {
 				}
 				return nil
 			}
-			msg := "removed workspace registration for " + result.Payload.Path
+			msg := "removed thread registration for " + result.Payload.Path
 			if styles.Enabled {
 				msg = styles.Render(styles.Success, msg)
 			}
 			if _, err := fmt.Fprintln(commandWriter(cmd), msg); err != nil {
 				return err
 			}
-			note := fmt.Sprintf("note: files remain on disk; to delete, run: workset rm -w %s --delete", result.Payload.Path)
+			note := fmt.Sprintf("note: files remain on disk; to delete, run: workset rm -t %s --delete", result.Payload.Path)
 			if styles.Enabled {
 				note = styles.Render(styles.Muted, note)
 			}
@@ -317,14 +314,14 @@ func removeWorkspaceCommand() *cli.Command {
 func statusCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "status",
-		Usage:     "Show status for repos in a workspace (requires -w)",
-		ArgsUsage: "-w <workspace>",
+		Usage:     "Show status for repos in a thread (requires -t)",
+		ArgsUsage: "-t <thread>",
 		Flags: appendOutputFlags([]cli.Flag{
-			workspaceFlag(true),
+			threadFlag(true),
 		}),
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			svc := apiService(ctx, cmd)
-			result, err := svc.StatusWorkspace(ctx, worksetapi.WorkspaceSelector{Value: cmd.String("workspace")})
+			result, err := svc.StatusWorkspace(ctx, worksetapi.WorkspaceSelector{Value: cmd.String("thread")})
 			if err != nil {
 				return err
 			}
@@ -335,7 +332,7 @@ func statusCommand() *cli.Command {
 					return output.WriteJSON(commandWriter(cmd), []worksetapi.RepoStatusJSON{})
 				}
 				styles := output.NewStyles(commandWriter(cmd), mode.Plain)
-				msg := "no repos in workspace"
+				msg := "no repos in thread"
 				if styles.Enabled {
 					msg = styles.Render(styles.Muted, msg)
 				}

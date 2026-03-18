@@ -141,34 +141,97 @@
 
 .viewer-shell {
 	min-height: 0;
-	display: grid;
-	grid-template-columns: minmax(0, 1fr);
-}
-
-.viewer-shell.tree-visible {
-	grid-template-columns: minmax(220px, 240px) minmax(0, 1fr);
+	display: flex;
+	flex: 1;
 }
 
 .viewer-tree {
 	border-right: 1px solid color-mix(in srgb, var(--border) 64%, transparent);
 	min-height: 0;
+	min-width: 0;
+	height: 100%;
 	display: flex;
 	flex-direction: column;
 	background: color-mix(in srgb, var(--panel-strong) 40%, transparent);
 	overflow: hidden;
 }
 
+.tree-gutter {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 0;
+	width: 32px;
+	flex-shrink: 0;
+	border: none;
+	border-right: 1px solid color-mix(in srgb, var(--border) 64%, transparent);
+	background: color-mix(in srgb, var(--panel-strong) 30%, transparent);
+	color: var(--muted);
+	cursor: pointer;
+	transition:
+		color var(--transition-fast),
+		background var(--transition-fast);
+}
+
+.tree-gutter:hover {
+	color: var(--text);
+	background: color-mix(in srgb, var(--panel-strong) 60%, transparent);
+}
+
+.tree-gutter-label {
+	writing-mode: vertical-lr;
+	text-orientation: mixed;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
 .tree-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 8px 8px 8px 12px;
+	border-bottom: 1px solid color-mix(in srgb, var(--border) 64%, transparent);
+}
+
+.tree-header-label {
 	display: inline-flex;
 	align-items: center;
 	gap: 8px;
-	padding: 10px 12px;
 	font-size: 11px;
 	font-weight: 700;
 	letter-spacing: 0.08em;
 	text-transform: uppercase;
 	color: var(--muted);
-	border-bottom: 1px solid color-mix(in srgb, var(--border) 64%, transparent);
+}
+
+.tree-header-actions {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+}
+
+.tree-action-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--muted);
+	cursor: pointer;
+	transition:
+		color var(--transition-fast),
+		background var(--transition-fast);
+}
+
+.tree-action-btn:hover {
+	color: var(--text);
+	background: color-mix(in srgb, var(--accent) 12%, var(--panel-strong));
 }
 
 .tree-search {
@@ -193,6 +256,35 @@
 .tree-search input::placeholder {
 	color: var(--muted);
 	opacity: 0.6;
+}
+
+.tree-search-count {
+	flex-shrink: 0;
+	font-size: 10px;
+	font-family: var(--font-mono);
+	color: var(--muted);
+}
+
+.tree-search-clear {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	width: 20px;
+	height: 20px;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--muted);
+	cursor: pointer;
+	transition:
+		color var(--transition-fast),
+		background var(--transition-fast);
+}
+
+.tree-search-clear:hover {
+	color: var(--text);
+	background: color-mix(in srgb, var(--panel-strong) 80%, transparent);
 }
 
 .tree-list {
@@ -234,6 +326,22 @@
 	color: color-mix(in srgb, var(--muted) 85%, white);
 }
 
+.tree-node-label {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.tree-child-count {
+	flex-shrink: 0;
+	margin-left: auto;
+	font-size: 10px;
+	font-family: var(--font-mono);
+	color: color-mix(in srgb, var(--muted) 68%, transparent);
+}
+
 .tree-file.selected {
 	background: color-mix(in srgb, var(--accent) 12%, var(--panel-soft));
 	color: var(--text);
@@ -254,6 +362,8 @@
 
 .viewer-content {
 	min-height: 0;
+	min-width: 0;
+	flex: 1;
 	overflow: auto;
 	padding: 14px;
 }
@@ -277,6 +387,23 @@
 
 .state-panel.error {
 	color: color-mix(in srgb, var(--status-error) 72%, white);
+}
+
+.state-panel-empty {
+	flex-direction: column;
+	gap: 8px;
+}
+
+.state-panel-icon {
+	color: color-mix(in srgb, var(--muted) 52%, transparent);
+}
+
+.state-panel-hint {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 11px;
+	color: color-mix(in srgb, var(--muted) 68%, transparent);
 }
 
 .mermaid-debug {
@@ -594,14 +721,8 @@
 }
 
 @media (max-width: 1180px) {
-	.viewer-shell {
-		grid-template-columns: 1fr;
-		grid-template-rows: minmax(160px, 220px) minmax(0, 1fr);
-	}
-
 	.viewer-tree {
-		border-right: none;
-		border-bottom: 1px solid color-mix(in srgb, var(--border) 64%, transparent);
+		min-width: 160px;
 	}
 }
 
@@ -611,6 +732,7 @@
 	justify-content: center;
 }
 
+/* Languages */
 .file-icon[data-icon='file-icons:typescript'],
 .file-icon[data-icon='file-icons:tsx'] {
 	color: #3178c6;
@@ -648,4 +770,184 @@
 
 .file-icon[data-icon='file-icons:swift'] {
 	color: #f05138;
+}
+
+.file-icon[data-icon='file-icons:ruby'] {
+	color: #cc342d;
+}
+
+.file-icon[data-icon='file-icons:php'] {
+	color: #777bb4;
+}
+
+.file-icon[data-icon='file-icons:c'] {
+	color: #a8b4be;
+}
+
+.file-icon[data-icon='file-icons:cpp'] {
+	color: #f34b7d;
+}
+
+.file-icon[data-icon='file-icons:csharp'] {
+	color: #a370c4;
+}
+
+.file-icon[data-icon='file-icons:scala'] {
+	color: #dc322f;
+}
+
+.file-icon[data-icon='file-icons:lua'] {
+	color: #51a0cf;
+}
+
+.file-icon[data-icon='file-icons:r'] {
+	color: #276dc3;
+}
+
+.file-icon[data-icon='file-icons:dart'] {
+	color: #00b4ab;
+}
+
+.file-icon[data-icon='file-icons:elm'] {
+	color: #60b5cc;
+}
+
+.file-icon[data-icon='file-icons:elixir'] {
+	color: #6e4a7e;
+}
+
+.file-icon[data-icon='file-icons:erlang'] {
+	color: #b83998;
+}
+
+.file-icon[data-icon='file-icons:haskell'] {
+	color: #5e5086;
+}
+
+.file-icon[data-icon='file-icons:ocaml'] {
+	color: #ec6813;
+}
+
+.file-icon[data-icon='file-icons:clojure'] {
+	color: #63b132;
+}
+
+.file-icon[data-icon='file-icons:fsharp'] {
+	color: #b845fc;
+}
+
+.file-icon[data-icon='file-icons:perl'] {
+	color: #0298c3;
+}
+
+.file-icon[data-icon='file-icons:solidity'] {
+	color: #aa6746;
+}
+
+/* Web / markup */
+.file-icon[data-icon='file-icons:html'] {
+	color: #e34c26;
+}
+
+.file-icon[data-icon='file-icons:css'] {
+	color: #563d7c;
+}
+
+.file-icon[data-icon='file-icons:vue'] {
+	color: #41b883;
+}
+
+.file-icon[data-icon='file-icons:svelte'] {
+	color: #ff3e00;
+}
+
+.file-icon[data-icon='file-icons:graphql'] {
+	color: #e10098;
+}
+
+.file-icon[data-icon='file-icons:xml'] {
+	color: #f26822;
+}
+
+/* Data / config */
+.file-icon[data-icon='file-icons:json-1'] {
+	color: #cbcb41;
+}
+
+.file-icon[data-icon='file-icons:yaml'] {
+	color: #cb171e;
+}
+
+.file-icon[data-icon='codicon:markdown'] {
+	color: #e2725b;
+}
+
+.file-icon[data-icon='file-icons:config'] {
+	color: #c4a56a;
+}
+
+.file-icon[data-icon='file-icons:toml'] {
+	color: #c89b6a;
+}
+
+.file-icon[data-icon='file-icons:gnu'] {
+	color: #e8883a;
+}
+
+.file-icon[data-icon='codicon:database'] {
+	color: #dad8d8;
+}
+
+.file-icon[data-icon='file-icons:proto'] {
+	color: #4285f4;
+}
+
+/* Tooling */
+.file-icon[data-icon='file-icons:docker'] {
+	color: #2496ed;
+}
+
+.file-icon[data-icon='file-icons:git'] {
+	color: #f14e32;
+}
+
+.file-icon[data-icon='file-icons:npm'] {
+	color: #cb3837;
+}
+
+.file-icon[data-icon='file-icons:terminal'] {
+	color: #4eaa25;
+}
+
+.file-icon[data-icon='file-icons:powershell'] {
+	color: #5391fe;
+}
+
+.file-icon[data-icon='file-icons:wasm'] {
+	color: #654ff0;
+}
+
+/* Media / misc */
+.file-icon[data-icon='file-icons:image'] {
+	color: #a074c4;
+}
+
+.file-icon[data-icon='codicon:archive'] {
+	color: #acacac;
+}
+
+.file-icon[data-icon='codicon:table'] {
+	color: #41a35d;
+}
+
+.file-icon[data-icon='codicon:lock'] {
+	color: #e8d44d;
+}
+
+.file-icon[data-icon='codicon:law'] {
+	color: #d0b352;
+}
+
+.file-icon[data-icon='file-icons:vim'] {
+	color: #019833;
 }

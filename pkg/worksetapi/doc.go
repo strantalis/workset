@@ -4,8 +4,8 @@
 // callers should treat these shapes as stable, and internal code should avoid
 // renaming fields or changing JSON tags without a compatibility plan.
 //
-// Service provides CRUD-style operations for workspaces, repos, aliases, and
-// groups, plus session and exec actions.
+// Service provides CRUD-style operations for workspaces, registered repos,
+// plus exec actions.
 //
 // Example:
 //

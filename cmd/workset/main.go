@@ -13,8 +13,8 @@ var version = "dev"
 func main() {
 	root := &cli.Command{
 		Name:                  "workset",
-		Usage:                 "Manage multi-repo workspaces with predictable defaults",
-		Description:           "Workspace commands require -w/--workspace (or defaults.workspace) to target a workspace.",
+		Usage:                 "Manage multi-repo threads with predictable defaults",
+		Description:           "Thread commands require -t/--thread (or defaults.thread) to target a thread.",
 		Version:               version,
 		EnableShellCompletion: true,
 		ConfigureShellCompletionCommand: func(cmd *cli.Command) {
@@ -23,7 +23,7 @@ func main() {
 			cmd.Description = "Generate shell completion for bash, zsh, fish, or powershell."
 		},
 		Flags: []cli.Flag{
-			workspaceFlag(false),
+			threadFlag(false),
 			&cli.StringFlag{
 				Name:  "config",
 				Usage: "Override global config path",
@@ -36,15 +36,11 @@ func main() {
 		Commands: []*cli.Command{
 			newCommand(),
 			listCommand(),
-			execCommand(),
 			hooksCommand(),
-			sessionCommand(),
 			versionCommand(),
 			removeWorkspaceCommand(),
 			configCommand(),
-			groupCommand(),
 			repoCommand(),
-			prCommand(),
 			statusCommand(),
 		},
 	}

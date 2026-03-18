@@ -17,10 +17,10 @@ func hooksCommand() *cli.Command {
 		Commands: []*cli.Command{
 			{
 				Name:      "run",
-				Usage:     "Run repo hooks for an event (requires -w)",
-				ArgsUsage: "-w <workspace> <repo>",
+				Usage:     "Run repo hooks for an event (requires -t)",
+				ArgsUsage: "-t <thread> <repo>",
 				Flags: appendOutputFlags([]cli.Flag{
-					workspaceFlag(true),
+					threadFlag(true),
 					&cli.StringFlag{
 						Name:  "event",
 						Usage: "Hook event name",
@@ -37,17 +37,17 @@ func hooksCommand() *cli.Command {
 				}),
 				ShellComplete: func(ctx context.Context, cmd *cli.Command) {
 					if cmd.NArg() == 0 {
-						completeWorkspaceRepoNames(cmd)
+						completeThreadRepoNames(cmd)
 					}
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					repo := strings.TrimSpace(cmd.Args().First())
 					if repo == "" {
-						return usageError(ctx, cmd, "usage: workset hooks run -w <workspace> <repo>")
+						return usageError(ctx, cmd, "usage: workset hooks run -t <thread> <repo>")
 					}
 					svc := apiService(ctx, cmd)
 					result, err := svc.RunHooks(ctx, worksetapi.HooksRunInput{
-						Workspace: worksetapi.WorkspaceSelector{Value: cmd.String("workspace")},
+						Workspace: worksetapi.WorkspaceSelector{Value: cmd.String("thread")},
 						Repo:      repo,
 						Event:     cmd.String("event"),
 						Reason:    cmd.String("reason"),

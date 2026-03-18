@@ -77,39 +77,5 @@ func resolveGlobalPathForUpdate(path string) (GlobalConfigLoadInfo, error) {
 		return info, err
 	}
 	info.Path = globalPath
-
-	legacyPaths, legacyErr := legacyGlobalConfigPaths()
-	if legacyErr != nil || len(legacyPaths) == 0 {
-		return info, nil
-	}
-
-	newExists := true
-	if _, statErr := os.Stat(globalPath); statErr != nil {
-		if errors.Is(statErr, os.ErrNotExist) {
-			newExists = false
-		} else {
-			return info, statErr
-		}
-	}
-	if newExists {
-		return info, nil
-	}
-
-	for _, legacyPath := range legacyPaths {
-		if err := migrateLegacyGlobalConfig(globalPath, legacyPath); err == nil {
-			if _, statErr := os.Stat(globalPath); statErr == nil {
-				info.Migrated = true
-				info.LegacyPath = legacyPath
-				break
-			}
-			continue
-		} else {
-			info.Path = legacyPath
-			info.UsedLegacy = true
-			info.LegacyPath = legacyPath
-			break
-		}
-	}
-
 	return info, nil
 }

@@ -9,7 +9,6 @@
 		ExistingRepoContext,
 		WorkspaceActionAddRepoSelectedItem,
 	} from '../../services/workspaceActionContextService';
-	import WorkspaceActionAddRepoSummaryPanel from './WorkspaceActionAddRepoSummaryPanel.svelte';
 
 	interface Props {
 		loading: boolean;
@@ -21,7 +20,6 @@
 		existingRepos: ExistingRepoContext[];
 		addRepoSelectedItems: WorkspaceActionAddRepoSelectedItem[];
 		addRepoTotalItems: number;
-		worksetName: string;
 		getAliasSource: (alias: Alias) => string;
 		onSearchQueryInput: (value: string) => void;
 		onAddSourceInput: (value: string) => void;
@@ -41,7 +39,6 @@
 	const existingRepos = $derived(props.existingRepos);
 	const addRepoSelectedItems = $derived(props.addRepoSelectedItems);
 	const addRepoTotalItems = $derived(props.addRepoTotalItems);
-	const worksetName = $derived(props.worksetName);
 
 	const getAliasSource = (alias: Alias): string => props.getAliasSource(alias);
 	const onSearchQueryInput = (value: string): void => props.onSearchQueryInput(value);
@@ -98,6 +95,7 @@
 		showSearchMinCharsHint || searchLoading || searchError !== null || showNoSearchResults,
 	);
 	const hasPendingSource = $derived(canAddSource && sourceQuery.length > 0);
+	const canContinue = $derived(addRepoTotalItems > 0 || hasPendingSource);
 
 	const shouldSearchRemote = (value: string): boolean => {
 		const trimmed = value.trim();
@@ -226,201 +224,195 @@
 	});
 </script>
 
-<div class="form add-two-column ws-form-stack add-flow-shell">
-	<div class="column-left">
-		<div class="field">
-			<div class="repo-input-row">
-				<div class="repo-input-shell">
-					<span class="repo-input-icon"><Search size={14} /></span>
-					<input
-						type="text"
-						value={sourceDraft}
-						oninput={(event) => handleSourceInput((event.currentTarget as HTMLInputElement).value)}
-						onkeydown={(event) => {
-							if (event.key !== 'Enter') return;
-							event.preventDefault();
-							handleAddSource();
-						}}
-						placeholder="Search catalog/GitHub, or paste repo URL/path (Enter)"
-						class="mono"
-						autocapitalize="off"
-						autocorrect="off"
-						spellcheck="false"
-					/>
-				</div>
-				<button
-					type="button"
-					class="repo-browse-icon-btn"
-					onclick={onBrowse}
-					aria-label="Browse local path"
-					title="Browse local path"
-				>
-					<FolderOpen size={14} />
-				</button>
+<div class="add-panel">
+	<div class="add-panel-search">
+		<div class="repo-input-row">
+			<div class="repo-input-shell">
+				<span class="repo-input-icon"><Search size={14} /></span>
+				<input
+					type="text"
+					value={sourceDraft}
+					oninput={(event) => handleSourceInput((event.currentTarget as HTMLInputElement).value)}
+					onkeydown={(event) => {
+						if (event.key !== 'Enter') return;
+						event.preventDefault();
+						handleAddSource();
+					}}
+					placeholder="Search catalog, GitHub, or paste URL"
+					class="mono"
+					autocapitalize="off"
+					autocorrect="off"
+					spellcheck="false"
+				/>
 			</div>
-			{#if showSearchMeta}
-				<div class="repo-input-help-row">
-					{#if showSearchMinCharsHint}
-						<span class="repo-search-status">Type at least 2 characters to search GitHub.</span>
-					{:else if searchLoading}
-						<span class="repo-search-status">
-							<Loader2 size={12} />
-							<span>Searching GitHub…</span>
-						</span>
-					{:else if searchError}
-						<span class="repo-search-error">{searchError}</span>
-					{:else if showNoSearchResults}
-						<span class="repo-search-status">No GitHub repositories found for "{sourceQuery}".</span
-						>
-					{/if}
-				</div>
-			{/if}
+			<button
+				type="button"
+				class="repo-browse-icon-btn"
+				onclick={onBrowse}
+				aria-label="Browse local path"
+				title="Browse local path"
+			>
+				<FolderOpen size={14} />
+			</button>
 		</div>
-
-		{#if addRepoSelectedItems.length > 0}
-			<div class="selected-repos-panel">
-				<div class="selected-repos-header">
-					<span>Selected Repositories</span>
-					<span>{addRepoSelectedItems.length}</span>
-				</div>
-				<div class="selected-repos-list">
-					{#each addRepoSelectedItems as item (`${item.type}:${item.name}`)}
-						<button
-							type="button"
-							class="selected-repo-chip"
-							onclick={() => handleRemoveSelection(item)}
-						>
-							<span class="selected-repo-kind">{formatSelectionKind(item)}</span>
-							<span>{formatSelectionLabel(item)}</span>
-							<span class="selected-repo-remove">x</span>
-						</button>
-					{/each}
-				</div>
+		{#if showSearchMeta}
+			<div class="repo-input-help-row">
+				{#if showSearchMinCharsHint}
+					<span class="repo-search-status">Type at least 2 characters to search GitHub.</span>
+				{:else if searchLoading}
+					<span class="repo-search-status">
+						<Loader2 size={12} />
+						<span>Searching GitHub…</span>
+					</span>
+				{:else if searchError}
+					<span class="repo-search-error">{searchError}</span>
+				{:else if showNoSearchResults}
+					<span class="repo-search-status">No GitHub results for "{sourceQuery}".</span>
+				{/if}
 			</div>
 		{/if}
-
-		<div class="field">
-			<div class="registry-list">
-				{#if availableAliases.length > 0}
-					<div class="result-group-label">Available</div>
-					{#each availableAliases as alias (alias.name)}
-						<button
-							type="button"
-							class="registry-item"
-							class:selected={selectedAliases.has(alias.name)}
-							onclick={() => onToggleAlias(alias.name)}
-						>
-							<div class="registry-check" class:checked={selectedAliases.has(alias.name)}>
-								{#if selectedAliases.has(alias.name)}<Check size={10} />{/if}
-							</div>
-							<div class="registry-info">
-								<div class="registry-name-row">
-									<span class="registry-name">{alias.name}</span>
-									<span class="source-badge source-badge-catalog">Catalog</span>
-								</div>
-								<div class="registry-url">{getAliasSource(alias)}</div>
-							</div>
-						</button>
-					{/each}
-				{/if}
-
-				{#if inWorksetAliases.length > 0}
-					<div class="result-group-label">Already In Workset</div>
-					{#each inWorksetAliases as alias (alias.name)}
-						<div class="registry-item registry-item-existing" aria-disabled="true">
-							<div class="registry-check checked">
-								<Check size={10} />
-							</div>
-							<div class="registry-info">
-								<div class="registry-name-row">
-									<span class="registry-name">{alias.name}</span>
-									<span class="source-badge source-badge-in-workset">In workset</span>
-								</div>
-								<div class="registry-url">{getAliasSource(alias)}</div>
-							</div>
-						</div>
-					{/each}
-				{/if}
-
-				{#if remoteSuggestions.length > 0}
-					<div class="result-group-label">GitHub</div>
-					{#each remoteSuggestions as suggestion (`${suggestion.owner}/${suggestion.name}`)}
-						<button
-							type="button"
-							class="registry-item github-result"
-							onclick={() => handleSelectRemoteSuggestion(suggestion)}
-						>
-							<div class="registry-check github-result-check">
-								<ArrowRight size={10} />
-							</div>
-							<div class="registry-info">
-								<div class="registry-name-row">
-									<span class="registry-name">{suggestion.owner}/{suggestion.name}</span>
-									<span class="source-badge source-badge-github">GitHub</span>
-								</div>
-								<div class="registry-url">{suggestion.sshUrl || suggestion.cloneUrl}</div>
-							</div>
-						</button>
-					{/each}
-				{/if}
-
-				{#if availableAliases.length === 0 && inWorksetAliases.length === 0 && remoteSuggestions.length === 0}
-					<div class="registry-empty">
-						{#if aliasItems.length === 0}
-							No repositories available in Repo Catalog yet.
-						{:else if searchQuery.trim().length > 0}
-							No matching repositories.
-						{:else}
-							Start typing to search Repo Catalog or GitHub.
-						{/if}
-					</div>
-				{/if}
-			</div>
-		</div>
 	</div>
 
-	<div class="column-right">
-		<WorkspaceActionAddRepoSummaryPanel
-			{loading}
-			{worksetName}
-			{existingRepos}
-			{addRepoTotalItems}
-			{hasPendingSource}
-			onSubmit={handleContinue}
-		/>
+	{#if addRepoSelectedItems.length > 0}
+		<div class="selected-repos-panel">
+			<div class="selected-repos-header">
+				<span>Selected</span>
+				<span class="selected-repos-count">{addRepoSelectedItems.length}</span>
+			</div>
+			<div class="selected-repos-list">
+				{#each addRepoSelectedItems as item (`${item.type}:${item.name}`)}
+					<button
+						type="button"
+						class="selected-repo-chip"
+						onclick={() => handleRemoveSelection(item)}
+					>
+						<span class="selected-repo-kind">{formatSelectionKind(item)}</span>
+						<span>{formatSelectionLabel(item)}</span>
+						<span class="selected-repo-remove">×</span>
+					</button>
+				{/each}
+			</div>
+		</div>
+	{/if}
+
+	<div class="registry-list">
+		{#if availableAliases.length > 0}
+			<div class="result-group-label">Available</div>
+			{#each availableAliases as alias (alias.name)}
+				<button
+					type="button"
+					class="registry-item"
+					class:selected={selectedAliases.has(alias.name)}
+					onclick={() => onToggleAlias(alias.name)}
+				>
+					<div class="registry-check" class:checked={selectedAliases.has(alias.name)}>
+						{#if selectedAliases.has(alias.name)}<Check size={10} />{/if}
+					</div>
+					<div class="registry-info">
+						<div class="registry-name-row">
+							<span class="registry-name">{alias.name}</span>
+							<span class="source-badge source-badge-catalog">Catalog</span>
+						</div>
+						<div class="registry-url">{getAliasSource(alias)}</div>
+					</div>
+				</button>
+			{/each}
+		{/if}
+
+		{#if inWorksetAliases.length > 0}
+			<div class="result-group-label">Already In Workset</div>
+			{#each inWorksetAliases as alias (alias.name)}
+				<div class="registry-item registry-item-existing" aria-disabled="true">
+					<div class="registry-check checked">
+						<Check size={10} />
+					</div>
+					<div class="registry-info">
+						<div class="registry-name-row">
+							<span class="registry-name">{alias.name}</span>
+							<span class="source-badge source-badge-in-workset">In workset</span>
+						</div>
+						<div class="registry-url">{getAliasSource(alias)}</div>
+					</div>
+				</div>
+			{/each}
+		{/if}
+
+		{#if remoteSuggestions.length > 0}
+			<div class="result-group-label">GitHub</div>
+			{#each remoteSuggestions as suggestion (`${suggestion.owner}/${suggestion.name}`)}
+				<button
+					type="button"
+					class="registry-item github-result"
+					onclick={() => handleSelectRemoteSuggestion(suggestion)}
+				>
+					<div class="registry-check github-result-check">
+						<ArrowRight size={10} />
+					</div>
+					<div class="registry-info">
+						<div class="registry-name-row">
+							<span class="registry-name">{suggestion.owner}/{suggestion.name}</span>
+							<span class="source-badge source-badge-github">GitHub</span>
+						</div>
+						<div class="registry-url">{suggestion.sshUrl || suggestion.cloneUrl}</div>
+					</div>
+				</button>
+			{/each}
+		{/if}
+
+		{#if availableAliases.length === 0 && inWorksetAliases.length === 0 && remoteSuggestions.length === 0}
+			<div class="registry-empty">
+				{#if aliasItems.length === 0}
+					No repositories in Repo Catalog yet.
+				{:else if searchQuery.trim().length > 0}
+					No matching repositories.
+				{:else}
+					Search or browse to find repositories.
+				{/if}
+			</div>
+		{/if}
+	</div>
+
+	<div class="add-panel-footer">
+		<div class="add-panel-status">
+			<span>{existingRepos.length} in workset</span>
+			{#if addRepoTotalItems > 0}
+				<span class="add-panel-queued">{addRepoTotalItems} to add</span>
+			{/if}
+		</div>
+		<button
+			type="button"
+			class="add-panel-submit"
+			onclick={handleContinue}
+			disabled={loading || !canContinue}
+		>
+			{#if loading}
+				Adding…
+			{:else}
+				Add{addRepoTotalItems > 0 ? ` ${addRepoTotalItems}` : ''} <ArrowRight size={14} />
+			{/if}
+		</button>
 	</div>
 </div>
 
 <style>
-	.add-flow-shell {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) 340px;
-		gap: 14px;
-		align-items: start;
+	.add-panel {
+		display: flex;
+		flex-direction: column;
+		gap: 0;
+		flex: 1;
 		min-height: 0;
 	}
 
-	.column-left,
-	.column-right {
-		min-width: 0;
-	}
-
-	.column-left {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-	}
-
-	.column-right {
-		position: sticky;
-		top: 0;
+	.add-panel-search {
+		flex-shrink: 0;
+		padding-bottom: 10px;
 	}
 
 	.repo-input-row {
-		--repo-control-height: 36px;
+		--repo-control-height: 34px;
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) auto;
-		gap: 8px;
+		gap: 6px;
 		align-items: stretch;
 	}
 
@@ -444,8 +436,8 @@
 		background: rgba(255, 255, 255, 0.02);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-md);
-		padding: 9px 10px 9px 30px;
-		font-size: var(--text-base);
+		padding: 8px 10px 8px 30px;
+		font-size: var(--text-sm);
 		color: var(--text);
 	}
 
@@ -480,20 +472,20 @@
 	}
 
 	.repo-input-help-row {
-		margin-top: 6px;
+		margin-top: 4px;
 		display: flex;
 		align-items: center;
 		flex-wrap: wrap;
-		gap: 10px;
+		gap: 8px;
 	}
 
 	.repo-search-status,
 	.repo-search-error {
-		font-size: var(--text-sm);
+		font-size: var(--text-xs);
 		color: var(--muted);
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
+		gap: 5px;
 	}
 
 	.repo-search-error {
@@ -501,60 +493,93 @@
 	}
 
 	.selected-repos-panel {
-		border: 1px solid var(--border);
+		flex-shrink: 0;
+		padding: 8px 10px;
+		margin-bottom: 8px;
+		border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
 		border-radius: var(--radius-md);
-		padding: 10px;
-		background: color-mix(in srgb, var(--panel) 86%, transparent);
+		background: color-mix(in srgb, var(--accent) 6%, var(--panel));
 	}
 
 	.selected-repos-header {
 		display: flex;
-		justify-content: space-between;
-		font-size: var(--text-sm);
+		align-items: center;
+		gap: 6px;
+		font-size: var(--text-xs);
 		color: var(--muted);
-		margin-bottom: 8px;
+		margin-bottom: 6px;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		font-weight: 600;
+	}
+
+	.selected-repos-count {
+		background: color-mix(in srgb, var(--accent) 22%, transparent);
+		color: var(--accent);
+		border-radius: 999px;
+		padding: 0 6px;
+		font-size: 10px;
+		font-weight: 700;
+		line-height: 18px;
 	}
 
 	.selected-repos-list {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 6px;
+		gap: 4px;
 	}
 
 	.selected-repo-chip {
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
-		padding: 4px 8px;
+		gap: 4px;
+		padding: 2px 7px;
 		border-radius: 999px;
 		border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
 		background: color-mix(in srgb, var(--panel-strong) 68%, transparent);
 		color: var(--text);
 		font-size: var(--text-xs);
 		cursor: pointer;
+		transition: border-color var(--transition-fast);
+	}
+
+	.selected-repo-chip:hover {
+		border-color: var(--danger);
 	}
 
 	.selected-repo-kind {
-		font-size: 10px;
+		font-size: 9px;
 		color: var(--muted);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.04em;
 	}
 
 	.selected-repo-remove {
 		color: var(--muted);
+		font-size: var(--text-xs);
 	}
 
 	.registry-list {
+		flex: 1;
+		min-height: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 4px;
-		max-height: 294px;
+		gap: 2px;
 		overflow-y: auto;
-		background: var(--panel);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		padding: 8px;
+		padding: 2px 0;
+	}
+
+	.registry-list::-webkit-scrollbar {
+		width: 5px;
+	}
+
+	.registry-list::-webkit-scrollbar-track {
+		background: transparent;
+	}
+
+	.registry-list::-webkit-scrollbar-thumb {
+		background: rgba(255, 255, 255, 0.1);
+		border-radius: 3px;
 	}
 
 	.result-group-label {
@@ -563,18 +588,22 @@
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		color: color-mix(in srgb, var(--muted) 84%, transparent);
-		padding: 4px 2px;
+		padding: 6px 2px 2px;
+	}
+
+	.result-group-label:first-child {
+		padding-top: 0;
 	}
 
 	.registry-item {
 		display: flex;
 		align-items: center;
-		gap: 10px;
+		gap: 8px;
 		width: 100%;
 		border: 1px solid transparent;
 		background: transparent;
-		border-radius: 8px;
-		padding: 8px;
+		border-radius: 6px;
+		padding: 6px 8px;
 		color: var(--text);
 		cursor: pointer;
 		text-align: left;
@@ -590,15 +619,15 @@
 	}
 
 	.registry-item-existing {
-		opacity: 0.65;
+		opacity: 0.55;
 		cursor: default;
 	}
 
 	.registry-check {
-		width: 16px;
-		height: 16px;
+		width: 15px;
+		height: 15px;
 		border: 1px solid var(--border);
-		border-radius: 4px;
+		border-radius: 3px;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -616,7 +645,7 @@
 		min-width: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
+		gap: 1px;
 	}
 
 	.registry-name-row {
@@ -633,7 +662,7 @@
 
 	.registry-url {
 		color: var(--muted);
-		font-size: var(--text-xs);
+		font-size: 11px;
 		font-family: var(--font-mono);
 		white-space: nowrap;
 		overflow: hidden;
@@ -643,28 +672,15 @@
 	.source-badge {
 		display: inline-flex;
 		align-items: center;
-		border-radius: 6px;
-		padding: 1px 6px;
-		font-size: 10px;
+		border-radius: 4px;
+		padding: 0 5px;
+		font-size: 9px;
 		font-weight: 600;
-	}
-
-	.source-badge-catalog {
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
 		color: var(--muted);
 		background: color-mix(in srgb, var(--panel-strong) 80%, transparent);
-		border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-	}
-
-	.source-badge-github {
-		color: var(--muted);
-		background: color-mix(in srgb, var(--panel-strong) 80%, transparent);
-		border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-	}
-
-	.source-badge-in-workset {
-		color: var(--muted);
-		background: color-mix(in srgb, var(--panel-strong) 80%, transparent);
-		border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+		border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
 	}
 
 	.github-result-check {
@@ -672,20 +688,62 @@
 	}
 
 	.registry-empty {
-		padding: 14px 10px;
+		padding: 20px 10px;
 		text-align: center;
 		font-size: var(--text-sm);
 		color: var(--muted);
 	}
 
-	@media (max-width: 1120px) {
-		.add-flow-shell {
-			grid-template-columns: minmax(0, 1fr);
-			min-height: 0;
-		}
+	.add-panel-footer {
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding-top: 10px;
+		border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+		margin-top: auto;
+	}
 
-		.column-right {
-			position: static;
-		}
+	.add-panel-status {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: var(--text-xs);
+		color: var(--muted);
+	}
+
+	.add-panel-queued {
+		color: var(--accent);
+		font-weight: 600;
+	}
+
+	.add-panel-submit {
+		flex-shrink: 0;
+		padding: 7px 16px;
+		border: none;
+		border-radius: var(--radius-md);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		font-family: inherit;
+		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		background: var(--cta);
+		color: var(--on-dark);
+		transition:
+			background var(--transition-fast),
+			opacity var(--transition-fast);
+	}
+
+	.add-panel-submit:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--cta) 88%, white);
+	}
+
+	.add-panel-submit:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
 	}
 </style>

@@ -54,7 +54,7 @@ const isMergedTrackedPullRequest = (repo: Repo): boolean => {
 };
 
 const normalizeWorkset = (workspace: Workspace): string => {
-	const workset = workspace.workset?.trim() || workspace.template?.trim();
+	const workset = workspace.workset?.trim();
 	return workset && workset.length > 0 ? workset : 'Unassigned';
 };
 

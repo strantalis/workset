@@ -17,12 +17,12 @@ type repoPlan struct {
 	DefaultBranch string
 }
 
-func buildNewWorkspaceRepoPlans(cfg config.GlobalConfig, groupNames, repoNames []string) ([]repoPlan, error) {
-	if len(groupNames) == 0 && len(repoNames) == 0 {
+func buildNewWorkspaceRepoPlans(cfg config.GlobalConfig, repoNames []string) ([]repoPlan, error) {
+	if len(repoNames) == 0 {
 		return nil, nil
 	}
 
-	plans := make([]repoPlan, 0, len(groupNames)+len(repoNames))
+	plans := make([]repoPlan, 0, len(repoNames))
 	seen := make(map[string]repoPlan)
 
 	addPlan := func(plan repoPlan) error {
@@ -35,26 +35,6 @@ func buildNewWorkspaceRepoPlans(cfg config.GlobalConfig, groupNames, repoNames [
 		seen[plan.Name] = plan
 		plans = append(plans, plan)
 		return nil
-	}
-
-	for _, groupName := range groupNames {
-		groupName = strings.TrimSpace(groupName)
-		if groupName == "" {
-			continue
-		}
-		group, ok := cfg.Groups[groupName]
-		if !ok {
-			return nil, fmt.Errorf("group %q not found", groupName)
-		}
-		for _, member := range group.Members {
-			plan, err := resolveGroupMemberPlan(cfg, member)
-			if err != nil {
-				return nil, err
-			}
-			if err := addPlan(plan); err != nil {
-				return nil, err
-			}
-		}
 	}
 
 	for _, repoName := range repoNames {
@@ -100,34 +80,6 @@ func buildNewWorkspaceRepoPlans(cfg config.GlobalConfig, groupNames, repoNames [
 	}
 
 	return plans, nil
-}
-
-func resolveGroupMemberPlan(cfg config.GlobalConfig, member config.GroupMember) (repoPlan, error) {
-	alias, ok := cfg.Repos[member.Repo]
-	if !ok {
-		return repoPlan{}, fmt.Errorf("repo alias %q not found in config", member.Repo)
-	}
-
-	defaultBranch := cfg.Defaults.BaseBranch
-	if alias.DefaultBranch != "" {
-		defaultBranch = alias.DefaultBranch
-	}
-	remote := strings.TrimSpace(alias.Remote)
-	if remote == "" {
-		remote = cfg.Defaults.Remote
-	}
-
-	plan := repoPlan{
-		Name:          member.Repo,
-		URL:           alias.URL,
-		SourcePath:    alias.Path,
-		Remote:        remote,
-		DefaultBranch: defaultBranch,
-	}
-	if plan.URL == "" && plan.SourcePath == "" {
-		return repoPlan{}, fmt.Errorf("repo alias %q has no source", member.Repo)
-	}
-	return plan, nil
 }
 
 func resolveAliasPlan(cfg config.GlobalConfig, name string) (repoPlan, error) {

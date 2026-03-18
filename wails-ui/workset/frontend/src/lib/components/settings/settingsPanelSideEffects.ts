@@ -243,7 +243,7 @@ export const createSettingsPanelSideEffects = (
 				await deps.persistWorkspaceTerminalLayout(workspace.id, layout);
 				deps.dispatchLayoutReset(workspace.id);
 
-				return { success: `Terminal layout reset for ${workspace.name}.` };
+				return { success: `Terminal layout reset for thread ${workspace.name}.` };
 			} catch (error) {
 				return {
 					error: `Failed to reset terminal layout: ${deps.toErrorMessage(error, 'Failed to update settings.')}`,

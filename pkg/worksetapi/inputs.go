@@ -4,9 +4,8 @@ package worksetapi
 type WorkspaceCreateInput struct {
 	Name        string
 	Path        string
-	Template    string
+	Workset     string
 	WorksetOnly bool
-	Groups      []string
 	Repos       []string
 }
 
@@ -62,58 +61,6 @@ type RepoRegistryInput struct {
 	SourceSet        bool
 	DefaultBranchSet bool
 	RemoteSet        bool
-}
-
-// GroupUpsertInput describes inputs for CreateGroup and UpdateGroup.
-type GroupUpsertInput struct {
-	Name        string
-	Description string
-}
-
-// GroupMemberInput describes inputs for AddGroupMember and RemoveGroupMember.
-type GroupMemberInput struct {
-	GroupName string
-	RepoName  string
-}
-
-// GroupApplyInput describes inputs for ApplyGroup.
-type GroupApplyInput struct {
-	Workspace WorkspaceSelector
-	Name      string
-}
-
-// SessionStartInput describes inputs for StartSession.
-type SessionStartInput struct {
-	Workspace   WorkspaceSelector
-	Backend     string
-	Attach      bool
-	Interactive bool
-	Name        string
-	Command     []string
-	Confirmed   bool
-}
-
-// SessionAttachInput describes inputs for AttachSession.
-type SessionAttachInput struct {
-	Workspace WorkspaceSelector
-	Backend   string
-	Name      string
-	Confirmed bool
-}
-
-// SessionStopInput describes inputs for StopSession.
-type SessionStopInput struct {
-	Workspace WorkspaceSelector
-	Backend   string
-	Name      string
-	Confirmed bool
-}
-
-// SessionShowInput describes inputs for ShowSession.
-type SessionShowInput struct {
-	Workspace WorkspaceSelector
-	Backend   string
-	Name      string
 }
 
 // ExecInput describes inputs for Exec.

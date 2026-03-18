@@ -1,4 +1,3 @@
-import ghosttyWasmUrl from '@strantalis/workset-ghostty-web/ghostty-vt.wasm?url';
 import { init } from '@strantalis/workset-ghostty-web';
 
 let initialized = false;
@@ -7,7 +6,7 @@ let initPromise: Promise<void> | null = null;
 export const ensureGhosttyInitialized = async (): Promise<void> => {
 	if (initialized) return;
 	if (!initPromise) {
-		initPromise = init(ghosttyWasmUrl).then(
+		initPromise = init().then(
 			() => {
 				initialized = true;
 			},

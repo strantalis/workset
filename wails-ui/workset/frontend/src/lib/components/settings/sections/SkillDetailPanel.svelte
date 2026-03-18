@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { SkillInfo } from '../../../api/skills';
 	import Button from '../../ui/Button.svelte';
+	import Select from '../../ui/Select.svelte';
 
 	interface Props {
 		skillsCount: number;
@@ -55,6 +56,17 @@
 		onSyncTargetChange,
 		availableToolsForSyncCount,
 	}: Props = $props();
+
+	const scopeOptions = [
+		{ label: 'Global', value: 'global' },
+		{ label: 'Workset', value: 'project' },
+	];
+
+	const toolOptions = $derived(
+		allTools
+			.filter((tool) => !(formScope === 'global' && tool === 'copilot'))
+			.map((tool) => ({ label: tool, value: tool })),
+	);
 </script>
 
 {#if isNew}
@@ -88,36 +100,18 @@
 					spellcheck="false"
 				/>
 			</label>
-			<label class="ws-field">
+			<div class="ws-field">
 				<span>Scope</span>
-				<select
-					class="ws-field-select"
+				<Select
 					value={formScope}
-					onchange={(event) =>
-						onFormScopeChange(
-							(event.currentTarget as HTMLSelectElement).value as 'global' | 'project',
-						)}
-				>
-					<option value="global">Global</option>
-					<option value="project">Workset</option>
-				</select>
-			</label>
-			<label class="ws-field">
+					options={scopeOptions}
+					onchange={(val) => onFormScopeChange(val as 'global' | 'project')}
+				/>
+			</div>
+			<div class="ws-field">
 				<span>Tool</span>
-				<select
-					class="ws-field-select"
-					value={formTool}
-					onchange={(event) => onFormToolChange((event.currentTarget as HTMLSelectElement).value)}
-				>
-					{#each allTools as tool (tool)}
-						{#if formScope === 'global' && tool === 'copilot'}
-							<!-- copilot has no global dir -->
-						{:else}
-							<option value={tool}>{tool}</option>
-						{/if}
-					{/each}
-				</select>
-			</label>
+				<Select value={formTool} options={toolOptions} onchange={(val) => onFormToolChange(val)} />
+			</div>
 			<label class="ws-field">
 				<span>SKILL.md content</span>
 				<textarea
@@ -322,8 +316,7 @@
 		gap: var(--space-3);
 	}
 
-	.ws-field-input,
-	.ws-field-select {
+	.ws-field-input {
 		background: var(--panel-strong);
 		padding: 10px var(--space-3);
 		font-family: inherit;

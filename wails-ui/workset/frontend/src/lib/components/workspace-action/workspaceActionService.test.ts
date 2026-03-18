@@ -28,6 +28,13 @@ describe('runCreateWorkspaceMutation', () => {
 		const registerRepo = vi.fn(async () => undefined);
 		const createWorkspace = vi.fn(
 			async (): Promise<WorkspaceCreateResponse> => ({
+				thread: {
+					name: 'alpha',
+					path: '/tmp/alpha',
+					workset: '/tmp/alpha/workset.yaml',
+					branch: 'main',
+					next: 'next',
+				},
 				workspace: {
 					name: 'alpha',
 					path: '/tmp/alpha',
@@ -71,7 +78,6 @@ describe('runCreateWorkspaceMutation', () => {
 			'',
 			'platform-core',
 			['/tmp/repos/first', 'git@github.com:acme/second.git', '/tmp/repos/pending', 'alias-one'],
-			undefined,
 			{ worksetOnly: false },
 		);
 		expect(createWorkspace.mock.invocationCallOrder[0]).toBeLessThan(
@@ -118,6 +124,13 @@ describe('runCreateWorkspaceMutation', () => {
 		});
 		const createWorkspace = vi.fn(
 			async (): Promise<WorkspaceCreateResponse> => ({
+				thread: {
+					name: 'alpha',
+					path: '/tmp/alpha',
+					workset: '/tmp/alpha/workset.yaml',
+					branch: 'main',
+					next: 'next',
+				},
 				workspace: {
 					name: 'alpha',
 					path: '/tmp/alpha',
@@ -138,14 +151,9 @@ describe('runCreateWorkspaceMutation', () => {
 			{ registerRepo, createWorkspace },
 		);
 
-		expect(createWorkspace).toHaveBeenCalledWith(
-			'alpha',
-			'',
-			undefined,
-			['/tmp/repos/first'],
-			undefined,
-			{ worksetOnly: false },
-		);
+		expect(createWorkspace).toHaveBeenCalledWith('alpha', '', undefined, ['/tmp/repos/first'], {
+			worksetOnly: false,
+		});
 		expect(result.warnings).toEqual([
 			'Registered first in workset but failed to save in Repo Catalog: permission denied',
 		]);
@@ -155,12 +163,19 @@ describe('runCreateWorkspaceMutation', () => {
 		const registerRepo = vi.fn(async () => undefined);
 		const createWorkspace = vi.fn(
 			async (): Promise<WorkspaceCreateResponse> => ({
+				thread: {
+					name: 'platform-core',
+					path: '',
+					workset: 'platform-core',
+					branch: '',
+					next: 'workset new <thread> --workset platform-core',
+				},
 				workspace: {
 					name: 'platform-core',
 					path: '',
 					workset: 'platform-core',
 					branch: '',
-					next: 'workset workspace new <thread> --template platform-core',
+					next: 'workset new <thread> --workset platform-core',
 				},
 			}),
 		);
@@ -181,7 +196,6 @@ describe('runCreateWorkspaceMutation', () => {
 			'',
 			undefined,
 			['/tmp/repos/direct', '/tmp/repos/pending'],
-			undefined,
 			{ worksetOnly: true },
 		);
 		expect(registerRepo).not.toHaveBeenCalled();
@@ -497,6 +511,13 @@ describe('createWorkspaceActionMutationService', () => {
 		const registerRepo = vi.fn(async () => undefined);
 		const createWorkspace = vi.fn(
 			async (): Promise<WorkspaceCreateResponse> => ({
+				thread: {
+					name: 'alpha',
+					path: '/tmp/alpha',
+					workset: '/tmp/alpha/workset.yaml',
+					branch: 'main',
+					next: 'next',
+				},
 				workspace: {
 					name: 'alpha',
 					path: '/tmp/alpha',

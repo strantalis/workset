@@ -58,12 +58,20 @@
 		};
 	});
 
-	const handleScrollZoneEnter = (): void => {
-		hoveringBottomRight = true;
-		refreshScrollState();
+	const handleSurfaceMouseMove = (e: MouseEvent): void => {
+		const target = e.currentTarget as HTMLElement;
+		const rect = target.getBoundingClientRect();
+		const inZone = rect.right - e.clientX <= 64 && rect.bottom - e.clientY <= 64;
+		if (inZone && !hoveringBottomRight) {
+			hoveringBottomRight = true;
+			refreshScrollState();
+		} else if (!inZone && hoveringBottomRight) {
+			hoveringBottomRight = false;
+			notAtBottom = false;
+		}
 	};
 
-	const handleScrollZoneLeave = (): void => {
+	const handleSurfaceMouseLeave = (): void => {
 		hoveringBottomRight = false;
 		notAtBottom = false;
 		if (pendingScrollStateFrame !== null) {
@@ -278,14 +286,15 @@
 				</div>
 			</div>
 		{/if}
-		<div class="terminal-surface" onwheel={scheduleScrollStateRefresh}>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="terminal-surface"
+			onwheel={scheduleScrollStateRefresh}
+			onmousemove={handleSurfaceMouseMove}
+			onmouseleave={handleSurfaceMouseLeave}
+		>
 			<div class="terminal-mount" bind:this={terminalContainer}></div>
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div
-				class="scroll-hover-zone"
-				onmouseenter={handleScrollZoneEnter}
-				onmouseleave={handleScrollZoneLeave}
-			>
+			<div class="scroll-hover-zone">
 				{#if hoveringBottomRight && notAtBottom}
 					<button
 						class="scroll-to-bottom"
@@ -514,7 +523,7 @@
 	/* Reduced inset padding — 4px instead of 8px for a more immersive feel */
 	.terminal-mount {
 		position: absolute;
-		inset: 4px;
+		inset: 4px 0 4px 4px;
 		z-index: 1;
 		overflow: hidden;
 		background: var(--panel-strong);
@@ -533,9 +542,11 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		pointer-events: none;
 	}
 
 	.scroll-to-bottom {
+		pointer-events: auto;
 		width: 34px;
 		height: 34px;
 		border-radius: 50%;

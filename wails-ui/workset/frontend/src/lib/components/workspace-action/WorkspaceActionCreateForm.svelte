@@ -277,68 +277,92 @@
 	});
 </script>
 
-<div class="form ws-form-stack" class:thread-mode={isThreadMode}>
-	{#if modeVariant === 'thread' && worksetLabel}
-		<div class="context-chip">
-			<span class="context-chip-label">Workset</span>
-			<strong>{worksetLabel}</strong>
-		</div>
-	{/if}
+{#if isThreadMode}
+	<div class="thread-panel">
+		<div class="thread-panel-form">
+			<label class="thread-name-field">
+				<span class="thread-name-label">{nameLabel}</span>
+				<input
+					class="thread-name-input"
+					value={workspaceName}
+					oninput={(event) => onWorkspaceNameInput((event.currentTarget as HTMLInputElement).value)}
+					placeholder={namePlaceholder}
+					autocapitalize="off"
+					autocorrect="off"
+					spellcheck="false"
+				/>
+			</label>
 
-	<label class="field ws-field">
-		<span class="field-label">{nameLabel}</span>
-		<input
-			class="ws-field-input"
-			value={workspaceName}
-			oninput={(event) => onWorkspaceNameInput((event.currentTarget as HTMLInputElement).value)}
-			placeholder={namePlaceholder}
-			autocapitalize="off"
-			autocorrect="off"
-			spellcheck="false"
-		/>
-	</label>
-
-	{#if isThreadMode}
-		<div class="hint ws-hint thread-scope-note">
-			Repositories are inherited from this workset ({selectedCount} total).
-		</div>
-		<div class="field ws-field thread-hooks-section">
-			<div class="field-title">
-				<span>Post-Checkout Hooks</span>
-				<span class="count">per repo · optional</span>
-			</div>
-			<div class="thread-hooks-list">
-				{#if threadHooksLoading}
-					<div class="suggestion-loading">
-						<Loader2 size={14} />
-						<span>Checking lifecycle hooks…</span>
+			{#if threadHookRows.length > 0 || threadHooksLoading}
+				<div class="thread-hooks-section">
+					<div class="thread-hooks-header">
+						<span class="thread-hooks-title">Hooks</span>
+						<span class="thread-hooks-meta"
+							>{selectedCount} repo{selectedCount === 1 ? '' : 's'}</span
+						>
 					</div>
-				{:else if threadHookRows.length === 0}
-					<div class="thread-hooks-empty">No repositories found for this workset.</div>
-				{:else}
-					{#each threadHookRows as row (`${row.repoName}`)}
-						<div class="thread-hooks-row">
-							<div class="thread-hooks-repo">{row.repoName}</div>
-							{#if !row.hasSource}
-								<div class="thread-hooks-empty">Repo source unavailable in catalog.</div>
-							{:else if row.hooks.length === 0}
-								<div class="thread-hooks-empty">No hooks discovered.</div>
-							{:else}
-								<div class="thread-hooks-chip-row">
-									{#each row.hooks as hook (`${row.repoName}-${hook}`)}
-										<span class="thread-hooks-chip">+ {hook}</span>
-									{/each}
+					<div class="thread-hooks-list">
+						{#if threadHooksLoading}
+							<div class="thread-hooks-loading">
+								<Loader2 size={12} />
+								<span>Checking hooks…</span>
+							</div>
+						{:else}
+							{#each threadHookRows as row (`${row.repoName}`)}
+								<div class="thread-hooks-row">
+									<div class="thread-hooks-repo">{row.repoName}</div>
+									{#if !row.hasSource}
+										<div class="thread-hooks-empty">No source in catalog</div>
+									{:else if row.hooks.length === 0}
+										<div class="thread-hooks-empty">No hooks</div>
+									{:else}
+										<div class="thread-hooks-chip-row">
+											{#each row.hooks as hook (`${row.repoName}-${hook}`)}
+												<span class="thread-hooks-chip">{hook}</span>
+											{/each}
+										</div>
+									{/if}
 								</div>
-							{/if}
-						</div>
-					{/each}
-				{/if}
-			</div>
-			{#if threadHooksError}
-				<div class="hint ws-hint">{threadHooksError}</div>
+							{/each}
+						{/if}
+					</div>
+					{#if threadHooksError}
+						<div class="thread-hooks-error">{threadHooksError}</div>
+					{/if}
+				</div>
 			{/if}
 		</div>
-	{:else}
+
+		<div class="thread-panel-footer">
+			{#if worksetLabel}
+				<span class="thread-footer-workset">{worksetLabel}</span>
+			{/if}
+			<button
+				type="button"
+				class="thread-panel-submit"
+				onclick={onSubmit}
+				disabled={loading || !canSubmit}
+				aria-busy={loading}
+			>
+				{loading ? 'Creating…' : 'Create Thread'}
+			</button>
+		</div>
+	</div>
+{:else}
+	<div class="form ws-form-stack" aria-busy={loading}>
+		<label class="field ws-field">
+			<span class="field-label">{nameLabel}</span>
+			<input
+				class="ws-field-input"
+				value={workspaceName}
+				oninput={(event) => onWorkspaceNameInput((event.currentTarget as HTMLInputElement).value)}
+				placeholder={namePlaceholder}
+				autocapitalize="off"
+				autocorrect="off"
+				spellcheck="false"
+			/>
+		</label>
+
 		<div class="field ws-field">
 			<div class="field-title">
 				<span>Add Repository</span>
@@ -353,6 +377,7 @@
 						onblur={handleSourceBlur}
 						onkeydown={handleSourceKeydown}
 						placeholder="git@github.com:org/repo.git or search GitHub"
+						aria-label="Add repository URL or search GitHub"
 						class="search-input"
 						autocapitalize="off"
 						autocorrect="off"
@@ -438,6 +463,7 @@
 					value={searchQuery}
 					oninput={(event) => onSearchQueryInput((event.currentTarget as HTMLInputElement).value)}
 					placeholder="Search repos..."
+					aria-label="Search repo catalog"
 					class="search-input"
 					autocapitalize="off"
 					autocorrect="off"
@@ -470,61 +496,247 @@
 				{/if}
 			</div>
 		</div>
-	{/if}
 
-	<Button
-		variant="primary"
-		onclick={onSubmit}
-		disabled={loading || !canSubmit}
-		class={`action-btn${isThreadMode ? ' thread-submit' : ''}`}
-	>
-		{loading ? 'Creating…' : createActionLabel}
-	</Button>
-</div>
+		<Button
+			variant="primary"
+			onclick={onSubmit}
+			disabled={loading || !canSubmit}
+			class="action-btn"
+		>
+			{loading ? 'Creating…' : createActionLabel}
+		</Button>
+	</div>
+{/if}
 
 <style>
-	.form.thread-mode {
-		gap: 14px;
+	/* ─── Thread panel layout ─── */
+	.thread-panel {
+		display: flex;
+		flex-direction: column;
+		flex: 1;
+		min-height: 0;
 	}
 
-	.context-chip {
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		padding: 8px 12px;
-		border-radius: 10px;
-		background: linear-gradient(
-			120deg,
-			color-mix(in srgb, var(--accent) 18%, transparent),
-			color-mix(in srgb, var(--panel-strong) 84%, transparent)
-		);
-		border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--border));
-		color: var(--muted);
+	.thread-panel-form {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+
+	.thread-panel-form::-webkit-scrollbar {
+		width: 5px;
+	}
+
+	.thread-panel-form::-webkit-scrollbar-track {
+		background: transparent;
+	}
+
+	.thread-panel-form::-webkit-scrollbar-thumb {
+		background: rgba(255, 255, 255, 0.1);
+		border-radius: 3px;
+	}
+
+	.thread-name-field {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.thread-name-label {
 		font-size: var(--text-xs);
 		font-weight: 600;
-		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-	}
-
-	.context-chip-label {
-		font-size: 10px;
-		letter-spacing: 0.08em;
+		color: var(--muted);
 		text-transform: uppercase;
-		color: color-mix(in srgb, var(--muted) 82%, transparent);
+		letter-spacing: 0.06em;
 	}
 
-	.context-chip strong {
+	.thread-name-input {
+		width: 100%;
+		height: 34px;
+		box-sizing: border-box;
+		background: rgba(255, 255, 255, 0.02);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		padding: 8px 10px;
+		font-size: var(--text-sm);
 		color: var(--text);
-		font-weight: 600;
+		font-family: inherit;
 	}
 
+	.thread-name-input:focus {
+		outline: none;
+		border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+		box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 26%, transparent);
+		background: rgba(255, 255, 255, 0.04);
+	}
+
+	.thread-hooks-section {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		flex: 1;
+		min-height: 0;
+	}
+
+	.thread-hooks-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.thread-hooks-title {
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--muted);
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+	}
+
+	.thread-hooks-meta {
+		font-size: var(--text-xs);
+		color: var(--subtle);
+	}
+
+	.thread-hooks-list {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+	}
+
+	.thread-hooks-list::-webkit-scrollbar {
+		width: 5px;
+	}
+
+	.thread-hooks-list::-webkit-scrollbar-track {
+		background: transparent;
+	}
+
+	.thread-hooks-list::-webkit-scrollbar-thumb {
+		background: rgba(255, 255, 255, 0.1);
+		border-radius: 3px;
+	}
+
+	.thread-hooks-loading {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 10px 0;
+		font-size: var(--text-xs);
+		color: var(--muted);
+	}
+
+	.thread-hooks-loading :global(svg) {
+		animation: spin 900ms linear infinite;
+	}
+
+	.thread-hooks-row {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+		padding: 8px 10px;
+		border-radius: 6px;
+		transition: background var(--transition-fast);
+	}
+
+	.thread-hooks-row:hover {
+		background: color-mix(in srgb, var(--panel-strong) 60%, transparent);
+	}
+
+	.thread-hooks-repo {
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--text);
+		flex-shrink: 0;
+	}
+
+	.thread-hooks-chip-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+	}
+
+	.thread-hooks-chip {
+		display: inline-flex;
+		align-items: center;
+		padding: 1px 7px;
+		border-radius: 4px;
+		background: color-mix(in srgb, var(--panel-strong) 80%, transparent);
+		border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+		font-size: 11px;
+		color: var(--muted);
+		font-family: var(--font-mono);
+	}
+
+	.thread-hooks-empty {
+		font-size: var(--text-xs);
+		color: var(--subtle);
+	}
+
+	.thread-hooks-error {
+		font-size: var(--text-xs);
+		color: var(--danger-text);
+		padding: 2px 0;
+	}
+
+	.thread-panel-footer {
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding-top: 10px;
+		border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+		margin-top: auto;
+	}
+
+	.thread-footer-workset {
+		flex: 1;
+		min-width: 0;
+		font-size: var(--text-xs);
+		color: var(--muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.thread-panel-submit {
+		flex-shrink: 0;
+		padding: 7px 16px;
+		border: none;
+		border-radius: var(--radius-md);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		font-family: inherit;
+		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		background: var(--cta);
+		color: var(--on-dark);
+		transition:
+			background var(--transition-fast),
+			opacity var(--transition-fast);
+	}
+
+	.thread-panel-submit:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--cta) 88%, white);
+	}
+
+	.thread-panel-submit:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	/* ─── Workset mode (modal) ─── */
 	.field-label {
 		color: color-mix(in srgb, var(--text) 88%, transparent);
 		font-size: var(--text-sm);
 		font-weight: 600;
-	}
-
-	.thread-mode .field-label {
-		color: color-mix(in srgb, var(--text) 92%, transparent);
 	}
 
 	.field-title {
@@ -541,32 +753,6 @@
 		color: var(--muted);
 		font-weight: 500;
 		letter-spacing: 0.02em;
-	}
-
-	.thread-mode :global(.ws-field-input) {
-		background: color-mix(in srgb, var(--panel) 70%, transparent);
-		border-color: color-mix(in srgb, var(--border) 92%, transparent);
-		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-	}
-
-	.thread-mode :global(.ws-field-input:focus) {
-		border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
-		background: color-mix(in srgb, var(--panel) 76%, transparent);
-	}
-
-	.thread-scope-note {
-		margin-top: -2px;
-		padding: 0 2px;
-		font-size: var(--text-sm);
-		color: color-mix(in srgb, var(--muted) 88%, transparent);
-	}
-
-	.thread-hooks-section {
-		padding: 12px;
-		border-radius: 12px;
-		border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-		background: color-mix(in srgb, var(--panel-soft) 56%, transparent);
-		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 	}
 
 	.search-input {
@@ -670,10 +856,6 @@
 		white-space: nowrap;
 	}
 
-	.suggestion-loading :global(svg) {
-		animation: spin 900ms linear infinite;
-	}
-
 	@keyframes spin {
 		from {
 			transform: rotate(0deg);
@@ -694,64 +876,6 @@
 
 	.search-clear:hover {
 		color: var(--text);
-	}
-
-	.thread-hooks-list {
-		display: flex;
-		flex-direction: column;
-		max-height: 220px;
-		overflow-y: auto;
-		border-radius: var(--radius-md);
-		border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-		background: color-mix(in srgb, var(--panel) 68%, transparent);
-		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-	}
-
-	.thread-hooks-row {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		padding: 11px 12px;
-		border-bottom: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
-		transition: background var(--transition-fast);
-	}
-
-	.thread-hooks-row:hover {
-		background: color-mix(in srgb, var(--accent) 6%, transparent);
-	}
-
-	.thread-hooks-row:last-child {
-		border-bottom: none;
-	}
-
-	.thread-hooks-repo {
-		font-size: var(--text-sm);
-		font-weight: 600;
-		color: var(--text);
-	}
-
-	.thread-hooks-chip-row {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-	}
-
-	.thread-hooks-chip {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		padding: 4px 9px;
-		border-radius: 999px;
-		border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
-		background: color-mix(in srgb, var(--accent) 12%, var(--panel-strong));
-		font-size: var(--text-xs);
-		color: color-mix(in srgb, var(--text) 86%, transparent);
-		font-weight: 500;
-	}
-
-	.thread-hooks-empty {
-		font-size: var(--text-xs);
-		color: var(--muted);
 	}
 
 	.add-repo-btn {
@@ -919,23 +1043,5 @@
 	:global(.action-btn) {
 		width: 100%;
 		margin-top: 8px;
-	}
-
-	:global(.thread-submit.btn.primary) {
-		margin-top: 10px;
-		min-height: 42px;
-		font-size: var(--text-base);
-		font-weight: 700;
-		letter-spacing: 0.01em;
-		box-shadow:
-			0 10px 24px rgba(var(--accent-rgb), 0.26),
-			inset 0 1px 0 rgba(255, 255, 255, 0.18);
-	}
-
-	:global(.thread-submit.btn.primary:hover:not(:disabled)) {
-		transform: translateY(-1px);
-		box-shadow:
-			0 14px 28px rgba(var(--accent-rgb), 0.32),
-			inset 0 1px 0 rgba(255, 255, 255, 0.2);
 	}
 </style>

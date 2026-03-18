@@ -44,13 +44,16 @@ func (s *Service) ListWorkspacesWithOptions(ctx context.Context, opts WorkspaceL
 	return WorkspaceListResult{Workspaces: rows, Config: info}, nil
 }
 
-// CreateWorkspace creates a new workspace and optionally adds repos/groups.
+// CreateWorkspace creates a new thread and optionally adds repos.
 func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInput) (WorkspaceCreateResult, error) {
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
-		return WorkspaceCreateResult{}, ValidationError{Message: "workspace name required"}
+		return WorkspaceCreateResult{}, ValidationError{Message: "thread name required"}
 	}
-	template := strings.TrimSpace(input.Template)
+	worksetName := strings.TrimSpace(input.Workset)
+	if worksetName == "" {
+		worksetName = name
+	}
 
 	cfg, info, err := s.loadGlobal(ctx)
 	if err != nil {
@@ -67,28 +70,18 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 	if root == "" {
 		base := strings.TrimSpace(cfg.Defaults.WorksetRoot)
 		if base == "" {
-			base = strings.TrimSpace(cfg.Defaults.WorkspaceRoot)
-			if strings.EqualFold(filepath.Base(base), "workspaces") {
-				base = filepath.Dir(base)
-			}
-		}
-		if base == "" {
 			cwd, err := os.Getwd()
 			if err != nil {
 				return WorkspaceCreateResult{}, err
 			}
 			base = cwd
 		}
-		if template != "" {
-			root = filepath.Join(
-				base,
-				"worksets",
-				workspace.WorkspaceDirName(template),
-				workspace.WorkspaceDirName(name),
-			)
-		} else {
-			root = filepath.Join(base, "workspaces", workspace.WorkspaceDirName(name))
-		}
+		root = filepath.Join(
+			base,
+			"worksets",
+			workspace.WorkspaceDirName(worksetName),
+			workspace.WorkspaceDirName(name),
+		)
 	}
 	root, err = filepath.Abs(root)
 	if err != nil {
@@ -97,7 +90,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 	worksetPath := workspace.WorksetFile(root)
 	if _, err := os.Stat(worksetPath); err == nil {
 		return WorkspaceCreateResult{}, ConflictError{
-			Message: fmt.Sprintf("workspace %q already exists at %s", name, worksetPath),
+			Message: fmt.Sprintf("thread %q already exists at %s", name, worksetPath),
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return WorkspaceCreateResult{}, err
@@ -113,13 +106,13 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 		if err := workspaceCreateConflict(*cfg, name, ""); err != nil {
 			return err
 		}
-		registerWorkspace(cfg, name, root, s.clock(), template)
+		registerWorkspace(cfg, name, root, s.clock(), worksetName)
 		return nil
 	}); err != nil {
 		return WorkspaceCreateResult{}, err
 	}
 
-	repoPlans, err := buildNewWorkspaceRepoPlans(cfg, input.Groups, input.Repos)
+	repoPlans, err := buildNewWorkspaceRepoPlans(cfg, input.Repos)
 	if err != nil {
 		return WorkspaceCreateResult{}, err
 	}
@@ -169,7 +162,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 		pending, runs, hookWarnings, err := s.runWorktreeCreatedHooks(ctx, cfg, ws.Root, name, config.RepoConfig{
 			Name:    plan.Name,
 			RepoDir: repoDir,
-		}, worktreePath, ws.State.CurrentBranch, "workspace.create")
+		}, worktreePath, ws.State.CurrentBranch, "thread.create")
 		if err != nil {
 			return WorkspaceCreateResult{}, err
 		}
@@ -189,9 +182,9 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 	infoPayload := WorkspaceCreatedJSON{
 		Name:    name,
 		Path:    root,
-		Workset: workspace.WorksetFile(root),
+		Workset: worksetName,
 		Branch:  ws.State.CurrentBranch,
-		Next:    fmt.Sprintf("workset repo add -w %s <alias|url>", shellArg(name)),
+		Next:    fmt.Sprintf("workset repo add -t %s <alias|url>", shellArg(name)),
 	}
 
 	if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, loadInfo config.GlobalConfigLoadInfo) error {
@@ -212,7 +205,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 			}
 			cfg.Repos[aliasName] = alias
 		}
-		registerWorkspace(cfg, name, root, s.clock(), template)
+		registerWorkspace(cfg, name, root, s.clock(), worksetName)
 		s.rebuildWorksetRepoModel(ctx, cfg)
 		return nil
 	}); err != nil {
@@ -238,7 +231,7 @@ func (s *Service) createWorksetOnly(
 		return WorkspaceCreateResult{}, err
 	}
 
-	repoPlans, err := buildNewWorkspaceRepoPlans(cfg, input.Groups, input.Repos)
+	repoPlans, err := buildNewWorkspaceRepoPlans(cfg, input.Repos)
 	if err != nil {
 		return WorkspaceCreateResult{}, err
 	}
@@ -265,7 +258,7 @@ func (s *Service) createWorksetOnly(
 			Path:    "",
 			Workset: name,
 			Branch:  "",
-			Next:    "workset workspace new <thread> --template " + shellArg(name),
+			Next:    "workset new <thread> --workset " + shellArg(name),
 		},
 		Config: info,
 	}, nil
@@ -305,7 +298,7 @@ func mergeWorksetRepoAlias(alias config.RegisteredRepo, plan repoPlan) config.Re
 	return alias
 }
 
-// DeleteWorkspace removes a workspace registration or deletes files when requested.
+// DeleteWorkspace removes a thread registration or deletes files when requested.
 func (s *Service) DeleteWorkspace(ctx context.Context, input WorkspaceDeleteInput) (WorkspaceDeleteResult, error) {
 	cfg, info, err := s.loadGlobal(ctx)
 	if err != nil {
@@ -341,9 +334,6 @@ func (s *Service) DeleteWorkspace(ctx context.Context, input WorkspaceDeleteInpu
 			}
 		}
 		workspaceRoot := strings.TrimSpace(cfg.Defaults.WorksetRoot)
-		if workspaceRoot == "" {
-			workspaceRoot = cfg.Defaults.WorkspaceRoot
-		}
 		if workspaceRoot != "" {
 			absRoot, err := filepath.Abs(workspaceRoot)
 			if err == nil {
@@ -360,7 +350,7 @@ func (s *Service) DeleteWorkspace(ctx context.Context, input WorkspaceDeleteInpu
 		}
 		if len(contained) > 0 {
 			return WorkspaceDeleteResult{}, UnsafeOperation{
-				Message: fmt.Sprintf("refusing to delete %s: contains other workspaces: %s", absTarget, strings.Join(contained, ", ")),
+				Message: fmt.Sprintf("refusing to delete %s: contains other threads: %s", absTarget, strings.Join(contained, ", ")),
 			}
 		}
 	}
@@ -407,13 +397,10 @@ func (s *Service) DeleteWorkspace(ctx context.Context, input WorkspaceDeleteInpu
 	}
 
 	if input.DeleteFiles && !input.Confirmed {
-		return WorkspaceDeleteResult{}, ConfirmationRequired{Message: fmt.Sprintf("delete workspace %s?", root)}
+		return WorkspaceDeleteResult{}, ConfirmationRequired{Message: fmt.Sprintf("delete thread %s?", root)}
 	}
 
 	if input.DeleteFiles {
-		if err := s.stopWorkspaceSessions(ctx, root, input.Force); err != nil {
-			return WorkspaceDeleteResult{}, err
-		}
 		if err := s.removeWorkspaceRepoWorktrees(ctx, root, cfg.Defaults, input.Force); err != nil {
 			return WorkspaceDeleteResult{}, err
 		}
@@ -434,7 +421,7 @@ func (s *Service) DeleteWorkspace(ctx context.Context, input WorkspaceDeleteInpu
 			configChanged = true
 		}
 	}
-	if cfg.Defaults.Workspace == name || cfg.Defaults.Workspace == root {
+	if (name != "" && cfg.Defaults.Thread == name) || (root != "" && cfg.Defaults.Thread == root) {
 		configChanged = true
 	}
 	if configChanged {
@@ -447,8 +434,8 @@ func (s *Service) DeleteWorkspace(ctx context.Context, input WorkspaceDeleteInpu
 				removeWorkspaceByPath(cfg, root)
 			}
 			applyWorksetRepoModelAfterWorkspaceRemoval(cfg, removedRefs)
-			if cfg.Defaults.Workspace == name || cfg.Defaults.Workspace == root {
-				cfg.Defaults.Workspace = ""
+			if (name != "" && cfg.Defaults.Thread == name) || (root != "" && cfg.Defaults.Thread == root) {
+				cfg.Defaults.Thread = ""
 			}
 			return nil
 		}); err != nil {
@@ -631,7 +618,7 @@ func loadThreadRepoNamesForRef(ref config.WorkspaceRef) ([]string, bool) {
 	return normalized, len(normalized) > 0
 }
 
-// StatusWorkspace reports per-repo status for a workspace.
+// StatusWorkspace reports per-repo status for a thread.
 func (s *Service) StatusWorkspace(ctx context.Context, selector WorkspaceSelector) (WorkspaceStatusResult, error) {
 	cfg, info, err := s.loadGlobal(ctx)
 	if err != nil {
@@ -689,32 +676,21 @@ func (s *Service) StatusWorkspace(ctx context.Context, selector WorkspaceSelecto
 func (s *Service) resolveWorkspace(ctx context.Context, cfg *config.GlobalConfig, configPath string, selector WorkspaceSelector) (string, config.WorkspaceConfig, error) {
 	arg := strings.TrimSpace(selector.Value)
 	if arg == "" {
-		arg = strings.TrimSpace(cfg.Defaults.Workspace)
+		arg = strings.TrimSpace(cfg.Defaults.Thread)
 	}
 	if arg == "" {
-		return "", config.WorkspaceConfig{}, ValidationError{Message: "workspace required"}
+		return "", config.WorkspaceConfig{}, ValidationError{Message: "thread required"}
 	}
 
 	var root string
 	if ref, ok := cfg.Workspaces[arg]; ok {
 		root = ref.Path
-	} else if cfg.Defaults.WorkspaceRoot != "" {
-		candidates := []string{filepath.Join(cfg.Defaults.WorkspaceRoot, arg)}
-		if sanitized := workspace.WorkspaceDirName(arg); sanitized != "" && sanitized != arg {
-			candidates = append(candidates, filepath.Join(cfg.Defaults.WorkspaceRoot, sanitized))
-		}
-		for _, candidate := range candidates {
-			if _, err := os.Stat(candidate); err == nil {
-				root = candidate
-				break
-			}
-		}
 	}
 	if root == "" {
 		if filepath.IsAbs(arg) {
 			root = arg
 		} else {
-			return "", config.WorkspaceConfig{}, NotFoundError{Message: fmt.Sprintf("workspace not found: %q", arg)}
+			return "", config.WorkspaceConfig{}, NotFoundError{Message: fmt.Sprintf("thread not found: %q", arg)}
 		}
 	}
 
@@ -725,21 +701,17 @@ func (s *Service) resolveWorkspace(ctx context.Context, cfg *config.GlobalConfig
 		}
 		return "", config.WorkspaceConfig{}, err
 	}
-	if err := s.migrateLegacyWorkspaceRemotes(ctx, cfg, configPath, root, &wsConfig); err != nil {
-		return "", config.WorkspaceConfig{}, err
-	}
-
 	if cfg.Workspaces == nil {
 		cfg.Workspaces = map[string]config.WorkspaceRef{}
 	}
 	ref, exists := cfg.Workspaces[wsConfig.Name]
 	if exists && ref.Path != "" && ref.Path != root {
-		return "", config.WorkspaceConfig{}, ConflictError{Message: "workspace name already registered to a different path"}
+		return "", config.WorkspaceConfig{}, ConflictError{Message: "thread name already registered to a different path"}
 	}
 	if !exists {
 		if _, err := s.updateGlobal(ctx, func(cfg *config.GlobalConfig, _ config.GlobalConfigLoadInfo) error {
 			if existing, ok := cfg.Workspaces[wsConfig.Name]; ok && existing.Path != "" && existing.Path != root {
-				return ConflictError{Message: "workspace name already registered to a different path"}
+				return ConflictError{Message: "thread name already registered to a different path"}
 			}
 			registerWorkspace(cfg, wsConfig.Name, root, s.clock(), "")
 			s.rebuildWorksetRepoModel(ctx, cfg)
@@ -792,9 +764,9 @@ func workspaceCreateConflict(cfg config.GlobalConfig, name, allowPath string) er
 		return nil
 	}
 	if path != "" {
-		return ConflictError{Message: fmt.Sprintf("workspace %q already exists at %s", name, path)}
+		return ConflictError{Message: fmt.Sprintf("thread %q already exists at %s", name, path)}
 	}
-	return ConflictError{Message: fmt.Sprintf("workspace %q already exists", name)}
+	return ConflictError{Message: fmt.Sprintf("thread %q already exists", name)}
 }
 
 func worksetCreateConflict(cfg config.GlobalConfig, name string) error {

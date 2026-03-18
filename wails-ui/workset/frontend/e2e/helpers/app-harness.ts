@@ -19,10 +19,6 @@ export type WorkspaceSnapshot = {
 	repos: SnapshotRepo[];
 };
 
-export type GroupSummary = {
-	name: string;
-};
-
 export type AliasSummary = {
 	name: string;
 };
@@ -42,7 +38,7 @@ type WorkspaceCreateInput = {
 	name: string;
 	path: string;
 	repos?: string[];
-	groups?: string[];
+	workset?: string;
 };
 
 type RepoAddInput = {
@@ -61,8 +57,7 @@ type WorkspaceRemoveInput = {
 
 type AppBindings = {
 	ListWorkspaceSnapshots?: (input: SnapshotOptions) => Promise<WorkspaceSnapshot[]>;
-	ListAliases?: () => Promise<AliasSummary[]>;
-	ListGroups?: () => Promise<GroupSummary[]>;
+	ListRegisteredRepos?: () => Promise<AliasSummary[]>;
 	CreateWorkspace?: (input: WorkspaceCreateInput) => Promise<unknown>;
 	AddRepo?: (input: RepoAddInput) => Promise<unknown>;
 	RemoveWorkspace?: (input: WorkspaceRemoveInput) => Promise<unknown>;
@@ -129,18 +124,11 @@ export const listWorkspaceSnapshots = async (
 		{ opts: options },
 	);
 
-export const listAliases = async (page: Page): Promise<AliasSummary[]> =>
+export const listRegisteredRepos = async (page: Page): Promise<AliasSummary[]> =>
 	page.evaluate(async () => {
 		const app = (window as { go?: { main?: { App?: AppBindings } } }).go?.main?.App;
-		if (!app?.ListAliases) return [];
-		return app.ListAliases();
-	});
-
-export const listGroups = async (page: Page): Promise<GroupSummary[]> =>
-	page.evaluate(async () => {
-		const app = (window as { go?: { main?: { App?: AppBindings } } }).go?.main?.App;
-		if (!app?.ListGroups) return [];
-		return app.ListGroups();
+		if (!app?.ListRegisteredRepos) return [];
+		return app.ListRegisteredRepos();
 	});
 
 export const closeWorkspacePopoutIfOpen = async (
@@ -232,7 +220,6 @@ export const ensureE2EWorkspaceFixture = async (
 				name: workspaceName,
 				path: workspacePath,
 				repos: [],
-				groups: [],
 			});
 		},
 		{ workspaceName: fixture.workspaceName, workspacePath: fixture.workspacePath },
@@ -309,7 +296,7 @@ export const toggleWorkspacePopoutFromHub = async (
 		.first();
 	await expect(workspaceEntry).toBeVisible();
 	const trigger = workspaceEntry.getByRole('button', {
-		name: /Open workspace popout|Return workspace to main window/i,
+		name: /Open thread popout|Return thread to main window/i,
 	});
 	await expect(trigger).toBeVisible();
 	await trigger.click();

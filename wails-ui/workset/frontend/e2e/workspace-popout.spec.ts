@@ -9,7 +9,7 @@ import {
 	openWorksetHub,
 } from './helpers/app-harness';
 
-test.describe('workspace popout', () => {
+test.describe('thread popout', () => {
 	test.beforeEach(async ({ page }) => {
 		await gotoApp(page);
 		await assertWailsBindings(page);
@@ -17,30 +17,26 @@ test.describe('workspace popout', () => {
 		await closeWorkspacePopoutIfOpen(page, e2eWorkspaceFixture.workspaceName);
 	});
 
-	test('toggles workspace popout state directly from workset card action icon', async ({
-		page,
-	}) => {
+	test('toggles thread popout state directly from workset card action icon', async ({ page }) => {
 		await openWorksetHub(page);
 		const workspaceEntry = page
 			.locator('.workset-card, .list-row', { hasText: e2eWorkspaceFixture.workspaceName })
 			.first();
 
-		const openTrigger = workspaceEntry.getByRole('button', { name: 'Open workspace popout' });
+		const openTrigger = workspaceEntry.getByRole('button', { name: 'Open thread popout' });
 		await expect(openTrigger).toBeVisible();
 		await openTrigger.click();
 
 		const returnTrigger = workspaceEntry.getByRole('button', {
-			name: 'Return workspace to main window',
+			name: 'Return thread to main window',
 		});
 		await expect(returnTrigger).toBeVisible();
 		await returnTrigger.click();
 
-		await expect(
-			workspaceEntry.getByRole('button', { name: 'Open workspace popout' }),
-		).toBeVisible();
+		await expect(workspaceEntry.getByRole('button', { name: 'Open thread popout' })).toBeVisible();
 	});
 
-	test('renders popout shell with workspace-scoped navigation', async ({ page }) => {
+	test('renders popout shell with thread-scoped navigation', async ({ page }) => {
 		await gotoWorkspacePopoutView(page, e2eWorkspaceFixture.workspaceName, 'command-center');
 		await expect(page.getByRole('button', { name: 'Workset Hub' })).toHaveCount(0);
 		await expect(page.getByRole('button', { name: 'New Workset' })).toHaveCount(0);

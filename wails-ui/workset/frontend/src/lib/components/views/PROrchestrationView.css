@@ -29,9 +29,8 @@
 	display: flex;
 	justify-content: center;
 	padding-top: 10px;
-	background: color-mix(in srgb, var(--panel) 85%, transparent);
+	background: var(--panel);
 	border-right: 1px solid var(--border);
-	backdrop-filter: blur(16px);
 }
 .sidebar-toggle-btn {
 	display: inline-flex;

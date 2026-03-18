@@ -4,8 +4,7 @@ import {
 	e2eWorkspaceFixture,
 	ensureE2EWorkspaceFixture,
 	gotoApp,
-	listAliases,
-	listGroups,
+	listRegisteredRepos,
 	listWorkspaceSnapshots,
 	openMainRailView,
 	selectWorkspaceFromHubByName,
@@ -49,7 +48,7 @@ test.describe('cockpit and settings', () => {
 
 	test('navigates settings sections and reflects library counts from API', async ({ page }) => {
 		await gotoApp(page);
-		const [aliases, groups] = await Promise.all([listAliases(page), listGroups(page)]);
+		const aliases = await listRegisteredRepos(page);
 
 		await page.getByRole('button', { name: 'Settings' }).click();
 		const dialog = page.getByRole('dialog', { name: 'Settings' });
@@ -61,18 +60,14 @@ test.describe('cockpit and settings', () => {
 			await expect(dialog.locator('.content-title')).toHaveText(title);
 		};
 
-		await assertSection('Workspace', 'Workspace');
-		await assertSection('Agent', 'Agent');
+		await assertSection('Defaults', 'Defaults');
 		await assertSection('Terminal', 'Terminal');
 		await assertSection('GitHub', 'GitHub');
 
 		await assertSection('Repo Catalog', 'Repo Catalog');
 		await expect(dialog.getByText(new RegExp(`${aliases.length}\\s+repo`)).first()).toBeVisible();
 
-		await assertSection('Templates', 'Templates');
-		await expect(
-			dialog.getByText(new RegExp(`${groups.length}\\s+template`)).first(),
-		).toBeVisible();
+		await assertSection('System', 'System');
 
 		await assertSection('About', 'About');
 

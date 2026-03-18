@@ -42,17 +42,9 @@ describe('SettingsPanel About Section', () => {
 	const baseDefaults: SettingsDefaults = {
 		remote: 'origin',
 		baseBranch: 'main',
-		workspace: 'test',
+		thread: 'test',
 		worksetRoot: '/workset',
-		workspaceRoot: '/workspaces',
 		repoStoreRoot: '/repos',
-		sessionBackend: 'local',
-		sessionNameFormat: '{workspace}',
-		sessionTheme: 'default',
-		sessionTmuxStyle: '',
-		sessionTmuxLeft: '',
-		sessionTmuxRight: '',
-		sessionScreenHard: '',
 		agent: 'default',
 		agentModel: '',
 		terminalIdleTimeout: '0',
@@ -235,9 +227,9 @@ describe('SettingsPanel About Section', () => {
 		});
 		await fireEvent.click(getByText('Terminal'));
 
-		const idleTimeoutInput = getByLabelText('Terminal idle timeout') as HTMLInputElement;
+		const idleTimeoutInput = getByLabelText('Idle timeout') as HTMLInputElement;
 		await fireEvent.input(idleTimeoutInput, { target: { value: '15m' } });
-		await fireEvent.click(getByRole('button', { name: 'Save' }));
+		await fireEvent.click(getByRole('button', { name: /^Save/ }));
 
 		await waitFor(() => {
 			expect(api.setDefaultSetting).toHaveBeenCalledWith('defaults.terminal_idle_timeout', '15m');

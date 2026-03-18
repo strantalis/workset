@@ -1,9 +1,11 @@
 <script lang="ts">
+	import Button from '../ui/Button.svelte';
 	import {
 		ChevronDown,
 		ChevronUp,
 		Download,
 		ExternalLink,
+		Info,
 		LoaderCircle,
 		LockKeyhole,
 		Search,
@@ -11,7 +13,6 @@
 		ShieldCheck,
 		Sparkles,
 		Star,
-		TrendingUp,
 	} from '@lucide/svelte';
 	import DOMPurify from 'dompurify';
 	import { marked } from 'marked';
@@ -52,11 +53,19 @@
 		workspaceId = null,
 		installedSkills = [],
 		onInstalled = () => {},
+		externalSearchQuery = undefined,
+		onSearchQueryChange = undefined,
 	}: {
 		workspaceId?: string | null;
 		installedSkills?: SkillInfo[];
 		onInstalled?: (payload: { installedSkill: SkillInfo; message: string }) => void | Promise<void>;
+		externalSearchQuery?: string;
+		onSearchQueryChange?: (query: string) => void;
 	} = $props();
+
+	const useExternalSearch = $derived(
+		externalSearchQuery !== undefined && onSearchQueryChange !== undefined,
+	);
 
 	const stripFrontmatter = (raw: string): string => {
 		const trimmed = raw.trimStart();
@@ -153,7 +162,7 @@
 			const hasMediumRisk = normalized.some(
 				(status) => status.includes('med') || status.includes('warn'),
 			);
-			const summary = audits.map((audit) => `${audit.provider}: ${audit.status}`).join(' • ');
+			const summary = audits.map((audit) => `${audit.provider}: ${audit.status}`).join(' \u2022 ');
 			if (hasHighRisk) {
 				return {
 					label: 'Audit issues detected',
@@ -220,17 +229,30 @@
 		return 'good';
 	};
 
-	const auditLabel = (provider: string): string => {
-		switch (provider) {
-			case 'Gen Agent Trust Hub':
-				return 'Gen';
-			default:
-				return provider;
-		}
-	};
-
 	const hasAuditSummaries = (skill: MarketplaceSkill): boolean =>
 		(skill.auditSummaries?.length ?? 0) > 0;
+
+	const getTrustChip = (
+		skill: MarketplaceSkill,
+	): { label: string; tone: 'good' | 'neutral' | 'caution' } => {
+		const audits = skill.auditSummaries ?? [];
+		if (audits.length > 0) {
+			const allPass = audits.every(
+				(a) =>
+					!a.status.toLowerCase().includes('high') &&
+					!a.status.toLowerCase().includes('critical') &&
+					!a.status.toLowerCase().includes('warn') &&
+					!a.status.toLowerCase().includes('med'),
+			);
+			if (allPass) return { label: `${audits.length}/${audits.length} audits pass`, tone: 'good' };
+			return { label: 'Audit issues', tone: 'caution' };
+		}
+		if (skill.verified) return { label: 'Verified', tone: 'good' };
+		if (skill.sourceRepo?.trim()) return { label: 'Public source', tone: 'neutral' };
+		return { label: 'Unverified', tone: 'caution' };
+	};
+
+	let provenanceTooltipVisible = $state(false);
 
 	let searchQuery = $state('');
 	let loading = $state(false);
@@ -251,6 +273,7 @@
 	const installTools = new SvelteSet<string>(['agents']);
 	let installScopeInitialized = false;
 	let installConfigOpen = $state(false);
+	let securityOpen = $state(false);
 	let backfilledInstallScopes = $state<Record<string, SkillScope[]>>({});
 
 	const selectedResult = $derived.by<MarketplaceSkill | null>(() => {
@@ -472,6 +495,7 @@
 	const openSkill = async (skill: MarketplaceSkill): Promise<void> => {
 		detailLoading = true;
 		installError = null;
+		securityOpen = false;
 		selectedKey = skillKey(skill);
 		try {
 			const response = await getMarketplaceSkillContent(skill, workspaceId ?? undefined);
@@ -521,6 +545,17 @@
 		}
 	};
 
+	let lastSyncedQuery = '';
+	$effect(() => {
+		if (!useExternalSearch || externalSearchQuery === undefined) return;
+		const ext = externalSearchQuery;
+		if (ext !== lastSyncedQuery) {
+			lastSyncedQuery = ext;
+			searchQuery = ext;
+			scheduleSearch();
+		}
+	});
+
 	onMount(() => {
 		void runSearch(DEFAULT_QUERY);
 		return () => {
@@ -532,41 +567,49 @@
 </script>
 
 <div class="marketplace-shell">
-	<div class="marketplace-toolbar">
-		<label class="marketplace-search">
-			<Search size={16} />
-			<input
-				type="text"
-				bind:value={searchQuery}
-				placeholder="Search Vercel skills.sh..."
-				autocapitalize="off"
-				autocorrect="off"
-				spellcheck="false"
-				oninput={scheduleSearch}
-				onkeydown={(event) => {
-					if (event.key === 'Enter') {
-						void runSearch();
-					}
-				}}
-			/>
-		</label>
-		<button type="button" class="btn-primary" onclick={() => runSearch()} disabled={loading}>
-			{#if loading}
-				<LoaderCircle size={16} class="spin" />
-			{:else}
-				<Search size={16} />
-			{/if}
-			Search
-		</button>
-	</div>
-
-	<div class="marketplace-note">
-		<ShieldCheck size={14} />
-		<span>
-			Powered by <strong>Vercel skills.sh</strong>. Security signals below are metadata-based
-			provenance checks, not a full code audit by Workset.
-		</span>
-	</div>
+	{#if !useExternalSearch}
+		<div class="marketplace-toolbar">
+			<label class="marketplace-search">
+				{#if loading}
+					<LoaderCircle size={14} class="spin" />
+				{:else}
+					<Search size={14} />
+				{/if}
+				<input
+					type="text"
+					bind:value={searchQuery}
+					placeholder="Search skills.sh..."
+					autocapitalize="off"
+					autocorrect="off"
+					spellcheck="false"
+					oninput={scheduleSearch}
+					onkeydown={(event) => {
+						if (event.key === 'Enter') {
+							void runSearch();
+						}
+					}}
+				/>
+			</label>
+			<div class="provenance-hint">
+				<button
+					type="button"
+					class="provenance-trigger"
+					onmouseenter={() => (provenanceTooltipVisible = true)}
+					onmouseleave={() => (provenanceTooltipVisible = false)}
+					onfocus={() => (provenanceTooltipVisible = true)}
+					onblur={() => (provenanceTooltipVisible = false)}
+				>
+					<Info size={14} />
+				</button>
+				{#if provenanceTooltipVisible}
+					<div class="provenance-tooltip">
+						Powered by <strong>Vercel skills.sh</strong>. Security signals are metadata-based
+						provenance checks, not a full code audit by Workset.
+					</div>
+				{/if}
+			</div>
+		</div>
+	{/if}
 
 	{#if searchError}
 		<div class="banner error">{searchError}</div>
@@ -605,65 +648,34 @@
 					<div class="empty-state ws-empty-state">No marketplace skills matched that query.</div>
 				{:else}
 					{#each results as skill (`${skill.provider}:${skill.externalId}`)}
+						{@const trust = getTrustChip(skill)}
 						<button
 							type="button"
 							class="marketplace-card"
 							class:active={selectedKey === `${skill.provider}:${skill.externalId}`}
 							onclick={() => openSkill(skill)}
 						>
-							<div class="marketplace-card-header">
-								<div>
-									<h3>{skill.name}</h3>
-									{#if skill.description}
-										<p>{skill.description}</p>
-									{/if}
-								</div>
-								<div class="card-badges">
+							<div class="card-top">
+								<span class="card-name">
+									{skill.name}
 									{#if isInstalled(skill)}
-										{#each getInstalledScopes(skill) as scope (scope)}
-											<span class="installed-badge">{formatScopeLabel(scope)} installed</span>
-										{/each}
+										<span class="installed-dot" title="Installed"></span>
 									{/if}
-									<span class="provider-badge">skills.sh</span>
-								</div>
+								</span>
+								{#if skill.description}
+									<p class="card-desc">{skill.description}</p>
+								{/if}
 							</div>
-							<div class="marketplace-security-row">
-								<span class={`security-pill ${getSecuritySignal(skill).tone}`}
-									>{getSecuritySignal(skill).label}</span
-								>
-								<span class="security-detail">{getSecuritySignal(skill).detail}</span>
-							</div>
-							{#if hasAuditSummaries(skill)}
-								<div class="audit-badges">
-									{#each skill.auditSummaries ?? [] as audit (audit.provider)}
-										<span class={`audit-chip ${auditStatusTone(audit.status)}`}>
-											<strong>{auditLabel(audit.provider)}</strong>
-											{audit.status}
-										</span>
-									{/each}
-								</div>
-							{/if}
-							<div class="marketplace-card-footer">
-								<span class="footer-source">{skill.sourceRepo || skill.sourceUrl}</span>
-								<div class="footer-metrics">
-									<span>{formatInstallCount(skill.installCount)}</span>
-									{#if skill.weeklyInstalls != null}
-										<span class="footer-metric">
-											<TrendingUp size={11} />
-											{Intl.NumberFormat('en-US', { notation: 'compact' }).format(
-												skill.weeklyInstalls,
-											)}/wk
-										</span>
-									{/if}
+							<div class="card-bottom">
+								<span class={`trust-chip ${trust.tone}`}>{trust.label}</span>
+								<span class="card-metrics">
+									{formatInstallCount(skill.installCount)}
 									{#if skill.githubStars != null}
-										<span class="footer-metric">
-											<Star size={11} />
-											{Intl.NumberFormat('en-US', { notation: 'compact' }).format(
-												skill.githubStars,
-											)}
-										</span>
+										<span class="card-metric-sep">&middot;</span>
+										<Star size={10} />
+										{Intl.NumberFormat('en-US', { notation: 'compact' }).format(skill.githubStars)}
 									{/if}
-								</div>
+								</span>
 							</div>
 						</button>
 					{/each}
@@ -681,112 +693,123 @@
 				{:else if !selectedResult || !content}
 					<div class="detail-scroll">
 						<div class="empty-state ws-empty-state">
-							Pick a marketplace skill to inspect and install it.
+							Pick a marketplace skill to preview and install.
 						</div>
 					</div>
 				{:else}
 					<div class="detail-scroll">
 						<div class="marketplace-detail-card">
-							<div class="marketplace-detail-header">
-								<div>
-									<div class="detail-title-row">
-										<h3>{selectedResult.name}</h3>
-										{#if isInstalled(selectedResult)}
-											{#each getInstalledScopes(selectedResult) as scope (scope)}
-												<span class="installed-badge">{formatScopeLabel(scope)} installed</span>
-											{/each}
-										{/if}
-										<span class="provider-badge">skills.sh</span>
-									</div>
-									{#if selectedResult.description}
-										<p>{selectedResult.description}</p>
+							<!-- Title row: name + verified badge + source link -->
+							<div class="detail-title-row">
+								<div class="detail-title-left">
+									<h3>{selectedResult.name}</h3>
+									{#if selectedResult.verified || selectedResult.repoVerified}
+										<span class="verified-pill">
+											<ShieldCheck size={12} />
+											{selectedResult.repoVerified ? 'Verified org' : 'Verified'}
+										</span>
+									{/if}
+									{#if isInstalled(selectedResult)}
+										{#each getInstalledScopes(selectedResult) as scope (scope)}
+											<span class="installed-badge">{formatScopeLabel(scope)} installed</span>
+										{/each}
 									{/if}
 								</div>
-								<a href={selectedResult.sourceUrl} target="_blank" rel="noreferrer">
-									<ExternalLink size={14} />
+								<a
+									class="source-link"
+									href={selectedResult.sourceUrl}
+									target="_blank"
+									rel="noreferrer"
+								>
+									<ExternalLink size={13} />
 									Source
 								</a>
 							</div>
 
-							<div class="marketplace-metadata">
+							<!-- Description (hero content) -->
+							{#if selectedResult.description}
+								<p class="detail-description">{selectedResult.description}</p>
+							{/if}
+
+							<!-- Skill content preview — the hero -->
+							<div class="marketplace-preview">
+								<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+								{@html renderedMarkdown}
+							</div>
+
+							<!-- Secondary metadata -->
+							<div class="detail-about">
 								<span>{formatInstallCount(selectedResult.installCount)}</span>
-								{#if selectedResult.weeklyInstalls != null}
-									<span>{formatInstallCount(selectedResult.weeklyInstalls)} weekly</span>
-								{/if}
 								{#if selectedResult.githubStars != null}
-									<span
-										>{Intl.NumberFormat('en-US', { notation: 'compact' }).format(
+									<span>
+										<Star size={11} />
+										{Intl.NumberFormat('en-US', { notation: 'compact' }).format(
 											selectedResult.githubStars,
-										)} GitHub stars</span
-									>
+										)} stars
+									</span>
 								{/if}
 								{#if selectedResult.firstSeen}
 									<span>First seen {selectedResult.firstSeen}</span>
-								{/if}
-								{#if selectedResult.repoVerified}
-									<span class="verified-pill">
-										<ShieldCheck size={12} />
-										Verified org
-									</span>
-								{/if}
-								{#if selectedResult.verified}
-									<span class="verified-pill">
-										<ShieldCheck size={12} />
-										Verified
-									</span>
 								{/if}
 								{#if selectedResult.trustScore != null}
 									<span>Trust {selectedResult.trustScore.toFixed(1)}</span>
 								{/if}
 							</div>
 
-							<div class="security-panel">
-								<div class="security-panel-header">
-									<div>
-										<h4>Security Audit Signals</h4>
-										<p>Provider metadata and provenance, not a Workset code audit.</p>
-									</div>
-									<span class={`security-pill ${getSecuritySignal(selectedResult).tone}`}
+							<!-- Security disclosure (collapsed by default) -->
+							<div class="security-disclosure">
+								<button
+									type="button"
+									class="security-disclosure-trigger"
+									onclick={() => {
+										securityOpen = !securityOpen;
+									}}
+								>
+									<LockKeyhole size={13} />
+									<span class={`trust-chip inline ${getSecuritySignal(selectedResult).tone}`}
 										>{getSecuritySignal(selectedResult).label}</span
 									>
-								</div>
-								<div class="security-summary">
-									<LockKeyhole size={14} />
-									<span>{getSecuritySignal(selectedResult).detail}</span>
-								</div>
-								{#if hasAuditSummaries(selectedResult)}
-									<div class="audit-grid">
-										{#each selectedResult.auditSummaries ?? [] as audit (audit.provider)}
-											<a
-												class={`audit-card ${auditStatusTone(audit.status)}`}
-												href={audit.detailUrl ||
-													selectedResult.listingUrl ||
-													selectedResult.sourceUrl}
-												target="_blank"
-												rel="noreferrer"
-											>
-												<span class="audit-card-label">{audit.provider}</span>
-												<strong>{audit.status}</strong>
-											</a>
-										{/each}
+									<span class="security-disclosure-label">Security details</span>
+									{#if securityOpen}
+										<ChevronUp size={13} />
+									{:else}
+										<ChevronDown size={13} />
+									{/if}
+								</button>
+								{#if securityOpen}
+									<div class="security-disclosure-body">
+										<div class="security-summary">
+											<span>{getSecuritySignal(selectedResult).detail}</span>
+										</div>
+										{#if hasAuditSummaries(selectedResult)}
+											<div class="audit-grid">
+												{#each selectedResult.auditSummaries ?? [] as audit (audit.provider)}
+													<a
+														class={`audit-card ${auditStatusTone(audit.status)}`}
+														href={audit.detailUrl ||
+															selectedResult.listingUrl ||
+															selectedResult.sourceUrl}
+														target="_blank"
+														rel="noreferrer"
+													>
+														<span class="audit-card-label">{audit.provider}</span>
+														<strong>{audit.status}</strong>
+													</a>
+												{/each}
+											</div>
+										{/if}
+										<div class="security-facts">
+											<span>Source repo: {selectedResult.sourceRepo || 'Unknown'}</span>
+											<span>Raw host: {getSourceHost(selectedResult.rawSkillUrl)}</span>
+											{#if selectedResult.trustScore != null}
+												<span>Trust score: {selectedResult.trustScore.toFixed(1)}</span>
+											{/if}
+											{#if selectedResult.benchmarkScore != null}
+												<span>Benchmark score: {selectedResult.benchmarkScore}</span>
+											{/if}
+										</div>
 									</div>
 								{/if}
-								<div class="security-facts">
-									<span>Source repo: {selectedResult.sourceRepo || 'Unknown'}</span>
-									<span>Raw host: {getSourceHost(selectedResult.rawSkillUrl)}</span>
-									{#if selectedResult.trustScore != null}
-										<span>Trust score: {selectedResult.trustScore.toFixed(1)}</span>
-									{/if}
-									{#if selectedResult.benchmarkScore != null}
-										<span>Benchmark score: {selectedResult.benchmarkScore}</span>
-									{/if}
-									<span>Installs: {formatInstallCount(selectedResult.installCount)}</span>
-								</div>
-							</div>
-
-							<div class="marketplace-preview">
-								<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-								{@html renderedMarkdown}
 							</div>
 						</div>
 					</div>
@@ -862,9 +885,8 @@
 									{/if}
 								</button>
 							</div>
-							<button
-								type="button"
-								class="btn-primary"
+							<Button
+								variant="primary"
 								onclick={installSelectedSkill}
 								disabled={!canInstall || installing}
 							>
@@ -875,7 +897,7 @@
 									<Download size={16} />
 									Install
 								{/if}
-							</button>
+							</Button>
 						</div>
 					</div>
 				{/if}

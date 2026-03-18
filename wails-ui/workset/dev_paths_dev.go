@@ -47,12 +47,10 @@ func ensureDevConfig() {
 		return
 	}
 
-	workspaceRoot := filepath.Join(dir, "workspaces")
 	worksetRoot := dir
 	repoStoreRoot := filepath.Join(dir, "repos")
 	if !info.Exists {
 		_, _, _ = svc.SetDefault(ctx, "defaults.workset_root", worksetRoot)
-		_, _, _ = svc.SetDefault(ctx, "defaults.workspace_root", workspaceRoot)
 		_, _, _ = svc.SetDefault(ctx, "defaults.repo_store_root", repoStoreRoot)
 		return
 	}
@@ -60,9 +58,6 @@ func ensureDevConfig() {
 	// Force dev roots to the dev sandbox path and persist keys if they are only inferred in memory.
 	if strings.TrimSpace(cfg.Defaults.WorksetRoot) != worksetRoot || !defaultsKeyExists(info.Path, "workset_root") {
 		_, _, _ = svc.SetDefault(ctx, "defaults.workset_root", worksetRoot)
-	}
-	if strings.TrimSpace(cfg.Defaults.WorkspaceRoot) != workspaceRoot || !defaultsKeyExists(info.Path, "workspace_root") {
-		_, _, _ = svc.SetDefault(ctx, "defaults.workspace_root", workspaceRoot)
 	}
 	if strings.TrimSpace(cfg.Defaults.RepoStoreRoot) != repoStoreRoot || !defaultsKeyExists(info.Path, "repo_store_root") {
 		_, _, _ = svc.SetDefault(ctx, "defaults.repo_store_root", repoStoreRoot)

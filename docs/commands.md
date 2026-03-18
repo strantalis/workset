@@ -8,34 +8,22 @@ Quick lookup for CLI commands and intent.
 
 | Command | Purpose |
 | --- | --- |
-| `workset new` | Create a workspace. |
-| `workset ls` | List workspaces. |
-| `workset exec` | Run a command in a workspace. |
+| `workset new` | Create a thread, optionally under an explicit workset with `--workset` and seeded repos via `--repo`. |
+| `workset ls` | List registered threads. |
 | `workset hooks run` | Run repo hooks for an event. |
-| `workset session start` | Start a persistent session. |
-| `workset session attach` | Attach to a session. |
-| `workset session stop` | Stop a session. |
-| `workset session show` | Show session details. |
-| `workset session ls` | List sessions for a workspace. |
-| `workset version` | Print version. |
-| `workset config show` | Show config values. |
-| `workset config set` | Set config values. |
-| `workset repo alias ls` | List repo aliases. |
-| `workset repo alias add` | Add a repo alias. |
-| `workset repo alias set` | Update a repo alias. |
-| `workset repo alias rm` | Remove a repo alias. |
-| `workset repo add` | Add a repo to a workspace. |
-| `workset repo ls` | List repos in a workspace. |
-| `workset repo rm` | Remove a repo from a workspace. |
-| `workset status` | Show workspace status. |
-| `workset group ls` | List templates (groups). |
-| `workset group show` | Show template contents. |
-| `workset group create` | Create a template. |
-| `workset group rm` | Remove a template. |
-| `workset group add` | Add a repo alias to a template. |
-| `workset group remove` | Remove a repo alias from a template. |
-| `workset group apply` | Apply a template to a workspace. |
-| `workset rm` | Remove a workspace (with `--delete`, stop sessions and delete on disk). |
+| `workset version` | Print version information. |
+| `workset config show` | Show the canonical global config. |
+| `workset config set` | Set a supported `defaults.*` value. |
+| `workset config recover` | Rebuild config registrations by scanning `workset_root/worksets`. |
+| `workset repo registry ls` | List registered repos. |
+| `workset repo registry add` | Register a repo from a Git URL or local path. |
+| `workset repo registry set` | Update a registered repo. |
+| `workset repo registry rm` | Unregister a repo. |
+| `workset repo add` | Add a repo to a thread. |
+| `workset repo ls` | List repos in a thread. |
+| `workset repo rm` | Remove a repo from a thread. |
+| `workset status` | Show thread status. |
+| `workset rm` | Remove a thread and, with `--delete`, delete it on disk. |
 
 !!! note
-    Commands that operate on a workspace require `-w <workspace>` unless `defaults.workspace` is set.
+    Commands that operate on a thread require `-t <thread>` unless `defaults.thread` is set.

@@ -57,12 +57,7 @@ func TestSetDefaultUpdatesConfig(t *testing.T) {
 
 func TestSetDefaultErrors(t *testing.T) {
 	env := newTestEnv(t)
-	_, _, err := env.svc.SetDefault(context.Background(), "defaults.session_backend", "unknown")
-	if err == nil {
-		t.Fatalf("expected backend error")
-	}
-
-	_, _, err = env.svc.SetDefault(context.Background(), "defaults.agent", "cursor")
+	_, _, err := env.svc.SetDefault(context.Background(), "defaults.agent", "cursor")
 	if err == nil {
 		t.Fatalf("expected unsupported agent error")
 	}
@@ -86,23 +81,15 @@ func TestSetDefaultErrors(t *testing.T) {
 func TestSetDefaultVariousKeys(t *testing.T) {
 	env := newTestEnv(t)
 	cases := map[string]string{
-		"defaults.remote":                    "origin",
-		"defaults.workspace":                 "demo",
-		"defaults.workset_root":              "/tmp/workset",
-		"defaults.workspace_root":            "/tmp/workspaces",
-		"defaults.repo_store_root":           "/tmp/repos",
-		"defaults.session_name_format":       "ws-{workspace}",
-		"defaults.session_theme":             "dark",
-		"defaults.session_tmux_status_style": "bold",
-		"defaults.session_tmux_status_left":  "left",
-		"defaults.session_tmux_status_right": "right",
-		"defaults.session_screen_hardstatus": "hard",
-		"defaults.session_backend":           "exec",
-		"defaults.agent":                     "codex",
-		"defaults.agent_model":               "gpt-4o-mini",
-		"defaults.terminal_idle_timeout":     "0",
-		"defaults.terminal_protocol_log":     "on",
-		"defaults.terminal_debug_overlay":    "off",
+		"defaults.remote":                 "origin",
+		"defaults.thread":                 "demo",
+		"defaults.workset_root":           "/tmp/workset",
+		"defaults.repo_store_root":        "/tmp/repos",
+		"defaults.agent":                  "codex",
+		"defaults.agent_model":            "gpt-4o-mini",
+		"defaults.terminal_idle_timeout":  "0",
+		"defaults.terminal_protocol_log":  "on",
+		"defaults.terminal_debug_overlay": "off",
 	}
 	for key, value := range cases {
 		if _, _, err := env.svc.SetDefault(context.Background(), key, value); err != nil {
@@ -110,14 +97,11 @@ func TestSetDefaultVariousKeys(t *testing.T) {
 		}
 	}
 	cfg := env.loadConfig()
-	if cfg.Defaults.Workspace != "demo" {
-		t.Fatalf("workspace default not set")
+	if cfg.Defaults.Thread != "demo" {
+		t.Fatalf("thread default not set")
 	}
 	if cfg.Defaults.WorksetRoot != "/tmp/workset" {
 		t.Fatalf("workset_root default not set")
-	}
-	if cfg.Defaults.SessionBackend != "exec" {
-		t.Fatalf("session backend not set")
 	}
 	if cfg.Defaults.Agent != "codex" {
 		t.Fatalf("agent default not set")

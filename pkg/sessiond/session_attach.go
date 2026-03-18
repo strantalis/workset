@@ -58,6 +58,7 @@ func (s *Session) snapshotAttachLocked(req AttachRequest) attachSnapshot {
 				snapshot.replay = append(snapshot.replay, replay...)
 			}
 		}
+		snapshot.replay = stripReplayQueries(snapshot.replay)
 	}
 
 	s.mu.Lock()

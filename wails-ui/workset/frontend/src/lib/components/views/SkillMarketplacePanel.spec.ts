@@ -104,10 +104,11 @@ description: Frontend design skill
 			},
 		});
 
-		await fireEvent.input(getByPlaceholderText('Search Vercel skills.sh...'), {
+		const searchInput = getByPlaceholderText('Search skills.sh...');
+		await fireEvent.input(searchInput, {
 			target: { value: 'frontend' },
 		});
-		await fireEvent.click(getByRole('button', { name: 'Search' }));
+		await fireEvent.keyDown(searchInput, { key: 'Enter' });
 
 		await findAllByText('frontend-design');
 		await waitFor(() =>
@@ -135,7 +136,7 @@ description: Frontend design skill
 		);
 	});
 
-	test('renders audit data returned from the skill detail payload', async () => {
+	test('renders audit data in the security disclosure panel', async () => {
 		const searchSkill = buildMarketplaceSkill({
 			auditSummaries: [],
 			repoVerified: null,
@@ -188,20 +189,32 @@ description: Frontend design skill
 # Frontend Design`,
 		});
 
-		const { findAllByText, getByText } = render(SkillMarketplacePanel, {
+		const { findByText, findAllByText, getByText } = render(SkillMarketplacePanel, {
 			props: {
 				workspaceId: 'ws-1',
 			},
 		});
 
-		await findAllByText('Gen Agent Trust Hub');
-		expect((await findAllByText('Audits available')).length).toBeGreaterThan(0);
+		// The trust chip on the card shows aggregate trust
+		await findAllByText('frontend-design');
+
+		// Wait for detail hydration
+		await waitFor(() => expect(apiMocks.getMarketplaceSkillContent).toHaveBeenCalled());
+
+		// Verified org badge should be visible in the title row
+		expect(getByText('Verified org')).toBeInTheDocument();
+
+		// Security disclosure is collapsed by default — expand it
+		const securityTrigger = await findByText('Security details');
+		await fireEvent.click(securityTrigger);
+
+		// Now audit details should be visible
+		expect((await findAllByText('Gen Agent Trust Hub')).length).toBeGreaterThan(0);
 		expect((await findAllByText('Socket')).length).toBeGreaterThan(0);
 		expect((await findAllByText('Snyk')).length).toBeGreaterThan(0);
-		expect(getByText('Verified org')).toBeInTheDocument();
 	});
 
-	test('marks marketplace skills already installed with their scope', async () => {
+	test('marks marketplace skills already installed with badge in detail pane', async () => {
 		const installedWorksetSkill = buildInstalledSkill();
 		const installedGlobalSkill = buildInstalledSkill({
 			scope: 'global',
@@ -237,6 +250,7 @@ description: Frontend design skill
 			},
 		});
 
+		// Installed badges appear in the detail pane title row
 		expect((await findAllByText('Workset installed')).length).toBeGreaterThan(0);
 		expect((await findAllByText('Global installed')).length).toBeGreaterThan(0);
 	});
@@ -319,19 +333,17 @@ description: Frontend design skill
 			}),
 		);
 
-		const { getByPlaceholderText, getByRole, findAllByText, queryByText } = render(
-			SkillMarketplacePanel,
-			{
-				props: {
-					workspaceId: 'ws-1',
-				},
+		const { getByPlaceholderText, findAllByText, queryByText } = render(SkillMarketplacePanel, {
+			props: {
+				workspaceId: 'ws-1',
 			},
-		);
+		});
 
-		await fireEvent.input(getByPlaceholderText('Search Vercel skills.sh...'), {
+		const searchInput = getByPlaceholderText('Search skills.sh...');
+		await fireEvent.input(searchInput, {
 			target: { value: 'react' },
 		});
-		await fireEvent.click(getByRole('button', { name: 'Search' }));
+		await fireEvent.keyDown(searchInput, { key: 'Enter' });
 
 		freshSearch.resolve([freshSkill]);
 		await findAllByText('react-review');

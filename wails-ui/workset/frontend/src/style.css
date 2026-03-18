@@ -7,10 +7,10 @@
 	--font-body: 'IBM Plex Sans', system-ui, sans-serif;
 	--font-display: 'Sora', system-ui, sans-serif;
 	--font-mono: 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
-	--bg: #0b0f18;
-	--panel: #0f1824;
-	--panel-strong: #141f2e;
-	--panel-soft: #0e1723;
+	--bg: #0c1019;
+	--panel: #101925;
+	--panel-strong: #15202f;
+	--panel-soft: #0f1824;
 	--text: #f2f6fb;
 	--muted: #a3b5c9;
 	--border: #243244;
@@ -18,6 +18,9 @@
 	--brand-green: #86c442;
 	--brand-orange: #f28c28;
 	--accent: var(--brand-blue);
+	--cta: #7bb836;
+	--cta-rgb: 123, 184, 54;
+	--cta-subtle: color-mix(in srgb, var(--cta) 12%, transparent);
 	--warning: #f59e0b;
 	--danger: #ef4444;
 	--success: var(--brand-green);
@@ -50,7 +53,7 @@
 	--status-info: #58a6ff;
 
 	/* Semantic additions */
-	--subtle: #6b7f95;
+	--subtle: #8a9bb0;
 	--border-strong: #2a3a4e;
 	--yellow: #f59e0b;
 	--purple: #8b8aed;
@@ -69,8 +72,8 @@
 	--radius-lg: 12px;
 
 	/* Transition timing */
-	--transition-fast: 120ms ease;
-	--transition-normal: 160ms ease;
+	--transition-fast: 120ms ease-out;
+	--transition-normal: 160ms ease-out;
 
 	/* Typography scale */
 	--text-xs: 12px;
@@ -100,6 +103,10 @@
 	--space-4: 16px;
 	--space-5: 20px;
 	--space-6: 24px;
+
+	/* Solid surfaces (modals, settings — no blur) */
+	--surface-solid: #172335;
+	--surface-solid-strong: #1a2840;
 
 	/* Vibrancy surfaces */
 	--surface-translucent: rgba(15, 24, 36, 0.65);

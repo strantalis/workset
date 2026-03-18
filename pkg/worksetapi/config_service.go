@@ -3,11 +3,9 @@ package worksetapi
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/strantalis/workset/internal/config"
-	"github.com/strantalis/workset/internal/session"
 )
 
 // GetConfig loads the global config and its load metadata.
@@ -34,42 +32,12 @@ func setGlobalDefault(cfg *config.GlobalConfig, key, value string) error {
 		cfg.Defaults.Remote = value
 	case "defaults.base_branch":
 		cfg.Defaults.BaseBranch = value
-	case "defaults.workspace":
-		cfg.Defaults.Workspace = value
+	case "defaults.thread":
+		cfg.Defaults.Thread = value
 	case "defaults.workset_root":
 		cfg.Defaults.WorksetRoot = value
-		if strings.TrimSpace(cfg.Defaults.WorkspaceRoot) == "" {
-			cfg.Defaults.WorkspaceRoot = filepath.Join(strings.TrimSpace(value), "workspaces")
-		}
-	case "defaults.workspace_root":
-		cfg.Defaults.WorkspaceRoot = value
-		if strings.TrimSpace(cfg.Defaults.WorksetRoot) == "" {
-			root := filepath.Clean(strings.TrimSpace(value))
-			if filepath.Base(root) == "workspaces" {
-				root = filepath.Dir(root)
-			}
-			cfg.Defaults.WorksetRoot = root
-		}
 	case "defaults.repo_store_root":
 		cfg.Defaults.RepoStoreRoot = value
-	case "defaults.session_backend":
-		backend, err := session.ParseBackend(value)
-		if err != nil {
-			return err
-		}
-		cfg.Defaults.SessionBackend = string(backend)
-	case "defaults.session_name_format":
-		cfg.Defaults.SessionNameFormat = value
-	case "defaults.session_theme":
-		cfg.Defaults.SessionTheme = value
-	case "defaults.session_tmux_status_style":
-		cfg.Defaults.SessionTmuxStyle = value
-	case "defaults.session_tmux_status_left":
-		cfg.Defaults.SessionTmuxLeft = value
-	case "defaults.session_tmux_status_right":
-		cfg.Defaults.SessionTmuxRight = value
-	case "defaults.session_screen_hardstatus":
-		cfg.Defaults.SessionScreenHard = value
 	case "defaults.agent":
 		agent := strings.ToLower(strings.TrimSpace(value))
 		switch agent {

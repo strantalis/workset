@@ -113,15 +113,10 @@ func TestRecoverConfigScansNestedWorksetThreadRootByDefault(t *testing.T) {
 	env := newTestEnv(t)
 	cfg := env.loadConfig()
 	worksetRoot := filepath.Join(env.root, "workset-home")
-	workspaceRoot := filepath.Join(worksetRoot, "workspaces")
 	threadRoot := filepath.Join(worksetRoot, "worksets", "core", "demo")
 	cfg.Defaults.WorksetRoot = worksetRoot
-	cfg.Defaults.WorkspaceRoot = workspaceRoot
 	env.saveConfig(cfg)
 
-	if err := os.MkdirAll(workspaceRoot, 0o755); err != nil {
-		t.Fatalf("mkdir workspace root: %v", err)
-	}
 	if err := os.MkdirAll(threadRoot, 0o755); err != nil {
 		t.Fatalf("mkdir thread root: %v", err)
 	}
@@ -136,8 +131,9 @@ func TestRecoverConfigScansNestedWorksetThreadRootByDefault(t *testing.T) {
 	if len(result.Payload.WorkspacesRecovered) != 1 || result.Payload.WorkspacesRecovered[0] != "demo" {
 		t.Fatalf("unexpected recovered workspaces: %+v", result.Payload.WorkspacesRecovered)
 	}
-	if result.Payload.WorkspaceRoot != workspaceRoot {
-		t.Fatalf("unexpected primary workspace root: got %q want %q", result.Payload.WorkspaceRoot, workspaceRoot)
+	expectedRoot := filepath.Join(worksetRoot, "worksets")
+	if result.Payload.WorksetRoot != expectedRoot {
+		t.Fatalf("unexpected primary workset root: got %q want %q", result.Payload.WorksetRoot, expectedRoot)
 	}
 
 	loaded := env.loadConfig()

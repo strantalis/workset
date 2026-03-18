@@ -56,6 +56,12 @@ export const createTerminalAttachOpenLifecycle = <THandle extends TerminalAttach
 				handle.container.replaceChildren();
 				handle.terminal.open(handle.container);
 				handle.opened = true;
+				// Disable the canvas-rendered scrollbar for a cleaner look.
+				const renderer = (handle.terminal as { renderer?: { renderScrollbarEnabled?: boolean } })
+					.renderer;
+				if (renderer) {
+					renderer.renderScrollbarEnabled = false;
+				}
 			}
 			handle.openWindow = currentWindow;
 

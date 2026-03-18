@@ -1,5 +1,5 @@
 ---
-description: Install Workset, create a workspace, add repos, and set defaults.
+description: Install Workset, create threads, register repos, and set defaults.
 ---
 
 # Getting Started
@@ -38,73 +38,36 @@ description: Install Workset, create a workspace, add repos, and set defaults.
 !!! tip
     If you use `go install`, ensure `$(go env GOPATH)/bin` is on your PATH.
 
-## Desktop app (Wails)
-
-Workset includes a desktop UI built with Wails (Go backend + Svelte frontend). The app lives in `wails-ui/workset`.
-
-```bash
-cd wails-ui/workset
-wails3 dev
-wails3 package
-```
-
-You'll need the Wails CLI plus Go and Node.js installed locally.
-
-## Create a workspace
+## Create a thread
 
 === "From scratch"
     ```bash
     workset new demo
-    workset repo add git@github.com:your/org-repo.git -w demo
-    workset status -w demo
+    workset repo add git@github.com:your/org-repo.git -t demo
+    workset status -t demo
     ```
 
-=== "From a template"
+=== "With registered repos and an explicit workset"
     ```bash
-    workset group create platform
-    workset group add platform repo-alias
-    workset group apply -w demo platform
+    workset repo registry add platform git@github.com:your/platform.git
+    workset repo registry add api git@github.com:your/api.git
+    workset new auth-spike --workset platform-core --repo platform --repo api
     ```
 
-## Set a default workspace
+    This creates a thread at `~/.workset/worksets/platform-core/auth-spike` by default.
+
+## Set a default thread
 
 ```bash
-workset config set defaults.workspace demo
+workset config set defaults.thread demo
 ```
 
 !!! tip
-    Once `defaults.workspace` is set, you can omit `-w` for most commands.
+    Once `defaults.thread` is set, you can omit `-t` for most commands.
 
-## Start a session
+## GitHub authentication
 
-```bash
-workset session start demo -- zsh
-workset session start demo --yes -- zsh
-workset session attach demo
-workset session attach demo --yes
-workset session stop demo
-workset session stop demo --yes
-```
-
-To force a backend:
-
-```bash
-workset session start demo --backend exec --interactive
-```
-
-## GitHub authentication (desktop app)
-
-Workset's desktop UI uses **GitHub CLI** by default. Install `gh`, run `gh auth login`, then open Settings -> GitHub to confirm you're connected.
-
-If you prefer not to use the CLI, switch to **Personal access token** in Settings -> GitHub and save a token with access to the repos you need (including private repos). Workset stores the token in your OS keychain.
-
-CLI-only usage (no GUI): set `WORKSET_GITHUB_PAT` to import a PAT into the keychain, or add a `github.cli_path` override in `~/.workset/config.yaml` if `gh` is not on PATH.
-
-## Run a one-off command
-
-```bash
-workset exec demo -- ls
-```
+See the [CLI page](cli.md#github-auth) for setup instructions covering both CLI and desktop app.
 
 ## Enable shell completion (optional)
 
@@ -122,7 +85,7 @@ For fish or powershell, see the [CLI](cli.md) page for the full set of commands.
 
 ## Next steps
 
-- Read the [Concepts](concepts.md) page to understand workspaces, repo defaults, and templates.
-- Review the [Config](config.md) page to customize defaults and repo aliases.
+- Read the [Concepts](concepts.md) page to understand worksets, threads, and registered repos.
+- Review the [Config](config.md) page to customize defaults and registered repos.
 - Use the Command Index to find the right CLI call fast.
 - Explore the [Desktop App](desktop-app.md) if you prefer a GUI.

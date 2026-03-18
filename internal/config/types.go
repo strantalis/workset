@@ -3,17 +3,9 @@ package config
 type Defaults struct {
 	Remote               string              `yaml:"remote" json:"remote" mapstructure:"remote"`
 	BaseBranch           string              `yaml:"base_branch" json:"base_branch" mapstructure:"base_branch"`
-	Workspace            string              `yaml:"workspace" json:"workspace" mapstructure:"workspace"`
+	Thread               string              `yaml:"thread" json:"thread" mapstructure:"thread"`
 	WorksetRoot          string              `yaml:"workset_root" json:"workset_root" mapstructure:"workset_root"`
-	WorkspaceRoot        string              `yaml:"workspace_root" json:"workspace_root" mapstructure:"workspace_root"`
 	RepoStoreRoot        string              `yaml:"repo_store_root" json:"repo_store_root" mapstructure:"repo_store_root"`
-	SessionBackend       string              `yaml:"session_backend" json:"session_backend" mapstructure:"session_backend"`
-	SessionNameFormat    string              `yaml:"session_name_format" json:"session_name_format" mapstructure:"session_name_format"`
-	SessionTheme         string              `yaml:"session_theme" json:"session_theme" mapstructure:"session_theme"`
-	SessionTmuxStyle     string              `yaml:"session_tmux_status_style" json:"session_tmux_status_style" mapstructure:"session_tmux_status_style"`
-	SessionTmuxLeft      string              `yaml:"session_tmux_status_left" json:"session_tmux_status_left" mapstructure:"session_tmux_status_left"`
-	SessionTmuxRight     string              `yaml:"session_tmux_status_right" json:"session_tmux_status_right" mapstructure:"session_tmux_status_right"`
-	SessionScreenHard    string              `yaml:"session_screen_hardstatus" json:"session_screen_hardstatus" mapstructure:"session_screen_hardstatus"`
 	Agent                string              `yaml:"agent" json:"agent" mapstructure:"agent"`
 	AgentModel           string              `yaml:"agent_model" json:"agent_model" mapstructure:"agent_model"`
 	TerminalIdleTimeout  string              `yaml:"terminal_idle_timeout" json:"terminal_idle_timeout" mapstructure:"terminal_idle_timeout"`
@@ -37,21 +29,10 @@ type RegisteredRepo struct {
 	DefaultBranch string `yaml:"default_branch" json:"default_branch" mapstructure:"default_branch"`
 }
 
-type Group struct {
-	Description string        `yaml:"description" json:"description" mapstructure:"description"`
-	Members     []GroupMember `yaml:"members" json:"members" mapstructure:"members"`
-}
-
-type GroupMember struct {
-	Repo          string   `yaml:"repo" json:"repo" mapstructure:"repo"`
-	LegacyRemotes *Remotes `yaml:"remotes,omitempty" json:"-" mapstructure:"remotes"`
-}
-
 type WorkspaceRef struct {
 	Path           string   `yaml:"path" json:"path" mapstructure:"path"`
 	Workset        string   `yaml:"workset,omitempty" json:"workset,omitempty" mapstructure:"workset"`
 	RepoOverrides  []string `yaml:"repo_overrides,omitempty" json:"repo_overrides,omitempty" mapstructure:"repo_overrides"`
-	Template       string   `yaml:"template,omitempty" json:"template,omitempty" mapstructure:"template"`
 	CreatedAt      string   `yaml:"created_at,omitempty" json:"created_at,omitempty" mapstructure:"created_at"`
 	LastUsed       string   `yaml:"last_used,omitempty" json:"last_used,omitempty" mapstructure:"last_used"`
 	ArchivedAt     string   `yaml:"archived_at,omitempty" json:"archived_at,omitempty" mapstructure:"archived_at"`
@@ -64,16 +45,14 @@ type WorkspaceRef struct {
 }
 
 type GlobalConfig struct {
-	ConfigVersion    int                       `yaml:"config_version,omitempty" json:"config_version,omitempty" mapstructure:"config_version"`
-	Defaults         Defaults                  `yaml:"defaults" json:"defaults" mapstructure:"defaults"`
-	GitHub           GitHubConfig              `yaml:"github,omitempty" json:"github,omitempty" mapstructure:"github"`
-	Agent            AgentConfig               `yaml:"agent,omitempty" json:"agent,omitempty" mapstructure:"agent"`
-	Hooks            HooksConfig               `yaml:"hooks,omitempty" json:"hooks,omitempty" mapstructure:"hooks"`
-	Repos            map[string]RegisteredRepo `yaml:"repos" json:"repos" mapstructure:"repos"`
-	Groups           map[string]Group          `yaml:"groups,omitempty" json:"groups,omitempty" mapstructure:"groups"`
-	Workspaces       map[string]WorkspaceRef   `yaml:"worksets" json:"worksets" mapstructure:"worksets"`
-	LegacyWorkspaces map[string]WorkspaceRef   `yaml:"workspaces,omitempty" json:"-" mapstructure:"workspaces"`
-	WorksetRepos     map[string][]string       `yaml:"-" json:"-" mapstructure:"-"`
+	ConfigVersion int                       `yaml:"config_version,omitempty" json:"config_version,omitempty" mapstructure:"config_version"`
+	Defaults      Defaults                  `yaml:"defaults" json:"defaults" mapstructure:"defaults"`
+	GitHub        GitHubConfig              `yaml:"github,omitempty" json:"github,omitempty" mapstructure:"github"`
+	Agent         AgentConfig               `yaml:"agent,omitempty" json:"agent,omitempty" mapstructure:"agent"`
+	Hooks         HooksConfig               `yaml:"hooks,omitempty" json:"hooks,omitempty" mapstructure:"hooks"`
+	Repos         map[string]RegisteredRepo `yaml:"repos" json:"repos" mapstructure:"repos"`
+	Workspaces    map[string]WorkspaceRef   `yaml:"worksets" json:"worksets" mapstructure:"worksets"`
+	WorksetRepos  map[string][]string       `yaml:"-" json:"-" mapstructure:"-"`
 }
 
 type WorkspaceConfig struct {
@@ -82,21 +61,10 @@ type WorkspaceConfig struct {
 }
 
 type RepoConfig struct {
-	Name          string   `yaml:"name" json:"name" mapstructure:"name"`
-	LocalPath     string   `yaml:"local_path" json:"local_path" mapstructure:"local_path"`
-	Managed       bool     `yaml:"managed,omitempty" json:"managed,omitempty" mapstructure:"managed"`
-	RepoDir       string   `yaml:"repo_dir" json:"repo_dir" mapstructure:"repo_dir"`
-	LegacyRemotes *Remotes `yaml:"remotes,omitempty" json:"-" mapstructure:"remotes"`
-}
-
-type Remotes struct {
-	Base  RemoteConfig `yaml:"base" json:"base" mapstructure:"base"`
-	Write RemoteConfig `yaml:"write" json:"write" mapstructure:"write"`
-}
-
-type RemoteConfig struct {
-	Name          string `yaml:"name" json:"name" mapstructure:"name"`
-	DefaultBranch string `yaml:"default_branch,omitempty" json:"default_branch,omitempty" mapstructure:"default_branch"`
+	Name      string `yaml:"name" json:"name" mapstructure:"name"`
+	LocalPath string `yaml:"local_path" json:"local_path" mapstructure:"local_path"`
+	Managed   bool   `yaml:"managed,omitempty" json:"managed,omitempty" mapstructure:"managed"`
+	RepoDir   string `yaml:"repo_dir" json:"repo_dir" mapstructure:"repo_dir"`
 }
 
 type HooksConfig struct {

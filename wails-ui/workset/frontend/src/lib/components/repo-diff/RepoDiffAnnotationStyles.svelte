@@ -278,8 +278,8 @@
 		padding: 6px 14px;
 		border: none;
 		border-radius: 6px;
-		background: var(--accent);
-		color: white;
+		background: var(--cta);
+		color: var(--on-dark);
 		font-size: var(--text-sm);
 		font-weight: 500;
 		cursor: pointer;

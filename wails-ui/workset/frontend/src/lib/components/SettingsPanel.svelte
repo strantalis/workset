@@ -12,14 +12,15 @@
 	} from '../types';
 	import { activeWorkspace } from '../state';
 	import { toErrorMessage } from '../errors';
+	import { X } from '@lucide/svelte';
 	import SettingsSidebar from './settings/SettingsSidebar.svelte';
 	import {
 		createSettingsPanelSideEffects,
 		DEFAULT_UPDATE_PREFERENCES,
 	} from './settings/settingsPanelSideEffects';
 	import WorkspaceDefaults from './settings/sections/WorkspaceDefaults.svelte';
-	import AgentDefaults from './settings/sections/AgentDefaults.svelte';
 	import SessionDefaults from './settings/sections/SessionDefaults.svelte';
+	import SystemSection from './settings/sections/SystemSection.svelte';
 	import GitHubAuth from './settings/sections/GitHubAuth.svelte';
 	import AliasManager from './settings/sections/AliasManager.svelte';
 	import AboutSection from './settings/sections/AboutSection.svelte';
@@ -38,11 +39,10 @@
 	};
 
 	const allFields: Field[] = [
-		{ id: 'workspace', key: 'defaults.workspace' },
+		{ id: 'thread', key: 'defaults.thread' },
 		{ id: 'remote', key: 'defaults.remote' },
 		{ id: 'baseBranch', key: 'defaults.base_branch' },
 		{ id: 'worksetRoot', key: 'defaults.workset_root' },
-		{ id: 'workspaceRoot', key: 'defaults.workspace_root' },
 		{ id: 'repoStoreRoot', key: 'defaults.repo_store_root' },
 		{ id: 'agent', key: 'defaults.agent' },
 		{ id: 'agentModel', key: 'defaults.agent_model' },
@@ -63,7 +63,7 @@
 	let baseline: Record<FieldId, string> = $state({} as Record<FieldId, string>);
 	let draft: Record<FieldId, string> = $state({} as Record<FieldId, string>);
 
-	let activeSection = $state('workspace');
+	let activeSection = $state('defaults');
 	let aliasCount = $state(0);
 	let appVersion = $state<AppVersion | null>(null);
 	let updatePreferences = $state<UpdatePreferences>(DEFAULT_UPDATE_PREFERENCES);
@@ -89,6 +89,23 @@
 		allFields.filter((field) => draft[field.id] !== baseline[field.id]);
 
 	const dirtyCount = (): number => changedFields().length;
+
+	const sectionFieldMap: Record<string, FieldId[]> = {
+		defaults: ['thread', 'remote', 'baseBranch', 'agent', 'agentModel'],
+		session: ['terminalIdleTimeout', 'terminalProtocolLog', 'terminalDebugOverlay'],
+		system: ['worksetRoot', 'repoStoreRoot'],
+	};
+
+	const dirtySections = $derived(
+		new Set(
+			Object.entries(sectionFieldMap)
+				.filter(([, ids]) => ids.some((id) => draft[id] !== baseline[id]))
+				.map(([section]) => section),
+		),
+	);
+
+	/** Sections that contain saveable draft fields (show footer Save/Reset). */
+	const saveSections = new Set(['defaults', 'session', 'system']);
 
 	const loadSettings = async (): Promise<void> => {
 		loading = true;
@@ -180,13 +197,13 @@
 		if (saving || restartingSessiond || resettingTerminalLayout) {
 			return;
 		}
-		const workspace = $activeWorkspace;
-		if (!workspace) {
-			error = 'Select a workspace before resetting terminal layout.';
+		const thread = $activeWorkspace;
+		if (!thread) {
+			error = 'Select a thread before resetting terminal layout.';
 			return;
 		}
 		const confirmed = window.confirm(
-			`Reset the terminal layout for "${workspace.name}"? This will close existing panes and stop running terminal sessions.`,
+			`Reset the terminal layout for "${thread.name}"? This will close existing panes and stop running terminal sessions.`,
 		);
 		if (!confirmed) {
 			return;
@@ -195,7 +212,7 @@
 		error = null;
 		success = null;
 		try {
-			const result = await sideEffects.resetTerminalLayout(workspace);
+			const result = await sideEffects.resetTerminalLayout(thread);
 			error = result.error ?? null;
 			success = result.success ?? null;
 		} finally {
@@ -217,9 +234,9 @@
 
 	const getSectionTitle = (section: string): string => {
 		const titles: Record<string, string> = {
-			workspace: 'Workspace',
-			agent: 'Agent',
+			defaults: 'Defaults',
 			session: 'Terminal',
+			system: 'System',
 			github: 'GitHub',
 			aliases: 'Repo Catalog',
 			about: 'About',
@@ -290,7 +307,7 @@
 	});
 </script>
 
-<div class="panel" role="dialog" aria-modal="true" aria-label="Settings">
+<div class="panel" role="region" aria-label="Settings">
 	{#if loading}
 		<div class="state">Loading settings...</div>
 	{:else if error && !snapshot}
@@ -300,20 +317,27 @@
 		</div>
 	{:else if snapshot}
 		<div class="body">
-			<SettingsSidebar {activeSection} onSelectSection={selectSection} {aliasCount} />
+			<SettingsSidebar
+				{activeSection}
+				onSelectSection={selectSection}
+				{aliasCount}
+				{dirtySections}
+			/>
 
 			<div class="content">
 				<header class="content-header">
 					<h2 class="content-title">{getSectionTitle(activeSection)}</h2>
-					<button class="close-btn" onclick={onClose} aria-label="Close settings">×</button>
+					<button class="close-btn" onclick={onClose} aria-label="Close settings">
+						<X size={16} />
+					</button>
 				</header>
 				<div class="content-body">
-					{#if activeSection === 'workspace'}
+					{#if activeSection === 'defaults'}
 						<WorkspaceDefaults {draft} {baseline} onUpdate={updateField} />
-					{:else if activeSection === 'agent'}
-						<AgentDefaults {draft} {baseline} onUpdate={updateField} />
 					{:else if activeSection === 'session'}
-						<SessionDefaults
+						<SessionDefaults {draft} {baseline} onUpdate={updateField} />
+					{:else if activeSection === 'system'}
+						<SystemSection
 							{draft}
 							{baseline}
 							onUpdate={updateField}
@@ -343,10 +367,6 @@
 			</div>
 		</div>
 		<footer class="footer">
-			<div class="meta">
-				<span class="config-label">Config</span>
-				<span class="config-path">{snapshot.configPath}</span>
-			</div>
 			<div class="ws-spacer"></div>
 			{#if error}
 				<span class="status error">{error}</span>
@@ -355,12 +375,18 @@
 			{:else if dirtyCount() > 0}
 				<span class="status dirty">{dirtyCount()} unsaved</span>
 			{/if}
-			{#if activeSection === 'workspace' || activeSection === 'agent' || activeSection === 'session'}
+			{#if saveSections.has(activeSection)}
 				<Button variant="ghost" onclick={resetChanges} disabled={dirtyCount() === 0 || saving}>
 					Reset
 				</Button>
 				<Button variant="primary" onclick={saveChanges} disabled={saving || dirtyCount() === 0}>
-					{saving ? 'Saving...' : 'Save'}
+					{#if saving}
+						Saving…
+					{:else if dirtyCount() > 0}
+						Save ({dirtyCount()})
+					{:else}
+						Save
+					{/if}
 				</Button>
 			{/if}
 		</footer>
@@ -369,26 +395,11 @@
 
 <style>
 	.panel {
-		width: min(900px, 94vw);
-		max-height: 86vh;
+		width: 100%;
+		height: 100%;
 		display: flex;
 		flex-direction: column;
-		background:
-			linear-gradient(
-				180deg,
-				rgba(255, 255, 255, 0.08) 0%,
-				rgba(255, 255, 255, 0.02) 44%,
-				rgba(255, 255, 255, 0) 100%
-			),
-			var(--glass-bg-strong);
-		border: 1px solid color-mix(in srgb, var(--glass-border) 88%, transparent);
-		border-radius: 16px;
-		backdrop-filter: blur(calc(var(--glass-blur) + 1px)) saturate(var(--glass-saturate));
-		-webkit-backdrop-filter: blur(calc(var(--glass-blur) + 1px)) saturate(var(--glass-saturate));
-		box-shadow:
-			var(--glass-shadow),
-			var(--inset-highlight),
-			0 0 0 1px color-mix(in srgb, var(--border) 28%, transparent);
+		background: color-mix(in srgb, var(--bg) 90%, transparent);
 		overflow: hidden;
 	}
 
@@ -443,20 +454,19 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 28px;
-		height: 28px;
-		border-radius: 6px;
-		border: none;
+		width: 32px;
+		height: 32px;
+		border-radius: 8px;
+		border: 1px solid transparent;
 		background: transparent;
-		color: var(--subtle);
-		font-size: var(--text-xl);
-		line-height: 1;
+		color: var(--muted);
 		cursor: pointer;
 		transition: all var(--transition-fast);
 	}
 
 	.close-btn:hover {
 		background: var(--panel-strong);
+		border-color: var(--border);
 		color: var(--text);
 	}
 
@@ -494,21 +504,6 @@
 		flex-shrink: 0;
 	}
 
-	.config-label {
-		font-size: var(--text-xs);
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
-		color: var(--muted);
-		font-weight: 500;
-	}
-
-	.config-path {
-		font-size: var(--text-mono-sm);
-		color: var(--text);
-		font-family: var(--font-mono);
-		opacity: 0.7;
-	}
-
 	.status {
 		font-size: var(--text-sm);
 		font-weight: 500;
@@ -532,19 +527,8 @@
 	}
 
 	@media (max-width: 720px) {
-		.panel {
-			width: 100%;
-			height: 100%;
-			border-radius: 0;
-			max-height: 100vh;
-		}
-
 		.body {
 			flex-direction: column;
-		}
-
-		.meta {
-			display: none;
 		}
 	}
 </style>

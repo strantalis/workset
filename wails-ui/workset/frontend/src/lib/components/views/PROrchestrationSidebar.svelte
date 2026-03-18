@@ -329,7 +329,7 @@
 						</div>
 						<div class="pr-main">
 							<span class="repo-name">{item.repoName}</span>
-							<div class="pr-submeta">No open PRs</div>
+							<div class="pr-submeta">Push a branch to open a PR</div>
 						</div>
 					</div>
 				{/each}

@@ -35,7 +35,6 @@ describe('WorkspaceActionAddRepoForm', () => {
 		existingRepos: [{ name: 'repo-existing' }],
 		addRepoSelectedItems: [{ type: 'alias' as const, name: 'repo-alias' }],
 		addRepoTotalItems: 1,
-		worksetName: 'test-workset',
 		getAliasSource: (alias: Alias) => alias.path || alias.url || '',
 		onSearchQueryInput: vi.fn(),
 		onAddSourceInput: vi.fn(),
@@ -55,10 +54,8 @@ describe('WorkspaceActionAddRepoForm', () => {
 		);
 
 		expect(queryByText('Direct')).not.toBeInTheDocument();
-		expect(queryByText('Groups (1)')).not.toBeInTheDocument();
-
 		const searchInput = getByPlaceholderText(
-			'Search catalog/GitHub, or paste repo URL/path (Enter)',
+			'Search catalog, GitHub, or paste URL',
 		) as HTMLInputElement;
 		await fireEvent.input(searchInput, { target: { value: 'repo' } });
 		expect(props.onSearchQueryInput).toHaveBeenCalledWith('repo');
@@ -67,7 +64,7 @@ describe('WorkspaceActionAddRepoForm', () => {
 		await fireEvent.click(aliasItem);
 		expect(props.onToggleAlias).toHaveBeenCalledWith('repo-alias');
 
-		await fireEvent.click(getByText('Continue').closest('button') as HTMLButtonElement);
+		await fireEvent.click(getByText('Add 1').closest('button') as HTMLButtonElement);
 		expect(props.onSubmit).toHaveBeenCalledTimes(1);
 	});
 
@@ -92,7 +89,7 @@ describe('WorkspaceActionAddRepoForm', () => {
 			props,
 		});
 		const searchInput = getByPlaceholderText(
-			'Search catalog/GitHub, or paste repo URL/path (Enter)',
+			'Search catalog, GitHub, or paste URL',
 		) as HTMLInputElement;
 
 		await fireEvent.input(searchInput, { target: { value: 'workset' } });
@@ -114,7 +111,7 @@ describe('WorkspaceActionAddRepoForm', () => {
 			props,
 		});
 		const searchInput = getByPlaceholderText(
-			'Search catalog/GitHub, or paste repo URL/path (Enter)',
+			'Search catalog, GitHub, or paste URL',
 		) as HTMLInputElement;
 		await fireEvent.input(searchInput, {
 			target: { value: 'git@github.com:strantalis/platform.git' },
@@ -133,7 +130,7 @@ describe('WorkspaceActionAddRepoForm', () => {
 			props,
 		});
 
-		const submitButton = getByText('Continue').closest('button') as HTMLButtonElement;
+		const submitButton = getByText(/^Add$/).closest('button') as HTMLButtonElement;
 		expect(submitButton).toBeDisabled();
 	});
 
@@ -146,13 +143,13 @@ describe('WorkspaceActionAddRepoForm', () => {
 			props,
 		});
 		const searchInput = getByPlaceholderText(
-			'Search catalog/GitHub, or paste repo URL/path (Enter)',
+			'Search catalog, GitHub, or paste URL',
 		) as HTMLInputElement;
 		await fireEvent.input(searchInput, {
 			target: { value: 'git@github.com:strantalis/platform.git' },
 		});
 
-		const submitButton = getByText('Continue').closest('button') as HTMLButtonElement;
+		const submitButton = getByText(/^Add$/).closest('button') as HTMLButtonElement;
 		expect(submitButton).not.toBeDisabled();
 	});
 });

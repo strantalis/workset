@@ -64,12 +64,8 @@ READ FIRST: This is a Workset workspace root, not necessarily a git repo.
 If you enter a repo within this workspace, read that repo's AGENTS.md after this file.
 
 Common workset commands:
-- workset repo add <source> -w <workspace>
-- workset status -w <workspace>
-- workset session start <workspace> -- <cmd>
-- workset session attach <workspace>
-- workset session show <workspace>
-- workset session stop <workspace>
+- workset repo add <source> -t <thread>
+- workset status -t <thread>
 `) + "\n\n" + section
 }
 

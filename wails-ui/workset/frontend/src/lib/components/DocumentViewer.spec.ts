@@ -177,14 +177,14 @@ describe('DocumentViewer', () => {
 
 		await waitFor(() => expect(getByText('.github/dependabot.yml')).toBeInTheDocument());
 
-		const repoButton = getByRole('button', { name: 'api' });
+		const repoButton = getByRole('button', { name: /^api/ });
 		expect(repoButton).toBeInTheDocument();
 
 		await fireEvent.click(repoButton);
 
 		await waitFor(() => expect(getByText('.github')).toBeInTheDocument());
 
-		await fireEvent.click(getByRole('button', { name: 'docs' }));
+		await fireEvent.click(getByRole('button', { name: /^docs/ }));
 
 		await waitFor(() => expect(getByRole('button', { name: /README\.md/i })).toBeInTheDocument());
 

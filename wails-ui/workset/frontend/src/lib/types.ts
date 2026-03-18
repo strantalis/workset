@@ -59,12 +59,11 @@ export type Repo = {
 	files: DiffFile[];
 };
 
-export type Workspace = {
+export type Thread = {
 	id: string;
 	name: string;
 	path: string;
 	workset?: string;
-	template?: string;
 	worksetKey?: string;
 	worksetLabel?: string;
 	placeholder?: boolean;
@@ -79,6 +78,8 @@ export type Workspace = {
 	expanded: boolean;
 	lastUsed: string;
 };
+
+export type Workspace = Thread;
 
 export type TerminalLayoutTab = {
 	id: string;
@@ -109,8 +110,8 @@ export type TerminalLayoutPayload = {
 	layout?: TerminalLayout;
 };
 
-export type WorkspaceCreateResponse = {
-	workspace: {
+export type ThreadCreateResponse = {
+	thread: {
 		name: string;
 		path: string;
 		workset: string;
@@ -126,7 +127,16 @@ export type WorkspaceCreateResponse = {
 		reason?: string;
 	}[];
 	hookRuns?: HookExecution[];
+	workspace?: {
+		name: string;
+		path: string;
+		workset: string;
+		branch: string;
+		next: string;
+	};
 };
+
+export type WorkspaceCreateResponse = ThreadCreateResponse;
 
 export type RepoAddResponse = {
 	payload: {
@@ -205,36 +215,12 @@ export type RegisteredRepo = {
 /** @deprecated Use RegisteredRepo instead */
 export type Alias = RegisteredRepo;
 
-export type GroupSummary = {
-	name: string;
-	description?: string;
-	repo_count: number;
-};
-
-export type GroupMember = {
-	repo: string;
-};
-
-export type Group = {
-	name: string;
-	description?: string;
-	members: GroupMember[];
-};
-
 export type SettingsDefaults = {
 	remote: string;
 	baseBranch: string;
-	workspace: string;
+	thread: string;
 	worksetRoot: string;
-	workspaceRoot: string;
 	repoStoreRoot: string;
-	sessionBackend: string;
-	sessionNameFormat: string;
-	sessionTheme: string;
-	sessionTmuxStyle: string;
-	sessionTmuxLeft: string;
-	sessionTmuxRight: string;
-	sessionScreenHard: string;
 	agent: string;
 	agentModel: string;
 	terminalIdleTimeout: string;

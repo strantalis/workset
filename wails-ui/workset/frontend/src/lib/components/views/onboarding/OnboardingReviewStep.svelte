@@ -1,6 +1,17 @@
 <script lang="ts">
 	import { fade } from 'svelte/transition';
-	import { AlignLeft, AlertTriangle, ArrowRight, GitBranch, Loader2, Zap } from '@lucide/svelte';
+	import {
+		AlignLeft,
+		AlertTriangle,
+		ArrowRight,
+		CheckCircle2,
+		ChevronLeft,
+		CircleX,
+		GitBranch,
+		Loader2,
+		SkipForward,
+		Zap,
+	} from '@lucide/svelte';
 	import type { HookExecution } from '../../../types';
 	import type { WorkspaceActionPendingHook } from '../../../services/workspaceActionHooks';
 	import type { ReviewRepoEntry } from '../OnboardingView.utils';
@@ -26,6 +37,7 @@
 		trimmedThreadName: string;
 		runError: string | null;
 		errorMessage: string | null;
+		selectedRepoCount: number;
 		onThreadNameInput: (value: string) => void;
 		onFeatureBranchInput: (value: string) => void;
 		onToggleReviewDetails: () => void;
@@ -33,7 +45,6 @@
 		onTrustPendingHook: (pending: WorkspaceActionPendingHook) => Promise<void>;
 		onInitialize: () => Promise<void> | void;
 		onPrevStep: () => void;
-		hookRunDotClass: (status: HookExecution['status']) => string | null;
 	}
 
 	const {
@@ -57,6 +68,7 @@
 		trimmedThreadName,
 		runError,
 		errorMessage,
+		selectedRepoCount,
 		onThreadNameInput,
 		onFeatureBranchInput,
 		onToggleReviewDetails,
@@ -64,8 +76,11 @@
 		onTrustPendingHook,
 		onInitialize,
 		onPrevStep,
-		hookRunDotClass,
 	}: Props = $props();
+
+	const totalHookCount = $derived(
+		reviewRepoEntries.reduce((sum, entry) => sum + entry.hooks.length, 0),
+	);
 </script>
 
 <div class="first-thread-note">Every workset needs at least one thread to initialize.</div>
@@ -164,7 +179,10 @@
 								<span class="review-hooks-repo">{entry.repo.name}</span>
 								<div class="review-hooks-chip-row">
 									{#each entry.hooks as hook (`${entry.key}-${hook}`)}
-										<span class="review-hooks-chip">{hook}</span>
+										<span class="review-hooks-chip">
+											<Zap size={10} />
+											{hook}
+										</span>
 									{/each}
 								</div>
 							</li>
@@ -208,21 +226,37 @@
 
 		{#if hookRuns.length > 0}
 			<div class="hook-runs-list">
-				{#each hookRuns as run (`${run.repo}:${run.event}:${run.id}`)}
-					<div class="hook-run-row">
-						<span class="hook-run-repo">{run.repo}</span>
-						<span class="hook-run-id">{run.id}</span>
+				{#each hookRuns as run, i (`${run.repo}:${run.event}:${run.id}`)}
+					<div
+						class="hook-run-row"
+						class:ok={run.status === 'ok'}
+						class:failed={run.status === 'failed'}
+						class:running-status={run.status === 'running'}
+						class:skipped={run.status === 'skipped'}
+						style="animation-delay: {i * 60}ms"
+					>
+						<span class="hook-run-icon">
+							{#if run.status === 'ok'}
+								<CheckCircle2 size={14} />
+							{:else if run.status === 'failed'}
+								<CircleX size={14} />
+							{:else if run.status === 'running'}
+								<span class="hook-spin"><Loader2 size={14} /></span>
+							{:else}
+								<SkipForward size={14} />
+							{/if}
+						</span>
+						<span class="hook-run-body">
+							<span class="hook-run-repo">{run.repo}</span>
+							<span class="hook-run-id">{run.id}</span>
+						</span>
 						<span
-							class="hook-run-status ws-inline"
+							class="hook-run-status"
 							class:ok={run.status === 'ok'}
 							class:failed={run.status === 'failed'}
 							class:running-status={run.status === 'running'}
 							class:skipped={run.status === 'skipped'}
 						>
-							{#if hookRunDotClass(run.status)}
-								<span class={`ws-dot ws-dot-sm ${hookRunDotClass(run.status)}`} aria-hidden="true"
-								></span>
-							{/if}
 							{run.status}
 						</span>
 					</div>
@@ -272,36 +306,47 @@
 	</div>
 {/if}
 
-<button
-	type="button"
-	class="init-btn"
-	class:finished={canOpenWorkset}
-	class:running={isInitializing && !canOpenWorkset}
-	onclick={() => void onInitialize()}
-	disabled={busy ||
-		isInitializing ||
-		(initializeStarted && !canOpenWorkset) ||
-		(!initializeStarted && trimmedThreadName.length === 0)}
->
-	{#if canOpenWorkset}
-		Open Workset <ArrowRight size={16} />
-	{:else if isInitializing || busy}
-		Initializing Environment...
-	{:else if initializeStarted}
-		Resolve Hook Trust To Continue
-	{:else if trimmedThreadName.length === 0}
-		Name your first thread to continue
-	{:else}
-		Initialize Workset
+{#if !initializeStarted && trimmedThreadName.length > 0}
+	<div class="init-confirm-line">
+		This will clone {selectedRepoCount}
+		{selectedRepoCount === 1 ? 'repo' : 'repos'}{#if totalHookCount > 0}
+			and run {totalHookCount} lifecycle {totalHookCount === 1 ? 'hook' : 'hooks'}{/if}
+	</div>
+{/if}
+
+<div class="step3-nav">
+	{#if !isInitializing && !busy}
+		<button type="button" class="back-btn" onclick={onPrevStep}>
+			<ChevronLeft size={20} />
+		</button>
 	{/if}
-</button>
+	<button
+		type="button"
+		class="init-btn"
+		class:finished={canOpenWorkset}
+		class:running={isInitializing && !canOpenWorkset}
+		onclick={() => void onInitialize()}
+		disabled={busy ||
+			isInitializing ||
+			(initializeStarted && !canOpenWorkset) ||
+			(!initializeStarted && trimmedThreadName.length === 0)}
+	>
+		{#if canOpenWorkset}
+			Open Workset <ArrowRight size={16} />
+		{:else if isInitializing || busy}
+			Initializing Environment...
+		{:else if initializeStarted}
+			Resolve Hook Trust To Continue
+		{:else if trimmedThreadName.length === 0}
+			Name your first thread to continue
+		{:else}
+			Initialize Workset
+		{/if}
+	</button>
+</div>
 
 {#if runError || errorMessage}
 	<div class="init-error">{runError ?? errorMessage}</div>
-{/if}
-
-{#if !isInitializing && !busy}
-	<button type="button" class="back-link" onclick={onPrevStep}>Back</button>
 {/if}
 
 <style src="./OnboardingReviewStep.css"></style>

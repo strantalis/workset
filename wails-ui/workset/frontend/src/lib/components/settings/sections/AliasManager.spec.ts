@@ -6,10 +6,10 @@ import * as githubApi from '../../../api/github';
 import type { GitHubRepoSearchItem } from '../../../types';
 
 vi.mock('../../../api/settings', () => ({
-	listAliases: vi.fn(),
-	createAlias: vi.fn(),
-	updateAlias: vi.fn(),
-	deleteAlias: vi.fn(),
+	listRegisteredRepos: vi.fn(),
+	registerRepo: vi.fn(),
+	updateRegisteredRepo: vi.fn(),
+	unregisterRepo: vi.fn(),
 	openDirectoryDialog: vi.fn(),
 }));
 
@@ -20,7 +20,7 @@ vi.mock('../../../api/github', () => ({
 describe('AliasManager', () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
-		vi.mocked(settingsService.listAliases).mockResolvedValue([]);
+		vi.mocked(settingsService.listRegisteredRepos).mockResolvedValue([]);
 		vi.mocked(githubApi.searchGitHubRepositories).mockResolvedValue([]);
 	});
 
@@ -138,7 +138,7 @@ describe('AliasManager', () => {
 	});
 
 	test('does not search remote repos while editing an existing repo', async () => {
-		vi.mocked(settingsService.listAliases).mockResolvedValue([
+		vi.mocked(settingsService.listRegisteredRepos).mockResolvedValue([
 			{
 				name: 'workset',
 				url: 'https://github.com/strantalis/workset.git',

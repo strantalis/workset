@@ -12,7 +12,7 @@ export type WorkspaceActionMode =
 	| 'rename'
 	| 'add-repo'
 	| 'archive'
-	| 'remove-workspace'
+	| 'remove-thread'
 	| 'remove-repo'
 	| null;
 
@@ -88,7 +88,7 @@ type LoadWorkspaceActionContextInput = {
 type LoadWorkspaceActionContextDeps = {
 	loadWorkspaces: (includeArchived: boolean) => Promise<void>;
 	getWorkspaces: () => Workspace[];
-	listAliases: () => Promise<Alias[]>;
+	listRegisteredRepos: () => Promise<Alias[]>;
 };
 
 export type LoadWorkspaceActionContextResult = {
@@ -245,7 +245,7 @@ export const loadWorkspaceActionContext = async (
 	let aliasItems: Alias[] = [];
 
 	if (input.mode === 'add-repo' || input.mode === 'create' || input.mode === 'create-thread') {
-		aliasItems = await deps.listAliases();
+		aliasItems = await deps.listRegisteredRepos();
 	}
 
 	return {

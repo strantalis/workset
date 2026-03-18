@@ -48,9 +48,8 @@ type CreateWorkspaceMutationDeps = {
 	createWorkspace: (
 		name: string,
 		path: string,
-		template?: string,
+		workset?: string,
 		repos?: string[],
-		groups?: string[],
 		options?: { worksetOnly?: boolean },
 	) => Promise<WorkspaceCreateResponse>;
 };
@@ -332,7 +331,6 @@ export const runCreateWorkspaceMutation = async (
 		'',
 		worksetName,
 		repos.length > 0 ? repos : undefined,
-		undefined,
 		{ worksetOnly: input.worksetOnly === true },
 	);
 	const collectedWarnings = [...(result.warnings ?? [])];
@@ -341,7 +339,7 @@ export const runCreateWorkspaceMutation = async (
 	}
 
 	return {
-		workspaceName: result.workspace.name,
+		workspaceName: result.thread.name,
 		warnings: dedupeWarnings(collectedWarnings),
 		pendingHooks: normalizePendingHooks(result.pendingHooks),
 		hookRuns: result.hookRuns ?? [],

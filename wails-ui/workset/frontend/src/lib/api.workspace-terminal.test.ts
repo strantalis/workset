@@ -99,7 +99,6 @@ describe('workspace + terminal API compatibility exports', () => {
 				archivedAt: undefined,
 				archivedReason: undefined,
 				workset: undefined,
-				template: undefined,
 				worksetKey: 'ws-1',
 				worksetLabel: 'Workspace 1',
 				placeholder: false,

@@ -1,0 +1,92 @@
+{% extends "main.html" %}
+
+{% block tabs %}
+  {{ super() }}
+{% endblock %}
+
+{% block content %}
+<section class="ws-hero">
+  <div class="ws-hero__cols">
+    <div class="ws-hero__inner">
+      <h1 class="ws-hero__title">Multi-repo threads.<br>One command.</h1>
+      <p class="ws-hero__subtitle">
+        Link Git worktrees across repos. Spin up isolated threads without duplicating clones.
+      </p>
+      <div class="ws-hero__actions">
+        <a href="getting-started/" class="md-button md-button--primary">Get Started</a>
+        <a href="https://github.com/strantalis/workset" class="md-button">View on GitHub</a>
+      </div>
+    </div>
+    <div class="ws-hero__screenshot">
+      <div class="app-frame">
+        <div class="app-frame__titlebar"><span></span><span></span><span></span></div>
+        <div class="app-frame__content">
+          <img src="assets/screenshots/cockpit.png" alt="Workset desktop app — thread cockpit">
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="ws-highlight">
+  <div class="ws-highlight__inner">
+    <div class="ws-highlight__text">
+      <h2>Linked Worktrees</h2>
+      <p>Branch work stays isolated. Main clones stay clean. No duplicate repos cluttering your disk. Workset manages Git worktrees so each thread gets its own branch checkout &mdash; instantly.</p>
+      <a href="concepts/" class="ws-highlight__link">Learn how it works &rarr;</a>
+    </div>
+    <div class="ws-highlight__code">
+      <pre><code><span class="ws-dim">$</span> workset new feature-auth
+<span class="ws-dim">$</span> workset repo add api-server -t feature-auth
+<span class="ws-accent">✓</span> worktree created at ~/.workset/repos/api-server/feature-auth</code></pre>
+    </div>
+  </div>
+</section>
+
+<section class="ws-capabilities">
+  <div class="ws-capabilities__list">
+    <div class="ws-capabilities__item">
+      <h3>Multi-Repo Threads</h3>
+      <p>Group repos into threads that track intent. Add, remove, and inspect repos from one place.</p>
+    </div>
+    <div class="ws-capabilities__item">
+      <h3>Desktop App</h3>
+      <p>A native Wails app with embedded terminals, diff views, and GitHub workflow integration.</p>
+    </div>
+    <div class="ws-capabilities__item ws-capabilities__item--wide">
+      <h3>GitHub Workflows</h3>
+      <p>Create PRs, view status, read review comments, and generate PR descriptions — all from the app.</p>
+    </div>
+    <div class="ws-capabilities__item">
+      <h3>Worksets</h3>
+      <p>Define repeatable repo bundles. Spin up new threads from the same workset with a single command.</p>
+    </div>
+    <div class="ws-capabilities__item">
+      <h3>AI-Powered</h3>
+      <p>Generate PR text and commit messages with pluggable AI agents. Codex and Claude supported.</p>
+    </div>
+    <div class="ws-capabilities__item ws-capabilities__item--cta">
+      <a href="concepts/">Explore all features &rarr;</a>
+    </div>
+  </div>
+</section>
+
+<section class="ws-quickstart">
+  <h2>CLI Quickstart</h2>
+  <div class="ws-quickstart__code">
+    <pre><code>brew tap strantalis/homebrew-tap
+brew install workset
+workset new demo
+workset repo add git@github.com:your/org-repo.git -t demo
+workset status -t demo</code></pre>
+  </div>
+</section>
+
+<section class="ws-cta">
+  <p>Install the CLI via Homebrew, or download the desktop app from GitHub Releases.</p>
+  <div class="ws-cta__actions">
+    <a href="https://github.com/strantalis/workset/releases" class="md-button md-button--primary">Download</a>
+    <a href="getting-started/" class="md-button">Getting Started Guide</a>
+  </div>
+</section>
+{% endblock %}

@@ -9,6 +9,7 @@
 		GitBranch,
 		LayoutTemplate,
 		Loader2,
+		X,
 	} from '@lucide/svelte';
 	import { searchGitHubRepositories } from '../../api/github';
 	import { deriveRepoName, looksLikeUrl } from '../../names';
@@ -38,6 +39,7 @@
 		type RepoTemplate,
 		type ReviewRepoEntry,
 	} from './OnboardingView.utils';
+	import Button from '../ui/Button.svelte';
 	import OnboardingReviewStep from './onboarding/OnboardingReviewStep.svelte';
 
 	interface Props {
@@ -74,7 +76,7 @@
 	let threadNameTouched = $state(false);
 	let featureBranch = $state('');
 	let featureBranchTouched = $state(false);
-	let reviewDetailsExpanded = $state(false);
+	let reviewDetailsExpanded = $state(true);
 	let sourceInput = $state('');
 	let selectedAliases = $state<Set<string>>(new Set());
 	let directRepos = $state<Array<{ url: string; register: boolean }>>([]);
@@ -186,6 +188,14 @@
 	const nextStepLabel = $derived(
 		selectedRepoCount > 0 ? `Next Step (${selectedRepoCount} repos)` : 'Next Step',
 	);
+
+	const repoListLabel = $derived.by(() => {
+		if (sourceQuery.length > 0 && !looksLikeUrl(sourceQuery) && !isLikelyLocalPath(sourceQuery)) {
+			return 'Search Results';
+		}
+		const count = repoRegistry.length;
+		return count > 0 ? `Your Catalog (${count})` : 'Your Catalog';
+	});
 
 	const reviewRepos = $derived.by<RepoTemplate[]>(() => {
 		const fromCatalog = selectedCatalogRepos.map((repo) => ({
@@ -583,13 +593,6 @@
 
 	const stepStatus = (s: number): 'active' | 'completed' | 'pending' => getStepStatus(step, s);
 
-	const hookRunDotClass = (status: HookExecution['status']): string | null => {
-		if (status === 'ok') return 'ws-dot-clean';
-		if (status === 'failed') return 'ws-dot-error';
-		if (status === 'running') return 'ws-dot-ahead';
-		return null;
-	};
-
 	onMount(() => {
 		hookEventUnsubscribe = subscribeHookProgressEvent((payload) => {
 			if (
@@ -680,14 +683,13 @@
 										This shows in the workset switcher so you remember what you were doing.
 									</p>
 								</label>
-								<button
-									type="button"
-									class="btn-primary"
+								<Button
+									variant="primary"
 									onclick={nextStep}
 									disabled={!trimmedWorkspaceName || isDuplicateWorkspaceName || busy}
 								>
 									Continue <ArrowRight size={16} />
-								</button>
+								</Button>
 							</div>
 						</div>
 					{/if}
@@ -775,7 +777,7 @@
 															: handleRemoveDirectRepo(item.value)}
 												>
 													<span>{item.label}</span>
-													<span class="selected-repo-remove">x</span>
+													<span class="selected-repo-remove"><X size={10} /></span>
 												</button>
 											{/each}
 										</div>
@@ -783,7 +785,7 @@
 								{/if}
 
 								<div class="field">
-									<span class="field-label-sm">Repository Results</span>
+									<span class="field-label-sm">{repoListLabel}</span>
 									<div class="registry-list">
 										{#each filteredRegistry as repo (repo.id)}
 											{@const isSelected = selectedAliases.has(repo.aliasName)}
@@ -844,7 +846,7 @@
 												{:else if sourceQuery.length > 0}
 													No matching repositories.
 												{:else}
-													No repositories available yet.
+													No catalog repos yet — paste a URL or search GitHub above.
 												{/if}
 											</div>
 										{/if}
@@ -864,14 +866,14 @@
 								<button type="button" class="back-btn" onclick={prevStep}>
 									<ChevronLeft size={20} />
 								</button>
-								<button
-									type="button"
-									class="btn-primary wide"
+								<Button
+									variant="primary"
+									class="wide"
 									onclick={handleGoToReview}
 									disabled={!canProceedStep2 || busy}
 								>
 									{nextStepLabel}
-								</button>
+								</Button>
 							</div>
 						</div>
 					{/if}
@@ -918,6 +920,7 @@
 								{trimmedThreadName}
 								{runError}
 								{errorMessage}
+								{selectedRepoCount}
 								onThreadNameInput={handleThreadNameInput}
 								onFeatureBranchInput={handleFeatureBranchInput}
 								onToggleReviewDetails={() => (reviewDetailsExpanded = !reviewDetailsExpanded)}
@@ -925,7 +928,6 @@
 								onTrustPendingHook={handleTrustPendingHook}
 								onInitialize={handleInitialize}
 								onPrevStep={prevStep}
-								{hookRunDotClass}
 							/>
 						</div>
 					{/if}
@@ -936,7 +938,7 @@
 		<div class="topo-side">
 			<div class="topo-gradient"></div>
 
-			<h3 class="topo-title ws-section-title">Workset Topology</h3>
+			<h3 class="topo-title">Topology</h3>
 
 			<div class="topo-area">
 				<svg class="topo-svg" viewBox="-200 -200 400 400">
@@ -972,9 +974,7 @@
 						in:scale={{ duration: 250, delay: i * 100 }}
 					>
 						<GitBranch size={16} />
-						<span class="repo-node-label">
-							{pos.name.length > 8 ? pos.name.slice(0, 7) + '…' : pos.name}
-						</span>
+						<span class="repo-node-label">{pos.name}</span>
 					</div>
 				{/each}
 			</div>
@@ -982,7 +982,10 @@
 			<div class="topo-footer">
 				<div class="topo-badge">
 					<Database size={12} />
-					<span>Repo Catalog + Direct Sources</span>
+					<span
+						>{selectedRepoCount}
+						{selectedRepoCount === 1 ? 'repository' : 'repositories'} selected</span
+					>
 				</div>
 			</div>
 		</div>

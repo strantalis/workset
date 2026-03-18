@@ -125,7 +125,7 @@ export const deriveWorkspaceActionModalTitle = (
 	if (mode === 'rename') return 'Rename workset';
 	if (mode === 'add-repo') return 'Add to workset';
 	if (mode === 'archive') return 'Archive workset';
-	if (mode === 'remove-workspace') return 'Remove thread';
+	if (mode === 'remove-thread') return 'Remove thread';
 	if (mode === 'remove-repo') return 'Remove repo';
 	return 'Workset action';
 };

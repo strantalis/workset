@@ -400,12 +400,11 @@ func TestAddRepoRunsTrustedHooks(t *testing.T) {
 
 	runner := &stubHookRunner{}
 	env.svc = NewService(Options{
-		ConfigPath:    env.configPath,
-		Git:           env.git,
-		SessionRunner: env.runner,
-		HookRunner:    runner,
-		Clock:         func() time.Time { return env.now },
-		Logf:          func(string, ...any) {},
+		ConfigPath: env.configPath,
+		Git:        env.git,
+		HookRunner: runner,
+		Clock:      func() time.Time { return env.now },
+		Logf:       func(string, ...any) {},
 	})
 
 	result, err := env.svc.AddRepo(context.Background(), RepoAddInput{

@@ -106,7 +106,7 @@ export const createTerminalInstanceOrchestration = (
 		terminalHandles: deps.terminalHandles,
 		createTerminalInstance: () =>
 			deps.createTerminalInstance(terminalFontSizeController.getCurrentFontSize()),
-		createFitAddon: () => new FitAddon(),
+		createFitAddon: () => new FitAddon({ scrollbarWidth: 0 }),
 		createLinkProviders: (terminal) => createLinkProviders(terminal, deps.openURL),
 		onData: (id, data) => {
 			deps.setInput(id, true);

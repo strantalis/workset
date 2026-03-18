@@ -1,30 +1,30 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
-	createAlias,
-	deleteAlias,
-	listAliases,
+	listRegisteredRepos,
+	registerRepo,
 	restartSessiond,
-	updateAlias,
+	unregisterRepo,
+	updateRegisteredRepo,
 } from './api/settings';
 import {
-	CreateAlias,
-	DeleteAlias,
-	ListAliases,
+	ListRegisteredRepos,
+	RegisterRepo,
 	RestartSessiond,
 	RestartSessiondWithReason,
-	UpdateAlias,
+	UnregisterRepo,
+	UpdateRegisteredRepo,
 } from '../../bindings/workset/app';
 
 vi.mock('../../bindings/workset/app', () => ({
-	CreateAlias: vi.fn(),
-	DeleteAlias: vi.fn(),
-	ListAliases: vi.fn(),
+	ListRegisteredRepos: vi.fn(),
+	RegisterRepo: vi.fn(),
 	RestartSessiond: vi.fn(),
 	RestartSessiondWithReason: vi.fn(),
-	UpdateAlias: vi.fn(),
+	UnregisterRepo: vi.fn(),
+	UpdateRegisteredRepo: vi.fn(),
 }));
 
-describe('settings API compatibility exports', () => {
+describe('settings API', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 	});
@@ -52,8 +52,8 @@ describe('settings API compatibility exports', () => {
 		expect(RestartSessiond).not.toHaveBeenCalled();
 	});
 
-	test('deprecated alias exports call the same underlying API payloads', async () => {
-		vi.mocked(ListAliases).mockResolvedValue([
+	test('registered repo helpers call the expected underlying API payloads', async () => {
+		vi.mocked(ListRegisteredRepos).mockResolvedValue([
 			{
 				name: 'workset',
 				url: 'https://example/repo.git',
@@ -63,24 +63,24 @@ describe('settings API compatibility exports', () => {
 			},
 		]);
 
-		await createAlias('workset', 'https://example/repo.git', 'origin', 'main');
-		await updateAlias('workset', 'https://example/renamed.git', 'upstream', 'trunk');
-		await deleteAlias('workset');
-		const aliases = await listAliases();
+		await registerRepo('workset', 'https://example/repo.git', 'origin', 'main');
+		await updateRegisteredRepo('workset', 'https://example/renamed.git', 'upstream', 'trunk');
+		await unregisterRepo('workset');
+		const aliases = await listRegisteredRepos();
 
-		expect(CreateAlias).toHaveBeenCalledWith({
+		expect(RegisterRepo).toHaveBeenCalledWith({
 			name: 'workset',
 			source: 'https://example/repo.git',
 			remote: 'origin',
 			defaultBranch: 'main',
 		});
-		expect(UpdateAlias).toHaveBeenCalledWith({
+		expect(UpdateRegisteredRepo).toHaveBeenCalledWith({
 			name: 'workset',
 			source: 'https://example/renamed.git',
 			remote: 'upstream',
 			defaultBranch: 'trunk',
 		});
-		expect(DeleteAlias).toHaveBeenCalledWith('workset');
+		expect(UnregisterRepo).toHaveBeenCalledWith('workset');
 		expect(aliases).toEqual([
 			{
 				name: 'workset',

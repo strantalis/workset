@@ -70,15 +70,7 @@
 		open: boolean;
 	};
 
-	type WorkspaceActionMode =
-		| 'create'
-		| 'create-thread'
-		| 'rename'
-		| 'add-repo'
-		| 'archive'
-		| 'remove-workspace'
-		| 'remove-repo'
-		| null;
+	type WorkspaceActionMode = 'create-thread' | 'add-repo' | 'remove-thread' | 'remove-repo' | null;
 
 	const EXPLORER_OPEN_STORAGE_KEY = 'workset:app:explorerOpen';
 	const AUTO_GITHUB_AUTH_CHECK = false;
@@ -91,9 +83,9 @@
 		return stored === 'true';
 	};
 
-	const contextViews: AppView[] = ['workspaces', 'skill-registry'];
+	const contextViews: AppView[] = ['workspaces', 'skill-registry', 'settings'];
 	const popoutViews = new Set<AppView>(['workspaces']);
-	const appViews = new Set<AppView>(['workspaces', 'skill-registry', 'onboarding']);
+	const appViews = new Set<AppView>(['workspaces', 'skill-registry', 'settings', 'onboarding']);
 	const searchParams =
 		typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
 	const popoutMode = searchParams?.get('popout') === '1';
@@ -127,7 +119,7 @@
 	let workspaceActionRepoName = $state<string | null>(null);
 	let workspaceActionWorksetName = $state<string | null>(null);
 	let workspaceActionWorksetRepos = $state<string[]>([]);
-	let settingsOpen = $state(false);
+
 	let commandPaletteOpen = $state(false);
 	let authModalOpen = $state(false);
 	let authModalDismissed = $state(false);
@@ -149,17 +141,21 @@
 	const deriveWorksetIdentity = (workspace: Workspace): { id: string; label: string } => {
 		const key = workspace.worksetKey?.trim();
 		const label = workspace.worksetLabel?.trim();
-		const legacy = workspace.workset?.trim() || workspace.template?.trim();
-		const normalizedLegacy = legacy?.toLowerCase().replace(/\s+/g, '-') ?? '';
+		const workset = workspace.workset?.trim();
+		const normalizedWorkset = workset?.toLowerCase().replace(/\s+/g, '-') ?? '';
 		return {
 			id:
 				key && key.length > 0
 					? key
-					: normalizedLegacy.length > 0
-						? `workset:${normalizedLegacy}`
+					: normalizedWorkset.length > 0
+						? `workset:${normalizedWorkset}`
 						: `workspace:${workspace.id.toLowerCase()}`,
 			label:
-				label && label.length > 0 ? label : legacy && legacy.length > 0 ? legacy : workspace.name,
+				label && label.length > 0
+					? label
+					: workset && workset.length > 0
+						? workset
+						: workspace.name,
 		};
 	};
 
@@ -281,10 +277,7 @@
 		const names = new Set<string>();
 		for (const workspace of $workspaces) {
 			const label =
-				workspace.worksetLabel?.trim() ||
-				workspace.workset?.trim() ||
-				workspace.template?.trim() ||
-				workspace.name.trim();
+				workspace.worksetLabel?.trim() || workspace.workset?.trim() || workspace.name.trim();
 			if (label.length > 0) {
 				names.add(label);
 			}
@@ -301,7 +294,7 @@
 	const showContextBar = $derived.by(
 		() => !hasRepo && hasWorkspaces && contextViews.includes(currentView),
 	);
-	const explorerViews = new Set<AppView>(['workspaces', 'skill-registry']);
+	const explorerViews = new Set<AppView>(['workspaces', 'skill-registry', 'settings']);
 	const showExplorer = $derived.by(() => hasWorkspaces && explorerViews.has(currentView));
 
 	const updateRepoStatusWatchers = (): void => {
@@ -560,7 +553,7 @@
 		if (popoutMode) return;
 		if (!threadId) return;
 		if (fixedWorkspaceId && threadId !== fixedWorkspaceId) return;
-		openWorkspaceActionModal('remove-workspace', threadId);
+		openWorkspaceActionModal('remove-thread', threadId);
 	};
 
 	const handleOnboardingStart = async (
@@ -588,7 +581,7 @@
 			};
 		} catch (error) {
 			onboardingError =
-				error instanceof Error ? error.message : 'Failed to create workspace from onboarding.';
+				error instanceof Error ? error.message : 'Failed to create thread from onboarding.';
 			throw error;
 		} finally {
 			onboardingBusy = false;
@@ -828,7 +821,7 @@
 						onOpenFiles={handleOpenFiles}
 						onOpenSkills={() =>
 							setView(currentView === 'skill-registry' ? 'workspaces' : 'skill-registry')}
-						onOpenSettings={() => (settingsOpen = true)}
+						onOpenSettings={() => setView(currentView === 'settings' ? 'workspaces' : 'settings')}
 						onCollapse={() => (explorerOpen = false)}
 					/>
 				</aside>
@@ -851,7 +844,7 @@
 						{#if $loadingWorkspaces}
 							<EmptyState
 								title="Loading workspaces"
-								body="Fetching workspace snapshots and local status."
+								body="Fetching thread snapshots and local status."
 							/>
 						{:else if $workspaceError}
 							<section class="error">
@@ -869,9 +862,9 @@
 							/>
 						{:else if !hasWorkspace && !hasWorkspaces && currentView !== 'onboarding'}
 							<EmptyState
-								title="Create your first workspace"
-								body="Workspaces are collections of repositories that move together across branches and PR flow."
-								actionLabel="Create workspace"
+								title="Create your first thread"
+								body="Threads are collections of repositories that move together across branches and PR flow."
+								actionLabel="Create thread"
 								onAction={handleCreateWorkspace}
 								variant="centered"
 							/>
@@ -903,7 +896,12 @@
 								/>
 							{/if}
 						{:else if currentView === 'skill-registry'}
-							<SkillRegistryView workspaceId={$activeWorkspaceId} />
+							<SkillRegistryView
+								workspaceId={$activeWorkspaceId}
+								onClose={() => setView('workspaces')}
+							/>
+						{:else if currentView === 'settings'}
+							<SettingsPanel onClose={() => setView('workspaces')} />
 						{:else}
 							<OnboardingView
 								busy={onboardingBusy}
@@ -935,64 +933,60 @@
 		/>
 	{/if}
 
-	{#if !popoutMode && settingsOpen}
-		<div
-			class="overlay"
-			role="button"
-			tabindex="0"
-			onclick={() => (settingsOpen = false)}
-			onkeydown={(event) => {
-				if (event.key === 'Escape') settingsOpen = false;
-			}}
-		>
-			<div
-				class="overlay-panel"
-				role="presentation"
-				onclick={(event) => event.stopPropagation()}
-				onkeydown={(event) => event.stopPropagation()}
-			>
-				<SettingsPanel onClose={() => (settingsOpen = false)} />
-			</div>
-		</div>
-	{/if}
-
 	{#if !popoutMode && workspaceActionMode}
 		<div
-			class="overlay"
+			class="action-panel-backdrop"
 			role="button"
 			tabindex="0"
 			onclick={closeWorkspaceActionModal}
 			onkeydown={(event) => {
 				if (event.key === 'Escape') closeWorkspaceActionModal();
 			}}
+		></div>
+		<aside
+			class="action-panel"
+			role="presentation"
+			onclick={(event) => event.stopPropagation()}
+			onkeydown={(event) => event.stopPropagation()}
 		>
-			<div
-				class="overlay-panel"
-				role="presentation"
-				onclick={(event) => event.stopPropagation()}
-				onkeydown={(event) => event.stopPropagation()}
-			>
-				<WorkspaceActionModal
-					onClose={closeWorkspaceActionModal}
-					mode={workspaceActionMode}
-					workspaceId={workspaceActionWorkspaceId}
-					workspaceIds={workspaceActionWorkspaceIds}
-					repoName={workspaceActionRepoName}
-					worksetName={workspaceActionWorksetName}
-					worksetRepos={workspaceActionWorksetRepos}
-				/>
-			</div>
-		</div>
+			<WorkspaceActionModal
+				onClose={closeWorkspaceActionModal}
+				mode={workspaceActionMode}
+				workspaceId={workspaceActionWorkspaceId}
+				workspaceIds={workspaceActionWorkspaceIds}
+				repoName={workspaceActionRepoName}
+				worksetName={workspaceActionWorksetName}
+				worksetRepos={workspaceActionWorksetRepos}
+			/>
+		</aside>
 	{/if}
 
 	{#if !popoutMode && authModalOpen}
 		<div
 			class="overlay"
-			role="button"
-			tabindex="0"
+			role="dialog"
+			aria-modal="true"
+			aria-label="GitHub authentication"
+			tabindex="-1"
 			onclick={handleAuthClose}
 			onkeydown={(event) => {
 				if (event.key === 'Escape') handleAuthClose();
+				if (event.key === 'Tab') {
+					// Trap focus inside the dialog
+					const focusable = event.currentTarget.querySelectorAll<HTMLElement>(
+						'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+					);
+					if (focusable.length === 0) return;
+					const first = focusable[0];
+					const last = focusable[focusable.length - 1];
+					if (event.shiftKey && document.activeElement === first) {
+						event.preventDefault();
+						last.focus();
+					} else if (!event.shiftKey && document.activeElement === last) {
+						event.preventDefault();
+						first.focus();
+					}
+				}
 			}}
 		>
 			<div

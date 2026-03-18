@@ -71,7 +71,7 @@
 			| 'rename'
 			| 'add-repo'
 			| 'archive'
-			| 'remove-workspace'
+			| 'remove-thread'
 			| 'remove-repo'
 			| null;
 		workspaceId?: string | null;
@@ -568,7 +568,7 @@
 		} catch (err) {
 			error = formatWorkspaceActionError(
 				err,
-				mode === 'create-thread' ? 'Failed to create thread.' : 'Failed to create workspace.',
+				mode === 'create-thread' ? 'Failed to create thread.' : 'Failed to create workset.',
 			);
 		} finally {
 			loading = false;
@@ -602,7 +602,7 @@
 			success = `Renamed to ${workspaceName}.`;
 			onClose();
 		} catch (err) {
-			error = formatWorkspaceActionError(err, 'Failed to rename workspace.');
+			error = formatWorkspaceActionError(err, 'Failed to rename thread.');
 		} finally {
 			loading = false;
 		}
@@ -804,7 +804,7 @@
 			);
 			onClose();
 		} catch (err) {
-			error = formatWorkspaceActionError(err, 'Failed to archive workspace.');
+			error = formatWorkspaceActionError(err, 'Failed to archive thread.');
 		} finally {
 			loading = false;
 		}
@@ -838,7 +838,7 @@
 			onClose();
 			void loadWorkspaces(true);
 		} catch (err) {
-			error = formatWorkspaceActionError(err, 'Failed to remove workspace.');
+			error = formatWorkspaceActionError(err, 'Failed to remove thread.');
 			removing = false;
 		} finally {
 			loading = false;
@@ -901,6 +901,10 @@
 	subtitle={modalSubtitle}
 	size={modalSize}
 	headerAlign="left"
+	fill={mode === 'create-thread' ||
+		mode === 'add-repo' ||
+		mode === 'remove-thread' ||
+		mode === 'remove-repo'}
 	{onClose}
 	disableClose={removing}
 >
@@ -941,7 +945,6 @@
 			{existingRepos}
 			{addRepoSelectedItems}
 			{addRepoTotalItems}
-			worksetName={workspace?.name ?? ''}
 			onAddSearchQueryInput={(value) => (searchQuery = value)}
 			onAddSourceInput={(value) => (addSource = value)}
 			onAddBrowse={handleBrowse}

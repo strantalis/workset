@@ -4,22 +4,28 @@
 	import {
 		ChevronDown,
 		ChevronRight,
+		ChevronsDownUp,
+		ChevronsUpDown,
 		Copy,
 		FileText,
 		FolderTree,
 		GitBranch,
 		LoaderCircle,
 		Minus,
+		PanelLeftClose,
+		PanelLeftOpen,
 		Plus,
 		Search,
 		X,
 	} from '@lucide/svelte';
+	import ResizablePanel from './ui/ResizablePanel.svelte';
 	import { readWorkspaceRepoFile, searchWorkspaceRepoFiles } from '../api/repo-files';
 	import { getDocumentViewerFileIcon } from './document-viewer/fileIcons';
 	import { calculateMermaidOverlayFit } from './document-viewer/mermaidOverlay';
 	import {
 		buildDocumentViewerTree,
 		buildExpandedKeysForQuery,
+		computeChildCounts,
 		shouldReplaceExpandedNodeSet,
 		type DocumentViewerTreeNode,
 	} from './document-viewer/tree';
@@ -118,6 +124,18 @@
 	const treeNodes = $derived.by<DocumentViewerTreeNode[]>(() =>
 		buildDocumentViewerTree(filteredRepoFiles, expandedNodes),
 	);
+
+	const childCounts = $derived.by(() => computeChildCounts(filteredRepoFiles));
+
+	const fileCount = $derived(filteredRepoFiles.length);
+
+	const expandAll = (): void => {
+		expandedNodes = buildExpandedKeysForQuery(filteredRepoFiles);
+	};
+
+	const collapseAll = (): void => {
+		expandedNodes = new Set();
+	};
 
 	const formatBytes = (sizeBytes: number): string => {
 		if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) return '0 B';
@@ -395,7 +413,7 @@
 					<div class="viewer-subtitle">
 						<span class="repo-pill">{session?.repoName}</span>
 						{#if file}
-							<span>{formatBytes(file.sizeBytes)}</span>
+							<span>Size: {formatBytes(file.sizeBytes)}</span>
 							{#if file.isTruncated}
 								<span class="warning-pill">Truncated</span>
 							{/if}
@@ -404,16 +422,6 @@
 				</div>
 			</div>
 			<div class="viewer-actions">
-				<button
-					type="button"
-					class="icon-btn"
-					class:active={showFileTree}
-					aria-label={showFileTree ? 'Hide file tree' : 'Show file tree'}
-					title={showFileTree ? 'Hide file tree (⌘⇧P)' : 'Show file tree (⌘⇧P)'}
-					onclick={() => (showFileTree = !showFileTree)}
-				>
-					<FolderTree size={15} />
-				</button>
 				{#if canRenderMarkdown}
 					<div class="mode-toggle" role="tablist" aria-label="Document render mode">
 						<button
@@ -446,86 +454,136 @@
 			</div>
 		</header>
 
-		<section class="viewer-shell" class:tree-visible={showFileTree}>
-			{#if showFileTree}
-				<aside class="viewer-tree" aria-label="Repository file tree">
-					<div class="tree-header">
+		{#snippet treePane()}
+			<aside class="viewer-tree" aria-label="Repository file tree">
+				<div class="tree-header">
+					<div class="tree-header-label">
 						<FolderTree size={13} />
 						<span>Files</span>
 					</div>
-					<div class="tree-search">
-						<Search size={14} />
-						<input
-							type="text"
-							placeholder="Filter files..."
-							bind:value={searchQuery}
-							autocomplete="off"
-							spellcheck="false"
-						/>
+					<div class="tree-header-actions">
+						<button
+							type="button"
+							class="tree-action-btn"
+							title="Expand all"
+							aria-label="Expand all directories"
+							onclick={expandAll}
+						>
+							<ChevronsUpDown size={13} />
+						</button>
+						<button
+							type="button"
+							class="tree-action-btn"
+							title="Collapse all"
+							aria-label="Collapse all directories"
+							onclick={collapseAll}
+						>
+							<ChevronsDownUp size={13} />
+						</button>
+						<button
+							type="button"
+							class="tree-action-btn"
+							title="Collapse file tree (⌘⇧P)"
+							aria-label="Collapse file tree"
+							onclick={() => (showFileTree = false)}
+						>
+							<PanelLeftClose size={13} />
+						</button>
 					</div>
-					{#if treeLoading}
-						<div class="tree-state">
-							<span class="spin"><LoaderCircle size={16} /></span>
-							<span>Loading files…</span>
-						</div>
-					{:else if treeError}
-						<div class="tree-state error">{treeError}</div>
-					{:else if treeNodes.length === 0}
-						<div class="tree-state">No files found.</div>
-					{:else}
-						<div class="tree-list">
-							{#each treeNodes as node (node.key)}
-								{#if node.kind === 'repo'}
-									<button
-										type="button"
-										class="tree-repo"
-										class:expanded={expandedNodes.has(node.key)}
-										style={`--depth:${node.depth};`}
-										onclick={() => toggleNode(node.key)}
-									>
-										{#if expandedNodes.has(node.key)}
-											<ChevronDown size={11} />
-										{:else}
-											<ChevronRight size={11} />
-										{/if}
-										<GitBranch size={12} />
-										<span>{node.label}</span>
-									</button>
-								{:else if node.kind === 'dir'}
-									<button
-										type="button"
-										class="tree-dir"
-										class:expanded={expandedNodes.has(node.key)}
-										style={`--depth:${node.depth};`}
-										onclick={() => toggleNode(node.key)}
-									>
-										{#if expandedNodes.has(node.key)}
-											<ChevronDown size={11} />
-										{:else}
-											<ChevronRight size={11} />
-										{/if}
-										<span>{node.label}</span>
-									</button>
-								{:else}
-									<button
-										type="button"
-										class="tree-file"
-										class:selected={node.path === currentPath && node.repoId === currentRepoId}
-										style={`--depth:${node.depth};`}
-										onclick={() => selectTreeFile(node.path, node.repoId)}
-									>
-										<span class="file-icon" data-icon={getDocumentViewerFileIcon(node.path)}>
-											<Icon icon={getDocumentViewerFileIcon(node.path)} width="12" />
-										</span>
-										<span>{node.label}</span>
-									</button>
-								{/if}
-							{/each}
-						</div>
+				</div>
+				<div class="tree-search">
+					<Search size={14} />
+					<input
+						type="text"
+						placeholder="Filter files..."
+						bind:value={searchQuery}
+						autocomplete="off"
+						spellcheck="false"
+					/>
+					{#if searchQuery.trim().length > 0}
+						<span class="tree-search-count">{fileCount}</span>
+						<button
+							type="button"
+							class="tree-search-clear"
+							title="Clear filter"
+							aria-label="Clear filter"
+							onclick={() => (searchQuery = '')}
+						>
+							<X size={12} />
+						</button>
 					{/if}
-				</aside>
-			{/if}
+				</div>
+				{#if treeLoading}
+					<div class="tree-state">
+						<span class="spin"><LoaderCircle size={16} /></span>
+						<span>Loading files…</span>
+					</div>
+				{:else if treeError}
+					<div class="tree-state error">{treeError}</div>
+				{:else if treeNodes.length === 0}
+					<div class="tree-state">No files found.</div>
+				{:else}
+					<div class="tree-list">
+						{#each treeNodes as node (node.key)}
+							{#if node.kind === 'repo'}
+								<button
+									type="button"
+									class="tree-repo"
+									class:expanded={expandedNodes.has(node.key)}
+									style={`--depth:${node.depth};`}
+									onclick={() => toggleNode(node.key)}
+								>
+									{#if expandedNodes.has(node.key)}
+										<ChevronDown size={11} />
+									{:else}
+										<ChevronRight size={11} />
+									{/if}
+									<GitBranch size={12} />
+									<span class="tree-node-label">{node.label}</span>
+									{#if childCounts.has(node.key)}
+										<span class="tree-child-count">{childCounts.get(node.key)}</span>
+									{/if}
+								</button>
+							{:else if node.kind === 'dir'}
+								<button
+									type="button"
+									class="tree-dir"
+									class:expanded={expandedNodes.has(node.key)}
+									style={`--depth:${node.depth};`}
+									onclick={() => toggleNode(node.key)}
+								>
+									{#if expandedNodes.has(node.key)}
+										<ChevronDown size={11} />
+									{:else}
+										<ChevronRight size={11} />
+									{/if}
+									<span class="tree-node-label">{node.label}</span>
+									{#if childCounts.has(node.key)}
+										<span class="tree-child-count">{childCounts.get(node.key)}</span>
+									{/if}
+								</button>
+							{:else}
+								<button
+									type="button"
+									class="tree-file"
+									class:selected={node.path === currentPath && node.repoId === currentRepoId}
+									style={`--depth:${node.depth};`}
+									title={node.path}
+									onclick={() => selectTreeFile(node.path, node.repoId)}
+								>
+									<span class="file-icon" data-icon={getDocumentViewerFileIcon(node.path)}>
+										<Icon icon={getDocumentViewerFileIcon(node.path)} width="12" />
+									</span>
+									<span>{node.label}</span>
+								</button>
+							{/if}
+						{/each}
+					</div>
+				{/if}
+			</aside>
+		{/snippet}
 
+		{#snippet contentPane()}
 			<section class="viewer-content" class:code-view={!isRenderedMarkdown}>
 				{#if mermaidDiagnostics}
 					<div class="mermaid-debug">
@@ -543,6 +601,14 @@
 					</div>
 				{:else if error}
 					<div class="state-panel error">{error}</div>
+				{:else if !currentPath}
+					<div class="state-panel state-panel-empty">
+						<span class="state-panel-icon"><FolderTree size={28} /></span>
+						<span>Select a file to preview</span>
+						<span class="state-panel-hint">
+							<kbd class="ui-kbd">⌘⇧P</kbd> toggle file tree
+						</span>
+					</div>
 				{:else if file?.isBinary}
 					<div class="state-panel">
 						This file looks binary. Workset will not render binary content inline.
@@ -572,6 +638,36 @@
 					<div class="state-panel">Nothing to render for this file.</div>
 				{/if}
 			</section>
+		{/snippet}
+
+		<section class="viewer-shell">
+			{#if showFileTree}
+				<ResizablePanel
+					direction="horizontal"
+					initialRatio={0.25}
+					minRatio={0.15}
+					maxRatio={0.5}
+					storageKey="workset-file-tree-panel"
+				>
+					{@render treePane()}
+
+					{#snippet second()}
+						{@render contentPane()}
+					{/snippet}
+				</ResizablePanel>
+			{:else}
+				<button
+					type="button"
+					class="tree-gutter"
+					title="Expand file tree (⌘⇧P)"
+					aria-label="Expand file tree"
+					onclick={() => (showFileTree = true)}
+				>
+					<PanelLeftOpen size={13} />
+					<span class="tree-gutter-label">Files</span>
+				</button>
+				{@render contentPane()}
+			{/if}
 		</section>
 	</section>
 {/if}

@@ -6,7 +6,6 @@ import (
 
 	"github.com/strantalis/workset/internal/git"
 	"github.com/strantalis/workset/internal/hooks"
-	"github.com/strantalis/workset/internal/session"
 )
 
 // Options configures a Service instance.
@@ -16,7 +15,6 @@ type Options struct {
 	ConfigStore    ConfigStore
 	WorkspaceStore WorkspaceStore
 	Git            git.Client
-	SessionRunner  session.Runner
 	CommandRunner  CommandRunner
 	GitHubProvider GitHubProvider
 	TokenStore     TokenStore
@@ -30,14 +28,13 @@ type Options struct {
 	Logf         func(format string, args ...any)
 }
 
-// Service provides the public API for workspace, repo, alias, group, session,
+// Service provides the public API for workspace, repo, alias, group,
 // and exec operations.
 type Service struct {
 	configPath string
 	configs    ConfigStore
 	workspaces WorkspaceStore
 	git        git.Client
-	runner     session.Runner
 	commands   CommandRunner
 	exec       func(ctx context.Context, root string, command []string, env []string) error
 	hookRunner hooks.Runner
@@ -62,10 +59,6 @@ func NewService(opts Options) *Service {
 	gitClient := opts.Git
 	if gitClient == nil {
 		gitClient = git.NewCLIClient()
-	}
-	runner := opts.SessionRunner
-	if runner == nil {
-		runner = session.ExecRunner{}
 	}
 	commandRunner := opts.CommandRunner
 	if commandRunner == nil {
@@ -96,7 +89,6 @@ func NewService(opts Options) *Service {
 		configs:    cfgStore,
 		workspaces: wsStore,
 		git:        gitClient,
-		runner:     runner,
 		commands:   commandRunner,
 		exec:       execFunc,
 		hookRunner: hookRunner,

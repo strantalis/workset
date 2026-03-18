@@ -195,38 +195,3 @@ func (s *Service) UnregisterRepo(ctx context.Context, name string) (RegisteredRe
 	}
 	return RegisteredRepoMutationResultJSON{Status: "ok", Name: name}, info, nil
 }
-
-// ListAliases is deprecated, use ListRegisteredRepos instead.
-//
-// Deprecated: Use ListRegisteredRepos instead. This will be removed in a future version.
-func (s *Service) ListAliases(ctx context.Context) (RegisteredRepoListResult, error) {
-	return s.ListRegisteredRepos(ctx)
-}
-
-// GetAlias is deprecated, use GetRegisteredRepo instead.
-//
-// Deprecated: Use GetRegisteredRepo instead. This will be removed in a future version.
-func (s *Service) GetAlias(ctx context.Context, name string) (RegisteredRepoJSON, config.GlobalConfigLoadInfo, error) {
-	return s.GetRegisteredRepo(ctx, name)
-}
-
-// CreateAlias is deprecated, use RegisterRepo instead.
-//
-// Deprecated: Use RegisterRepo instead. This will be removed in a future version.
-func (s *Service) CreateAlias(ctx context.Context, input RepoRegistryInput) (RegisteredRepoMutationResultJSON, config.GlobalConfigLoadInfo, error) {
-	return s.RegisterRepo(ctx, input)
-}
-
-// UpdateAlias is deprecated, use UpdateRegisteredRepo instead.
-//
-// Deprecated: Use UpdateRegisteredRepo instead. This will be removed in a future version.
-func (s *Service) UpdateAlias(ctx context.Context, input RepoRegistryInput) (RegisteredRepoMutationResultJSON, config.GlobalConfigLoadInfo, error) {
-	return s.UpdateRegisteredRepo(ctx, input)
-}
-
-// DeleteAlias is deprecated, use UnregisterRepo instead.
-//
-// Deprecated: Use UnregisterRepo instead. This will be removed in a future version.
-func (s *Service) DeleteAlias(ctx context.Context, name string) (RegisteredRepoMutationResultJSON, config.GlobalConfigLoadInfo, error) {
-	return s.UnregisterRepo(ctx, name)
-}

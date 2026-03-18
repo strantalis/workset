@@ -26,6 +26,7 @@
 	display: flex;
 	flex-direction: column;
 	min-height: 0;
+	min-width: 0;
 	background: transparent;
 	position: relative;
 	z-index: 1;
@@ -35,6 +36,7 @@
 .shell-content {
 	flex: 1;
 	min-height: 0;
+	min-width: 0;
 	display: flex;
 	overflow: hidden;
 	position: relative;
@@ -44,20 +46,9 @@
 	width: 240px;
 	min-width: 240px;
 	height: 100%;
-	border-right: 1px solid color-mix(in srgb, var(--glass-border) 70%, transparent);
-	background:
-		linear-gradient(
-			180deg,
-			rgba(255, 255, 255, 0.045) 0%,
-			rgba(255, 255, 255, 0.012) 52%,
-			rgba(255, 255, 255, 0) 100%
-		),
-		var(--glass-bg);
-	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-	box-shadow:
-		var(--inset-highlight),
-		inset -1px 0 0 color-mix(in srgb, var(--border) 38%, transparent);
+	border-right: 1px solid var(--border);
+	background: var(--panel);
+	box-shadow: inset -1px 0 0 color-mix(in srgb, var(--border) 38%, transparent);
 	position: relative;
 	z-index: 1;
 }
@@ -73,12 +64,11 @@
 	border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
 	border-left: none;
 	border-radius: 0 10px 10px 0;
-	background: color-mix(in srgb, var(--panel-strong) 78%, transparent);
+	background: var(--panel-strong);
 	color: var(--muted);
 	display: inline-grid;
 	place-items: center;
 	cursor: pointer;
-	backdrop-filter: blur(10px);
 	transition:
 		color var(--transition-fast),
 		background var(--transition-fast),
@@ -96,15 +86,14 @@
 	min-height: 0;
 	min-width: 0;
 	overflow: hidden;
-	background: linear-gradient(
-		180deg,
-		color-mix(in srgb, var(--glass-bg) 24%, transparent) 0px,
-		rgba(0, 0, 0, 0) 170px
-	);
+	background: transparent;
 }
 
 .view-transition {
 	height: 100%;
+	width: 100%;
+	min-width: 0;
+	overflow: hidden;
 }
 
 .error {
@@ -141,8 +130,7 @@
 .overlay {
 	position: fixed;
 	inset: 0;
-	background: rgba(6, 9, 14, 0.85);
-	backdrop-filter: blur(2px);
+	background: rgba(4, 6, 10, 0.7);
 	display: grid;
 	place-items: center;
 	z-index: 200;
@@ -154,6 +142,7 @@
 	width: 100%;
 	display: flex;
 	justify-content: center;
+	padding-left: 10%;
 	animation: modalSlideIn 200ms ease-out;
 }
 
@@ -174,6 +163,42 @@
 	to {
 		opacity: 1;
 		transform: translateY(0) scale(1);
+	}
+}
+
+/* ─── Action slide-out panel (create-thread, add-repo) ─── */
+.action-panel-backdrop {
+	position: fixed;
+	inset: 0;
+	background: rgba(4, 6, 10, 0.35);
+	z-index: 199;
+	animation: overlayFadeIn var(--transition-normal) ease-out;
+}
+
+.action-panel {
+	position: fixed;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	width: min(440px, 80vw);
+	z-index: 200;
+	background: var(--panel);
+	border-left: 1px solid var(--border);
+	box-shadow: -8px 0 32px rgba(0, 0, 0, 0.35);
+	display: flex;
+	flex-direction: column;
+	animation: panelSlideIn 200ms ease-out;
+	overflow: hidden;
+}
+
+@keyframes panelSlideIn {
+	from {
+		opacity: 0;
+		transform: translateX(20px);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(0);
 	}
 }
 

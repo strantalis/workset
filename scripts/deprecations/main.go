@@ -48,7 +48,7 @@ func run(args []string, out io.Writer, errOut io.Writer, now time.Time) int {
 		warnDays   int
 	)
 
-	fs.StringVar(&configPath, "config", "docs/architecture/deprecation-register.yaml", "path to deprecation register")
+	fs.StringVar(&configPath, "config", "docs-internal/architecture/deprecation-register.yaml", "path to deprecation register")
 	fs.IntVar(&warnDays, "warn-days", 30, "warn when remove_by is within this many days")
 
 	if err := fs.Parse(args); err != nil {

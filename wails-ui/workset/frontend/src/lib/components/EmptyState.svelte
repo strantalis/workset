@@ -17,7 +17,7 @@
 	const {
 		title,
 		body,
-		actionLabel = 'Create workspace',
+		actionLabel = 'Create thread',
 		onAction,
 		actionVariant = 'primary',
 		secondaryActionLabel,
@@ -34,7 +34,7 @@
 	class:ws-empty-state={variant === 'centered'}
 >
 	<div class="content">
-		<div class="title">{title}</div>
+		<h3 class="title">{title}</h3>
 		<div class="body ws-empty-state-copy">{body}</div>
 		{#if onAction || onSecondaryAction}
 			<div class="actions">
@@ -88,16 +88,20 @@
 	}
 
 	.title {
-		font-size: var(--text-2xl);
+		font-size: var(--text-xl);
 		font-weight: 600;
+		color: var(--text);
+		margin: 0;
 	}
 
 	.centered .title {
-		font-size: var(--text-3xl);
+		font-size: var(--text-2xl);
 	}
 
 	.body {
 		line-height: 1.6;
+		color: var(--muted);
+		font-size: var(--text-base);
 	}
 
 	.centered .body {

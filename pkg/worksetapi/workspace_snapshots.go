@@ -57,11 +57,6 @@ func (s *Service) ListWorkspaceSnapshots(ctx context.Context, opts WorkspaceSnap
 				continue
 			}
 		}
-		if hasWorkspaceConfig {
-			if err := s.migrateLegacyWorkspaceRemotes(ctx, &cfg, info.Path, root, &wsConfig); err != nil {
-				return WorkspaceSnapshotResult{}, err
-			}
-		}
 		var state workspace.State
 		if hasWorkspaceConfig {
 			state, err = s.workspaces.LoadState(ctx, root)
@@ -150,7 +145,6 @@ func (s *Service) ListWorkspaceSnapshots(ctx context.Context, opts WorkspaceSnap
 			Name:           name,
 			Path:           ref.Path,
 			Workset:        workset,
-			Template:       workset,
 			WorksetKey:     worksetKey,
 			WorksetLabel:   worksetLabel,
 			CreatedAt:      ref.CreatedAt,
@@ -194,7 +188,6 @@ func (s *Service) ListWorkspaceSnapshots(ctx context.Context, opts WorkspaceSnap
 				Name:         worksetName,
 				Path:         "",
 				Workset:      worksetName,
-				Template:     worksetName,
 				WorksetKey:   worksetKey,
 				WorksetLabel: worksetLabel,
 				Placeholder:  true,

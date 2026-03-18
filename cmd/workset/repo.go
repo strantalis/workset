@@ -17,18 +17,18 @@ import (
 func repoCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "repo",
-		Usage: "Manage repos in a workspace (requires -w)",
+		Usage: "Manage repos in a thread (requires -t)",
 		Commands: []*cli.Command{
 			repoRegistryCommand(),
 			{
 				Name:      "ls",
 				Aliases:   []string{"list"},
-				Usage:     "List repos in a workspace (requires -w)",
-				ArgsUsage: "-w <workspace>",
-				Flags:     appendOutputFlags([]cli.Flag{workspaceFlag(true)}),
+				Usage:     "List repos in a thread (requires -t)",
+				ArgsUsage: "-t <thread>",
+				Flags:     appendOutputFlags([]cli.Flag{threadFlag(true)}),
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					svc := apiService(ctx, cmd)
-					result, err := svc.ListRepos(ctx, worksetapi.WorkspaceSelector{Value: cmd.String("workspace")})
+					result, err := svc.ListRepos(ctx, worksetapi.WorkspaceSelector{Value: cmd.String("thread")})
 					if err != nil {
 						return err
 					}
@@ -40,7 +40,7 @@ func repoCommand() *cli.Command {
 						if mode.JSON {
 							return output.WriteJSON(commandWriter(cmd), []worksetapi.RepoJSON{})
 						}
-						msg := "no repos in workspace"
+						msg := "no repos in thread"
 						if styles.Enabled {
 							msg = styles.Render(styles.Muted, msg)
 						}
@@ -70,17 +70,17 @@ func repoCommand() *cli.Command {
 			},
 			{
 				Name:      "add",
-				Usage:     "Add a repo to the workspace and clone it (requires -w)",
-				ArgsUsage: "-w <workspace> <alias|url|path>",
+				Usage:     "Add a repo to the thread and clone it (requires -t)",
+				ArgsUsage: "-t <thread> <alias|url|path>",
 				Flags: appendOutputFlags([]cli.Flag{
-					workspaceFlag(true),
+					threadFlag(true),
 					&cli.StringFlag{
 						Name:  "name",
 						Usage: "Override repo name",
 					},
 					&cli.StringFlag{
 						Name:  "repo-dir",
-						Usage: "Directory name for the repo within the workspace",
+						Usage: "Directory name for the repo within the thread",
 					},
 				}),
 				ShellComplete: func(ctx context.Context, cmd *cli.Command) {
@@ -94,9 +94,9 @@ func repoCommand() *cli.Command {
 						return usageError(ctx, cmd, "repo alias or source required")
 					}
 					svc := apiService(ctx, cmd)
-					workspaceValue := cmd.String("workspace")
+					threadValue := cmd.String("thread")
 					result, err := svc.AddRepo(ctx, worksetapi.RepoAddInput{
-						Workspace: worksetapi.WorkspaceSelector{Value: cmd.String("workspace")},
+						Workspace: worksetapi.WorkspaceSelector{Value: cmd.String("thread")},
 						Source:    raw,
 						Name:      strings.TrimSpace(cmd.String("name")),
 						NameSet:   cmd.IsSet("name"),
@@ -136,7 +136,7 @@ func repoCommand() *cli.Command {
 							}
 							if ok {
 								runResult, err := svc.RunHooks(ctx, worksetapi.HooksRunInput{
-									Workspace: worksetapi.WorkspaceSelector{Value: workspaceValue},
+									Workspace: worksetapi.WorkspaceSelector{Value: threadValue},
 									Repo:      pending.Repo,
 									Event:     pending.Event,
 									Reason:    "repo.add",
@@ -207,10 +207,10 @@ func repoCommand() *cli.Command {
 			{
 				Name:      "rm",
 				Aliases:   []string{"remove"},
-				Usage:     "Remove a repo from a workspace",
-				ArgsUsage: "-w <workspace> <name>",
+				Usage:     "Remove a repo from a thread",
+				ArgsUsage: "-t <thread> <name>",
 				Flags: appendOutputFlags([]cli.Flag{
-					workspaceFlag(true),
+					threadFlag(true),
 					&cli.BoolFlag{
 						Name:  "delete-worktrees",
 						Usage: "Delete repo worktrees under worktrees/",
@@ -230,19 +230,19 @@ func repoCommand() *cli.Command {
 				}),
 				ShellComplete: func(ctx context.Context, cmd *cli.Command) {
 					if cmd.NArg() == 0 {
-						completeWorkspaceRepoNames(cmd)
+						completeThreadRepoNames(cmd)
 					}
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					name := strings.TrimSpace(cmd.Args().First())
 					if name == "" {
-						return usageError(ctx, cmd, "usage: workset repo rm -w <workspace> <name>")
+						return usageError(ctx, cmd, "usage: workset repo rm -t <thread> <name>")
 					}
 					deleteWorktrees := cmd.Bool("delete-worktrees")
 					deleteLocal := cmd.Bool("delete-local")
 					svc := apiService(ctx, cmd)
 					input := worksetapi.RepoRemoveInput{
-						Workspace:       worksetapi.WorkspaceSelector{Value: cmd.String("workspace")},
+						Workspace:       worksetapi.WorkspaceSelector{Value: cmd.String("thread")},
 						Name:            name,
 						DeleteWorktrees: deleteWorktrees,
 						DeleteLocal:     deleteLocal,

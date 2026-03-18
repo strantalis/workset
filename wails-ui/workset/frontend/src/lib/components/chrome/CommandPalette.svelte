@@ -2,7 +2,7 @@
 	import { Search, Command, Box, Terminal, GitBranch, Sparkles, Plus } from '@lucide/svelte';
 	import type { WorksetSummary } from '../../view-models/worksetViewModel';
 
-	export type AppView = 'workspaces' | 'skill-registry' | 'onboarding';
+	export type AppView = 'workspaces' | 'skill-registry' | 'settings' | 'onboarding';
 
 	type PaletteItem = {
 		id: string;
@@ -27,13 +27,14 @@
 	let query = $state('');
 	let selectedIndex = $state(0);
 	let inputRef = $state<HTMLInputElement | null>(null);
+	let previousFocus: HTMLElement | null = null;
 
 	const viewItems: PaletteItem[] = [
 		{
 			id: 'view:workspaces',
 			type: 'view',
 			label: 'Workspaces',
-			description: 'Open workspace terminals and pull requests',
+			description: 'Open thread terminals and pull requests',
 			view: 'workspaces',
 		},
 		{
@@ -114,6 +115,12 @@
 			resetState();
 			return;
 		}
+		if (event.key === 'Tab') {
+			// Trap focus inside the palette
+			event.preventDefault();
+			inputRef?.focus();
+			return;
+		}
 		if (event.key === 'ArrowDown') {
 			event.preventDefault();
 			selectedIndex = Math.min(selectedIndex + 1, Math.max(items.length - 1, 0));
@@ -134,11 +141,16 @@
 	};
 
 	$effect(() => {
-		if (!open) return;
-		selectedIndex = 0;
-		requestAnimationFrame(() => {
-			inputRef?.focus();
-		});
+		if (open) {
+			previousFocus = document.activeElement as HTMLElement | null;
+			selectedIndex = 0;
+			requestAnimationFrame(() => {
+				inputRef?.focus();
+			});
+		} else if (previousFocus) {
+			previousFocus.focus();
+			previousFocus = null;
+		}
 	});
 </script>
 
@@ -338,10 +350,14 @@
 		cursor: pointer;
 	}
 
-	.result-list button:hover,
-	.result-list button.selected {
+	.result-list button:hover {
 		background: var(--panel-strong);
 		border-color: var(--border);
+	}
+
+	.result-list button.selected {
+		background: color-mix(in srgb, var(--accent) 12%, var(--panel-strong));
+		border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
 	}
 
 	.icon {

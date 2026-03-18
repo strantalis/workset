@@ -134,30 +134,30 @@
 		background: rgba(255, 255, 255, 0.04);
 	}
 
-	/* Primary variant */
+	/* Primary variant — uses --cta (green) for call-to-action distinction */
 	.btn.primary {
-		background: var(--accent);
+		background: var(--cta);
 		border: none;
-		color: white;
+		color: var(--on-dark);
 		font-weight: 600;
 		box-shadow:
 			var(--shadow-sm),
-			inset 0 1px 0 rgba(255, 255, 255, 0.15),
-			0 0 0 0 rgba(var(--accent-rgb), 0.4);
+			inset 0 1px 0 rgba(255, 255, 255, 0.12),
+			0 0 0 0 rgba(var(--cta-rgb), 0.3);
 	}
 
 	.btn.primary:hover:not(:disabled) {
-		background: color-mix(in srgb, var(--accent) 85%, white);
+		background: color-mix(in srgb, var(--cta) 85%, white);
 		box-shadow:
 			var(--shadow-md),
-			inset 0 1px 0 rgba(255, 255, 255, 0.15),
-			0 0 0 0 rgba(var(--accent-rgb), 0.4);
+			inset 0 1px 0 rgba(255, 255, 255, 0.12),
+			0 0 0 0 rgba(var(--cta-rgb), 0.3);
 	}
 
 	.btn.primary:active:not(:disabled) {
 		box-shadow:
 			inset 0 2px 4px rgba(0, 0, 0, 0.2),
-			0 0 0 0 rgba(var(--accent-rgb), 0.4);
+			0 0 0 0 rgba(var(--cta-rgb), 0.3);
 	}
 
 	.btn.primary:disabled {
