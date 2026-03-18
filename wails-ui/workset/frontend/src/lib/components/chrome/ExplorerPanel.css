@@ -853,6 +853,26 @@
 	transform: translateX(-50%) translateY(0);
 }
 
+.footer-nav .footer-pane-btn:first-child::after {
+	left: 0;
+	transform: translateX(0) translateY(2px);
+}
+
+.footer-nav .footer-pane-btn:first-child::before {
+	left: 10px;
+	transform: translateX(0) translateY(2px) rotate(225deg);
+}
+
+.footer-nav .footer-pane-btn:first-child:hover::after,
+.footer-nav .footer-pane-btn:first-child:focus-visible::after {
+	transform: translateX(0) translateY(0);
+}
+
+.footer-nav .footer-pane-btn:first-child:hover::before,
+.footer-nav .footer-pane-btn:first-child:focus-visible::before {
+	transform: translateX(0) translateY(0) rotate(225deg);
+}
+
 .footer-pane-btn.active {
 	color: var(--text);
 	background: color-mix(in srgb, var(--accent) 14%, var(--panel-strong));
