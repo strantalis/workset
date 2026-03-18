@@ -777,6 +777,7 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
+	position: relative;
 	width: 28px;
 	height: 28px;
 	padding: 0;
@@ -791,10 +792,65 @@
 		border-color var(--transition-fast);
 }
 
+.footer-pane-btn::after {
+	content: attr(data-hover-label);
+	position: absolute;
+	bottom: calc(100% + 10px);
+	left: 50%;
+	transform: translateX(-50%) translateY(2px);
+	background: var(--panel-strong);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+	color: var(--text);
+	font-size: var(--text-xs);
+	line-height: 1;
+	padding: 5px 7px;
+	white-space: nowrap;
+	pointer-events: none;
+	opacity: 0;
+	visibility: hidden;
+	transition:
+		opacity var(--transition-fast),
+		transform var(--transition-fast),
+		visibility var(--transition-fast);
+	z-index: 20;
+}
+
+.footer-pane-btn::before {
+	content: '';
+	position: absolute;
+	left: 50%;
+	bottom: calc(100% + 6px);
+	transform: translateX(-50%) translateY(2px);
+	width: 7px;
+	height: 7px;
+	background: var(--panel-strong);
+	border-left: 1px solid var(--border);
+	border-top: 1px solid var(--border);
+	rotate: 225deg;
+	pointer-events: none;
+	opacity: 0;
+	visibility: hidden;
+	transition:
+		opacity var(--transition-fast),
+		transform var(--transition-fast),
+		visibility var(--transition-fast);
+	z-index: 19;
+}
+
 .footer-pane-btn:hover {
 	color: var(--text);
 	background: color-mix(in srgb, var(--panel-strong) 65%, transparent);
 	border-color: var(--border);
+}
+
+.footer-pane-btn:hover::after,
+.footer-pane-btn:hover::before,
+.footer-pane-btn:focus-visible::after,
+.footer-pane-btn:focus-visible::before {
+	opacity: 1;
+	visibility: visible;
+	transform: translateX(-50%) translateY(0);
 }
 
 .footer-pane-btn.active {

@@ -811,6 +811,7 @@
 					type="button"
 					class="footer-pane-btn"
 					class:active={activeView !== 'skill-registry' && activeSurface === 'pull-requests'}
+					data-hover-label="Pull Requests"
 					title="Toggle pull requests pane"
 					aria-label="Toggle pull requests pane"
 					onclick={onOpenPullRequests}
@@ -821,6 +822,7 @@
 					type="button"
 					class="footer-pane-btn"
 					class:active={filesActive}
+					data-hover-label="Files"
 					title="Toggle files pane"
 					aria-label="Toggle files pane"
 					onclick={onOpenFiles}
@@ -831,6 +833,7 @@
 					type="button"
 					class="footer-pane-btn"
 					class:active={activeView === 'skill-registry'}
+					data-hover-label="Skills"
 					title="Toggle skills view"
 					aria-label="Toggle skills view"
 					onclick={onOpenSkills}
