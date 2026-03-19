@@ -292,7 +292,11 @@
 
 							{#snippet second()}
 								<aside class="spaces-side-pane spaces-document-pane">
-									<DocumentViewer session={documentSession} onClose={onCloseDocument} />
+									<DocumentViewer
+										session={documentSession}
+										repos={activeThread?.repos.map((r) => ({ id: r.id, name: r.name })) ?? []}
+										onClose={onCloseDocument}
+									/>
 								</aside>
 							{/snippet}
 						</ResizablePanel>

@@ -63,6 +63,7 @@ describe('DocumentViewer', () => {
 					path: 'docs/README.md',
 					openedAt: Date.now(),
 				},
+				repos: [{ id: 'thread-alpha::api', name: 'api' }],
 				onClose,
 			},
 		});
@@ -107,6 +108,7 @@ describe('DocumentViewer', () => {
 					path: 'assets/logo.png',
 					openedAt: Date.now(),
 				},
+				repos: [{ id: 'thread-alpha::api', name: 'api' }],
 				onClose: vi.fn(),
 			},
 		});
@@ -171,6 +173,7 @@ describe('DocumentViewer', () => {
 					path: '.github/dependabot.yml',
 					openedAt: Date.now(),
 				},
+				repos: [{ id: 'thread-alpha::api', name: 'api' }],
 				onClose: vi.fn(),
 			},
 		});
@@ -180,8 +183,7 @@ describe('DocumentViewer', () => {
 		const repoButton = getByRole('button', { name: /^api/ });
 		expect(repoButton).toBeInTheDocument();
 
-		await fireEvent.click(repoButton);
-
+		// Repo is auto-expanded on session init; verify children are visible
 		await waitFor(() => expect(getByText('.github')).toBeInTheDocument());
 
 		await fireEvent.click(getByRole('button', { name: /^docs/ }));
@@ -233,6 +235,7 @@ describe('DocumentViewer', () => {
 					path: 'docs/README.md',
 					openedAt: Date.now(),
 				},
+				repos: [{ id: 'thread-alpha::api', name: 'api' }],
 				onClose: vi.fn(),
 			},
 		});

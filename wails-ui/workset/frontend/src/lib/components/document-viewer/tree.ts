@@ -127,25 +127,30 @@ export const computeChildCounts = (results: RepoFileSearchResult[]): Map<string,
 	return counts;
 };
 
+export type RepoRef = { id: string; name: string };
+
 export const buildDocumentViewerTree = (
+	repos: RepoRef[],
 	results: RepoFileSearchResult[],
 	expandedNodes: Set<string>,
 ): DocumentViewerTreeNode[] => {
+	const grouped = new Map(groupResultsByRepo(results));
+	const sortedRepos = [...repos].sort((a, b) => a.name.localeCompare(b.name));
 	const nodes: DocumentViewerTreeNode[] = [];
 
-	for (const [repoId, files] of groupResultsByRepo(results)) {
-		const repoName = files[0]?.repoName ?? repoId;
-		const repoKey = `repo:${repoId}`;
+	for (const repo of sortedRepos) {
+		const repoKey = `repo:${repo.id}`;
 		nodes.push({
 			kind: 'repo',
 			key: repoKey,
-			label: repoName,
-			repoId,
+			label: repo.name,
+			repoId: repo.id,
 			depth: 0,
 		});
 
 		if (!expandedNodes.has(repoKey)) continue;
-		appendRepoChildren(nodes, repoId, repoKey, files, expandedNodes);
+		const files = grouped.get(repo.id);
+		if (files) appendRepoChildren(nodes, repo.id, repoKey, files, expandedNodes);
 	}
 
 	return nodes;

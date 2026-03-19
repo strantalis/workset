@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, tick } from 'svelte';
+	import { onDestroy, tick, untrack } from 'svelte';
 	import Icon from '@iconify/svelte';
 	import {
 		ChevronDown,
@@ -28,6 +28,7 @@
 		computeChildCounts,
 		shouldReplaceExpandedNodeSet,
 		type DocumentViewerTreeNode,
+		type RepoRef,
 	} from './document-viewer/tree';
 	import {
 		renderCodeDocument,
@@ -43,25 +44,29 @@
 
 	interface Props {
 		session: DocumentSession | null;
+		repos: RepoRef[];
 		onClose: () => void;
 	}
 
-	const { session, onClose }: Props = $props();
+	const { session, repos, onClose }: Props = $props();
+
+	type RepoFileState =
+		| { status: 'idle' }
+		| { status: 'loading' }
+		| { status: 'loaded'; files: RepoFileSearchResult[] }
+		| { status: 'error'; message: string };
 
 	let loading = $state(false);
 	let renderLoading = $state(false);
-	let treeLoading = $state(false);
 	let error = $state<string | null>(null);
-	let treeError = $state<string | null>(null);
 	let file = $state<RepoFileContent | null>(null);
-	let repoFiles = $state<RepoFileSearchResult[]>([]);
+	let repoFileStates = $state<Map<string, RepoFileState>>(new Map());
 	let currentPath = $state('');
 	let currentRepoId = $state('');
 	let renderMode = $state<DocumentRenderMode>('raw');
 	let rendered = $state<DocumentRenderResult>({ html: '', containsMermaid: false });
 	let requestToken = 0;
 	let renderToken = 0;
-	let treeToken = 0;
 	let copyFeedback = $state(false);
 	let copyTimer: number | null = null;
 	let showFileTree = $state(true);
@@ -99,6 +104,14 @@
 		};
 	});
 
+	const repoFiles = $derived.by<RepoFileSearchResult[]>(() => {
+		const all: RepoFileSearchResult[] = [];
+		for (const state of repoFileStates.values()) {
+			if (state.status === 'loaded') all.push(...state.files);
+		}
+		return all;
+	});
+
 	const filteredRepoFiles = $derived.by<RepoFileSearchResult[]>(() => {
 		const query = searchQuery.trim().toLowerCase();
 		if (query.length === 0) return repoFiles;
@@ -122,7 +135,7 @@
 	});
 
 	const treeNodes = $derived.by<DocumentViewerTreeNode[]>(() =>
-		buildDocumentViewerTree(filteredRepoFiles, expandedNodes),
+		buildDocumentViewerTree(repos, filteredRepoFiles, expandedNodes),
 	);
 
 	const childCounts = $derived.by(() => computeChildCounts(filteredRepoFiles));
@@ -130,7 +143,13 @@
 	const fileCount = $derived(filteredRepoFiles.length);
 
 	const expandAll = (): void => {
-		expandedNodes = buildExpandedKeysForQuery(filteredRepoFiles);
+		if (!session) return;
+		const keys = buildExpandedKeysForQuery(filteredRepoFiles);
+		for (const repo of repos) {
+			keys.add(`repo:${repo.id}`);
+			loadRepoFiles(session.workspaceId, repo.id);
+		}
+		expandedNodes = keys;
 	};
 
 	const collapseAll = (): void => {
@@ -246,12 +265,33 @@
 		mermaidDragPointerId = null;
 	};
 
+	const loadRepoFiles = (workspaceId: string, repoId: string): void => {
+		const current = repoFileStates.get(repoId);
+		if (current?.status === 'loaded' || current?.status === 'loading') return;
+
+		repoFileStates = new Map(repoFileStates).set(repoId, { status: 'loading' });
+
+		void searchWorkspaceRepoFiles(workspaceId, '', 5000, repoId)
+			.then((files) => {
+				repoFileStates = new Map(repoFileStates).set(repoId, { status: 'loaded', files });
+			})
+			.catch((err) => {
+				repoFileStates = new Map(repoFileStates).set(repoId, {
+					status: 'error',
+					message: err instanceof Error ? err.message : 'Failed to load files.',
+				});
+			});
+	};
+
 	const toggleNode = (key: string): void => {
 		const next = new Set(expandedNodes);
 		if (next.has(key)) {
 			next.delete(key);
 		} else {
 			next.add(key);
+			if (key.startsWith('repo:') && session) {
+				loadRepoFiles(session.workspaceId, key.slice(5));
+			}
 		}
 		expandedNodes = next;
 	};
@@ -260,35 +300,20 @@
 		if (!session) {
 			file = null;
 			error = null;
-			treeError = null;
 			loading = false;
-			treeLoading = false;
 			renderLoading = false;
-			repoFiles = [];
+			repoFileStates = new Map();
 			currentPath = '';
 			rendered = { html: '', containsMermaid: false };
 			return;
 		}
 		currentPath = session.path;
 		currentRepoId = session.repoId;
-		treeError = null;
-		expandedNodes = new Set();
+		const { workspaceId, repoId } = session;
+		repoFileStates = new Map();
+		expandedNodes = new Set([`repo:${repoId}`]);
 		searchQuery = '';
-		const currentTreeToken = ++treeToken;
-		treeLoading = true;
-		void searchWorkspaceRepoFiles(session.workspaceId, '', 5000, session.repoId)
-			.then((next) => {
-				if (currentTreeToken !== treeToken) return;
-				repoFiles = next;
-				treeLoading = false;
-			})
-			.catch((loadError) => {
-				if (currentTreeToken !== treeToken) return;
-				treeError =
-					loadError instanceof Error ? loadError.message : 'Unable to load repository files.';
-				repoFiles = [];
-				treeLoading = false;
-			});
+		untrack(() => loadRepoFiles(workspaceId, repoId));
 	});
 
 	$effect(() => {
@@ -411,7 +436,7 @@
 				<div class="viewer-titles">
 					<div class="viewer-path">{currentPath}</div>
 					<div class="viewer-subtitle">
-						<span class="repo-pill">{session?.repoName}</span>
+						<span class="repo-pill">{file?.repoName ?? session?.repoName}</span>
 						{#if file}
 							<span>Size: {formatBytes(file.sizeBytes)}</span>
 							{#if file.isTruncated}
@@ -513,14 +538,7 @@
 						</button>
 					{/if}
 				</div>
-				{#if treeLoading}
-					<div class="tree-state">
-						<span class="spin"><LoaderCircle size={16} /></span>
-						<span>Loading files…</span>
-					</div>
-				{:else if treeError}
-					<div class="tree-state error">{treeError}</div>
-				{:else if treeNodes.length === 0}
+				{#if treeNodes.length === 0}
 					<div class="tree-state">No files found.</div>
 				{:else}
 					<div class="tree-list">
@@ -544,6 +562,19 @@
 										<span class="tree-child-count">{childCounts.get(node.key)}</span>
 									{/if}
 								</button>
+								{#if expandedNodes.has(node.key)}
+									{@const repoState = repoFileStates.get(node.repoId)}
+									{#if repoState?.status === 'loading'}
+										<div class="tree-state tree-state-inline" style="--depth:1;">
+											<span class="spin"><LoaderCircle size={14} /></span>
+											<span>Loading…</span>
+										</div>
+									{:else if repoState?.status === 'error'}
+										<div class="tree-state tree-state-inline error" style="--depth:1;">
+											{repoState.message}
+										</div>
+									{/if}
+								{/if}
 							{:else if node.kind === 'dir'}
 								<button
 									type="button"
