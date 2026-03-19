@@ -71,5 +71,14 @@ func (s *Session) storeSnapshotForOwner(snapshot json.RawMessage, owner string) 
 }
 
 func snapshotMatchesAttachDimensions(req AttachRequest, state sessionSnapshotState) bool {
-	return len(state.payload) > 0
+	if len(state.payload) == 0 {
+		return false
+	}
+	if req.Cols > 0 && state.cols > 0 && req.Cols != state.cols {
+		return false
+	}
+	if req.Rows > 0 && state.rows > 0 && req.Rows != state.rows {
+		return false
+	}
+	return true
 }

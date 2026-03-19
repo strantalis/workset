@@ -84,7 +84,7 @@ Workset currently runs shells with the inherited host environment plus Workset c
 - `WORKSET_ROOT`
 - `SHELL`
 
-Workset does **not** currently rewrite `TERM`, `COLORTERM`, `TERM_PROGRAM`, `KITTY_*`, or OSC payloads as part of normal terminal startup.
+Workset preserves existing terminal hints such as `TERM`, `COLORTERM`, `TERM_PROGRAM`, and `KITTY_*` when the host provides them. If `TERM` is missing, sessiond now defaults it to `xterm-256color` before launching the shell so prompt/tooling startup can rely on a valid terminal type.
 
 ## Persistence and replay
 

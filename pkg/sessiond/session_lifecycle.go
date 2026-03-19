@@ -183,5 +183,8 @@ func buildSessionEnv(shellPath, workspaceID, cwd string) []string {
 	env = setEnv(env, "SHELL", shellPath)
 	env = setEnv(env, "WORKSET_WORKSPACE", workspaceID)
 	env = setEnv(env, "WORKSET_ROOT", cwd)
+	if strings.TrimSpace(envValue(env, "TERM")) == "" {
+		env = setEnv(env, "TERM", "xterm-256color")
+	}
 	return env
 }

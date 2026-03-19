@@ -54,6 +54,7 @@ func TestBuildSessionEnvPreservesHostTerminalHints(t *testing.T) {
 
 func TestBuildSessionEnvSetsWorksetContext(t *testing.T) {
 	t.Setenv("COLORTERM", "24bit")
+	t.Setenv("TERM", "")
 	env := buildSessionEnv("/bin/bash", "workspace-123", "/tmp/project")
 
 	if got := envValue(env, "SHELL"); got != "/bin/bash" {
@@ -67,5 +68,8 @@ func TestBuildSessionEnvSetsWorksetContext(t *testing.T) {
 	}
 	if got := envValue(env, "COLORTERM"); got != "24bit" {
 		t.Fatalf("expected COLORTERM to be preserved, got %q", got)
+	}
+	if got := envValue(env, "TERM"); got != "xterm-256color" {
+		t.Fatalf("expected default TERM=xterm-256color when unset, got %q", got)
 	}
 }

@@ -128,7 +128,7 @@ func TestAttachSendsSnapshotBeforeReplayWhenDimensionsMatch(t *testing.T) {
 	}
 }
 
-func TestAttachUsesSnapshotWhenDimensionsDiffer(t *testing.T) {
+func TestAttachSkipsSnapshotWhenDimensionsDiffer(t *testing.T) {
 	opts := DefaultOptions()
 	session := newSession(opts, "snapshot-attach", "/tmp")
 	session.cmd = &exec.Cmd{}
@@ -172,16 +172,8 @@ func TestAttachUsesSnapshotWhenDimensionsDiffer(t *testing.T) {
 		t.Fatalf("attach ready response: %v", err)
 	}
 	ready := requireAttachReady(t, readyMsg)
-	if ready.ReplayStart != 5 {
-		t.Fatalf("expected replay to resume from snapshot offset even when dimensions differ, got %+v", ready)
-	}
-
-	var snapshotMsg StreamMessage
-	if err := dec.Decode(&snapshotMsg); err != nil {
-		t.Fatalf("attach snapshot response: %v", err)
-	}
-	if snapshotMsg.Type != "snapshot" {
-		t.Fatalf("expected snapshot message when dimensions differ, got %+v", snapshotMsg)
+	if ready.ReplayStart != 0 {
+		t.Fatalf("expected replay to restart from the requested offset when dimensions differ, got %+v", ready)
 	}
 
 	var replayMsg StreamMessage
@@ -189,7 +181,14 @@ func TestAttachUsesSnapshotWhenDimensionsDiffer(t *testing.T) {
 		t.Fatalf("attach replay response: %v", err)
 	}
 	if replayMsg.Type != "data" {
-		t.Fatalf("expected replay data after snapshot, got %+v", replayMsg)
+		t.Fatalf("expected replay data without a snapshot when dimensions differ, got %+v", replayMsg)
+	}
+	payload, err := base64.StdEncoding.DecodeString(replayMsg.DataB64)
+	if err != nil {
+		t.Fatalf("decode replay payload: %v", err)
+	}
+	if string(payload) != "hello world" {
+		t.Fatalf("expected full replay payload when snapshot is skipped, got %q", string(payload))
 	}
 
 	_ = clientConn.Close()
