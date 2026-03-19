@@ -62,6 +62,14 @@ markdown_extensions:
 plugins:
   - search
   - social
+  - glightbox:
+      touchNavigation: true
+      loop: false
+      slide_effect: slide
+      width: "100%"
+      height: auto
+      zoomable: true
+      draggable: true
   - gen-files:
       scripts:
         - scripts/gen_releases.py

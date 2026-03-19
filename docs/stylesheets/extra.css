@@ -121,13 +121,33 @@ h1, h2, h3 {
   width: 100%;
 }
 
+.desktop-app-hero-shot,
+.desktop-app-feature-shot {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 6px;
+  cursor: zoom-in;
+}
+
+.desktop-app-hero-shot {
+  max-width: 900px;
+  margin: 2rem auto;
+}
+
+.desktop-app-feature-shot {
+  max-width: 100%;
+}
+
 /* ── Feature rows (desktop-app.md alternating layout) ────────── */
 .ws-feature-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2rem;
+  grid-template-columns: minmax(0, 0.65fr) minmax(0, 1.35fr);
+  gap: 2.5rem;
   align-items: center;
   margin: 3rem 0;
+  width: calc(100% + 10rem);
+  margin-left: -5rem;
 }
 
 .ws-feature-row--reverse {
@@ -138,15 +158,29 @@ h1, h2, h3 {
   direction: ltr;
 }
 
+.ws-feature-row__text h2,
 .ws-feature-row__text h3 {
-  font-size: 1.3rem;
+  font-size: 1.25rem;
   font-weight: 700;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.ws-feature-row__text {
+  max-width: 100%;
 }
 
 .ws-feature-row__text p {
-  line-height: 1.6;
-  opacity: 0.85;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.ws-feature-row__media {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.ws-feature-row--reverse .ws-feature-row__media {
+  justify-content: flex-start;
 }
 
 /* ── Responsive ──────────────────────────────────────────────── */
@@ -158,9 +192,25 @@ h1, h2, h3 {
 
   .ws-feature-row {
     grid-template-columns: 1fr;
+    gap: 1.5rem;
+    width: 100%;
+    margin-left: 0;
   }
 
   .ws-feature-row--reverse {
     direction: ltr;
+  }
+
+  .ws-feature-row__text {
+    max-width: none;
+  }
+
+  .ws-feature-row__media,
+  .ws-feature-row--reverse .ws-feature-row__media {
+    justify-content: center;
+  }
+
+  .desktop-app-feature-shot {
+    max-width: 100%;
   }
 }
