@@ -1,6 +1,8 @@
 package sessiond
 
 import (
+	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -71,5 +73,34 @@ func TestBuildSessionEnvSetsWorksetContext(t *testing.T) {
 	}
 	if got := envValue(env, "TERM"); got != "xterm-256color" {
 		t.Fatalf("expected default TERM=xterm-256color when unset, got %q", got)
+	}
+}
+
+func TestResolveShellCommandUsesPlainShellStartup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix shell startup semantics do not apply on windows")
+	}
+
+	tests := []struct {
+		name      string
+		shell     string
+		wantShell string
+	}{
+		{name: "zsh", shell: "/bin/zsh", wantShell: "/bin/zsh"},
+		{name: "bash", shell: "/bin/bash", wantShell: "/bin/bash"},
+		{name: "fish", shell: "/opt/homebrew/bin/fish", wantShell: "/opt/homebrew/bin/fish"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("SHELL", tt.shell)
+			gotShell, gotArgs := resolveShellCommand()
+			if gotShell != tt.wantShell {
+				t.Fatalf("resolveShellCommand shell = %q, want %q", gotShell, tt.wantShell)
+			}
+			if !reflect.DeepEqual(gotArgs, []string(nil)) {
+				t.Fatalf("resolveShellCommand args = %v, want nil", gotArgs)
+			}
+		})
 	}
 }
