@@ -20,15 +20,15 @@
 	color: var(--muted);
 	cursor: pointer;
 	transition:
-		background 140ms ease,
-		border-color 140ms ease,
-		color 140ms ease,
-		opacity 140ms ease;
+		background var(--transition-fast),
+		border-color var(--transition-fast),
+		color var(--transition-fast),
+		opacity var(--transition-fast);
 }
 
 .sidebar-toggle-btn:hover:not(.disabled) {
 	color: var(--text);
-	background: color-mix(in srgb, var(--panel-strong) 66%, transparent);
+	background: var(--hover-bg);
 	border-color: var(--border);
 }
 
@@ -105,8 +105,8 @@
 	color: var(--text);
 	text-align: left;
 	transition:
-		background 120ms ease,
-		border-color 120ms ease;
+		background var(--transition-fast),
+		border-color var(--transition-fast);
 }
 
 button.repo-row,
@@ -116,12 +116,12 @@ button.pr-row {
 
 button.repo-row:hover,
 button.pr-row:hover {
-	background: color-mix(in srgb, var(--panel-strong) 58%, transparent);
+	background: var(--hover-bg);
 }
 
 .repo-row.active,
 .pr-row.active {
-	background: color-mix(in srgb, var(--accent) 10%, var(--panel-strong));
+	background: var(--active-accent-bg);
 	border-left-color: var(--accent);
 }
 
@@ -246,7 +246,7 @@ button.pr-row:hover {
 	color: var(--muted);
 	text-align: left;
 	cursor: pointer;
-	transition: color 120ms ease;
+	transition: color var(--transition-fast);
 }
 
 .repo-file-row:hover,
@@ -307,15 +307,15 @@ button.pr-row:hover {
 	font-weight: 500;
 	cursor: pointer;
 	transition:
-		border-color 120ms ease,
-		background 120ms ease,
-		color 120ms ease,
-		opacity 120ms ease;
+		border-color var(--transition-fast),
+		background var(--transition-fast),
+		color var(--transition-fast),
+		opacity var(--transition-fast);
 }
 
 .repo-action-btn:hover:not(:disabled) {
 	color: var(--text);
-	border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+	border-color: var(--active-accent-border);
 	background: color-mix(in srgb, var(--panel) 70%, transparent);
 }
 

@@ -465,7 +465,7 @@
 	}
 
 	.close-btn:hover {
-		background: var(--panel-strong);
+		background: var(--hover-bg-solid);
 		border-color: var(--border);
 		color: var(--text);
 	}

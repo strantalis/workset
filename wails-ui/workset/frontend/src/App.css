@@ -50,7 +50,7 @@
 	background: var(--panel);
 	box-shadow: inset -1px 0 0 color-mix(in srgb, var(--border) 38%, transparent);
 	position: relative;
-	z-index: 1;
+	z-index: 2;
 }
 
 .explorer-reopen-btn {
@@ -77,7 +77,7 @@
 
 .explorer-reopen-btn:hover {
 	color: var(--text);
-	background: color-mix(in srgb, var(--panel) 86%, transparent);
+	background: var(--hover-bg);
 	border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
 }
 
@@ -125,6 +125,10 @@
 	border-radius: var(--radius-md);
 	font-weight: 600;
 	cursor: pointer;
+}
+
+.retry:hover {
+	background: color-mix(in srgb, var(--accent) 85%, white);
 }
 
 .overlay {

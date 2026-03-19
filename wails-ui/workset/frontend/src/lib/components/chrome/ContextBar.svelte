@@ -306,18 +306,23 @@
 		gap: 6px;
 		background: transparent;
 		border: 1px solid transparent;
-		border-radius: 8px;
+		border-radius: 7px;
 		padding: 3px 9px;
 		color: var(--muted);
 		font-size: var(--text-xs);
 		cursor: pointer;
+		transition:
+			color var(--transition-fast),
+			background var(--transition-fast),
+			border-color var(--transition-fast);
 	}
 
 	.palette-hint:hover,
 	.popout-action:hover,
 	.quick-open-action:hover {
-		border-color: var(--border);
 		color: var(--text);
+		background: var(--hover-bg);
+		border-color: var(--border);
 	}
 
 	.muted {

@@ -139,10 +139,12 @@
 					</div>
 					<button
 						type="button"
-						class="sidebar-toggle-btn"
+						class="ws-icon-action-btn sidebar-toggle-btn"
 						class:disabled={!canCollapseSidebar}
 						aria-label="Collapse sidebar"
-						title={canCollapseSidebar ? 'Collapse sidebar' : 'Select an item to collapse'}
+						data-hover-label={canCollapseSidebar
+							? 'Collapse sidebar'
+							: 'Select an item to collapse'}
 						disabled={!canCollapseSidebar}
 						onclick={onToggleSidebar}
 					>

@@ -110,7 +110,7 @@
 	border-radius: 6px;
 	border: 1px solid;
 	cursor: pointer;
-	transition: all 150ms;
+	transition: all var(--transition-fast);
 }
 
 .prh-btn-approve {
@@ -141,7 +141,7 @@
 }
 
 .prh-btn-merge:hover {
-	opacity: 0.9;
+	background: color-mix(in srgb, var(--accent) 85%, white);
 }
 
 .prh-btn-merge.prh-btn-disabled {
@@ -150,23 +150,6 @@
 	background: var(--panel-strong);
 	cursor: not-allowed;
 	opacity: 0.7;
-}
-
-.prh-btn-icon {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	padding: 6px;
-	border: none;
-	border-radius: 4px;
-	background: transparent;
-	color: var(--muted);
-	cursor: pointer;
-	transition: color 150ms;
-}
-
-.prh-btn-icon:hover {
-	color: var(--text);
 }
 
 .prh-tab-switcher {
@@ -188,7 +171,7 @@
 	background: transparent;
 	color: var(--muted);
 	cursor: pointer;
-	transition: all 150ms;
+	transition: all var(--transition-fast);
 }
 
 .prh-tab-seg + .prh-tab-seg {
@@ -202,7 +185,7 @@
 
 .prh-tab-seg:hover:not(.active) {
 	color: var(--text);
-	background: color-mix(in srgb, var(--panel-strong) 60%, transparent);
+	background: var(--hover-bg);
 }
 
 .prh-tab-count {

@@ -44,11 +44,11 @@
 	background: transparent;
 	color: var(--muted);
 	cursor: pointer;
-	transition: all 150ms;
+	transition: all var(--transition-fast);
 }
 .sidebar-toggle-btn:hover:not(.disabled) {
 	color: var(--text);
-	background: color-mix(in srgb, var(--panel-strong) 65%, transparent);
+	background: var(--hover-bg);
 	border-color: var(--border);
 }
 
@@ -114,7 +114,7 @@
 	font-size: var(--text-sm);
 	font-weight: 600;
 	cursor: pointer;
-	transition: opacity 150ms;
+	transition: opacity var(--transition-fast);
 	white-space: nowrap;
 }
 
@@ -215,7 +215,7 @@
 	background: transparent;
 	color: var(--text);
 	cursor: pointer;
-	transition: background 120ms;
+	transition: background var(--transition-fast);
 	text-align: left;
 	width: 100%;
 }
@@ -356,10 +356,10 @@
 	background: transparent;
 	text-align: left;
 	cursor: pointer;
-	transition: all 100ms;
+	transition: all var(--transition-fast);
 }
 .fp-file:hover:not(.active) {
-	background: color-mix(in srgb, var(--panel-strong) 50%, transparent);
+	background: var(--hover-bg);
 }
 .fp-file.active {
 	background: var(--panel-strong);

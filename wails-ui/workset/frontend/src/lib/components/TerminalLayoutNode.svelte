@@ -572,8 +572,8 @@
 		background: var(--border);
 		opacity: 0.5;
 		transition:
-			opacity 0.15s ease,
-			background 0.15s ease;
+			opacity var(--transition-fast),
+			background var(--transition-fast);
 		touch-action: none;
 		position: relative;
 	}
@@ -662,7 +662,7 @@
 		width: 2px;
 		background: transparent;
 		z-index: 5;
-		transition: background 0.15s ease;
+		transition: background var(--transition-fast);
 	}
 
 	.pane.focused::before {
@@ -682,7 +682,7 @@
 		align-items: center;
 		padding: 0 4px;
 		background: var(--panel-strong);
-		transition: background 0.15s ease;
+		transition: background var(--transition-fast);
 		border-bottom: 1px solid var(--border);
 	}
 
@@ -719,8 +719,8 @@
 		cursor: pointer;
 		padding: 0;
 		transition:
-			color 0.12s ease,
-			background 0.12s ease;
+			color var(--transition-fast),
+			background var(--transition-fast);
 	}
 
 	.tab-scroll-btn:hover {
@@ -737,7 +737,7 @@
 		min-height: 0;
 		padding: 0;
 		position: relative;
-		transition: opacity 0.15s ease;
+		transition: opacity var(--transition-fast);
 	}
 
 	/* Subtle dimming for inactive panes — keep content readable (~85%) */

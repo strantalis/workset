@@ -33,10 +33,10 @@
 	border-radius: 8px;
 	border: 1px solid var(--border);
 	background: var(--panel);
-	transition: background 150ms;
+	transition: background var(--transition-fast);
 }
 .ck-row:hover {
-	background: var(--panel-strong);
+	background: var(--hover-bg-solid);
 }
 .ck-circle {
 	width: 32px;
@@ -89,7 +89,7 @@
 	align-items: center;
 	gap: 8px;
 	opacity: 0;
-	transition: opacity 150ms;
+	transition: opacity var(--transition-fast);
 }
 .ck-row:hover .ck-actions {
 	opacity: 1;
@@ -101,7 +101,7 @@
 	background: transparent;
 	color: var(--muted);
 	cursor: pointer;
-	transition: all 100ms;
+	transition: all var(--transition-fast);
 }
 .ck-action:hover {
 	background: var(--border);
@@ -119,7 +119,7 @@
 	font-size: var(--text-sm);
 	color: var(--muted);
 	cursor: pointer;
-	transition: all 150ms;
+	transition: all var(--transition-fast);
 }
 .ghost-btn:hover {
 	color: var(--text);

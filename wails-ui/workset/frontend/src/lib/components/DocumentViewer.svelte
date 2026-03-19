@@ -464,8 +464,8 @@
 					<div class="tree-header-actions">
 						<button
 							type="button"
-							class="tree-action-btn"
-							title="Expand all"
+							class="ws-icon-action-btn tree-action-btn"
+							data-hover-label="Expand all"
 							aria-label="Expand all directories"
 							onclick={expandAll}
 						>
@@ -473,8 +473,8 @@
 						</button>
 						<button
 							type="button"
-							class="tree-action-btn"
-							title="Collapse all"
+							class="ws-icon-action-btn tree-action-btn"
+							data-hover-label="Collapse all"
 							aria-label="Collapse all directories"
 							onclick={collapseAll}
 						>
@@ -482,8 +482,8 @@
 						</button>
 						<button
 							type="button"
-							class="tree-action-btn"
-							title="Collapse file tree (⌘⇧P)"
+							class="ws-icon-action-btn tree-action-btn"
+							data-hover-label="Collapse file tree (⌘⇧P)"
 							aria-label="Collapse file tree"
 							onclick={() => (showFileTree = false)}
 						>
@@ -504,8 +504,8 @@
 						<span class="tree-search-count">{fileCount}</span>
 						<button
 							type="button"
-							class="tree-search-clear"
-							title="Clear filter"
+							class="ws-icon-action-btn tree-search-clear"
+							data-hover-label="Clear filter"
 							aria-label="Clear filter"
 							onclick={() => (searchQuery = '')}
 						>
@@ -658,8 +658,8 @@
 			{:else}
 				<button
 					type="button"
-					class="tree-gutter"
-					title="Expand file tree (⌘⇧P)"
+					class="ws-icon-action-btn tree-gutter"
+					data-hover-label="Expand file tree (⌘⇧P)"
 					aria-label="Expand file tree"
 					onclick={() => (showFileTree = true)}
 				>

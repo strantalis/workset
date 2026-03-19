@@ -351,13 +351,13 @@
 	}
 
 	.result-list button:hover {
-		background: var(--panel-strong);
+		background: var(--hover-bg-solid);
 		border-color: var(--border);
 	}
 
 	.result-list button.selected {
-		background: color-mix(in srgb, var(--accent) 12%, var(--panel-strong));
-		border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+		background: var(--active-accent-bg);
+		border-color: var(--active-accent-border);
 	}
 
 	.icon {

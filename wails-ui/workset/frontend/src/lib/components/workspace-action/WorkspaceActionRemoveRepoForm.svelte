@@ -144,7 +144,7 @@
 	}
 
 	.remove-option:hover {
-		background: color-mix(in srgb, var(--panel-strong) 60%, transparent);
+		background: var(--hover-bg);
 	}
 
 	.remove-option input[type='checkbox'] {

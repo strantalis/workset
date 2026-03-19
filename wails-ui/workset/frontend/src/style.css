@@ -74,6 +74,15 @@
 	/* Transition timing */
 	--transition-fast: 120ms ease-out;
 	--transition-normal: 160ms ease-out;
+	--transition-snap: 80ms ease-out;
+
+	/* Hover state tokens (canon: ExplorerPanel) */
+	--hover-bg: color-mix(in srgb, var(--panel-strong) 65%, transparent);
+	--hover-bg-solid: var(--panel-strong);
+	--active-accent-bg: color-mix(in srgb, var(--accent) 14%, var(--panel-strong));
+	--active-accent-border: color-mix(in srgb, var(--accent) 46%, var(--border));
+	--hover-danger-bg: color-mix(in srgb, var(--danger) 14%, transparent);
+	--hover-danger-border: color-mix(in srgb, var(--danger) 32%, transparent);
 
 	/* Typography scale */
 	--text-xs: 12px;

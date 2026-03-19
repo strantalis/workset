@@ -69,7 +69,7 @@
 	padding: 7px 10px 7px 32px;
 	color: var(--text);
 	font-size: var(--text-sm);
-	transition: border-color 120ms ease-out;
+	transition: border-color var(--transition-fast);
 }
 
 .marketplace-search input:focus {
@@ -95,8 +95,8 @@
 	color: var(--muted);
 	cursor: pointer;
 	transition:
-		color 120ms ease-out,
-		border-color 120ms ease-out;
+		color var(--transition-fast),
+		border-color var(--transition-fast);
 }
 
 .provenance-trigger:hover {
@@ -136,15 +136,15 @@
 	font-size: var(--text-sm);
 	cursor: pointer;
 	transition:
-		border-color 120ms ease-out,
-		color 120ms ease-out,
-		background 120ms ease-out;
+		border-color var(--transition-fast),
+		color var(--transition-fast),
+		background var(--transition-fast);
 }
 
 .tool-pill.active,
 .quick-search:hover {
-	border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
-	background: color-mix(in srgb, var(--accent) 12%, var(--panel-strong));
+	border-color: var(--active-accent-border);
+	background: var(--active-accent-bg);
 	color: var(--text);
 }
 
@@ -221,16 +221,16 @@
 	color: inherit;
 	text-align: left;
 	cursor: pointer;
-	transition: background 100ms ease-out;
+	transition: background var(--transition-fast);
 }
 
 .marketplace-card:hover {
-	background: color-mix(in srgb, var(--panel-strong) 60%, transparent);
+	background: var(--hover-bg);
 }
 
 .marketplace-card.active {
 	border-left-color: var(--accent);
-	background: color-mix(in srgb, var(--accent) 6%, var(--panel-strong));
+	background: var(--active-accent-bg);
 }
 
 .card-top {
@@ -383,7 +383,7 @@
 	color: var(--muted);
 	text-decoration: none;
 	flex-shrink: 0;
-	transition: color 120ms ease-out;
+	transition: color var(--transition-fast);
 }
 
 .source-link:hover {
@@ -551,11 +551,11 @@
 	color: var(--muted);
 	font-size: var(--text-sm);
 	cursor: pointer;
-	transition: background 120ms ease-out;
+	transition: background var(--transition-fast);
 }
 
 .security-disclosure-trigger:hover {
-	background: color-mix(in srgb, var(--panel-strong) 80%, transparent);
+	background: var(--hover-bg);
 }
 
 .security-disclosure-trigger :global(svg:first-child) {
@@ -603,7 +603,7 @@
 	background: color-mix(in srgb, var(--panel-strong) 92%, transparent);
 	text-decoration: none;
 	color: inherit;
-	transition: border-color 120ms ease-out;
+	transition: border-color var(--transition-fast);
 }
 
 .audit-card:hover {
@@ -681,8 +681,8 @@
 	font-weight: 500;
 	cursor: pointer;
 	transition:
-		background 120ms ease-out,
-		color 120ms ease-out;
+		background var(--transition-fast),
+		color var(--transition-fast);
 }
 
 .scope-btn:not(:first-child) {
@@ -690,12 +690,12 @@
 }
 
 .scope-btn.active {
-	background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+	background: var(--active-accent-bg);
 	color: var(--accent);
 }
 
 .scope-btn:hover:not(:disabled):not(.active) {
-	background: color-mix(in srgb, var(--panel) 80%, transparent);
+	background: var(--hover-bg);
 	color: var(--text);
 }
 
@@ -715,8 +715,8 @@
 	color: var(--muted);
 	cursor: pointer;
 	transition:
-		border-color 120ms ease-out,
-		color 120ms ease-out;
+		border-color var(--transition-fast),
+		color var(--transition-fast);
 }
 
 .install-config-toggle:hover,

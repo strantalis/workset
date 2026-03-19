@@ -135,7 +135,7 @@
 .tree-repo:hover,
 .tree-dir:hover,
 .tree-file:hover {
-	background: color-mix(in srgb, var(--accent) 12%, var(--panel-strong));
+	background: var(--active-accent-bg);
 	color: var(--text);
 }
 
@@ -231,7 +231,7 @@
 
 .tree-action-btn:hover {
 	color: var(--text);
-	background: color-mix(in srgb, var(--accent) 12%, var(--panel-strong));
+	background: var(--active-accent-bg);
 }
 
 .tree-search {

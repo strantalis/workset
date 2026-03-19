@@ -109,8 +109,8 @@
 			{#if trackedPr}
 				<button
 					type="button"
-					class="prh-btn-icon"
-					title="Open in GitHub"
+					class="ws-icon-action-btn"
+					data-hover-label="Open in GitHub"
 					onclick={() => onOpenExternalUrl(trackedPr?.url)}
 				>
 					<ExternalLink size={12} />

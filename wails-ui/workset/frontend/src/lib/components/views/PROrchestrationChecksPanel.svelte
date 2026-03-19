@@ -64,14 +64,18 @@
 							</p>
 						</div>
 						<div class="ck-actions">
-							<button type="button" class="ck-action" title="View Logs">
+							<button
+								type="button"
+								class="ws-icon-action-btn ck-action"
+								data-hover-label="View Logs"
+							>
 								<Terminal size={14} />
 							</button>
 							{#if check.detailsUrl}
 								<button
 									type="button"
-									class="ck-action"
-									title="View on Provider"
+									class="ws-icon-action-btn ck-action"
+									data-hover-label="View on Provider"
 									onclick={() => onOpenExternalUrl(check.detailsUrl)}
 								>
 									<ExternalLink size={14} />

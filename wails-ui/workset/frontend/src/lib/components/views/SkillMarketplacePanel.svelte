@@ -870,12 +870,12 @@
 								</div>
 								<button
 									type="button"
-									class="install-config-toggle"
+									class="ws-icon-action-btn install-config-toggle"
 									class:active={installConfigOpen}
 									onclick={() => {
 										installConfigOpen = !installConfigOpen;
 									}}
-									title="Install options"
+									data-hover-label="Install options"
 								>
 									<Settings size={14} />
 									{#if installConfigOpen}

@@ -645,7 +645,7 @@
 	}
 
 	.thread-hooks-row:hover {
-		background: color-mix(in srgb, var(--panel-strong) 60%, transparent);
+		background: var(--hover-bg);
 	}
 
 	.thread-hooks-repo {

@@ -36,45 +36,7 @@
 	align-items: center;
 }
 
-.refresh-btn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 32px;
-	height: 32px;
-	margin-left: auto;
-	border-radius: 8px;
-	border: 1px solid var(--border);
-	background: rgba(255, 255, 255, 0.02);
-	color: var(--text);
-	cursor: pointer;
-	flex-shrink: 0;
-	transition:
-		border-color var(--transition-fast),
-		background var(--transition-fast),
-		color var(--transition-fast);
-}
-
-.refresh-btn:hover:not(:disabled) {
-	border-color: var(--accent);
-	background: rgba(255, 255, 255, 0.04);
-	color: var(--accent);
-}
-
-.refresh-btn:active:not(:disabled) {
-	transform: scale(0.92);
-}
-
-.refresh-btn:disabled {
-	opacity: 0.5;
-	cursor: not-allowed;
-}
-
-.refresh-btn :global(svg) {
-	transition: transform 0.3s ease;
-}
-
-.refresh-btn.refreshing :global(svg) {
+.refreshing :global(svg) {
 	animation: spin 0.8s linear infinite;
 }
 
@@ -105,7 +67,7 @@
 
 .btn-tab:hover:not(.active) {
 	color: var(--text);
-	background: color-mix(in srgb, var(--panel-strong) 60%, transparent);
+	background: var(--hover-bg);
 }
 
 .btn-tab.active {
@@ -133,7 +95,7 @@
 
 .close-btn:hover {
 	color: var(--text);
-	background: var(--panel-strong);
+	background: var(--hover-bg-solid);
 	border-color: var(--border);
 }
 
@@ -150,7 +112,7 @@
 
 .btn-ghost:hover {
 	color: var(--text);
-	background: var(--panel-strong);
+	background: var(--hover-bg-solid);
 }
 
 /* ─── Banners ─── */
@@ -297,7 +259,7 @@
 }
 
 .skill-row:hover {
-	background: color-mix(in srgb, var(--panel-strong) 80%, transparent);
+	background: var(--hover-bg);
 	border-left-color: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
@@ -451,9 +413,9 @@
 }
 
 .vtog.active {
-	background: color-mix(in srgb, var(--accent) 15%, transparent);
+	background: var(--active-accent-bg);
 	color: var(--accent);
-	border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+	border-color: var(--active-accent-border);
 }
 
 .vtog-raw.active {
@@ -717,7 +679,7 @@
 
 .raw-line {
 	display: flex;
-	transition: background 80ms;
+	transition: background var(--transition-snap);
 }
 
 .raw-line:hover {
@@ -830,7 +792,7 @@
 
 .tool-chip.selected {
 	border-color: var(--accent);
-	background: color-mix(in srgb, var(--accent) 14%, var(--panel));
+	background: var(--active-accent-bg);
 	color: var(--text);
 }
 
@@ -978,7 +940,7 @@
 
 .empty-browse-link:hover {
 	color: var(--text);
-	background: var(--panel-strong);
+	background: var(--hover-bg-solid);
 	border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
 }
 

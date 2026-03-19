@@ -152,7 +152,7 @@
 	}
 
 	.panel-close-btn:hover {
-		background: var(--panel-strong);
+		background: var(--hover-bg-solid);
 		color: var(--text);
 	}
 

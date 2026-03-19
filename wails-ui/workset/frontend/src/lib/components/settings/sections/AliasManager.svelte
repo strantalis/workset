@@ -654,14 +654,16 @@
 							<button
 								class="action-btn ws-icon-action-btn"
 								onclick={() => startEdit(alias)}
-								title="Edit"
+								data-hover-label="Edit"
+								aria-label="Edit"
 							>
 								<Pencil size={14} />
 							</button>
 							<button
 								class="action-btn ws-icon-action-btn"
 								onclick={() => handleCopyUrl(alias)}
-								title={copiedId === alias.name ? 'Copied!' : 'Copy remote URL'}
+								data-hover-label={copiedId === alias.name ? 'Copied!' : 'Copy remote URL'}
+								aria-label="Copy remote URL"
 							>
 								<Copy size={14} />
 							</button>
@@ -669,7 +671,8 @@
 								class="action-btn ws-icon-action-btn danger"
 								onclick={() => handleDelete(alias)}
 								disabled={loading}
-								title="Remove from catalog"
+								data-hover-label="Remove from catalog"
+								aria-label="Remove from catalog"
 							>
 								<Trash2 size={14} />
 							</button>

@@ -444,8 +444,8 @@
 		<div class="panel-header-actions">
 			<button
 				type="button"
-				class="icon-btn"
-				title="New Workset"
+				class="ws-icon-action-btn"
+				data-hover-label="New Workset"
 				aria-label="Create workset"
 				onclick={onCreateWorkspace}
 			>
@@ -453,8 +453,8 @@
 			</button>
 			<button
 				type="button"
-				class="icon-btn"
-				title="Collapse Explorer (⌘B)"
+				class="ws-icon-action-btn"
+				data-hover-label="Collapse (⌘B)"
 				aria-label="Collapse explorer"
 				onclick={onCollapse}
 			>
@@ -848,8 +848,8 @@
 			<div class="footer-utils">
 				<button
 					type="button"
-					class="icon-btn"
-					title="Settings"
+					class="ws-icon-action-btn tooltip-up"
+					data-hover-label="Settings"
 					aria-label="Open settings"
 					onclick={onOpenSettings}
 				>

@@ -10,6 +10,8 @@
 	align-items: center;
 	justify-content: space-between;
 	padding: 12px 12px 8px;
+	position: relative;
+	z-index: 3;
 }
 
 .panel-title {
@@ -24,36 +26,6 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
-}
-
-.icon-btn {
-	position: relative;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 28px;
-	height: 28px;
-	border-radius: 6px;
-	border: 1px solid transparent;
-	background: transparent;
-	color: var(--muted);
-	cursor: pointer;
-	transition:
-		color var(--transition-fast),
-		background var(--transition-fast),
-		border-color var(--transition-fast);
-}
-
-.icon-btn:hover {
-	color: var(--text);
-	background: color-mix(in srgb, var(--panel-strong) 65%, transparent);
-	border-color: var(--border);
-}
-
-.icon-btn.active {
-	color: var(--text);
-	background: color-mix(in srgb, var(--accent) 14%, var(--panel-strong));
-	border-color: color-mix(in srgb, var(--accent) 46%, var(--border));
 }
 
 .workset-switcher-shell {
@@ -222,7 +194,7 @@
 
 .switcher-item:hover,
 .switcher-item.focused {
-	background: color-mix(in srgb, var(--accent) 10%, var(--panel-strong));
+	background: var(--active-accent-bg);
 }
 
 .switcher-item-rich {
@@ -393,8 +365,8 @@
 
 .repo-add-btn:hover {
 	color: var(--text);
-	background: color-mix(in srgb, var(--accent) 14%, var(--panel-strong));
-	border-color: color-mix(in srgb, var(--accent) 44%, var(--border));
+	background: var(--active-accent-bg);
+	border-color: var(--active-accent-border);
 }
 
 .count {
@@ -433,11 +405,11 @@
 }
 
 .thread-item:hover {
-	background: color-mix(in srgb, var(--panel-strong) 65%, transparent);
+	background: var(--hover-bg);
 }
 
 .thread-item.active {
-	background: color-mix(in srgb, var(--accent) 12%, var(--panel-strong));
+	background: var(--active-accent-bg);
 }
 
 .thread-name {
@@ -587,8 +559,8 @@
 	opacity: 1;
 	pointer-events: auto;
 	color: var(--danger);
-	background: color-mix(in srgb, var(--danger) 14%, transparent);
-	outline: 1px solid color-mix(in srgb, var(--danger) 32%, transparent);
+	background: var(--hover-danger-bg);
+	outline: 1px solid var(--hover-danger-border);
 	outline-offset: 1px;
 }
 
@@ -663,7 +635,7 @@
 
 .thread-create-row:hover {
 	color: var(--text);
-	background: color-mix(in srgb, var(--panel-strong) 65%, transparent);
+	background: var(--hover-bg);
 }
 
 .repo-item {
@@ -841,7 +813,7 @@
 
 .footer-pane-btn:hover {
 	color: var(--text);
-	background: color-mix(in srgb, var(--panel-strong) 65%, transparent);
+	background: var(--hover-bg);
 	border-color: var(--border);
 }
 
@@ -876,6 +848,6 @@
 
 .footer-pane-btn.active {
 	color: var(--text);
-	background: color-mix(in srgb, var(--accent) 14%, var(--panel-strong));
-	border-color: color-mix(in srgb, var(--accent) 46%, var(--border));
+	background: var(--active-accent-bg);
+	border-color: var(--active-accent-border);
 }

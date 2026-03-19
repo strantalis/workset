@@ -411,14 +411,14 @@
 	}
 
 	.thread-item:hover {
-		background: color-mix(in srgb, var(--panel-strong) 58%, transparent);
+		background: var(--hover-bg);
 		border-color: var(--border);
 		color: var(--text);
 	}
 
 	.thread-item.active {
-		background: color-mix(in srgb, var(--accent) 14%, var(--panel-strong));
-		border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+		background: var(--active-accent-bg);
+		border-color: var(--active-accent-border);
 		color: var(--text);
 	}
 
@@ -441,8 +441,8 @@
 
 	.thread-create-row:hover {
 		color: var(--text);
-		background: color-mix(in srgb, var(--panel-strong) 58%, transparent);
-		border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+		background: var(--hover-bg);
+		border-color: var(--active-accent-border);
 	}
 
 	.thread-name {
@@ -557,14 +557,14 @@
 		color: var(--muted);
 		cursor: pointer;
 		transition:
-			color 0.15s ease,
-			background 0.15s ease,
-			border-color 0.15s ease;
+			color var(--transition-fast),
+			background var(--transition-fast),
+			border-color var(--transition-fast);
 	}
 
 	.surface-tab:hover {
 		color: var(--text);
-		background: color-mix(in srgb, var(--panel-strong) 62%, transparent);
+		background: var(--hover-bg);
 	}
 
 	.surface-tab.active {

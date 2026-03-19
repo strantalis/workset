@@ -392,7 +392,7 @@
 		font-size: var(--text-sm);
 		font-weight: 500;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: all var(--transition-fast);
 	}
 
 	.mode-toggle button:hover:not(.active):not(:disabled) {

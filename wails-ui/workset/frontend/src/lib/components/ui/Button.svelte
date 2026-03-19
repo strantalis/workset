@@ -131,7 +131,7 @@
 
 	.btn.ghost:hover:not(:disabled) {
 		border-color: var(--accent);
-		background: rgba(255, 255, 255, 0.04);
+		background: var(--hover-bg);
 	}
 
 	/* Primary variant — uses --cta (green) for call-to-action distinction */

@@ -86,8 +86,9 @@
 					<span class="row-value">{appVersion.version}{appVersion.dirty ? '+dirty' : ''}</span>
 					<button
 						type="button"
-						class="copy-btn"
-						title="Copy version info"
+						class="ws-icon-action-btn"
+						data-hover-label="Copy version info"
+						aria-label="Copy version info"
 						onclick={copyVersionInfo}
 					>
 						<svg
@@ -113,9 +114,10 @@
 						>
 						<button
 							type="button"
-							class="copy-btn"
+							class="ws-icon-action-btn"
 							class:copied={commitCopied}
-							title={commitCopied ? 'Copied!' : 'Copy commit SHA'}
+							data-hover-label={commitCopied ? 'Copied!' : 'Copy commit SHA'}
+							aria-label="Copy commit SHA"
 							onclick={copyCommit}
 						>
 							{#if commitCopied}
@@ -309,27 +311,7 @@
 		gap: var(--space-2);
 	}
 
-	.copy-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 24px;
-		height: 24px;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-sm);
-		background: transparent;
-		color: var(--muted);
-		cursor: pointer;
-		transition: all var(--transition-fast);
-	}
-
-	.copy-btn:hover {
-		border-color: var(--accent);
-		color: var(--accent);
-		background: var(--accent-soft);
-	}
-
-	.copy-btn.copied {
+	.copied {
 		border-color: var(--success, var(--accent));
 		color: var(--success, var(--accent));
 		background: var(--success-soft, var(--accent-soft));

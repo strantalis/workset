@@ -73,7 +73,13 @@
 	<div class="detail">
 		<div class="detail-header">
 			<span>New Skill</span>
-			<button class="close-btn" type="button" onclick={onCloseDetail} title="Close">
+			<button
+				class="ws-icon-action-btn tooltip-up"
+				type="button"
+				onclick={onCloseDetail}
+				data-hover-label="Close"
+				aria-label="Close"
+			>
 				<svg
 					width="14"
 					height="14"
@@ -141,7 +147,13 @@
 					<span class="detail-desc">{selectedSkill.description}</span>
 				{/if}
 			</div>
-			<button class="close-btn" type="button" onclick={onCloseDetail} title="Close">
+			<button
+				class="ws-icon-action-btn tooltip-up"
+				type="button"
+				onclick={onCloseDetail}
+				data-hover-label="Close"
+				aria-label="Close"
+			>
 				<svg
 					width="14"
 					height="14"
@@ -250,28 +262,6 @@
 		font-size: var(--text-sm);
 		font-weight: 400;
 		color: var(--muted);
-	}
-
-	.close-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 24px;
-		height: 24px;
-		border: none;
-		border-radius: var(--radius-sm);
-		background: transparent;
-		color: var(--muted);
-		cursor: pointer;
-		flex-shrink: 0;
-		transition:
-			background var(--transition-fast),
-			color var(--transition-fast);
-	}
-
-	.close-btn:hover {
-		background: color-mix(in srgb, var(--text) 8%, transparent);
-		color: var(--text);
 	}
 
 	.sync-section {

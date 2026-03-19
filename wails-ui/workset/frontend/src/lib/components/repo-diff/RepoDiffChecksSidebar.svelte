@@ -268,7 +268,7 @@
 		padding: 12px;
 		border-radius: 10px;
 		font-size: var(--text-base);
-		transition: background 0.15s ease;
+		transition: background var(--transition-fast);
 		border-left: 3px solid transparent;
 		background: transparent;
 		border: none;
@@ -361,7 +361,7 @@
 		color: var(--muted);
 		cursor: pointer;
 		opacity: 0;
-		transition: all 0.15s ease;
+		transition: all var(--transition-fast);
 	}
 
 	.check-row:hover .check-link,
@@ -416,7 +416,7 @@
 		background: rgba(255, 255, 255, 0.03);
 		border-left: 3px solid transparent;
 		transition:
-			background 0.15s ease,
+			background var(--transition-fast),
 			transform 0.1s ease;
 	}
 

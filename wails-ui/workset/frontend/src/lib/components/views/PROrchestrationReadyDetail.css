@@ -100,7 +100,7 @@
 	background: transparent;
 	color: var(--muted);
 	cursor: pointer;
-	transition: all 150ms;
+	transition: all var(--transition-fast);
 }
 
 .cd-push-btn:hover:not(:disabled) {

@@ -103,16 +103,16 @@
 		border-radius: 0;
 		box-shadow: none;
 		transition:
-			color 0.15s ease,
-			background 0.15s ease,
-			box-shadow 0.15s ease;
+			color var(--transition-fast),
+			background var(--transition-fast),
+			box-shadow var(--transition-fast);
 		white-space: nowrap;
 		position: relative;
 	}
 
 	.pane-tab:hover {
 		color: var(--text);
-		background: color-mix(in srgb, var(--panel-strong) 60%, transparent);
+		background: var(--hover-bg);
 	}
 
 	.pane-tab:active {
@@ -166,9 +166,9 @@
 		line-height: 1;
 		opacity: 0;
 		transition:
-			opacity 0.12s ease,
-			background 0.12s ease,
-			color 0.12s ease;
+			opacity var(--transition-fast),
+			background var(--transition-fast),
+			color var(--transition-fast);
 	}
 
 	.pane-tab:hover .tab-close,

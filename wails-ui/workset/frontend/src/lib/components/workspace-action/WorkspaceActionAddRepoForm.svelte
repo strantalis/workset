@@ -247,10 +247,10 @@
 			</div>
 			<button
 				type="button"
-				class="repo-browse-icon-btn"
+				class="ws-icon-action-btn repo-browse-icon-btn"
 				onclick={onBrowse}
 				aria-label="Browse local path"
-				title="Browse local path"
+				data-hover-label="Browse"
 			>
 				<FolderOpen size={14} />
 			</button>
@@ -610,12 +610,12 @@
 	}
 
 	.registry-item:hover {
-		background: color-mix(in srgb, var(--panel-strong) 70%, transparent);
+		background: var(--hover-bg);
 	}
 
 	.registry-item.selected {
-		border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-		background: color-mix(in srgb, var(--accent) 9%, var(--panel-strong));
+		border-color: var(--active-accent-border);
+		background: var(--active-accent-bg);
 	}
 
 	.registry-item-existing {

@@ -156,8 +156,8 @@
 		background: var(--border);
 		opacity: 0.5;
 		transition:
-			opacity 0.15s ease,
-			background 0.15s ease;
+			opacity var(--transition-fast),
+			background var(--transition-fast);
 		touch-action: none;
 		position: relative;
 	}

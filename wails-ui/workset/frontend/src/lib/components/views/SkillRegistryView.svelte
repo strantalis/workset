@@ -476,11 +476,11 @@ Add task-specific guidance here.
 			{/if}
 			<button
 				type="button"
-				class="refresh-btn"
+				class="ws-icon-action-btn"
 				class:refreshing={loading}
 				onclick={() => refreshSkills(selectedKey)}
 				disabled={loading}
-				title="Refresh skills"
+				data-hover-label="Refresh"
 			>
 				<RefreshCw size={14} />
 			</button>

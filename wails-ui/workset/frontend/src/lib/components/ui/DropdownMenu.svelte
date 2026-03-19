@@ -185,7 +185,7 @@
 	}
 
 	.dropdown-menu :global(button:hover) {
-		background: rgba(255, 255, 255, 0.06);
+		background: var(--hover-bg);
 	}
 
 	.dropdown-menu :global(button.danger) {
@@ -193,6 +193,6 @@
 	}
 
 	.dropdown-menu :global(button.danger:hover) {
-		background: color-mix(in srgb, var(--danger) 15%, transparent);
+		background: var(--hover-danger-bg);
 	}
 </style>

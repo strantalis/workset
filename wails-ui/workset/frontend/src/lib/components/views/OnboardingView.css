@@ -366,7 +366,7 @@
 	cursor: pointer;
 	text-align: left;
 	font-family: inherit;
-	transition: background 0.1s;
+	transition: background var(--transition-fast);
 }
 
 .registry-item:last-child {
@@ -374,7 +374,7 @@
 }
 
 .registry-item:hover {
-	background: var(--panel-strong);
+	background: var(--hover-bg-solid);
 }
 
 .registry-item.selected {
