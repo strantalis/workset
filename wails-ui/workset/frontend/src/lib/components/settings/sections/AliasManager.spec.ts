@@ -146,13 +146,13 @@ describe('AliasManager', () => {
 			},
 		]);
 
-		const { getByLabelText, findByTitle } = render(AliasManager, {
+		const { getByLabelText, findByLabelText } = render(AliasManager, {
 			props: {
 				onAliasCountChange: vi.fn(),
 			},
 		});
 
-		const editButton = await findByTitle('Edit');
+		const editButton = await findByLabelText('Edit');
 		await fireEvent.click(editButton);
 
 		const sourceInput = getByLabelText(

@@ -23,4 +23,5 @@ ignore:
   - '**/*_generated.*'
 
 allowlist:
+  - wails-ui/workset/frontend/src/lib/components/settings/sections/AliasManager.svelte
   - wails-ui/workset/frontend/src/lib/components/views/PROrchestrationView.svelte

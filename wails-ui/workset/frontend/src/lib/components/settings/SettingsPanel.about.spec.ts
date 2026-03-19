@@ -400,7 +400,7 @@ describe('SettingsPanel About Section', () => {
 			dirty: false,
 		});
 
-		const { getByText, getByTitle, queryByText } = render(SettingsPanel, {
+		const { getByText, getByLabelText, queryByText } = render(SettingsPanel, {
 			props: {
 				onClose: mockOnClose,
 			},
@@ -409,7 +409,7 @@ describe('SettingsPanel About Section', () => {
 		await waitForLoadingAndClickAbout(getByText, queryByText);
 
 		// Click copy button
-		const copyButton = getByTitle('Copy version info');
+		const copyButton = getByLabelText('Copy version info');
 		await fireEvent.click(copyButton);
 
 		expect(clipboardWriteText).toHaveBeenCalledWith('Workset 1.0.0 (abc123)');
@@ -432,13 +432,13 @@ describe('SettingsPanel About Section', () => {
 			dirty: false,
 		});
 
-		const { getByText, getByTitle, queryByText } = render(SettingsPanel, {
+		const { getByText, getByLabelText, queryByText } = render(SettingsPanel, {
 			props: { onClose: mockOnClose },
 		});
 
 		await waitForLoadingAndClickAbout(getByText, queryByText);
 
-		const copyCommitButton = getByTitle('Copy commit SHA');
+		const copyCommitButton = getByLabelText('Copy commit SHA');
 		await fireEvent.click(copyCommitButton);
 
 		expect(clipboardWriteText).toHaveBeenCalledWith(fullCommit);
@@ -461,23 +461,23 @@ describe('SettingsPanel About Section', () => {
 			dirty: false,
 		});
 
-		const { getByText, getByTitle, queryByText, queryByTitle } = render(SettingsPanel, {
+		const { getByText, getByLabelText, queryByText } = render(SettingsPanel, {
 			props: { onClose: mockOnClose },
 		});
 
 		await waitForLoadingAndClickAbout(getByText, queryByText);
 
-		await fireEvent.click(getByTitle('Copy commit SHA'));
+		const copyCommitButton = getByLabelText('Copy commit SHA');
+		await fireEvent.click(copyCommitButton);
 
-		// Tooltip should now say "Copied!"
 		await waitFor(() => {
-			expect(queryByTitle('Copied!')).toBeInTheDocument();
+			expect(copyCommitButton).toHaveAttribute('data-hover-label', 'Copied!');
 		});
 
 		// After 1500ms the tooltip should revert
 		vi.advanceTimersByTime(1500);
 		await waitFor(() => {
-			expect(queryByTitle('Copy commit SHA')).toBeInTheDocument();
+			expect(copyCommitButton).toHaveAttribute('data-hover-label', 'Copy commit SHA');
 		});
 
 		vi.useRealTimers();
@@ -500,26 +500,29 @@ describe('SettingsPanel About Section', () => {
 			dirty: false,
 		});
 
-		const { getByText, getByTitle, queryByText, queryByTitle } = render(SettingsPanel, {
+		const { getByText, getByLabelText, queryByText } = render(SettingsPanel, {
 			props: { onClose: mockOnClose },
 		});
 
 		await waitForLoadingAndClickAbout(getByText, queryByText);
 
 		// Click once, advance partway, click again
-		await fireEvent.click(getByTitle('Copy commit SHA'));
-		await waitFor(() => expect(queryByTitle('Copied!')).toBeInTheDocument());
+		const copyCommitButton = getByLabelText('Copy commit SHA');
+		await fireEvent.click(copyCommitButton);
+		await waitFor(() => expect(copyCommitButton).toHaveAttribute('data-hover-label', 'Copied!'));
 
 		vi.advanceTimersByTime(800); // before first timer fires
-		await fireEvent.click(getByTitle('Copied!')); // second click resets timer
+		await fireEvent.click(copyCommitButton); // second click resets timer
 
-		// Should still show "Copied!" — first timer was cleared
+		// Should still show "Copied!" - first timer was cleared
 		vi.advanceTimersByTime(800); // 800ms into second timer, still within window
-		await waitFor(() => expect(queryByTitle('Copied!')).toBeInTheDocument());
+		await waitFor(() => expect(copyCommitButton).toHaveAttribute('data-hover-label', 'Copied!'));
 
 		// After full 1500ms from second click it should revert
 		vi.advanceTimersByTime(700);
-		await waitFor(() => expect(queryByTitle('Copy commit SHA')).toBeInTheDocument());
+		await waitFor(() =>
+			expect(copyCommitButton).toHaveAttribute('data-hover-label', 'Copy commit SHA'),
+		);
 
 		vi.useRealTimers();
 	});
@@ -535,13 +538,13 @@ describe('SettingsPanel About Section', () => {
 			dirty: false,
 		});
 
-		const { getByText, queryByText, queryByTitle } = render(SettingsPanel, {
+		const { getByText, queryByText, queryByLabelText } = render(SettingsPanel, {
 			props: { onClose: mockOnClose },
 		});
 
 		await waitForLoadingAndClickAbout(getByText, queryByText);
 
-		expect(queryByTitle('Copy commit SHA')).not.toBeInTheDocument();
+		expect(queryByLabelText('Copy commit SHA')).not.toBeInTheDocument();
 	});
 
 	test('displays copyright with current year', async () => {

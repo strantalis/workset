@@ -8,6 +8,7 @@ src/lib/components/repo-diff/githubOperationsController.ts
 src/lib/components/repo-diff/reviewAnnotationActions.ts
 src/lib/components/ui/Select.svelte
 src/lib/components/views/OnboardingView.svelte
+src/lib/components/settings/sections/AliasManager.svelte
 src/lib/components/views/PROrchestrationView.svelte
 src/lib/services/workspaceActionContextService.ts
 src/lib/state.ts
