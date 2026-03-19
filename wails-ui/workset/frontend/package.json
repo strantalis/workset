@@ -52,7 +52,7 @@
 		"@iconify/svelte": "^5.2.1",
 		"@lucide/svelte": "^0.575.0",
 		"@pierre/diffs": "^1.0.11",
-		"@strantalis/workset-ghostty-web": "^0.3.1-workset.10",
+		"@strantalis/workset-ghostty-web": "^0.3.1-workset.12",
 		"@wailsio/runtime": "^3.0.0-alpha.79",
 		"dompurify": "^3.3.1",
 		"marked": "^17.0.3",
