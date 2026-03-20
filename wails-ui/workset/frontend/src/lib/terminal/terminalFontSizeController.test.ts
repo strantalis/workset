@@ -2,15 +2,16 @@ import { describe, expect, it, vi } from 'vitest';
 import { createTerminalFontSizeController } from './terminalFontSizeController';
 
 describe('createTerminalFontSizeController', () => {
-	it('applies and persists increased/decreased font sizes within bounds', () => {
+	it('applies increased/decreased font sizes within bounds', () => {
 		const onFontSizeChange = vi.fn();
+		const onCursorBlinkChange = vi.fn();
 		const controller = createTerminalFontSizeController({
 			onFontSizeChange,
+			onCursorBlinkChange,
 			defaultFontSize: 12,
 			minFontSize: 10,
 			maxFontSize: 13,
 			step: 1,
-			storageKey: 'test-font-size',
 		});
 
 		expect(controller.getCurrentFontSize()).toBe(12);
@@ -33,12 +34,13 @@ describe('createTerminalFontSizeController', () => {
 
 	it('resets to default size', () => {
 		const onFontSizeChange = vi.fn();
+		const onCursorBlinkChange = vi.fn();
 		const controller = createTerminalFontSizeController({
 			onFontSizeChange,
+			onCursorBlinkChange,
 			defaultFontSize: 11,
 			minFontSize: 9,
 			maxFontSize: 13,
-			storageKey: 'test-font-size-reset',
 		});
 
 		controller.increaseFontSize();
@@ -47,5 +49,22 @@ describe('createTerminalFontSizeController', () => {
 		controller.resetFontSize();
 		expect(controller.getCurrentFontSize()).toBe(11);
 		expect(onFontSizeChange).toHaveBeenLastCalledWith(11);
+	});
+
+	it('updates cursor blink state', () => {
+		const onFontSizeChange = vi.fn();
+		const onCursorBlinkChange = vi.fn();
+		const controller = createTerminalFontSizeController({
+			onFontSizeChange,
+			onCursorBlinkChange,
+			defaultCursorBlink: true,
+		});
+
+		expect(controller.getCursorBlink()).toBe(true);
+
+		controller.setCursorBlink(false);
+
+		expect(controller.getCursorBlink()).toBe(false);
+		expect(onCursorBlinkChange).toHaveBeenLastCalledWith(false);
 	});
 });

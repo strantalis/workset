@@ -17,6 +17,8 @@ const buildDefaults = (): SettingsDefaults => ({
 	terminalIdleTimeout: '0',
 	terminalProtocolLog: 'off',
 	terminalDebugOverlay: 'off',
+	terminalFontSize: '13',
+	terminalCursorBlink: 'on',
 });
 
 describe('SessionDefaults', () => {
@@ -33,6 +35,8 @@ describe('SessionDefaults', () => {
 		expect(getByText('Protocol logging')).toBeInTheDocument();
 		expect(getByText('Debug overlay')).toBeInTheDocument();
 		expect(getByText('Idle timeout')).toBeInTheDocument();
+		expect(getByText('Text size')).toBeInTheDocument();
+		expect(getByText('Cursor blink')).toBeInTheDocument();
 	});
 
 	test('renders section title', () => {

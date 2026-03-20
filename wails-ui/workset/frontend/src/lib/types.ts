@@ -226,6 +226,8 @@ export type SettingsDefaults = {
 	terminalIdleTimeout: string;
 	terminalProtocolLog: string;
 	terminalDebugOverlay: string;
+	terminalFontSize: string;
+	terminalCursorBlink: string;
 	terminalKeybindings?: Record<string, string[]>;
 };
 

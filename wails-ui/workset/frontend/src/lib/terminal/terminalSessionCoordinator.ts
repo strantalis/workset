@@ -1,8 +1,15 @@
 import type { TerminalSessionStartResult } from './terminalTransport';
+import {
+	DEFAULT_TERMINAL_FONT_SIZE,
+	MAX_TERMINAL_FONT_SIZE,
+	MIN_TERMINAL_FONT_SIZE,
+} from './terminalFontSizeController';
 
 type TerminalSettingsPayload = {
 	defaults?: {
 		terminalDebugOverlay?: string;
+		terminalFontSize?: string;
+		terminalCursorBlink?: string;
 	};
 };
 
@@ -45,6 +52,10 @@ type TerminalCoordinatorDependencies = {
 	setDebugOverlayPreference: (value: 'on' | 'off' | '') => void;
 	clearLocalDebugPreference: () => void;
 	syncDebugEnabled: () => void;
+	getCurrentTerminalFontSize: () => number;
+	setCurrentTerminalFontSize: (value: number) => void;
+	getCurrentCursorBlink: () => boolean;
+	setCurrentCursorBlink: (value: boolean) => void;
 	onSessionReady?: (id: string, descriptor: TerminalSessionStartResult) => Promise<void> | void;
 };
 
@@ -63,6 +74,22 @@ export const createTerminalSessionCoordinator = (deps: TerminalCoordinatorDepend
 
 	const log = (id: string, event: string, details: Record<string, unknown>): void => {
 		deps.logDebug(id, event, details);
+	};
+
+	const normalizeOnOff = (value: string | undefined): 'on' | 'off' | null => {
+		const normalized = value?.trim().toLowerCase();
+		if (normalized === 'on' || normalized === 'off') {
+			return normalized;
+		}
+		return null;
+	};
+
+	const normalizeFontSize = (value: string | undefined, fallback: number): number => {
+		const parsed = Number.parseInt(value?.trim() ?? '', 10);
+		if (Number.isNaN(parsed)) {
+			return fallback;
+		}
+		return Math.min(MAX_TERMINAL_FONT_SIZE, Math.max(MIN_TERMINAL_FONT_SIZE, parsed));
 	};
 
 	const refreshSessiondStatus = async (): Promise<void> => {
@@ -178,17 +205,29 @@ export const createTerminalSessionCoordinator = (deps: TerminalCoordinatorDepend
 
 	const loadTerminalDefaults = async (): Promise<void> => {
 		let nextDebugPreference = deps.getDebugOverlayPreference();
+		let nextFontSize = deps.getCurrentTerminalFontSize();
+		let nextCursorBlink = deps.getCurrentCursorBlink();
 		try {
 			const settings = await deps.transport.fetchSettings();
 			const rawPreference = settings?.defaults?.terminalDebugOverlay ?? '';
-			const normalizedPreference = rawPreference.toLowerCase().trim();
-			if (normalizedPreference === 'on' || normalizedPreference === 'off') {
+			const normalizedPreference = normalizeOnOff(rawPreference);
+			if (normalizedPreference) {
 				nextDebugPreference = normalizedPreference;
+			}
+			nextFontSize = normalizeFontSize(
+				settings?.defaults?.terminalFontSize,
+				nextFontSize || DEFAULT_TERMINAL_FONT_SIZE,
+			);
+			const normalizedCursorBlink = normalizeOnOff(settings?.defaults?.terminalCursorBlink);
+			if (normalizedCursorBlink) {
+				nextCursorBlink = normalizedCursorBlink === 'on';
 			}
 		} catch {
 			// Keep existing preference on load failure.
 		}
 		deps.setDebugOverlayPreference(nextDebugPreference);
+		deps.setCurrentTerminalFontSize(nextFontSize);
+		deps.setCurrentCursorBlink(nextCursorBlink);
 		if (nextDebugPreference === 'off') {
 			deps.clearLocalDebugPreference();
 		}

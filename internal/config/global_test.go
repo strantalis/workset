@@ -34,6 +34,12 @@ func TestLoadGlobalDefaults(t *testing.T) {
 	if cfg.Defaults.TerminalDebugOverlay == "" {
 		t.Fatalf("expected default terminal_debug_overlay set")
 	}
+	if cfg.Defaults.TerminalFontSize == "" {
+		t.Fatalf("expected default terminal_font_size set")
+	}
+	if cfg.Defaults.TerminalCursorBlink == "" {
+		t.Fatalf("expected default terminal_cursor_blink set")
+	}
 	if cfg.ConfigVersion != CurrentGlobalConfigVersion {
 		t.Fatalf("expected default config_version %d, got %d", CurrentGlobalConfigVersion, cfg.ConfigVersion)
 	}

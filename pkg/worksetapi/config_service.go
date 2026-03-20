@@ -3,6 +3,7 @@ package worksetapi
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/strantalis/workset/internal/config"
@@ -54,6 +55,18 @@ func setGlobalDefault(cfg *config.GlobalConfig, key, value string) error {
 		cfg.Defaults.TerminalProtocolLog = value
 	case "defaults.terminal_debug_overlay":
 		cfg.Defaults.TerminalDebugOverlay = value
+	case "defaults.terminal_font_size":
+		normalized, err := normalizeTerminalFontSize(value)
+		if err != nil {
+			return err
+		}
+		cfg.Defaults.TerminalFontSize = normalized
+	case "defaults.terminal_cursor_blink":
+		normalized, err := normalizeOnOff(value, key)
+		if err != nil {
+			return err
+		}
+		cfg.Defaults.TerminalCursorBlink = normalized
 	case "defaults.remotes.base", "defaults.remotes.write":
 		return fmt.Errorf("%s was removed; set defaults.remote or alias remote instead", key)
 	case "defaults.parallelism":
@@ -62,4 +75,31 @@ func setGlobalDefault(cfg *config.GlobalConfig, key, value string) error {
 		return fmt.Errorf("unsupported key %q", key)
 	}
 	return nil
+}
+
+const (
+	minTerminalFontSize = 8
+	maxTerminalFontSize = 28
+)
+
+func normalizeTerminalFontSize(value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", fmt.Errorf("defaults.terminal_font_size must be an integer between %d and %d", minTerminalFontSize, maxTerminalFontSize)
+	}
+	parsed, err := strconv.Atoi(trimmed)
+	if err != nil || parsed < minTerminalFontSize || parsed > maxTerminalFontSize {
+		return "", fmt.Errorf("defaults.terminal_font_size must be an integer between %d and %d", minTerminalFontSize, maxTerminalFontSize)
+	}
+	return strconv.Itoa(parsed), nil
+}
+
+func normalizeOnOff(value, key string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	switch normalized {
+	case "on", "off":
+		return normalized, nil
+	default:
+		return "", fmt.Errorf("%s must be 'on' or 'off'", key)
+	}
 }

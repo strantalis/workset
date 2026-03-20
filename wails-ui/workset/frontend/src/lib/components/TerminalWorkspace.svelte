@@ -6,11 +6,12 @@
 		fetchWorkspaceTerminalLayout,
 		persistWorkspaceTerminalLayout,
 	} from '../api/terminal-layout';
-	import { fetchSettings } from '../api/settings';
+	import { fetchSettings, setDefaultSetting } from '../api/settings';
 	import { generateTerminalName } from '../names';
 	import {
 		closeTerminal,
 		decreaseFontSize,
+		getCurrentFontSize,
 		increaseFontSize,
 		resetFontSize,
 	} from '../terminal/terminalService';
@@ -100,6 +101,12 @@
 		const normalized = ensureFocusedPane(next);
 		layout = normalized;
 		scheduleSaveLayout(normalized);
+	};
+
+	const persistCurrentFontSize = (): void => {
+		void setDefaultSetting('defaults.terminal_font_size', String(getCurrentFontSize())).catch(
+			() => undefined,
+		);
 	};
 
 	let initToken = 0;
@@ -406,16 +413,19 @@
 			case 'terminal.font_increase': {
 				event.preventDefault();
 				increaseFontSize();
+				persistCurrentFontSize();
 				return;
 			}
 			case 'terminal.font_decrease': {
 				event.preventDefault();
 				decreaseFontSize();
+				persistCurrentFontSize();
 				return;
 			}
 			case 'terminal.font_reset': {
 				event.preventDefault();
 				resetFontSize();
+				persistCurrentFontSize();
 				return;
 			}
 			default: {

@@ -24,6 +24,22 @@
 
 	const fields: Field[] = [
 		{
+			id: 'terminalFontSize',
+			label: 'Text size',
+			description: 'Terminal font size in pixels. Supported range is 8 to 28.',
+			placeholder: '13',
+		},
+		{
+			id: 'terminalCursorBlink',
+			label: 'Cursor blink',
+			description: 'Controls whether the terminal cursor blinks while focused.',
+			type: 'select',
+			options: [
+				{ label: 'On', value: 'on' },
+				{ label: 'Off', value: 'off' },
+			],
+		},
+		{
 			id: 'terminalProtocolLog',
 			label: 'Protocol logging',
 			description: 'Logs OSC/CSI/DSR traffic to ~/.workset/terminal_logs (restart daemon).',

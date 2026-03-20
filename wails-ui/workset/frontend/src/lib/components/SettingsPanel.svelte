@@ -49,6 +49,8 @@
 		{ id: 'terminalIdleTimeout', key: 'defaults.terminal_idle_timeout' },
 		{ id: 'terminalProtocolLog', key: 'defaults.terminal_protocol_log' },
 		{ id: 'terminalDebugOverlay', key: 'defaults.terminal_debug_overlay' },
+		{ id: 'terminalFontSize', key: 'defaults.terminal_font_size' },
+		{ id: 'terminalCursorBlink', key: 'defaults.terminal_cursor_blink' },
 	];
 
 	const sideEffects = createSettingsPanelSideEffects();
@@ -92,7 +94,13 @@
 
 	const sectionFieldMap: Record<string, FieldId[]> = {
 		defaults: ['thread', 'remote', 'baseBranch', 'agent', 'agentModel'],
-		session: ['terminalIdleTimeout', 'terminalProtocolLog', 'terminalDebugOverlay'],
+		session: [
+			'terminalIdleTimeout',
+			'terminalProtocolLog',
+			'terminalDebugOverlay',
+			'terminalFontSize',
+			'terminalCursorBlink',
+		],
 		system: ['worksetRoot', 'repoStoreRoot'],
 	};
 
@@ -129,7 +137,10 @@
 
 		const updates = changedFields();
 		const shouldRefreshTerminalDefaults = updates.some(
-			(field) => field.id === 'terminalDebugOverlay',
+			(field) =>
+				field.id === 'terminalDebugOverlay' ||
+				field.id === 'terminalFontSize' ||
+				field.id === 'terminalCursorBlink',
 		);
 		const shouldRestartSessiond = updates.some(
 			(field) => field.id === 'terminalProtocolLog' || field.id === 'terminalIdleTimeout',

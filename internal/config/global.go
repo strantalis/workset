@@ -396,6 +396,8 @@ func defaultConfigMap(defaults GlobalConfig) map[string]any {
 		"defaults.terminal_idle_timeout":  defaults.Defaults.TerminalIdleTimeout,
 		"defaults.terminal_protocol_log":  defaults.Defaults.TerminalProtocolLog,
 		"defaults.terminal_debug_overlay": defaults.Defaults.TerminalDebugOverlay,
+		"defaults.terminal_font_size":     defaults.Defaults.TerminalFontSize,
+		"defaults.terminal_cursor_blink":  defaults.Defaults.TerminalCursorBlink,
 		"defaults.terminal_keybindings":   defaults.Defaults.TerminalKeybindings,
 		"github.cli_path":                 defaults.GitHub.CLIPath,
 		"hooks.enabled":                   defaults.Hooks.Enabled,
@@ -449,6 +451,12 @@ func finalizeGlobal(cfg *GlobalConfig, defaults GlobalConfig) {
 	}
 	if cfg.Defaults.TerminalDebugOverlay == "" {
 		cfg.Defaults.TerminalDebugOverlay = defaults.Defaults.TerminalDebugOverlay
+	}
+	if cfg.Defaults.TerminalFontSize == "" {
+		cfg.Defaults.TerminalFontSize = defaults.Defaults.TerminalFontSize
+	}
+	if cfg.Defaults.TerminalCursorBlink == "" {
+		cfg.Defaults.TerminalCursorBlink = defaults.Defaults.TerminalCursorBlink
 	}
 	if cfg.Defaults.TerminalKeybindings == nil {
 		cfg.Defaults.TerminalKeybindings = defaults.Defaults.TerminalKeybindings

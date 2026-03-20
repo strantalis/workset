@@ -32,6 +32,8 @@ const createCoordinator = (input?: {
 	const clearStartInFlight = vi.fn((id: string) => startInFlight.delete(id));
 	const pendingInput = input?.pendingInput ?? new Map<string, string>();
 	const logDebug = vi.fn();
+	const setCurrentTerminalFontSize = vi.fn();
+	const setCurrentCursorBlink = vi.fn();
 	const transport = {
 		start: vi.fn(input?.start ?? (async () => defaultDescriptor)),
 		write: vi.fn(input?.write ?? (async () => undefined)),
@@ -67,6 +69,10 @@ const createCoordinator = (input?: {
 		setDebugOverlayPreference: vi.fn(),
 		clearLocalDebugPreference: vi.fn(),
 		syncDebugEnabled: vi.fn(),
+		getCurrentTerminalFontSize: () => 13,
+		setCurrentTerminalFontSize,
+		getCurrentCursorBlink: () => true,
+		setCurrentCursorBlink,
 		onSessionReady: input?.onSessionReady,
 	});
 
@@ -81,6 +87,8 @@ const createCoordinator = (input?: {
 		clearStartupTimeout,
 		clearStartInFlight,
 		logDebug,
+		setCurrentTerminalFontSize,
+		setCurrentCursorBlink,
 	};
 };
 
@@ -147,5 +155,22 @@ describe('terminalSessionCoordinator', () => {
 		await coordinator.beginTerminal('ws::term');
 
 		expect(onSessionReady).toHaveBeenCalledWith('ws::term', defaultDescriptor);
+	});
+
+	it('loads terminal appearance defaults from settings', async () => {
+		const { coordinator, transport, setCurrentTerminalFontSize, setCurrentCursorBlink } =
+			createCoordinator();
+		transport.fetchSettings.mockResolvedValue({
+			defaults: {
+				terminalDebugOverlay: 'off',
+				terminalFontSize: '16',
+				terminalCursorBlink: 'off',
+			},
+		} as never);
+
+		await coordinator.loadTerminalDefaults();
+
+		expect(setCurrentTerminalFontSize).toHaveBeenCalledWith(16);
+		expect(setCurrentCursorBlink).toHaveBeenCalledWith(false);
 	});
 });

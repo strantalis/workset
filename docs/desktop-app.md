@@ -56,7 +56,7 @@ Authenticate via GitHub CLI or personal access token. Create PRs, view status, r
 Download the latest macOS build from [GitHub Releases](https://github.com/strantalis/workset/releases).
 
 !!! tip "Looking for the CLI?"
-    The CLI is a separate binary. Install it via Homebrew (`brew install workset`) or `go install`. See [Getting Started](getting-started.md) for details.
+The CLI is a separate binary. Install it via Homebrew (`brew install workset`) or `go install`. See [Getting Started](getting-started.md) for details.
 
 ## In-app updates (macOS)
 
@@ -74,6 +74,8 @@ Update manifests are fetched from `WORKSET_UPDATES_BASE_URL` when set, otherwise
 - `defaults.terminal_idle_timeout` controls idle shutdown for GUI terminals.
 - `defaults.terminal_protocol_log` enables sessiond protocol logging (restart daemon to apply).
 - `defaults.terminal_debug_overlay` shows the terminal debug overlay.
+- `defaults.terminal_font_size` controls terminal text size.
+- `defaults.terminal_cursor_blink` controls whether the terminal cursor blinks.
 - `defaults.agent` controls the generator used for PR/commit text and the default coding agent for terminals (supported values: `codex`, `claude`).
 - `defaults.agent_model` optionally overrides the model used for PR/commit text generation (terminal launcher is unaffected).
 

@@ -35,6 +35,12 @@ func TestGetConfig(t *testing.T) {
 	if cfg.Defaults.TerminalDebugOverlay == "" {
 		t.Fatalf("unexpected terminal debug overlay default: %q", cfg.Defaults.TerminalDebugOverlay)
 	}
+	if cfg.Defaults.TerminalFontSize == "" {
+		t.Fatalf("unexpected terminal font size default: %q", cfg.Defaults.TerminalFontSize)
+	}
+	if cfg.Defaults.TerminalCursorBlink == "" {
+		t.Fatalf("unexpected terminal cursor blink default: %q", cfg.Defaults.TerminalCursorBlink)
+	}
 }
 
 func TestSetDefaultUpdatesConfig(t *testing.T) {
@@ -72,6 +78,16 @@ func TestSetDefaultErrors(t *testing.T) {
 		t.Fatalf("expected removed key error")
 	}
 
+	_, _, err = env.svc.SetDefault(context.Background(), "defaults.terminal_font_size", "abc")
+	if err == nil {
+		t.Fatalf("expected invalid terminal font size error")
+	}
+
+	_, _, err = env.svc.SetDefault(context.Background(), "defaults.terminal_cursor_blink", "maybe")
+	if err == nil {
+		t.Fatalf("expected invalid terminal cursor blink error")
+	}
+
 	_, _, err = env.svc.SetDefault(context.Background(), "defaults.unknown", "value")
 	if err == nil {
 		t.Fatalf("expected unsupported key error")
@@ -90,6 +106,8 @@ func TestSetDefaultVariousKeys(t *testing.T) {
 		"defaults.terminal_idle_timeout":  "0",
 		"defaults.terminal_protocol_log":  "on",
 		"defaults.terminal_debug_overlay": "off",
+		"defaults.terminal_font_size":     "16",
+		"defaults.terminal_cursor_blink":  "off",
 	}
 	for key, value := range cases {
 		if _, _, err := env.svc.SetDefault(context.Background(), key, value); err != nil {
@@ -117,5 +135,11 @@ func TestSetDefaultVariousKeys(t *testing.T) {
 	}
 	if cfg.Defaults.TerminalDebugOverlay != "off" {
 		t.Fatalf("terminal debug overlay default not set")
+	}
+	if cfg.Defaults.TerminalFontSize != "16" {
+		t.Fatalf("terminal font size default not set")
+	}
+	if cfg.Defaults.TerminalCursorBlink != "off" {
+		t.Fatalf("terminal cursor blink default not set")
 	}
 }

@@ -114,6 +114,7 @@ export type TerminalLike = TerminalAttachOpenLike &
 		restoreState?: (snapshot: TerminalSnapshotLike) => Promise<void> | void;
 		options: {
 			fontSize: number;
+			cursorBlink?: boolean;
 		};
 		loadAddon?: BivariantHandler<TerminalAddonLike>;
 		registerLinkProvider?: BivariantHandler<TerminalLinkProviderLike>;

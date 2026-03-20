@@ -22,6 +22,7 @@ describe('createTerminalInstance', () => {
 
 		await createTerminalInstance({
 			fontSize: 14,
+			cursorBlink: false,
 			getToken: (_name, fallback) => fallback,
 		});
 
@@ -37,7 +38,7 @@ describe('createTerminalInstance', () => {
 				}),
 				fontSize: 14,
 				fontFamily: '"SF Mono", Menlo, Monaco, Consolas, monospace',
-				cursorBlink: true,
+				cursorBlink: false,
 			}),
 		);
 	});

@@ -185,9 +185,10 @@ const terminalViewportResizeController = createTerminalViewportResizeController<
 
 const terminalInstanceOrchestration = createTerminalInstanceOrchestration({
 	terminalHandles,
-	createTerminalInstance: (fontSize) =>
+	createTerminalInstance: (fontSize, cursorBlink) =>
 		createTerminalInstance({
 			fontSize,
+			cursorBlink,
 			getToken,
 		}),
 	openURL: (url) => terminalTransport.openURL(url),
@@ -704,6 +705,10 @@ const terminalSessionCoordinator = createTerminalSessionCoordinator({
 	setDebugOverlayPreference: (value) => terminalDebugState.setDebugOverlayPreference(value),
 	clearLocalDebugPreference: clearLocalTerminalDebugPreference,
 	syncDebugEnabled: () => terminalDebugState.syncDebugEnabled(),
+	getCurrentTerminalFontSize: () => terminalFontSizeController.getCurrentFontSize(),
+	setCurrentTerminalFontSize: (value) => terminalFontSizeController.setFontSize(value),
+	getCurrentCursorBlink: () => terminalFontSizeController.getCursorBlink(),
+	setCurrentCursorBlink: (value) => terminalFontSizeController.setCursorBlink(value),
 	onSessionReady: async (id, descriptor) => {
 		lastStreamOffset.set(id, descriptor.currentOffset ?? 0);
 		lastSocketDescriptor.set(id, {

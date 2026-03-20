@@ -11,6 +11,8 @@ type Defaults struct {
 	TerminalIdleTimeout  string              `yaml:"terminal_idle_timeout" json:"terminal_idle_timeout" mapstructure:"terminal_idle_timeout"`
 	TerminalProtocolLog  string              `yaml:"terminal_protocol_log" json:"terminal_protocol_log" mapstructure:"terminal_protocol_log"`
 	TerminalDebugOverlay string              `yaml:"terminal_debug_overlay" json:"terminal_debug_overlay" mapstructure:"terminal_debug_overlay"`
+	TerminalFontSize     string              `yaml:"terminal_font_size" json:"terminal_font_size" mapstructure:"terminal_font_size"`
+	TerminalCursorBlink  string              `yaml:"terminal_cursor_blink" json:"terminal_cursor_blink" mapstructure:"terminal_cursor_blink"`
 	TerminalKeybindings  map[string][]string `yaml:"terminal_keybindings" json:"terminal_keybindings" mapstructure:"terminal_keybindings"`
 }
 

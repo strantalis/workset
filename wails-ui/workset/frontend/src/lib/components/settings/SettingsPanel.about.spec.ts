@@ -50,6 +50,8 @@ describe('SettingsPanel About Section', () => {
 		terminalIdleTimeout: '0',
 		terminalProtocolLog: 'off',
 		terminalDebugOverlay: 'off',
+		terminalFontSize: '13',
+		terminalCursorBlink: 'on',
 	};
 	const buildDefaults = (overrides: Partial<SettingsDefaults> = {}): SettingsDefaults => ({
 		...baseDefaults,

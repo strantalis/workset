@@ -19,6 +19,8 @@ func DefaultConfig() GlobalConfig {
 			TerminalIdleTimeout:  "0",
 			TerminalProtocolLog:  "off",
 			TerminalDebugOverlay: "off",
+			TerminalFontSize:     "13",
+			TerminalCursorBlink:  "on",
 			TerminalKeybindings:  map[string][]string{},
 		},
 		GitHub: GitHubConfig{

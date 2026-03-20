@@ -1,55 +1,50 @@
 type TerminalFontSizeControllerDeps = {
 	onFontSizeChange: (fontSize: number) => void;
-	storageKey?: string;
+	onCursorBlinkChange: (cursorBlink: boolean) => void;
 	defaultFontSize?: number;
 	minFontSize?: number;
 	maxFontSize?: number;
 	step?: number;
+	defaultCursorBlink?: boolean;
 };
+
+export const DEFAULT_TERMINAL_FONT_SIZE = 13;
+export const MIN_TERMINAL_FONT_SIZE = 8;
+export const MAX_TERMINAL_FONT_SIZE = 28;
 
 const clamp = (value: number, min: number, max: number): number =>
 	Math.min(max, Math.max(min, value));
 
 export const createTerminalFontSizeController = (deps: TerminalFontSizeControllerDeps) => {
-	const storageKey = deps.storageKey ?? 'worksetTerminalFontSize';
-	const defaultFontSize = deps.defaultFontSize ?? 13;
-	const minFontSize = deps.minFontSize ?? 8;
-	const maxFontSize = deps.maxFontSize ?? 28;
+	const defaultFontSize = deps.defaultFontSize ?? DEFAULT_TERMINAL_FONT_SIZE;
+	const minFontSize = deps.minFontSize ?? MIN_TERMINAL_FONT_SIZE;
+	const maxFontSize = deps.maxFontSize ?? MAX_TERMINAL_FONT_SIZE;
 	const step = deps.step ?? 1;
-
-	const loadInitial = (): number => {
-		if (typeof localStorage === 'undefined') return defaultFontSize;
-		try {
-			const stored = localStorage.getItem(storageKey);
-			if (!stored) return defaultFontSize;
-			const parsed = Number.parseInt(stored, 10);
-			if (Number.isNaN(parsed)) return defaultFontSize;
-			return clamp(parsed, minFontSize, maxFontSize);
-		} catch {
-			return defaultFontSize;
-		}
-	};
-
-	const persist = (value: number): void => {
-		if (typeof localStorage === 'undefined') return;
-		try {
-			localStorage.setItem(storageKey, String(value));
-		} catch {
-			// Ignore storage failures.
-		}
-	};
-
-	let currentFontSize = loadInitial();
+	const defaultCursorBlink = deps.defaultCursorBlink ?? true;
+	let currentFontSize = defaultFontSize;
+	let currentCursorBlink = defaultCursorBlink;
 
 	const apply = (next: number): void => {
 		if (next === currentFontSize) return;
 		currentFontSize = next;
-		persist(currentFontSize);
 		deps.onFontSizeChange(currentFontSize);
+	};
+
+	const applyCursorBlink = (next: boolean): void => {
+		if (next === currentCursorBlink) return;
+		currentCursorBlink = next;
+		deps.onCursorBlinkChange(currentCursorBlink);
 	};
 
 	return {
 		getCurrentFontSize: (): number => currentFontSize,
+		getCursorBlink: (): boolean => currentCursorBlink,
+		setFontSize: (next: number): void => {
+			apply(clamp(next, minFontSize, maxFontSize));
+		},
+		setCursorBlink: (next: boolean): void => {
+			applyCursorBlink(next);
+		},
 		increaseFontSize: (): void => {
 			apply(Math.min(currentFontSize + step, maxFontSize));
 		},

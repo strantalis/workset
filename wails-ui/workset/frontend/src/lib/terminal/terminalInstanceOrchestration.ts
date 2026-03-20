@@ -14,7 +14,7 @@ import {
 
 type TerminalInstanceOrchestrationDependencies = {
 	terminalHandles: Map<string, TerminalInstanceHandle>;
-	createTerminalInstance: (fontSize: number) => Promise<Terminal>;
+	createTerminalInstance: (fontSize: number, cursorBlink: boolean) => Promise<Terminal>;
 	openURL: (url: string) => Promise<void>;
 	setStatusAndMessage: (id: string, status: string, message: string) => void;
 	setHealth: (id: string, state: 'unknown' | 'checking' | 'ok' | 'stale', message?: string) => void;
@@ -98,14 +98,24 @@ export const createTerminalInstanceOrchestration = (
 		}
 	};
 
+	const applyCursorBlinkToAllTerminals = (cursorBlink: boolean): void => {
+		for (const handle of deps.terminalHandles.values()) {
+			handle.terminal.options.cursorBlink = cursorBlink;
+		}
+	};
+
 	const terminalFontSizeController = createTerminalFontSizeController({
 		onFontSizeChange: applyFontSizeToAllTerminals,
+		onCursorBlinkChange: applyCursorBlinkToAllTerminals,
 	});
 
 	const terminalInstanceManager = createTerminalInstanceManager({
 		terminalHandles: deps.terminalHandles,
 		createTerminalInstance: () =>
-			deps.createTerminalInstance(terminalFontSizeController.getCurrentFontSize()),
+			deps.createTerminalInstance(
+				terminalFontSizeController.getCurrentFontSize(),
+				terminalFontSizeController.getCursorBlink(),
+			),
 		createFitAddon: () => new FitAddon({ scrollbarWidth: 0 }),
 		createLinkProviders: (terminal) => createLinkProviders(terminal, deps.openURL),
 		onData: (id, data) => {

@@ -5,6 +5,7 @@ type TokenResolver = (name: string, fallback: string) => string;
 
 export const createTerminalInstance = async (input: {
 	fontSize: number;
+	cursorBlink: boolean;
 	getToken: TokenResolver;
 }): Promise<Terminal> => {
 	await ensureGhosttyInitialized();
@@ -32,7 +33,7 @@ export const createTerminalInstance = async (input: {
 		smoothScrollDuration: 0,
 		fontFamily: fontMono,
 		fontSize: input.fontSize,
-		cursorBlink: true,
+		cursorBlink: input.cursorBlink,
 		theme: {
 			background: themeBackground,
 			foreground: themeForeground,

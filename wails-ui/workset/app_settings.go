@@ -13,6 +13,8 @@ type SettingsDefaults struct {
 	TerminalIdleTimeout  string              `json:"terminalIdleTimeout"`
 	TerminalProtocolLog  string              `json:"terminalProtocolLog"`
 	TerminalDebugOverlay string              `json:"terminalDebugOverlay"`
+	TerminalFontSize     string              `json:"terminalFontSize"`
+	TerminalCursorBlink  string              `json:"terminalCursorBlink"`
 	TerminalKeybindings  map[string][]string `json:"terminalKeybindings"`
 }
 
@@ -50,6 +52,8 @@ func (a *App) GetSettings() (SettingsSnapshot, error) {
 			TerminalIdleTimeout:  cfg.Defaults.TerminalIdleTimeout,
 			TerminalProtocolLog:  cfg.Defaults.TerminalProtocolLog,
 			TerminalDebugOverlay: cfg.Defaults.TerminalDebugOverlay,
+			TerminalFontSize:     cfg.Defaults.TerminalFontSize,
+			TerminalCursorBlink:  cfg.Defaults.TerminalCursorBlink,
 			TerminalKeybindings:  cfg.Defaults.TerminalKeybindings,
 		},
 	}, nil
