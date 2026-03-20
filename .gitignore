@@ -20,6 +20,7 @@ coverage/
 .claude/
 .cursor/
 .opencode/
+node_modules/
 wails-ui/workset/build/
 wails-ui/workset/frontend/bun.lock
 wails-ui/workset/frontend/playwright-report/
