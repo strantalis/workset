@@ -640,7 +640,7 @@
 					title="Open Explorer (⌘B)"
 					onclick={() => (explorerOpen = true)}
 				>
-									</button>
+				</button>
 			{/if}
 
 			<div class="view-shell">
