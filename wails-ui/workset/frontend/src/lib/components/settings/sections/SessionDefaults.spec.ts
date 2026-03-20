@@ -51,4 +51,22 @@ describe('SessionDefaults', () => {
 
 		expect(getByText('Terminal')).toBeInTheDocument();
 	});
+
+	test('renders text size as a number input with spinner-friendly bounds', () => {
+		const defaults = buildDefaults();
+		const { getByLabelText } = render(SessionDefaults, {
+			props: {
+				draft: defaults,
+				baseline: defaults,
+				onUpdate: vi.fn(),
+			},
+		});
+
+		const textSizeInput = getByLabelText('Text size') as HTMLInputElement;
+
+		expect(textSizeInput.type).toBe('number');
+		expect(textSizeInput.min).toBe('8');
+		expect(textSizeInput.max).toBe('28');
+		expect(textSizeInput.step).toBe('1');
+	});
 });

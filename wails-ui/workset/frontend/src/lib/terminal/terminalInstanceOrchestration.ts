@@ -100,7 +100,8 @@ export const createTerminalInstanceOrchestration = (
 
 	const applyCursorBlinkToAllTerminals = (cursorBlink: boolean): void => {
 		for (const handle of deps.terminalHandles.values()) {
-			handle.terminal.options.cursorBlink = cursorBlink;
+			const active = handle.container.getAttribute('data-active') === 'true';
+			handle.terminal.options.cursorBlink = Boolean(active && cursorBlink);
 		}
 	};
 
@@ -134,6 +135,9 @@ export const createTerminalInstanceOrchestration = (
 		},
 		onRendererDebug: deps.traceRenderer,
 		attachOpen: ({ id, handle, container, active }) => {
+			handle.terminal.options.cursorBlink = Boolean(
+				active && terminalFontSizeController.getCursorBlink(),
+			);
 			terminalAttachOpenLifecycle.attach({ id, handle, container, active });
 		},
 	});

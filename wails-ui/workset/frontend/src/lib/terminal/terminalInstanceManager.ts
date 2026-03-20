@@ -128,6 +128,7 @@ export const createTerminalInstanceManager = (deps: TerminalInstanceManagerDeps)
 		active: boolean,
 	): Promise<TerminalInstanceHandle> => {
 		const terminal = (await deps.createTerminalInstance()) as TerminalLike;
+		terminal.options.cursorBlink = Boolean(active && terminal.options.cursorBlink);
 		const fitAddon = deps.createFitAddon();
 		if (terminal.loadAddon) {
 			terminal.loadAddon(fitAddon);

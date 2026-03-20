@@ -18,7 +18,10 @@
 		label: string;
 		description: string;
 		placeholder?: string;
-		type?: 'text' | 'select';
+		type?: 'text' | 'select' | 'number';
+		min?: number;
+		max?: number;
+		step?: number;
 		options?: { label: string; value: string }[];
 	};
 
@@ -28,6 +31,10 @@
 			label: 'Text size',
 			description: 'Terminal font size in pixels. Supported range is 8 to 28.',
 			placeholder: '13',
+			type: 'number',
+			min: 8,
+			max: 28,
+			step: 1,
 		},
 		{
 			id: 'terminalCursorBlink',
@@ -95,11 +102,14 @@
 						<input
 							class="ws-field-input"
 							id={field.id}
-							type="text"
+							type={field.type ?? 'text'}
 							placeholder={field.placeholder ?? ''}
 							value={getValue(field.id)}
 							autocapitalize="off"
 							autocorrect="off"
+							min={field.min}
+							max={field.max}
+							step={field.step}
 							spellcheck="false"
 							aria-describedby="{field.id}-hint"
 							oninput={(event) => handleInput(field.id, event)}

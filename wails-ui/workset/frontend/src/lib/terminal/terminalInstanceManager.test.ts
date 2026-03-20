@@ -41,7 +41,7 @@ const createTerminalMock = (state: ListenerState) => ({
 			viewportY: 0,
 		},
 	},
-	options: { fontSize: 12 },
+	options: { fontSize: 12, cursorBlink: true },
 	element: undefined,
 });
 
@@ -113,6 +113,38 @@ describe('terminalInstanceManager', () => {
 		expect(onData).toHaveBeenCalledWith('ws::term', 'hello');
 		listenerState.responseCallbacks[0]?.('\x1b[1;1R');
 		expect(onResponse).toHaveBeenCalledWith('ws::term', '\x1b[1;1R');
+	});
+
+	it('disables cursor blink for inactive terminals on initial attach', async () => {
+		const terminalHandles = new Map<string, TerminalInstanceHandle>();
+		const listenerState = createEventState();
+		const terminal = createTerminalMock(listenerState);
+		const createTerminalInstance = vi.fn(() => Promise.resolve(terminal));
+		const fitAddon = createFitAddon();
+		const createFitAddonMock = vi.fn(() => fitAddon);
+		const attachOpen = vi.fn(({ handle }) => {
+			expect(handle.terminal.options.cursorBlink).toBe(false);
+		});
+
+		const manager = createTerminalInstanceManager({
+			terminalHandles,
+			createTerminalInstance,
+			createFitAddon: createFitAddonMock,
+			createLinkProviders: () => [createLinkProviderMock()],
+			onData: vi.fn(),
+			attachOpen,
+		});
+
+		const container = document.createElement('div') as HTMLDivElement;
+		await manager.attach('ws::term', container, false);
+
+		expect(createTerminalInstance).toHaveBeenCalledTimes(1);
+		expect(attachOpen).toHaveBeenCalledWith(
+			expect.objectContaining({
+				active: false,
+			}),
+		);
+		expect(terminal.options.cursorBlink).toBe(false);
 	});
 
 	it('reuses a terminal handle without duplicating data listeners', async () => {
