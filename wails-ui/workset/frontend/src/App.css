@@ -53,34 +53,6 @@
 	z-index: 2;
 }
 
-.explorer-reopen-btn {
-	position: absolute;
-	left: 0;
-	top: 50%;
-	transform: translateY(-50%);
-	z-index: 30;
-	width: 20px;
-	height: 54px;
-	border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-	border-left: none;
-	border-radius: 0 10px 10px 0;
-	background: var(--panel-strong);
-	color: var(--muted);
-	display: inline-grid;
-	place-items: center;
-	cursor: pointer;
-	transition:
-		color var(--transition-fast),
-		background var(--transition-fast),
-		border-color var(--transition-fast);
-}
-
-.explorer-reopen-btn:hover {
-	color: var(--text);
-	background: var(--hover-bg);
-	border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
-}
-
 .view-shell {
 	flex: 1;
 	min-height: 0;
@@ -211,4 +183,49 @@
 		width: 240px;
 		min-width: 240px;
 	}
+}
+
+.notification-stack {
+	position: fixed;
+	bottom: 16px;
+	right: 16px;
+	z-index: 9999;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	max-width: 380px;
+	pointer-events: none;
+}
+
+.notification-toast {
+	pointer-events: auto;
+	padding: 10px 16px;
+	border-radius: var(--radius-md);
+	font-size: var(--text-sm);
+	line-height: 1.4;
+	border: 1px solid var(--border);
+	cursor: pointer;
+	text-align: left;
+	transition: opacity var(--transition-fast);
+	background: var(--panel);
+	color: var(--text);
+}
+
+.notification-toast:hover {
+	opacity: 0.8;
+}
+
+.notification-toast--error {
+	border-color: var(--danger);
+	background: color-mix(in srgb, var(--danger) 12%, var(--panel));
+}
+
+.notification-toast--warn {
+	border-color: var(--warning);
+	background: color-mix(in srgb, var(--warning) 12%, var(--panel));
+}
+
+.notification-toast--info {
+	border-color: var(--accent);
+	background: color-mix(in srgb, var(--accent) 8%, var(--panel));
 }

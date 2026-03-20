@@ -255,6 +255,95 @@
 		transform: translateX(-50%) translateY(0);
 	}
 
+	/* ── Panel edge tab (collapsed panel reopen handle) ───────── */
+	.ws-panel-edge-tab {
+		z-index: 30;
+		width: 16px;
+		height: 56px;
+		padding: 0;
+		border: 1px solid var(--border);
+		background: var(--panel-strong);
+		display: inline-grid;
+		place-items: center;
+		cursor: pointer;
+		transition:
+			background var(--transition-fast),
+			border-color var(--transition-fast),
+			box-shadow var(--transition-fast);
+	}
+
+	/* CSS triangle arrow indicator */
+	.ws-panel-edge-tab::after {
+		content: '';
+		display: block;
+		width: 0;
+		height: 0;
+		border-style: solid;
+		transition: border-color var(--transition-fast);
+	}
+
+	.ws-panel-edge-tab--left {
+		border-left: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
+		border-right: none;
+		border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+	}
+
+	.ws-panel-edge-tab--left::after {
+		border-width: 5px 0 5px 5px;
+		border-color: transparent transparent transparent var(--muted);
+	}
+
+	.ws-panel-edge-tab--right {
+		border-right: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
+		border-left: none;
+		border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+	}
+
+	.ws-panel-edge-tab--right::after {
+		border-width: 5px 5px 5px 0;
+		border-color: transparent var(--muted) transparent transparent;
+	}
+
+	.ws-panel-edge-tab:hover {
+		background: var(--hover-bg);
+		border-color: var(--border);
+		box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 18%, transparent);
+	}
+
+	.ws-panel-edge-tab--left:hover {
+		border-left-color: var(--accent);
+	}
+
+	.ws-panel-edge-tab--left:hover::after {
+		border-left-color: var(--text);
+	}
+
+	.ws-panel-edge-tab--right:hover {
+		border-right-color: var(--accent);
+	}
+
+	.ws-panel-edge-tab--right:hover::after {
+		border-right-color: var(--text);
+	}
+
+	/* Absolutely positioned (e.g. explorer panel overlay) */
+	.ws-panel-edge-tab--absolute {
+		position: absolute;
+		top: 50%;
+		transform: translateY(-50%);
+	}
+
+	.ws-panel-edge-tab--absolute:active {
+		transform: translateY(-50%) scale(0.95);
+	}
+
+	/* Flex child (e.g. sidebar collapsed layout) */
+	.ws-panel-edge-tab--inline {
+		align-self: center;
+		flex-shrink: 0;
+		height: 56px;
+	}
+
 	.ws-dot {
 		display: inline-block;
 		border-radius: 999px;

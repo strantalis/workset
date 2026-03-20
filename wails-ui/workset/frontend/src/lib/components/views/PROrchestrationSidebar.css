@@ -7,36 +7,6 @@
 	border-right: 1px solid var(--border);
 }
 
-.sidebar-toggle-btn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 28px;
-	height: 28px;
-	padding: 0;
-	border: 1px solid transparent;
-	border-radius: 6px;
-	background: transparent;
-	color: var(--muted);
-	cursor: pointer;
-	transition:
-		background var(--transition-fast),
-		border-color var(--transition-fast),
-		color var(--transition-fast),
-		opacity var(--transition-fast);
-}
-
-.sidebar-toggle-btn:hover:not(.disabled) {
-	color: var(--text);
-	background: var(--hover-bg);
-	border-color: var(--border);
-}
-
-.sidebar-toggle-btn.disabled {
-	opacity: 0.45;
-	cursor: not-allowed;
-}
-
 .list {
 	flex: 1;
 	min-height: 0;

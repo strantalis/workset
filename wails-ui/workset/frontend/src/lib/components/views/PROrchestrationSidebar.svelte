@@ -139,7 +139,7 @@
 					</div>
 					<button
 						type="button"
-						class="ws-icon-action-btn sidebar-toggle-btn"
+						class="ws-icon-action-btn"
 						class:disabled={!canCollapseSidebar}
 						aria-label="Collapse sidebar"
 						data-hover-label={canCollapseSidebar

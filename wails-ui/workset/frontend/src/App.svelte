@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { fly } from 'svelte/transition';
-	import { PanelLeft } from '@lucide/svelte';
 	import {
 		activeRepo,
 		activeWorkspace,
 		activeWorkspaceId,
+		applyRepoDiffSummary,
 		applyRepoLocalStatus,
 		clearRepo,
 		loadWorkspaces,
@@ -14,18 +14,14 @@
 		workspaceError,
 		workspaces,
 	} from './lib/state';
-	import {
-		closeWorkspacePopout,
-		listWorkspacePopouts,
-		openWorkspacePopout,
-		previewRepoHooks,
-		setWorkspaceDescription,
-	} from './lib/api/workspaces';
+	import { previewRepoHooks, setWorkspaceDescription } from './lib/api/workspaces';
 	import type { RepoLocalStatus } from './lib/api/github';
 	import { fetchGitHubAuthInfo } from './lib/api/github';
 	import { openDefaultDocumentSession, reconcileDocumentSession } from './lib/documentSessionState';
 	import {
+		EVENT_REPO_DIFF_LOCAL_SUMMARY,
 		EVENT_REPO_DIFF_LOCAL_STATUS,
+		EVENT_REPO_DIFF_SUMMARY,
 		EVENT_WORKSPACE_POPOUT_CLOSED,
 		EVENT_WORKSPACE_POPOUT_OPENED,
 	} from './lib/events';
@@ -35,7 +31,6 @@
 	import { shouldClearPreviousWorkspaceTerminalActivity } from './lib/terminal/terminalActivity';
 	import { subscribeTerminalActivity } from './lib/terminal/terminalActivityBus';
 	import { subscribeWailsEvent } from './lib/wailsEventRegistry';
-	import { startRepoStatusWatch, stopRepoStatusWatch } from './lib/api/repo-diff';
 	import EmptyState from './lib/components/EmptyState.svelte';
 	import GitHubLoginModal from './lib/components/GitHubLoginModal.svelte';
 	import SettingsPanel from './lib/components/SettingsPanel.svelte';
@@ -56,7 +51,18 @@
 		loadOnboardingCatalog,
 		type RegisteredRepo,
 	} from './lib/view-models/onboardingViewModel';
-	import { buildShortcutMap, mapWorkspacesToSummaries } from './lib/view-models/worksetViewModel';
+	import {
+		buildShortcutMap,
+		deriveWorksetIdentity,
+		mapWorkspacesToSummaries,
+	} from './lib/view-models/worksetViewModel';
+	import { createTerminalActivityTracker } from './lib/composables/createTerminalActivityTracker.svelte';
+	import { createRepoStatusWatchers } from './lib/composables/createRepoStatusWatchers';
+	import { createWorkspaceActionModal } from './lib/composables/createWorkspaceActionModal.svelte';
+	import { createPopoutManager } from './lib/composables/createPopoutManager.svelte';
+	import { createNotifications } from './lib/composables/createNotifications.svelte';
+	import { provideNotifications } from './lib/contexts/notifications';
+	import { provideWorkspaceActions } from './lib/contexts/workspaceActions';
 
 	type RepoDiffLocalStatusEvent = {
 		workspaceId: string;
@@ -64,13 +70,21 @@
 		status: RepoLocalStatus;
 	};
 
+	type RepoDiffSummaryEvent = {
+		workspaceId: string;
+		repoId: string;
+		summary: {
+			files: Array<unknown>;
+			totalAdded: number;
+			totalRemoved: number;
+		};
+	};
+
 	type WorkspacePopoutEvent = {
 		workspaceId: string;
 		windowName: string;
 		open: boolean;
 	};
-
-	type WorkspaceActionMode = 'create-thread' | 'add-repo' | 'remove-thread' | 'remove-repo' | null;
 
 	const EXPLORER_OPEN_STORAGE_KEY = 'workset:app:explorerOpen';
 	const AUTO_GITHUB_AUTH_CHECK = false;
@@ -104,28 +118,22 @@
 			: 'workspaces'
 		: (requestedAppView ?? 'workspaces');
 
-	const repoStatusWatchers = new Map<string, { workspaceId: string; repoId: string }>();
-	const terminalActivityExpiryTimers = new Map<string, number>();
-	const terminalActivityDeadlines = new Map<string, number>();
+	const repoStatusWatchers = createRepoStatusWatchers();
+	const terminalActivity = createTerminalActivityTracker(TERMINAL_ACTIVITY_TTL_MS);
 
 	const hasWorkspace = $derived($activeWorkspace !== null);
 	const hasRepo = $derived($activeRepo !== null);
 	const hasWorkspaces = $derived($workspaces.length > 0);
 
 	let currentView = $state<AppView>(initialView);
-	let workspaceActionMode = $state<WorkspaceActionMode>(null);
-	let workspaceActionWorkspaceId = $state<string | null>(null);
-	let workspaceActionWorkspaceIds = $state<string[]>([]);
-	let workspaceActionRepoName = $state<string | null>(null);
-	let workspaceActionWorksetName = $state<string | null>(null);
-	let workspaceActionWorksetRepos = $state<string[]>([]);
+	const workspaceAction = createWorkspaceActionModal();
+	const notifications = createNotifications();
+	provideNotifications(notifications);
 
 	let commandPaletteOpen = $state(false);
 	let authModalOpen = $state(false);
 	let authModalDismissed = $state(false);
-	let popoutBusy = $state(false);
 	let explorerOpen = $state(readExplorerOpenPreference());
-	let openPopoutWorkspaces = $state<Record<string, string>>({});
 	let popoutSelectionApplied = $state(false);
 	let onboardingLoading = $state(false);
 	let onboardingBusy = $state(false);
@@ -135,29 +143,6 @@
 	let workbenchSurface = $state<WorkbenchSurface>('terminal');
 	// eslint-disable-next-line svelte/prefer-writable-derived
 	let documentSession = $state<DocumentSession | null>(null);
-	let activeTerminalWorkspaces = $state<Record<string, true>>({});
-	const activeTerminalWorkspaceIds = $derived.by(() => Object.keys(activeTerminalWorkspaces));
-
-	const deriveWorksetIdentity = (workspace: Workspace): { id: string; label: string } => {
-		const key = workspace.worksetKey?.trim();
-		const label = workspace.worksetLabel?.trim();
-		const workset = workspace.workset?.trim();
-		const normalizedWorkset = workset?.toLowerCase().replace(/\s+/g, '-') ?? '';
-		return {
-			id:
-				key && key.length > 0
-					? key
-					: normalizedWorkset.length > 0
-						? `workset:${normalizedWorkset}`
-						: `workspace:${workspace.id.toLowerCase()}`,
-			label:
-				label && label.length > 0
-					? label
-					: workset && workset.length > 0
-						? workset
-						: workspace.name,
-		};
-	};
 
 	const getWorksetThreads = (workspaceId: string): Workspace[] => {
 		const target = $workspaces.find(
@@ -176,19 +161,6 @@
 			.sort((left, right) => left.id.localeCompare(right.id));
 	};
 
-	const resolvePopoutWorkspaceId = (workspaceId: string): string => {
-		const id = workspaceId.trim();
-		if (!id) return '';
-		const threads = getWorksetThreads(id);
-		if (threads.length === 0) return id;
-		for (const thread of threads) {
-			if (openPopoutWorkspaces[thread.id] !== undefined) {
-				return thread.id;
-			}
-		}
-		return threads[0]?.id ?? id;
-	};
-
 	const releaseWorksetTerminals = (workspaceId: string): void => {
 		const threads = getWorksetThreads(workspaceId);
 		if (threads.length === 0) {
@@ -200,68 +172,11 @@
 		}
 	};
 
-	const clearTerminalActivityTimer = (workspaceId: string): void => {
-		const timer = terminalActivityExpiryTimers.get(workspaceId);
-		if (timer === undefined) return;
-		window.clearTimeout(timer);
-		terminalActivityExpiryTimers.delete(workspaceId);
-	};
-
-	const removeWorkspaceTerminalActivity = (workspaceId: string): void => {
-		if (activeTerminalWorkspaces[workspaceId] === undefined) return;
-		const next = { ...activeTerminalWorkspaces };
-		delete next[workspaceId];
-		activeTerminalWorkspaces = next;
-	};
-
-	const clearWorkspaceTerminalActivity = (workspaceId: string | null | undefined): void => {
-		const id = workspaceId?.trim() ?? '';
-		if (!id) return;
-		clearTerminalActivityTimer(id);
-		terminalActivityDeadlines.delete(id);
-		removeWorkspaceTerminalActivity(id);
-	};
-
-	const scheduleWorkspaceTerminalActivityExpiry = (workspaceId: string, delayMs: number): void => {
-		clearTerminalActivityTimer(workspaceId);
-		const timer = window.setTimeout(
-			() => {
-				terminalActivityExpiryTimers.delete(workspaceId);
-				const deadline = terminalActivityDeadlines.get(workspaceId);
-				if (deadline === undefined) {
-					removeWorkspaceTerminalActivity(workspaceId);
-					return;
-				}
-				const remainingMs = deadline - Date.now();
-				if (remainingMs > 0) {
-					scheduleWorkspaceTerminalActivityExpiry(workspaceId, remainingMs);
-					return;
-				}
-				terminalActivityDeadlines.delete(workspaceId);
-				removeWorkspaceTerminalActivity(workspaceId);
-			},
-			Math.max(0, delayMs),
-		);
-		terminalActivityExpiryTimers.set(workspaceId, timer);
-	};
-
-	const markWorkspaceTerminalActivity = (workspaceId: string | null | undefined): void => {
-		const id = workspaceId?.trim() ?? '';
-		if (!id) return;
-		const expiresAt = Date.now() + TERMINAL_ACTIVITY_TTL_MS;
-		terminalActivityDeadlines.set(id, expiresAt);
-		if (activeTerminalWorkspaces[id] === undefined) {
-			activeTerminalWorkspaces = {
-				...activeTerminalWorkspaces,
-				[id]: true,
-			};
-			scheduleWorkspaceTerminalActivityExpiry(id, TERMINAL_ACTIVITY_TTL_MS);
-			return;
-		}
-		if (!terminalActivityExpiryTimers.has(id)) {
-			scheduleWorkspaceTerminalActivityExpiry(id, TERMINAL_ACTIVITY_TTL_MS);
-		}
-	};
+	const popoutManager = createPopoutManager({
+		popoutMode,
+		getWorksetThreads,
+		releaseWorksetTerminals,
+	});
 
 	const visibleWorkspaces = $derived.by(() => {
 		if (!fixedWorkspaceId) return $workspaces;
@@ -296,84 +211,6 @@
 	);
 	const explorerViews = new Set<AppView>(['workspaces', 'skill-registry', 'settings']);
 	const showExplorer = $derived.by(() => hasWorkspaces && explorerViews.has(currentView));
-
-	const updateRepoStatusWatchers = (): void => {
-		if (popoutMode) return;
-		const nextKeys = new Set<string>();
-		for (const workspace of $workspaces) {
-			if (workspace.archived) continue;
-			if (workspace.placeholder) continue;
-			for (const repo of workspace.repos) {
-				const key = `${workspace.id}:${repo.id}`;
-				nextKeys.add(key);
-				if (repoStatusWatchers.has(key)) continue;
-				const entry = { workspaceId: workspace.id, repoId: repo.id };
-				repoStatusWatchers.set(key, entry);
-				void startRepoStatusWatch(workspace.id, repo.id).catch(() => {
-					repoStatusWatchers.delete(key);
-				});
-			}
-		}
-
-		for (const [key, entry] of repoStatusWatchers.entries()) {
-			if (nextKeys.has(key)) continue;
-			repoStatusWatchers.delete(key);
-			void stopRepoStatusWatch(entry.workspaceId, entry.repoId).catch(() => {});
-		}
-	};
-
-	const stopAllRepoStatusWatchers = (): void => {
-		for (const watcher of repoStatusWatchers.values()) {
-			void stopRepoStatusWatch(watcher.workspaceId, watcher.repoId).catch(() => {});
-		}
-		repoStatusWatchers.clear();
-	};
-
-	const isWorkspacePoppedOut = (workspaceId: string | null | undefined): boolean => {
-		if (!workspaceId) return false;
-		const popoutWorkspaceId = resolvePopoutWorkspaceId(workspaceId);
-		if (!popoutWorkspaceId) return false;
-		return openPopoutWorkspaces[popoutWorkspaceId] !== undefined;
-	};
-
-	const updateWorkspacePopoutState = (
-		workspaceId: string,
-		windowName: string,
-		open: boolean,
-	): void => {
-		const id = workspaceId.trim();
-		if (!id) return;
-		if (open) {
-			openPopoutWorkspaces = { ...openPopoutWorkspaces, [id]: windowName };
-			if (!popoutMode) {
-				releaseWorksetTerminals(id);
-			}
-			return;
-		}
-		if (openPopoutWorkspaces[id] === undefined) return;
-		const next = { ...openPopoutWorkspaces };
-		delete next[id];
-		openPopoutWorkspaces = next;
-	};
-
-	const loadPopoutState = async (): Promise<void> => {
-		try {
-			const states = await listWorkspacePopouts();
-			const next: Record<string, string> = {};
-			for (const state of states) {
-				if (!state.open || !state.workspaceId) continue;
-				next[state.workspaceId] = state.windowName;
-			}
-			openPopoutWorkspaces = next;
-			if (!popoutMode) {
-				for (const workspaceId of Object.keys(next)) {
-					releaseWorksetTerminals(workspaceId);
-				}
-			}
-		} catch {
-			// ignore state probe failures
-		}
-	};
 
 	const checkGitHubAuth = async (): Promise<void> => {
 		if (authModalDismissed) return;
@@ -427,10 +264,10 @@
 			shouldClearPreviousWorkspaceTerminalActivity({
 				previousWorkspaceId,
 				nextWorkspaceId: workspaceId,
-				previousWorkspacePoppedOut: isWorkspacePoppedOut(previousWorkspaceId),
+				previousWorkspacePoppedOut: popoutManager.isWorkspacePoppedOut(previousWorkspaceId),
 			})
 		) {
-			clearWorkspaceTerminalActivity(previousWorkspaceId);
+			terminalActivity.clear(previousWorkspaceId);
 		}
 		if (currentView === 'onboarding') {
 			currentView = 'workspaces';
@@ -449,10 +286,10 @@
 			shouldClearPreviousWorkspaceTerminalActivity({
 				previousWorkspaceId,
 				nextWorkspaceId: workspaceId,
-				previousWorkspacePoppedOut: isWorkspacePoppedOut(previousWorkspaceId),
+				previousWorkspacePoppedOut: popoutManager.isWorkspacePoppedOut(previousWorkspaceId),
 			})
 		) {
-			clearWorkspaceTerminalActivity(previousWorkspaceId);
+			terminalActivity.clear(previousWorkspaceId);
 		}
 		currentView = 'workspaces';
 		clearRepo();
@@ -462,34 +299,6 @@
 		if (popoutMode) return;
 		setView('onboarding');
 		clearRepo();
-	};
-
-	const openWorkspaceActionModal = (
-		mode: Exclude<WorkspaceActionMode, null>,
-		workspaceId: string | null = null,
-		repoName: string | null = null,
-		options: {
-			worksetName?: string | null;
-			worksetRepos?: string[];
-			workspaceIds?: string[];
-		} = {},
-	): void => {
-		if (popoutMode) return;
-		workspaceActionMode = mode;
-		workspaceActionWorkspaceId = workspaceId;
-		workspaceActionWorkspaceIds = options.workspaceIds ?? [];
-		workspaceActionRepoName = repoName;
-		workspaceActionWorksetName = options.worksetName ?? null;
-		workspaceActionWorksetRepos = options.worksetRepos ?? [];
-	};
-
-	const closeWorkspaceActionModal = (): void => {
-		workspaceActionMode = null;
-		workspaceActionWorkspaceId = null;
-		workspaceActionWorkspaceIds = [];
-		workspaceActionRepoName = null;
-		workspaceActionWorksetName = null;
-		workspaceActionWorksetRepos = [];
 	};
 
 	const handleCreateThread = (worksetId: string): void => {
@@ -522,7 +331,7 @@
 			),
 		).sort((left, right) => left.localeCompare(right));
 
-		openWorkspaceActionModal('create-thread', null, null, {
+		workspaceAction.open('create-thread', null, null, {
 			worksetName: label,
 			worksetRepos: repos,
 		});
@@ -543,7 +352,7 @@
 		const first = threads[0] ?? placeholder ?? null;
 		if (!first) return;
 		const label = deriveWorksetIdentity(first).label;
-		openWorkspaceActionModal('add-repo', first.id, null, {
+		workspaceAction.open('add-repo', first.id, null, {
 			worksetName: label,
 			workspaceIds: threads.map((thread) => thread.id),
 		});
@@ -553,8 +362,15 @@
 		if (popoutMode) return;
 		if (!threadId) return;
 		if (fixedWorkspaceId && threadId !== fixedWorkspaceId) return;
-		openWorkspaceActionModal('remove-thread', threadId);
+		workspaceAction.open('remove-thread', threadId);
 	};
+
+	provideWorkspaceActions({
+		createWorkspace: handleCreateWorkspace,
+		createThread: handleCreateThread,
+		addRepo: handleAddRepoToWorkset,
+		removeThread: handleRemoveThread,
+	});
 
 	const handleOnboardingStart = async (
 		draft: OnboardingDraft,
@@ -660,34 +476,16 @@
 			: null;
 	};
 
-	let repoStatusUnsubscribe: (() => void) | null = null,
+	let repoSummaryUnsubscribe: (() => void) | null = null,
+		repoLocalSummaryUnsubscribe: (() => void) | null = null,
+		repoStatusUnsubscribe: (() => void) | null = null,
 		popoutOpenedUnsubscribe: (() => void) | null = null,
 		popoutClosedUnsubscribe: (() => void) | null = null,
 		terminalActivityUnsubscribe: (() => void) | null = null;
 
-	const handleWorkspacePopout = async (workspaceId: string, open: boolean): Promise<void> => {
-		if (!workspaceId || popoutBusy) return;
-		const popoutWorkspaceId = resolvePopoutWorkspaceId(workspaceId);
-		if (!popoutWorkspaceId) return;
-		popoutBusy = true;
-		try {
-			if (open) {
-				const state = await openWorkspacePopout(popoutWorkspaceId);
-				updateWorkspacePopoutState(state.workspaceId, state.windowName, state.open);
-			} else {
-				await closeWorkspacePopout(popoutWorkspaceId);
-				updateWorkspacePopoutState(popoutWorkspaceId, '', false);
-			}
-		} catch {
-			// ignore popout action errors in UI
-		} finally {
-			popoutBusy = false;
-		}
-	};
-
 	onMount(() => {
 		void loadWorkspaces(true);
-		void loadPopoutState();
+		void popoutManager.loadState();
 		if (!popoutMode && AUTO_GITHUB_AUTH_CHECK) {
 			void checkGitHubAuth();
 		}
@@ -697,25 +495,41 @@
 				applyRepoLocalStatus(payload.workspaceId, payload.repoId, payload.status);
 			},
 		);
+		repoSummaryUnsubscribe = subscribeRepoDiffEvent<RepoDiffSummaryEvent>(
+			EVENT_REPO_DIFF_SUMMARY,
+			(payload) => {
+				applyRepoDiffSummary(payload.workspaceId, payload.repoId, payload.summary);
+			},
+		);
+		repoLocalSummaryUnsubscribe = subscribeRepoDiffEvent<RepoDiffSummaryEvent>(
+			EVENT_REPO_DIFF_LOCAL_SUMMARY,
+			(payload) => {
+				applyRepoDiffSummary(payload.workspaceId, payload.repoId, payload.summary);
+			},
+		);
 		popoutOpenedUnsubscribe = subscribeWailsEvent<WorkspacePopoutEvent>(
 			EVENT_WORKSPACE_POPOUT_OPENED,
 			(payload) => {
-				updateWorkspacePopoutState(payload.workspaceId, payload.windowName, true);
+				popoutManager.updateState(payload.workspaceId, payload.windowName, true);
 			},
 		);
 		popoutClosedUnsubscribe = subscribeWailsEvent<WorkspacePopoutEvent>(
 			EVENT_WORKSPACE_POPOUT_CLOSED,
 			(payload) => {
-				updateWorkspacePopoutState(payload.workspaceId, payload.windowName, false);
+				popoutManager.updateState(payload.workspaceId, payload.windowName, false);
 			},
 		);
 		terminalActivityUnsubscribe = subscribeTerminalActivity((payload) => {
-			markWorkspaceTerminalActivity(payload.workspaceId);
+			terminalActivity.mark(payload.workspaceId);
 		});
 	});
 
 	onDestroy(() => {
-		stopAllRepoStatusWatchers();
+		repoStatusWatchers.stopAll();
+		repoSummaryUnsubscribe?.();
+		repoSummaryUnsubscribe = null;
+		repoLocalSummaryUnsubscribe?.();
+		repoLocalSummaryUnsubscribe = null;
 		repoStatusUnsubscribe?.();
 		repoStatusUnsubscribe = null;
 		popoutOpenedUnsubscribe?.();
@@ -724,16 +538,12 @@
 		popoutClosedUnsubscribe = null;
 		terminalActivityUnsubscribe?.();
 		terminalActivityUnsubscribe = null;
-		for (const timer of terminalActivityExpiryTimers.values()) {
-			window.clearTimeout(timer);
-		}
-		terminalActivityExpiryTimers.clear();
-		terminalActivityDeadlines.clear();
-		activeTerminalWorkspaces = {};
+		terminalActivity.destroy();
+		notifications.destroy();
 	});
 
 	$effect(() => {
-		updateRepoStatusWatchers();
+		if (!popoutMode) repoStatusWatchers.sync($workspaces);
 	});
 
 	$effect(() => {
@@ -776,15 +586,15 @@
 				showShortcut={!popoutMode}
 				showPaletteHint={!popoutMode}
 				showPopoutToggle={!!$activeWorkspaceId}
-				workspacePoppedOut={isWorkspacePoppedOut($activeWorkspaceId)}
+				workspacePoppedOut={popoutManager.isWorkspacePoppedOut($activeWorkspaceId)}
 				onTogglePopout={() => {
 					const workspaceId = $activeWorkspaceId;
 					if (!workspaceId) return;
-					if (isWorkspacePoppedOut(workspaceId)) {
-						void handleWorkspacePopout(workspaceId, false);
+					if (popoutManager.isWorkspacePoppedOut(workspaceId)) {
+						void popoutManager.handlePopout(workspaceId, false);
 						return;
 					}
-					void handleWorkspacePopout(workspaceId, true);
+					void popoutManager.handlePopout(workspaceId, true);
 				}}
 				onOpenPalette={() => (commandPaletteOpen = true)}
 			/>
@@ -802,12 +612,8 @@
 						activeView={currentView === 'skill-registry' ? 'skill-registry' : 'workspaces'}
 						activeSurface={workbenchSurface}
 						filesActive={documentSession !== null}
-						{activeTerminalWorkspaceIds}
+						activeTerminalWorkspaceIds={terminalActivity.activeIds}
 						onSelectWorkspace={handleSelectWorkspace}
-						onCreateWorkspace={handleCreateWorkspace}
-						onCreateThread={handleCreateThread}
-						onAddRepo={handleAddRepoToWorkset}
-						onRemoveThread={handleRemoveThread}
 						onOpenPullRequests={() => {
 							const nextPane = resolveWorkbenchPaneState({
 								surface: workbenchSurface,
@@ -829,13 +635,12 @@
 			{#if showExplorer && !explorerOpen}
 				<button
 					type="button"
-					class="explorer-reopen-btn"
+					class="ws-panel-edge-tab ws-panel-edge-tab--left ws-panel-edge-tab--absolute"
 					aria-label="Open Explorer (⌘B)"
 					title="Open Explorer (⌘B)"
 					onclick={() => (explorerOpen = true)}
 				>
-					<PanelLeft size={13} />
-				</button>
+									</button>
 			{/if}
 
 			<div class="view-shell">
@@ -869,15 +674,15 @@
 								variant="centered"
 							/>
 						{:else if currentView === 'workspaces'}
-							{#if !popoutMode && isWorkspacePoppedOut($activeWorkspaceId)}
+							{#if !popoutMode && popoutManager.isWorkspacePoppedOut($activeWorkspaceId)}
 								<EmptyState
 									title="This workset is open in a popout"
 									body="Use the popout window to continue. Return it here anytime."
 									actionLabel="Focus Popout"
-									onAction={() => void handleWorkspacePopout($activeWorkspaceId ?? '', true)}
+									onAction={() => void popoutManager.handlePopout($activeWorkspaceId ?? '', true)}
 									secondaryActionLabel="Return To Main Window"
 									onSecondaryAction={() =>
-										void handleWorkspacePopout($activeWorkspaceId ?? '', false)}
+										void popoutManager.handlePopout($activeWorkspaceId ?? '', false)}
 									variant="centered"
 								/>
 							{:else}
@@ -933,14 +738,14 @@
 		/>
 	{/if}
 
-	{#if !popoutMode && workspaceActionMode}
+	{#if !popoutMode && workspaceAction.mode}
 		<div
 			class="action-panel-backdrop"
 			role="button"
 			tabindex="0"
-			onclick={closeWorkspaceActionModal}
+			onclick={workspaceAction.close}
 			onkeydown={(event) => {
-				if (event.key === 'Escape') closeWorkspaceActionModal();
+				if (event.key === 'Escape') workspaceAction.close();
 			}}
 		></div>
 		<aside
@@ -950,13 +755,13 @@
 			onkeydown={(event) => event.stopPropagation()}
 		>
 			<WorkspaceActionModal
-				onClose={closeWorkspaceActionModal}
-				mode={workspaceActionMode}
-				workspaceId={workspaceActionWorkspaceId}
-				workspaceIds={workspaceActionWorkspaceIds}
-				repoName={workspaceActionRepoName}
-				worksetName={workspaceActionWorksetName}
-				worksetRepos={workspaceActionWorksetRepos}
+				onClose={workspaceAction.close}
+				mode={workspaceAction.mode}
+				workspaceId={workspaceAction.workspaceId}
+				workspaceIds={workspaceAction.workspaceIds}
+				repoName={workspaceAction.repoName}
+				worksetName={workspaceAction.worksetName}
+				worksetRepos={workspaceAction.worksetRepos}
 			/>
 		</aside>
 	{/if}
@@ -1001,6 +806,20 @@
 					onSuccess={handleAuthSuccess}
 				/>
 			</div>
+		</div>
+	{/if}
+
+	{#if notifications.notifications.length > 0}
+		<div class="notification-stack">
+			{#each notifications.notifications as notif (notif.id)}
+				<button
+					type="button"
+					class="notification-toast notification-toast--{notif.level}"
+					onclick={() => notifications.dismiss(notif.id)}
+				>
+					{notif.message}
+				</button>
+			{/each}
 		</div>
 	{/if}
 </div>
