@@ -11,8 +11,8 @@
 		Loader2,
 		X,
 	} from '@lucide/svelte';
-	import { searchGitHubRepositories } from '../../api/github';
-	import { deriveRepoName, looksLikeUrl } from '../../names';
+	import { deriveRepoName, isLikelyLocalPath, looksLikeUrl } from '../../names';
+	import { createRepoSearch } from '../../composables/createRepoSearch.svelte';
 	import { languageColors } from '../../view-models/onboardingViewModel';
 	import type { GitHubRepoSearchItem, HookExecution } from '../../types';
 	import { subscribeHookProgressEvent } from '../../hookEventService';
@@ -80,12 +80,7 @@
 	let sourceInput = $state('');
 	let selectedAliases = $state<Set<string>>(new Set());
 	let directRepos = $state<Array<{ url: string; register: boolean }>>([]);
-	let remoteSuggestions = $state<GitHubRepoSearchItem[]>([]);
-	let searchLoading = $state(false);
-	let searchError: string | null = $state(null);
-	let lastSearchedQuery = $state('');
-	let sourceSearchDebounce: ReturnType<typeof setTimeout> | null = null;
-	let sourceSearchSequence = 0;
+	const repoSearch = createRepoSearch();
 	let nameTouched = $state(false);
 	let runError = $state<string | null>(null);
 	let hookPreviewLoading = $state(false);
@@ -120,45 +115,14 @@
 
 	const hookPreviewEnabled = $derived(!!onPreviewHooks);
 
-	const isLikelyLocalPath = (value: string): boolean => {
-		const trimmed = value.trim();
-		return (
-			trimmed.startsWith('/') ||
-			trimmed.startsWith('./') ||
-			trimmed.startsWith('../') ||
-			trimmed.startsWith('~') ||
-			/^[a-zA-Z]:[\\/]/.test(trimmed) ||
-			trimmed.includes('\\')
-		);
-	};
 	const sourceQuery = $derived(sourceInput.trim());
 	const canAddSource = $derived(looksLikeUrl(sourceQuery) || isLikelyLocalPath(sourceQuery));
-	const showSearchStartHint = $derived(sourceQuery.length === 0);
-	const shouldSearchRemote = (value: string): boolean => {
-		const trimmed = value.trim();
-		return trimmed.length >= 2 && !looksLikeUrl(trimmed) && !isLikelyLocalPath(trimmed);
-	};
-	const showSearchMinCharsHint = $derived(
-		sourceQuery.length > 0 &&
-			sourceQuery.length < 2 &&
-			!looksLikeUrl(sourceQuery) &&
-			!isLikelyLocalPath(sourceQuery),
-	);
-	const showNoSearchResults = $derived(
-		!searchLoading &&
-			searchError === null &&
-			!showSearchStartHint &&
-			!showSearchMinCharsHint &&
-			remoteSuggestions.length === 0 &&
-			lastSearchedQuery !== '' &&
-			sourceQuery === lastSearchedQuery,
-	);
 	const isDirectRepoSelected = (url: string): boolean =>
 		directRepos.some((entry) => entry.url === url);
 	const isCatalogRepoSelectedByUrl = (url: string): boolean =>
 		selectedCatalogRepos.some((entry) => entry.remoteUrl === url);
 	const filteredRemoteSuggestions = $derived.by<GitHubRepoSearchItem[]>(() =>
-		remoteSuggestions.filter((item) => {
+		repoSearch.results.filter((item) => {
 			const source = item.sshUrl || item.cloneUrl;
 			if (!source) return false;
 			return !isDirectRepoSelected(source) && !isCatalogRepoSelectedByUrl(source);
@@ -295,91 +259,9 @@
 		hookPreviewLoading = false;
 	};
 
-	const clearSourceTimers = (): void => {
-		if (sourceSearchDebounce) {
-			clearTimeout(sourceSearchDebounce);
-			sourceSearchDebounce = null;
-		}
-	};
-
-	const resetRemoteSuggestions = (): void => {
-		clearSourceTimers();
-		sourceSearchSequence += 1;
-		remoteSuggestions = [];
-		searchLoading = false;
-		searchError = null;
-		lastSearchedQuery = '';
-	};
-
-	const showRemoteSearchHints = (query: string): void => {
-		sourceSearchSequence += 1;
-		remoteSuggestions = [];
-		searchLoading = false;
-		searchError = null;
-		lastSearchedQuery = query;
-	};
-
-	const toSearchErrorMessage = (err: unknown): string => {
-		const message = err instanceof Error ? err.message : 'Failed to search repositories.';
-		const normalized = message.toLowerCase();
-		if (
-			normalized.includes('auth required') ||
-			normalized.includes('not authenticated') ||
-			normalized.includes('authentication') ||
-			normalized.includes('authenticate') ||
-			normalized.includes('github auth')
-		) {
-			return 'Connect GitHub in Settings -> GitHub authentication to search.';
-		}
-		return message;
-	};
-
-	const runRemoteSearch = async (query: string): Promise<void> => {
-		const requestSequence = ++sourceSearchSequence;
-		searchLoading = true;
-		searchError = null;
-		lastSearchedQuery = query;
-		try {
-			const results = await searchGitHubRepositories(query, 8);
-			if (requestSequence !== sourceSearchSequence) return;
-			remoteSuggestions = results;
-		} catch (err) {
-			if (requestSequence !== sourceSearchSequence) return;
-			remoteSuggestions = [];
-			searchError = toSearchErrorMessage(err);
-		} finally {
-			if (requestSequence === sourceSearchSequence) {
-				searchLoading = false;
-			}
-		}
-	};
-
-	const queueRemoteSearch = (value: string): void => {
-		const query = value.trim();
-		if (sourceSearchDebounce) {
-			clearTimeout(sourceSearchDebounce);
-			sourceSearchDebounce = null;
-		}
-		if (query.length === 0) {
-			showRemoteSearchHints('');
-			return;
-		}
-		if (!shouldSearchRemote(query)) {
-			if (looksLikeUrl(query) || isLikelyLocalPath(query)) {
-				resetRemoteSuggestions();
-				return;
-			}
-			showRemoteSearchHints(query);
-			return;
-		}
-		sourceSearchDebounce = setTimeout(() => {
-			void runRemoteSearch(query);
-		}, 250);
-	};
-
 	const handleSourceInput = (value: string): void => {
 		sourceInput = value;
-		queueRemoteSearch(value);
+		repoSearch.queue(value);
 	};
 
 	const handleAddRemoteSuggestion = (suggestion: GitHubRepoSearchItem): void => {
@@ -388,7 +270,7 @@
 		directRepos = [...directRepos, { url: source, register: true }];
 		clearHookPreviewState();
 		sourceInput = '';
-		resetRemoteSuggestions();
+		repoSearch.reset();
 	};
 
 	const handleSourceKeydown = (event: KeyboardEvent): void => {
@@ -399,7 +281,7 @@
 		}
 		if (event.key === 'Escape') {
 			event.preventDefault();
-			resetRemoteSuggestions();
+			repoSearch.reset();
 		}
 	};
 
@@ -411,7 +293,7 @@
 			clearHookPreviewState();
 		}
 		sourceInput = '';
-		resetRemoteSuggestions();
+		repoSearch.reset();
 	};
 
 	const handleRemoveDirectRepo = (url: string): void => {
@@ -609,7 +491,7 @@
 	});
 
 	onDestroy(() => {
-		clearSourceTimers();
+		repoSearch.destroy();
 		hookEventUnsubscribe?.();
 		hookEventUnsubscribe = null;
 	});
@@ -742,18 +624,18 @@
 											Add
 										</button>
 									</div>
-									{#if showSearchMinCharsHint}
+									{#if repoSearch.showSearchMinCharsHint}
 										<div class="repo-search-status">
 											Type at least 2 characters to search GitHub.
 										</div>
-									{:else if searchLoading}
+									{:else if repoSearch.loading}
 										<div class="repo-search-status">
 											<Loader2 size={14} />
 											<span>Searching GitHub…</span>
 										</div>
-									{:else if searchError}
-										<div class="repo-search-error">{searchError}</div>
-									{:else if showNoSearchResults}
+									{:else if repoSearch.error}
+										<div class="repo-search-error">{repoSearch.error}</div>
+									{:else if repoSearch.showNoSearchResults}
 										<div class="repo-search-status">
 											No GitHub repositories found for "{sourceQuery}".
 										</div>

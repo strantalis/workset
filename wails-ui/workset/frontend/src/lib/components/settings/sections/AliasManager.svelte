@@ -17,12 +17,12 @@
 		unregisterRepo,
 		updateRegisteredRepo,
 	} from '../../../api/settings';
-	import { searchGitHubRepositories } from '../../../api/github';
 	import type { Alias, GitHubRepoSearchItem } from '../../../types';
 	import { toErrorMessage } from '../../../errors';
 	import SettingsSection from '../SettingsSection.svelte';
 	import Button from '../../ui/Button.svelte';
 	import { deriveRepoName, looksLikeUrl } from '../../../names';
+	import { createRepoSearch } from '../../../composables/createRepoSearch.svelte';
 
 	interface Props {
 		onAliasCountChange: (count: number) => void;
@@ -45,16 +45,9 @@
 	let formBranch = $state('main');
 	let advancedOpen = $state(false);
 	let detecting = $state(false);
-	let remoteSuggestions: GitHubRepoSearchItem[] = $state([]);
-	let searchLoading = $state(false);
-	let searchError: string | null = $state(null);
-	let suggestionsOpen = $state(false);
-	let sourceInputFocused = $state(false);
-	let activeSuggestionIndex = $state(-1);
-	let lastSearchedQuery = $state('');
-	let sourceSearchDebounce: ReturnType<typeof setTimeout> | null = null;
-	let sourceSearchCloseTimer: ReturnType<typeof setTimeout> | null = null;
-	let sourceSearchSequence = 0;
+	const repoSearch = createRepoSearch({
+		isActive: () => isRegistering && !isEditing,
+	});
 
 	// Search and copy state
 	let searchQuery = $state('');
@@ -72,198 +65,29 @@
 	const filteredAliases = $derived(
 		aliases.filter((a) => a.name.toLowerCase().includes(searchQuery.toLowerCase())),
 	);
-	const showRemoteSuggestionPanel = $derived(isRegistering && !isEditing && suggestionsOpen);
-
-	const isLikelyLocalPath = (value: string): boolean => {
-		const trimmed = value.trim();
-		return (
-			trimmed.startsWith('/') ||
-			trimmed.startsWith('./') ||
-			trimmed.startsWith('../') ||
-			trimmed.startsWith('~') ||
-			/^[a-zA-Z]:[\\/]/.test(trimmed) ||
-			trimmed.includes('\\')
-		);
-	};
-	const sourceQuery = $derived(formSource.trim());
-	const showSearchStartHint = $derived(sourceQuery.length === 0);
-	const showSearchMinCharsHint = $derived(
-		sourceQuery.length > 0 &&
-			sourceQuery.length < 2 &&
-			!looksLikeUrl(sourceQuery) &&
-			!isLikelyLocalPath(sourceQuery),
+	const showRemoteSuggestionPanel = $derived(
+		isRegistering && !isEditing && repoSearch.suggestionsOpen && repoSearch.focused,
 	);
-	const showNoSearchResults = $derived(
-		!searchLoading &&
-			searchError === null &&
-			!showSearchStartHint &&
-			!showSearchMinCharsHint &&
-			remoteSuggestions.length === 0 &&
-			lastSearchedQuery !== '' &&
-			sourceQuery === lastSearchedQuery,
-	);
-
-	const shouldSearchRemote = (value: string): boolean => {
-		const trimmed = value.trim();
-		return trimmed.length >= 2 && !looksLikeUrl(trimmed) && !isLikelyLocalPath(trimmed);
-	};
-
-	const toSearchErrorMessage = (err: unknown): string => {
-		const message = toErrorMessage(err, 'Failed to search remote repositories.');
-		const normalized = message.toLowerCase();
-		if (
-			normalized.includes('auth required') ||
-			normalized.includes('not authenticated') ||
-			normalized.includes('authentication') ||
-			normalized.includes('authenticate') ||
-			normalized.includes('github auth')
-		) {
-			return 'Connect GitHub in Settings -> GitHub authentication to search.';
-		}
-		return message;
-	};
-
-	const clearSourceTimers = (): void => {
-		if (sourceSearchDebounce) {
-			clearTimeout(sourceSearchDebounce);
-			sourceSearchDebounce = null;
-		}
-		if (sourceSearchCloseTimer) {
-			clearTimeout(sourceSearchCloseTimer);
-			sourceSearchCloseTimer = null;
-		}
-	};
-
-	const resetRemoteSuggestions = (): void => {
-		clearSourceTimers();
-		sourceSearchSequence += 1;
-		remoteSuggestions = [];
-		searchLoading = false;
-		searchError = null;
-		suggestionsOpen = false;
-		activeSuggestionIndex = -1;
-		lastSearchedQuery = '';
-	};
-
-	const showRemoteSearchHints = (query: string): void => {
-		sourceSearchSequence += 1;
-		remoteSuggestions = [];
-		searchLoading = false;
-		searchError = null;
-		suggestionsOpen = sourceInputFocused;
-		activeSuggestionIndex = -1;
-		lastSearchedQuery = query;
-	};
-
-	const runRemoteSearch = async (query: string): Promise<void> => {
-		const requestSequence = ++sourceSearchSequence;
-		searchLoading = true;
-		searchError = null;
-		suggestionsOpen = sourceInputFocused;
-		lastSearchedQuery = query;
-		try {
-			const results = await searchGitHubRepositories(query, 8);
-			if (requestSequence !== sourceSearchSequence) return;
-			remoteSuggestions = results;
-			activeSuggestionIndex = results.length > 0 ? 0 : -1;
-		} catch (err) {
-			if (requestSequence !== sourceSearchSequence) return;
-			remoteSuggestions = [];
-			activeSuggestionIndex = -1;
-			searchError = toSearchErrorMessage(err);
-		} finally {
-			if (requestSequence === sourceSearchSequence) {
-				searchLoading = false;
-			}
-		}
-	};
-
-	const queueRemoteSearch = (value: string): void => {
-		const query = value.trim();
-		if (!isRegistering || isEditing) {
-			resetRemoteSuggestions();
-			return;
-		}
-		if (sourceSearchDebounce) {
-			clearTimeout(sourceSearchDebounce);
-			sourceSearchDebounce = null;
-		}
-		if (query.length === 0) {
-			showRemoteSearchHints('');
-			return;
-		}
-		if (!shouldSearchRemote(query)) {
-			if (looksLikeUrl(query) || isLikelyLocalPath(query)) {
-				resetRemoteSuggestions();
-				return;
-			}
-			showRemoteSearchHints(query);
-			return;
-		}
-		sourceSearchDebounce = setTimeout(() => {
-			void runRemoteSearch(query);
-		}, 250);
-	};
 
 	const handleSourceInput = (value: string): void => {
 		formSource = value;
-		queueRemoteSearch(value);
+		repoSearch.queue(value);
 	};
 
 	const selectRemoteSuggestion = (suggestion: GitHubRepoSearchItem): void => {
 		formSource = suggestion.sshUrl || suggestion.cloneUrl;
 		formName = suggestion.name;
 		formBranch = suggestion.defaultBranch.trim() || 'main';
-		resetRemoteSuggestions();
+		repoSearch.reset();
 	};
 
 	const handleSourceKeydown = (event: KeyboardEvent): void => {
-		if (!showRemoteSuggestionPanel || searchLoading || searchError) {
-			if (event.key === 'Escape') resetRemoteSuggestions();
-			return;
-		}
-		if (remoteSuggestions.length === 0) return;
-
-		if (event.key === 'ArrowDown') {
-			event.preventDefault();
-			activeSuggestionIndex = (activeSuggestionIndex + 1) % remoteSuggestions.length;
-			return;
-		}
-		if (event.key === 'ArrowUp') {
-			event.preventDefault();
-			activeSuggestionIndex =
-				(activeSuggestionIndex - 1 + remoteSuggestions.length) % remoteSuggestions.length;
-			return;
-		}
-		if (event.key === 'Enter' && activeSuggestionIndex >= 0) {
-			event.preventDefault();
-			selectRemoteSuggestion(remoteSuggestions[activeSuggestionIndex]);
-			return;
-		}
-		if (event.key === 'Escape') {
-			event.preventDefault();
-			resetRemoteSuggestions();
-		}
-	};
-
-	const handleSourceBlur = (): void => {
-		sourceInputFocused = false;
-		if (sourceSearchCloseTimer) {
-			clearTimeout(sourceSearchCloseTimer);
-		}
-		sourceSearchCloseTimer = setTimeout(() => {
-			suggestionsOpen = false;
-		}, 120);
+		repoSearch.handleKeydown(event, selectRemoteSuggestion);
 	};
 
 	const openRemoteSuggestions = (): void => {
 		if (!isRegistering || isEditing) return;
-		sourceInputFocused = true;
-		if (sourceSearchCloseTimer) {
-			clearTimeout(sourceSearchCloseTimer);
-			sourceSearchCloseTimer = null;
-		}
-		queueRemoteSearch(formSource);
+		repoSearch.handleFocus(formSource);
 	};
 
 	$effect((): void => {
@@ -295,7 +119,7 @@
 		formRemote = 'origin';
 		formBranch = 'main';
 		advancedOpen = false;
-		resetRemoteSuggestions();
+		repoSearch.reset();
 		error = null;
 	};
 
@@ -308,7 +132,7 @@
 		formRemote = alias.remote ?? 'origin';
 		formBranch = alias.default_branch ?? 'main';
 		advancedOpen = false;
-		resetRemoteSuggestions();
+		repoSearch.reset();
 		error = null;
 		success = null;
 	};
@@ -351,7 +175,7 @@
 			formRemote = 'origin';
 			formBranch = 'main';
 			advancedOpen = false;
-			resetRemoteSuggestions();
+			repoSearch.reset();
 		} catch (err) {
 			error = toErrorMessage(err, 'An error occurred.');
 		} finally {
@@ -398,7 +222,7 @@
 			const path = await openDirectoryDialog('Select repository directory', defaultDirectory);
 			if (!path) return;
 			formSource = path;
-			resetRemoteSuggestions();
+			repoSearch.reset();
 		} catch (err) {
 			error = toErrorMessage(err, 'An error occurred.');
 		}
@@ -409,7 +233,7 @@
 	});
 
 	onDestroy(() => {
-		clearSourceTimers();
+		repoSearch.destroy();
 	});
 </script>
 
@@ -488,10 +312,10 @@
 										handleSourceInput((event.currentTarget as HTMLInputElement).value)}
 									onkeydown={handleSourceKeydown}
 									onfocus={openRemoteSuggestions}
-									onblur={handleSourceBlur}
+									onblur={repoSearch.handleBlur}
 								/>
 								<span class="source-affordance" aria-hidden="true">
-									{#if searchLoading}
+									{#if repoSearch.loading}
 										<span class="spin-icon"><Loader2 size={14} /></span>
 									{:else}
 										<Search size={14} />
@@ -499,31 +323,33 @@
 								</span>
 								{#if showRemoteSuggestionPanel}
 									<div class="repo-suggestions">
-										{#if searchLoading}
+										{#if repoSearch.loading}
 											<div class="repo-suggestion-state">
 												<span class="spin-icon"><Loader2 size={14} /></span>
 												<span>Searching remote repositories…</span>
 											</div>
-										{:else if searchError}
-											<div class="repo-suggestion-state repo-suggestion-error">{searchError}</div>
-										{:else if showSearchStartHint}
+										{:else if repoSearch.error}
+											<div class="repo-suggestion-state repo-suggestion-error">
+												{repoSearch.error}
+											</div>
+										{:else if repoSearch.showSearchStartHint}
 											<div class="repo-suggestion-state">
 												Start typing to search GitHub repositories.
 											</div>
-										{:else if showSearchMinCharsHint}
+										{:else if repoSearch.showSearchMinCharsHint}
 											<div class="repo-suggestion-state">Type at least 2 characters to search.</div>
-										{:else if showNoSearchResults}
+										{:else if repoSearch.showNoSearchResults}
 											<div class="repo-suggestion-state">
-												No remote repositories found for "{lastSearchedQuery}".
+												No remote repositories found for "{repoSearch.lastSearchedQuery}".
 											</div>
-										{:else if remoteSuggestions.length === 0}
+										{:else if repoSearch.results.length === 0}
 											<div class="repo-suggestion-state">Type at least 2 characters to search.</div>
 										{:else}
-											{#each remoteSuggestions as suggestion, index (suggestion.fullName)}
+											{#each repoSearch.results as suggestion, index (suggestion.fullName)}
 												<button
 													type="button"
 													class="repo-suggestion-item"
-													class:active={index === activeSuggestionIndex}
+													class:active={index === repoSearch.activeSuggestionIndex}
 													onmousedown={(event) => {
 														event.preventDefault();
 														selectRemoteSuggestion(suggestion);

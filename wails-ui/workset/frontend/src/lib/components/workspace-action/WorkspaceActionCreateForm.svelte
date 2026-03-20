@@ -1,11 +1,10 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import { Loader2 } from '@lucide/svelte';
-	import { searchGitHubRepositories } from '../../api/github';
 	import type { Alias } from '../../types';
 	import type { GitHubRepoSearchItem } from '../../types';
 	import type { WorkspaceActionDirectRepo } from '../../services/workspaceActionContextService';
-	import { looksLikeUrl } from '../../names';
+	import { createRepoSearch } from '../../composables/createRepoSearch.svelte';
 	import Button from '../ui/Button.svelte';
 
 	type ThreadHookPreviewRow = {
@@ -62,29 +61,8 @@
 		onSubmit,
 	}: Props = $props();
 
-	let remoteSuggestions: GitHubRepoSearchItem[] = $state([]);
-	let searchLoading = $state(false);
-	let searchError: string | null = $state(null);
-	let suggestionsOpen = $state(false);
-	let sourceInputFocused = $state(false);
-	let activeSuggestionIndex = $state(-1);
-	let lastSearchedQuery = $state('');
+	const repoSearch = createRepoSearch();
 	let sourceInputDraft = $state('');
-	let sourceSearchDebounce: ReturnType<typeof setTimeout> | null = null;
-	let sourceSearchCloseTimer: ReturnType<typeof setTimeout> | null = null;
-	let sourceSearchSequence = 0;
-
-	const isLikelyLocalPath = (value: string): boolean => {
-		const trimmed = value.trim();
-		return (
-			trimmed.startsWith('/') ||
-			trimmed.startsWith('./') ||
-			trimmed.startsWith('../') ||
-			trimmed.startsWith('~') ||
-			/^[a-zA-Z]:[\\/]/.test(trimmed) ||
-			trimmed.includes('\\')
-		);
-	};
 
 	const selectedCount = $derived(selectedAliases.size);
 	const isThreadMode = $derived(modeVariant === 'thread');
@@ -92,188 +70,35 @@
 	const nameLabel = $derived(modeVariant === 'thread' ? 'Thread Name' : 'Workset Name');
 	const namePlaceholder = $derived(modeVariant === 'thread' ? 'oauth2-migration' : 'platform-core');
 	const canSubmit = $derived(workspaceName.trim().length > 0);
-	const displayedSourceInput = $derived(sourceInputFocused ? sourceInputDraft : sourceInput);
+	const displayedSourceInput = $derived(repoSearch.focused ? sourceInputDraft : sourceInput);
 	const sourceQuery = $derived(displayedSourceInput.trim());
 	const canAddSource = $derived(sourceQuery.length > 0);
-	const showRemoteSuggestionPanel = $derived(suggestionsOpen && sourceInputFocused);
-	const showSearchStartHint = $derived(sourceQuery.length === 0);
-	const showSearchMinCharsHint = $derived(
-		sourceQuery.length > 0 &&
-			sourceQuery.length < 2 &&
-			!looksLikeUrl(sourceQuery) &&
-			!isLikelyLocalPath(sourceQuery),
-	);
-	const showNoSearchResults = $derived(
-		!searchLoading &&
-			searchError === null &&
-			!showSearchStartHint &&
-			!showSearchMinCharsHint &&
-			remoteSuggestions.length === 0 &&
-			lastSearchedQuery !== '' &&
-			sourceQuery === lastSearchedQuery,
-	);
-
-	const shouldSearchRemote = (value: string): boolean => {
-		const trimmed = value.trim();
-		return trimmed.length >= 2 && !looksLikeUrl(trimmed) && !isLikelyLocalPath(trimmed);
-	};
-
-	const clearSourceTimers = (): void => {
-		if (sourceSearchDebounce) {
-			clearTimeout(sourceSearchDebounce);
-			sourceSearchDebounce = null;
-		}
-		if (sourceSearchCloseTimer) {
-			clearTimeout(sourceSearchCloseTimer);
-			sourceSearchCloseTimer = null;
-		}
-	};
-
-	const resetRemoteSuggestions = (): void => {
-		clearSourceTimers();
-		sourceSearchSequence += 1;
-		remoteSuggestions = [];
-		searchLoading = false;
-		searchError = null;
-		suggestionsOpen = false;
-		activeSuggestionIndex = -1;
-		lastSearchedQuery = '';
-	};
-
-	const showRemoteSearchHints = (query: string): void => {
-		sourceSearchSequence += 1;
-		remoteSuggestions = [];
-		searchLoading = false;
-		searchError = null;
-		suggestionsOpen = sourceInputFocused;
-		activeSuggestionIndex = -1;
-		lastSearchedQuery = query;
-	};
-
-	const toSearchErrorMessage = (err: unknown): string => {
-		const message = err instanceof Error ? err.message : 'Failed to search repositories.';
-		const normalized = message.toLowerCase();
-		if (
-			normalized.includes('auth required') ||
-			normalized.includes('not authenticated') ||
-			normalized.includes('authentication') ||
-			normalized.includes('authenticate') ||
-			normalized.includes('github auth')
-		) {
-			return 'Connect GitHub in Settings -> GitHub authentication to search.';
-		}
-		return message;
-	};
-
-	const runRemoteSearch = async (query: string): Promise<void> => {
-		const requestSequence = ++sourceSearchSequence;
-		searchLoading = true;
-		searchError = null;
-		suggestionsOpen = sourceInputFocused;
-		lastSearchedQuery = query;
-		try {
-			const results = await searchGitHubRepositories(query, 8);
-			if (requestSequence !== sourceSearchSequence) return;
-			remoteSuggestions = results;
-			activeSuggestionIndex = results.length > 0 ? 0 : -1;
-		} catch (err) {
-			if (requestSequence !== sourceSearchSequence) return;
-			remoteSuggestions = [];
-			activeSuggestionIndex = -1;
-			searchError = toSearchErrorMessage(err);
-		} finally {
-			if (requestSequence === sourceSearchSequence) {
-				searchLoading = false;
-			}
-		}
-	};
-
-	const queueRemoteSearch = (value: string): void => {
-		const query = value.trim();
-		if (sourceSearchDebounce) {
-			clearTimeout(sourceSearchDebounce);
-			sourceSearchDebounce = null;
-		}
-		if (query.length === 0) {
-			showRemoteSearchHints('');
-			return;
-		}
-		if (!shouldSearchRemote(query)) {
-			if (looksLikeUrl(query) || isLikelyLocalPath(query)) {
-				resetRemoteSuggestions();
-				return;
-			}
-			showRemoteSearchHints(query);
-			return;
-		}
-		sourceSearchDebounce = setTimeout(() => {
-			void runRemoteSearch(query);
-		}, 250);
-	};
+	const showRemoteSuggestionPanel = $derived(repoSearch.suggestionsOpen && repoSearch.focused);
 
 	const handleSourceInput = (value: string): void => {
 		sourceInputDraft = value;
 		onSourceInput(value);
-		queueRemoteSearch(value);
+		repoSearch.queue(value);
 	};
 
 	const selectRemoteSuggestion = (suggestion: GitHubRepoSearchItem): void => {
 		const value = suggestion.sshUrl || suggestion.cloneUrl;
 		sourceInputDraft = value;
 		onSourceInput(value);
-		resetRemoteSuggestions();
+		repoSearch.reset();
 	};
 
 	const handleSourceKeydown = (event: KeyboardEvent): void => {
-		if (!showRemoteSuggestionPanel || searchLoading || searchError) {
-			if (event.key === 'Escape') resetRemoteSuggestions();
-			return;
-		}
-		if (remoteSuggestions.length === 0) return;
-		if (event.key === 'ArrowDown') {
-			event.preventDefault();
-			activeSuggestionIndex = (activeSuggestionIndex + 1) % remoteSuggestions.length;
-			return;
-		}
-		if (event.key === 'ArrowUp') {
-			event.preventDefault();
-			activeSuggestionIndex =
-				(activeSuggestionIndex - 1 + remoteSuggestions.length) % remoteSuggestions.length;
-			return;
-		}
-		if (event.key === 'Enter' && activeSuggestionIndex >= 0) {
-			event.preventDefault();
-			selectRemoteSuggestion(remoteSuggestions[activeSuggestionIndex]);
-			return;
-		}
-		if (event.key === 'Escape') {
-			event.preventDefault();
-			resetRemoteSuggestions();
-		}
-	};
-
-	const handleSourceBlur = (): void => {
-		sourceInputFocused = false;
-		if (sourceSearchCloseTimer) {
-			clearTimeout(sourceSearchCloseTimer);
-		}
-		sourceSearchCloseTimer = setTimeout(() => {
-			suggestionsOpen = false;
-		}, 120);
+		repoSearch.handleKeydown(event, selectRemoteSuggestion);
 	};
 
 	const openRemoteSuggestions = (): void => {
-		sourceInputFocused = true;
 		sourceInputDraft = sourceInput;
-		if (sourceSearchCloseTimer) {
-			clearTimeout(sourceSearchCloseTimer);
-			sourceSearchCloseTimer = null;
-		}
-		queueRemoteSearch(sourceInputDraft);
+		repoSearch.handleFocus(sourceInputDraft);
 	};
 
 	onDestroy(() => {
-		clearSourceTimers();
+		repoSearch.destroy();
 	});
 </script>
 
@@ -374,7 +199,7 @@
 						value={displayedSourceInput}
 						oninput={(event) => handleSourceInput((event.currentTarget as HTMLInputElement).value)}
 						onfocus={openRemoteSuggestions}
-						onblur={handleSourceBlur}
+						onblur={repoSearch.handleBlur}
 						onkeydown={handleSourceKeydown}
 						placeholder="git@github.com:org/repo.git or search GitHub"
 						aria-label="Add repository URL or search GitHub"
@@ -385,27 +210,27 @@
 					/>
 					{#if showRemoteSuggestionPanel}
 						<div class="repo-suggestions" role="listbox" aria-label="GitHub repository suggestions">
-							{#if showSearchStartHint}
+							{#if repoSearch.showSearchStartHint}
 								<div class="suggestion-hint">Start typing to search GitHub repositories.</div>
-							{:else if showSearchMinCharsHint}
+							{:else if repoSearch.showSearchMinCharsHint}
 								<div class="suggestion-hint">Type at least 2 characters to search GitHub.</div>
-							{:else if searchLoading}
+							{:else if repoSearch.loading}
 								<div class="suggestion-loading">
 									<Loader2 size={14} />
 									<span>Searching GitHub…</span>
 								</div>
-							{:else if searchError}
-								<div class="suggestion-error">{searchError}</div>
-							{:else if showNoSearchResults}
+							{:else if repoSearch.error}
+								<div class="suggestion-error">{repoSearch.error}</div>
+							{:else if repoSearch.showNoSearchResults}
 								<div class="suggestion-hint">No repositories found for "{sourceQuery}".</div>
 							{:else}
-								{#each remoteSuggestions as suggestion, index (suggestion.fullName)}
+								{#each repoSearch.results as suggestion, index (suggestion.fullName)}
 									<button
 										type="button"
 										role="option"
 										class="suggestion-item"
-										class:active={index === activeSuggestionIndex}
-										aria-selected={index === activeSuggestionIndex}
+										class:active={index === repoSearch.activeSuggestionIndex}
+										aria-selected={index === repoSearch.activeSuggestionIndex}
 										onmousedown={() => selectRemoteSuggestion(suggestion)}
 									>
 										<div class="suggestion-main">

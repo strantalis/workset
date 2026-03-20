@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deriveSidebarLabelLimits, ellipsisMiddle, looksLikeUrl } from './names';
+import { deriveSidebarLabelLimits, ellipsisMiddle, isLikelyLocalPath, looksLikeUrl } from './names';
 
 describe('ellipsisMiddle', () => {
 	it('returns original value when shorter than max length', () => {
@@ -189,5 +189,42 @@ describe('looksLikeUrl - security validation', () => {
 			expect(looksLikeUrl('/Users/sean/projects/workset')).toBe(false);
 			expect(looksLikeUrl('~/workset')).toBe(false);
 		});
+	});
+});
+
+describe('isLikelyLocalPath', () => {
+	it('matches absolute Unix paths', () => {
+		expect(isLikelyLocalPath('/Users/sean/projects')).toBe(true);
+		expect(isLikelyLocalPath('/tmp/repo')).toBe(true);
+	});
+
+	it('matches relative paths', () => {
+		expect(isLikelyLocalPath('./my-project')).toBe(true);
+		expect(isLikelyLocalPath('../parent/repo')).toBe(true);
+	});
+
+	it('matches home-relative paths', () => {
+		expect(isLikelyLocalPath('~/projects/workset')).toBe(true);
+	});
+
+	it('matches Windows drive paths', () => {
+		expect(isLikelyLocalPath('C:\\Users\\repo')).toBe(true);
+		expect(isLikelyLocalPath('D:/Projects/app')).toBe(true);
+	});
+
+	it('matches strings containing backslashes', () => {
+		expect(isLikelyLocalPath('some\\path')).toBe(true);
+	});
+
+	it('rejects plain names and URLs', () => {
+		expect(isLikelyLocalPath('my-repo')).toBe(false);
+		expect(isLikelyLocalPath('org/repo')).toBe(false);
+		expect(isLikelyLocalPath('https://github.com/org/repo')).toBe(false);
+	});
+
+	it('handles whitespace', () => {
+		expect(isLikelyLocalPath('  /tmp/repo  ')).toBe(true);
+		expect(isLikelyLocalPath('')).toBe(false);
+		expect(isLikelyLocalPath('   ')).toBe(false);
 	});
 });

@@ -174,6 +174,24 @@ export function deriveRepoName(source: string): string | null {
 }
 
 /**
+ * Check if input likely refers to a local filesystem path.
+ * More permissive than `looksLikePath` — also matches relative `../` paths
+ * and strings containing backslashes (Windows-style separators).
+ * Used in search forms to distinguish local paths from remote search queries.
+ */
+export function isLikelyLocalPath(value: string): boolean {
+	const trimmed = value.trim();
+	return (
+		trimmed.startsWith('/') ||
+		trimmed.startsWith('./') ||
+		trimmed.startsWith('../') ||
+		trimmed.startsWith('~') ||
+		/^[a-zA-Z]:[\\/]/.test(trimmed) ||
+		trimmed.includes('\\')
+	);
+}
+
+/**
  * Check if input is a URL or local path (vs a plain name).
  */
 export function isRepoSource(input: string): boolean {

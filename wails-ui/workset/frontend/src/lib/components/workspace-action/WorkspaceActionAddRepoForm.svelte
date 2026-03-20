@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import { ArrowRight, Check, FolderOpen, Loader2, Search } from '@lucide/svelte';
-	import { searchGitHubRepositories } from '../../api/github';
-	import { deriveRepoName, looksLikeUrl } from '../../names';
+	import { deriveRepoName, isLikelyLocalPath, looksLikeUrl } from '../../names';
 	import type { GitHubRepoSearchItem } from '../../types';
 	import type { Alias } from '../../types';
+	import { createRepoSearch } from '../../composables/createRepoSearch.svelte';
 	import type {
 		ExistingRepoContext,
 		WorkspaceActionAddRepoSelectedItem,
@@ -48,43 +48,12 @@
 	const onRemoveAlias = (name: string): void => props.onRemoveAlias(name);
 	const onSubmit = (): void => props.onSubmit();
 
+	const repoSearch = createRepoSearch();
 	let sourceDraft = $state('');
-	let remoteSuggestions: GitHubRepoSearchItem[] = $state([]);
-	let searchLoading = $state(false);
-	let searchError: string | null = $state(null);
-	let sourceSearchDebounce: ReturnType<typeof setTimeout> | null = null;
-	let sourceSearchSequence = 0;
-	let lastSearchedQuery = $state('');
-
-	const isLikelyLocalPath = (value: string): boolean => {
-		const trimmed = value.trim();
-		return (
-			trimmed.startsWith('/') ||
-			trimmed.startsWith('./') ||
-			trimmed.startsWith('../') ||
-			trimmed.startsWith('~') ||
-			/^[a-zA-Z]:[\\/]/.test(trimmed) ||
-			trimmed.includes('\\')
-		);
-	};
 
 	const existingRepoNames = $derived(new Set(existingRepos.map((repo) => repo.name)));
 	const sourceQuery = $derived(sourceDraft.trim());
 	const canAddSource = $derived(looksLikeUrl(sourceQuery) || isLikelyLocalPath(sourceQuery));
-	const showSearchMinCharsHint = $derived(
-		sourceQuery.length > 0 &&
-			sourceQuery.length < 2 &&
-			!looksLikeUrl(sourceQuery) &&
-			!isLikelyLocalPath(sourceQuery),
-	);
-	const showNoSearchResults = $derived(
-		!searchLoading &&
-			searchError === null &&
-			!showSearchMinCharsHint &&
-			sourceQuery.length >= 2 &&
-			remoteSuggestions.length === 0 &&
-			lastSearchedQuery === sourceQuery,
-	);
 	const availableAliases = $derived(
 		filteredAliases.filter((alias) => !existingRepoNames.has(alias.name)),
 	);
@@ -92,87 +61,18 @@
 		filteredAliases.filter((alias) => existingRepoNames.has(alias.name)),
 	);
 	const showSearchMeta = $derived(
-		showSearchMinCharsHint || searchLoading || searchError !== null || showNoSearchResults,
+		repoSearch.showSearchMinCharsHint ||
+			repoSearch.loading ||
+			repoSearch.error !== null ||
+			repoSearch.showNoSearchResults,
 	);
 	const hasPendingSource = $derived(canAddSource && sourceQuery.length > 0);
 	const canContinue = $derived(addRepoTotalItems > 0 || hasPendingSource);
 
-	const shouldSearchRemote = (value: string): boolean => {
-		const trimmed = value.trim();
-		return trimmed.length >= 2 && !looksLikeUrl(trimmed) && !isLikelyLocalPath(trimmed);
-	};
-
-	const clearSearchTimer = (): void => {
-		if (sourceSearchDebounce) {
-			clearTimeout(sourceSearchDebounce);
-			sourceSearchDebounce = null;
-		}
-	};
-
-	const resetRemoteSuggestions = (): void => {
-		clearSearchTimer();
-		sourceSearchSequence += 1;
-		remoteSuggestions = [];
-		searchLoading = false;
-		searchError = null;
-		lastSearchedQuery = '';
-	};
-
-	const toSearchErrorMessage = (err: unknown): string => {
-		const message = err instanceof Error ? err.message : 'Failed to search repositories.';
-		const normalized = message.toLowerCase();
-		if (
-			normalized.includes('auth required') ||
-			normalized.includes('not authenticated') ||
-			normalized.includes('authentication') ||
-			normalized.includes('authenticate') ||
-			normalized.includes('github auth')
-		) {
-			return 'Connect GitHub in Settings -> GitHub authentication to search.';
-		}
-		return message;
-	};
-
-	const runRemoteSearch = async (query: string): Promise<void> => {
-		const requestSequence = ++sourceSearchSequence;
-		searchLoading = true;
-		searchError = null;
-		lastSearchedQuery = query;
-		try {
-			const results = await searchGitHubRepositories(query, 8);
-			if (requestSequence !== sourceSearchSequence) return;
-			remoteSuggestions = results;
-		} catch (err) {
-			if (requestSequence !== sourceSearchSequence) return;
-			remoteSuggestions = [];
-			searchError = toSearchErrorMessage(err);
-		} finally {
-			if (requestSequence === sourceSearchSequence) {
-				searchLoading = false;
-			}
-		}
-	};
-
-	const queueRemoteSearch = (value: string): void => {
-		const query = value.trim();
-		clearSearchTimer();
-		if (!shouldSearchRemote(query)) {
-			sourceSearchSequence += 1;
-			remoteSuggestions = [];
-			searchLoading = false;
-			searchError = null;
-			lastSearchedQuery = query;
-			return;
-		}
-		sourceSearchDebounce = setTimeout(() => {
-			void runRemoteSearch(query);
-		}, 250);
-	};
-
 	const handleSourceInput = (value: string): void => {
 		sourceDraft = value;
 		onSearchQueryInput(value);
-		queueRemoteSearch(value);
+		repoSearch.queue(value);
 	};
 
 	const commitDirectSource = (value: string): void => {
@@ -181,7 +81,7 @@
 		onAddSourceInput(trimmed);
 		onSearchQueryInput('');
 		sourceDraft = '';
-		resetRemoteSuggestions();
+		repoSearch.reset();
 	};
 
 	const handleAddSource = (): void => {
@@ -220,7 +120,7 @@
 	};
 
 	onDestroy(() => {
-		clearSearchTimer();
+		repoSearch.destroy();
 	});
 </script>
 
@@ -257,16 +157,16 @@
 		</div>
 		{#if showSearchMeta}
 			<div class="repo-input-help-row">
-				{#if showSearchMinCharsHint}
+				{#if repoSearch.showSearchMinCharsHint}
 					<span class="repo-search-status">Type at least 2 characters to search GitHub.</span>
-				{:else if searchLoading}
+				{:else if repoSearch.loading}
 					<span class="repo-search-status">
 						<Loader2 size={12} />
 						<span>Searching GitHub…</span>
 					</span>
-				{:else if searchError}
-					<span class="repo-search-error">{searchError}</span>
-				{:else if showNoSearchResults}
+				{:else if repoSearch.error}
+					<span class="repo-search-error">{repoSearch.error}</span>
+				{:else if repoSearch.showNoSearchResults}
 					<span class="repo-search-status">No GitHub results for "{sourceQuery}".</span>
 				{/if}
 			</div>
@@ -337,9 +237,9 @@
 			{/each}
 		{/if}
 
-		{#if remoteSuggestions.length > 0}
+		{#if repoSearch.results.length > 0}
 			<div class="result-group-label">GitHub</div>
-			{#each remoteSuggestions as suggestion (`${suggestion.owner}/${suggestion.name}`)}
+			{#each repoSearch.results as suggestion (`${suggestion.owner}/${suggestion.name}`)}
 				<button
 					type="button"
 					class="registry-item github-result"
@@ -359,7 +259,7 @@
 			{/each}
 		{/if}
 
-		{#if availableAliases.length === 0 && inWorksetAliases.length === 0 && remoteSuggestions.length === 0}
+		{#if availableAliases.length === 0 && inWorksetAliases.length === 0 && repoSearch.results.length === 0}
 			<div class="registry-empty">
 				{#if aliasItems.length === 0}
 					No repositories in Repo Catalog yet.
