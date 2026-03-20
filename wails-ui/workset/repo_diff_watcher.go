@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -17,7 +18,7 @@ import (
 )
 
 const (
-	repoDiffLocalPollInterval = 60 * time.Second
+	repoDiffLocalPollInterval = 2 * time.Second
 	repoDiffPrPollInterval    = 30 * time.Second
 	repoDiffDebounceWindow    = 400 * time.Millisecond
 )
@@ -27,7 +28,8 @@ var (
 	repoDiffResolveRepoPath = func(ctx context.Context, app *App, workspaceID, repoID string) (string, error) {
 		return app.resolveRepoPath(ctx, workspaceID, repoID)
 	}
-	repoDiffNewWatcher = fsnotify.NewWatcher
+	repoDiffNewWatcher             = fsnotify.NewWatcher
+	repoDiffResolveGitWatchTargets = resolveRepoDiffGitWatchTargets
 )
 
 var repoDiffResolveRepoAlias = func(workspaceID, repoID string) (string, error) {
@@ -41,6 +43,30 @@ var repoDiffRunWatch = func(w *repoDiffWatch) {
 type repoDiffPrStatusResult struct {
 	pullRequest worksetapi.PullRequestStatusJSON
 	checks      []worksetapi.PullRequestCheckJSON
+}
+
+type repoDiffGitWatchTargets struct {
+	adminDir   string
+	refsDir    string
+	exactFiles map[string]struct{}
+}
+
+func (t repoDiffGitWatchTargets) matches(path string) bool {
+	cleanPath := filepath.Clean(path)
+	if _, ok := t.exactFiles[cleanPath]; ok {
+		return true
+	}
+	if t.refsDir == "" {
+		return false
+	}
+	return pathWithin(cleanPath, t.refsDir)
+}
+
+func (t repoDiffGitWatchTargets) refsParentDir() string {
+	if t.refsDir == "" {
+		return ""
+	}
+	return filepath.Dir(t.refsDir)
 }
 
 var repoDiffGetLocalStatus = func(ctx context.Context, app *App, key repoDiffWatchKey, repoName string) (worksetapi.RepoLocalStatusJSON, error) {
@@ -320,6 +346,7 @@ type repoDiffWatch struct {
 
 	lastPrStatus *worksetapi.PullRequestStatusJSON
 	remotes      []worksetapi.RemoteInfoJSON
+	watchTargets repoDiffGitWatchTargets
 }
 
 func newRepoDiffWatch(app *App, ctx context.Context, cancel context.CancelFunc, key repoDiffWatchKey, repoName, repoPath string, localOnly bool) *repoDiffWatch {
@@ -411,12 +438,20 @@ func (w *repoDiffWatch) run() {
 	go w.prPollLoop()
 
 	var watch *fsnotify.Watcher
-	if w.hasFullWatch() {
-		createdWatch, err := repoDiffNewWatcher()
-		if err == nil {
+	createdWatch, err := repoDiffNewWatcher()
+	if err == nil {
+		targets, resolveErr := repoDiffResolveGitWatchTargets(w.ctx, w.repoPath)
+		if resolveErr == nil {
 			watch = createdWatch
-			_ = w.addWatchRecursive(watch, w.repoPath)
-			go w.fsnotifyLoop(watch)
+			w.watchTargets = targets
+			if w.addGitWatchTargets(watch, targets) == nil {
+				go w.fsnotifyLoop(watch, targets)
+			} else {
+				_ = watch.Close()
+				watch = nil
+			}
+		} else {
+			_ = createdWatch.Close()
 		}
 	}
 
@@ -453,7 +488,7 @@ func (w *repoDiffWatch) prPollLoop() {
 	}
 }
 
-func (w *repoDiffWatch) fsnotifyLoop(watcher *fsnotify.Watcher) {
+func (w *repoDiffWatch) fsnotifyLoop(watcher *fsnotify.Watcher, targets repoDiffGitWatchTargets) {
 	for {
 		select {
 		case <-w.ctx.Done():
@@ -462,15 +497,7 @@ func (w *repoDiffWatch) fsnotifyLoop(watcher *fsnotify.Watcher) {
 			if !ok {
 				return
 			}
-			if shouldIgnorePath(event.Name) {
-				continue
-			}
-			if event.Op&fsnotify.Create == fsnotify.Create {
-				if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
-					_ = w.addWatchRecursive(watcher, event.Name)
-				}
-			}
-			w.scheduleLocalRefresh()
+			w.handleFsnotifyEvent(watcher, targets, event)
 		case _, ok := <-watcher.Errors:
 			if !ok {
 				return
@@ -490,6 +517,34 @@ func (w *repoDiffWatch) scheduleLocalRefresh() {
 		return
 	}
 	w.refreshTimer.Reset(repoDiffDebounceWindow)
+}
+
+func (w *repoDiffWatch) handleFsnotifyEvent(watcher *fsnotify.Watcher, targets repoDiffGitWatchTargets, event fsnotify.Event) {
+	if event.Op&fsnotify.Create == fsnotify.Create {
+		if w.shouldAddRefsWatch(event.Name, targets) {
+			if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
+				_ = w.addWatchRecursive(watcher, event.Name)
+			}
+		}
+	}
+	if !targets.matches(event.Name) {
+		return
+	}
+	w.scheduleLocalRefresh()
+	if w.hasFullWatch() {
+		w.enqueuePrRefresh()
+	}
+}
+
+func (w *repoDiffWatch) shouldAddRefsWatch(path string, targets repoDiffGitWatchTargets) bool {
+	if targets.refsDir == "" {
+		return false
+	}
+	cleanPath := filepath.Clean(path)
+	if cleanPath == targets.refsDir {
+		return true
+	}
+	return pathWithin(cleanPath, targets.refsDir)
 }
 
 func (w *repoDiffWatch) enqueueLocalRefresh() {
@@ -548,10 +603,6 @@ func (w *repoDiffWatch) refreshLocal() {
 	}
 	w.emitLocalStatus(status)
 
-	if !w.hasFullWatch() {
-		return
-	}
-
 	summary := RepoDiffSummary{Files: []RepoDiffFile{}}
 	if status.HasUncommitted {
 		updated, err := repoDiffCollectLocalSummary(w.ctx, w.repoPath)
@@ -559,7 +610,11 @@ func (w *repoDiffWatch) refreshLocal() {
 			return
 		}
 		summary = updated
-		w.emitLocalSummary(summary)
+	}
+	w.emitLocalSummary(summary)
+
+	if !w.hasFullWatch() {
+		return
 	}
 
 	if w.hasActivePr() {
@@ -716,28 +771,37 @@ func ensureSummaryFiles(summary *RepoDiffSummary) {
 	}
 }
 
-func shouldIgnorePath(path string) bool {
-	if path == "" {
-		return true
+func (w *repoDiffWatch) addGitWatchTargets(watcher *fsnotify.Watcher, targets repoDiffGitWatchTargets) error {
+	if targets.adminDir == "" {
+		return errors.New("git admin dir required")
 	}
-	base := filepath.Base(path)
-	switch base {
-	case ".git", ".workset", "node_modules":
-		return true
-	default:
-		return false
+	if err := w.addWatchPath(watcher, targets.adminDir); err != nil {
+		return err
 	}
+
+	refsParent := targets.refsParentDir()
+	if refsParent != "" {
+		if err := w.addWatchPath(watcher, refsParent); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	if targets.refsDir != "" {
+		if err := w.addWatchRecursive(watcher, targets.refsDir); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
 }
 
 func (w *repoDiffWatch) addWatchRecursive(watcher *fsnotify.Watcher, root string) error {
 	return filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
-			return nil
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return err
 		}
 		if entry.IsDir() {
-			if shouldIgnorePath(path) {
-				return filepath.SkipDir
-			}
 			_ = w.addWatchPath(watcher, path)
 		}
 		return nil
@@ -770,6 +834,63 @@ func (w *repoDiffWatch) stopRefreshTimer() {
 		w.refreshTimer = nil
 	}
 	w.refreshMu.Unlock()
+}
+
+func resolveRepoDiffGitWatchTargets(ctx context.Context, repoPath string) (repoDiffGitWatchTargets, error) {
+	adminDir, err := repoDiffRevParsePath(ctx, repoPath, "--git-dir")
+	if err != nil {
+		return repoDiffGitWatchTargets{}, err
+	}
+	refsDir, err := repoDiffRevParsePath(ctx, repoPath, "--git-path", "refs")
+	if err != nil {
+		return repoDiffGitWatchTargets{}, err
+	}
+
+	exactFiles := map[string]struct{}{}
+	for _, spec := range []string{"HEAD", "index", "packed-refs", "FETCH_HEAD"} {
+		resolved, resolveErr := repoDiffRevParsePath(ctx, repoPath, "--git-path", spec)
+		if resolveErr != nil {
+			return repoDiffGitWatchTargets{}, resolveErr
+		}
+		exactFiles[resolved] = struct{}{}
+	}
+
+	return repoDiffGitWatchTargets{
+		adminDir:   adminDir,
+		refsDir:    refsDir,
+		exactFiles: exactFiles,
+	}, nil
+}
+
+func repoDiffRevParsePath(ctx context.Context, repoPath string, args ...string) (string, error) {
+	cmdArgs := []string{"-C", repoPath, "rev-parse"}
+	cmdArgs = append(cmdArgs, args...)
+	cmd := exec.CommandContext(ctx, "git", cmdArgs...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", errors.New(strings.TrimSpace(string(output)))
+	}
+	resolved := strings.TrimSpace(string(output))
+	if resolved == "" {
+		return "", errors.New("git rev-parse returned empty path")
+	}
+	if !filepath.IsAbs(resolved) {
+		resolved = filepath.Join(repoPath, resolved)
+	}
+	return filepath.Clean(resolved), nil
+}
+
+func pathWithin(path, root string) bool {
+	path = filepath.Clean(path)
+	root = filepath.Clean(root)
+	if path == root {
+		return true
+	}
+	rel, err := filepath.Rel(root, path)
+	if err != nil || rel == "." {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
 }
 
 func resolveBranchRefs(remotes []worksetapi.RemoteInfoJSON, pr worksetapi.PullRequestStatusJSON) (string, string) {

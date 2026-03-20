@@ -18,6 +18,9 @@
 		Trash2,
 	} from '@lucide/svelte';
 	import type { Workspace } from '../../types';
+	import { deriveWorksetIdentity } from '../../view-models/worksetViewModel';
+	import { hasContext } from 'svelte';
+	import { WORKSPACE_ACTIONS_KEY, useWorkspaceActions } from '../../contexts/workspaceActions';
 
 	type HealthState = 'clean' | 'modified' | 'ahead' | 'error';
 	type ThreadStatus = 'active' | 'in-review' | 'merged' | 'stale';
@@ -72,16 +75,23 @@
 		activeSurface = 'terminal',
 		filesActive = false,
 		onSelectWorkspace,
-		onCreateWorkspace = () => {},
-		onCreateThread = () => {},
-		onAddRepo = () => {},
-		onRemoveThread = () => {},
+		onCreateWorkspace: onCreateWorkspaceProp,
+		onCreateThread: onCreateThreadProp,
+		onAddRepo: onAddRepoProp,
+		onRemoveThread: onRemoveThreadProp,
 		onOpenPullRequests = () => {},
 		onOpenFiles = () => {},
 		onOpenSkills = () => {},
 		onOpenSettings = () => {},
 		onCollapse = () => {},
 	}: Props = $props();
+
+	const noop = (): void => {};
+	const ctxActions = hasContext(WORKSPACE_ACTIONS_KEY) ? useWorkspaceActions() : null;
+	const onCreateWorkspace = $derived(onCreateWorkspaceProp ?? ctxActions?.createWorkspace ?? noop);
+	const onCreateThread = $derived(onCreateThreadProp ?? ctxActions?.createThread ?? noop);
+	const onAddRepo = $derived(onAddRepoProp ?? ctxActions?.addRepo ?? noop);
+	const onRemoveThread = $derived(onRemoveThreadProp ?? ctxActions?.removeThread ?? noop);
 
 	const activeTerminalWorkspaceIdSet = $derived.by(() => new Set(activeTerminalWorkspaceIds));
 
@@ -95,27 +105,6 @@
 		if (repo.dirty) return 'modified';
 		if ((repo.ahead ?? 0) > 0) return 'ahead';
 		return 'clean';
-	};
-
-	const deriveWorksetIdentity = (workspace: Workspace): { id: string; label: string } => {
-		const key = workspace.worksetKey?.trim();
-		const label = workspace.worksetLabel?.trim();
-		const workset = workspace.workset?.trim();
-		const normalizedWorkset = workset?.toLowerCase().replace(/\s+/g, '-') ?? '';
-		return {
-			id:
-				key && key.length > 0
-					? key
-					: normalizedWorkset.length > 0
-						? `workset:${normalizedWorkset}`
-						: `workspace:${workspace.id.toLowerCase()}`,
-			label:
-				label && label.length > 0
-					? label
-					: workset && workset.length > 0
-						? workset
-						: workspace.name,
-		};
 	};
 
 	const isOpenTrackedPullRequest = (repo: Workspace['repos'][number]): boolean => {

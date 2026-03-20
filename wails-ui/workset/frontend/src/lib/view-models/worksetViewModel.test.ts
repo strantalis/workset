@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Workspace } from '../types';
-import { mapWorkspaceToSummary } from './worksetViewModel';
+import { deriveWorksetIdentity, mapWorkspaceToSummary } from './worksetViewModel';
 
 const baseWorkspace = (repos: Workspace['repos'], workset = 'Core Platform'): Workspace => ({
 	id: 'ws-1',
@@ -68,6 +68,37 @@ describe('worksetViewModel', () => {
 		expect(summary.openPrs).toBe(1);
 		expect(summary.mergedPrs).toBe(1);
 		expect(summary.workset).toBe('Core Platform');
+	});
+
+	describe('deriveWorksetIdentity', () => {
+		it('uses worksetKey when present', () => {
+			const ws = baseWorkspace([], 'Core Platform');
+			(ws as Record<string, unknown>).worksetKey = 'my-key';
+			expect(deriveWorksetIdentity(ws).id).toBe('my-key');
+		});
+
+		it('uses worksetLabel when present', () => {
+			const ws = baseWorkspace([], 'Core Platform');
+			(ws as Record<string, unknown>).worksetLabel = 'My Label';
+			expect(deriveWorksetIdentity(ws).label).toBe('My Label');
+		});
+
+		it('falls back to normalized workset for id', () => {
+			const ws = baseWorkspace([], 'Core Platform');
+			expect(deriveWorksetIdentity(ws).id).toBe('workset:core-platform');
+		});
+
+		it('falls back to workset for label', () => {
+			const ws = baseWorkspace([], 'Core Platform');
+			expect(deriveWorksetIdentity(ws).label).toBe('Core Platform');
+		});
+
+		it('falls back to workspace id and name when no workset', () => {
+			const ws = baseWorkspace([], '');
+			const identity = deriveWorksetIdentity(ws);
+			expect(identity.id).toBe('workspace:ws-1');
+			expect(identity.label).toBe('Workspace 1');
+		});
 	});
 
 	it('normalizes missing workset metadata to Unassigned', () => {

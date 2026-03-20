@@ -547,4 +547,62 @@ describe('PROrchestrationView sidebar collapse', () => {
 		});
 		expect(queryByText('Changed Files')).not.toBeInTheDocument();
 	});
+
+	test('refreshes the selected tracked diff patch when a live summary event updates the same file', async () => {
+		vi.mocked(repoDiffApi.fetchBranchDiffSummary).mockResolvedValue({
+			files: [{ path: 'README.md', added: 1, removed: 0, status: 'modified', binary: false }],
+			totalAdded: 1,
+			totalRemoved: 0,
+		});
+		const eventHandlers = new Map<string, (payload: unknown) => void>();
+		vi.mocked(repoDiffService.subscribeRepoDiffEvent).mockImplementation(((
+			event: string,
+			handler: (payload: unknown) => void,
+		) => {
+			eventHandlers.set(event, handler);
+			return () => {
+				eventHandlers.delete(event);
+			};
+		}) as typeof repoDiffService.subscribeRepoDiffEvent);
+
+		const workspace = buildWorkspace();
+		const { getByText, getByRole } = render(PROrchestrationView, {
+			props: { workspace },
+		});
+
+		const listRow = getByText('Test PR title').closest('button');
+		expect(listRow).toBeTruthy();
+		await fireEvent.click(listRow!);
+
+		await waitFor(() => {
+			expect(getByRole('button', { name: /readme\.md/i })).toBeInTheDocument();
+		});
+		await fireEvent.click(getByRole('button', { name: /readme\.md/i }));
+
+		let initialFetchCount = 0;
+		await waitFor(() => {
+			initialFetchCount = vi.mocked(repoDiffApi.fetchBranchFileDiff).mock.calls.length;
+			expect(initialFetchCount).toBeGreaterThan(0);
+		});
+
+		const summaryHandler = eventHandlers.get('repodiff:summary');
+		if (!summaryHandler) {
+			throw new Error('Expected summary handler to be registered');
+		}
+		summaryHandler({
+			workspaceId: 'ws-1',
+			repoId: 'repo-1',
+			summary: {
+				files: [{ path: 'README.md', added: 3, removed: 1, status: 'modified', binary: false }],
+				totalAdded: 3,
+				totalRemoved: 1,
+			},
+		});
+
+		await waitFor(() => {
+			expect(vi.mocked(repoDiffApi.fetchBranchFileDiff)).toHaveBeenCalledTimes(
+				initialFetchCount + 1,
+			);
+		});
+	});
 });

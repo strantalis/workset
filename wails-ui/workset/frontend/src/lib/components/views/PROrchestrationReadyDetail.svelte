@@ -1,13 +1,5 @@
 <script lang="ts">
-	import {
-		AlertCircle,
-		CheckCircle2,
-		FileCode,
-		GitBranch,
-		GitMerge,
-		Loader2,
-		Upload,
-	} from '@lucide/svelte';
+	import { CheckCircle2, FileCode, GitBranch, GitMerge, Loader2, Upload } from '@lucide/svelte';
 	import {
 		createPullRequest,
 		generatePullRequestText,
@@ -18,6 +10,7 @@
 	} from '../../api/github';
 	import { subscribeGitHubOperationEvent } from '../../githubOperationService';
 	import type { PullRequestCreated, RepoDiffFileSummary, RepoFileDiff } from '../../types';
+	import DiffRenderer from '../repo-diff/DiffRenderer.svelte';
 
 	interface ReadyDetailItem {
 		id: string;
@@ -49,7 +42,6 @@
 		onPushFromSidebar: (itemId: string) => Promise<void> | void;
 		onPullRequestCreated: (created: PullRequestCreated) => Promise<void> | void;
 		onRefreshReadyState: () => Promise<void> | void;
-		diffContainer?: HTMLElement | null;
 	}
 
 	/* eslint-disable prefer-const */
@@ -73,7 +65,6 @@
 		onPushFromSidebar,
 		onPullRequestCreated,
 		onRefreshReadyState,
-		diffContainer = $bindable(null),
 	}: Props = $props();
 	/* eslint-enable prefer-const */
 
@@ -483,44 +474,14 @@
 					</span>
 				</div>
 				<div class="diff-body">
-					{#if fileDiffError}
-						<div class="diff-placeholder">
-							<AlertCircle size={20} />
-							<p>{fileDiffError}</p>
-						</div>
-					{:else if fileDiffContent?.binary}
-						<div class="diff-placeholder">
-							<FileCode size={24} />
-							<p>Binary file</p>
-						</div>
-					{:else if fileDiffContent?.patch}
-						<div class="diff-renderer-wrap">
-							<div class="diff-renderer">
-								<diffs-container bind:this={diffContainer}></diffs-container>
-							</div>
-							{#if fileDiffLoading}
-								<div class="diff-loading-overlay">
-									<Loader2 size={18} class="spin" />
-									<p>Refreshing diff...</p>
-								</div>
-							{/if}
-						</div>
-						{#if fileDiffContent.truncated}
-							<div class="diff-truncated">
-								Diff truncated ({fileDiffContent.totalLines} total lines)
-							</div>
-						{/if}
-					{:else if fileDiffLoading}
-						<div class="diff-placeholder">
-							<Loader2 size={20} class="spin" />
-							<p>Loading diff...</p>
-						</div>
-					{:else}
-						<div class="diff-placeholder">
-							<FileCode size={24} />
-							<p>No diff content</p>
-						</div>
-					{/if}
+					<DiffRenderer
+						patch={fileDiffContent?.patch ?? null}
+						loading={fileDiffLoading}
+						error={fileDiffError}
+						binary={fileDiffContent?.binary ?? false}
+						truncated={fileDiffContent?.truncated ?? false}
+						totalLines={fileDiffContent?.totalLines ?? 0}
+					/>
 				</div>
 			</div>
 		{:else}

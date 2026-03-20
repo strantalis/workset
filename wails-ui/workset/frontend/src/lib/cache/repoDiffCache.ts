@@ -68,6 +68,10 @@ class LruTtlCache<T> {
 		this.totalBytes = 0;
 	}
 
+	remove(key: string): void {
+		this.delete(key);
+	}
+
 	private delete(key: string): void {
 		const entry = this.entries.get(key);
 		if (!entry) return;
@@ -135,6 +139,7 @@ export const repoDiffCache = {
 	setSummary: (key: string, value: RepoDiffSummary): void => summaryCache.set(key, value),
 	getFileDiff: (key: string): CacheHit<RepoFileDiff> | null => fileDiffCache.get(key),
 	setFileDiff: (key: string, value: RepoFileDiff): void => fileDiffCache.set(key, value),
+	deleteFileDiff: (key: string): void => fileDiffCache.remove(key),
 	clear: (): void => {
 		summaryCache.clear();
 		fileDiffCache.clear();

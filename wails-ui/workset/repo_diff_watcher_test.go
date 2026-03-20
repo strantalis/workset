@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -50,22 +52,34 @@ func TestResolveBranchRefs(t *testing.T) {
 	}
 }
 
-func TestShouldIgnorePath(t *testing.T) {
-	cases := []struct {
-		path string
-		want bool
-	}{
-		{path: "", want: true},
-		{path: ".git", want: true},
-		{path: "/tmp/repo/.git", want: true},
-		{path: "/tmp/repo/node_modules", want: true},
-		{path: "/tmp/repo/src/main.go", want: false},
+func TestRepoDiffGitWatchTargetsMatches(t *testing.T) {
+	targets := repoDiffGitWatchTargets{
+		adminDir: filepath.Clean("/tmp/repo/.git"),
+		refsDir:  filepath.Clean("/tmp/repo/.git/refs"),
+		exactFiles: map[string]struct{}{
+			filepath.Clean("/tmp/repo/.git/HEAD"):  {},
+			filepath.Clean("/tmp/repo/.git/index"): {},
+		},
 	}
 
-	for _, tc := range cases {
-		if got := shouldIgnorePath(tc.path); got != tc.want {
-			t.Fatalf("path %q expected %v got %v", tc.path, tc.want, got)
-		}
+	if !targets.matches("/tmp/repo/.git/HEAD") {
+		t.Fatal("expected exact git admin file to match")
+	}
+	if !targets.matches("/tmp/repo/.git/refs/heads/main") {
+		t.Fatal("expected refs path to match")
+	}
+	if targets.matches("/tmp/repo/src/main.go") {
+		t.Fatal("expected unrelated path to be ignored")
+	}
+}
+
+func TestPathWithin(t *testing.T) {
+	root := filepath.Clean("/tmp/repo/.git/refs")
+	if !pathWithin(filepath.Join(root, "heads", "main"), root) {
+		t.Fatal("expected nested refs path to match")
+	}
+	if pathWithin("/tmp/repo/src/main.go", root) {
+		t.Fatal("expected unrelated path to be outside root")
 	}
 }
 
@@ -94,6 +108,50 @@ func TestShouldEmitDedupes(t *testing.T) {
 	}
 	if !watch.shouldEmit(&last, map[string]string{"a": "c"}) {
 		t.Fatal("expected changed payload to emit")
+	}
+}
+
+func TestResolveRepoDiffGitWatchTargetsUsesGitAdminPaths(t *testing.T) {
+	repo := initRepoDiffGitRepo(t)
+
+	targets, err := resolveRepoDiffGitWatchTargets(context.Background(), repo)
+	if err != nil {
+		t.Fatalf("resolve targets: %v", err)
+	}
+
+	if targets.adminDir != gitRevParsePath(t, repo, "--git-dir") {
+		t.Fatalf("unexpected admin dir: %q", targets.adminDir)
+	}
+	if targets.refsDir != gitRevParsePath(t, repo, "--git-path", "refs") {
+		t.Fatalf("unexpected refs dir: %q", targets.refsDir)
+	}
+	for _, spec := range []string{"HEAD", "index", "packed-refs", "FETCH_HEAD"} {
+		resolved := gitRevParsePath(t, repo, "--git-path", spec)
+		if _, ok := targets.exactFiles[resolved]; !ok {
+			t.Fatalf("expected exact file %q to be tracked", resolved)
+		}
+	}
+}
+
+func TestResolveRepoDiffGitWatchTargetsSupportsWorktrees(t *testing.T) {
+	repo := initRepoDiffGitRepo(t)
+	writeRepoDiffFile(t, filepath.Join(repo, "README.md"), []byte("hello\n"))
+	runRepoDiffGit(t, repo, "add", "README.md")
+	runRepoDiffGit(t, repo, "commit", "-m", "feat: seed")
+
+	worktree := filepath.Join(t.TempDir(), "wt")
+	runRepoDiffGit(t, repo, "worktree", "add", "-b", "feature/watch", worktree)
+
+	targets, err := resolveRepoDiffGitWatchTargets(context.Background(), worktree)
+	if err != nil {
+		t.Fatalf("resolve worktree targets: %v", err)
+	}
+
+	if targets.adminDir != gitRevParsePath(t, worktree, "--git-dir") {
+		t.Fatalf("unexpected worktree admin dir: %q", targets.adminDir)
+	}
+	if targets.refsDir != gitRevParsePath(t, worktree, "--git-path", "refs") {
+		t.Fatalf("unexpected worktree refs dir: %q", targets.refsDir)
 	}
 }
 
@@ -289,12 +347,15 @@ func TestLocalOnlySkipsSummaryAndPr(t *testing.T) {
 	}
 
 	watch.refreshLocal()
-	if len(events) != 1 || events[0] != EventRepoDiffLocalStatus {
-		t.Fatalf("expected only local-status event, got %v", events)
+	if len(events) != 2 {
+		t.Fatalf("expected local-status and local-summary events, got %v", events)
+	}
+	if events[0] != EventRepoDiffLocalStatus || events[1] != EventRepoDiffLocalSummary {
+		t.Fatalf("unexpected local-only event order: %v", events)
 	}
 
 	watch.refreshPr()
-	if len(events) != 1 {
+	if len(events) != 2 {
 		t.Fatalf("expected no pr events, got %v", events)
 	}
 }
@@ -396,11 +457,80 @@ func TestRepoDiffWatchUpdatePrInfoEmptyInputDoesNotClearState(t *testing.T) {
 	}
 }
 
-func TestRepoDiffWatchRunLocalOnlySkipsFsnotify(t *testing.T) {
+func TestRepoDiffWatchHandleFsnotifyEventTriggersRefreshes(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	watch := &repoDiffWatch{
+		ctx:            ctx,
+		localRefreshCh: make(chan struct{}, 1),
+		prRefreshCh:    make(chan struct{}, 1),
+		fullRefs:       1,
+	}
+	targets := repoDiffGitWatchTargets{
+		exactFiles: map[string]struct{}{filepath.Clean("/tmp/repo/.git/index"): {}},
+		refsDir:    filepath.Clean("/tmp/repo/.git/refs"),
+	}
+
+	watch.handleFsnotifyEvent(nil, targets, fsnotify.Event{
+		Name: filepath.Clean("/tmp/repo/.git/index"),
+		Op:   fsnotify.Write,
+	})
+
+	select {
+	case <-watch.prRefreshCh:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("expected pr refresh to be queued")
+	}
+
+	select {
+	case <-watch.localRefreshCh:
+	case <-time.After(1 * time.Second):
+		t.Fatal("expected local refresh after debounce")
+	}
+
+	watch.stopRefreshTimer()
+}
+
+func TestRepoDiffWatchHandleFsnotifyEventIgnoresUnrelatedPaths(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	watch := &repoDiffWatch{
+		ctx:            ctx,
+		localRefreshCh: make(chan struct{}, 1),
+		prRefreshCh:    make(chan struct{}, 1),
+		fullRefs:       1,
+	}
+	targets := repoDiffGitWatchTargets{
+		exactFiles: map[string]struct{}{filepath.Clean("/tmp/repo/.git/index"): {}},
+		refsDir:    filepath.Clean("/tmp/repo/.git/refs"),
+	}
+
+	watch.handleFsnotifyEvent(nil, targets, fsnotify.Event{
+		Name: filepath.Clean("/tmp/repo/src/main.go"),
+		Op:   fsnotify.Write,
+	})
+
+	select {
+	case <-watch.prRefreshCh:
+		t.Fatal("expected unrelated event to skip pr refresh")
+	case <-time.After(250 * time.Millisecond):
+	}
+	select {
+	case <-watch.localRefreshCh:
+		t.Fatal("expected unrelated event to skip local refresh")
+	case <-time.After(500 * time.Millisecond):
+	}
+}
+
+func TestRepoDiffWatchRunLocalOnlyCreatesGitWatcher(t *testing.T) {
 	origNewWatcher := repoDiffNewWatcher
+	origResolveTargets := repoDiffResolveGitWatchTargets
 	origGetLocalStatus := repoDiffGetLocalStatus
 	defer func() {
 		repoDiffNewWatcher = origNewWatcher
+		repoDiffResolveGitWatchTargets = origResolveTargets
 		repoDiffGetLocalStatus = origGetLocalStatus
 	}()
 
@@ -408,6 +538,20 @@ func TestRepoDiffWatchRunLocalOnlySkipsFsnotify(t *testing.T) {
 	repoDiffNewWatcher = func() (*fsnotify.Watcher, error) {
 		atomic.AddInt32(&watcherCreateCount, 1)
 		return fsnotify.NewWatcher()
+	}
+	adminDir := filepath.Join(t.TempDir(), ".git")
+	refsDir := filepath.Join(adminDir, "refs")
+	if err := os.MkdirAll(refsDir, 0o755); err != nil {
+		t.Fatalf("mkdir refs: %v", err)
+	}
+	repoDiffResolveGitWatchTargets = func(_ context.Context, _ string) (repoDiffGitWatchTargets, error) {
+		return repoDiffGitWatchTargets{
+			adminDir: adminDir,
+			refsDir:  refsDir,
+			exactFiles: map[string]struct{}{
+				filepath.Join(adminDir, "HEAD"): {},
+			},
+		}, nil
 	}
 	repoDiffGetLocalStatus = func(_ context.Context, _ *App, _ repoDiffWatchKey, _ string) (worksetapi.RepoLocalStatusJSON, error) {
 		return worksetapi.RepoLocalStatusJSON{
@@ -442,8 +586,8 @@ func TestRepoDiffWatchRunLocalOnlySkipsFsnotify(t *testing.T) {
 		t.Fatal("timed out waiting for watch to stop")
 	}
 
-	if got := atomic.LoadInt32(&watcherCreateCount); got != 0 {
-		t.Fatalf("expected no fsnotify watcher for local-only run, got %d", got)
+	if got := atomic.LoadInt32(&watcherCreateCount); got != 1 {
+		t.Fatalf("expected one git metadata watcher for local-only run, got %d", got)
 	}
 }
 
@@ -476,5 +620,46 @@ func TestRepoDiffWatchAddWatchRecursiveDedupesPaths(t *testing.T) {
 	}
 	if got := len(watch.watchedPaths); got != firstCount {
 		t.Fatalf("expected deduped watch count %d, got %d", firstCount, got)
+	}
+}
+
+func initRepoDiffGitRepo(t *testing.T) string {
+	t.Helper()
+	repo := t.TempDir()
+	runRepoDiffGit(t, repo, "init")
+	runRepoDiffGit(t, repo, "config", "user.name", "Workset Test")
+	runRepoDiffGit(t, repo, "config", "user.email", "workset@example.com")
+	return repo
+}
+
+func gitRevParsePath(t *testing.T, repo string, args ...string) string {
+	t.Helper()
+	cmdArgs := []string{"-C", repo, "rev-parse"}
+	cmdArgs = append(cmdArgs, args...)
+	cmd := exec.Command("git", cmdArgs...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git rev-parse %v failed: %v (%s)", args, err, string(output))
+	}
+	resolved := filepath.Clean(strings.TrimSpace(string(output)))
+	if !filepath.IsAbs(resolved) {
+		resolved = filepath.Join(repo, resolved)
+	}
+	return filepath.Clean(resolved)
+}
+
+func runRepoDiffGit(t *testing.T, repo string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v (%s)", args, err, string(output))
+	}
+}
+
+func writeRepoDiffFile(t *testing.T, path string, data []byte) {
+	t.Helper()
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write file %s: %v", path, err)
 	}
 }

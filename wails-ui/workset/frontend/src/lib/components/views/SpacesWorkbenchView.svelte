@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { GitBranch, GitPullRequest, Plus, Terminal } from '@lucide/svelte';
 	import type { DocumentSession, Workspace } from '../../types';
+	import { deriveWorksetIdentity } from '../../view-models/worksetViewModel';
 	import DocumentViewer from '../DocumentViewer.svelte';
 	import TerminalWorkspace from '../TerminalWorkspace.svelte';
 	import PROrchestrationView from './PROrchestrationView.svelte';
@@ -40,15 +41,6 @@
 		onSurfaceChange = () => {},
 		onCloseDocument = () => {},
 	}: Props = $props();
-
-	const deriveWorksetIdentity = (workspace: Workspace): { id: string; label: string } => {
-		const id = workspace.worksetKey?.trim();
-		const label = workspace.worksetLabel?.trim();
-		return {
-			id: id && id.length > 0 ? id : `workspace:${workspace.id.toLowerCase()}`,
-			label: label && label.length > 0 ? label : workspace.name,
-		};
-	};
 
 	const worksetGroups = $derived.by<WorksetGroup[]>(() => {
 		const byId = new Map<string, WorksetGroup>();

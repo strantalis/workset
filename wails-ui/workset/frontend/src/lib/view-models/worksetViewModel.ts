@@ -1,6 +1,25 @@
 import type { Repo, Workspace } from '../types';
 import { formatRelativeTime } from './relativeTime';
 
+export type WorksetIdentity = { id: string; label: string };
+
+export const deriveWorksetIdentity = (workspace: Workspace): WorksetIdentity => {
+	const key = workspace.worksetKey?.trim();
+	const label = workspace.worksetLabel?.trim();
+	const workset = workspace.workset?.trim();
+	const normalizedWorkset = workset?.toLowerCase().replace(/\s+/g, '-') ?? '';
+	return {
+		id:
+			key && key.length > 0
+				? key
+				: normalizedWorkset.length > 0
+					? `workset:${normalizedWorkset}`
+					: `workspace:${workspace.id.toLowerCase()}`,
+		label:
+			label && label.length > 0 ? label : workset && workset.length > 0 ? workset : workspace.name,
+	};
+};
+
 export type HealthState = 'clean' | 'modified' | 'ahead' | 'error';
 
 export type WorksetSummary = {
