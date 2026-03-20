@@ -240,3 +240,65 @@ func TestIsMarkdownPath(t *testing.T) {
 		}
 	}
 }
+
+func TestMimeTypeFromImageExt(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		path string
+		want string
+	}{
+		{path: "logo.png", want: "image/png"},
+		{path: "photo.jpg", want: "image/jpeg"},
+		{path: "photo.jpeg", want: "image/jpeg"},
+		{path: "anim.gif", want: "image/gif"},
+		{path: "modern.webp", want: "image/webp"},
+		{path: "icon.svg", want: "image/svg+xml"},
+		{path: "favicon.ico", want: "image/x-icon"},
+		{path: "old.bmp", want: "image/bmp"},
+		{path: "next.avif", want: "image/avif"},
+		{path: "LOGO.PNG", want: "image/png"},
+		{path: "dir/sub/photo.JPG", want: "image/jpeg"},
+		{path: "readme.md", want: ""},
+		{path: "code.go", want: ""},
+		{path: "noext", want: ""},
+	}
+
+	for _, tc := range cases {
+		if got := mimeTypeFromImageExt(tc.path); got != tc.want {
+			t.Fatalf("mimeTypeFromImageExt(%q) = %q, want %q", tc.path, got, tc.want)
+		}
+	}
+}
+
+func TestReadRepoFileBytesRespectsLimit(t *testing.T) {
+	t.Parallel()
+
+	smallPath := filepath.Join(t.TempDir(), "small.png")
+	smallData := []byte{0x89, 0x50, 0x4E, 0x47} // PNG magic bytes
+	if err := os.WriteFile(smallPath, smallData, 0o644); err != nil {
+		t.Fatalf("write small file: %v", err)
+	}
+
+	data, err := readRepoFileBytes(smallPath, 1024)
+	if err != nil {
+		t.Fatalf("readRepoFileBytes failed: %v", err)
+	}
+	if len(data) != len(smallData) {
+		t.Fatalf("expected %d bytes, got %d", len(smallData), len(data))
+	}
+
+	largePath := filepath.Join(t.TempDir(), "large.png")
+	largeData := make([]byte, 256)
+	for i := range largeData {
+		largeData[i] = byte(i % 256)
+	}
+	if err := os.WriteFile(largePath, largeData, 0o644); err != nil {
+		t.Fatalf("write large file: %v", err)
+	}
+
+	_, err = readRepoFileBytes(largePath, 64)
+	if err == nil {
+		t.Fatalf("expected readRepoFileBytes to fail for oversized file")
+	}
+}

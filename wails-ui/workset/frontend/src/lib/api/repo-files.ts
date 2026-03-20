@@ -1,5 +1,11 @@
-import type { RepoFileContent, RepoFileSearchResult } from '../types';
-import { ReadWorkspaceRepoFile, SearchWorkspaceRepoFiles } from '../../../bindings/workset/app';
+import type { RepoFileContent, RepoFileSearchResult, RepoImageContent } from '../types';
+import {
+	ReadWorkspaceRepoFile,
+	ReadWorkspaceRepoFileAtRef,
+	ReadWorkspaceRepoImageBase64,
+	SearchWorkspaceRepoFiles,
+	WriteWorkspaceRepoFile,
+} from '../../../bindings/workset/app';
 
 const REPO_FILE_INDEX_LIMIT = 5000;
 const REPO_FILE_CACHE_TTL_MS = 10_000;
@@ -92,4 +98,55 @@ export async function readWorkspaceRepoFile(
 		repoId,
 		path,
 	})) as RepoFileContent;
+}
+
+export async function readWorkspaceRepoImageBase64(
+	workspaceId: string,
+	repoId: string,
+	path: string,
+): Promise<RepoImageContent> {
+	return (await ReadWorkspaceRepoImageBase64({
+		workspaceId,
+		repoId,
+		path,
+	})) as RepoImageContent;
+}
+
+export type RepoFileWriteResult = {
+	written: boolean;
+	error?: string;
+};
+
+export async function writeWorkspaceRepoFile(
+	workspaceId: string,
+	repoId: string,
+	path: string,
+	content: string,
+): Promise<RepoFileWriteResult> {
+	return (await WriteWorkspaceRepoFile({
+		workspaceId,
+		repoId,
+		path,
+		content,
+	})) as RepoFileWriteResult;
+}
+
+export type RepoFileAtRefResult = {
+	content: string;
+	found: boolean;
+	binary: boolean;
+};
+
+export async function readWorkspaceRepoFileAtRef(
+	workspaceId: string,
+	repoId: string,
+	path: string,
+	ref = 'HEAD',
+): Promise<RepoFileAtRefResult> {
+	return (await ReadWorkspaceRepoFileAtRef({
+		workspaceId,
+		repoId,
+		path,
+		ref,
+	})) as RepoFileAtRefResult;
 }

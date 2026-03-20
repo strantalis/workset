@@ -27,6 +27,12 @@ export type RepoFileContent = {
 	sizeBytes: number;
 };
 
+export type RepoImageContent = {
+	base64: string;
+	mimeType: string;
+	error?: string;
+};
+
 export type DocumentRenderMode = 'rendered' | 'raw';
 
 export type DocumentSession = {

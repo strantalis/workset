@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +22,7 @@ const (
 	defaultRepoFileSearchLimit = 250
 	maxRepoFileSearchLimit     = 5000
 	maxRepoFileReadBytes       = 256 * 1024
+	maxRepoImageReadBytes      = 10 * 1024 * 1024
 	repoFileBinarySniffBytes   = 8 * 1024
 	repoFileIndexCacheTTL      = 10 * time.Second
 )
@@ -477,5 +479,235 @@ func isMarkdownPath(path string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+const maxRepoFileWriteBytes = 256 * 1024
+
+type RepoFileWriteRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	RepoID      string `json:"repoId"`
+	Path        string `json:"path"`
+	Content     string `json:"content"`
+}
+
+type RepoFileWriteResponse struct {
+	Written bool   `json:"written"`
+	Error   string `json:"error,omitempty"`
+}
+
+func (a *App) WriteWorkspaceRepoFile(input RepoFileWriteRequest) (RepoFileWriteResponse, error) {
+	ctx := a.appContext()
+
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	repoID := strings.TrimSpace(input.RepoID)
+	if workspaceID == "" || repoID == "" {
+		return RepoFileWriteResponse{}, errors.New("workspace and repo are required")
+	}
+	if len(input.Content) > maxRepoFileWriteBytes {
+		return RepoFileWriteResponse{}, fmt.Errorf("content too large (%d bytes, limit %d)", len(input.Content), maxRepoFileWriteBytes)
+	}
+
+	repos, err := a.resolveWorkspaceRepos(ctx, workspaceID)
+	if err != nil {
+		return RepoFileWriteResponse{}, err
+	}
+	var repo workspaceRepoRef
+	found := false
+	for _, candidate := range repos {
+		if candidate.id != repoID {
+			continue
+		}
+		repo = candidate
+		found = true
+		break
+	}
+	if !found {
+		return RepoFileWriteResponse{}, fmt.Errorf("repo %q not found in workspace %q", repoID, workspaceID)
+	}
+
+	resolvedPath, _, err := resolveRepoFilePath(repo.path, input.Path)
+	if err != nil {
+		return RepoFileWriteResponse{}, err
+	}
+
+	if err := os.WriteFile(resolvedPath, []byte(input.Content), 0644); err != nil {
+		return RepoFileWriteResponse{}, fmt.Errorf("write file: %w", err)
+	}
+
+	return RepoFileWriteResponse{Written: true}, nil
+}
+
+type RepoFileAtRefRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	RepoID      string `json:"repoId"`
+	Path        string `json:"path"`
+	Ref         string `json:"ref"`
+}
+
+type RepoFileAtRefResponse struct {
+	Content string `json:"content,omitempty"`
+	Found   bool   `json:"found"`
+	Binary  bool   `json:"binary"`
+}
+
+func (a *App) ReadWorkspaceRepoFileAtRef(input RepoFileAtRefRequest) (RepoFileAtRefResponse, error) {
+	ctx := a.appContext()
+
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	repoID := strings.TrimSpace(input.RepoID)
+	ref := strings.TrimSpace(input.Ref)
+	path := strings.TrimSpace(input.Path)
+	if workspaceID == "" || repoID == "" || path == "" {
+		return RepoFileAtRefResponse{}, errors.New("workspace, repo, and path are required")
+	}
+	if ref == "" {
+		ref = "HEAD"
+	}
+
+	repos, err := a.resolveWorkspaceRepos(ctx, workspaceID)
+	if err != nil {
+		return RepoFileAtRefResponse{}, err
+	}
+	var repo workspaceRepoRef
+	found := false
+	for _, candidate := range repos {
+		if candidate.id != repoID {
+			continue
+		}
+		repo = candidate
+		found = true
+		break
+	}
+	if !found {
+		return RepoFileAtRefResponse{}, fmt.Errorf("repo %q not found in workspace %q", repoID, workspaceID)
+	}
+
+	cmd := exec.CommandContext(ctx, "git", "-C", repo.path, "show", ref+":"+path)
+	output, err := cmd.Output()
+	if err != nil {
+		// File may not exist at that ref (new file)
+		return RepoFileAtRefResponse{Found: false}, nil
+	}
+
+	if isBinaryContent(output) {
+		return RepoFileAtRefResponse{Found: true, Binary: true}, nil
+	}
+
+	// Enforce size limit
+	if len(output) > maxRepoFileReadBytes {
+		output = output[:maxRepoFileReadBytes]
+	}
+
+	return RepoFileAtRefResponse{
+		Content: string(output),
+		Found:   true,
+		Binary:  false,
+	}, nil
+}
+
+type RepoImageReadRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	RepoID      string `json:"repoId"`
+	Path        string `json:"path"`
+}
+
+type RepoImageReadResponse struct {
+	Base64   string `json:"base64,omitempty"`
+	MimeType string `json:"mimeType"`
+	Error    string `json:"error,omitempty"`
+}
+
+func (a *App) ReadWorkspaceRepoImageBase64(input RepoImageReadRequest) (RepoImageReadResponse, error) {
+	ctx := a.appContext()
+
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	repoID := strings.TrimSpace(input.RepoID)
+	if workspaceID == "" || repoID == "" {
+		return RepoImageReadResponse{}, errors.New("workspace and repo are required")
+	}
+
+	repos, err := a.resolveWorkspaceRepos(ctx, workspaceID)
+	if err != nil {
+		return RepoImageReadResponse{}, err
+	}
+	var repo workspaceRepoRef
+	found := false
+	for _, candidate := range repos {
+		if candidate.id != repoID {
+			continue
+		}
+		repo = candidate
+		found = true
+		break
+	}
+	if !found {
+		return RepoImageReadResponse{}, fmt.Errorf("repo %q not found in workspace %q", repoID, workspaceID)
+	}
+
+	mimeType := mimeTypeFromImageExt(input.Path)
+	if mimeType == "" {
+		return RepoImageReadResponse{Error: "unsupported image type"}, nil
+	}
+
+	resolvedPath, _, err := resolveRepoFilePath(repo.path, input.Path)
+	if err != nil {
+		return RepoImageReadResponse{Error: err.Error()}, nil
+	}
+
+	data, err := readRepoFileBytes(resolvedPath, maxRepoImageReadBytes)
+	if err != nil {
+		return RepoImageReadResponse{Error: err.Error()}, nil
+	}
+
+	return RepoImageReadResponse{
+		Base64:   base64.StdEncoding.EncodeToString(data),
+		MimeType: mimeType,
+	}, nil
+}
+
+func readRepoFileBytes(path string, maxBytes int) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() > int64(maxBytes) {
+		return nil, fmt.Errorf("file too large (%d bytes, limit %d)", info.Size(), maxBytes)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(file, int64(maxBytes)+1))
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func mimeTypeFromImageExt(path string) string {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	case ".svg":
+		return "image/svg+xml"
+	case ".ico":
+		return "image/x-icon"
+	case ".bmp":
+		return "image/bmp"
+	case ".avif":
+		return "image/avif"
+	default:
+		return ""
 	}
 }
