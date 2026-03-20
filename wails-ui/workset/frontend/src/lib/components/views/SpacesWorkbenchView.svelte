@@ -1,11 +1,9 @@
 <script lang="ts">
-	import { GitBranch, GitPullRequest, Plus, Terminal } from '@lucide/svelte';
-	import type { DocumentSession, Workspace } from '../../types';
+	import { FolderTree, GitBranch, Plus, Terminal } from '@lucide/svelte';
+	import type { Workspace } from '../../types';
 	import { deriveWorksetIdentity } from '../../view-models/worksetViewModel';
-	import DocumentViewer from '../DocumentViewer.svelte';
 	import TerminalWorkspace from '../TerminalWorkspace.svelte';
-	import PROrchestrationView from './PROrchestrationView.svelte';
-	import ResizablePanel from '../ui/ResizablePanel.svelte';
+	import UnifiedRepoView from './UnifiedRepoView.svelte';
 	import { resolveWorkbenchLayout, type SurfaceTab } from './spacesWorkbenchView.helpers';
 
 	type WorksetGroup = {
@@ -20,12 +18,10 @@
 		popoutMode?: boolean;
 		useGlobalExplorer?: boolean;
 		preferredSurface?: SurfaceTab;
-		documentSession?: DocumentSession | null;
 		onSelectWorkspace: (workspaceId: string) => void;
 		onCreateWorkspace: () => void;
 		onCreateThread?: (worksetId: string) => void;
 		onSurfaceChange?: (surface: SurfaceTab) => void;
-		onCloseDocument?: () => void;
 	}
 
 	const {
@@ -34,12 +30,10 @@
 		popoutMode = false,
 		useGlobalExplorer = false,
 		preferredSurface = 'terminal',
-		documentSession = null,
 		onSelectWorkspace,
 		onCreateWorkspace,
 		onCreateThread = () => {},
 		onSurfaceChange = () => {},
-		onCloseDocument = () => {},
 	}: Props = $props();
 
 	const worksetGroups = $derived.by<WorksetGroup[]>(() => {
@@ -132,7 +126,7 @@
 	});
 
 	const activeSurface = $derived(preferredSurface);
-	const layoutMode = $derived(resolveWorkbenchLayout(activeSurface, documentSession !== null));
+	const layoutMode = $derived(resolveWorkbenchLayout(activeSurface));
 
 	const setSurface = (surface: SurfaceTab): void => {
 		onSurfaceChange(surface);
@@ -237,8 +231,8 @@
 							role="tab"
 							aria-selected={activeSurface === 'pull-requests'}
 						>
-							<span class="surface-tab-icon"><GitPullRequest size={12} /></span>
-							<span>Pull Requests</span>
+							<span class="surface-tab-icon"><FolderTree size={12} /></span>
+							<span>Code</span>
 							{#if openPrCount > 0}
 								<span class="surface-tab-badge">{openPrCount}</span>
 							{/if}
@@ -246,57 +240,15 @@
 					</div>
 				{/if}
 				<div class="spaces-main-body">
-					{#if layoutMode === 'terminal-with-prs'}
-						<ResizablePanel
-							direction="horizontal"
-							initialRatio={0.62}
-							minRatio={0.35}
-							maxRatio={0.78}
-							storageKey="workset-pr-panel"
-						>
-							<div class="spaces-surface">
-								<TerminalWorkspace
-									workspaceId={activeThread.id}
-									workspaceName={activeThread.name}
-								/>
-							</div>
-
-							{#snippet second()}
-								<aside class="spaces-side-pane spaces-pr-pane">
-									<PROrchestrationView workspace={activeThread} />
-								</aside>
-							{/snippet}
-						</ResizablePanel>
-					{:else if layoutMode === 'terminal-with-document' && documentSession}
-						<ResizablePanel
-							direction="horizontal"
-							initialRatio={0.58}
-							minRatio={0.3}
-							maxRatio={0.7}
-							storageKey="workset-document-panel"
-						>
-							<div class="spaces-surface">
-								<TerminalWorkspace
-									workspaceId={activeThread.id}
-									workspaceName={activeThread.name}
-								/>
-							</div>
-
-							{#snippet second()}
-								<aside class="spaces-side-pane spaces-document-pane">
-									<DocumentViewer
-										session={documentSession}
-										repos={activeThread?.repos.map((r) => ({ id: r.id, name: r.name })) ?? []}
-										onClose={onCloseDocument}
-									/>
-								</aside>
-							{/snippet}
-						</ResizablePanel>
-					{:else}
-						<div class="spaces-surface">
-							<TerminalWorkspace workspaceId={activeThread.id} workspaceName={activeThread.name} />
-						</div>
-					{/if}
+					<div class="spaces-surface" class:with-code-pane={layoutMode === 'terminal-with-prs'}>
+						<TerminalWorkspace workspaceId={activeThread.id} workspaceName={activeThread.name} />
+					</div>
+					<aside
+						class="spaces-side-pane spaces-pr-pane"
+						class:hidden={layoutMode !== 'terminal-with-prs'}
+					>
+						<UnifiedRepoView workspace={activeThread} />
+					</aside>
 				</div>
 			{:else}
 				<div class="spaces-empty-state">
@@ -487,12 +439,19 @@
 		background: color-mix(in srgb, var(--panel) 76%, transparent);
 	}
 
-	.spaces-pr-pane {
-		min-width: 420px;
+	.spaces-surface.with-code-pane {
+		flex: 0.62;
 	}
 
-	.spaces-document-pane {
-		min-width: 320px;
+	.spaces-pr-pane {
+		flex: 0.38;
+		min-width: 420px;
+	}
+	.spaces-pr-pane.hidden {
+		display: none;
+	}
+	.spaces-surface:not(.with-code-pane) {
+		flex: 1;
 	}
 
 	.spaces-main-header {

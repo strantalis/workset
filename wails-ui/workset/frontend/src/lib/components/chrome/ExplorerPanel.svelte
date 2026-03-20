@@ -57,7 +57,6 @@
 		onCreateThread?: (worksetId: string) => void;
 		onAddRepo?: (worksetId: string) => void;
 		onRemoveThread?: (threadId: string) => void;
-		onOpenPullRequests?: () => void;
 		onOpenFiles?: () => void;
 		onOpenSkills?: () => void;
 		onOpenSettings?: () => void;
@@ -79,7 +78,6 @@
 		onCreateThread: onCreateThreadProp,
 		onAddRepo: onAddRepoProp,
 		onRemoveThread: onRemoveThreadProp,
-		onOpenPullRequests = () => {},
 		onOpenFiles = () => {},
 		onOpenSkills = () => {},
 		onOpenSettings = () => {},
@@ -803,21 +801,10 @@
 				<button
 					type="button"
 					class="footer-pane-btn"
-					class:active={activeView !== 'skill-registry' && activeSurface === 'pull-requests'}
-					data-hover-label="Pull Requests"
-					title="Toggle pull requests pane"
-					aria-label="Toggle pull requests pane"
-					onclick={onOpenPullRequests}
-				>
-					<GitPullRequest size={13} />
-				</button>
-				<button
-					type="button"
-					class="footer-pane-btn"
-					class:active={filesActive}
-					data-hover-label="Files"
-					title="Toggle files pane"
-					aria-label="Toggle files pane"
+					class:active={activeView !== 'skill-registry' &&
+						(activeSurface === 'pull-requests' || filesActive)}
+					data-hover-label="Code"
+					aria-label="Toggle code pane"
 					onclick={onOpenFiles}
 				>
 					<FolderTree size={13} />
@@ -827,7 +814,6 @@
 					class="footer-pane-btn"
 					class:active={activeView === 'skill-registry'}
 					data-hover-label="Skills"
-					title="Toggle skills view"
 					aria-label="Toggle skills view"
 					onclick={onOpenSkills}
 				>

@@ -452,15 +452,15 @@ describe('ExplorerPanel', () => {
 			},
 		});
 
-		const filesButton = getByRole('button', { name: 'Toggle files pane' });
+		const filesButton = getByRole('button', { name: 'Toggle code pane' });
 		expect(filesButton).toHaveClass('active');
 
 		await fireEvent.click(filesButton);
 		expect(onOpenFiles).toHaveBeenCalledTimes(1);
 	});
 
-	test('opens pull requests from the footer pane toggles and marks the control active', async () => {
-		const onOpenPullRequests = vi.fn();
+	test('opens skills from the footer pane toggles and marks the control active', async () => {
+		const onOpenSkills = vi.fn();
 		const alpha = buildWorkspace({
 			id: 'thread-alpha',
 			name: 'alpha',
@@ -474,17 +474,17 @@ describe('ExplorerPanel', () => {
 				workspaces: [alpha],
 				activeWorkspaceId: alpha.id,
 				shortcutMap: new Map<string, number>(),
-				activeSurface: 'pull-requests',
+				activeView: 'skill-registry',
 				onSelectWorkspace: vi.fn(),
-				onOpenPullRequests,
+				onOpenSkills,
 			},
 		});
 
-		const prButton = getByRole('button', { name: 'Toggle pull requests pane' });
-		expect(prButton).toHaveClass('active');
+		const skillsButton = getByRole('button', { name: 'Toggle skills view' });
+		expect(skillsButton).toHaveClass('active');
 
-		await fireEvent.click(prButton);
-		expect(onOpenPullRequests).toHaveBeenCalledTimes(1);
+		await fireEvent.click(skillsButton);
+		expect(onOpenSkills).toHaveBeenCalledTimes(1);
 	});
 
 	test('renders review feedback badge for threads with tracked PR feedback', () => {

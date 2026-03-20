@@ -17,7 +17,6 @@
 	import { previewRepoHooks, setWorkspaceDescription } from './lib/api/workspaces';
 	import type { RepoLocalStatus } from './lib/api/github';
 	import { fetchGitHubAuthInfo } from './lib/api/github';
-	import { openDefaultDocumentSession, reconcileDocumentSession } from './lib/documentSessionState';
 	import {
 		EVENT_REPO_DIFF_LOCAL_SUMMARY,
 		EVENT_REPO_DIFF_LOCAL_STATUS,
@@ -26,7 +25,6 @@
 		EVENT_WORKSPACE_POPOUT_OPENED,
 	} from './lib/events';
 	import { subscribeRepoDiffEvent } from './lib/repoDiffService';
-	import { resolveWorkbenchPaneState, type WorkbenchSurface } from './lib/appPaneState';
 	import { releaseWorkspaceTerminals } from './lib/terminal/terminalService';
 	import { shouldClearPreviousWorkspaceTerminalActivity } from './lib/terminal/terminalActivity';
 	import { subscribeTerminalActivity } from './lib/terminal/terminalActivityBus';
@@ -43,7 +41,7 @@
 		OnboardingDraft,
 		OnboardingStartResult,
 	} from './lib/components/views/OnboardingView.utils';
-	import type { DocumentSession, Workspace } from './lib/types';
+	import type { Workspace } from './lib/types';
 	import SkillRegistryView from './lib/components/views/SkillRegistryView.svelte';
 	import SpacesWorkbenchView from './lib/components/views/SpacesWorkbenchView.svelte';
 	import { workspaceActionMutations } from './lib/services/workspaceActionService';
@@ -140,9 +138,7 @@
 	let onboardingError = $state<string | null>(null);
 	let onboardingRepoRegistry = $state<RegisteredRepo[]>([]);
 	let onboardingLoaded = $state(false);
-	let workbenchSurface = $state<WorkbenchSurface>('terminal');
-	// eslint-disable-next-line svelte/prefer-writable-derived
-	let documentSession = $state<DocumentSession | null>(null);
+	let workbenchSurface = $state<'terminal' | 'pull-requests'>('terminal');
 
 	const getWorksetThreads = (workspaceId: string): Workspace[] => {
 		const target = $workspaces.find(
@@ -429,15 +425,7 @@
 		if (key === 'p' && $activeWorkspaceId) {
 			event.preventDefault();
 			commandPaletteOpen = false;
-			const nextPane = resolveWorkbenchPaneState({
-				surface: workbenchSurface,
-				filesOpen: documentSession !== null,
-				intent: 'files',
-			});
-			workbenchSurface = nextPane.surface;
-			documentSession = nextPane.filesOpen
-				? openDefaultDocumentSession($activeWorkspaceId, threadVisibleWorkspaces)
-				: null;
+			workbenchSurface = workbenchSurface === 'pull-requests' ? 'terminal' : 'pull-requests';
 			return;
 		}
 		if (popoutMode) return;
@@ -457,23 +445,13 @@
 		}
 	};
 
-	const closeDocument = (): void => void (documentSession = null);
-
 	const handleOpenFiles = (): void => {
 		if (!$activeWorkspaceId) return;
 		if (currentView !== 'workspaces') {
 			setView('workspaces');
 		}
 		commandPaletteOpen = false;
-		const nextPane = resolveWorkbenchPaneState({
-			surface: workbenchSurface,
-			filesOpen: documentSession !== null,
-			intent: 'files',
-		});
-		workbenchSurface = nextPane.surface;
-		documentSession = nextPane.filesOpen
-			? openDefaultDocumentSession($activeWorkspaceId, threadVisibleWorkspaces)
-			: null;
+		workbenchSurface = workbenchSurface === 'pull-requests' ? 'terminal' : 'pull-requests';
 	};
 
 	let repoSummaryUnsubscribe: (() => void) | null = null,
@@ -552,10 +530,6 @@
 	});
 
 	$effect(() => {
-		documentSession = reconcileDocumentSession(documentSession, $activeWorkspaceId, $workspaces);
-	});
-
-	$effect(() => {
 		if (!fixedWorkspaceId || popoutSelectionApplied || $loadingWorkspaces) return;
 		if ($workspaces.length === 0) return;
 		const target = $workspaces.find(
@@ -611,19 +585,9 @@
 						canManageRepos={!popoutMode}
 						activeView={currentView === 'skill-registry' ? 'skill-registry' : 'workspaces'}
 						activeSurface={workbenchSurface}
-						filesActive={documentSession !== null}
+						filesActive={workbenchSurface === 'pull-requests'}
 						activeTerminalWorkspaceIds={terminalActivity.activeIds}
 						onSelectWorkspace={handleSelectWorkspace}
-						onOpenPullRequests={() => {
-							const nextPane = resolveWorkbenchPaneState({
-								surface: workbenchSurface,
-								filesOpen: documentSession !== null,
-								intent: 'pull-requests',
-							});
-							workbenchSurface = nextPane.surface;
-							documentSession = nextPane.filesOpen ? documentSession : null;
-							setView('workspaces');
-						}}
 						onOpenFiles={handleOpenFiles}
 						onOpenSkills={() =>
 							setView(currentView === 'skill-registry' ? 'workspaces' : 'skill-registry')}
@@ -692,12 +656,10 @@
 									{popoutMode}
 									useGlobalExplorer={showExplorer}
 									preferredSurface={workbenchSurface}
-									{documentSession}
 									onSurfaceChange={(surface) => (workbenchSurface = surface)}
 									onSelectWorkspace={handleSelectWorkspace}
 									onCreateWorkspace={handleCreateWorkspace}
 									onCreateThread={handleCreateThread}
-									onCloseDocument={closeDocument}
 								/>
 							{/if}
 						{:else if currentView === 'skill-registry'}
