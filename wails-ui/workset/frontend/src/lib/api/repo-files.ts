@@ -1,17 +1,22 @@
 import type { RepoFileContent, RepoFileSearchResult, RepoImageContent } from '../types';
 import {
+	ListRepoDirectory,
 	ReadWorkspaceRepoFile,
 	ReadWorkspaceRepoFileAtRef,
 	ReadWorkspaceRepoImageBase64,
 	SearchWorkspaceRepoFiles,
 	WriteWorkspaceRepoFile,
 } from '../../../bindings/workset/app';
+import { RepoDirectoryEntry } from '../../../bindings/workset/models';
+import { LruTtlCache } from '../cache/lruTtlCache';
+import { Fzf, type FzfResultItem } from 'fzf';
 
 const REPO_FILE_INDEX_LIMIT = 5000;
 const REPO_FILE_CACHE_TTL_MS = 10_000;
 
 type RepoFileSearchCacheEntry = {
 	items: RepoFileSearchResult[];
+	fzf: Fzf<RepoFileSearchResult[]>;
 	loadedAt: number;
 };
 
@@ -20,37 +25,19 @@ const repoFileSearchCache = new Map<string, RepoFileSearchCacheEntry>();
 const cacheKeyFor = (workspaceId: string, repoId?: string): string =>
 	`${workspaceId.trim()}::${repoId?.trim() ?? '*'}`;
 
-const scoreResult = (result: RepoFileSearchResult, query: string): number => {
-	const queryFolded = query.trim().toLowerCase();
-	if (queryFolded.length === 0) return result.score;
-	const path = result.path.toLowerCase();
-	const repoPath = `${result.repoName}/${result.path}`.toLowerCase();
-	if (path.startsWith(queryFolded)) return 3;
-	if (path.includes(queryFolded)) return 2;
-	if (repoPath.includes(queryFolded)) return 1;
-	return 0;
-};
+const buildFzfIndex = (items: RepoFileSearchResult[]): Fzf<RepoFileSearchResult[]> =>
+	new Fzf(items, { selector: (item) => item.path });
 
-const filterAndRankResults = (
+const fzfSearch = (
+	fzf: Fzf<RepoFileSearchResult[]>,
 	items: RepoFileSearchResult[],
 	query: string,
 	limit: number,
 ): RepoFileSearchResult[] => {
-	const queryFolded = query.trim().toLowerCase();
-	const filtered =
-		queryFolded.length === 0
-			? [...items]
-			: items.filter((item) => scoreResult(item, queryFolded) > 0);
-
-	filtered.sort((left, right) => {
-		const leftScore = scoreResult(left, queryFolded);
-		const rightScore = scoreResult(right, queryFolded);
-		if (leftScore !== rightScore) return rightScore - leftScore;
-		if (left.repoName !== right.repoName) return left.repoName.localeCompare(right.repoName);
-		return left.path.localeCompare(right.path);
-	});
-
-	return filtered.slice(0, Math.max(1, limit));
+	const trimmed = query.trim();
+	if (trimmed.length === 0) return items.slice(0, Math.max(1, limit));
+	const results: FzfResultItem<RepoFileSearchResult>[] = fzf.find(trimmed);
+	return results.slice(0, Math.max(1, limit)).map((entry) => entry.item);
 };
 
 const isCacheFresh = (
@@ -71,7 +58,7 @@ export async function searchWorkspaceRepoFiles(
 	const key = cacheKeyFor(workspaceId, repoId);
 	const cached = repoFileSearchCache.get(key);
 	if (isCacheFresh(cached)) {
-		return filterAndRankResults(cached.items, query, limit);
+		return fzfSearch(cached.fzf, cached.items, query, limit);
 	}
 
 	const payload = (await SearchWorkspaceRepoFiles({
@@ -81,23 +68,55 @@ export async function searchWorkspaceRepoFiles(
 		limit: REPO_FILE_INDEX_LIMIT,
 	})) as RepoFileSearchResult[] | undefined;
 	const items = payload ?? [];
+	const fzf = buildFzfIndex(items);
 	repoFileSearchCache.set(key, {
 		items,
+		fzf,
 		loadedAt: Date.now(),
 	});
-	return filterAndRankResults(items, query, limit);
+	return fzfSearch(fzf, items, query, limit);
 }
+
+// ── File content caches ──────────────────────────────────
+
+const fileContentCache = new LruTtlCache<RepoFileContent>({
+	maxEntries: 50,
+	maxBytes: 5 * 1024 * 1024,
+	ttlMs: 60_000,
+	softTtlMs: 10_000,
+	sizeOf: (fc) => (fc.content?.length ?? 0) + 128,
+});
+
+const fileAtRefCache = new LruTtlCache<RepoFileAtRefResult>({
+	maxEntries: 50,
+	maxBytes: 5 * 1024 * 1024,
+	ttlMs: 5 * 60_000,
+	softTtlMs: 30_000,
+	sizeOf: (r) => (r.content?.length ?? 0) + 64,
+});
+
+const fileContentKey = (wsId: string, repoId: string, path: string): string =>
+	`${wsId}|${repoId}|${path}`;
+
+const fileAtRefKey = (wsId: string, repoId: string, path: string, ref: string): string =>
+	`${wsId}|${repoId}|${path}|${ref}`;
 
 export async function readWorkspaceRepoFile(
 	workspaceId: string,
 	repoId: string,
 	path: string,
 ): Promise<RepoFileContent> {
-	return (await ReadWorkspaceRepoFile({
+	const key = fileContentKey(workspaceId, repoId, path);
+	const cached = fileContentCache.get(key);
+	if (cached && !cached.stale) return cached.value;
+
+	const result = (await ReadWorkspaceRepoFile({
 		workspaceId,
 		repoId,
 		path,
 	})) as RepoFileContent;
+	fileContentCache.set(key, result);
+	return result;
 }
 
 export async function readWorkspaceRepoImageBase64(
@@ -123,12 +142,17 @@ export async function writeWorkspaceRepoFile(
 	path: string,
 	content: string,
 ): Promise<RepoFileWriteResult> {
-	return (await WriteWorkspaceRepoFile({
+	const result = (await WriteWorkspaceRepoFile({
 		workspaceId,
 		repoId,
 		path,
 		content,
 	})) as RepoFileWriteResult;
+	// Invalidate cached content for this file after a successful write
+	if (result.written) {
+		invalidateFileContent(workspaceId, repoId, path);
+	}
+	return result;
 }
 
 export type RepoFileAtRefResult = {
@@ -143,10 +167,77 @@ export async function readWorkspaceRepoFileAtRef(
 	path: string,
 	ref = 'HEAD',
 ): Promise<RepoFileAtRefResult> {
-	return (await ReadWorkspaceRepoFileAtRef({
+	const key = fileAtRefKey(workspaceId, repoId, path, ref);
+	const cached = fileAtRefCache.get(key);
+	if (cached && !cached.stale) return cached.value;
+
+	const result = (await ReadWorkspaceRepoFileAtRef({
 		workspaceId,
 		repoId,
 		path,
 		ref,
 	})) as RepoFileAtRefResult;
+	fileAtRefCache.set(key, result);
+	return result;
 }
+
+/** Invalidate cached content for a specific file (both working copy and all refs). */
+export function invalidateFileContent(wsId: string, repoId: string, path: string): void {
+	fileContentCache.remove(fileContentKey(wsId, repoId, path));
+	fileAtRefCache.removeByPrefix(`${wsId}|${repoId}|${path}|`);
+}
+
+/** Invalidate all cached content for a repo (e.g. on diff summary change). */
+export function invalidateRepoFileContent(wsId: string, repoId: string): void {
+	fileContentCache.removeByPrefix(`${wsId}|${repoId}|`);
+	fileAtRefCache.removeByPrefix(`${wsId}|${repoId}|`);
+}
+
+/** Clear all file content caches (e.g. on workspace switch). */
+export function clearFileContentCache(): void {
+	fileContentCache.clear();
+	fileAtRefCache.clear();
+}
+
+// ── Lazy directory listing ───────────────────────────────
+
+const dirListCache = new LruTtlCache<RepoDirectoryEntry[]>({
+	maxEntries: 200,
+	maxBytes: 1 * 1024 * 1024,
+	ttlMs: 30_000,
+	softTtlMs: 10_000,
+	sizeOf: (entries) => JSON.stringify(entries).length,
+});
+
+const dirListKey = (wsId: string, repoId: string, dirPath: string): string =>
+	`${wsId}|${repoId}|dir:${dirPath}`;
+
+export async function listRepoDirectory(
+	workspaceId: string,
+	repoId: string,
+	dirPath: string,
+): Promise<RepoDirectoryEntry[]> {
+	const key = dirListKey(workspaceId, repoId, dirPath);
+	const cached = dirListCache.get(key);
+	if (cached && !cached.stale) return cached.value;
+
+	const result = (await ListRepoDirectory({
+		workspaceId,
+		repoId,
+		dirPath,
+	})) as RepoDirectoryEntry[];
+	dirListCache.set(key, result ?? []);
+	return result ?? [];
+}
+
+/** Invalidate directory listing cache for a repo (e.g. on diff event). */
+export function invalidateRepoDirCache(wsId: string, repoId: string): void {
+	dirListCache.removeByPrefix(`${wsId}|${repoId}|`);
+}
+
+/** Clear all directory listing caches. */
+export function clearDirListCache(): void {
+	dirListCache.clear();
+}
+
+export { RepoDirectoryEntry };

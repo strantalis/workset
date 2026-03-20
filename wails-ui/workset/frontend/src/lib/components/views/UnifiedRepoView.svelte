@@ -43,6 +43,12 @@
 		readWorkspaceRepoFileAtRef,
 		searchWorkspaceRepoFiles,
 		writeWorkspaceRepoFile,
+		invalidateRepoFileContent,
+		clearFileContentCache,
+		listRepoDirectory,
+		invalidateRepoDirCache,
+		clearDirListCache,
+		type RepoDirectoryEntry,
 	} from '../../api/repo-files';
 	import { resolveMarkdownImages, clearImageCache } from '../../markdownImages';
 	import { buildSummaryLocalCacheKey, repoDiffCache } from '../../cache/repoDiffCache';
@@ -51,8 +57,11 @@
 	import { refreshWorkspacesStatus } from '../../state';
 	import {
 		buildDocumentViewerTree,
+		buildDocumentViewerTreeFromDirs,
 		buildExpandedKeysForQuery,
 		computeChildCounts,
+		computeDirChildCounts,
+		dirEntriesKey,
 		shouldReplaceExpandedNodeSet,
 		type DocumentViewerTreeNode,
 	} from '../document-viewer/tree';
@@ -80,6 +89,7 @@
 		| { status: 'error'; message: string };
 
 	let repoFileStates = $state<Map<string, RepoFileState>>(new Map());
+	let dirEntries = $state<Map<string, RepoDirectoryEntry[]>>(new Map());
 	let expandedNodes = $state<Set<string>>(new Set());
 	let searchQuery = $state('');
 	let showFileTree = $state(true);
@@ -263,10 +273,15 @@
 			return fileName.includes(query) || result.path.toLowerCase().includes(query);
 		});
 	});
+	const isSearchActive = $derived(searchQuery.trim().length > 0);
 	const treeNodes = $derived.by<DocumentViewerTreeNode[]>(() =>
-		buildDocumentViewerTree(repos, filteredRepoFiles, expandedNodes),
+		isSearchActive
+			? buildDocumentViewerTree(repos, filteredRepoFiles, expandedNodes)
+			: buildDocumentViewerTreeFromDirs(repos, dirEntries, expandedNodes),
 	);
-	const childCounts = $derived.by(() => computeChildCounts(filteredRepoFiles));
+	const childCounts = $derived.by(() =>
+		isSearchActive ? computeChildCounts(filteredRepoFiles) : computeDirChildCounts(dirEntries),
+	);
 
 	// Changed files set: "repoId:path" for quick lookup
 	const changedFileSet = $derived.by(() => {
@@ -364,6 +379,8 @@
 	};
 
 	// ── File tree actions ───────────────────────────────────
+
+	/** Load the full file index for search (deferred until user types). */
 	const loadRepoFiles = (workspaceId: string, repoId: string): void => {
 		const current = repoFileStates.get(repoId);
 		if (current?.status === 'loaded' || current?.status === 'loading') return;
@@ -377,6 +394,19 @@
 					status: 'error',
 					message: err instanceof Error ? err.message : 'Failed to load files.',
 				});
+			});
+	};
+
+	/** Load directory entries for lazy tree browsing. */
+	const loadDirEntries = (workspaceId: string, repoId: string, dirPath: string): void => {
+		const key = dirEntriesKey(repoId, dirPath);
+		if (dirEntries.has(key)) return; // already loaded
+		void listRepoDirectory(workspaceId, repoId, dirPath)
+			.then((entries) => {
+				dirEntries = new Map(dirEntries).set(key, entries);
+			})
+			.catch(() => {
+				// Silently fail — the directory just won't show children
 			});
 	};
 
@@ -433,35 +463,64 @@
 		}
 	};
 
+	const stopWatcherForRepo = (repoId: string): void => {
+		if (!activeWatchers.has(repoId)) return;
+		activeWatchers.delete(repoId);
+		void stopRepoStatusWatch(wsId, repoId).catch(() => {});
+	};
+
 	const toggleNode = (key: string): void => {
 		const next = new Set(expandedNodes);
 		if (next.has(key)) {
 			next.delete(key);
+			// Evict diff data and stop watcher for collapsed repos
+			if (key.startsWith('repo:')) {
+				const repoId = key.slice(5);
+				if (repoDiffMap.has(repoId)) {
+					const nextMap = new Map(repoDiffMap);
+					nextMap.delete(repoId);
+					repoDiffMap = nextMap;
+				}
+				stopWatcherForRepo(repoId);
+			}
 		} else {
 			next.add(key);
 			if (key.startsWith('repo:') && wsId) {
 				const repoId = key.slice(5);
 				selectedRepoId = repoId;
-				loadRepoFiles(wsId, repoId);
+				// Lazy-load root directory entries for browsing
+				loadDirEntries(wsId, repoId, '');
 				void loadRepoDiff(wsId, repoId);
 				startWatcherForRepo(wsId, repoId);
+			} else if (key.startsWith('dir:') && wsId) {
+				// Lazy-load directory children on expand
+				const rest = key.slice(4); // "repoId:path"
+				const colonIdx = rest.indexOf(':');
+				if (colonIdx > 0) {
+					const repoId = rest.slice(0, colonIdx);
+					const dirPath = rest.slice(colonIdx + 1);
+					loadDirEntries(wsId, repoId, dirPath);
+				}
 			}
 		}
 		expandedNodes = next;
 	};
 
 	const selectTreeFile = (path: string, repoId: string): void => {
+		const sameFile = selectedRepoId === repoId && selectedFilePath === path;
 		selectedRepoId = repoId;
 		selectedFilePath = path;
 		editMode = false;
 		previewMode = false;
 		editedContent = null;
-		fileDiffContent = null;
-		originalFileContent = null;
-		modifiedFileContent = null;
-		fileContent = null;
-		fileDiffError = null;
-		renderedMarkdown = null;
+		if (!sameFile) {
+			fileDiffContent = null;
+			originalFileContent = null;
+			modifiedFileContent = null;
+			fileContent = null;
+			fileDiffError = null;
+			renderedMarkdown = null;
+		}
 		renderToken += 1;
 		fileDiffRequestId += 1;
 		fileContentRequestId += 1;
@@ -548,6 +607,19 @@
 
 	// ── Effects ─────────────────────────────────────────────
 
+	// Load full file index for all expanded repos when search starts
+	$effect(() => {
+		const query = searchQuery.trim();
+		if (query.length === 0) return;
+		const currentWsId = wsId;
+		if (!currentWsId) return;
+		for (const key of expandedNodes) {
+			if (key.startsWith('repo:')) {
+				loadRepoFiles(currentWsId, key.slice(5));
+			}
+		}
+	});
+
 	// Auto-expand search results
 	$effect(() => {
 		const query = searchQuery.trim().toLowerCase();
@@ -568,6 +640,7 @@
 		if (ws.id === lastWorkspaceId) return;
 		lastWorkspaceId = ws.id;
 		repoFileStates = new Map();
+		dirEntries = new Map();
 		repoDiffMap = new Map();
 		selectedRepoId = null;
 		selectedFilePath = null;
@@ -576,12 +649,14 @@
 		expandedNodes = new Set();
 		searchQuery = '';
 		clearImageCache();
+		clearFileContentCache();
+		clearDirListCache();
 		// Auto-expand first repo
 		const firstRepo = ws.repos[0];
 		if (firstRepo) {
 			expandedNodes = new Set([`repo:${firstRepo.id}`]);
 			untrack(() => {
-				loadRepoFiles(ws.id, firstRepo.id);
+				loadDirEntries(ws.id, firstRepo.id, '');
 				void loadRepoDiff(ws.id, firstRepo.id);
 			});
 		}
@@ -676,6 +751,9 @@
 				buildSummaryLocalCacheKey(currentWsId, payload.repoId),
 				payload.summary,
 			);
+			// Invalidate cached file/dir content for this repo (files changed on disk)
+			invalidateRepoFileContent(currentWsId, payload.repoId);
+			invalidateRepoDirCache(currentWsId, payload.repoId);
 			// If we're viewing a file in this repo, refresh it
 			if (payload.repoId === selectedRepoId && selectedFilePath) {
 				refreshCurrentFile();

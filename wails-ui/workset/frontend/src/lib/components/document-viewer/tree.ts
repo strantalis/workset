@@ -1,4 +1,5 @@
 import type { RepoFileSearchResult } from '../../types';
+import type { RepoDirectoryEntry } from '../../api/repo-files';
 
 export type DocumentViewerTreeNode =
 	| { kind: 'repo'; key: string; label: string; repoId: string; depth: number }
@@ -154,4 +155,88 @@ export const buildDocumentViewerTree = (
 	}
 
 	return nodes;
+};
+
+// ── Directory-based tree builder (lazy loading) ──────────
+
+/** Key for looking up directory entries: "repoId:" for root, "repoId:path" for nested. */
+export const dirEntriesKey = (repoId: string, dirPath: string): string => `${repoId}:${dirPath}`;
+
+const appendDirChildren = (
+	nodes: DocumentViewerTreeNode[],
+	repoId: string,
+	dirPath: string,
+	dirEntries: Map<string, RepoDirectoryEntry[]>,
+	expandedNodes: Set<string>,
+	depth: number,
+): void => {
+	const key = dirEntriesKey(repoId, dirPath);
+	const entries = dirEntries.get(key);
+	if (!entries) return;
+
+	for (const entry of entries) {
+		if (entry.isDir) {
+			const dirKey = `dir:${repoId}:${entry.path}`;
+			nodes.push({ kind: 'dir', key: dirKey, label: entry.name, depth });
+
+			if (expandedNodes.has(dirKey)) {
+				appendDirChildren(nodes, repoId, entry.path, dirEntries, expandedNodes, depth + 1);
+			}
+		} else {
+			nodes.push({
+				kind: 'file',
+				key: `file:${repoId}:${entry.path}`,
+				label: entry.name,
+				depth,
+				path: entry.path,
+				repoId,
+				isMarkdown: entry.isMarkdown ?? false,
+			});
+		}
+	}
+};
+
+/**
+ * Build a tree from lazily-loaded directory entries.
+ * `dirEntries` is keyed by `dirEntriesKey(repoId, dirPath)`.
+ */
+export const buildDocumentViewerTreeFromDirs = (
+	repos: RepoRef[],
+	dirEntries: Map<string, RepoDirectoryEntry[]>,
+	expandedNodes: Set<string>,
+): DocumentViewerTreeNode[] => {
+	const sortedRepos = [...repos].sort((a, b) => a.name.localeCompare(b.name));
+	const nodes: DocumentViewerTreeNode[] = [];
+
+	for (const repo of sortedRepos) {
+		const repoKey = `repo:${repo.id}`;
+		nodes.push({
+			kind: 'repo',
+			key: repoKey,
+			label: repo.name,
+			repoId: repo.id,
+			depth: 0,
+		});
+
+		if (!expandedNodes.has(repoKey)) continue;
+		appendDirChildren(nodes, repo.id, '', dirEntries, expandedNodes, 1);
+	}
+
+	return nodes;
+};
+
+/** Compute child counts from directory entries (for badges in the tree). */
+export const computeDirChildCounts = (
+	dirEntries: Map<string, RepoDirectoryEntry[]>,
+): Map<string, number> => {
+	const counts = new Map<string, number>();
+	for (const [key, entries] of dirEntries) {
+		// Extract repoId from key format "repoId:dirPath"
+		const colonIdx = key.indexOf(':');
+		const repoId = key.slice(0, colonIdx);
+		const dirPath = key.slice(colonIdx + 1);
+		const nodeKey = dirPath === '' ? `repo:${repoId}` : `dir:${repoId}:${dirPath}`;
+		counts.set(nodeKey, entries.length);
+	}
+	return counts;
 };

@@ -64,32 +64,59 @@
 		onViewReady?.(view);
 	};
 
-	// Load language + create view when deps change
+	// Update doc content in-place when language hasn't changed
+	const updateDoc = (doc: string): void => {
+		if (!view) return;
+		const currentDoc = view.state.doc.toString();
+		if (currentDoc !== doc) {
+			view.dispatch({
+				changes: { from: 0, to: view.state.doc.length, insert: doc },
+			});
+		}
+	};
+
+	// Track whether extensions (readOnly, extraExtensions) changed.
+	// Initialized to sentinel values so the first $effect run always creates the view.
+	let prevReadOnly: boolean | null = null;
+	let prevExtraExtensions: Extension[] | null = null;
+
+	// Load language + create/update view when deps change
 	$effect(() => {
 		const el = container;
 		const doc = content;
-		const _ro = readOnly;
-		const _ext = extraExtensions;
-		void _ro;
-		void _ext;
+		const ro = readOnly;
+		const ext = extraExtensions;
 		if (!el) return;
 
-		// Load language if path changed
 		const path = filePath;
-		if (path !== currentFilePath) {
+		const languageChanged = path !== currentFilePath;
+		const extensionsChanged = ro !== prevReadOnly || ext !== prevExtraExtensions;
+
+		if (languageChanged) {
 			currentFilePath = path;
+			prevReadOnly = ro;
+			prevExtraExtensions = ext;
 			if (path) {
-				void loadLanguage(path).then((ext) => {
+				void loadLanguage(path).then((langResult) => {
 					if (filePath !== path) return;
-					langExt = ext;
+					langExt = langResult;
 					createView(el, doc);
 				});
 			} else {
 				langExt = null;
+				createView(el, doc);
 			}
+		} else if (extensionsChanged) {
+			// readOnly or extra extensions changed — must recreate
+			prevReadOnly = ro;
+			prevExtraExtensions = ext;
+			createView(el, doc);
+		} else if (view) {
+			// Same language, same extensions — update doc in place
+			updateDoc(doc);
+		} else {
+			createView(el, doc);
 		}
-
-		createView(el, doc);
 
 		return () => {
 			if (view) {

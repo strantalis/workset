@@ -160,7 +160,22 @@ export async function renderCodeDocument(
 	};
 }
 
+const MD_RENDER_CACHE_MAX = 20;
+const mdRenderCache = new Map<string, DocumentRenderResult>();
+
+const contentHash = (s: string): string => {
+	let h = 5381;
+	for (let i = 0; i < s.length; i++) {
+		h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+	}
+	return s.length + ':' + h.toString(36);
+};
+
 export async function renderMarkdownDocument(source: string): Promise<DocumentRenderResult> {
+	const hash = contentHash(source);
+	const cached = mdRenderCache.get(hash);
+	if (cached) return cached;
+
 	let containsMermaid = false;
 	let processed = '';
 	let cursor = 0;
@@ -222,10 +237,13 @@ export async function renderMarkdownDocument(source: string): Promise<DocumentRe
 		}
 		html = html.replace(`<div data-mermaid-slot="m${index}"></div>`, replacement);
 	}
-	return {
-		html,
-		containsMermaid,
-	};
+	const result: DocumentRenderResult = { html, containsMermaid };
+	if (mdRenderCache.size >= MD_RENDER_CACHE_MAX) {
+		const firstKey = mdRenderCache.keys().next().value as string | undefined;
+		if (firstKey !== undefined) mdRenderCache.delete(firstKey);
+	}
+	mdRenderCache.set(hash, result);
+	return result;
 }
 
 let mermaidLoaded: Promise<typeof import('mermaid')> | null = null;

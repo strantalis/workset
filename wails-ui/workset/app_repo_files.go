@@ -711,3 +711,150 @@ func mimeTypeFromImageExt(path string) string {
 		return ""
 	}
 }
+
+// ── Lazy directory listing ───────────────────────────────
+
+// RepoDirectoryListRequest describes which directory to list.
+type RepoDirectoryListRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	RepoID      string `json:"repoId"`
+	DirPath     string `json:"dirPath"` // "" for root
+}
+
+// RepoDirectoryEntry is one child of a directory (file or subdirectory).
+type RepoDirectoryEntry struct {
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	IsDir      bool   `json:"isDir"`
+	SizeBytes  int    `json:"sizeBytes,omitempty"`
+	IsMarkdown bool   `json:"isMarkdown,omitempty"`
+	ChildCount int    `json:"childCount,omitempty"`
+}
+
+// ListRepoDirectory returns the immediate children of a directory within a
+// workspace repo.  It projects over the cached file index (same data as
+// SearchWorkspaceRepoFiles) so no extra git commands are issued.
+func (a *App) ListRepoDirectory(input RepoDirectoryListRequest) ([]RepoDirectoryEntry, error) {
+	ctx := a.appContext()
+
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	if workspaceID == "" {
+		return nil, errors.New("workspace is required")
+	}
+	repoID := strings.TrimSpace(input.RepoID)
+	if repoID == "" {
+		return nil, errors.New("repo is required")
+	}
+	dirPath := strings.TrimSpace(input.DirPath)
+	// Normalise: strip trailing slash.
+	dirPath = strings.TrimRight(dirPath, "/")
+
+	repos, err := a.resolveWorkspaceRepos(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	var repo *workspaceRepoRef
+	for i := range repos {
+		if repos[i].id == repoID {
+			repo = &repos[i]
+			break
+		}
+	}
+	if repo == nil {
+		return nil, fmt.Errorf("repo %q not found in workspace", repoID)
+	}
+
+	items, err := a.loadRepoFileIndex(ctx, *repo)
+	if err != nil {
+		return nil, err
+	}
+
+	prefix := ""
+	depth := 0 // depth of the target directory
+	if dirPath != "" {
+		prefix = dirPath + "/"
+		depth = strings.Count(dirPath, "/") + 1
+	}
+
+	type dirInfo struct {
+		childCount int
+	}
+	dirs := make(map[string]*dirInfo)
+	var files []RepoDirectoryEntry
+
+	for _, item := range items {
+		if dirPath != "" && !strings.HasPrefix(item.path, prefix) {
+			continue
+		}
+		if dirPath == "" && !strings.Contains(item.path, "/") {
+			// Root-level file.
+			files = append(files, RepoDirectoryEntry{
+				Name:       item.path,
+				Path:       item.path,
+				IsDir:      false,
+				SizeBytes:  item.sizeBytes,
+				IsMarkdown: item.isMarkdown,
+			})
+			continue
+		}
+
+		rest := item.path
+		if prefix != "" {
+			rest = strings.TrimPrefix(item.path, prefix)
+		}
+		parts := strings.SplitN(rest, "/", 2)
+		if len(parts) == 1 && dirPath != "" {
+			// Direct file child of the target directory.
+			files = append(files, RepoDirectoryEntry{
+				Name:       parts[0],
+				Path:       item.path,
+				IsDir:      false,
+				SizeBytes:  item.sizeBytes,
+				IsMarkdown: item.isMarkdown,
+			})
+		} else if len(parts) >= 2 || (len(parts) == 1 && dirPath == "") {
+			// File is deeper — contribute to subdirectory count.
+			childDirName := parts[0]
+			if dirPath == "" && strings.Contains(item.path, "/") {
+				childDirName = strings.SplitN(item.path, "/", 2)[0]
+			}
+			d, ok := dirs[childDirName]
+			if !ok {
+				d = &dirInfo{}
+				dirs[childDirName] = d
+			}
+			// Count unique immediate children of the subdirectory.
+			// For simplicity, count all files under it.
+			_ = depth // suppress unused
+			d.childCount++
+		}
+	}
+
+	entries := make([]RepoDirectoryEntry, 0, len(dirs)+len(files))
+	// Collect directories.
+	dirNames := make([]string, 0, len(dirs))
+	for name := range dirs {
+		dirNames = append(dirNames, name)
+	}
+	sort.Strings(dirNames)
+	for _, name := range dirNames {
+		d := dirs[name]
+		path := name
+		if dirPath != "" {
+			path = dirPath + "/" + name
+		}
+		entries = append(entries, RepoDirectoryEntry{
+			Name:       name,
+			Path:       path,
+			IsDir:      true,
+			ChildCount: d.childCount,
+		})
+	}
+	// Collect files (sorted).
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].Name < files[j].Name
+	})
+	entries = append(entries, files...)
+
+	return entries, nil
+}
