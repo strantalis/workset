@@ -38,6 +38,7 @@ describe('createTerminalInstance', () => {
 				}),
 				fontSize: 14,
 				fontFamily: '"SF Mono", Menlo, Monaco, Consolas, monospace',
+				cursorStyle: 'bar',
 				cursorBlink: false,
 			}),
 		);

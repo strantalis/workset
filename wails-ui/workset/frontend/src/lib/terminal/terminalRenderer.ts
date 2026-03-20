@@ -33,6 +33,7 @@ export const createTerminalInstance = async (input: {
 		smoothScrollDuration: 0,
 		fontFamily: fontMono,
 		fontSize: input.fontSize,
+		cursorStyle: 'bar',
 		cursorBlink: input.cursorBlink,
 		theme: {
 			background: themeBackground,
