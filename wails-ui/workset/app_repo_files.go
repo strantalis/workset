@@ -858,3 +858,312 @@ func (a *App) ListRepoDirectory(input RepoDirectoryListRequest) ([]RepoDirectory
 
 	return entries, nil
 }
+
+// ── Git Blame ──────────────────────────────────────────────
+
+type RepoBlameRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	RepoID      string `json:"repoId"`
+	Path        string `json:"path"`
+	Ref         string `json:"ref,omitempty"`
+}
+
+type RepoBlameEntry struct {
+	StartLine  int    `json:"startLine"`
+	EndLine    int    `json:"endLine"`
+	CommitHash string `json:"commitHash"`
+	Author     string `json:"author"`
+	AuthorDate string `json:"authorDate"`
+	Summary    string `json:"summary"`
+}
+
+func (a *App) GetRepoBlame(input RepoBlameRequest) ([]RepoBlameEntry, error) {
+	ctx := a.appContext()
+
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	repoID := strings.TrimSpace(input.RepoID)
+	path := strings.TrimSpace(input.Path)
+	ref := strings.TrimSpace(input.Ref)
+	if workspaceID == "" || repoID == "" || path == "" {
+		return nil, errors.New("workspace, repo, and path are required")
+	}
+	if ref == "" {
+		ref = "HEAD"
+	}
+
+	repos, err := a.resolveWorkspaceRepos(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	var repo workspaceRepoRef
+	found := false
+	for _, candidate := range repos {
+		if candidate.id == repoID {
+			repo = candidate
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("repo %q not found in workspace %q", repoID, workspaceID)
+	}
+
+	_, normalizedPath, err := resolveRepoFilePath(repo.path, path)
+	if err != nil {
+		return nil, err
+	}
+
+	cmd := exec.CommandContext(ctx, "git", "blame", "--line-porcelain", ref, "--", normalizedPath)
+	cmd.Dir = repo.path
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git blame: %w", err)
+	}
+
+	return parseBlameOutput(output), nil
+}
+
+func parseBlameOutput(output []byte) []RepoBlameEntry {
+	var entries []RepoBlameEntry
+	lines := strings.Split(string(output), "\n")
+
+	var currentHash, author, authorDate, summary string
+	var lineNum int
+
+	for _, line := range lines {
+		if len(line) == 0 {
+			continue
+		}
+		if len(line) >= 40 && isHexString(line[:40]) {
+			parts := strings.Fields(line)
+			if len(parts) >= 3 {
+				currentHash = parts[0]
+				if n, err := fmt.Sscanf(parts[2], "%d", &lineNum); n == 1 && err == nil {
+					// valid line number
+				}
+			}
+			continue
+		}
+		if strings.HasPrefix(line, "author ") {
+			author = strings.TrimPrefix(line, "author ")
+			continue
+		}
+		if strings.HasPrefix(line, "author-time ") {
+			ts := strings.TrimPrefix(line, "author-time ")
+			if t, err := fmt.Sscanf(ts, "%d", new(int64)); t == 1 && err == nil {
+				var epoch int64
+				fmt.Sscanf(ts, "%d", &epoch) //nolint:errcheck
+				authorDate = time.Unix(epoch, 0).Format(time.RFC3339)
+			}
+			continue
+		}
+		if strings.HasPrefix(line, "summary ") {
+			summary = strings.TrimPrefix(line, "summary ")
+			continue
+		}
+		if strings.HasPrefix(line, "\t") {
+			// This is the content line — end of this blame entry
+			if currentHash != "" && lineNum > 0 {
+				// Try to merge with the last entry if same commit and adjacent
+				if len(entries) > 0 {
+					last := &entries[len(entries)-1]
+					if last.CommitHash == currentHash && last.EndLine == lineNum-1 {
+						last.EndLine = lineNum
+						continue
+					}
+				}
+				entries = append(entries, RepoBlameEntry{
+					StartLine:  lineNum,
+					EndLine:    lineNum,
+					CommitHash: currentHash,
+					Author:     author,
+					AuthorDate: authorDate,
+					Summary:    summary,
+				})
+			}
+		}
+	}
+
+	return entries
+}
+
+func isHexString(s string) bool {
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
+// ── File Creation ──────────────────────────────────────────
+
+type RepoFileCreateRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	RepoID      string `json:"repoId"`
+	Path        string `json:"path"`
+	Content     string `json:"content"`
+}
+
+func resolveRepoFilePathForCreate(repoRoot, rawPath string) (string, string, error) {
+	repoRoot = filepath.Clean(strings.TrimSpace(repoRoot))
+	if repoRoot == "" {
+		return "", "", errors.New("repo root is required")
+	}
+	cleanPath := filepath.Clean(strings.TrimSpace(rawPath))
+	if cleanPath == "." || cleanPath == "" {
+		return "", "", errors.New("file path is required")
+	}
+	if filepath.IsAbs(cleanPath) {
+		return "", "", errors.New("file path must be relative")
+	}
+	if cleanPath == ".." || strings.HasPrefix(cleanPath, ".."+string(filepath.Separator)) {
+		return "", "", errors.New("file path escapes repo root")
+	}
+
+	resolvedRoot, err := filepath.EvalSymlinks(repoRoot)
+	if err != nil {
+		return "", "", fmt.Errorf("resolve repo root: %w", err)
+	}
+	targetPath := filepath.Join(resolvedRoot, cleanPath)
+
+	// Verify the target stays within the repo root
+	rel, err := filepath.Rel(resolvedRoot, targetPath)
+	if err != nil {
+		return "", "", fmt.Errorf("resolve file path: %w", err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", "", errors.New("file path escapes repo root")
+	}
+
+	// Refuse paths inside .git
+	if strings.HasPrefix(rel, ".git") {
+		return "", "", errors.New("cannot create files inside .git directory")
+	}
+
+	return targetPath, filepath.ToSlash(cleanPath), nil
+}
+
+func (a *App) CreateWorkspaceRepoFile(input RepoFileCreateRequest) (RepoFileWriteResponse, error) {
+	ctx := a.appContext()
+
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	repoID := strings.TrimSpace(input.RepoID)
+	if workspaceID == "" || repoID == "" {
+		return RepoFileWriteResponse{}, errors.New("workspace and repo are required")
+	}
+	if len(input.Content) > maxRepoFileWriteBytes {
+		return RepoFileWriteResponse{}, fmt.Errorf("content too large (%d bytes, limit %d)", len(input.Content), maxRepoFileWriteBytes)
+	}
+
+	repos, err := a.resolveWorkspaceRepos(ctx, workspaceID)
+	if err != nil {
+		return RepoFileWriteResponse{}, err
+	}
+	var repo workspaceRepoRef
+	found := false
+	for _, candidate := range repos {
+		if candidate.id == repoID {
+			repo = candidate
+			found = true
+			break
+		}
+	}
+	if !found {
+		return RepoFileWriteResponse{}, fmt.Errorf("repo %q not found in workspace %q", repoID, workspaceID)
+	}
+
+	targetPath, _, err := resolveRepoFilePathForCreate(repo.path, input.Path)
+	if err != nil {
+		return RepoFileWriteResponse{}, err
+	}
+
+	// Check file doesn't already exist
+	if _, err := os.Stat(targetPath); err == nil {
+		return RepoFileWriteResponse{}, fmt.Errorf("file already exists: %s", input.Path)
+	}
+
+	// Create intermediate directories
+	dir := filepath.Dir(targetPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return RepoFileWriteResponse{}, fmt.Errorf("create directories: %w", err)
+	}
+
+	// Create file exclusively
+	f, err := os.OpenFile(targetPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	if err != nil {
+		return RepoFileWriteResponse{}, fmt.Errorf("create file: %w", err)
+	}
+	defer f.Close()
+
+	if _, err := f.WriteString(input.Content); err != nil {
+		return RepoFileWriteResponse{}, fmt.Errorf("write file: %w", err)
+	}
+
+	return RepoFileWriteResponse{Written: true}, nil
+}
+
+// ── File Deletion ──────────────────────────────────────────
+
+type RepoFileDeleteRequest struct {
+	WorkspaceID string `json:"workspaceId"`
+	RepoID      string `json:"repoId"`
+	Path        string `json:"path"`
+}
+
+type RepoFileDeleteResponse struct {
+	Deleted bool   `json:"deleted"`
+	Error   string `json:"error,omitempty"`
+}
+
+func (a *App) DeleteWorkspaceRepoFile(input RepoFileDeleteRequest) (RepoFileDeleteResponse, error) {
+	ctx := a.appContext()
+
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	repoID := strings.TrimSpace(input.RepoID)
+	if workspaceID == "" || repoID == "" {
+		return RepoFileDeleteResponse{}, errors.New("workspace and repo are required")
+	}
+
+	repos, err := a.resolveWorkspaceRepos(ctx, workspaceID)
+	if err != nil {
+		return RepoFileDeleteResponse{}, err
+	}
+	var repo workspaceRepoRef
+	found := false
+	for _, candidate := range repos {
+		if candidate.id == repoID {
+			repo = candidate
+			found = true
+			break
+		}
+	}
+	if !found {
+		return RepoFileDeleteResponse{}, fmt.Errorf("repo %q not found in workspace %q", repoID, workspaceID)
+	}
+
+	resolvedPath, normalizedPath, err := resolveRepoFilePath(repo.path, input.Path)
+	if err != nil {
+		return RepoFileDeleteResponse{}, err
+	}
+
+	// Refuse to delete anything inside .git
+	if strings.HasPrefix(normalizedPath, ".git") {
+		return RepoFileDeleteResponse{}, errors.New("cannot delete files inside .git directory")
+	}
+
+	// Only delete files, not directories
+	info, err := os.Stat(resolvedPath)
+	if err != nil {
+		return RepoFileDeleteResponse{}, err
+	}
+	if info.IsDir() {
+		return RepoFileDeleteResponse{}, errors.New("cannot delete directories")
+	}
+
+	if err := os.Remove(resolvedPath); err != nil {
+		return RepoFileDeleteResponse{}, fmt.Errorf("delete file: %w", err)
+	}
+
+	return RepoFileDeleteResponse{Deleted: true}, nil
+}

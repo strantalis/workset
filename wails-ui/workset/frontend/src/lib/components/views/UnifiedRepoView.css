@@ -1,0 +1,1038 @@
+.urv {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	background: var(--bg);
+}
+
+.urv-empty {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 16px;
+	color: var(--muted);
+	opacity: 0.5;
+}
+
+/* ── Sidebar ─────────────────────────────────────────── */
+.urv-sidebar {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	background: var(--panel);
+	border-right: 1px solid var(--border);
+}
+
+.urv-tree-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 8px 10px;
+	border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.urv-tree-title {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: var(--text-xxs);
+	font-weight: 500;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--muted);
+}
+
+.urv-tree-actions {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.urv-tree-action {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: 5px;
+	background: transparent;
+	color: var(--muted);
+	cursor: pointer;
+	transition: all var(--transition-fast);
+}
+
+.urv-tree-action:hover {
+	color: var(--text);
+	background: var(--hover-bg);
+	border-color: var(--border);
+}
+
+.urv-tree-search {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 10px;
+	border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+	color: var(--muted);
+}
+
+.urv-tree-search input {
+	flex: 1;
+	background: transparent;
+	border: none;
+	color: var(--text);
+	font-size: var(--text-xs);
+	font-family: inherit;
+	outline: none;
+}
+
+.urv-tree-search input::placeholder {
+	color: var(--subtle);
+}
+
+.urv-tree-list {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+}
+
+/* ── Tree nodes ──────────────────────────────────────── */
+.urv-tree-repo,
+.urv-tree-dir,
+.urv-tree-file {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	width: 100%;
+	padding: 4px 8px;
+	padding-left: calc(8px + var(--depth, 0) * 14px);
+	border: none;
+	background: transparent;
+	color: var(--text);
+	text-align: left;
+	font-size: var(--text-xxs);
+	cursor: pointer;
+	transition: background var(--transition-fast);
+}
+
+.urv-tree-repo:hover,
+.urv-tree-dir:hover,
+.urv-tree-file:hover {
+	background: var(--hover-bg);
+}
+
+.urv-tree-repo.focused,
+.urv-tree-dir.focused,
+.urv-tree-file.focused {
+	outline: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+	outline-offset: -1px;
+	background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.urv-tree-list:focus-visible {
+	outline: none;
+}
+
+.urv-tree-repo {
+	font-weight: 500;
+	padding-top: 6px;
+	padding-bottom: 6px;
+}
+
+.urv-tree-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	flex: 1;
+	min-width: 0;
+}
+
+.urv-tree-count {
+	font-size: var(--text-2xs);
+	color: var(--subtle);
+	font-family: var(--font-mono);
+}
+
+.urv-tree-change-badge {
+	display: inline-flex;
+	gap: 4px;
+	font-size: var(--text-mono-2xs);
+	font-family: var(--font-mono);
+	flex-shrink: 0;
+}
+
+.urv-badge-add {
+	color: var(--success);
+}
+
+.urv-badge-del {
+	color: var(--danger);
+}
+
+.urv-tree-state {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 8px;
+	padding-left: calc(8px + var(--depth, 0) * 14px);
+	font-size: var(--text-2xs);
+	color: var(--muted);
+}
+
+.urv-tree-state.error {
+	color: var(--danger);
+}
+
+.urv-tree-file {
+	color: var(--muted);
+}
+
+.urv-tree-file.selected {
+	background: var(--active-accent-bg);
+	color: var(--text);
+}
+
+.urv-tree-file.selected .urv-tree-file-name {
+	color: var(--accent);
+}
+
+.urv-tree-file.changed .urv-tree-file-name {
+	color: var(--text);
+}
+
+.urv-tree-file.dirty .urv-tree-file-name {
+	font-style: italic;
+}
+
+.urv-tree-file.dirty .urv-tree-file-name::after {
+	content: '';
+	display: inline-block;
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--warning);
+	margin-left: 6px;
+	vertical-align: middle;
+}
+
+/* File icon colors by type (data-icon attribute) */
+.urv-file-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+
+.urv-file-icon[data-icon='file-icons:typescript'],
+.urv-file-icon[data-icon='file-icons:tsx'] {
+	color: #3178c6;
+}
+
+.urv-file-icon[data-icon='file-icons:javascript'],
+.urv-file-icon[data-icon='file-icons:jsx'] {
+	color: #f7df1e;
+}
+
+.urv-file-icon[data-icon='file-icons:python'] {
+	color: #3776ab;
+}
+
+.urv-file-icon[data-icon='file-icons:go'] {
+	color: #00add8;
+}
+
+.urv-file-icon[data-icon='file-icons:go'] svg {
+	width: 14px;
+	height: 14px;
+}
+
+.urv-file-icon[data-icon='file-icons:rust'] {
+	color: #dea584;
+}
+
+.urv-file-icon[data-icon='file-icons:java'] {
+	color: #b07219;
+}
+
+.urv-file-icon[data-icon='file-icons:kotlin'] {
+	color: #7f52ff;
+}
+
+.urv-file-icon[data-icon='file-icons:swift'] {
+	color: #f05138;
+}
+
+.urv-file-icon[data-icon='file-icons:ruby'] {
+	color: #cc342d;
+}
+
+.urv-file-icon[data-icon='file-icons:php'] {
+	color: #777bb4;
+}
+
+.urv-file-icon[data-icon='file-icons:c'] {
+	color: #a8b4be;
+}
+
+.urv-file-icon[data-icon='file-icons:cpp'] {
+	color: #f34b7d;
+}
+
+.urv-file-icon[data-icon='file-icons:csharp'] {
+	color: #a370c4;
+}
+
+.urv-file-icon[data-icon='file-icons:html'] {
+	color: #e34c26;
+}
+
+.urv-file-icon[data-icon='file-icons:css'] {
+	color: #563d7c;
+}
+
+.urv-file-icon[data-icon='file-icons:vue'] {
+	color: #41b883;
+}
+
+.urv-file-icon[data-icon='file-icons:svelte'] {
+	color: #ff3e00;
+}
+
+.urv-file-icon[data-icon='file-icons:json-1'] {
+	color: #cbcb41;
+}
+
+.urv-file-icon[data-icon='file-icons:yaml'] {
+	color: #cb171e;
+}
+
+.urv-file-icon[data-icon='codicon:markdown'] {
+	color: #e2725b;
+}
+
+.urv-file-icon[data-icon='file-icons:config'] {
+	color: #c4a56a;
+}
+
+.urv-file-icon[data-icon='file-icons:toml'] {
+	color: #c89b6a;
+}
+
+.urv-file-icon[data-icon='file-icons:docker'] {
+	color: #2496ed;
+}
+
+.urv-file-icon[data-icon='file-icons:git'] {
+	color: #f14e32;
+}
+
+.urv-file-icon[data-icon='file-icons:npm'] {
+	color: #cb3837;
+}
+
+.urv-file-icon[data-icon='file-icons:terminal'] {
+	color: #4eaa25;
+}
+
+.urv-file-icon[data-icon='file-icons:image'] {
+	color: #a074c4;
+}
+
+.urv-file-icon[data-icon='codicon:archive'] {
+	color: #acacac;
+}
+
+.urv-file-icon[data-icon='codicon:lock'] {
+	color: #e8d44d;
+}
+
+.urv-file-icon[data-icon='codicon:law'] {
+	color: #d0b352;
+}
+
+.urv-file-icon[data-icon='file-icons:gnu'] {
+	color: #e8883a;
+}
+
+.urv-file-icon[data-icon='file-icons:graphql'] {
+	color: #e10098;
+}
+
+.urv-file-icon[data-icon='file-icons:proto'] {
+	color: #4285f4;
+}
+
+.urv-file-icon[data-icon='codicon:database'] {
+	color: #dad8d8;
+}
+
+.urv-file-icon[data-icon='codicon:table'] {
+	color: #41a35d;
+}
+
+.urv-tree-file-name {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.urv-tree-file-diff {
+	display: inline-flex;
+	gap: 3px;
+	font-size: var(--text-mono-2xs);
+	font-family: var(--font-mono);
+	flex-shrink: 0;
+}
+
+.urv-tree-comment-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	padding: 0 5px;
+	border-radius: 999px;
+	font-size: var(--text-mono-2xs);
+	font-family: var(--font-mono);
+	color: color-mix(in srgb, #d28a1f 82%, white);
+	background: color-mix(in srgb, #d28a1f 14%, transparent);
+	border: 1px solid color-mix(in srgb, #d28a1f 58%, transparent);
+	flex-shrink: 0;
+}
+
+.urv-tree-file-comments {
+	margin-left: 2px;
+}
+
+.urv-tree-file-delete {
+	display: none;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	padding: 2px;
+	border-radius: 3px;
+	color: var(--muted);
+	cursor: pointer;
+}
+
+.urv-tree-file:hover .urv-tree-file-delete {
+	display: inline-flex;
+}
+
+.urv-tree-file-delete:hover {
+	color: var(--danger);
+	background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+/* Directory change indicator */
+.urv-tree-dir.has-changes .urv-tree-label {
+	color: var(--text);
+}
+
+.urv-tree-dir-changes {
+	font-size: var(--text-mono-2xs);
+	font-family: var(--font-mono);
+	color: var(--warning);
+	background: color-mix(in srgb, var(--warning) 12%, transparent);
+	padding: 0 5px;
+	border-radius: 8px;
+	flex-shrink: 0;
+}
+
+/* PR indicator on repo node */
+.urv-pr-indicator {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	cursor: pointer;
+	flex-shrink: 0;
+	transition: all var(--transition-fast);
+}
+
+.urv-pr-open {
+	color: var(--success);
+}
+
+.urv-pr-draft {
+	color: var(--muted);
+}
+
+.urv-pr-indicator:hover {
+	background: var(--hover-bg);
+}
+
+/* PR action in header — highlight when PR is tracked */
+.urv-action-pr {
+	color: var(--success);
+}
+
+/* ── Main panel ──────────────────────────────────────── */
+.urv-main {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	min-width: 0;
+	background: var(--bg);
+	position: relative;
+}
+
+.urv-show-tree-btn {
+	position: absolute;
+	top: 8px;
+	left: 8px;
+	z-index: 5;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--panel);
+	color: var(--muted);
+	cursor: pointer;
+	transition: all var(--transition-fast);
+}
+
+.urv-show-tree-btn:hover {
+	color: var(--text);
+	background: var(--hover-bg);
+}
+
+.urv-file-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 8px 16px;
+	background: var(--panel-strong);
+	border-bottom: 1px solid var(--border);
+	flex-shrink: 0;
+}
+
+.urv-file-info {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-width: 0;
+}
+
+.urv-file-path {
+	font-family: var(--font-mono);
+	font-size: var(--text-mono-sm);
+	color: var(--muted);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.urv-file-stats {
+	display: inline-flex;
+	gap: 6px;
+	flex-shrink: 0;
+}
+
+.urv-stat-add {
+	color: var(--success);
+	font-family: var(--font-mono);
+	font-size: var(--text-mono-2xs);
+}
+
+.urv-stat-del {
+	color: var(--danger);
+	font-family: var(--font-mono);
+	font-size: var(--text-mono-2xs);
+}
+
+.urv-file-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-shrink: 0;
+}
+
+.urv-file-nav {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	overflow: hidden;
+}
+
+.urv-nav-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 26px;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: var(--muted);
+	cursor: pointer;
+	transition: all var(--transition-fast);
+}
+
+.urv-nav-btn:hover:not(:disabled) {
+	color: var(--text);
+	background: var(--hover-bg);
+}
+
+.urv-nav-btn:disabled {
+	opacity: 0.35;
+	cursor: not-allowed;
+}
+
+.urv-nav-pos {
+	font-size: var(--text-2xs);
+	font-family: var(--font-mono);
+	color: var(--muted);
+	padding: 0 4px;
+}
+
+.urv-toggle-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: transparent;
+	color: var(--muted);
+	cursor: pointer;
+	transition: all var(--transition-fast);
+}
+
+.urv-toggle-btn:hover {
+	color: var(--text);
+	background: var(--hover-bg);
+}
+
+.urv-toggle-btn.active {
+	color: var(--accent);
+	border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+	background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.urv-save-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: 1px solid color-mix(in srgb, var(--success) 40%, var(--border));
+	border-radius: 6px;
+	background: color-mix(in srgb, var(--success) 14%, transparent);
+	color: var(--success);
+	cursor: pointer;
+	transition: all var(--transition-fast);
+}
+
+.urv-save-btn:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--success) 22%, transparent);
+}
+
+.urv-save-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.urv-editor {
+	flex: 1;
+	min-height: 0;
+	min-width: 0;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+
+.urv-placeholder {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	color: var(--subtle);
+	font-size: var(--text-base);
+	text-align: center;
+}
+
+/* ── Markdown rendering ──────────────────────────────── */
+.urv-markdown-view {
+	flex: 1;
+	overflow-y: auto;
+	padding: 20px 24px;
+	color: var(--text);
+	font-size: 13px;
+	line-height: 1.68;
+}
+
+.urv-markdown-view > *:first-child {
+	margin-top: 0;
+}
+
+.urv-markdown-view h1,
+.urv-markdown-view h2,
+.urv-markdown-view h3,
+.urv-markdown-view h4 {
+	color: var(--text);
+	margin: 1.2em 0 0.5em;
+}
+
+.urv-markdown-view h1 {
+	font-size: 22px;
+	font-weight: 600;
+	border-bottom: 1px solid var(--border);
+	padding-bottom: 6px;
+}
+
+.urv-markdown-view h2 {
+	font-size: 18px;
+	font-weight: 600;
+	border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+	padding-bottom: 4px;
+}
+
+.urv-markdown-view h3 {
+	font-size: 15px;
+	font-weight: 600;
+}
+
+.urv-markdown-view h4 {
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.urv-markdown-view p {
+	margin: 0.6em 0;
+}
+
+.urv-markdown-view a {
+	color: var(--accent);
+	text-decoration: none;
+}
+
+.urv-markdown-view a:hover {
+	text-decoration: underline;
+}
+
+.urv-markdown-view code {
+	font-family: var(--font-mono);
+	font-size: 12px;
+	background: var(--panel-strong);
+	padding: 2px 5px;
+	border-radius: 4px;
+}
+
+.urv-markdown-view pre {
+	background: var(--panel-strong);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 14px 16px;
+	overflow-x: auto;
+	margin: 0.8em 0;
+}
+
+.urv-markdown-view pre code {
+	background: none;
+	padding: 0;
+	border-radius: 0;
+}
+
+.urv-markdown-view ul,
+.urv-markdown-view ol {
+	padding-left: 1.5em;
+	margin: 0.5em 0;
+}
+
+.urv-markdown-view li {
+	margin: 0.25em 0;
+}
+
+.urv-markdown-view blockquote {
+	border-left: 3px solid var(--accent);
+	padding-left: 14px;
+	color: var(--muted);
+	margin: 0.8em 0;
+}
+
+.urv-markdown-view table {
+	border-collapse: collapse;
+	width: 100%;
+	margin: 0.8em 0;
+}
+
+.urv-markdown-view th,
+.urv-markdown-view td {
+	border: 1px solid var(--border);
+	padding: 6px 12px;
+	text-align: left;
+}
+
+.urv-markdown-view th {
+	background: var(--panel-strong);
+	font-weight: 600;
+}
+
+.urv-markdown-view hr {
+	border: none;
+	border-top: 1px solid var(--border);
+	margin: 1.5em 0;
+}
+
+.urv-markdown-view img {
+	max-width: 100%;
+	border-radius: 6px;
+}
+
+/* Mermaid diagrams */
+.urv-markdown-view .ws-mermaid-block {
+	margin: 1em 0;
+}
+
+.urv-markdown-view .ws-mermaid-diagram {
+	display: flex;
+	justify-content: center;
+	padding: 16px;
+	background: var(--panel-strong);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	cursor: pointer;
+}
+
+.urv-markdown-view .ws-mermaid-diagram svg {
+	max-width: 100%;
+	height: auto;
+}
+
+.urv-markdown-view .ws-mermaid-error {
+	font-size: 12px;
+	color: var(--danger);
+	padding: 8px;
+}
+
+/* Shiki code blocks inside markdown */
+.urv-markdown-view .shiki {
+	background: var(--panel-strong) !important;
+	border-radius: 8px;
+	padding: 14px 16px;
+	overflow-x: auto;
+	font-size: 12px;
+}
+
+/* Badge images inline (shields.io etc.) */
+.urv-markdown-view p > a > img[src*='shields.io'],
+.urv-markdown-view p > a > img[src*='badge'],
+.urv-markdown-view p > a > img[alt*='passing'],
+.urv-markdown-view p > a > img[alt*='failing'] {
+	display: inline;
+	vertical-align: middle;
+}
+
+.urv-markdown-view p > a:has(> img[src*='shields.io']),
+.urv-markdown-view p > a:has(> img[src*='badge']) {
+	display: inline;
+	margin-right: 4px;
+}
+
+/* Make paragraphs that only contain badge links flow inline */
+.urv-markdown-view p:has(> a > img[src*='shields.io']):not(:has(br ~ br)) {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	align-items: center;
+}
+
+/* ── Mermaid overlay ────────────────────────────────── */
+.mm-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 100;
+	background: rgba(0, 0, 0, 0.6);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	animation: sd-fade-in 120ms ease-out;
+}
+
+.mm-panel {
+	width: 90vw;
+	height: 85vh;
+	max-width: 1200px;
+	display: flex;
+	flex-direction: column;
+	background: var(--panel);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	box-shadow: var(--shadow-lg);
+	overflow: hidden;
+}
+
+.mm-toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 10px 16px;
+	border-bottom: 1px solid var(--border);
+	flex-shrink: 0;
+}
+
+.mm-zoom-actions {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.mm-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: transparent;
+	color: var(--muted);
+	cursor: pointer;
+	transition: all var(--transition-fast);
+}
+
+.mm-btn:hover {
+	color: var(--text);
+	background: var(--hover-bg);
+}
+
+.mm-btn-text {
+	padding: 4px 10px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: transparent;
+	color: var(--muted);
+	font-size: var(--text-xs);
+	font-family: var(--font-mono);
+	cursor: pointer;
+}
+
+.mm-btn-text:hover {
+	color: var(--text);
+}
+
+.mm-canvas {
+	flex: 1;
+	overflow: hidden;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.mm-surface {
+	width: 100%;
+	height: 100%;
+	cursor: grab;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	overflow: hidden;
+}
+
+.mm-surface.dragging {
+	cursor: grabbing;
+}
+
+.mm-stage {
+	transform-origin: center center;
+	transform: translate(var(--mm-x, 0), var(--mm-y, 0)) scale(var(--mm-scale, 1));
+	width: var(--mm-w, auto);
+	height: var(--mm-h, auto);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.mm-stage svg {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+/* ── Dialogs ─────────────────────────────────────────── */
+.urv-new-file-dialog label {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	font-size: var(--text-sm);
+	color: var(--text);
+}
+
+.urv-new-file-dialog input {
+	padding: 6px 10px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--panel);
+	color: var(--text);
+	font-size: var(--text-sm);
+	font-family: var(--font-mono);
+}
+
+.urv-new-file-dialog input:focus {
+	outline: none;
+	border-color: var(--accent);
+}
+
+.urv-delete-confirm-text {
+	font-size: var(--text-sm);
+	color: var(--text);
+	margin: 0;
+}
+
+.urv-dialog-btn {
+	padding: 6px 14px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: transparent;
+	color: var(--text);
+	font-size: var(--text-sm);
+	cursor: pointer;
+}
+
+.urv-dialog-btn:hover {
+	background: var(--hover-bg);
+}
+
+.urv-dialog-btn-primary {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: #fff;
+}
+
+.urv-dialog-btn-primary:hover {
+	opacity: 0.9;
+}
+
+.urv-dialog-btn-danger {
+	background: var(--danger);
+	border-color: var(--danger);
+	color: #fff;
+}
+
+.urv-dialog-btn-danger:hover {
+	opacity: 0.9;
+}

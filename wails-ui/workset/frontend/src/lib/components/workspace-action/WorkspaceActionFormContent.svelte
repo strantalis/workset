@@ -52,6 +52,8 @@
 		onAddSubmit: () => void;
 
 		createWorkspaceName: string;
+		createDescription?: string;
+		createNameValidationError?: string | null;
 		createWorksetLabel?: string | null;
 		createSourceInput: string;
 		createDirectRepos: Array<{ url: string; register: boolean }>;
@@ -59,6 +61,7 @@
 		createThreadHooksLoading?: boolean;
 		createThreadHooksError?: string | null;
 		onCreateWorkspaceNameInput: (value: string) => void;
+		onCreateDescriptionInput?: (value: string) => void;
 		onCreateSearchQueryInput: (value: string) => void;
 		onCreateSourceInput: (value: string) => void;
 		onCreateAddDirectRepo: () => void;
@@ -119,6 +122,8 @@
 		onAddSubmit,
 
 		createWorkspaceName,
+		createDescription = '',
+		createNameValidationError = null,
 		createWorksetLabel = null,
 		createSourceInput,
 		createDirectRepos,
@@ -126,6 +131,7 @@
 		createThreadHooksLoading = false,
 		createThreadHooksError = null,
 		onCreateWorkspaceNameInput,
+		onCreateDescriptionInput,
 		onCreateSearchQueryInput,
 		onCreateSourceInput,
 		onCreateAddDirectRepo,
@@ -175,6 +181,8 @@
 		modeVariant={mode === 'create-thread' ? 'thread' : 'workset'}
 		worksetLabel={createWorksetLabel}
 		workspaceName={createWorkspaceName}
+		description={createDescription}
+		nameValidationError={createNameValidationError}
 		{searchQuery}
 		sourceInput={createSourceInput}
 		directRepos={createDirectRepos}
@@ -185,6 +193,7 @@
 		{selectedAliases}
 		{getAliasSource}
 		onWorkspaceNameInput={onCreateWorkspaceNameInput}
+		onDescriptionInput={onCreateDescriptionInput}
 		onSearchQueryInput={onCreateSearchQueryInput}
 		onSourceInput={onCreateSourceInput}
 		onAddDirectRepo={onCreateAddDirectRepo}

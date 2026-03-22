@@ -32,6 +32,7 @@
 	let langExt: Extension | null = null;
 
 	const buildExtensions = (): Extension[] => [
+		EditorView.lineWrapping,
 		lineNumbers(),
 		highlightActiveLine(),
 		bracketMatching(),

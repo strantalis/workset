@@ -1,5 +1,10 @@
 import { derived, get, writable } from 'svelte/store';
-import type { RepoDiffSummary, Workspace } from './types';
+import type {
+	PullRequestReviewComment,
+	PullRequestSummary,
+	RepoDiffSummary,
+	Workspace,
+} from './types';
 import type { RepoLocalStatus } from './api/github';
 import {
 	fetchWorkspaces,
@@ -222,6 +227,46 @@ type RepoPatch = {
 	ahead?: number;
 	behind?: number;
 	currentBranch?: string;
+	trackedPullRequest?: PullRequestSummary | null;
+};
+
+const normalizeTrackedPullRequest = (tracked: PullRequestSummary): PullRequestSummary => ({
+	...tracked,
+	merged: tracked.merged === true || tracked.state.toLowerCase() === 'merged',
+	commentsCount: tracked.commentsCount ?? 0,
+	reviewCommentsCount: tracked.reviewCommentsCount ?? 0,
+});
+
+const shouldRetainTrackedPullRequest = (tracked: PullRequestSummary): boolean => {
+	const state = tracked.state.toLowerCase();
+	return tracked.merged === true || state === 'open' || state === 'draft' || state === 'merged';
+};
+
+const trackedPullRequestsEqual = (
+	left: PullRequestSummary | undefined,
+	right: PullRequestSummary | undefined,
+): boolean => {
+	if (left === right) return true;
+	if (!left || !right) return false;
+	return (
+		left.repo === right.repo &&
+		left.number === right.number &&
+		left.url === right.url &&
+		left.title === right.title &&
+		left.body === right.body &&
+		left.state === right.state &&
+		left.draft === right.draft &&
+		left.merged === right.merged &&
+		left.baseRepo === right.baseRepo &&
+		left.baseBranch === right.baseBranch &&
+		left.headRepo === right.headRepo &&
+		left.headBranch === right.headBranch &&
+		left.updatedAt === right.updatedAt &&
+		left.mergeable === right.mergeable &&
+		left.author === right.author &&
+		left.commentsCount === right.commentsCount &&
+		left.reviewCommentsCount === right.reviewCommentsCount
+	);
 };
 
 const applyRepoPatch = (workspaceId: string, repoId: string, patch: RepoPatch): void => {
@@ -268,6 +313,16 @@ const applyRepoPatch = (workspaceId: string, repoId: string, patch: RepoPatch): 
 					updated = { ...updated, currentBranch: patch.currentBranch };
 					repoChanged = true;
 				}
+				if (patch.trackedPullRequest !== undefined) {
+					const nextTracked =
+						patch.trackedPullRequest === null
+							? undefined
+							: normalizeTrackedPullRequest(patch.trackedPullRequest);
+					if (!trackedPullRequestsEqual(updated.trackedPullRequest, nextTracked)) {
+						updated = { ...updated, trackedPullRequest: nextTracked };
+						repoChanged = true;
+					}
+				}
 				return repoChanged ? updated : repo;
 			});
 			if (!repoChanged) {
@@ -306,4 +361,68 @@ export const applyRepoLocalStatus = (
 		patch.diff = { added: 0, removed: 0 };
 	}
 	applyRepoPatch(workspaceId, repoId, patch);
+};
+
+export const applyTrackedPullRequest = (
+	workspaceId: string,
+	repoId: string,
+	trackedPullRequest: PullRequestSummary | null,
+): void => {
+	if (!trackedPullRequest) {
+		applyRepoPatch(workspaceId, repoId, { trackedPullRequest: null });
+		return;
+	}
+
+	const normalized = normalizeTrackedPullRequest(trackedPullRequest);
+	applyRepoPatch(workspaceId, repoId, {
+		trackedPullRequest: shouldRetainTrackedPullRequest(normalized) ? normalized : null,
+	});
+};
+
+export const applyTrackedPullRequestReviewComments = (
+	workspaceId: string,
+	repoId: string,
+	comments: PullRequestReviewComment[],
+): void => {
+	workspaces.update((current) => {
+		let changed = false;
+		const next = current.map((workspace) => {
+			if (workspace.id !== workspaceId) {
+				return workspace;
+			}
+
+			let repoChanged = false;
+			const repos = workspace.repos.map((repo) => {
+				if (repo.id !== repoId || !repo.trackedPullRequest) {
+					return repo;
+				}
+
+				const currentReviewCount = repo.trackedPullRequest.reviewCommentsCount ?? 0;
+				const currentTotalCount = repo.trackedPullRequest.commentsCount ?? currentReviewCount;
+				const baseCommentCount = Math.max(0, currentTotalCount - currentReviewCount);
+				const nextReviewCount = comments.length;
+				const nextTotalCount = baseCommentCount + nextReviewCount;
+				if (currentReviewCount === nextReviewCount && currentTotalCount === nextTotalCount) {
+					return repo;
+				}
+
+				repoChanged = true;
+				return {
+					...repo,
+					trackedPullRequest: {
+						...repo.trackedPullRequest,
+						commentsCount: nextTotalCount,
+						reviewCommentsCount: nextReviewCount,
+					},
+				};
+			});
+
+			if (!repoChanged) {
+				return workspace;
+			}
+			changed = true;
+			return { ...workspace, repos };
+		});
+		return changed ? next : current;
+	});
 };

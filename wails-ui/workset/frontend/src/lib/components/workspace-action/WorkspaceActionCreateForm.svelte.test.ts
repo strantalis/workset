@@ -59,7 +59,7 @@ describe('WorkspaceActionCreateForm', () => {
 			props: baseProps(),
 		});
 		const sourceInput = getByPlaceholderText(
-			'git@github.com:org/repo.git or search GitHub',
+			'Search catalog, GitHub, or paste URL',
 		) as HTMLInputElement;
 
 		await fireEvent.focus(sourceInput);
@@ -92,7 +92,7 @@ describe('WorkspaceActionCreateForm', () => {
 			props,
 		});
 		const sourceInput = getByPlaceholderText(
-			'git@github.com:org/repo.git or search GitHub',
+			'Search catalog, GitHub, or paste URL',
 		) as HTMLInputElement;
 
 		await fireEvent.focus(sourceInput);
@@ -100,7 +100,9 @@ describe('WorkspaceActionCreateForm', () => {
 		await vi.advanceTimersByTimeAsync(260);
 
 		await fireEvent.mouseDown(getByText('strantalis/workset'));
-		expect(props.onSourceInput).toHaveBeenLastCalledWith('git@github.com:strantalis/workset.git');
+		expect(props.onSourceInput).toHaveBeenCalledWith('git@github.com:strantalis/workset.git');
+		expect(props.onAddDirectRepo).toHaveBeenCalled();
+		expect(props.onSourceInput).toHaveBeenLastCalledWith('');
 	});
 
 	test('does not query GitHub for local path-like input', async () => {
@@ -108,7 +110,7 @@ describe('WorkspaceActionCreateForm', () => {
 			props: baseProps(),
 		});
 		const sourceInput = getByPlaceholderText(
-			'git@github.com:org/repo.git or search GitHub',
+			'Search catalog, GitHub, or paste URL',
 		) as HTMLInputElement;
 
 		await fireEvent.focus(sourceInput);
@@ -119,7 +121,7 @@ describe('WorkspaceActionCreateForm', () => {
 	});
 
 	test('hides repo selection controls in thread mode', () => {
-		const { queryByText, queryByPlaceholderText, getByText } = render(WorkspaceActionCreateForm, {
+		const { queryByPlaceholderText, getByText } = render(WorkspaceActionCreateForm, {
 			props: {
 				...baseProps(),
 				modeVariant: 'thread' as const,
@@ -130,11 +132,7 @@ describe('WorkspaceActionCreateForm', () => {
 		});
 
 		expect(getByText('Platform Core')).toBeInTheDocument();
-		expect(queryByText('Add Repository')).not.toBeInTheDocument();
-		expect(queryByText('Repo Catalog')).not.toBeInTheDocument();
-		expect(
-			queryByPlaceholderText('git@github.com:org/repo.git or search GitHub'),
-		).not.toBeInTheDocument();
+		expect(queryByPlaceholderText('Search catalog, GitHub, or paste URL')).not.toBeInTheDocument();
 		expect(getByText('Create Thread')).toBeInTheDocument();
 	});
 

@@ -1,5 +1,5 @@
 import type { GitHubOperationStage, GitHubOperationStatus } from '../../api/github';
-import { commitPushStageLabel as formatStageLabel } from '../views/prOrchestrationView.helpers';
+import { commitPushStageLabel as formatStageLabel } from '../../pullRequestUiHelpers';
 
 export type CommitPushState = {
 	readonly loading: boolean;

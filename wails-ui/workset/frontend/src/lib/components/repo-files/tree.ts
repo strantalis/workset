@@ -1,9 +1,11 @@
 import type { RepoFileSearchResult } from '../../types';
 import type { RepoDirectoryEntry } from '../../api/repo-files';
 
-export type DocumentViewerTreeNode =
+const DIR_ENTRIES_SEPARATOR = '\u0000';
+
+export type RepoTreeNode =
 	| { kind: 'repo'; key: string; label: string; repoId: string; depth: number }
-	| { kind: 'dir'; key: string; label: string; depth: number }
+	| { kind: 'dir'; key: string; label: string; depth: number; repoId: string; path: string }
 	| {
 			kind: 'file';
 			key: string;
@@ -14,7 +16,7 @@ export type DocumentViewerTreeNode =
 			isMarkdown: boolean;
 	  };
 
-export const buildExpandedKeysForQuery = (results: RepoFileSearchResult[]): Set<string> => {
+export const buildExpandedRepoTreeKeysForQuery = (results: RepoFileSearchResult[]): Set<string> => {
 	const keys = new Set<string>();
 	for (const result of results) {
 		const parts = result.path.split('/');
@@ -44,21 +46,24 @@ const groupResultsByRepo = (
 };
 
 const pushDirNode = (
-	nodes: DocumentViewerTreeNode[],
+	nodes: RepoTreeNode[],
 	repoId: string,
 	dirKey: string,
 	label: string,
 	depth: number,
+	path: string,
 ): void => {
 	nodes.push({
 		kind: 'dir',
 		key: dirKey,
 		label,
 		depth,
+		repoId,
+		path,
 	});
 };
 
-const pushFileNode = (nodes: DocumentViewerTreeNode[], result: RepoFileSearchResult): void => {
+const pushFileNode = (nodes: RepoTreeNode[], result: RepoFileSearchResult): void => {
 	const parts = result.path.split('/');
 	nodes.push({
 		kind: 'file',
@@ -72,7 +77,7 @@ const pushFileNode = (nodes: DocumentViewerTreeNode[], result: RepoFileSearchRes
 };
 
 const appendRepoChildren = (
-	nodes: DocumentViewerTreeNode[],
+	nodes: RepoTreeNode[],
 	repoId: string,
 	repoKey: string,
 	files: RepoFileSearchResult[],
@@ -92,7 +97,7 @@ const appendRepoChildren = (
 			const parentKey = i === 1 ? repoKey : `dir:${repoId}:${parts.slice(0, i - 1).join('/')}`;
 			if (!expandedNodes.has(parentKey)) continue;
 
-			pushDirNode(nodes, repoId, dirKey, parts[i - 1] ?? '', i);
+			pushDirNode(nodes, repoId, dirKey, parts[i - 1] ?? '', i, dirPath);
 		}
 
 		const parentKey =
@@ -103,7 +108,9 @@ const appendRepoChildren = (
 	}
 };
 
-export const computeChildCounts = (results: RepoFileSearchResult[]): Map<string, number> => {
+export const computeRepoTreeChildCounts = (
+	results: RepoFileSearchResult[],
+): Map<string, number> => {
 	const childSets = new Map<string, Set<string>>();
 
 	for (const result of results) {
@@ -130,14 +137,14 @@ export const computeChildCounts = (results: RepoFileSearchResult[]): Map<string,
 
 export type RepoRef = { id: string; name: string };
 
-export const buildDocumentViewerTree = (
+export const buildRepoTree = (
 	repos: RepoRef[],
 	results: RepoFileSearchResult[],
 	expandedNodes: Set<string>,
-): DocumentViewerTreeNode[] => {
+): RepoTreeNode[] => {
 	const grouped = new Map(groupResultsByRepo(results));
 	const sortedRepos = [...repos].sort((a, b) => a.name.localeCompare(b.name));
-	const nodes: DocumentViewerTreeNode[] = [];
+	const nodes: RepoTreeNode[] = [];
 
 	for (const repo of sortedRepos) {
 		const repoKey = `repo:${repo.id}`;
@@ -159,25 +166,44 @@ export const buildDocumentViewerTree = (
 
 // ── Directory-based tree builder (lazy loading) ──────────
 
-/** Key for looking up directory entries: "repoId:" for root, "repoId:path" for nested. */
-export const dirEntriesKey = (repoId: string, dirPath: string): string => `${repoId}:${dirPath}`;
+export const createRepoDirEntriesKey = (repoId: string, dirPath: string): string =>
+	`${repoId}${DIR_ENTRIES_SEPARATOR}${dirPath}`;
+
+const readRepoDirEntriesKey = (key: string): { repoId: string; dirPath: string } => {
+	const separatorIndex = key.indexOf(DIR_ENTRIES_SEPARATOR);
+	if (separatorIndex < 0) {
+		return { repoId: key, dirPath: '' };
+	}
+
+	return {
+		repoId: key.slice(0, separatorIndex),
+		dirPath: key.slice(separatorIndex + DIR_ENTRIES_SEPARATOR.length),
+	};
+};
 
 const appendDirChildren = (
-	nodes: DocumentViewerTreeNode[],
+	nodes: RepoTreeNode[],
 	repoId: string,
 	dirPath: string,
 	dirEntries: Map<string, RepoDirectoryEntry[]>,
 	expandedNodes: Set<string>,
 	depth: number,
 ): void => {
-	const key = dirEntriesKey(repoId, dirPath);
+	const key = createRepoDirEntriesKey(repoId, dirPath);
 	const entries = dirEntries.get(key);
 	if (!entries) return;
 
 	for (const entry of entries) {
 		if (entry.isDir) {
 			const dirKey = `dir:${repoId}:${entry.path}`;
-			nodes.push({ kind: 'dir', key: dirKey, label: entry.name, depth });
+			nodes.push({
+				kind: 'dir',
+				key: dirKey,
+				label: entry.name,
+				depth,
+				repoId,
+				path: entry.path,
+			});
 
 			if (expandedNodes.has(dirKey)) {
 				appendDirChildren(nodes, repoId, entry.path, dirEntries, expandedNodes, depth + 1);
@@ -198,15 +224,15 @@ const appendDirChildren = (
 
 /**
  * Build a tree from lazily-loaded directory entries.
- * `dirEntries` is keyed by `dirEntriesKey(repoId, dirPath)`.
+ * `dirEntries` is keyed by `createRepoDirEntriesKey(repoId, dirPath)`.
  */
-export const buildDocumentViewerTreeFromDirs = (
+export const buildRepoTreeFromDirectories = (
 	repos: RepoRef[],
 	dirEntries: Map<string, RepoDirectoryEntry[]>,
 	expandedNodes: Set<string>,
-): DocumentViewerTreeNode[] => {
+): RepoTreeNode[] => {
 	const sortedRepos = [...repos].sort((a, b) => a.name.localeCompare(b.name));
-	const nodes: DocumentViewerTreeNode[] = [];
+	const nodes: RepoTreeNode[] = [];
 
 	for (const repo of sortedRepos) {
 		const repoKey = `repo:${repo.id}`;
@@ -226,15 +252,12 @@ export const buildDocumentViewerTreeFromDirs = (
 };
 
 /** Compute child counts from directory entries (for badges in the tree). */
-export const computeDirChildCounts = (
+export const computeRepoTreeDirectoryCounts = (
 	dirEntries: Map<string, RepoDirectoryEntry[]>,
 ): Map<string, number> => {
 	const counts = new Map<string, number>();
 	for (const [key, entries] of dirEntries) {
-		// Extract repoId from key format "repoId:dirPath"
-		const colonIdx = key.indexOf(':');
-		const repoId = key.slice(0, colonIdx);
-		const dirPath = key.slice(colonIdx + 1);
+		const { repoId, dirPath } = readRepoDirEntriesKey(key);
 		const nodeKey = dirPath === '' ? `repo:${repoId}` : `dir:${repoId}:${dirPath}`;
 		counts.set(nodeKey, entries.length);
 	}

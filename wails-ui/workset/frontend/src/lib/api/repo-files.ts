@@ -1,5 +1,8 @@
 import type { RepoFileContent, RepoFileSearchResult, RepoImageContent } from '../types';
 import {
+	CreateWorkspaceRepoFile,
+	DeleteWorkspaceRepoFile,
+	GetRepoBlame,
 	ListRepoDirectory,
 	ReadWorkspaceRepoFile,
 	ReadWorkspaceRepoFileAtRef,
@@ -241,3 +244,47 @@ export function clearDirListCache(): void {
 }
 
 export { RepoDirectoryEntry };
+
+// ── Git Blame ────────────────────────────────────────────
+
+export type BlameEntry = {
+	startLine: number;
+	endLine: number;
+	commitHash: string;
+	author: string;
+	authorDate: string;
+	summary: string;
+};
+
+export async function getRepoBlame(
+	workspaceId: string,
+	repoId: string,
+	path: string,
+	ref = 'HEAD',
+): Promise<BlameEntry[]> {
+	const result = await GetRepoBlame({ workspaceId, repoId, path, ref });
+	return (result as unknown as BlameEntry[]) ?? [];
+}
+
+// ── File Creation / Deletion ─────────────────────────────
+
+export type RepoFileDeleteResult = { deleted: boolean; error?: string };
+
+export async function createWorkspaceRepoFile(
+	workspaceId: string,
+	repoId: string,
+	path: string,
+	content = '',
+): Promise<RepoFileWriteResult> {
+	const result = await CreateWorkspaceRepoFile({ workspaceId, repoId, path, content });
+	return result as unknown as RepoFileWriteResult;
+}
+
+export async function deleteWorkspaceRepoFile(
+	workspaceId: string,
+	repoId: string,
+	path: string,
+): Promise<RepoFileDeleteResult> {
+	const result = await DeleteWorkspaceRepoFile({ workspaceId, repoId, path });
+	return result as unknown as RepoFileDeleteResult;
+}

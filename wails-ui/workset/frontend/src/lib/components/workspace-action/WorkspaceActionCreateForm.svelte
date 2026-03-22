@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import { Loader2 } from '@lucide/svelte';
+	import { ArrowRight, Check, Loader2, Search } from '@lucide/svelte';
 	import type { Alias } from '../../types';
 	import type { GitHubRepoSearchItem } from '../../types';
 	import type { WorkspaceActionDirectRepo } from '../../services/workspaceActionContextService';
 	import { createRepoSearch } from '../../composables/createRepoSearch.svelte';
-	import Button from '../ui/Button.svelte';
+	import { deriveRepoName } from '../../names';
 
 	type ThreadHookPreviewRow = {
 		repoName: string;
@@ -18,6 +18,8 @@
 		modeVariant?: 'workset' | 'thread';
 		worksetLabel?: string | null;
 		workspaceName: string;
+		description?: string;
+		nameValidationError?: string | null;
 		searchQuery: string;
 		sourceInput: string;
 		directRepos: WorkspaceActionDirectRepo[];
@@ -28,6 +30,7 @@
 		selectedAliases: Set<string>;
 		getAliasSource: (alias: Alias) => string;
 		onWorkspaceNameInput: (value: string) => void;
+		onDescriptionInput?: (value: string) => void;
 		onSearchQueryInput: (value: string) => void;
 		onSourceInput: (value: string) => void;
 		onAddDirectRepo: () => void;
@@ -37,11 +40,14 @@
 		onSubmit: () => void;
 	}
 
+	/* eslint-disable @typescript-eslint/no-unused-vars -- onToggleDirectRepoRegister kept for interface compat */
 	const {
 		loading,
 		modeVariant = 'workset',
 		worksetLabel = null,
 		workspaceName,
+		description = '',
+		nameValidationError = null,
 		searchQuery,
 		sourceInput,
 		directRepos,
@@ -52,6 +58,7 @@
 		selectedAliases,
 		getAliasSource,
 		onWorkspaceNameInput,
+		onDescriptionInput,
 		onSearchQueryInput,
 		onSourceInput,
 		onAddDirectRepo,
@@ -60,35 +67,60 @@
 		onToggleAlias,
 		onSubmit,
 	}: Props = $props();
+	/* eslint-enable @typescript-eslint/no-unused-vars */
 
 	const repoSearch = createRepoSearch();
 	let sourceInputDraft = $state('');
 
 	const selectedCount = $derived(selectedAliases.size);
 	const isThreadMode = $derived(modeVariant === 'thread');
-	const createActionLabel = $derived(modeVariant === 'thread' ? 'Create Thread' : 'Create Workset');
 	const nameLabel = $derived(modeVariant === 'thread' ? 'Thread Name' : 'Workset Name');
 	const namePlaceholder = $derived(modeVariant === 'thread' ? 'oauth2-migration' : 'platform-core');
-	const canSubmit = $derived(workspaceName.trim().length > 0);
+	const canSubmit = $derived(workspaceName.trim().length > 0 && !nameValidationError);
 	const displayedSourceInput = $derived(repoSearch.focused ? sourceInputDraft : sourceInput);
 	const sourceQuery = $derived(displayedSourceInput.trim());
 	const canAddSource = $derived(sourceQuery.length > 0);
-	const showRemoteSuggestionPanel = $derived(repoSearch.suggestionsOpen && repoSearch.focused);
+	const totalRepoCount = $derived(directRepos.length + selectedCount);
+	const showSearchMeta = $derived(
+		repoSearch.showSearchMinCharsHint ||
+			repoSearch.loading ||
+			repoSearch.error !== null ||
+			repoSearch.showNoSearchResults,
+	);
 
 	const handleSourceInput = (value: string): void => {
 		sourceInputDraft = value;
 		onSourceInput(value);
+		onSearchQueryInput(value);
 		repoSearch.queue(value);
 	};
 
-	const selectRemoteSuggestion = (suggestion: GitHubRepoSearchItem): void => {
-		const value = suggestion.sshUrl || suggestion.cloneUrl;
-		sourceInputDraft = value;
-		onSourceInput(value);
+	const commitSource = (value: string): void => {
+		const trimmed = value.trim();
+		if (trimmed.length === 0) return;
+		onSourceInput(trimmed);
+		onAddDirectRepo();
+		sourceInputDraft = '';
+		onSourceInput('');
+		onSearchQueryInput('');
 		repoSearch.reset();
 	};
 
+	const selectRemoteSuggestion = (suggestion: GitHubRepoSearchItem): void => {
+		const source = suggestion.sshUrl || suggestion.cloneUrl;
+		commitSource(source);
+	};
+
+	const handleAddClick = (): void => {
+		commitSource(sourceInputDraft);
+	};
+
 	const handleSourceKeydown = (event: KeyboardEvent): void => {
+		if (event.key === 'Enter' && canAddSource) {
+			event.preventDefault();
+			commitSource(sourceInputDraft);
+			return;
+		}
 		repoSearch.handleKeydown(event, selectRemoteSuggestion);
 	};
 
@@ -174,162 +206,178 @@
 		</div>
 	</div>
 {:else}
-	<div class="form ws-form-stack" aria-busy={loading}>
-		<label class="field ws-field">
-			<span class="field-label">{nameLabel}</span>
-			<input
-				class="ws-field-input"
-				value={workspaceName}
-				oninput={(event) => onWorkspaceNameInput((event.currentTarget as HTMLInputElement).value)}
-				placeholder={namePlaceholder}
-				autocapitalize="off"
-				autocorrect="off"
-				spellcheck="false"
-			/>
-		</label>
-
-		<div class="field ws-field">
-			<div class="field-title">
-				<span>Add Repository</span>
-				<span class="count">{directRepos.length} added</span>
-			</div>
-			<div class="inline ws-inline">
-				<div class="source-input-shell">
-					<input
-						value={displayedSourceInput}
-						oninput={(event) => handleSourceInput((event.currentTarget as HTMLInputElement).value)}
-						onfocus={openRemoteSuggestions}
-						onblur={repoSearch.handleBlur}
-						onkeydown={handleSourceKeydown}
-						placeholder="git@github.com:org/repo.git or search GitHub"
-						aria-label="Add repository URL or search GitHub"
-						class="search-input"
-						autocapitalize="off"
-						autocorrect="off"
-						spellcheck="false"
-					/>
-					{#if showRemoteSuggestionPanel}
-						<div class="repo-suggestions" role="listbox" aria-label="GitHub repository suggestions">
-							{#if repoSearch.showSearchStartHint}
-								<div class="suggestion-hint">Start typing to search GitHub repositories.</div>
-							{:else if repoSearch.showSearchMinCharsHint}
-								<div class="suggestion-hint">Type at least 2 characters to search GitHub.</div>
-							{:else if repoSearch.loading}
-								<div class="suggestion-loading">
-									<Loader2 size={14} />
-									<span>Searching GitHub…</span>
-								</div>
-							{:else if repoSearch.error}
-								<div class="suggestion-error">{repoSearch.error}</div>
-							{:else if repoSearch.showNoSearchResults}
-								<div class="suggestion-hint">No repositories found for "{sourceQuery}".</div>
-							{:else}
-								{#each repoSearch.results as suggestion, index (suggestion.fullName)}
-									<button
-										type="button"
-										role="option"
-										class="suggestion-item"
-										class:active={index === repoSearch.activeSuggestionIndex}
-										aria-selected={index === repoSearch.activeSuggestionIndex}
-										onmousedown={() => selectRemoteSuggestion(suggestion)}
-									>
-										<div class="suggestion-main">
-											<span class="suggestion-name">{suggestion.fullName}</span>
-											<span class="suggestion-meta">{suggestion.defaultBranch}</span>
-										</div>
-										<span class="suggestion-url">{suggestion.sshUrl || suggestion.cloneUrl}</span>
-									</button>
-								{/each}
-							{/if}
-						</div>
-					{/if}
-				</div>
-				<button
-					type="button"
-					class="add-repo-btn"
-					onclick={onAddDirectRepo}
-					disabled={!canAddSource}>Add</button
-				>
-			</div>
-			{#if directRepos.length > 0}
-				<div class="direct-repo-list">
-					{#each directRepos as repo (repo.url)}
-						<div class="direct-repo-item">
-							<div class="direct-repo-main">
-								<span class="direct-repo-url">{repo.url}</span>
-								<label class="register-toggle">
-									<input
-										type="checkbox"
-										checked={repo.register}
-										onchange={() => onToggleDirectRepoRegister(repo.url)}
-									/>
-									<span>Save to catalog</span>
-								</label>
-							</div>
-							<button
-								type="button"
-								class="remove-repo-btn"
-								onclick={() => onRemoveDirectRepo(repo.url)}>Remove</button
-							>
-						</div>
-					{/each}
-				</div>
-			{/if}
-		</div>
-
-		<div class="field ws-field">
-			<div class="field-title">
-				<span>Repo Catalog</span>
-				<span class="count">{selectedCount} selected</span>
-			</div>
-
-			<div class="inline ws-inline">
+	<div class="create-panel" aria-busy={loading}>
+		<div class="create-panel-header">
+			<label class="create-field">
+				<span class="create-field-label">{nameLabel}</span>
 				<input
-					value={searchQuery}
-					oninput={(event) => onSearchQueryInput((event.currentTarget as HTMLInputElement).value)}
-					placeholder="Search repos..."
-					aria-label="Search repo catalog"
-					class="search-input"
+					class="create-field-input"
+					value={workspaceName}
+					oninput={(event) => onWorkspaceNameInput((event.currentTarget as HTMLInputElement).value)}
+					placeholder={namePlaceholder}
 					autocapitalize="off"
 					autocorrect="off"
 					spellcheck="false"
 				/>
-				{#if searchQuery}
-					<button type="button" class="search-clear" onclick={() => onSearchQueryInput('')}
-						>Clear</button
-					>
+				{#if nameValidationError}
+					<p class="create-field-error">{nameValidationError}</p>
 				{/if}
-			</div>
+			</label>
 
-			<div class="checkbox-list">
-				{#if filteredAliases.length === 0}
-					<div class="empty-search">No repos match "{searchQuery}"</div>
-				{:else}
-					{#each filteredAliases as alias (alias.name)}
-						<label class="checkbox-item" class:selected={selectedAliases.has(alias.name)}>
-							<input
-								type="checkbox"
-								checked={selectedAliases.has(alias.name)}
-								onchange={() => onToggleAlias(alias.name)}
-							/>
-							<div class="checkbox-content">
-								<span class="checkbox-name">{alias.name}</span>
-								<span class="checkbox-meta">{getAliasSource(alias)}</span>
-							</div>
-						</label>
-					{/each}
+			{#if onDescriptionInput}
+				<label class="create-field">
+					<span class="create-field-label">
+						Description
+						<span class="create-field-hint-inline">optional</span>
+					</span>
+					<textarea
+						class="create-field-input create-description"
+						value={description}
+						oninput={(event) =>
+							onDescriptionInput((event.currentTarget as HTMLTextAreaElement).value)}
+						placeholder="What are you working on?"
+						rows="2"
+					></textarea>
+				</label>
+			{/if}
+
+			<div class="create-source-section">
+				<div class="repo-input-row">
+					<div class="repo-input-shell">
+						<span class="repo-input-icon"><Search size={14} /></span>
+						<input
+							value={displayedSourceInput}
+							oninput={(event) =>
+								handleSourceInput((event.currentTarget as HTMLInputElement).value)}
+							onfocus={openRemoteSuggestions}
+							onblur={repoSearch.handleBlur}
+							onkeydown={handleSourceKeydown}
+							placeholder="Search catalog, GitHub, or paste URL"
+							aria-label="Add repository URL or search GitHub"
+							autocapitalize="off"
+							autocorrect="off"
+							spellcheck="false"
+						/>
+					</div>
+					<button
+						type="button"
+						class="create-add-btn"
+						onclick={handleAddClick}
+						disabled={!canAddSource}
+						aria-label="Add repository">Add</button
+					>
+				</div>
+				{#if showSearchMeta}
+					<div class="repo-input-help-row">
+						{#if repoSearch.showSearchMinCharsHint}
+							<span class="repo-search-status">Type at least 2 characters to search GitHub.</span>
+						{:else if repoSearch.loading}
+							<span class="repo-search-status">
+								<Loader2 size={12} />
+								<span>Searching GitHub…</span>
+							</span>
+						{:else if repoSearch.error}
+							<span class="repo-search-error">{repoSearch.error}</span>
+						{:else if repoSearch.showNoSearchResults}
+							<span class="repo-search-status">No GitHub results for "{sourceQuery}".</span>
+						{/if}
+					</div>
 				{/if}
 			</div>
 		</div>
 
-		<Button
-			variant="primary"
-			onclick={onSubmit}
-			disabled={loading || !canSubmit}
-			class="action-btn"
-		>
-			{loading ? 'Creating…' : createActionLabel}
-		</Button>
+		{#if directRepos.length > 0}
+			<div class="selected-repos-panel">
+				<div class="selected-repos-header">
+					<span>Added</span>
+					<span class="selected-repos-count">{directRepos.length}</span>
+				</div>
+				<div class="selected-repos-list">
+					{#each directRepos as repo (repo.url)}
+						<button
+							type="button"
+							class="selected-repo-chip"
+							onclick={() => onRemoveDirectRepo(repo.url)}
+						>
+							<span class="selected-repo-kind">Source</span>
+							<span>{deriveRepoName(repo.url) || repo.url}</span>
+							<span class="selected-repo-remove">×</span>
+						</button>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
+		<div class="registry-list">
+			{#if filteredAliases.length > 0}
+				<div class="result-group-label">Catalog</div>
+				{#each filteredAliases as alias (alias.name)}
+					<button
+						type="button"
+						class="registry-item"
+						class:selected={selectedAliases.has(alias.name)}
+						onclick={() => onToggleAlias(alias.name)}
+					>
+						<div class="registry-check" class:checked={selectedAliases.has(alias.name)}>
+							{#if selectedAliases.has(alias.name)}<Check size={10} />{/if}
+						</div>
+						<div class="registry-info">
+							<div class="registry-name-row">
+								<span class="registry-name">{alias.name}</span>
+								<span class="source-badge">Catalog</span>
+							</div>
+							<div class="registry-url">{getAliasSource(alias)}</div>
+						</div>
+					</button>
+				{/each}
+			{/if}
+
+			{#if repoSearch.results.length > 0}
+				<div class="result-group-label">GitHub</div>
+				{#each repoSearch.results as suggestion (`${suggestion.owner}/${suggestion.name}`)}
+					<button
+						type="button"
+						class="registry-item github-result"
+						onmousedown={() => selectRemoteSuggestion(suggestion)}
+					>
+						<div class="registry-check github-result-check">
+							<ArrowRight size={10} />
+						</div>
+						<div class="registry-info">
+							<div class="registry-name-row">
+								<span class="registry-name">{suggestion.owner}/{suggestion.name}</span>
+								<span class="source-badge source-badge-github">GitHub</span>
+							</div>
+							<div class="registry-url">{suggestion.sshUrl || suggestion.cloneUrl}</div>
+						</div>
+					</button>
+				{/each}
+			{/if}
+
+			{#if filteredAliases.length === 0 && repoSearch.results.length === 0}
+				<div class="registry-empty">
+					{#if sourceQuery.length > 0}
+						No matching repositories.
+					{:else}
+						Search or paste a URL to add repositories.
+					{/if}
+				</div>
+			{/if}
+		</div>
+
+		<div class="create-panel-footer">
+			<div class="create-panel-status">
+				<span>{totalRepoCount} repo{totalRepoCount === 1 ? '' : 's'}</span>
+			</div>
+			<button
+				type="button"
+				class="create-panel-submit"
+				onclick={onSubmit}
+				disabled={loading || !canSubmit}
+			>
+				{loading ? 'Creating…' : 'Create'}
+			</button>
+		</div>
 	</div>
 {/if}
 
@@ -557,128 +605,421 @@
 		cursor: not-allowed;
 	}
 
-	/* ─── Workset mode (modal) ─── */
-	.field-label {
-		color: color-mix(in srgb, var(--text) 88%, transparent);
-		font-size: var(--text-sm);
-		font-weight: 600;
-	}
-
-	.field-title {
+	/* ─── Create workset panel ─── */
+	.create-panel {
 		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 8px;
-		font-size: var(--text-sm);
-		font-weight: 600;
-	}
-
-	.count {
-		font-size: var(--text-xs);
-		color: var(--muted);
-		font-weight: 500;
-		letter-spacing: 0.02em;
-	}
-
-	.search-input {
+		flex-direction: column;
+		gap: 0;
 		flex: 1;
+		min-height: 0;
+	}
+
+	.create-panel-header {
+		flex-shrink: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		padding-bottom: 10px;
+	}
+
+	.create-field {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.create-field-label {
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--muted);
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+	}
+
+	.create-field-hint-inline {
+		font-weight: 400;
+		text-transform: none;
+		letter-spacing: normal;
+		color: var(--subtle);
+	}
+
+	.create-field-input {
+		width: 100%;
+		height: 34px;
+		box-sizing: border-box;
 		background: rgba(255, 255, 255, 0.02);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-md);
 		padding: 8px 10px;
-		font-size: var(--text-base);
-		transition:
-			border-color var(--transition-fast),
-			box-shadow var(--transition-fast),
-			background var(--transition-fast);
+		font-size: var(--text-sm);
+		color: var(--text);
+		font-family: inherit;
 	}
 
-	.search-input:focus {
+	.create-field-input:focus {
+		outline: none;
+		border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+		box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 26%, transparent);
 		background: rgba(255, 255, 255, 0.04);
 	}
 
-	.source-input-shell {
+	.create-description {
+		height: auto;
+		resize: vertical;
+		min-height: 48px;
+		line-height: 1.4;
+	}
+
+	.create-field-error {
+		margin: 0;
+		font-size: var(--text-xs);
+		color: var(--danger-text, #f87171);
+	}
+
+	.create-source-section {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.repo-input-row {
+		--repo-control-height: 34px;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		gap: 6px;
+		align-items: stretch;
+	}
+
+	.repo-input-shell {
 		position: relative;
-		flex: 1;
+		display: flex;
+		align-items: center;
 	}
 
-	.repo-suggestions {
+	.repo-input-icon {
 		position: absolute;
-		top: calc(100% + 8px);
-		left: 0;
-		right: 0;
-		background: color-mix(in srgb, var(--panel) 92%, transparent);
-		border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
-		border-radius: var(--radius-md);
-		box-shadow: 0 16px 36px rgba(5, 10, 22, 0.5);
-		max-height: 260px;
-		overflow-y: auto;
-		z-index: 12;
+		left: 10px;
+		color: var(--muted);
+		pointer-events: none;
 	}
 
-	.suggestion-hint,
-	.suggestion-error,
-	.suggestion-loading {
+	.repo-input-shell input {
+		width: 100%;
+		height: var(--repo-control-height);
+		box-sizing: border-box;
+		background: rgba(255, 255, 255, 0.02);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		padding: 8px 10px 8px 30px;
+		font-size: var(--text-sm);
+		color: var(--text);
+	}
+
+	.repo-input-shell input:focus {
+		outline: none;
+		border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+		box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 26%, transparent);
+		background: rgba(255, 255, 255, 0.04);
+	}
+
+	.create-add-btn {
+		height: var(--repo-control-height);
+		padding: 0 12px;
+		border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+		border-radius: var(--radius-md);
+		background: color-mix(in srgb, var(--panel-strong) 72%, transparent);
+		color: var(--muted);
+		font-size: var(--text-sm);
+		font-weight: 500;
+		font-family: inherit;
+		cursor: pointer;
+		transition:
+			color var(--transition-fast),
+			border-color var(--transition-fast),
+			background var(--transition-fast);
+	}
+
+	.create-add-btn:hover:not(:disabled) {
+		color: var(--text);
+		border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+		background: color-mix(in srgb, var(--panel) 76%, transparent);
+	}
+
+	.create-add-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.repo-input-help-row {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+
+	.repo-search-status,
+	.repo-search-error {
+		font-size: var(--text-xs);
+		color: var(--muted);
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+	}
+
+	.repo-search-error {
+		color: var(--danger-text);
+	}
+
+	.repo-search-status :global(svg) {
+		animation: spin 900ms linear infinite;
+	}
+
+	/* ─── Selected repos chips ─── */
+	.selected-repos-panel {
+		flex-shrink: 0;
+		padding: 8px 10px;
+		margin-bottom: 8px;
+		border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+		border-radius: var(--radius-md);
+		background: color-mix(in srgb, var(--accent) 6%, var(--panel));
+	}
+
+	.selected-repos-header {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: var(--text-xs);
+		color: var(--muted);
+		margin-bottom: 6px;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		font-weight: 600;
+	}
+
+	.selected-repos-count {
+		background: color-mix(in srgb, var(--accent) 22%, transparent);
+		color: var(--accent);
+		border-radius: 999px;
+		padding: 0 6px;
+		font-size: 10px;
+		font-weight: 700;
+		line-height: 18px;
+	}
+
+	.selected-repos-list {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+	}
+
+	.selected-repo-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 2px 7px;
+		border-radius: 999px;
+		border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+		background: color-mix(in srgb, var(--panel-strong) 68%, transparent);
+		color: var(--text);
+		font-size: var(--text-xs);
+		cursor: pointer;
+		transition: border-color var(--transition-fast);
+	}
+
+	.selected-repo-chip:hover {
+		border-color: var(--danger);
+	}
+
+	.selected-repo-kind {
+		font-size: 9px;
+		color: var(--muted);
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+	}
+
+	.selected-repo-remove {
+		color: var(--muted);
+		font-size: var(--text-xs);
+	}
+
+	/* ─── Registry list ─── */
+	.registry-list {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		overflow-y: auto;
+		padding: 2px 0;
+	}
+
+	.registry-list::-webkit-scrollbar {
+		width: 5px;
+	}
+
+	.registry-list::-webkit-scrollbar-track {
+		background: transparent;
+	}
+
+	.registry-list::-webkit-scrollbar-thumb {
+		background: rgba(255, 255, 255, 0.1);
+		border-radius: 3px;
+	}
+
+	.result-group-label {
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: color-mix(in srgb, var(--muted) 84%, transparent);
+		padding: 6px 2px 2px;
+	}
+
+	.result-group-label:first-child {
+		padding-top: 0;
+	}
+
+	.registry-item {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		padding: 10px 12px;
-		font-size: var(--text-sm);
-		color: var(--muted);
-	}
-
-	.suggestion-error {
-		color: color-mix(in srgb, var(--danger) 74%, #fff);
-	}
-
-	.suggestion-item {
 		width: 100%;
-		display: flex;
-		flex-direction: column;
-		gap: 3px;
-		padding: 10px 12px;
-		text-align: left;
+		border: 1px solid transparent;
 		background: transparent;
-		border: none;
-		border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+		border-radius: 6px;
+		padding: 6px 8px;
 		color: var(--text);
 		cursor: pointer;
+		text-align: left;
 	}
 
-	.suggestion-item:last-child {
-		border-bottom: none;
+	.registry-item:hover {
+		background: var(--hover-bg);
 	}
 
-	.suggestion-item:hover,
-	.suggestion-item.active {
-		background: color-mix(in srgb, var(--accent) 14%, transparent);
+	.registry-item.selected {
+		border-color: var(--active-accent-border);
+		background: var(--active-accent-bg);
 	}
 
-	.suggestion-main {
-		display: flex;
+	.registry-check {
+		width: 15px;
+		height: 15px;
+		border: 1px solid var(--border);
+		border-radius: 3px;
+		display: inline-flex;
 		align-items: center;
-		justify-content: space-between;
-		gap: 10px;
+		justify-content: center;
+		color: var(--muted);
+		flex-shrink: 0;
 	}
 
-	.suggestion-name {
-		font-size: var(--text-sm);
+	.registry-check.checked {
+		border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+		background: color-mix(in srgb, var(--accent) 24%, transparent);
+		color: var(--accent);
+	}
+
+	.github-result-check {
+		border-style: dashed;
+	}
+
+	.registry-info {
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+	}
+
+	.registry-name-row {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		flex-wrap: wrap;
+	}
+
+	.registry-name {
 		font-weight: 600;
-		color: var(--text);
+		font-size: var(--text-sm);
 	}
 
-	.suggestion-meta {
-		font-size: var(--text-xs);
+	.registry-url {
 		color: var(--muted);
+		font-size: 11px;
+		font-family: var(--font-mono);
 		white-space: nowrap;
-	}
-
-	.suggestion-url {
-		font-size: var(--text-xs);
-		color: var(--muted);
 		overflow: hidden;
 		text-overflow: ellipsis;
-		white-space: nowrap;
+	}
+
+	.source-badge {
+		display: inline-flex;
+		align-items: center;
+		border-radius: 4px;
+		padding: 0 5px;
+		font-size: 9px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--muted);
+		background: color-mix(in srgb, var(--panel-strong) 80%, transparent);
+		border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+	}
+
+	.registry-empty {
+		padding: 20px 10px;
+		text-align: center;
+		font-size: var(--text-sm);
+		color: var(--muted);
+	}
+
+	/* ─── Footer ─── */
+	.create-panel-footer {
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding-top: 10px;
+		border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+		margin-top: auto;
+	}
+
+	.create-panel-status {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: var(--text-xs);
+		color: var(--muted);
+	}
+
+	.create-panel-submit {
+		flex-shrink: 0;
+		padding: 7px 16px;
+		border: none;
+		border-radius: var(--radius-md);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		font-family: inherit;
+		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		background: var(--cta);
+		color: var(--on-dark);
+		transition:
+			background var(--transition-fast),
+			opacity var(--transition-fast);
+	}
+
+	.create-panel-submit:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--cta) 88%, white);
+	}
+
+	.create-panel-submit:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
 	}
 
 	@keyframes spin {
@@ -688,185 +1029,5 @@
 		to {
 			transform: rotate(360deg);
 		}
-	}
-
-	.search-clear {
-		background: transparent;
-		border: none;
-		color: var(--muted);
-		font-size: var(--text-sm);
-		cursor: pointer;
-		padding: 4px 8px;
-	}
-
-	.search-clear:hover {
-		color: var(--text);
-	}
-
-	.add-repo-btn {
-		background: var(--panel-strong);
-		color: var(--text);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		padding: 8px 10px;
-		font-size: var(--text-sm);
-		font-weight: 500;
-		cursor: pointer;
-	}
-
-	.add-repo-btn:disabled {
-		opacity: 0.45;
-		cursor: not-allowed;
-	}
-
-	.add-repo-btn:hover {
-		border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
-	}
-
-	.direct-repo-list {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		margin-top: 10px;
-	}
-
-	.direct-repo-item {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 10px;
-		padding: 10px;
-		border-radius: var(--radius-md);
-		background: color-mix(in srgb, var(--panel-soft) 70%, transparent);
-		border: 1px solid var(--border);
-	}
-
-	.direct-repo-main {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		min-width: 0;
-	}
-
-	.direct-repo-url {
-		font-size: var(--text-sm);
-		color: var(--text);
-		word-break: break-all;
-	}
-
-	.register-toggle {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		font-size: var(--text-xs);
-		color: var(--muted);
-	}
-
-	.remove-repo-btn {
-		background: transparent;
-		color: var(--muted);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-sm);
-		padding: 6px 8px;
-		font-size: var(--text-xs);
-		cursor: pointer;
-	}
-
-	.remove-repo-btn:hover {
-		color: var(--danger);
-		border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
-	}
-
-	.empty-search {
-		padding: 20px;
-		text-align: center;
-		font-size: var(--text-base);
-		color: var(--muted);
-	}
-
-	.checkbox-list {
-		background: var(--panel);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		max-height: 260px;
-		overflow-y: auto;
-	}
-
-	.checkbox-item {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		padding: 10px 12px;
-		cursor: pointer;
-		transition: all var(--transition-fast);
-		border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-	}
-
-	.checkbox-item:last-child {
-		border-bottom: none;
-	}
-
-	.checkbox-item:hover {
-		background: rgba(255, 255, 255, 0.03);
-	}
-
-	.checkbox-item.selected {
-		background: rgba(var(--accent-rgb, 59, 130, 246), 0.08);
-	}
-
-	.checkbox-item input[type='checkbox'] {
-		appearance: none;
-		-webkit-appearance: none;
-		width: 18px;
-		height: 18px;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-sm);
-		background: var(--panel-soft);
-		position: relative;
-		flex-shrink: 0;
-		cursor: pointer;
-	}
-
-	.checkbox-item input[type='checkbox']:checked {
-		background: var(--accent);
-		border-color: var(--accent);
-	}
-
-	.checkbox-item input[type='checkbox']:checked::after {
-		content: '✓';
-		position: absolute;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
-		color: white;
-		font-size: 11px;
-		font-weight: 700;
-	}
-
-	.checkbox-content {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		min-width: 0;
-		flex: 1;
-	}
-
-	.checkbox-name {
-		font-size: var(--text-base);
-		color: var(--text);
-		font-weight: 500;
-	}
-
-	.checkbox-meta {
-		font-size: var(--text-sm);
-		color: var(--muted);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	:global(.action-btn) {
-		width: 100%;
-		margin-top: 8px;
 	}
 </style>

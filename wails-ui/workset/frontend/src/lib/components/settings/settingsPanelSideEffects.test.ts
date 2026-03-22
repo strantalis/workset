@@ -10,24 +10,40 @@ import {
 describe('settingsPanelSideEffects', () => {
 	it('collectTerminalIds walks pane trees', () => {
 		const ids = collectTerminalIds({
-			id: 'root',
-			kind: 'split',
-			direction: 'row',
-			first: {
-				id: 'left',
-				kind: 'pane',
-				tabs: [
-					{ id: 'tab-1', terminalId: 'term-1', title: 'One' },
-					{ id: 'tab-2', terminalId: 'term-2', title: 'Two' },
-				],
-				activeTabId: 'tab-1',
-			},
-			second: {
-				id: 'right',
-				kind: 'pane',
-				tabs: [{ id: 'tab-3', terminalId: 'term-3', title: 'Three' }],
-				activeTabId: 'tab-3',
-			},
+			version: 2,
+			tabs: [
+				{
+					id: 'tab-1',
+					title: 'One',
+					root: {
+						id: 'root',
+						kind: 'split',
+						direction: 'row',
+						first: {
+							id: 'left',
+							kind: 'pane',
+							terminalId: 'term-1',
+						},
+						second: {
+							id: 'right',
+							kind: 'pane',
+							terminalId: 'term-2',
+						},
+					},
+					focusedPaneId: 'left',
+				},
+				{
+					id: 'tab-2',
+					title: 'Two',
+					root: {
+						id: 'solo',
+						kind: 'pane',
+						terminalId: 'term-3',
+					},
+					focusedPaneId: 'solo',
+				},
+			],
+			activeTabId: 'tab-1',
 		});
 
 		expect(ids).toEqual(['term-1', 'term-2', 'term-3']);
@@ -42,14 +58,20 @@ describe('settingsPanelSideEffects', () => {
 			() => idSequence.shift() ?? 'fallback-id',
 		);
 
-		expect(layout.version).toBe(1);
-		expect(layout.focusedPaneId).toBe('pane-def');
-		expect(layout.root).toEqual({
-			id: 'pane-def',
-			kind: 'pane',
-			tabs: [{ id: 'tab-abc', terminalId: 'terminal-new', title: 'Workspace-0' }],
-			activeTabId: 'tab-abc',
-		});
+		expect(layout.version).toBe(2);
+		expect(layout.activeTabId).toBe('tab-abc');
+		expect(layout.tabs).toEqual([
+			{
+				id: 'tab-abc',
+				title: 'Workspace-0',
+				root: {
+					id: 'pane-def',
+					kind: 'pane',
+					terminalId: 'terminal-new',
+				},
+				focusedPaneId: 'pane-def',
+			},
+		]);
 	});
 
 	it('resetTerminalLayout stops existing sessions and persists a fresh layout', async () => {
@@ -73,7 +95,7 @@ describe('settingsPanelSideEffects', () => {
 						activeTabId: 'tab-a',
 					},
 					focusedPaneId: 'pane-existing',
-				} satisfies TerminalLayout,
+				} as unknown as TerminalLayout,
 			}),
 			stopWorkspaceTerminal,
 			createWorkspaceTerminal: vi.fn().mockResolvedValue({
@@ -95,14 +117,20 @@ describe('settingsPanelSideEffects', () => {
 		expect(stopWorkspaceTerminal).toHaveBeenCalledWith('ws-1', 'term-a');
 		expect(stopWorkspaceTerminal).toHaveBeenCalledWith('ws-1', 'term-b');
 		expect(persistWorkspaceTerminalLayout).toHaveBeenCalledWith('ws-1', {
-			version: 1,
-			root: {
-				id: 'pane-new',
-				kind: 'pane',
-				tabs: [{ id: 'tab-new', terminalId: 'term-new', title: 'Workspace One-0' }],
-				activeTabId: 'tab-new',
-			},
-			focusedPaneId: 'pane-new',
+			version: 2,
+			tabs: [
+				{
+					id: 'tab-new',
+					title: 'Workspace One-0',
+					root: {
+						id: 'pane-new',
+						kind: 'pane',
+						terminalId: 'term-new',
+					},
+					focusedPaneId: 'pane-new',
+				},
+			],
+			activeTabId: 'tab-new',
 		});
 		expect(dispatchLayoutReset).toHaveBeenCalledWith('ws-1');
 	});

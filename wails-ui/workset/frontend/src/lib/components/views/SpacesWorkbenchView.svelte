@@ -4,6 +4,7 @@
 	import { deriveWorksetIdentity } from '../../view-models/worksetViewModel';
 	import TerminalWorkspace from '../TerminalWorkspace.svelte';
 	import UnifiedRepoView from './UnifiedRepoView.svelte';
+	import ResizablePanel from '../ui/ResizablePanel.svelte';
 	import { resolveWorkbenchLayout, type SurfaceTab } from './spacesWorkbenchView.helpers';
 
 	type WorksetGroup = {
@@ -18,10 +19,12 @@
 		popoutMode?: boolean;
 		useGlobalExplorer?: boolean;
 		preferredSurface?: SurfaceTab;
+		pendingFileSelection?: { repoId: string; path: string } | null;
 		onSelectWorkspace: (workspaceId: string) => void;
 		onCreateWorkspace: () => void;
 		onCreateThread?: (worksetId: string) => void;
 		onSurfaceChange?: (surface: SurfaceTab) => void;
+		onFileSelectionHandled?: () => void;
 	}
 
 	const {
@@ -30,10 +33,12 @@
 		popoutMode = false,
 		useGlobalExplorer = false,
 		preferredSurface = 'terminal',
+		pendingFileSelection = null,
 		onSelectWorkspace,
 		onCreateWorkspace,
 		onCreateThread = () => {},
 		onSurfaceChange = () => {},
+		onFileSelectionHandled = () => {},
 	}: Props = $props();
 
 	const worksetGroups = $derived.by<WorksetGroup[]>(() => {
@@ -240,15 +245,35 @@
 					</div>
 				{/if}
 				<div class="spaces-main-body">
-					<div class="spaces-surface" class:with-code-pane={layoutMode === 'terminal-with-prs'}>
-						<TerminalWorkspace workspaceId={activeThread.id} workspaceName={activeThread.name} />
-					</div>
-					<aside
-						class="spaces-side-pane spaces-pr-pane"
-						class:hidden={layoutMode !== 'terminal-with-prs'}
-					>
-						<UnifiedRepoView workspace={activeThread} />
-					</aside>
+					{#if layoutMode === 'terminal-with-prs'}
+						<ResizablePanel
+							direction="horizontal"
+							initialRatio={0.62}
+							minRatio={0.3}
+							maxRatio={0.8}
+							storageKey="workset:workbench:splitRatio"
+						>
+							<div class="spaces-surface">
+								<TerminalWorkspace
+									workspaceId={activeThread.id}
+									workspaceName={activeThread.name}
+								/>
+							</div>
+							{#snippet second()}
+								<aside class="spaces-side-pane spaces-pr-pane">
+									<UnifiedRepoView
+										workspace={activeThread}
+										{pendingFileSelection}
+										{onFileSelectionHandled}
+									/>
+								</aside>
+							{/snippet}
+						</ResizablePanel>
+					{:else}
+						<div class="spaces-surface">
+							<TerminalWorkspace workspaceId={activeThread.id} workspaceName={activeThread.name} />
+						</div>
+					{/if}
 				</div>
 			{:else}
 				<div class="spaces-empty-state">
@@ -439,19 +464,8 @@
 		background: color-mix(in srgb, var(--panel) 76%, transparent);
 	}
 
-	.spaces-surface.with-code-pane {
-		flex: 0.62;
-	}
-
 	.spaces-pr-pane {
-		flex: 0.38;
 		min-width: 420px;
-	}
-	.spaces-pr-pane.hidden {
-		display: none;
-	}
-	.spaces-surface:not(.with-code-pane) {
-		flex: 1;
 	}
 
 	.spaces-main-header {

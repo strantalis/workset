@@ -1,7 +1,13 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { get } from 'svelte/store';
 import type { Workspace } from './types';
-import { applyRepoDiffSummary, applyRepoLocalStatus, workspaces } from './state';
+import {
+	applyRepoDiffSummary,
+	applyRepoLocalStatus,
+	applyTrackedPullRequest,
+	applyTrackedPullRequestReviewComments,
+	workspaces,
+} from './state';
 
 const baseWorkspaces: Workspace[] = [
 	{
@@ -114,5 +120,87 @@ describe('state repo diff updates', () => {
 		const repo = get(workspaces)[0].repos[0];
 		expect(repo.dirty).toBe(true);
 		expect(repo.diff).toEqual({ added: 3, removed: 7 });
+	});
+
+	it('updates tracked pull request metadata from live status payloads', () => {
+		applyTrackedPullRequest('ws-1', 'repo-1', {
+			repo: 'octo/frontend',
+			number: 42,
+			url: 'https://github.com/octo/frontend/pull/42',
+			title: 'Speed up PR cache',
+			state: 'open',
+			draft: false,
+			merged: false,
+			baseRepo: 'octo/frontend',
+			baseBranch: 'main',
+			headRepo: 'octo/frontend',
+			headBranch: 'feature/pr-cache',
+			commentsCount: 5,
+			reviewCommentsCount: 3,
+		});
+
+		const repo = get(workspaces)[0].repos[0];
+		expect(repo.trackedPullRequest?.number).toBe(42);
+		expect(repo.trackedPullRequest?.reviewCommentsCount).toBe(3);
+	});
+
+	it('clears closed, unmerged tracked pull requests', () => {
+		applyTrackedPullRequest('ws-1', 'repo-1', {
+			repo: 'octo/frontend',
+			number: 42,
+			url: 'https://github.com/octo/frontend/pull/42',
+			title: 'Speed up PR cache',
+			state: 'open',
+			draft: false,
+			merged: false,
+			baseRepo: 'octo/frontend',
+			baseBranch: 'main',
+			headRepo: 'octo/frontend',
+			headBranch: 'feature/pr-cache',
+		});
+
+		applyTrackedPullRequest('ws-1', 'repo-1', {
+			repo: 'octo/frontend',
+			number: 42,
+			url: 'https://github.com/octo/frontend/pull/42',
+			title: 'Speed up PR cache',
+			state: 'closed',
+			draft: false,
+			merged: false,
+			baseRepo: 'octo/frontend',
+			baseBranch: 'main',
+			headRepo: 'octo/frontend',
+			headBranch: 'feature/pr-cache',
+		});
+
+		expect(get(workspaces)[0].repos[0].trackedPullRequest).toBeUndefined();
+	});
+
+	it('refreshes tracked review comment counts without a workspace reload', () => {
+		applyTrackedPullRequest('ws-1', 'repo-1', {
+			repo: 'octo/frontend',
+			number: 42,
+			url: 'https://github.com/octo/frontend/pull/42',
+			title: 'Speed up PR cache',
+			state: 'open',
+			draft: false,
+			merged: false,
+			baseRepo: 'octo/frontend',
+			baseBranch: 'main',
+			headRepo: 'octo/frontend',
+			headBranch: 'feature/pr-cache',
+			commentsCount: 4,
+			reviewCommentsCount: 1,
+		});
+
+		applyTrackedPullRequestReviewComments('ws-1', 'repo-1', [
+			{ id: 1, body: 'one', path: 'src/main.ts', outdated: false },
+			{ id: 2, body: 'two', path: 'src/main.ts', outdated: false },
+			{ id: 3, body: 'three', path: 'src/main.ts', outdated: false },
+		]);
+
+		const repo = get(workspaces)[0].repos[0];
+		expect(repo.trackedPullRequest?.reviewCommentsCount).toBe(3);
+		expect(repo.trackedPullRequest?.commentsCount).toBe(6);
 	});
 });

@@ -36,7 +36,7 @@ const getStatus = (
 export const mapWorkspaceToPrItems = (workspace: Workspace | null): PrListItem[] => {
 	if (!workspace) return [];
 	return workspace.repos.map((repo) => ({
-		// Keep this predicate aligned with App.handleSelectRepo and PROrchestrationView partitioning.
+		// Keep this predicate aligned with the current workbench file-surface selection flow.
 		hasLocalDiff: repo.dirty || (repo.diff.added ?? 0) > 0 || (repo.diff.removed ?? 0) > 0,
 		id: `${workspace.id}:${repo.id}`,
 		repoId: repo.id,

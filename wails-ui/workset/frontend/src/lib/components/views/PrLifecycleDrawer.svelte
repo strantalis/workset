@@ -2,12 +2,14 @@
 	import {
 		AlertCircle,
 		CheckCircle2,
+		ChevronDown,
 		Circle,
 		ExternalLink,
+		FileDiff,
 		GitCommit,
 		FileCode,
 		Loader2,
-		MessageSquare,
+		MessageCircle,
 		Upload,
 		XCircle,
 	} from '@lucide/svelte';
@@ -21,9 +23,18 @@
 	import { Browser } from '@wailsio/runtime';
 	import SlideDrawer from '../ui/SlideDrawer.svelte';
 	import Button from '../ui/Button.svelte';
-	import { buildCheckStats } from './prOrchestrationHelpers';
+	import { buildCheckStats } from '../../pullRequestUiHelpers';
 
 	const POLL_INTERVAL_MS = 10_000;
+	const STATUS_CACHE_TTL_MS = 30_000;
+
+	type StatusCacheEntry = {
+		prStatus: PullRequestStatusResult | null;
+		localStatus: RepoLocalStatus | null;
+		cachedAt: number;
+	};
+
+	const statusCache = new Map<string, StatusCacheEntry>();
 
 	interface Props {
 		open: boolean;
@@ -32,6 +43,8 @@
 		repoName: string;
 		branch: string;
 		trackedPr: PullRequestCreated | null;
+		diffStats?: { filesChanged: number; additions: number; deletions: number } | null;
+		unresolvedThreads?: number;
 		onClose: () => void;
 		onStatusChanged: () => void;
 	}
@@ -43,10 +56,14 @@
 		repoName,
 		branch,
 		trackedPr,
+		diffStats = null,
+		unresolvedThreads = 0,
 		onClose,
 		onStatusChanged,
 	}: Props = $props();
 
+	let checksExpanded = $state(false);
+	let descriptionExpanded = $state(false);
 	let prStatus: PullRequestStatusResult | null = $state(null);
 	let localStatus: RepoLocalStatus | null = $state(null);
 	let pushLoading = $state(false);
@@ -54,6 +71,19 @@
 	let pushError: string | null = $state(null);
 	let descriptionHtml: string = $state('');
 	let statusRequestId = 0;
+
+	const buildStatusCacheKey = (): string =>
+		`${workspaceId}\u0000${repoId}\u0000${trackedPr?.number ?? 0}\u0000${branch}`;
+
+	const readCachedStatus = (): StatusCacheEntry | null => {
+		const cached = statusCache.get(buildStatusCacheKey());
+		if (!cached) return null;
+		if (Date.now() - cached.cachedAt > STATUS_CACHE_TTL_MS) {
+			statusCache.delete(buildStatusCacheKey());
+			return null;
+		}
+		return cached;
+	};
 
 	const checkStats = $derived(buildCheckStats(prStatus));
 
@@ -84,6 +114,11 @@
 		return 'pass';
 	});
 
+	// Auto-expand checks when there are failures
+	$effect(() => {
+		if (checkStats.failed > 0) checksExpanded = true;
+	});
+
 	const pushBarNeedsAction = $derived.by(() => {
 		const ls = localStatus;
 		if (!ls) return false;
@@ -105,6 +140,11 @@
 			if (requestId !== statusRequestId) return;
 			prStatus = status;
 			localStatus = local;
+			statusCache.set(buildStatusCacheKey(), {
+				prStatus: status,
+				localStatus: local,
+				cachedAt: Date.now(),
+			});
 		} catch {
 			if (requestId !== statusRequestId) return;
 		}
@@ -144,6 +184,12 @@
 			return;
 		}
 
+		const cached = readCachedStatus();
+		if (cached) {
+			prStatus = cached.prStatus;
+			localStatus = cached.localStatus;
+		}
+
 		void loadStatus();
 		const timer = setInterval(() => void loadStatus(), POLL_INTERVAL_MS);
 		return () => clearInterval(timer);
@@ -172,29 +218,28 @@
 <SlideDrawer {open} title="Pull Request" {onClose}>
 	{#if trackedPr}
 		<div class="pld-content">
-			<!-- Header -->
+			<!-- Header + GitHub link -->
 			<div class="pld-header-info">
 				<div class="pld-title-row">
 					<h3 class="pld-pr-title">{trackedPr.title}</h3>
 					<span class="pld-state-badge pld-state-{prState}">{prStateLabel}</span>
 				</div>
-				<div class="pld-meta">
-					<span class="pld-repo">{repoName}</span>
-					<span class="pld-dot">/</span>
-					<span class="pld-branch">{branch} → {trackedPr.baseBranch ?? 'main'}</span>
+				<div class="pld-meta-row">
+					<div class="pld-meta">
+						<span class="pld-repo">{repoName}</span>
+						<span class="pld-dot">/</span>
+						<span class="pld-branch">{branch} → {trackedPr.baseBranch ?? 'main'}</span>
+					</div>
+					<button
+						type="button"
+						class="pld-github-link"
+						onclick={() => trackedPr?.url && Browser.OpenURL(trackedPr.url)}
+					>
+						<ExternalLink size={11} />
+						GitHub
+					</button>
 				</div>
 			</div>
-
-			<!-- Description (rendered markdown, sanitized via DOMPurify) -->
-			{#if descriptionHtml}
-				<div class="pld-section">
-					<div class="pld-section-head">Description</div>
-					<div class="pld-description">
-						<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-						{@html descriptionHtml}
-					</div>
-				</div>
-			{/if}
 
 			<!-- Push status -->
 			{#if !isMerged}
@@ -248,24 +293,70 @@
 				</div>
 			{/if}
 
-			<!-- Checks -->
-			<div class="pld-section pld-section--divided">
-				<div class="pld-section-head">
-					{#if checkStats.total === 0}
-						<Circle size={12} class="pld-check-neutral" />
-						No checks
-					{:else if checkStats.failed > 0}
-						<XCircle size={12} class="pld-check-fail" />
-						Checks failing
-					{:else if checkStats.pending > 0}
-						<AlertCircle size={12} class="pld-check-pending" />
-						Checks running
-					{:else}
-						<CheckCircle2 size={12} class="pld-check-pass" />
-						All checks passing
+			<!-- Stats + Review (compact, at-a-glance) -->
+			<div class="pld-overview">
+				{#if diffStats}
+					<div class="pld-overview-stats">
+						<span class="pld-overview-stat">
+							<span class="pld-icon-accent"><FileDiff size={11} /></span>
+							{diffStats.filesChanged} file{diffStats.filesChanged === 1 ? '' : 's'}
+						</span>
+						<span class="pld-overview-stat">
+							<span class="pld-stat-add">+{diffStats.additions}</span>
+							<span class="pld-stat-del">-{diffStats.deletions}</span>
+						</span>
+					</div>
+				{/if}
+				<div class="pld-overview-review">
+					{#if unresolvedThreads > 0}
+						<span class="pld-overview-stat">
+							<span class="pld-icon-warn"><MessageCircle size={11} /></span>
+							{unresolvedThreads} unresolved thread{unresolvedThreads === 1 ? '' : 's'}
+						</span>
+					{/if}
+					{#if prStatus?.pullRequest?.mergeable}
+						<span class="pld-overview-stat">
+							{#if prStatus.pullRequest.mergeable === 'mergeable'}
+								<CheckCircle2 size={11} class="pld-check-pass" /> Ready to merge
+							{:else if prStatus.pullRequest.mergeable === 'conflicts'}
+								<XCircle size={11} class="pld-check-fail" /> Has conflicts
+							{:else}
+								<Circle size={11} class="pld-check-neutral" /> Merge status unknown
+							{/if}
+						</span>
 					{/if}
 				</div>
-				{#if prStatus?.checks}
+			</div>
+
+			<!-- Checks (collapsible) -->
+			<div class="pld-section pld-section--divided">
+				<button
+					type="button"
+					class="pld-section-toggle"
+					onclick={() => (checksExpanded = !checksExpanded)}
+				>
+					<span class="pld-section-head">
+						{#if checkStats.total === 0}
+							<Circle size={12} class="pld-check-neutral" />
+							No checks
+						{:else if checkStats.failed > 0}
+							<XCircle size={12} class="pld-check-fail" />
+							{checkStats.failed} check{checkStats.failed === 1 ? '' : 's'} failing
+						{:else if checkStats.pending > 0}
+							<AlertCircle size={12} class="pld-check-pending" />
+							{checkStats.pending} check{checkStats.pending === 1 ? '' : 's'} running
+						{:else}
+							<CheckCircle2 size={12} class="pld-check-pass" />
+							{checkStats.total} checks passing
+						{/if}
+					</span>
+					{#if checkStats.total > 0}
+						<span class="pld-section-chevron" class:expanded={checksExpanded}>
+							<ChevronDown size={12} />
+						</span>
+					{/if}
+				</button>
+				{#if checksExpanded && prStatus?.checks}
 					<div class="pld-checks-container pld-checks-{checksStatus}">
 						{#each prStatus.checks as check (check.name)}
 							<div class="pld-check-row">
@@ -283,41 +374,27 @@
 				{/if}
 			</div>
 
-			<!-- Details -->
-			<div class="pld-section pld-section--divided">
-				<div class="pld-section-head">Details</div>
-				<div class="pld-stats">
-					{#if prStatus?.pullRequest?.commentsCount}
-						<div class="pld-stat-row">
-							<span>Comments</span>
-							<span class="pld-stat-val">
-								<MessageSquare size={11} />
-								{prStatus.pullRequest.commentsCount}
-							</span>
+			<!-- Description (collapsible) -->
+			{#if descriptionHtml}
+				<div class="pld-section pld-section--divided">
+					<button
+						type="button"
+						class="pld-section-toggle"
+						onclick={() => (descriptionExpanded = !descriptionExpanded)}
+					>
+						<span class="pld-section-head">Description</span>
+						<span class="pld-section-chevron" class:expanded={descriptionExpanded}>
+							<ChevronDown size={12} />
+						</span>
+					</button>
+					{#if descriptionExpanded}
+						<div class="pld-description">
+							<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+							{@html descriptionHtml}
 						</div>
 					{/if}
-					<div class="pld-stat-row">
-						<span>State</span>
-						<span class="pld-stat-val">
-							<span class="pld-state-badge pld-state-badge--inline pld-state-{prState}"
-								>{prStateLabel}</span
-							>
-						</span>
-					</div>
 				</div>
-			</div>
-
-			<!-- Actions -->
-			<div class="pld-actions">
-				<Button
-					variant="ghost"
-					size="sm"
-					onclick={() => trackedPr?.url && Browser.OpenURL(trackedPr.url)}
-				>
-					<ExternalLink size={12} />
-					Open in GitHub
-				</Button>
-			</div>
+			{/if}
 		</div>
 	{:else}
 		<div class="pld-empty">
@@ -353,12 +430,38 @@
 		flex: 1;
 		min-width: 0;
 	}
+	.pld-meta-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+	}
 	.pld-meta {
 		display: flex;
 		align-items: center;
 		gap: 6px;
 		font-size: var(--text-2xs);
 		color: var(--muted);
+		min-width: 0;
+	}
+	.pld-github-link {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 3px 8px;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		background: transparent;
+		color: var(--muted);
+		font-size: var(--text-2xs);
+		cursor: pointer;
+		flex-shrink: 0;
+		transition: all var(--transition-fast);
+	}
+	.pld-github-link:hover {
+		color: var(--text);
+		border-color: var(--accent);
+		background: color-mix(in srgb, var(--accent) 8%, transparent);
 	}
 	.pld-repo {
 		font-family: var(--font-mono);
@@ -428,6 +531,52 @@
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
 		font-weight: 500;
+	}
+	.pld-section-toggle {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		width: 100%;
+		padding: 0;
+		border: none;
+		background: transparent;
+		cursor: pointer;
+		color: inherit;
+	}
+	.pld-section-toggle:hover .pld-section-head {
+		color: var(--text);
+	}
+	.pld-section-chevron {
+		color: var(--subtle);
+		transition: transform 150ms ease;
+	}
+	.pld-section-chevron.expanded {
+		transform: rotate(180deg);
+	}
+
+	/* ── Overview (compact stats + review) ───────────── */
+	.pld-overview {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		padding: 10px 12px;
+		border-radius: 8px;
+		background: var(--panel-strong);
+		border: 1px solid var(--border);
+	}
+	.pld-overview-stats,
+	.pld-overview-review {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+	}
+	.pld-overview-stat {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		font-size: var(--text-xs);
+		color: var(--muted);
 	}
 
 	/* ── Description (markdown) ──────────────────────── */
@@ -591,31 +740,21 @@
 	}
 
 	/* ── Stats ───────────────────────────────────────── */
-	.pld-stats {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
+	.pld-stat-add {
+		color: var(--success);
+		font-family: var(--font-mono);
+		font-size: var(--text-mono-xs);
 	}
-	.pld-stat-row {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		font-size: var(--text-xs);
-		color: var(--muted);
+	.pld-stat-del {
+		color: var(--danger);
+		font-family: var(--font-mono);
+		font-size: var(--text-mono-xs);
 	}
-	.pld-stat-val {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		color: var(--text);
+	.pld-icon-accent {
+		color: var(--accent);
 	}
-
-	/* ── Actions ─────────────────────────────────────── */
-	.pld-actions {
-		display: flex;
-		gap: 8px;
-		padding-top: 12px;
-		border-top: 1px solid var(--border);
+	.pld-icon-warn {
+		color: var(--warning);
 	}
 	.pld-empty {
 		color: var(--muted);

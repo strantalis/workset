@@ -6,7 +6,7 @@ description: Desktop UI for Workset with terminals, thread management, and GitHu
 
 Workset includes a native desktop app built with Wails (Go backend + Svelte frontend). It shares the same config, thread state, and worksetapi service as the CLI.
 
-<img class="desktop-app-hero-shot" src="../assets/screenshots/desktop-overview.png" alt="Workset desktop app with explorer, terminals, and document viewer">
+<img class="desktop-app-hero-shot" src="../assets/screenshots/desktop-overview.png" alt="Workset desktop app with explorer, terminals, and the unified repo view">
 
 ---
 

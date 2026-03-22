@@ -90,6 +90,7 @@
 	};
 
 	const baseExtensions = (): Extension[] => [
+		EditorView.lineWrapping,
 		lineNumbers(),
 		bracketMatching(),
 		foldGutter(),
@@ -281,7 +282,7 @@
 		height: 100%;
 	}
 	.diff-view :global(.cm-mergeViewEditor) {
-		overflow: hidden;
+		overflow: auto;
 	}
 	.diff-view :global(.cm-collapsedLines) {
 		cursor: pointer;

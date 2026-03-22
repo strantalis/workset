@@ -1,9 +1,5 @@
-export type WorkspaceActionMode =
-	| 'create-thread'
-	| 'add-repo'
-	| 'remove-thread'
-	| 'remove-repo'
-	| null;
+export type { WorkspaceActionMode } from '../services/workspaceActionContextService';
+import type { WorkspaceActionMode } from '../services/workspaceActionContextService';
 
 export type WorkspaceActionModalOptions = {
 	worksetName?: string | null;

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { get } from 'svelte/store';
-	import { previewRepoHooks } from '../api/workspaces';
+	import { previewRepoHooks, setWorkspaceDescription } from '../api/workspaces';
 	import {
 		activeWorkspaceId,
 		clearRepo,
@@ -119,6 +119,7 @@
 	let primaryInput = $state('');
 	let directRepos: WorkspaceActionDirectRepo[] = $state([]);
 	let customizeName = $state('');
+	let description = $state('');
 
 	let searchQuery = $state('');
 
@@ -481,9 +482,29 @@
 		};
 	};
 
+	const existingWorksetNames = $derived.by(() => {
+		const names = new Set<string>();
+		for (const ws of $workspaces) {
+			const label = (ws.worksetLabel ?? ws.name ?? '').trim().toLowerCase();
+			if (label) names.add(label);
+		}
+		return names;
+	});
+	const isDuplicateWorksetName = $derived(
+		mode === 'create' && existingWorksetNames.has(finalName.trim().toLowerCase()),
+	);
+	const nameValidationError = $derived.by(() => {
+		if (mode !== 'create' || !customizeName.trim()) return null;
+		if (isDuplicateWorksetName) return 'A workset with this name already exists.';
+		return null;
+	});
+
 	const getCreateValidationError = (): string | null => {
 		if (!finalName) {
 			return mode === 'create-thread' ? 'Enter a thread name.' : 'Enter a workset name.';
+		}
+		if (isDuplicateWorksetName) {
+			return 'A workset with this name already exists.';
 		}
 		return null;
 	};
@@ -548,12 +569,11 @@
 			hookRuns = appendHookRuns(hookRuns, result.hookRuns);
 			pendingHooks = result.pendingHooks.map((pending) => ({ ...pending }));
 			hookWorkspaceId = result.workspaceName;
-			await loadWorkspaces(true);
-			if (plan.isThreadMode) {
-				selectWorkspace(result.workspaceName);
-			} else {
-				clearWorkspace();
+			if (!plan.isThreadMode && description.trim()) {
+				await setWorkspaceDescription(result.workspaceName, description.trim());
 			}
+			await loadWorkspaces(true);
+			selectWorkspace(result.workspaceName);
 			warnings = result.warnings;
 			applyMutationTransition(
 				resolveMutationHookTransition({
@@ -901,7 +921,8 @@
 	subtitle={modalSubtitle}
 	size={modalSize}
 	headerAlign="left"
-	fill={mode === 'create-thread' ||
+	fill={mode === 'create' ||
+		mode === 'create-thread' ||
 		mode === 'add-repo' ||
 		mode === 'remove-thread' ||
 		mode === 'remove-repo'}
@@ -952,6 +973,8 @@
 			onAddRemoveAlias={removeAlias}
 			onAddSubmit={handleAddItems}
 			createWorkspaceName={customizeName}
+			createDescription={description}
+			createNameValidationError={nameValidationError}
 			createWorksetLabel={worksetName}
 			createSourceInput={primaryInput}
 			createDirectRepos={directRepos}
@@ -959,6 +982,7 @@
 			createThreadHooksLoading={threadHooksLoading}
 			createThreadHooksError={threadHooksError}
 			onCreateWorkspaceNameInput={(value) => (customizeName = value)}
+			onCreateDescriptionInput={(value) => (description = value)}
 			onCreateSearchQueryInput={(value) => (searchQuery = value)}
 			onCreateSourceInput={(value) => (primaryInput = value)}
 			onCreateAddDirectRepo={addDirectRepo}

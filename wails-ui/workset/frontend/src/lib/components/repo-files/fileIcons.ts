@@ -130,7 +130,7 @@ const FILE_NAME_ICON_MAP: Record<string, string> = {
 	prettierrc: 'file-icons:npm',
 };
 
-export const getDocumentViewerFileIcon = (path: string): string => {
+export const getRepoFileIcon = (path: string): string => {
 	const ext = path.split('.').pop()?.toLowerCase() ?? '';
 	const fileName = path.split('/').pop()?.toLowerCase() ?? '';
 	return FILE_NAME_ICON_MAP[fileName] ?? EXTENSION_ICON_MAP[ext] ?? 'file-icons:default';

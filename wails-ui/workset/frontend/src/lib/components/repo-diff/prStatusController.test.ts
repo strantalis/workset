@@ -17,10 +17,13 @@ describe('prStatusController', () => {
 				title: 'Improve widget',
 				state: 'OPEN',
 				draft: false,
+				merged: false,
 				base_repo: 'acme/widget',
 				base_branch: 'main',
 				head_repo: 'acme/widget',
 				head_branch: 'feature/widget',
+				comments_count: 6,
+				review_comments_count: 4,
 			},
 			checks: [
 				{
@@ -34,6 +37,8 @@ describe('prStatusController', () => {
 
 		expect(result.pullRequest.number).toBe(17);
 		expect(result.pullRequest.baseRepo).toBe('acme/widget');
+		expect(result.pullRequest.commentsCount).toBe(6);
+		expect(result.pullRequest.reviewCommentsCount).toBe(4);
 		expect(result.checks[0].checkRunId).toBe(99);
 	});
 

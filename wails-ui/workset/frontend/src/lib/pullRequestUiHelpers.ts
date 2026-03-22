@@ -1,12 +1,12 @@
+import type { GitHubOperationStage } from './api/github';
 import type {
 	PullRequestCheck,
-	PullRequestCreated,
 	PullRequestReviewComment,
 	PullRequestStatusResult,
-	Workspace,
-} from '../../types';
+	RepoDiffFileSummary,
+} from './types';
 
-export type ReviewThread = {
+export type PullRequestReviewThread = {
 	id: string;
 	comments: PullRequestReviewComment[];
 	path: string;
@@ -14,26 +14,6 @@ export type ReviewThread = {
 	resolved: boolean;
 	outdated: boolean;
 };
-
-export const buildTrackedPrMap = (workspace: Workspace | null): Map<string, PullRequestCreated> => {
-	const nextMap = new Map<string, PullRequestCreated>();
-	if (!workspace) return nextMap;
-	for (const repo of workspace.repos) {
-		if (repo.trackedPullRequest) {
-			nextMap.set(repo.id, repo.trackedPullRequest);
-		}
-	}
-	return nextMap;
-};
-
-export const buildDiffTargetKey = (
-	wsId: string,
-	repoId: string,
-	pr?: PullRequestCreated,
-): string =>
-	pr
-		? `${wsId}:${repoId}:pr:${pr.number}:${pr.baseRepo}:${pr.baseBranch}:${pr.headRepo}:${pr.headBranch}`
-		: `${wsId}:${repoId}:local`;
 
 export const buildCheckStats = (prStatus: PullRequestStatusResult | null) => {
 	const checks = prStatus?.checks ?? [];
@@ -48,13 +28,15 @@ export const buildCheckStats = (prStatus: PullRequestStatusResult | null) => {
 	return { passed, failed, pending, total: checks.length };
 };
 
-export const buildReviewThreads = (prReviews: PullRequestReviewComment[]): ReviewThread[] => {
+export const buildReviewThreads = (
+	reviews: PullRequestReviewComment[],
+): PullRequestReviewThread[] => {
 	const threadMap = new Map<string, PullRequestReviewComment[]>();
-	for (const comment of prReviews) {
+	for (const comment of reviews) {
 		const key = comment.threadId ?? `single-${comment.id}`;
-		const arr = threadMap.get(key) ?? [];
-		arr.push(comment);
-		threadMap.set(key, arr);
+		const comments = threadMap.get(key) ?? [];
+		comments.push(comment);
+		threadMap.set(key, comments);
 	}
 	return Array.from(threadMap.entries())
 		.map(([id, comments]) => ({
@@ -69,6 +51,32 @@ export const buildReviewThreads = (prReviews: PullRequestReviewComment[]): Revie
 			if (a.resolved !== b.resolved) return a.resolved ? 1 : -1;
 			return a.path.localeCompare(b.path);
 		});
+};
+
+export const buildReviewThreadCountsByFile = (
+	reviews: PullRequestReviewComment[],
+	files: RepoDiffFileSummary[],
+): Map<string, number> => {
+	const counts = new Map<string, number>();
+	if (reviews.length === 0 || files.length === 0) return counts;
+
+	const fileByPath = new Map<string, RepoDiffFileSummary>();
+	const fileByPrevPath = new Map<string, RepoDiffFileSummary>();
+	for (const file of files) {
+		fileByPath.set(file.path, file);
+		if (file.prevPath) {
+			fileByPrevPath.set(file.prevPath, file);
+		}
+	}
+
+	for (const thread of buildReviewThreads(reviews)) {
+		if (thread.resolved) continue;
+		const matchedFile = fileByPath.get(thread.path) ?? fileByPrevPath.get(thread.path);
+		if (!matchedFile) continue;
+		counts.set(matchedFile.path, (counts.get(matchedFile.path) ?? 0) + 1);
+	}
+
+	return counts;
 };
 
 export const getCheckIcon = (check: PullRequestCheck): string => {
@@ -87,4 +95,15 @@ export const formatCheckDuration = (check: PullRequestCheck): string => {
 	if (ms < 1000) return `${ms}ms`;
 	if (ms < 60000) return `${Math.round(ms / 1000)}s`;
 	return `${Math.round(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`;
+};
+
+export const commitPushStageLabel = (stage: GitHubOperationStage | null): string | null => {
+	const labels: Record<string, string> = {
+		queued: 'Queuing...',
+		generating_message: 'Generating commit message...',
+		staging: 'Staging files...',
+		committing: 'Committing...',
+		pushing: 'Pushing...',
+	};
+	return stage ? (labels[stage] ?? 'Processing...') : null;
 };

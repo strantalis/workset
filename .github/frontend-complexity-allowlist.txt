@@ -10,6 +10,7 @@ src/lib/components/ui/Select.svelte
 src/lib/components/views/OnboardingView.svelte
 src/lib/components/settings/sections/AliasManager.svelte
 src/lib/components/views/PROrchestrationView.svelte
+src/lib/components/views/UnifiedRepoView.svelte
 src/lib/services/workspaceActionContextService.ts
 src/lib/state.ts
 src/lib/terminal/terminalAttachOpenLifecycle.ts

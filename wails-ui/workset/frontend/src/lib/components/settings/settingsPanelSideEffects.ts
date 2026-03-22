@@ -18,10 +18,10 @@ import {
 } from '../../api/settings';
 import { toErrorMessage as toErrorMessageApi } from '../../errors';
 import { generateTerminalName as generateTerminalNameApi } from '../../names';
+import { collectTerminalIdsFromUnknownLayout } from '../../terminal/terminalLayoutTree';
 import type {
 	AppVersion,
 	TerminalLayout,
-	TerminalLayoutNode,
 	UpdateCheckResult,
 	UpdatePreferences,
 	UpdateState,
@@ -29,7 +29,7 @@ import type {
 } from '../../types';
 
 const SESSIOND_RESTART_TIMEOUT_MS = 20000;
-const LAYOUT_VERSION = 1;
+const LAYOUT_VERSION = 2;
 
 export const DEFAULT_UPDATE_PREFERENCES: UpdatePreferences = { channel: 'stable', autoCheck: true };
 
@@ -115,15 +115,8 @@ const resolveId = (randomUUID?: () => string): string => {
 	return `term-${Math.random().toString(36).slice(2)}`;
 };
 
-export const collectTerminalIds = (node: TerminalLayoutNode | null | undefined): string[] => {
-	if (!node) {
-		return [];
-	}
-	if (node.kind === 'pane') {
-		return (node.tabs ?? []).map((tab) => tab.terminalId).filter(Boolean);
-	}
-	return [...collectTerminalIds(node.first), ...collectTerminalIds(node.second)];
-};
+export const collectTerminalIds = (layoutLike: unknown): string[] =>
+	collectTerminalIdsFromUnknownLayout(layoutLike);
 
 const stopSessionsForLayout = async (
 	workspaceId: string,
@@ -133,7 +126,7 @@ const stopSessionsForLayout = async (
 	if (!layout) {
 		return;
 	}
-	const terminalIds = Array.from(new Set(collectTerminalIds(layout.root)));
+	const terminalIds = collectTerminalIds(layout);
 	if (terminalIds.length === 0) {
 		return;
 	}
@@ -152,19 +145,19 @@ export const buildFreshLayout = (
 	const paneId = nextId();
 	return {
 		version: LAYOUT_VERSION,
-		root: {
-			id: paneId,
-			kind: 'pane',
-			tabs: [
-				{
-					id: tabId,
+		tabs: [
+			{
+				id: tabId,
+				title: generateTerminalName(workspaceName, 0),
+				root: {
+					id: paneId,
+					kind: 'pane',
 					terminalId,
-					title: generateTerminalName(workspaceName, 0),
 				},
-			],
-			activeTabId: tabId,
-		},
-		focusedPaneId: paneId,
+				focusedPaneId: paneId,
+			},
+		],
+		activeTabId: tabId,
 	};
 };
 

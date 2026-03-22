@@ -52,21 +52,22 @@ type RepoDiffFileSnapshot struct {
 }
 
 type TrackedPullRequestRef struct {
-	Repo          string `json:"repo"`
-	Number        int    `json:"number"`
-	URL           string `json:"url"`
-	Title         string `json:"title"`
-	Body          string `json:"body,omitempty"`
-	State         string `json:"state"`
-	Draft         bool   `json:"draft"`
-	Merged        bool   `json:"merged"`
-	BaseRepo      string `json:"baseRepo"`
-	BaseBranch    string `json:"baseBranch"`
-	HeadRepo      string `json:"headRepo"`
-	HeadBranch    string `json:"headBranch"`
-	UpdatedAt     string `json:"updatedAt,omitempty"`
-	Author        string `json:"author,omitempty"`
-	CommentsCount int    `json:"commentsCount,omitempty"`
+	Repo                string `json:"repo"`
+	Number              int    `json:"number"`
+	URL                 string `json:"url"`
+	Title               string `json:"title"`
+	Body                string `json:"body,omitempty"`
+	State               string `json:"state"`
+	Draft               bool   `json:"draft"`
+	Merged              bool   `json:"merged"`
+	BaseRepo            string `json:"baseRepo"`
+	BaseBranch          string `json:"baseBranch"`
+	HeadRepo            string `json:"headRepo"`
+	HeadBranch          string `json:"headBranch"`
+	UpdatedAt           string `json:"updatedAt,omitempty"`
+	Author              string `json:"author,omitempty"`
+	CommentsCount       int    `json:"commentsCount,omitempty"`
+	ReviewCommentsCount int    `json:"reviewCommentsCount,omitempty"`
 }
 
 type WorkspaceSnapshotRequest struct {
@@ -93,21 +94,22 @@ func (a *App) ListWorkspaceSnapshots(input WorkspaceSnapshotRequest) ([]Workspac
 			var tracked *TrackedPullRequestRef
 			if repo.TrackedPullRequest != nil {
 				tracked = &TrackedPullRequestRef{
-					Repo:          repo.TrackedPullRequest.Repo,
-					Number:        repo.TrackedPullRequest.Number,
-					URL:           repo.TrackedPullRequest.URL,
-					Title:         repo.TrackedPullRequest.Title,
-					Body:          repo.TrackedPullRequest.Body,
-					State:         repo.TrackedPullRequest.State,
-					Draft:         repo.TrackedPullRequest.Draft,
-					Merged:        repo.TrackedPullRequest.Merged,
-					BaseRepo:      repo.TrackedPullRequest.BaseRepo,
-					BaseBranch:    repo.TrackedPullRequest.BaseBranch,
-					HeadRepo:      repo.TrackedPullRequest.HeadRepo,
-					HeadBranch:    repo.TrackedPullRequest.HeadBranch,
-					UpdatedAt:     repo.TrackedPullRequest.UpdatedAt,
-					Author:        repo.TrackedPullRequest.Author,
-					CommentsCount: repo.TrackedPullRequest.CommentsCount,
+					Repo:                repo.TrackedPullRequest.Repo,
+					Number:              repo.TrackedPullRequest.Number,
+					URL:                 repo.TrackedPullRequest.URL,
+					Title:               repo.TrackedPullRequest.Title,
+					Body:                repo.TrackedPullRequest.Body,
+					State:               repo.TrackedPullRequest.State,
+					Draft:               repo.TrackedPullRequest.Draft,
+					Merged:              repo.TrackedPullRequest.Merged,
+					BaseRepo:            repo.TrackedPullRequest.BaseRepo,
+					BaseBranch:          repo.TrackedPullRequest.BaseBranch,
+					HeadRepo:            repo.TrackedPullRequest.HeadRepo,
+					HeadBranch:          repo.TrackedPullRequest.HeadBranch,
+					UpdatedAt:           repo.TrackedPullRequest.UpdatedAt,
+					Author:              repo.TrackedPullRequest.Author,
+					CommentsCount:       repo.TrackedPullRequest.CommentsCount,
+					ReviewCommentsCount: repo.TrackedPullRequest.ReviewCommentsCount,
 				}
 			}
 			repoSnapshot := RepoSnapshot{

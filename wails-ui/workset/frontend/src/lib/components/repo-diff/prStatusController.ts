@@ -12,11 +12,14 @@ export type RepoDiffPrStatusEvent = {
 			title: string;
 			state: string;
 			draft: boolean;
+			merged?: boolean;
 			base_repo: string;
 			base_branch: string;
 			head_repo: string;
 			head_branch: string;
 			mergeable?: string;
+			comments_count?: number;
+			review_comments_count?: number;
 		};
 		checks: Array<{
 			name: string;
@@ -118,11 +121,14 @@ export const mapPullRequestStatus = (
 			title: status.pullRequest.title,
 			state: status.pullRequest.state,
 			draft: status.pullRequest.draft,
+			merged: status.pullRequest.merged,
 			baseRepo: status.pullRequest.base_repo,
 			baseBranch: status.pullRequest.base_branch,
 			headRepo: status.pullRequest.head_repo,
 			headBranch: status.pullRequest.head_branch,
 			mergeable: status.pullRequest.mergeable,
+			commentsCount: status.pullRequest.comments_count,
+			reviewCommentsCount: status.pullRequest.review_comments_count,
 		},
 		checks,
 	};

@@ -1,6 +1,8 @@
 import { EditorView, Decoration, WidgetType, type DecorationSet } from '@codemirror/view';
 import { StateField, StateEffect } from '@codemirror/state';
 import { RangeSetBuilder } from '@codemirror/state';
+import { mount, unmount } from 'svelte';
+import ReviewThread from './ReviewThread.svelte';
 
 /**
  * Review comment data for a single line annotation.
@@ -17,9 +19,12 @@ export interface ReviewComment {
 }
 
 /**
- * Widget that renders an inline review comment block between lines.
+ * Widget that creates a mount point for a Svelte ReviewThread component.
+ * CM6 handles positioning; Svelte handles rendering.
  */
 class ReviewCommentWidget extends WidgetType {
+	private mounted: Record<string, never> | null = null;
+
 	constructor(readonly comments: ReviewComment[]) {
 		super();
 	}
@@ -27,44 +32,22 @@ class ReviewCommentWidget extends WidgetType {
 	toDOM(): HTMLElement {
 		const container = document.createElement('div');
 		container.className = 'cm-review-thread';
-
-		for (const comment of this.comments) {
-			const block = document.createElement('div');
-			block.className = `cm-review-comment${comment.resolved ? ' cm-review-resolved' : ''}`;
-
-			const header = document.createElement('div');
-			header.className = 'cm-review-header';
-
-			const author = document.createElement('span');
-			author.className = 'cm-review-author';
-			author.textContent = comment.author || 'unknown';
-			header.appendChild(author);
-
-			if (comment.createdAt) {
-				const time = document.createElement('span');
-				time.className = 'cm-review-time';
-				time.textContent = comment.createdAt;
-				header.appendChild(time);
-			}
-
-			if (comment.resolved) {
-				const badge = document.createElement('span');
-				badge.className = 'cm-review-resolved-badge';
-				badge.textContent = 'Resolved';
-				header.appendChild(badge);
-			}
-
-			block.appendChild(header);
-
-			const body = document.createElement('div');
-			body.className = 'cm-review-body';
-			body.textContent = comment.body;
-			block.appendChild(body);
-
-			container.appendChild(block);
-		}
-
+		this.mounted = mount(ReviewThread, {
+			target: container,
+			props: { comments: this.comments },
+		});
 		return container;
+	}
+
+	destroy(): void {
+		if (this.mounted) {
+			try {
+				unmount(this.mounted);
+			} catch {
+				// Component may already be detached
+			}
+			this.mounted = null;
+		}
 	}
 
 	eq(other: ReviewCommentWidget): boolean {
@@ -141,7 +124,7 @@ function buildDecorations(
 	return builder.finish();
 }
 
-// ── CSS Theme ─────────────────────────────────────────────
+// ── CSS Theme (minimal — just the line highlight and thread container) ──
 
 export const reviewDecorationsTheme = EditorView.baseTheme({
 	'.cm-review-highlighted-line': {
@@ -149,47 +132,7 @@ export const reviewDecorationsTheme = EditorView.baseTheme({
 		borderLeft: '2px solid #2d8cff',
 	},
 	'.cm-review-thread': {
-		padding: '4px 12px 4px 24px',
 		borderLeft: '2px solid #2d8cff',
 		backgroundColor: 'color-mix(in srgb, #101925 90%, transparent)',
-	},
-	'.cm-review-comment': {
-		padding: '8px 12px',
-		borderRadius: '6px',
-		backgroundColor: '#15202f',
-		border: '1px solid #243244',
-		marginBottom: '4px',
-	},
-	'.cm-review-comment.cm-review-resolved': {
-		opacity: '0.5',
-	},
-	'.cm-review-header': {
-		display: 'flex',
-		alignItems: 'center',
-		gap: '8px',
-		marginBottom: '4px',
-		fontSize: '11px',
-	},
-	'.cm-review-author': {
-		fontWeight: '600',
-		color: '#f2f6fb',
-	},
-	'.cm-review-time': {
-		color: '#8a9bb0',
-		fontSize: '10px',
-	},
-	'.cm-review-resolved-badge': {
-		padding: '1px 5px',
-		borderRadius: '4px',
-		border: '1px solid color-mix(in srgb, #86c442 30%, transparent)',
-		backgroundColor: 'color-mix(in srgb, #86c442 10%, transparent)',
-		color: '#86c442',
-		fontSize: '9px',
-	},
-	'.cm-review-body': {
-		fontSize: '12px',
-		lineHeight: '1.5',
-		color: '#a3b5c9',
-		whiteSpace: 'pre-wrap',
 	},
 });

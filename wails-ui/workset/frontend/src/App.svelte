@@ -7,6 +7,8 @@
 		activeWorkspaceId,
 		applyRepoDiffSummary,
 		applyRepoLocalStatus,
+		applyTrackedPullRequest,
+		applyTrackedPullRequestReviewComments,
 		clearRepo,
 		loadWorkspaces,
 		loadingWorkspaces,
@@ -14,12 +16,13 @@
 		workspaceError,
 		workspaces,
 	} from './lib/state';
-	import { previewRepoHooks, setWorkspaceDescription } from './lib/api/workspaces';
 	import type { RepoLocalStatus } from './lib/api/github';
 	import { fetchGitHubAuthInfo } from './lib/api/github';
 	import {
 		EVENT_REPO_DIFF_LOCAL_SUMMARY,
 		EVENT_REPO_DIFF_LOCAL_STATUS,
+		EVENT_REPO_DIFF_PR_REVIEWS,
+		EVENT_REPO_DIFF_PR_STATUS,
 		EVENT_REPO_DIFF_SUMMARY,
 		EVENT_WORKSPACE_POPOUT_CLOSED,
 		EVENT_WORKSPACE_POPOUT_OPENED,
@@ -34,21 +37,18 @@
 	import SettingsPanel from './lib/components/SettingsPanel.svelte';
 	import WorkspaceActionModal from './lib/components/WorkspaceActionModal.svelte';
 	import CommandPalette, { type AppView } from './lib/components/chrome/CommandPalette.svelte';
+	import FileSearchPalette from './lib/components/chrome/FileSearchPalette.svelte';
 	import ContextBar from './lib/components/chrome/ContextBar.svelte';
 	import ExplorerPanel from './lib/components/chrome/ExplorerPanel.svelte';
-	import OnboardingView from './lib/components/views/OnboardingView.svelte';
-	import type {
-		OnboardingDraft,
-		OnboardingStartResult,
-	} from './lib/components/views/OnboardingView.utils';
-	import type { Workspace } from './lib/types';
+	import {
+		mapPullRequestReviews,
+		mapPullRequestStatus,
+		type RepoDiffPrReviewsEvent,
+		type RepoDiffPrStatusEvent,
+	} from './lib/components/repo-diff/prStatusController';
+	import type { RepoDiffSummary, Workspace } from './lib/types';
 	import SkillRegistryView from './lib/components/views/SkillRegistryView.svelte';
 	import SpacesWorkbenchView from './lib/components/views/SpacesWorkbenchView.svelte';
-	import { workspaceActionMutations } from './lib/services/workspaceActionService';
-	import {
-		loadOnboardingCatalog,
-		type RegisteredRepo,
-	} from './lib/view-models/onboardingViewModel';
 	import {
 		buildShortcutMap,
 		deriveWorksetIdentity,
@@ -71,11 +71,7 @@
 	type RepoDiffSummaryEvent = {
 		workspaceId: string;
 		repoId: string;
-		summary: {
-			files: Array<unknown>;
-			totalAdded: number;
-			totalRemoved: number;
-		};
+		summary: RepoDiffSummary;
 	};
 
 	type WorkspacePopoutEvent = {
@@ -97,7 +93,7 @@
 
 	const contextViews: AppView[] = ['workspaces', 'skill-registry', 'settings'];
 	const popoutViews = new Set<AppView>(['workspaces']);
-	const appViews = new Set<AppView>(['workspaces', 'skill-registry', 'settings', 'onboarding']);
+	const appViews = new Set<AppView>(['workspaces', 'skill-registry', 'settings']);
 	const searchParams =
 		typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
 	const popoutMode = searchParams?.get('popout') === '1';
@@ -129,15 +125,12 @@
 	provideNotifications(notifications);
 
 	let commandPaletteOpen = $state(false);
+	let fileSearchOpen = $state(false);
+	let pendingFileSelection = $state<{ repoId: string; path: string } | null>(null);
 	let authModalOpen = $state(false);
 	let authModalDismissed = $state(false);
 	let explorerOpen = $state(readExplorerOpenPreference());
 	let popoutSelectionApplied = $state(false);
-	let onboardingLoading = $state(false);
-	let onboardingBusy = $state(false);
-	let onboardingError = $state<string | null>(null);
-	let onboardingRepoRegistry = $state<RegisteredRepo[]>([]);
-	let onboardingLoaded = $state(false);
 	let workbenchSurface = $state<'terminal' | 'pull-requests'>('terminal');
 
 	const getWorksetThreads = (workspaceId: string): Workspace[] => {
@@ -184,17 +177,6 @@
 		visibleWorkspaces.filter((workspace) => workspace.placeholder !== true),
 	);
 	const worksetSummaries = $derived.by(() => mapWorkspacesToSummaries(threadVisibleWorkspaces));
-	const existingWorksetNames = $derived.by(() => {
-		const names = new Set<string>();
-		for (const workspace of $workspaces) {
-			const label =
-				workspace.worksetLabel?.trim() || workspace.workset?.trim() || workspace.name.trim();
-			if (label.length > 0) {
-				names.add(label);
-			}
-		}
-		return Array.from(names);
-	});
 	const shortcutMap = $derived.by(() => buildShortcutMap(threadVisibleWorkspaces));
 	const activeSummary = $derived.by(
 		() => worksetSummaries.find((summary) => summary.id === $activeWorkspaceId) ?? null,
@@ -226,26 +208,12 @@
 
 	const setView = (view: AppView): void => {
 		if (popoutMode && !popoutViews.has(view)) return;
+		if (view === 'onboarding') {
+			workspaceAction.open('create');
+			return;
+		}
 		currentView = view;
 		if (hasRepo) clearRepo();
-		if (view === 'onboarding') {
-			void ensureOnboardingCatalog();
-		}
-	};
-
-	const ensureOnboardingCatalog = async (): Promise<void> => {
-		if (onboardingLoading || onboardingLoaded) return;
-		onboardingLoading = true;
-		onboardingError = null;
-		try {
-			const catalog = await loadOnboardingCatalog();
-			onboardingRepoRegistry = catalog.repoRegistry;
-			onboardingLoaded = true;
-		} catch (error) {
-			onboardingError = error instanceof Error ? error.message : 'Failed to load onboarding data.';
-		} finally {
-			onboardingLoading = false;
-		}
 	};
 
 	const handleSelectWorkspace = (workspaceId: string): void => {
@@ -264,9 +232,6 @@
 			})
 		) {
 			terminalActivity.clear(previousWorkspaceId);
-		}
-		if (currentView === 'onboarding') {
-			currentView = 'workspaces';
 		}
 	};
 
@@ -293,8 +258,7 @@
 
 	const handleCreateWorkspace = (): void => {
 		if (popoutMode) return;
-		setView('onboarding');
-		clearRepo();
+		workspaceAction.open('create');
 	};
 
 	const handleCreateThread = (worksetId: string): void => {
@@ -368,48 +332,6 @@
 		removeThread: handleRemoveThread,
 	});
 
-	const handleOnboardingStart = async (
-		draft: OnboardingDraft,
-	): Promise<OnboardingStartResult | void> => {
-		if (onboardingBusy) return;
-		onboardingBusy = true;
-		onboardingError = null;
-		try {
-			const result = await workspaceActionMutations.createWorkspace({
-				finalName: draft.threadName,
-				primaryInput: draft.primarySource,
-				directRepos: draft.directRepos,
-				selectedAliases: draft.selectedAliases,
-				worksetName: draft.worksetName,
-			});
-			if (draft.description) {
-				await setWorkspaceDescription(result.workspaceName, draft.description);
-			}
-			return {
-				workspaceName: result.workspaceName,
-				warnings: result.warnings,
-				pendingHooks: result.pendingHooks,
-				hookRuns: result.hookRuns,
-			};
-		} catch (error) {
-			onboardingError =
-				error instanceof Error ? error.message : 'Failed to create thread from onboarding.';
-			throw error;
-		} finally {
-			onboardingBusy = false;
-		}
-	};
-
-	const handleOnboardingComplete = async (workspaceName: string): Promise<void> => {
-		await loadWorkspaces(true);
-		selectWorkspace(workspaceName);
-		clearRepo();
-		currentView = 'workspaces';
-	};
-
-	const handleOnboardingPreviewHooks = async (source: string): Promise<string[]> =>
-		previewRepoHooks(source);
-
 	const handleShortcutSwitch = (index: number): void => {
 		if (popoutMode) return;
 		for (const [workspaceId, number] of shortcutMap.entries()) {
@@ -425,7 +347,13 @@
 		if (key === 'p' && $activeWorkspaceId) {
 			event.preventDefault();
 			commandPaletteOpen = false;
-			workbenchSurface = workbenchSurface === 'pull-requests' ? 'terminal' : 'pull-requests';
+			if (event.shiftKey) {
+				// Cmd+Shift+P: toggle surface
+				workbenchSurface = workbenchSurface === 'pull-requests' ? 'terminal' : 'pull-requests';
+			} else {
+				// Cmd+P: file search
+				fileSearchOpen = !fileSearchOpen;
+			}
 			return;
 		}
 		if (popoutMode) return;
@@ -451,12 +379,22 @@
 			setView('workspaces');
 		}
 		commandPaletteOpen = false;
+		fileSearchOpen = false;
 		workbenchSurface = workbenchSurface === 'pull-requests' ? 'terminal' : 'pull-requests';
+	};
+
+	const handleFileSearchSelect = (repoId: string, path: string): void => {
+		// Ensure code surface is visible
+		if (currentView !== 'workspaces') setView('workspaces');
+		workbenchSurface = 'pull-requests';
+		pendingFileSelection = { repoId, path };
 	};
 
 	let repoSummaryUnsubscribe: (() => void) | null = null,
 		repoLocalSummaryUnsubscribe: (() => void) | null = null,
 		repoStatusUnsubscribe: (() => void) | null = null,
+		repoPrStatusUnsubscribe: (() => void) | null = null,
+		repoPrReviewsUnsubscribe: (() => void) | null = null,
 		popoutOpenedUnsubscribe: (() => void) | null = null,
 		popoutClosedUnsubscribe: (() => void) | null = null,
 		terminalActivityUnsubscribe: (() => void) | null = null;
@@ -485,6 +423,26 @@
 				applyRepoDiffSummary(payload.workspaceId, payload.repoId, payload.summary);
 			},
 		);
+		repoPrStatusUnsubscribe = subscribeRepoDiffEvent<RepoDiffPrStatusEvent>(
+			EVENT_REPO_DIFF_PR_STATUS,
+			(payload) => {
+				applyTrackedPullRequest(
+					payload.workspaceId,
+					payload.repoId,
+					mapPullRequestStatus(payload.status).pullRequest,
+				);
+			},
+		);
+		repoPrReviewsUnsubscribe = subscribeRepoDiffEvent<RepoDiffPrReviewsEvent>(
+			EVENT_REPO_DIFF_PR_REVIEWS,
+			(payload) => {
+				applyTrackedPullRequestReviewComments(
+					payload.workspaceId,
+					payload.repoId,
+					mapPullRequestReviews(payload.comments),
+				);
+			},
+		);
 		popoutOpenedUnsubscribe = subscribeWailsEvent<WorkspacePopoutEvent>(
 			EVENT_WORKSPACE_POPOUT_OPENED,
 			(payload) => {
@@ -510,6 +468,10 @@
 		repoLocalSummaryUnsubscribe = null;
 		repoStatusUnsubscribe?.();
 		repoStatusUnsubscribe = null;
+		repoPrStatusUnsubscribe?.();
+		repoPrStatusUnsubscribe = null;
+		repoPrReviewsUnsubscribe?.();
+		repoPrReviewsUnsubscribe = null;
 		popoutOpenedUnsubscribe?.();
 		popoutOpenedUnsubscribe = null;
 		popoutClosedUnsubscribe?.();
@@ -629,7 +591,7 @@
 								body="The requested workset for this popout window could not be loaded."
 								variant="centered"
 							/>
-						{:else if !hasWorkspace && !hasWorkspaces && currentView !== 'onboarding'}
+						{:else if !hasWorkspace && !hasWorkspaces}
 							<EmptyState
 								title="Create your first thread"
 								body="Threads are collections of repositories that move together across branches and PR flow."
@@ -656,10 +618,12 @@
 									{popoutMode}
 									useGlobalExplorer={showExplorer}
 									preferredSurface={workbenchSurface}
+									{pendingFileSelection}
 									onSurfaceChange={(surface) => (workbenchSurface = surface)}
 									onSelectWorkspace={handleSelectWorkspace}
 									onCreateWorkspace={handleCreateWorkspace}
 									onCreateThread={handleCreateThread}
+									onFileSelectionHandled={() => (pendingFileSelection = null)}
 								/>
 							{/if}
 						{:else if currentView === 'skill-registry'}
@@ -669,19 +633,6 @@
 							/>
 						{:else if currentView === 'settings'}
 							<SettingsPanel onClose={() => setView('workspaces')} />
-						{:else}
-							<OnboardingView
-								busy={onboardingBusy}
-								catalogLoading={onboardingLoading}
-								errorMessage={onboardingError}
-								repoRegistry={onboardingRepoRegistry}
-								defaultWorkspaceName=""
-								existingWorkspaceNames={existingWorksetNames}
-								onStart={handleOnboardingStart}
-								onPreviewHooks={handleOnboardingPreviewHooks}
-								onComplete={handleOnboardingComplete}
-								onCancel={() => setView('workspaces')}
-							/>
 						{/if}
 					</div>
 				{/key}
@@ -697,6 +648,15 @@
 			onClose={() => (commandPaletteOpen = false)}
 			onSelectView={setView}
 			onSelectWorkset={handleSelectWorkspaceFromPalette}
+		/>
+	{/if}
+
+	{#if $activeWorkspaceId}
+		<FileSearchPalette
+			open={fileSearchOpen}
+			workspaceId={$activeWorkspaceId}
+			onClose={() => (fileSearchOpen = false)}
+			onSelectFile={handleFileSearchSelect}
 		/>
 	{/if}
 
