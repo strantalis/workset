@@ -8,6 +8,7 @@
 		"build:dev": "vite build --minify false --mode development",
 		"build": "vite build",
 		"postbuild": "node ./scripts/ensure-dist-gitkeep.mjs",
+		"perf:audit:build": "npm run build && node ./scripts/perf-audit-build.mjs",
 		"preview": "vite preview",
 		"check": "svelte-check --tsconfig ./tsconfig.json",
 		"test": "vitest run",

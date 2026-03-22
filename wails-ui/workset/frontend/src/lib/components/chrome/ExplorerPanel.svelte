@@ -17,35 +17,13 @@
 		Settings,
 		Trash2,
 	} from '@lucide/svelte';
-	import type { Workspace } from '../../types';
-	import { deriveWorksetIdentity } from '../../view-models/worksetViewModel';
+	import { type ExplorerWorksetSummary } from '../../view-models/worksetViewModel';
 	import { hasContext } from 'svelte';
 	import { WORKSPACE_ACTIONS_KEY, useWorkspaceActions } from '../../contexts/workspaceActions';
 
-	type HealthState = 'clean' | 'modified' | 'ahead' | 'error';
-	type ThreadStatus = 'active' | 'in-review' | 'merged' | 'stale';
-
-	type WorksetNode = {
-		id: string;
-		label: string;
-		description: string;
-		threads: Workspace[];
-		repos: string[];
-		health: HealthState[];
-		lastActiveTs: number;
-		pinned: boolean;
-		shortcutNumber?: number;
-		activeThreads: number;
-		openPrs: number;
-		dirtyRepos: number;
-		linesAdded: number;
-		linesRemoved: number;
-	};
-
 	interface Props {
-		workspaces: Workspace[];
 		activeWorkspaceId: string | null;
-		shortcutMap: Map<string, number>;
+		groupedWorksets: ExplorerWorksetSummary[];
 		activeTerminalWorkspaceIds?: string[];
 		lockWorksetSelection?: boolean;
 		canManageRepos?: boolean;
@@ -64,9 +42,8 @@
 	}
 
 	const {
-		workspaces,
 		activeWorkspaceId,
-		shortcutMap,
+		groupedWorksets,
 		activeTerminalWorkspaceIds = [],
 		lockWorksetSelection = false,
 		canManageRepos = true,
@@ -93,50 +70,6 @@
 
 	const activeTerminalWorkspaceIdSet = $derived.by(() => new Set(activeTerminalWorkspaceIds));
 
-	const parseLastUsed = (value: string): number => {
-		const timestamp = Date.parse(value);
-		return Number.isNaN(timestamp) ? 0 : timestamp;
-	};
-
-	const getRepoHealth = (repo: Workspace['repos'][number]): HealthState => {
-		if (repo.missing) return 'error';
-		if (repo.dirty) return 'modified';
-		if ((repo.ahead ?? 0) > 0) return 'ahead';
-		return 'clean';
-	};
-
-	const isOpenTrackedPullRequest = (repo: Workspace['repos'][number]): boolean => {
-		const tracked = repo.trackedPullRequest;
-		if (!tracked) return false;
-		const state = tracked.state.toLowerCase();
-		const merged = tracked.merged === true || state === 'merged';
-		return state === 'open' && !merged;
-	};
-
-	const isMergedTrackedPullRequest = (repo: Workspace['repos'][number]): boolean => {
-		const tracked = repo.trackedPullRequest;
-		if (!tracked) return false;
-		return tracked.merged === true || tracked.state.toLowerCase() === 'merged';
-	};
-
-	const getThreadReviewFeedbackCount = (workspace: Workspace): number =>
-		workspace.repos.reduce(
-			(total, repo) => total + (repo.trackedPullRequest?.reviewCommentsCount ?? 0),
-			0,
-		);
-
-	const buildWorksetDescription = (threads: Workspace[]): string => {
-		const explicit = threads.find((thread) => (thread.description ?? '').trim().length > 0);
-		if (explicit?.description) return explicit.description.trim();
-		const threadNames = threads
-			.map((thread) => thread.name.trim())
-			.filter((name) => name.length > 0)
-			.slice(0, 2);
-		if (threadNames.length === 0) return 'No threads yet';
-		if (threadNames.length === 1) return threadNames[0];
-		return `${threadNames[0]} + ${threadNames[1]}`;
-	};
-
 	const formatRelativeAge = (timestamp: number): string => {
 		if (!Number.isFinite(timestamp) || timestamp <= 0) return 'just now';
 		const delta = Math.max(0, Date.now() - timestamp);
@@ -148,116 +81,17 @@
 		return `${Math.floor(delta / day)}d ago`;
 	};
 
-	const getThreadStatus = (workspace: Workspace): ThreadStatus => {
-		if (workspace.repos.some((repo) => isOpenTrackedPullRequest(repo))) return 'in-review';
-		if (workspace.repos.some((repo) => repo.dirty)) return 'active';
-		if (workspace.repos.some((repo) => isMergedTrackedPullRequest(repo))) return 'merged';
-		const age = Date.now() - parseLastUsed(workspace.lastUsed);
-		return age > 14 * 24 * 60 * 60 * 1000 ? 'stale' : 'active';
-	};
-
-	const groupedWorksets = $derived.by<WorksetNode[]>(() => {
-		const byWorkset = new Map<
-			string,
-			{
-				label: string;
-				threads: Workspace[];
-				repos: Set<string>;
-				health: Set<HealthState>;
-				lastActiveTs: number;
-				pinned: boolean;
-				openPrs: number;
-				dirtyRepos: number;
-				linesAdded: number;
-				linesRemoved: number;
-			}
-		>();
-
-		for (const workspace of workspaces.filter((entry) => !entry.archived)) {
-			const identity = deriveWorksetIdentity(workspace);
-			const lastUsed = parseLastUsed(workspace.lastUsed);
-			const existing = byWorkset.get(identity.id);
-			const target = existing ?? {
-				label: identity.label,
-				threads: [],
-				repos: new Set<string>(),
-				health: new Set<HealthState>(),
-				lastActiveTs: 0,
-				pinned: false,
-				openPrs: 0,
-				dirtyRepos: 0,
-				linesAdded: 0,
-				linesRemoved: 0,
-			};
-
-			if (!workspace.placeholder) {
-				target.threads.push(workspace);
-			}
-			target.lastActiveTs = Math.max(target.lastActiveTs, lastUsed);
-			target.pinned = target.pinned || workspace.pinned;
-			for (const repo of workspace.repos) {
-				target.repos.add(repo.name);
-				target.health.add(getRepoHealth(repo));
-				target.linesAdded += repo.diff?.added ?? 0;
-				target.linesRemoved += repo.diff?.removed ?? 0;
-				if (repo.dirty) target.dirtyRepos += 1;
-				if (isOpenTrackedPullRequest(repo)) target.openPrs += 1;
-			}
-
-			byWorkset.set(identity.id, target);
-		}
-
-		return [...byWorkset.entries()]
-			.map(([id, value]) => {
-				const threads = [...value.threads];
-
-				let shortcutNumber: number | undefined;
-				for (const thread of threads) {
-					const shortcut = shortcutMap.get(thread.id);
-					if (shortcut === undefined) continue;
-					shortcutNumber =
-						shortcutNumber === undefined ? shortcut : Math.min(shortcutNumber, shortcut);
-				}
-
-				return {
-					id,
-					label: value.label,
-					description: buildWorksetDescription(threads),
-					threads,
-					repos: [...value.repos].sort((left, right) => left.localeCompare(right)),
-					health: [...value.health],
-					lastActiveTs: value.lastActiveTs,
-					pinned: value.pinned,
-					shortcutNumber,
-					activeThreads: threads.filter((thread) => {
-						const status = getThreadStatus(thread);
-						return status === 'active' || status === 'in-review';
-					}).length,
-					openPrs: value.openPrs,
-					dirtyRepos: value.dirtyRepos,
-					linesAdded: value.linesAdded,
-					linesRemoved: value.linesRemoved,
-				};
-			})
-			.sort((left, right) => {
-				if (left.pinned !== right.pinned) return left.pinned ? -1 : 1;
-				if (left.lastActiveTs !== right.lastActiveTs) return right.lastActiveTs - left.lastActiveTs;
-				return left.label.localeCompare(right.label);
-			});
-	});
-
 	const activeWorksetId = $derived.by(() => {
 		if (!activeWorkspaceId) return null;
-		const active = workspaces.find(
-			(workspace) => workspace.id === activeWorkspaceId && workspace.placeholder !== true,
+		const active = groupedWorksets.find((group) =>
+			group.threads.some((thread) => thread.id === activeWorkspaceId),
 		);
-		if (!active) return null;
-		return deriveWorksetIdentity(active).id;
+		return active?.id ?? null;
 	});
 
 	let selectedWorksetId = $state<string | null>(null);
 
-	const selectedWorkset = $derived.by<WorksetNode | null>(() => {
+	const selectedWorkset = $derived.by<ExplorerWorksetSummary | null>(() => {
 		if (selectedWorksetId) {
 			const selected = groupedWorksets.find((item) => item.id === selectedWorksetId);
 			if (selected) return selected;
@@ -681,7 +515,7 @@
 							class:active={thread.id === activeWorkspaceId}
 							onclick={() => selectThread(thread.id)}
 						>
-							<span class="status-dot status-{getThreadStatus(thread)}"></span>
+							<span class="status-dot status-{thread.status}"></span>
 							<span class="thread-name">{thread.name}</span>
 							{#if isThreadTerminalActive(thread.id)}
 								<span class="thread-live-indicator" title="Work in progress">
@@ -691,13 +525,13 @@
 									<span class="thread-live-label">Work in progress</span>
 								</span>
 							{/if}
-							{#if thread.repos.some((repo) => isOpenTrackedPullRequest(repo))}
+							{#if thread.openPrs > 0}
 								<span class="thread-pr-indicator">PR</span>
 							{/if}
-							{#if getThreadReviewFeedbackCount(thread) > 0}
+							{#if thread.reviewCommentsCount > 0}
 								<span class="thread-feedback-indicator">
 									<MessageSquare size={8} />
-									{getThreadReviewFeedbackCount(thread)}
+									{thread.reviewCommentsCount}
 								</span>
 							{/if}
 						</button>

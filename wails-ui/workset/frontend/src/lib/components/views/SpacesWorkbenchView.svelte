@@ -1,21 +1,18 @@
 <script lang="ts">
 	import { FolderTree, GitBranch, Plus, Terminal } from '@lucide/svelte';
-	import type { Workspace } from '../../types';
-	import { deriveWorksetIdentity } from '../../view-models/worksetViewModel';
+	import {
+		type ThreadShellSummary,
+		type WorksetThreadGroup,
+	} from '../../view-models/worksetViewModel';
 	import TerminalWorkspace from '../TerminalWorkspace.svelte';
 	import UnifiedRepoView from './UnifiedRepoView.svelte';
 	import ResizablePanel from '../ui/ResizablePanel.svelte';
 	import { resolveWorkbenchLayout, type SurfaceTab } from './spacesWorkbenchView.helpers';
 
-	type WorksetGroup = {
-		id: string;
-		label: string;
-		threads: Workspace[];
-	};
-
 	interface Props {
-		workspaces: Workspace[];
 		activeWorkspaceId: string | null;
+		worksetGroups: WorksetThreadGroup[];
+		threadSummaryMap: Map<string, ThreadShellSummary>;
 		popoutMode?: boolean;
 		useGlobalExplorer?: boolean;
 		preferredSurface?: SurfaceTab;
@@ -28,8 +25,9 @@
 	}
 
 	const {
-		workspaces,
 		activeWorkspaceId,
+		worksetGroups,
+		threadSummaryMap,
 		popoutMode = false,
 		useGlobalExplorer = false,
 		preferredSurface = 'terminal',
@@ -41,37 +39,21 @@
 		onFileSelectionHandled = () => {},
 	}: Props = $props();
 
-	const worksetGroups = $derived.by<WorksetGroup[]>(() => {
-		const byId = new Map<string, WorksetGroup>();
-		for (const workspace of workspaces) {
-			const { id, label } = deriveWorksetIdentity(workspace);
-			const existing = byId.get(id);
-			if (existing) {
-				if (!workspace.placeholder) {
-					existing.threads.push(workspace);
-				}
-				continue;
-			}
-			byId.set(id, {
-				id,
-				label,
-				threads: workspace.placeholder ? [] : [workspace],
-			});
+	const activeThread = $derived.by(() => {
+		if (!activeWorkspaceId) return null;
+		for (const group of worksetGroups) {
+			const thread = group.threads.find((candidate) => candidate.id === activeWorkspaceId);
+			if (thread) return thread;
 		}
-
-		return [...byId.values()]
-			.map((group) => ({
-				...group,
-				threads: [...group.threads],
-			}))
-			.sort((left, right) => left.label.localeCompare(right.label));
+		return null;
 	});
-
-	const activeThread = $derived(
-		workspaces.find(
-			(workspace) => workspace.id === activeWorkspaceId && workspace.placeholder !== true,
-		) ?? null,
-	);
+	const getThreadSummary = (
+		workspace: WorksetThreadGroup['threads'][number] | null,
+	): ThreadShellSummary | null => {
+		if (!workspace) return null;
+		return threadSummaryMap.get(workspace.id) ?? null;
+	};
+	const activeThreadSummary = $derived.by(() => getThreadSummary(activeThread));
 
 	const activeWorksetId = $derived.by(() => {
 		if (!activeThread) return null;
@@ -95,40 +77,17 @@
 	const showSurfaceTabs = $derived(!useGlobalExplorer);
 
 	const activeBranch = $derived.by(() => {
-		if (!activeThread) return 'main';
-		for (const repo of activeThread.repos) {
-			if (repo.currentBranch && repo.currentBranch.trim().length > 0) {
-				return repo.currentBranch.trim();
-			}
-		}
-		return 'main';
+		return activeThreadSummary?.branch?.trim() || 'main';
 	});
 
 	const primaryRepoLabel = $derived.by(() => {
 		if (!activeThread) return 'terminal';
-		const firstRepo = activeThread.repos[0];
-		return firstRepo?.name ?? activeThread.name;
+		const summary = getThreadSummary(activeThread);
+		return summary?.repoNames[0] ?? activeThread.name;
 	});
 
-	const openPrCount = $derived.by(() => {
-		if (!activeThread) return 0;
-		return activeThread.repos.filter((repo) => {
-			const tracked = repo.trackedPullRequest;
-			if (!tracked) return false;
-			const state = tracked.state.toLowerCase();
-			const merged = tracked.merged === true || state === 'merged';
-			return state === 'open' && !merged;
-		}).length;
-	});
-
-	const totalDirtyRepos = $derived.by(() => {
-		if (!activeThread) return 0;
-		return activeThread.repos.filter((repo) => {
-			if (repo.missing) return true;
-			if (repo.dirty) return true;
-			return (repo.diff?.added ?? 0) > 0 || (repo.diff?.removed ?? 0) > 0;
-		}).length;
-	});
+	const openPrCount = $derived(activeThreadSummary?.openPrs ?? 0);
+	const totalDirtyRepos = $derived(activeThreadSummary?.dirtyRepos ?? 0);
 
 	const activeSurface = $derived(preferredSurface);
 	const layoutMode = $derived(resolveWorkbenchLayout(activeSurface));
@@ -138,7 +97,7 @@
 	};
 </script>
 
-{#if workspaces.length === 0}
+{#if worksetGroups.length === 0}
 	<div class="spaces-empty">
 		<h2>No worksets available</h2>
 		<p>Create a workset to start organizing threads.</p>
@@ -160,6 +119,7 @@
 				</div>
 				<div class="thread-list">
 					{#each visibleThreads as thread (thread.id)}
+						{@const threadSummary = getThreadSummary(thread)}
 						<button
 							type="button"
 							class="thread-item"
@@ -168,8 +128,8 @@
 						>
 							<div class="thread-name">{thread.name}</div>
 							<div class="thread-meta">
-								<span>{thread.repos.length} repos</span>
-								<span>{thread.repos.filter((repo) => repo.dirty).length} dirty</span>
+								<span>{threadSummary?.repoCount ?? thread.repos.length} repos</span>
+								<span>{threadSummary?.dirtyRepos ?? 0} dirty</span>
 							</div>
 						</button>
 					{/each}

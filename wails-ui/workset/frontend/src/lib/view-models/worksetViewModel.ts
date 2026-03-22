@@ -21,6 +21,52 @@ export const deriveWorksetIdentity = (workspace: Workspace): WorksetIdentity => 
 };
 
 export type HealthState = 'clean' | 'modified' | 'ahead' | 'error';
+export type ThreadStatus = 'active' | 'in-review' | 'merged' | 'stale';
+
+export type ThreadShellSummary = {
+	id: string;
+	name: string;
+	description: string;
+	worksetId: string;
+	worksetLabel: string;
+	repoNames: string[];
+	repoCount: number;
+	dirtyRepos: number;
+	openPrs: number;
+	mergedPrs: number;
+	reviewCommentsCount: number;
+	linesAdded: number;
+	linesRemoved: number;
+	branch: string;
+	health: HealthState[];
+	status: ThreadStatus;
+	lastActiveTs: number;
+	lastActive: string;
+	pinned: boolean;
+};
+
+export type ExplorerWorksetSummary = {
+	id: string;
+	label: string;
+	description: string;
+	threads: ThreadShellSummary[];
+	repos: string[];
+	health: HealthState[];
+	lastActiveTs: number;
+	pinned: boolean;
+	shortcutNumber?: number;
+	activeThreads: number;
+	openPrs: number;
+	dirtyRepos: number;
+	linesAdded: number;
+	linesRemoved: number;
+};
+
+export type WorksetThreadGroup = {
+	id: string;
+	label: string;
+	threads: Workspace[];
+};
 
 export type WorksetSummary = {
 	id: string;
@@ -77,33 +123,212 @@ const normalizeWorkset = (workspace: Workspace): string => {
 	return workset && workset.length > 0 ? workset : 'Unassigned';
 };
 
-export const mapWorkspaceToSummary = (workspace: Workspace): WorksetSummary => {
+const threadShellSummaryCache = new WeakMap<Workspace, ThreadShellSummary>();
+
+const getThreadStatus = (workspace: Workspace): ThreadStatus => {
+	if (workspace.repos.some((repo) => isOpenTrackedPullRequest(repo))) return 'in-review';
+	if (workspace.repos.some((repo) => repo.dirty)) return 'active';
+	if (workspace.repos.some((repo) => isMergedTrackedPullRequest(repo))) return 'merged';
+	const age = Date.now() - (new Date(workspace.lastUsed).getTime() || 0);
+	return age > 14 * 24 * 60 * 60 * 1000 ? 'stale' : 'active';
+};
+
+const isOpenTrackedPullRequest = (repo: Repo): boolean => {
+	const tracked = repo.trackedPullRequest;
+	if (!tracked) return false;
+	const state = tracked.state.toLowerCase();
+	const merged = tracked.merged === true || state === 'merged';
+	return state === 'open' && !merged;
+};
+
+const buildWorksetDescription = (threads: ThreadShellSummary[]): string => {
+	const explicit = threads.find((thread) => thread.description.trim().length > 0);
+	if (explicit) return explicit.description.trim();
+	const threadNames = threads
+		.map((thread) => thread.name.trim())
+		.filter((name) => name.length > 0)
+		.slice(0, 2);
+	if (threadNames.length === 0) return 'No threads yet';
+	if (threadNames.length === 1) return threadNames[0];
+	return `${threadNames[0]} + ${threadNames[1]}`;
+};
+
+export const mapWorkspaceToThreadShellSummary = (workspace: Workspace): ThreadShellSummary => {
+	const cached = threadShellSummaryCache.get(workspace);
+	if (cached) return cached;
+	const identity = deriveWorksetIdentity(workspace);
 	const health = workspace.repos.map(getHealthForRepo);
-	const dirtyCount = workspace.repos.filter((repo) => repo.dirty).length;
-	const openPrs = workspace.repos.filter(
-		(repo) =>
-			repo.trackedPullRequest?.state.toLowerCase() === 'open' && !isMergedTrackedPullRequest(repo),
-	).length;
+	const dirtyRepos = workspace.repos.filter((repo) => repo.dirty).length;
+	const openPrs = workspace.repos.filter((repo) => isOpenTrackedPullRequest(repo)).length;
 	const mergedPrs = workspace.repos.filter((repo) => isMergedTrackedPullRequest(repo)).length;
+	const reviewCommentsCount = workspace.repos.reduce(
+		(total, repo) => total + (repo.trackedPullRequest?.reviewCommentsCount ?? 0),
+		0,
+	);
 	const linesAdded = workspace.repos.reduce((acc, repo) => acc + (repo.diff?.added ?? 0), 0);
 	const linesRemoved = workspace.repos.reduce((acc, repo) => acc + (repo.diff?.removed ?? 0), 0);
+	const summary: ThreadShellSummary = {
+		id: workspace.id,
+		name: workspace.name,
+		description: getWorkspaceDescription(workspace),
+		worksetId: identity.id,
+		worksetLabel: identity.label,
+		repoNames: workspace.repos.map((repo) => repo.name),
+		repoCount: workspace.repos.length,
+		dirtyRepos,
+		openPrs,
+		mergedPrs,
+		reviewCommentsCount,
+		linesAdded,
+		linesRemoved,
+		branch: getWorkspaceBranch(workspace),
+		health,
+		status: getThreadStatus(workspace),
+		lastActiveTs: new Date(workspace.lastUsed).getTime() || 0,
+		lastActive: formatRelativeTime(workspace.lastUsed),
+		pinned: workspace.pinned,
+	};
+	threadShellSummaryCache.set(workspace, summary);
+	return summary;
+};
+
+export const mapWorkspacesToThreadShellSummaries = (
+	workspaces: Workspace[],
+): ThreadShellSummary[] =>
+	workspaces
+		.filter((workspace) => workspace.placeholder !== true)
+		.map(mapWorkspaceToThreadShellSummary);
+
+export const mapWorkspacesToExplorerWorksets = (
+	workspaces: Workspace[],
+	shortcutMap: Map<string, number>,
+): ExplorerWorksetSummary[] => {
+	const byWorkset = new Map<
+		string,
+		{
+			label: string;
+			threads: ThreadShellSummary[];
+			repos: Set<string>;
+			health: Set<HealthState>;
+			lastActiveTs: number;
+			pinned: boolean;
+			openPrs: number;
+			dirtyRepos: number;
+			linesAdded: number;
+			linesRemoved: number;
+		}
+	>();
+	for (const workspace of workspaces) {
+		if (workspace.archived) continue;
+		const summary = mapWorkspaceToThreadShellSummary(workspace);
+		const target = byWorkset.get(summary.worksetId) ?? {
+			label: summary.worksetLabel,
+			threads: [],
+			repos: new Set<string>(),
+			health: new Set<HealthState>(),
+			lastActiveTs: 0,
+			pinned: false,
+			openPrs: 0,
+			dirtyRepos: 0,
+			linesAdded: 0,
+			linesRemoved: 0,
+		};
+		if (workspace.placeholder !== true) {
+			target.threads.push(summary);
+		}
+		target.lastActiveTs = Math.max(target.lastActiveTs, summary.lastActiveTs);
+		target.pinned = target.pinned || summary.pinned;
+		for (const repoName of summary.repoNames) {
+			target.repos.add(repoName);
+		}
+		for (const healthState of summary.health) {
+			target.health.add(healthState);
+		}
+		target.openPrs += summary.openPrs;
+		target.dirtyRepos += summary.dirtyRepos;
+		target.linesAdded += summary.linesAdded;
+		target.linesRemoved += summary.linesRemoved;
+		byWorkset.set(summary.worksetId, target);
+	}
+	return [...byWorkset.entries()]
+		.map(([id, value]) => {
+			let shortcutNumber: number | undefined;
+			for (const thread of value.threads) {
+				const shortcut = shortcutMap.get(thread.id);
+				if (shortcut === undefined) continue;
+				shortcutNumber =
+					shortcutNumber === undefined ? shortcut : Math.min(shortcutNumber, shortcut);
+			}
+			return {
+				id,
+				label: value.label,
+				description: buildWorksetDescription(value.threads),
+				threads: [...value.threads],
+				repos: [...value.repos].sort((left, right) => left.localeCompare(right)),
+				health: [...value.health],
+				lastActiveTs: value.lastActiveTs,
+				pinned: value.pinned,
+				shortcutNumber,
+				activeThreads: value.threads.filter(
+					(thread) => thread.status === 'active' || thread.status === 'in-review',
+				).length,
+				openPrs: value.openPrs,
+				dirtyRepos: value.dirtyRepos,
+				linesAdded: value.linesAdded,
+				linesRemoved: value.linesRemoved,
+			};
+		})
+		.sort((left, right) => {
+			if (left.pinned !== right.pinned) return left.pinned ? -1 : 1;
+			if (left.lastActiveTs !== right.lastActiveTs) return right.lastActiveTs - left.lastActiveTs;
+			return left.label.localeCompare(right.label);
+		});
+};
+
+export const mapWorkspacesToThreadGroups = (workspaces: Workspace[]): WorksetThreadGroup[] => {
+	const byId = new Map<string, WorksetThreadGroup>();
+	for (const workspace of workspaces) {
+		const { id, label } = deriveWorksetIdentity(workspace);
+		const existing = byId.get(id);
+		if (existing) {
+			if (workspace.placeholder !== true) {
+				existing.threads.push(workspace);
+			}
+			continue;
+		}
+		byId.set(id, {
+			id,
+			label,
+			threads: workspace.placeholder === true ? [] : [workspace],
+		});
+	}
+	return [...byId.values()]
+		.map((group) => ({
+			...group,
+			threads: [...group.threads],
+		}))
+		.sort((left, right) => left.label.localeCompare(right.label));
+};
+
+export const mapWorkspaceToSummary = (workspace: Workspace): WorksetSummary => {
+	const threadSummary = mapWorkspaceToThreadShellSummary(workspace);
 
 	return {
 		id: workspace.id,
 		label: workspace.name,
 		description: getWorkspaceDescription(workspace),
 		workset: normalizeWorkset(workspace),
-		repos: workspace.repos.map((repo) => repo.name),
-		branch: getWorkspaceBranch(workspace),
-		repoCount: workspace.repos.length,
-		dirtyCount,
-		openPrs,
-		mergedPrs,
-		linesAdded,
-		linesRemoved,
-		lastActive: formatRelativeTime(workspace.lastUsed),
-		lastActiveTs: new Date(workspace.lastUsed).getTime() || 0,
-		health,
+		repos: threadSummary.repoNames,
+		branch: threadSummary.branch,
+		repoCount: threadSummary.repoCount,
+		dirtyCount: threadSummary.dirtyRepos,
+		openPrs: threadSummary.openPrs,
+		mergedPrs: threadSummary.mergedPrs,
+		linesAdded: threadSummary.linesAdded,
+		linesRemoved: threadSummary.linesRemoved,
+		lastActive: threadSummary.lastActive,
+		lastActiveTs: threadSummary.lastActiveTs,
+		health: threadSummary.health,
 		pinned: workspace.pinned,
 		archived: workspace.archived,
 		color: workspace.color,

@@ -1,7 +1,8 @@
-import { derived, get, writable } from 'svelte/store';
+import { derived, get, writable, type Writable } from 'svelte/store';
 import type {
 	PullRequestReviewComment,
 	PullRequestSummary,
+	Repo,
 	RepoDiffSummary,
 	Workspace,
 } from './types';
@@ -15,12 +16,286 @@ import {
 	updateWorkspaceLastUsed as apiUpdateWorkspaceLastUsed,
 } from './api/workspaces';
 
-export const workspaces = writable<Workspace[]>([]);
+type RepoPatch = {
+	dirty?: boolean;
+	statusKnown?: boolean;
+	missing?: boolean;
+	diff?: { added: number; removed: number };
+	ahead?: number;
+	behind?: number;
+	currentBranch?: string;
+	trackedPullRequest?: PullRequestSummary | null;
+};
+
+type RepoRuntimePatchMap = Map<string, Map<string, RepoPatch>>;
+
+const structuralWorkspaces = writable<Workspace[]>([]);
+const repoRuntimePatches = writable<RepoRuntimePatchMap>(new Map());
 export const activeWorkspaceId = writable<string | null>(null);
 export const activeRepoId = writable<string | null>(null);
 export const loadingWorkspaces = writable(false);
 export const workspaceError = writable<string | null>(null);
 let loadSequence = 0;
+
+const workspaceOverlayCache = new Map<
+	string,
+	{
+		source: Workspace;
+		runtime: Map<string, RepoPatch> | undefined;
+		repos: Workspace['repos'];
+		overlay: Workspace;
+	}
+>();
+
+const repoOverlayCache = new Map<
+	string,
+	{
+		source: Repo;
+		patch: RepoPatch;
+		overlay: Repo;
+	}
+>();
+
+const normalizeTrackedPullRequest = (tracked: PullRequestSummary): PullRequestSummary => ({
+	...tracked,
+	merged: tracked.merged === true || tracked.state.toLowerCase() === 'merged',
+	commentsCount: tracked.commentsCount ?? 0,
+	reviewCommentsCount: tracked.reviewCommentsCount ?? 0,
+});
+
+const shouldRetainTrackedPullRequest = (tracked: PullRequestSummary): boolean => {
+	const state = tracked.state.toLowerCase();
+	return tracked.merged === true || state === 'open' || state === 'draft' || state === 'merged';
+};
+
+const trackedPullRequestsEqual = (
+	left: PullRequestSummary | undefined,
+	right: PullRequestSummary | undefined,
+): boolean => {
+	if (left === right) return true;
+	if (!left || !right) return false;
+	return (
+		left.repo === right.repo &&
+		left.number === right.number &&
+		left.url === right.url &&
+		left.title === right.title &&
+		left.body === right.body &&
+		left.state === right.state &&
+		left.draft === right.draft &&
+		left.merged === right.merged &&
+		left.baseRepo === right.baseRepo &&
+		left.baseBranch === right.baseBranch &&
+		left.headRepo === right.headRepo &&
+		left.headBranch === right.headBranch &&
+		left.updatedAt === right.updatedAt &&
+		left.mergeable === right.mergeable &&
+		left.author === right.author &&
+		left.commentsCount === right.commentsCount &&
+		left.reviewCommentsCount === right.reviewCommentsCount
+	);
+};
+
+const applyPatchToRepo = (repo: Repo, patch: RepoPatch): Repo => {
+	let updated = repo;
+	const diffPatch = patch.diff;
+	if (
+		diffPatch &&
+		(repo.diff.added !== diffPatch.added || repo.diff.removed !== diffPatch.removed)
+	) {
+		updated = { ...updated, diff: { added: diffPatch.added, removed: diffPatch.removed } };
+	}
+	if (patch.dirty !== undefined && updated.dirty !== patch.dirty) {
+		updated = { ...updated, dirty: patch.dirty };
+	}
+	if (patch.statusKnown !== undefined && updated.statusKnown !== patch.statusKnown) {
+		updated = { ...updated, statusKnown: patch.statusKnown };
+	}
+	if (patch.missing !== undefined && updated.missing !== patch.missing) {
+		updated = { ...updated, missing: patch.missing };
+	}
+	if (patch.ahead !== undefined && updated.ahead !== patch.ahead) {
+		updated = { ...updated, ahead: patch.ahead };
+	}
+	if (patch.behind !== undefined && updated.behind !== patch.behind) {
+		updated = { ...updated, behind: patch.behind };
+	}
+	if (patch.currentBranch !== undefined && updated.currentBranch !== patch.currentBranch) {
+		updated = { ...updated, currentBranch: patch.currentBranch };
+	}
+	if (patch.trackedPullRequest !== undefined) {
+		const nextTracked =
+			patch.trackedPullRequest === null
+				? undefined
+				: normalizeTrackedPullRequest(patch.trackedPullRequest);
+		if (!trackedPullRequestsEqual(updated.trackedPullRequest, nextTracked)) {
+			updated = { ...updated, trackedPullRequest: nextTracked };
+		}
+	}
+	return updated;
+};
+
+const repoMatchesPatch = (repo: Repo, patch: RepoPatch): boolean => {
+	if (
+		patch.diff &&
+		(repo.diff.added !== patch.diff.added || repo.diff.removed !== patch.diff.removed)
+	) {
+		return false;
+	}
+	if (patch.dirty !== undefined && repo.dirty !== patch.dirty) return false;
+	if (patch.statusKnown !== undefined && repo.statusKnown !== patch.statusKnown) return false;
+	if (patch.missing !== undefined && repo.missing !== patch.missing) return false;
+	if (patch.ahead !== undefined && repo.ahead !== patch.ahead) return false;
+	if (patch.behind !== undefined && repo.behind !== patch.behind) return false;
+	if (patch.currentBranch !== undefined && repo.currentBranch !== patch.currentBranch) return false;
+	if (patch.trackedPullRequest !== undefined) {
+		const nextTracked =
+			patch.trackedPullRequest === null
+				? undefined
+				: normalizeTrackedPullRequest(patch.trackedPullRequest);
+		if (!trackedPullRequestsEqual(repo.trackedPullRequest, nextTracked)) return false;
+	}
+	return true;
+};
+
+const repoPatchesEqual = (left: RepoPatch | undefined, right: RepoPatch): boolean => {
+	if (!left) return false;
+	if (left.dirty !== right.dirty) return false;
+	if (left.statusKnown !== right.statusKnown) return false;
+	if (left.missing !== right.missing) return false;
+	if (left.ahead !== right.ahead) return false;
+	if (left.behind !== right.behind) return false;
+	if (left.currentBranch !== right.currentBranch) return false;
+	const leftDiff = left.diff;
+	const rightDiff = right.diff;
+	if (!!leftDiff !== !!rightDiff) return false;
+	if (
+		leftDiff &&
+		rightDiff &&
+		(leftDiff.added !== rightDiff.added || leftDiff.removed !== rightDiff.removed)
+	) {
+		return false;
+	}
+	const leftTracked =
+		left.trackedPullRequest === undefined
+			? undefined
+			: left.trackedPullRequest === null
+				? undefined
+				: normalizeTrackedPullRequest(left.trackedPullRequest);
+	const rightTracked =
+		right.trackedPullRequest === undefined
+			? undefined
+			: right.trackedPullRequest === null
+				? undefined
+				: normalizeTrackedPullRequest(right.trackedPullRequest);
+	return trackedPullRequestsEqual(leftTracked, rightTracked);
+};
+
+const pruneRepoRuntimePatches = (
+	workspaces: Workspace[],
+	current: RepoRuntimePatchMap,
+): RepoRuntimePatchMap => {
+	let changed = false;
+	const workspaceMap = new Map(workspaces.map((workspace) => [workspace.id, workspace]));
+	const next = new Map<string, Map<string, RepoPatch>>();
+	for (const [workspaceId, repoPatches] of current) {
+		const workspace = workspaceMap.get(workspaceId);
+		if (!workspace) {
+			changed = true;
+			continue;
+		}
+		const repoMap = new Map(workspace.repos.map((repo) => [repo.id, repo]));
+		let nextRepoPatches: Map<string, RepoPatch> | null = null;
+		for (const [repoId, patch] of repoPatches) {
+			const repo = repoMap.get(repoId);
+			if (!repo || repoMatchesPatch(repo, patch)) {
+				changed = true;
+				continue;
+			}
+			if (!nextRepoPatches) nextRepoPatches = new Map();
+			nextRepoPatches.set(repoId, patch);
+		}
+		if (nextRepoPatches && nextRepoPatches.size > 0) {
+			next.set(workspaceId, nextRepoPatches);
+			if (nextRepoPatches.size !== repoPatches.size) changed = true;
+		} else if (repoPatches.size > 0) {
+			changed = true;
+		}
+	}
+	return changed ? next : current;
+};
+
+const buildOverlayWorkspaces = (
+	structural: Workspace[],
+	runtimePatches: RepoRuntimePatchMap,
+): Workspace[] => {
+	const nextIds = new Set(structural.map((workspace) => workspace.id));
+	for (const cachedId of workspaceOverlayCache.keys()) {
+		if (!nextIds.has(cachedId)) workspaceOverlayCache.delete(cachedId);
+	}
+	const overlaid: Workspace[] = [];
+	for (const workspace of structural) {
+		const runtime = runtimePatches.get(workspace.id);
+		if (!runtime || runtime.size === 0) {
+			workspaceOverlayCache.delete(workspace.id);
+			overlaid.push(workspace);
+			continue;
+		}
+		const cachedWorkspace = workspaceOverlayCache.get(workspace.id);
+		if (
+			cachedWorkspace &&
+			cachedWorkspace.source === workspace &&
+			cachedWorkspace.runtime === runtime
+		) {
+			overlaid.push(cachedWorkspace.overlay);
+			continue;
+		}
+		let reposChanged = false;
+		const repos = workspace.repos.map((repo) => {
+			const patch = runtime.get(repo.id);
+			if (!patch) return repo;
+			const cacheKey = `${workspace.id}\u0000${repo.id}`;
+			const cachedRepo = repoOverlayCache.get(cacheKey);
+			if (cachedRepo && cachedRepo.source === repo && cachedRepo.patch === patch) {
+				reposChanged = reposChanged || cachedRepo.overlay !== repo;
+				return cachedRepo.overlay;
+			}
+			const overlay = applyPatchToRepo(repo, patch);
+			repoOverlayCache.set(cacheKey, { source: repo, patch, overlay });
+			reposChanged = reposChanged || overlay !== repo;
+			return overlay;
+		});
+		const overlay = reposChanged ? { ...workspace, repos } : workspace;
+		workspaceOverlayCache.set(workspace.id, {
+			source: workspace,
+			runtime,
+			repos,
+			overlay,
+		});
+		overlaid.push(overlay);
+	}
+	return overlaid;
+};
+
+const overlaidWorkspaces = derived(
+	[structuralWorkspaces, repoRuntimePatches],
+	([$structuralWorkspaces, $repoRuntimePatches]) =>
+		buildOverlayWorkspaces($structuralWorkspaces, $repoRuntimePatches),
+);
+
+const writeStructuralWorkspaces = (next: Workspace[]): void => {
+	structuralWorkspaces.set(next);
+	repoRuntimePatches.update((current) => pruneRepoRuntimePatches(next, current));
+};
+
+export const workspaces: Writable<Workspace[]> = {
+	subscribe: overlaidWorkspaces.subscribe,
+	set(value) {
+		writeStructuralWorkspaces(value);
+	},
+	update(updater) {
+		writeStructuralWorkspaces(updater(get(overlaidWorkspaces)));
+	},
+};
 
 export const activeWorkspace = derived(
 	[workspaces, activeWorkspaceId],
@@ -219,119 +494,34 @@ export async function refreshWorkspacesStatus(includeArchived = false): Promise<
 	}
 }
 
-type RepoPatch = {
-	dirty?: boolean;
-	statusKnown?: boolean;
-	missing?: boolean;
-	diff?: { added: number; removed: number };
-	ahead?: number;
-	behind?: number;
-	currentBranch?: string;
-	trackedPullRequest?: PullRequestSummary | null;
-};
-
-const normalizeTrackedPullRequest = (tracked: PullRequestSummary): PullRequestSummary => ({
-	...tracked,
-	merged: tracked.merged === true || tracked.state.toLowerCase() === 'merged',
-	commentsCount: tracked.commentsCount ?? 0,
-	reviewCommentsCount: tracked.reviewCommentsCount ?? 0,
-});
-
-const shouldRetainTrackedPullRequest = (tracked: PullRequestSummary): boolean => {
-	const state = tracked.state.toLowerCase();
-	return tracked.merged === true || state === 'open' || state === 'draft' || state === 'merged';
-};
-
-const trackedPullRequestsEqual = (
-	left: PullRequestSummary | undefined,
-	right: PullRequestSummary | undefined,
-): boolean => {
-	if (left === right) return true;
-	if (!left || !right) return false;
-	return (
-		left.repo === right.repo &&
-		left.number === right.number &&
-		left.url === right.url &&
-		left.title === right.title &&
-		left.body === right.body &&
-		left.state === right.state &&
-		left.draft === right.draft &&
-		left.merged === right.merged &&
-		left.baseRepo === right.baseRepo &&
-		left.baseBranch === right.baseBranch &&
-		left.headRepo === right.headRepo &&
-		left.headBranch === right.headBranch &&
-		left.updatedAt === right.updatedAt &&
-		left.mergeable === right.mergeable &&
-		left.author === right.author &&
-		left.commentsCount === right.commentsCount &&
-		left.reviewCommentsCount === right.reviewCommentsCount
-	);
-};
-
 const applyRepoPatch = (workspaceId: string, repoId: string, patch: RepoPatch): void => {
-	workspaces.update((current) => {
-		let changed = false;
-		const next = current.map((workspace) => {
-			if (workspace.id !== workspaceId) {
-				return workspace;
+	repoRuntimePatches.update((current) => {
+		const next = new Map(current);
+		const currentWorkspacePatches = current.get(workspaceId);
+		const workspacePatches = currentWorkspacePatches ? new Map(currentWorkspacePatches) : new Map();
+		const mergedPatch = { ...(workspacePatches.get(repoId) ?? {}), ...patch };
+		const structuralWorkspace = get(structuralWorkspaces).find(
+			(workspace) => workspace.id === workspaceId,
+		);
+		const structuralRepo = structuralWorkspace?.repos.find((repo) => repo.id === repoId);
+		if (structuralRepo && repoMatchesPatch(structuralRepo, mergedPatch)) {
+			if (!workspacePatches.has(repoId)) {
+				return current;
 			}
-			let repoChanged = false;
-			const repos = workspace.repos.map((repo) => {
-				if (repo.id !== repoId) {
-					return repo;
-				}
-				let updated = repo;
-				const diffPatch = patch.diff;
-				if (diffPatch) {
-					if (repo.diff.added !== diffPatch.added || repo.diff.removed !== diffPatch.removed) {
-						updated = { ...updated, diff: { added: diffPatch.added, removed: diffPatch.removed } };
-						repoChanged = true;
-					}
-				}
-				if (patch.dirty !== undefined && updated.dirty !== patch.dirty) {
-					updated = { ...updated, dirty: patch.dirty };
-					repoChanged = true;
-				}
-				if (patch.statusKnown !== undefined && updated.statusKnown !== patch.statusKnown) {
-					updated = { ...updated, statusKnown: patch.statusKnown };
-					repoChanged = true;
-				}
-				if (patch.missing !== undefined && updated.missing !== patch.missing) {
-					updated = { ...updated, missing: patch.missing };
-					repoChanged = true;
-				}
-				if (patch.ahead !== undefined && updated.ahead !== patch.ahead) {
-					updated = { ...updated, ahead: patch.ahead };
-					repoChanged = true;
-				}
-				if (patch.behind !== undefined && updated.behind !== patch.behind) {
-					updated = { ...updated, behind: patch.behind };
-					repoChanged = true;
-				}
-				if (patch.currentBranch !== undefined && updated.currentBranch !== patch.currentBranch) {
-					updated = { ...updated, currentBranch: patch.currentBranch };
-					repoChanged = true;
-				}
-				if (patch.trackedPullRequest !== undefined) {
-					const nextTracked =
-						patch.trackedPullRequest === null
-							? undefined
-							: normalizeTrackedPullRequest(patch.trackedPullRequest);
-					if (!trackedPullRequestsEqual(updated.trackedPullRequest, nextTracked)) {
-						updated = { ...updated, trackedPullRequest: nextTracked };
-						repoChanged = true;
-					}
-				}
-				return repoChanged ? updated : repo;
-			});
-			if (!repoChanged) {
-				return workspace;
+			workspacePatches.delete(repoId);
+			if (workspacePatches.size === 0) {
+				next.delete(workspaceId);
+			} else {
+				next.set(workspaceId, workspacePatches);
 			}
-			changed = true;
-			return { ...workspace, repos };
-		});
-		return changed ? next : current;
+			return next;
+		}
+		if (repoPatchesEqual(workspacePatches.get(repoId), mergedPatch)) {
+			return current;
+		}
+		workspacePatches.set(repoId, mergedPatch);
+		next.set(workspaceId, workspacePatches);
+		return next;
 	});
 };
 
@@ -384,45 +574,21 @@ export const applyTrackedPullRequestReviewComments = (
 	repoId: string,
 	comments: PullRequestReviewComment[],
 ): void => {
-	workspaces.update((current) => {
-		let changed = false;
-		const next = current.map((workspace) => {
-			if (workspace.id !== workspaceId) {
-				return workspace;
-			}
-
-			let repoChanged = false;
-			const repos = workspace.repos.map((repo) => {
-				if (repo.id !== repoId || !repo.trackedPullRequest) {
-					return repo;
-				}
-
-				const currentReviewCount = repo.trackedPullRequest.reviewCommentsCount ?? 0;
-				const currentTotalCount = repo.trackedPullRequest.commentsCount ?? currentReviewCount;
-				const baseCommentCount = Math.max(0, currentTotalCount - currentReviewCount);
-				const nextReviewCount = comments.length;
-				const nextTotalCount = baseCommentCount + nextReviewCount;
-				if (currentReviewCount === nextReviewCount && currentTotalCount === nextTotalCount) {
-					return repo;
-				}
-
-				repoChanged = true;
-				return {
-					...repo,
-					trackedPullRequest: {
-						...repo.trackedPullRequest,
-						commentsCount: nextTotalCount,
-						reviewCommentsCount: nextReviewCount,
-					},
-				};
-			});
-
-			if (!repoChanged) {
-				return workspace;
-			}
-			changed = true;
-			return { ...workspace, repos };
-		});
-		return changed ? next : current;
+	const repo = get(workspaces)
+		.find((workspace) => workspace.id === workspaceId)
+		?.repos.find((candidate) => candidate.id === repoId);
+	if (!repo?.trackedPullRequest) return;
+	const currentReviewCount = repo.trackedPullRequest.reviewCommentsCount ?? 0;
+	const currentTotalCount = repo.trackedPullRequest.commentsCount ?? currentReviewCount;
+	const baseCommentCount = Math.max(0, currentTotalCount - currentReviewCount);
+	const nextReviewCount = comments.length;
+	const nextTotalCount = baseCommentCount + nextReviewCount;
+	if (currentReviewCount === nextReviewCount && currentTotalCount === nextTotalCount) return;
+	applyRepoPatch(workspaceId, repoId, {
+		trackedPullRequest: {
+			...repo.trackedPullRequest,
+			commentsCount: nextTotalCount,
+			reviewCommentsCount: nextReviewCount,
+		},
 	});
 };

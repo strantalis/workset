@@ -80,13 +80,20 @@ beforeEach(() => {
 
 describe('state repo diff updates', () => {
 	it('updates diff totals from summary payloads', () => {
+		const before = get(workspaces);
+		const untouchedWorkspace = before[1];
+		const untouchedRepo = before[0].repos[1];
+
 		applyRepoDiffSummary('ws-1', 'repo-1', { files: [], totalAdded: 5, totalRemoved: 2 });
 
-		const repo = get(workspaces)[0].repos[0];
+		const next = get(workspaces);
+		const repo = next[0].repos[0];
 		expect(repo.diff).toEqual({ added: 5, removed: 2 });
 
-		const untouched = get(workspaces)[0].repos[1];
+		const untouched = next[0].repos[1];
 		expect(untouched.diff).toEqual({ added: 0, removed: 0 });
+		expect(next[1]).toBe(untouchedWorkspace);
+		expect(untouched).toBe(untouchedRepo);
 	});
 
 	it('updates dirty status and clears diff when clean', () => {
@@ -202,5 +209,18 @@ describe('state repo diff updates', () => {
 		const repo = get(workspaces)[0].repos[0];
 		expect(repo.trackedPullRequest?.reviewCommentsCount).toBe(3);
 		expect(repo.trackedPullRequest?.commentsCount).toBe(6);
+	});
+
+	it('treats repeated identical repo updates as a no-op', () => {
+		applyRepoDiffSummary('ws-1', 'repo-1', { files: [], totalAdded: 5, totalRemoved: 2 });
+		const first = get(workspaces);
+		const firstWorkspace = first[0];
+		const firstRepo = first[0].repos[0];
+
+		applyRepoDiffSummary('ws-1', 'repo-1', { files: [], totalAdded: 5, totalRemoved: 2 });
+
+		const second = get(workspaces);
+		expect(second[0]).toBe(firstWorkspace);
+		expect(second[0].repos[0]).toBe(firstRepo);
 	});
 });

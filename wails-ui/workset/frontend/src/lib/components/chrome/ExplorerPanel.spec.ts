@@ -2,6 +2,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import ExplorerPanel from './ExplorerPanel.svelte';
 import type { Workspace } from '../../types';
+import {
+	buildShortcutMap,
+	mapWorkspacesToExplorerWorksets,
+} from '../../view-models/worksetViewModel';
 
 const buildWorkspace = (overrides: Partial<Workspace> = {}): Workspace => ({
 	id: 'ws-1',
@@ -20,6 +24,19 @@ const buildWorkspace = (overrides: Partial<Workspace> = {}): Workspace => ({
 	...overrides,
 });
 
+const buildGroupedWorksets = (workspaces: Workspace[]) =>
+	mapWorkspacesToExplorerWorksets(workspaces, buildShortcutMap(workspaces));
+
+const renderExplorerPanel = (workspaces: Workspace[], props: Record<string, unknown>) =>
+	render(ExplorerPanel, {
+		props: {
+			activeWorkspaceId: null,
+			groupedWorksets: buildGroupedWorksets(workspaces),
+			onSelectWorkspace: vi.fn<(workspaceId: string) => void>(),
+			...props,
+		},
+	});
+
 describe('ExplorerPanel', () => {
 	beforeEach(() => {
 		Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
@@ -36,30 +53,28 @@ describe('ExplorerPanel', () => {
 		const onSelectWorkspace = vi.fn<(workspaceId: string) => void>();
 		const onCreateThread = vi.fn<(worksetId: string) => void>();
 
-		const { getByRole } = render(ExplorerPanel, {
-			props: {
-				workspaces: [
-					buildWorkspace({
-						id: 'thread-alpha',
-						name: 'Alpha Thread',
-						workset: 'Alpha',
-						worksetKey: 'workset:alpha',
-						worksetLabel: 'Alpha',
-					}),
-					buildWorkspace({
-						id: 'placeholder-beta',
-						name: 'Beta Placeholder',
-						workset: 'Beta',
-						worksetKey: 'workset:beta',
-						worksetLabel: 'Beta',
-						placeholder: true,
-					}),
-				],
-				activeWorkspaceId: 'thread-alpha',
-				shortcutMap: new Map<string, number>(),
-				onSelectWorkspace,
-				onCreateThread,
-			},
+		const workspaces = [
+			buildWorkspace({
+				id: 'thread-alpha',
+				name: 'Alpha Thread',
+				workset: 'Alpha',
+				worksetKey: 'workset:alpha',
+				worksetLabel: 'Alpha',
+			}),
+			buildWorkspace({
+				id: 'placeholder-beta',
+				name: 'Beta Placeholder',
+				workset: 'Beta',
+				worksetKey: 'workset:beta',
+				worksetLabel: 'Beta',
+				placeholder: true,
+			}),
+		];
+
+		const { getByRole } = renderExplorerPanel(workspaces, {
+			activeWorkspaceId: 'thread-alpha',
+			onSelectWorkspace,
+			onCreateThread,
 		});
 
 		await fireEvent.click(getByRole('button', { name: 'Switch workset' }));
@@ -75,56 +90,55 @@ describe('ExplorerPanel', () => {
 	test('keeps selection on the same workset when active thread is removed', async () => {
 		const onSelectWorkspace = vi.fn<(workspaceId: string) => void>();
 
-		const { rerender } = render(ExplorerPanel, {
-			props: {
-				workspaces: [
-					buildWorkspace({
-						id: 'thread-alpha',
-						name: 'Alpha Thread',
-						workset: 'Alpha',
-						worksetKey: 'workset:alpha',
-						worksetLabel: 'Alpha',
-					}),
-					buildWorkspace({
-						id: 'thread-beta-1',
-						name: 'Beta Thread One',
-						workset: 'Beta',
-						worksetKey: 'workset:beta',
-						worksetLabel: 'Beta',
-					}),
-					buildWorkspace({
-						id: 'thread-beta-2',
-						name: 'Beta Thread Two',
-						workset: 'Beta',
-						worksetKey: 'workset:beta',
-						worksetLabel: 'Beta',
-					}),
-				],
-				activeWorkspaceId: 'thread-beta-2',
-				shortcutMap: new Map<string, number>(),
-				onSelectWorkspace,
-			},
+		const initialWorkspaces = [
+			buildWorkspace({
+				id: 'thread-alpha',
+				name: 'Alpha Thread',
+				workset: 'Alpha',
+				worksetKey: 'workset:alpha',
+				worksetLabel: 'Alpha',
+			}),
+			buildWorkspace({
+				id: 'thread-beta-1',
+				name: 'Beta Thread One',
+				workset: 'Beta',
+				worksetKey: 'workset:beta',
+				worksetLabel: 'Beta',
+			}),
+			buildWorkspace({
+				id: 'thread-beta-2',
+				name: 'Beta Thread Two',
+				workset: 'Beta',
+				worksetKey: 'workset:beta',
+				worksetLabel: 'Beta',
+			}),
+		];
+
+		const { rerender } = renderExplorerPanel(initialWorkspaces, {
+			activeWorkspaceId: 'thread-beta-2',
+			onSelectWorkspace,
 		});
 
+		const nextWorkspaces = [
+			buildWorkspace({
+				id: 'thread-alpha',
+				name: 'Alpha Thread',
+				workset: 'Alpha',
+				worksetKey: 'workset:alpha',
+				worksetLabel: 'Alpha',
+			}),
+			buildWorkspace({
+				id: 'thread-beta-1',
+				name: 'Beta Thread One',
+				workset: 'Beta',
+				worksetKey: 'workset:beta',
+				worksetLabel: 'Beta',
+			}),
+		];
+
 		await rerender({
-			workspaces: [
-				buildWorkspace({
-					id: 'thread-alpha',
-					name: 'Alpha Thread',
-					workset: 'Alpha',
-					worksetKey: 'workset:alpha',
-					worksetLabel: 'Alpha',
-				}),
-				buildWorkspace({
-					id: 'thread-beta-1',
-					name: 'Beta Thread One',
-					workset: 'Beta',
-					worksetKey: 'workset:beta',
-					worksetLabel: 'Beta',
-				}),
-			],
+			groupedWorksets: buildGroupedWorksets(nextWorkspaces),
 			activeWorkspaceId: null,
-			shortcutMap: new Map<string, number>(),
 			onSelectWorkspace,
 		});
 
@@ -134,50 +148,49 @@ describe('ExplorerPanel', () => {
 	test('does not auto-switch to another workset when selected workset is empty', async () => {
 		const onSelectWorkspace = vi.fn<(workspaceId: string) => void>();
 
-		const { rerender } = render(ExplorerPanel, {
-			props: {
-				workspaces: [
-					buildWorkspace({
-						id: 'thread-alpha',
-						name: 'Alpha Thread',
-						workset: 'Alpha',
-						worksetKey: 'workset:alpha',
-						worksetLabel: 'Alpha',
-					}),
-					buildWorkspace({
-						id: 'thread-beta',
-						name: 'Beta Thread',
-						workset: 'Beta',
-						worksetKey: 'workset:beta',
-						worksetLabel: 'Beta',
-					}),
-				],
-				activeWorkspaceId: 'thread-beta',
-				shortcutMap: new Map<string, number>(),
-				onSelectWorkspace,
-			},
+		const initialWorkspaces = [
+			buildWorkspace({
+				id: 'thread-alpha',
+				name: 'Alpha Thread',
+				workset: 'Alpha',
+				worksetKey: 'workset:alpha',
+				worksetLabel: 'Alpha',
+			}),
+			buildWorkspace({
+				id: 'thread-beta',
+				name: 'Beta Thread',
+				workset: 'Beta',
+				worksetKey: 'workset:beta',
+				worksetLabel: 'Beta',
+			}),
+		];
+
+		const { rerender } = renderExplorerPanel(initialWorkspaces, {
+			activeWorkspaceId: 'thread-beta',
+			onSelectWorkspace,
 		});
 
+		const nextWorkspaces = [
+			buildWorkspace({
+				id: 'thread-alpha',
+				name: 'Alpha Thread',
+				workset: 'Alpha',
+				worksetKey: 'workset:alpha',
+				worksetLabel: 'Alpha',
+			}),
+			buildWorkspace({
+				id: 'placeholder-beta',
+				name: 'Beta Placeholder',
+				workset: 'Beta',
+				worksetKey: 'workset:beta',
+				worksetLabel: 'Beta',
+				placeholder: true,
+			}),
+		];
+
 		await rerender({
-			workspaces: [
-				buildWorkspace({
-					id: 'thread-alpha',
-					name: 'Alpha Thread',
-					workset: 'Alpha',
-					worksetKey: 'workset:alpha',
-					worksetLabel: 'Alpha',
-				}),
-				buildWorkspace({
-					id: 'placeholder-beta',
-					name: 'Beta Placeholder',
-					workset: 'Beta',
-					worksetKey: 'workset:beta',
-					worksetLabel: 'Beta',
-					placeholder: true,
-				}),
-			],
+			groupedWorksets: buildGroupedWorksets(nextWorkspaces),
 			activeWorkspaceId: null,
-			shortcutMap: new Map<string, number>(),
 			onSelectWorkspace,
 		});
 
@@ -188,42 +201,41 @@ describe('ExplorerPanel', () => {
 	test('does not switch worksets while selected workset is temporarily missing', async () => {
 		const onSelectWorkspace = vi.fn<(workspaceId: string) => void>();
 
-		const { rerender } = render(ExplorerPanel, {
-			props: {
-				workspaces: [
-					buildWorkspace({
-						id: 'thread-alpha',
-						name: 'Alpha Thread',
-						workset: 'Alpha',
-						worksetKey: 'workset:alpha',
-						worksetLabel: 'Alpha',
-					}),
-					buildWorkspace({
-						id: 'thread-beta',
-						name: 'Beta Thread',
-						workset: 'Beta',
-						worksetKey: 'workset:beta',
-						worksetLabel: 'Beta',
-					}),
-				],
-				activeWorkspaceId: 'thread-beta',
-				shortcutMap: new Map<string, number>(),
-				onSelectWorkspace,
-			},
+		const initialWorkspaces = [
+			buildWorkspace({
+				id: 'thread-alpha',
+				name: 'Alpha Thread',
+				workset: 'Alpha',
+				worksetKey: 'workset:alpha',
+				worksetLabel: 'Alpha',
+			}),
+			buildWorkspace({
+				id: 'thread-beta',
+				name: 'Beta Thread',
+				workset: 'Beta',
+				worksetKey: 'workset:beta',
+				worksetLabel: 'Beta',
+			}),
+		];
+
+		const { rerender } = renderExplorerPanel(initialWorkspaces, {
+			activeWorkspaceId: 'thread-beta',
+			onSelectWorkspace,
 		});
 
+		const nextWorkspaces = [
+			buildWorkspace({
+				id: 'thread-alpha',
+				name: 'Alpha Thread',
+				workset: 'Alpha',
+				worksetKey: 'workset:alpha',
+				worksetLabel: 'Alpha',
+			}),
+		];
+
 		await rerender({
-			workspaces: [
-				buildWorkspace({
-					id: 'thread-alpha',
-					name: 'Alpha Thread',
-					workset: 'Alpha',
-					worksetKey: 'workset:alpha',
-					worksetLabel: 'Alpha',
-				}),
-			],
+			groupedWorksets: buildGroupedWorksets(nextWorkspaces),
 			activeWorkspaceId: null,
-			shortcutMap: new Map<string, number>(),
 			onSelectWorkspace,
 		});
 
@@ -235,30 +247,28 @@ describe('ExplorerPanel', () => {
 		const onSelectWorkspace = vi.fn<(workspaceId: string) => void>();
 		const onAddRepo = vi.fn<(worksetId: string) => void>();
 
-		const { getByRole } = render(ExplorerPanel, {
-			props: {
-				workspaces: [
-					buildWorkspace({
-						id: 'thread-alpha',
-						name: 'Alpha Thread',
-						workset: 'Alpha',
-						worksetKey: 'workset:alpha',
-						worksetLabel: 'Alpha',
-					}),
-					buildWorkspace({
-						id: 'placeholder-beta',
-						name: 'Beta Placeholder',
-						workset: 'Beta',
-						worksetKey: 'workset:beta',
-						worksetLabel: 'Beta',
-						placeholder: true,
-					}),
-				],
-				activeWorkspaceId: 'thread-alpha',
-				shortcutMap: new Map<string, number>(),
-				onSelectWorkspace,
-				onAddRepo,
-			},
+		const workspaces = [
+			buildWorkspace({
+				id: 'thread-alpha',
+				name: 'Alpha Thread',
+				workset: 'Alpha',
+				worksetKey: 'workset:alpha',
+				worksetLabel: 'Alpha',
+			}),
+			buildWorkspace({
+				id: 'placeholder-beta',
+				name: 'Beta Placeholder',
+				workset: 'Beta',
+				worksetKey: 'workset:beta',
+				worksetLabel: 'Beta',
+				placeholder: true,
+			}),
+		];
+
+		const { getByRole } = renderExplorerPanel(workspaces, {
+			activeWorkspaceId: 'thread-alpha',
+			onSelectWorkspace,
+			onAddRepo,
 		});
 
 		await fireEvent.click(getByRole('button', { name: 'Switch workset' }));
@@ -284,13 +294,9 @@ describe('ExplorerPanel', () => {
 			worksetKey: 'workset:core',
 			worksetLabel: 'Core',
 		});
-		const { getByRole } = render(ExplorerPanel, {
-			props: {
-				workspaces: [alpha, beta],
-				activeWorkspaceId: alpha.id,
-				shortcutMap: new Map<string, number>(),
-				onSelectWorkspace: vi.fn(),
-			},
+		const { getByRole } = renderExplorerPanel([alpha, beta], {
+			activeWorkspaceId: alpha.id,
+			onSelectWorkspace: vi.fn(),
 		});
 
 		const alphaRow = getByRole('button', { name: 'alpha' }).closest('.thread-row');
@@ -328,13 +334,9 @@ describe('ExplorerPanel', () => {
 			worksetLabel: 'Core',
 		});
 		const onSelectWorkspace = vi.fn<(workspaceId: string) => void>();
-		const { getByRole } = render(ExplorerPanel, {
-			props: {
-				workspaces: [alpha, beta],
-				activeWorkspaceId: alpha.id,
-				shortcutMap: new Map<string, number>(),
-				onSelectWorkspace,
-			},
+		const { getByRole } = renderExplorerPanel([alpha, beta], {
+			activeWorkspaceId: alpha.id,
+			onSelectWorkspace,
 		});
 
 		const alphaRemove = getByRole('button', { name: 'Remove thread alpha' });
@@ -357,13 +359,9 @@ describe('ExplorerPanel', () => {
 			worksetKey: 'workset:core',
 			worksetLabel: 'Core',
 		});
-		const { getByRole } = render(ExplorerPanel, {
-			props: {
-				workspaces: [alpha],
-				activeWorkspaceId: alpha.id,
-				shortcutMap: new Map<string, number>(),
-				onSelectWorkspace: vi.fn(),
-			},
+		const { getByRole } = renderExplorerPanel([alpha], {
+			activeWorkspaceId: alpha.id,
+			onSelectWorkspace: vi.fn(),
 		});
 
 		const removeButton = getByRole('button', { name: 'Remove thread alpha' });
@@ -387,14 +385,10 @@ describe('ExplorerPanel', () => {
 			worksetKey: 'workset:core',
 			worksetLabel: 'Core',
 		});
-		const { container, getByText } = render(ExplorerPanel, {
-			props: {
-				workspaces: [alpha, beta],
-				activeWorkspaceId: alpha.id,
-				shortcutMap: new Map<string, number>(),
-				activeTerminalWorkspaceIds: [beta.id],
-				onSelectWorkspace: vi.fn(),
-			},
+		const { container, getByText } = renderExplorerPanel([alpha, beta], {
+			activeWorkspaceId: alpha.id,
+			activeTerminalWorkspaceIds: [beta.id],
+			onSelectWorkspace: vi.fn(),
 		});
 
 		const workBadge = container.querySelector<HTMLElement>('.thread-live-indicator');
@@ -418,14 +412,10 @@ describe('ExplorerPanel', () => {
 			worksetKey: 'workset:core',
 			worksetLabel: 'Core',
 		});
-		const { queryByText } = render(ExplorerPanel, {
-			props: {
-				workspaces: [alpha, beta],
-				activeWorkspaceId: alpha.id,
-				shortcutMap: new Map<string, number>(),
-				activeTerminalWorkspaceIds: [],
-				onSelectWorkspace: vi.fn(),
-			},
+		const { queryByText } = renderExplorerPanel([alpha, beta], {
+			activeWorkspaceId: alpha.id,
+			activeTerminalWorkspaceIds: [],
+			onSelectWorkspace: vi.fn(),
 		});
 
 		expect(queryByText('Live')).toBeNull();
@@ -441,15 +431,11 @@ describe('ExplorerPanel', () => {
 			worksetLabel: 'Core',
 		});
 
-		const { getByRole } = render(ExplorerPanel, {
-			props: {
-				workspaces: [alpha],
-				activeWorkspaceId: alpha.id,
-				shortcutMap: new Map<string, number>(),
-				filesActive: true,
-				onSelectWorkspace: vi.fn(),
-				onOpenFiles,
-			},
+		const { getByRole } = renderExplorerPanel([alpha], {
+			activeWorkspaceId: alpha.id,
+			filesActive: true,
+			onSelectWorkspace: vi.fn(),
+			onOpenFiles,
 		});
 
 		const filesButton = getByRole('button', { name: 'Toggle code pane' });
@@ -469,15 +455,11 @@ describe('ExplorerPanel', () => {
 			worksetLabel: 'Core',
 		});
 
-		const { getByRole } = render(ExplorerPanel, {
-			props: {
-				workspaces: [alpha],
-				activeWorkspaceId: alpha.id,
-				shortcutMap: new Map<string, number>(),
-				activeView: 'skill-registry',
-				onSelectWorkspace: vi.fn(),
-				onOpenSkills,
-			},
+		const { getByRole } = renderExplorerPanel([alpha], {
+			activeWorkspaceId: alpha.id,
+			activeView: 'skill-registry',
+			onSelectWorkspace: vi.fn(),
+			onOpenSkills,
 		});
 
 		const skillsButton = getByRole('button', { name: 'Toggle skills view' });
@@ -521,13 +503,9 @@ describe('ExplorerPanel', () => {
 				},
 			],
 		});
-		const { container } = render(ExplorerPanel, {
-			props: {
-				workspaces: [workspace],
-				activeWorkspaceId: workspace.id,
-				shortcutMap: new Map<string, number>(),
-				onSelectWorkspace: vi.fn(),
-			},
+		const { container } = renderExplorerPanel([workspace], {
+			activeWorkspaceId: workspace.id,
+			onSelectWorkspace: vi.fn(),
 		});
 
 		const badge = container.querySelector('.thread-feedback-indicator');

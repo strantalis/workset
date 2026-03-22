@@ -1,7 +1,12 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import UnifiedRepoView from './UnifiedRepoView.svelte';
-import type { PullRequestCreated, RepoDiffSummary, Workspace } from '../../types';
+import type {
+	PullRequestCreated,
+	RepoDiffSummary,
+	RepoFileSearchResult,
+	Workspace,
+} from '../../types';
 
 const notifications = vi.hoisted(() => ({
 	info: vi.fn(),
@@ -28,8 +33,6 @@ const repoDiffMocks = vi.hoisted(() => ({
 	fetchRepoFileDiff: vi.fn(),
 	fetchBranchDiffSummary: vi.fn(),
 	fetchBranchFileDiff: vi.fn(),
-	startRepoStatusWatch: vi.fn(),
-	stopRepoStatusWatch: vi.fn(),
 }));
 
 const pullRequestMocks = vi.hoisted(() => ({
@@ -107,6 +110,46 @@ const buildWorkspace = (withTrackedPr = false): Workspace => ({
 	lastUsed: '2026-03-20T00:00:00Z',
 });
 
+const buildMultiRepoWorkspace = (): Workspace => ({
+	...buildWorkspace(),
+	repos: [
+		{
+			id: 'ws-1::repo-alpha',
+			name: 'repo-alpha',
+			path: '/tmp/ws-1/repo-alpha',
+			defaultBranch: 'main',
+			currentBranch: 'feature/alpha',
+			ahead: 0,
+			behind: 0,
+			dirty: false,
+			missing: false,
+			diff: { added: 0, removed: 0 },
+			files: [],
+		},
+		{
+			id: 'ws-1::repo-beta',
+			name: 'repo-beta',
+			path: '/tmp/ws-1/repo-beta',
+			defaultBranch: 'main',
+			currentBranch: 'feature/beta',
+			ahead: 0,
+			behind: 0,
+			dirty: false,
+			missing: false,
+			diff: { added: 0, removed: 0 },
+			files: [],
+		},
+	],
+});
+
+const createDeferredResults = () => {
+	let resolve!: (value: RepoFileSearchResult[]) => void;
+	const promise = new Promise<RepoFileSearchResult[]>((resolver) => {
+		resolve = resolver;
+	});
+	return { promise, resolve };
+};
+
 describe('UnifiedRepoView lazy directory tree', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -127,8 +170,6 @@ describe('UnifiedRepoView lazy directory tree', () => {
 			totalBytes: 0,
 			totalLines: 0,
 		});
-		repoDiffMocks.startRepoStatusWatch.mockResolvedValue(true);
-		repoDiffMocks.stopRepoStatusWatch.mockResolvedValue(true);
 		pullRequestMocks.fetchPullRequestReviews.mockResolvedValue([]);
 		pullRequestMocks.fetchPullRequestStatus.mockResolvedValue({
 			pullRequest: null,
@@ -266,5 +307,59 @@ describe('UnifiedRepoView lazy directory tree', () => {
 			const fileRow = getByRole('button', { name: /main\.ts/i });
 			expect(fileRow.querySelector('.urv-tree-file-comments')?.textContent).toContain('1');
 		});
+	});
+
+	test('indexes the selected repo first and loads one repo at a time during tree search', async () => {
+		repoFilesMocks.listRepoDirectory.mockResolvedValue([]);
+		const alphaDeferred = createDeferredResults();
+		const betaDeferred = createDeferredResults();
+		repoFilesMocks.searchWorkspaceRepoFiles.mockImplementation(
+			(_workspaceId: string, _query: string, _limit: number, repoId?: string) => {
+				if (repoId === 'ws-1::repo-beta') return betaDeferred.promise;
+				return alphaDeferred.promise;
+			},
+		);
+
+		const { getByPlaceholderText, getByRole } = render(UnifiedRepoView, {
+			props: {
+				workspace: buildMultiRepoWorkspace(),
+			},
+		});
+
+		await waitFor(() =>
+			expect(repoFilesMocks.listRepoDirectory).toHaveBeenCalledWith('ws-1', 'ws-1::repo-alpha', ''),
+		);
+
+		await fireEvent.click(getByRole('button', { name: /^repo-beta/ }));
+
+		await waitFor(() =>
+			expect(repoFilesMocks.listRepoDirectory).toHaveBeenCalledWith('ws-1', 'ws-1::repo-beta', ''),
+		);
+
+		await fireEvent.input(getByPlaceholderText('Filter files...'), {
+			target: { value: 'main' },
+		});
+
+		await waitFor(() => expect(repoFilesMocks.searchWorkspaceRepoFiles).toHaveBeenCalledTimes(1));
+		expect(repoFilesMocks.searchWorkspaceRepoFiles).toHaveBeenNthCalledWith(
+			1,
+			'ws-1',
+			'',
+			5000,
+			'ws-1::repo-beta',
+		);
+
+		betaDeferred.resolve([]);
+
+		await waitFor(() => expect(repoFilesMocks.searchWorkspaceRepoFiles).toHaveBeenCalledTimes(2));
+		expect(repoFilesMocks.searchWorkspaceRepoFiles).toHaveBeenNthCalledWith(
+			2,
+			'ws-1',
+			'',
+			5000,
+			'ws-1::repo-alpha',
+		);
+
+		alphaDeferred.resolve([]);
 	});
 });

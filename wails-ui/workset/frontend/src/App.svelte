@@ -52,8 +52,17 @@
 	import {
 		buildShortcutMap,
 		deriveWorksetIdentity,
+		mapWorkspacesToExplorerWorksets,
 		mapWorkspacesToSummaries,
+		mapWorkspacesToThreadGroups,
+		mapWorkspacesToThreadShellSummaries,
 	} from './lib/view-models/worksetViewModel';
+	import {
+		deriveHotWorksetIds,
+		deriveWatchedWorkspaces,
+		rememberWorksetId,
+		resolveWorksetIdForWorkspace,
+	} from './lib/view-models/repoWatchScope';
 	import { createTerminalActivityTracker } from './lib/composables/createTerminalActivityTracker.svelte';
 	import { createRepoStatusWatchers } from './lib/composables/createRepoStatusWatchers';
 	import { createWorkspaceActionModal } from './lib/composables/createWorkspaceActionModal.svelte';
@@ -132,6 +141,7 @@
 	let explorerOpen = $state(readExplorerOpenPreference());
 	let popoutSelectionApplied = $state(false);
 	let workbenchSurface = $state<'terminal' | 'pull-requests'>('terminal');
+	let warmWorksetIds = $state<string[]>([]);
 
 	const getWorksetThreads = (workspaceId: string): Workspace[] => {
 		const target = $workspaces.find(
@@ -176,8 +186,41 @@
 	const threadVisibleWorkspaces = $derived.by(() =>
 		visibleWorkspaces.filter((workspace) => workspace.placeholder !== true),
 	);
+	const watchedWorkspaces = $derived.by(() =>
+		deriveWatchedWorkspaces({
+			workspaces: threadVisibleWorkspaces,
+			activeWorkspaceId: $activeWorkspaceId,
+			fixedWorkspaceId,
+			warmWorksetIds,
+		}),
+	);
+	const hotWorksetIds = $derived.by(() =>
+		deriveHotWorksetIds({
+			workspaces: threadVisibleWorkspaces,
+			activeWorkspaceId: $activeWorkspaceId,
+			fixedWorkspaceId,
+			warmWorksetIds,
+		}),
+	);
+	const isWorkspaceHot = (workspaceId: string): boolean => {
+		const workspace = threadVisibleWorkspaces.find((entry) => entry.id === workspaceId);
+		if (!workspace) return false;
+		return hotWorksetIds.has(deriveWorksetIdentity(workspace).id);
+	};
 	const worksetSummaries = $derived.by(() => mapWorkspacesToSummaries(threadVisibleWorkspaces));
 	const shortcutMap = $derived.by(() => buildShortcutMap(threadVisibleWorkspaces));
+	const threadShellSummaries = $derived.by(() =>
+		mapWorkspacesToThreadShellSummaries(threadVisibleWorkspaces),
+	);
+	const threadSummaryMap = $derived.by(
+		() => new Map(threadShellSummaries.map((summary) => [summary.id, summary])),
+	);
+	const explorerWorksets = $derived.by(() =>
+		mapWorkspacesToExplorerWorksets(threadVisibleWorkspaces, shortcutMap),
+	);
+	const worksetThreadGroups = $derived.by(() =>
+		mapWorkspacesToThreadGroups(threadVisibleWorkspaces),
+	);
 	const activeSummary = $derived.by(
 		() => worksetSummaries.find((summary) => summary.id === $activeWorkspaceId) ?? null,
 	);
@@ -408,24 +451,28 @@
 		repoStatusUnsubscribe = subscribeRepoDiffEvent<RepoDiffLocalStatusEvent>(
 			EVENT_REPO_DIFF_LOCAL_STATUS,
 			(payload) => {
+				if (!isWorkspaceHot(payload.workspaceId)) return;
 				applyRepoLocalStatus(payload.workspaceId, payload.repoId, payload.status);
 			},
 		);
 		repoSummaryUnsubscribe = subscribeRepoDiffEvent<RepoDiffSummaryEvent>(
 			EVENT_REPO_DIFF_SUMMARY,
 			(payload) => {
+				if (!isWorkspaceHot(payload.workspaceId)) return;
 				applyRepoDiffSummary(payload.workspaceId, payload.repoId, payload.summary);
 			},
 		);
 		repoLocalSummaryUnsubscribe = subscribeRepoDiffEvent<RepoDiffSummaryEvent>(
 			EVENT_REPO_DIFF_LOCAL_SUMMARY,
 			(payload) => {
+				if (!isWorkspaceHot(payload.workspaceId)) return;
 				applyRepoDiffSummary(payload.workspaceId, payload.repoId, payload.summary);
 			},
 		);
 		repoPrStatusUnsubscribe = subscribeRepoDiffEvent<RepoDiffPrStatusEvent>(
 			EVENT_REPO_DIFF_PR_STATUS,
 			(payload) => {
+				if (!isWorkspaceHot(payload.workspaceId)) return;
 				applyTrackedPullRequest(
 					payload.workspaceId,
 					payload.repoId,
@@ -436,6 +483,7 @@
 		repoPrReviewsUnsubscribe = subscribeRepoDiffEvent<RepoDiffPrReviewsEvent>(
 			EVENT_REPO_DIFF_PR_REVIEWS,
 			(payload) => {
+				if (!isWorkspaceHot(payload.workspaceId)) return;
 				applyTrackedPullRequestReviewComments(
 					payload.workspaceId,
 					payload.repoId,
@@ -483,7 +531,15 @@
 	});
 
 	$effect(() => {
-		if (!popoutMode) repoStatusWatchers.sync($workspaces);
+		if (!popoutMode) repoStatusWatchers.sync(watchedWorkspaces);
+	});
+
+	$effect(() => {
+		const activeWorksetId = resolveWorksetIdForWorkspace(
+			threadVisibleWorkspaces,
+			$activeWorkspaceId,
+		);
+		warmWorksetIds = rememberWorksetId(warmWorksetIds, activeWorksetId);
 	});
 
 	$effect(() => {
@@ -540,9 +596,8 @@
 			{#if showExplorer && explorerOpen}
 				<aside class="explorer-shell" in:fly={{ x: -10, duration: 120 }}>
 					<ExplorerPanel
-						workspaces={visibleWorkspaces}
 						activeWorkspaceId={$activeWorkspaceId}
-						{shortcutMap}
+						groupedWorksets={explorerWorksets}
 						lockWorksetSelection={popoutMode}
 						canManageRepos={!popoutMode}
 						activeView={currentView === 'skill-registry' ? 'skill-registry' : 'workspaces'}
@@ -613,8 +668,9 @@
 								/>
 							{:else}
 								<SpacesWorkbenchView
-									workspaces={visibleWorkspaces}
 									activeWorkspaceId={$activeWorkspaceId}
+									worksetGroups={worksetThreadGroups}
+									{threadSummaryMap}
 									{popoutMode}
 									useGlobalExplorer={showExplorer}
 									preferredSurface={workbenchSurface}

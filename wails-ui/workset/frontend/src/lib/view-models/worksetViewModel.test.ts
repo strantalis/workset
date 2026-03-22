@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { Workspace } from '../types';
-import { deriveWorksetIdentity, mapWorkspaceToSummary } from './worksetViewModel';
+import {
+	deriveWorksetIdentity,
+	mapWorkspaceToSummary,
+	mapWorkspaceToThreadShellSummary,
+	mapWorkspacesToExplorerWorksets,
+	mapWorkspacesToThreadGroups,
+} from './worksetViewModel';
 
 const baseWorkspace = (repos: Workspace['repos'], workset = 'Core Platform'): Workspace => ({
 	id: 'ws-1',
@@ -120,5 +126,116 @@ describe('worksetViewModel', () => {
 		);
 
 		expect(summary.workset).toBe('Unassigned');
+	});
+
+	it('maps thread shell summaries with review feedback and status', () => {
+		const summary = mapWorkspaceToThreadShellSummary(
+			baseWorkspace([
+				{
+					id: 'r1',
+					name: 'repo-1',
+					path: '/tmp/ws-1/repo-1',
+					dirty: true,
+					missing: false,
+					currentBranch: 'feature/shell-summary',
+					diff: { added: 4, removed: 1 },
+					files: [],
+					trackedPullRequest: {
+						repo: 'repo-1',
+						number: 11,
+						url: 'https://github.com/example/repo-1/pull/11',
+						title: 'Open PR',
+						state: 'open',
+						draft: false,
+						baseRepo: 'example/repo-1',
+						baseBranch: 'main',
+						headRepo: 'example/repo-1',
+						headBranch: 'feature/open',
+						reviewCommentsCount: 2,
+					},
+				},
+			]),
+		);
+
+		expect(summary.branch).toBe('feature/shell-summary');
+		expect(summary.dirtyRepos).toBe(1);
+		expect(summary.openPrs).toBe(1);
+		expect(summary.reviewCommentsCount).toBe(2);
+		expect(summary.status).toBe('in-review');
+	});
+
+	it('groups explorer worksets from thread summaries', () => {
+		const alpha = baseWorkspace(
+			[
+				{
+					id: 'r1',
+					name: 'repo-1',
+					path: '/tmp/ws-1/repo-1',
+					dirty: false,
+					missing: false,
+					diff: { added: 2, removed: 1 },
+					files: [],
+				},
+			],
+			'Core Platform',
+		);
+		const beta: Workspace = {
+			...baseWorkspace(
+				[
+					{
+						id: 'r2',
+						name: 'repo-2',
+						path: '/tmp/ws-2/repo-2',
+						dirty: true,
+						missing: false,
+						diff: { added: 5, removed: 0 },
+						files: [],
+					},
+				],
+				'Core Platform',
+			),
+			id: 'ws-2',
+			name: 'Workspace 2',
+			path: '/tmp/ws-2',
+			lastUsed: '2026-03-22T00:00:00.000Z',
+		};
+
+		const grouped = mapWorkspacesToExplorerWorksets(
+			[alpha, beta],
+			new Map([
+				['ws-1', 2],
+				['ws-2', 1],
+			]),
+		);
+
+		expect(grouped).toHaveLength(1);
+		expect(grouped[0].threads.map((thread) => thread.id)).toEqual(['ws-1', 'ws-2']);
+		expect(grouped[0].dirtyRepos).toBe(1);
+		expect(grouped[0].linesAdded).toBe(7);
+		expect(grouped[0].shortcutNumber).toBe(1);
+	});
+
+	it('groups threads by workset and retains placeholder-only worksets', () => {
+		const alpha = {
+			...baseWorkspace([], 'Alpha'),
+			id: 'thread-alpha',
+			name: 'Alpha Thread',
+			worksetKey: 'workset:alpha',
+			worksetLabel: 'Alpha',
+		};
+		const betaPlaceholder = {
+			...baseWorkspace([], 'Beta'),
+			id: 'placeholder-beta',
+			name: 'Beta Placeholder',
+			worksetKey: 'workset:beta',
+			worksetLabel: 'Beta',
+			placeholder: true,
+		} as Workspace;
+
+		const groups = mapWorkspacesToThreadGroups([betaPlaceholder, alpha]);
+
+		expect(groups.map((group) => group.id)).toEqual(['workset:alpha', 'workset:beta']);
+		expect(groups[0].threads.map((thread) => thread.id)).toEqual(['thread-alpha']);
+		expect(groups[1].threads).toEqual([]);
 	});
 });

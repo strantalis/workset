@@ -40,8 +40,6 @@
 		fetchRepoFileDiff,
 		fetchBranchDiffSummary,
 		fetchBranchFileDiff,
-		startRepoStatusWatch,
-		stopRepoStatusWatch,
 	} from '../../api/repo-diff';
 	import {
 		fetchPullRequestReviews,
@@ -381,6 +379,21 @@
 		});
 	});
 	const isSearchActive = $derived(searchQuery.trim().length > 0);
+	const searchTargetRepoIds = $derived.by(() => {
+		if (!isSearchActive) return [];
+		const expandedRepoIds = [...expandedNodes]
+			.filter((key) => key.startsWith('repo:'))
+			.map((key) => key.slice(5));
+		if (!selectedRepoId || !expandedRepoIds.includes(selectedRepoId)) return expandedRepoIds;
+		return [selectedRepoId, ...expandedRepoIds.filter((repoId) => repoId !== selectedRepoId)];
+	});
+	const searchRepoLoadingCount = $derived.by(() => {
+		let count = 0;
+		for (const repoId of searchTargetRepoIds) {
+			if (repoFileStates.get(repoId)?.status === 'loading') count += 1;
+		}
+		return count;
+	});
 	const treeNodes = $derived.by<RepoTreeNode[]>(() =>
 		isSearchActive
 			? buildRepoTree(repos, filteredRepoFiles, expandedNodes)
@@ -759,22 +772,6 @@
 		}
 	};
 
-	// Track repos with active file watchers
-	const activeWatchers = new Set<string>();
-	const startWatcherForRepo = (workspaceId: string, repoId: string): void => {
-		if (activeWatchers.has(repoId)) return;
-		activeWatchers.add(repoId);
-		void startRepoStatusWatch(workspaceId, repoId).catch(() => {
-			activeWatchers.delete(repoId);
-		});
-	};
-	const stopAllWatchers = (): void => {
-		for (const repoId of activeWatchers) {
-			void stopRepoStatusWatch(wsId, repoId).catch(() => {});
-		}
-		activeWatchers.clear();
-	};
-
 	// Refresh the currently viewed file content
 	const refreshCurrentFile = (): void => {
 		const currentWsId = wsId;
@@ -787,11 +784,6 @@
 		} else {
 			void loadFileContent(currentWsId, repoId, path);
 		}
-	};
-	const stopWatcherForRepo = (repoId: string): void => {
-		if (!activeWatchers.has(repoId)) return;
-		activeWatchers.delete(repoId);
-		void stopRepoStatusWatch(wsId, repoId).catch(() => {});
 	};
 	const getDirEntryError = (repoId: string, dirPath: string): string | undefined =>
 		dirEntryErrors.get(createRepoDirEntriesKey(repoId, dirPath));
@@ -813,7 +805,6 @@
 					nextMap.delete(repoId);
 					branchDiffMap = nextMap;
 				}
-				stopWatcherForRepo(repoId);
 			}
 		} else {
 			next.add(key);
@@ -824,7 +815,6 @@
 				loadDirEntries(wsId, repoId, '');
 				void loadRepoDiff(wsId, repoId);
 				maybeLoadBranchData(wsId, repoId);
-				startWatcherForRepo(wsId, repoId);
 			} else if (node.kind === 'dir' && wsId) {
 				// Lazy-load directory children on expand
 				loadDirEntries(wsId, node.repoId, node.path);
@@ -965,16 +955,18 @@
 		}
 	};
 
-	// Load full file index for all expanded repos when search starts
+	// Index one repo at a time for tree search, prioritizing the selected repo so early results feel fast.
 	$effect(() => {
-		const query = searchQuery.trim();
-		if (query.length === 0) return;
 		const currentWsId = wsId;
 		if (!currentWsId) return;
-		for (const key of expandedNodes) {
-			if (key.startsWith('repo:')) {
-				loadRepoFiles(currentWsId, key.slice(5));
-			}
+		if (!isSearchActive) return;
+		if (searchRepoLoadingCount > 0) return;
+		const nextRepoId = searchTargetRepoIds.find((repoId) => {
+			const state = repoFileStates.get(repoId);
+			return !state || state.status === 'idle' || state.status === 'error';
+		});
+		if (nextRepoId) {
+			loadRepoFiles(currentWsId, nextRepoId);
 		}
 	});
 
@@ -1171,22 +1163,6 @@
 			}
 		});
 		return unsub;
-	});
-
-	// Start watcher for initially expanded repo
-	$effect(() => {
-		const currentWsId = wsId;
-		if (!currentWsId) return;
-		for (const key of expandedNodes) {
-			if (key.startsWith('repo:')) {
-				startWatcherForRepo(currentWsId, key.slice(5));
-			}
-		}
-	});
-
-	// Cleanup watchers on unmount
-	$effect(() => {
-		return () => stopAllWatchers();
 	});
 
 	// Check if file is changed helper
