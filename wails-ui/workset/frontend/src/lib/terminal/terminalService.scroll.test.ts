@@ -1,3 +1,4 @@
+import { get } from 'svelte/store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 type RegisteredLinkProvider = {
@@ -450,6 +451,41 @@ describe('terminalService resize flow', () => {
 			}),
 		);
 		expect(apiMock.stopWorkspaceTerminal).not.toHaveBeenCalled();
+	});
+
+	it('marks the terminal closed when the server reports the session exited', async () => {
+		const service = await loadService();
+		const container = document.createElement('div') as HTMLDivElement;
+
+		service.syncTerminal({
+			workspaceId: 'ws',
+			terminalId: 'term',
+			container,
+			active: true,
+		});
+
+		await vi.waitFor(() => {
+			expect(createdSockets).toHaveLength(1);
+		});
+
+		const socket = createdSockets[0];
+		socket.open();
+		socket.emitText({ type: 'ready', ready: { running: true } });
+		await vi.waitFor(() => {
+			expect(apiMock.fetchTerminalBootstrap).toHaveBeenCalled();
+		});
+
+		socket.emitText({ type: 'closed' });
+		socket.close(1000, 'session exited');
+
+		await vi.waitFor(() => {
+			expect(get(service.getTerminalStore('ws', 'term'))).toMatchObject({
+				status: 'closed',
+				message: 'Terminal exited.',
+				health: 'unknown',
+				healthMessage: '',
+			});
+		});
 	});
 
 	it('does not restart or refit healthy terminals on window focus', async () => {

@@ -83,7 +83,58 @@ func (a *App) getSessiondClientInternal(waitForRestart bool) (*sessiond.Client, 
 func (a *App) clearSessiondClient() {
 	a.sessiondMu.Lock()
 	a.sessiondClient = nil
+	a.sessiondInfo = nil
+	a.sessiondReady = false
 	a.sessiondMu.Unlock()
+}
+
+func (a *App) hasSessiondDescriptorSupport() bool {
+	a.sessiondMu.Lock()
+	defer a.sessiondMu.Unlock()
+	return a.sessiondReady
+}
+
+func (a *App) markSessiondDescriptorSupportReady() {
+	a.sessiondMu.Lock()
+	a.sessiondReady = true
+	a.sessiondMu.Unlock()
+}
+
+func (a *App) cachedSessiondInfo() (sessiond.InfoResponse, bool) {
+	a.sessiondMu.Lock()
+	defer a.sessiondMu.Unlock()
+	if a.sessiondInfo == nil {
+		return sessiond.InfoResponse{}, false
+	}
+	return *a.sessiondInfo, true
+}
+
+func (a *App) setCachedSessiondInfo(info sessiond.InfoResponse) {
+	info = sessiond.InfoResponse{
+		Executable:     strings.TrimSpace(info.Executable),
+		BinaryHash:     strings.TrimSpace(info.BinaryHash),
+		WebSocketURL:   strings.TrimSpace(info.WebSocketURL),
+		WebSocketToken: strings.TrimSpace(info.WebSocketToken),
+	}
+	a.sessiondMu.Lock()
+	a.sessiondInfo = &info
+	a.sessiondMu.Unlock()
+}
+
+func (a *App) getSessiondInfo(ctx context.Context) (sessiond.InfoResponse, error) {
+	if cached, ok := a.cachedSessiondInfo(); ok {
+		return cached, nil
+	}
+	client, err := a.getSessiondClient()
+	if err != nil {
+		return sessiond.InfoResponse{}, err
+	}
+	info, err := client.Info(ctx)
+	if err != nil {
+		return sessiond.InfoResponse{}, err
+	}
+	a.setCachedSessiondInfo(info)
+	return info, nil
 }
 
 type SessiondStatus struct {
@@ -218,6 +269,9 @@ func isUnknownSessiondMethodError(err error, method string) bool {
 }
 
 func (a *App) ensureSessiondDescriptorSupport() error {
+	if a.hasSessiondDescriptorSupport() {
+		return nil
+	}
 	client, err := a.getSessiondClient()
 	if err != nil {
 		return err
@@ -242,8 +296,9 @@ func (a *App) ensureSessiondDescriptorSupport() error {
 	probeInfo := func(c *sessiond.Client) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 		defer cancel()
-		_, err := c.Info(ctx)
+		info, err := c.Info(ctx)
 		if err == nil {
+			a.setCachedSessiondInfo(info)
 			return nil
 		}
 		if isUnknownSessiondMethodError(err, "info") {
@@ -287,6 +342,7 @@ func (a *App) ensureSessiondDescriptorSupport() error {
 		}
 	}
 
+	a.markSessiondDescriptorSupportReady()
 	return nil
 }
 

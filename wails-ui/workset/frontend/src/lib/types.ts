@@ -33,18 +33,6 @@ export type RepoImageContent = {
 	error?: string;
 };
 
-export type DocumentRenderMode = 'rendered' | 'raw';
-
-export type DocumentSession = {
-	workspaceId: string;
-	workspaceName: string;
-	repoId: string;
-	repoName: string;
-	path: string;
-	openedAt: number;
-	preferredMode?: DocumentRenderMode;
-};
-
 export type Repo = {
 	id: string;
 	name: string;
@@ -89,15 +77,15 @@ export type Workspace = Thread;
 
 export type TerminalLayoutTab = {
 	id: string;
-	terminalId: string;
 	title: string;
+	root: TerminalLayoutNode;
+	focusedPaneId?: string;
 };
 
 export type TerminalLayoutNode = {
 	id: string;
 	kind: 'pane' | 'split';
-	tabs?: TerminalLayoutTab[];
-	activeTabId?: string;
+	terminalId?: string;
 	direction?: 'row' | 'column';
 	ratio?: number;
 	first?: TerminalLayoutNode;
@@ -106,8 +94,8 @@ export type TerminalLayoutNode = {
 
 export type TerminalLayout = {
 	version: number;
-	root: TerminalLayoutNode;
-	focusedPaneId?: string;
+	tabs: TerminalLayoutTab[];
+	activeTabId: string;
 };
 
 export type TerminalLayoutPayload = {

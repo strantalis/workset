@@ -10,9 +10,17 @@
 		position?: 'left' | 'right';
 		children: Snippet;
 		trigger?: HTMLElement | null;
+		anchorPoint?: { top: number; left: number } | null;
 	}
 
-	const { open, onClose, position = 'right', children, trigger = null }: Props = $props();
+	const {
+		open,
+		onClose,
+		position = 'right',
+		children,
+		trigger = null,
+		anchorPoint = null,
+	}: Props = $props();
 
 	let menuElement: HTMLElement | null = $state(null);
 	let menuPosition = $state({ top: 0, left: 0 });
@@ -68,7 +76,7 @@
 	};
 
 	$effect(() => {
-		if (open && trigger && menuElement) {
+		if (open && menuElement && (trigger || anchorPoint)) {
 			tick().then(() => {
 				updatePosition();
 			});
@@ -95,33 +103,38 @@
 	});
 
 	function updatePosition() {
-		if (!trigger || !menuElement) return;
-
-		const triggerRect = trigger.getBoundingClientRect();
+		if (!menuElement) return;
 		const menuRect = menuElement.getBoundingClientRect();
-		const gap = 4; // px gap between trigger and menu
+		const gap = 4;
+		let top: number;
+		let left: number;
 
-		// Calculate position relative to viewport
-		let top = triggerRect.bottom + gap;
-		let left = position === 'right' ? triggerRect.right - menuRect.width : triggerRect.left;
+		if (anchorPoint) {
+			top = anchorPoint.top + gap;
+			left = anchorPoint.left + gap;
+		} else if (trigger) {
+			const triggerRect = trigger.getBoundingClientRect();
+			top = triggerRect.bottom + gap;
+			left = position === 'right' ? triggerRect.right - menuRect.width : triggerRect.left;
 
-		// Check if menu would go off bottom of viewport
-		const spaceBelow = window.innerHeight - triggerRect.bottom - gap;
-		const spaceAbove = triggerRect.top - gap;
-
-		if (menuRect.height > spaceBelow && spaceAbove > spaceBelow) {
-			// Flip to open upward if there's more space above
-			top = triggerRect.top - menuRect.height - gap;
+			const spaceBelow = window.innerHeight - triggerRect.bottom - gap;
+			const spaceAbove = triggerRect.top - gap;
+			if (menuRect.height > spaceBelow && spaceAbove > spaceBelow) {
+				top = triggerRect.top - menuRect.height - gap;
+			}
+		} else {
+			return;
 		}
 
-		// Prevent going off screen horizontally
 		if (left < 8) left = 8;
 		if (left + menuRect.width > window.innerWidth - 8) {
 			left = window.innerWidth - menuRect.width - 8;
 		}
 
-		// Ensure menu doesn't go off top of viewport
 		if (top < 8) top = 8;
+		if (top + menuRect.height > window.innerHeight - 8) {
+			top = window.innerHeight - menuRect.height - 8;
+		}
 
 		menuPosition = { top, left };
 	}

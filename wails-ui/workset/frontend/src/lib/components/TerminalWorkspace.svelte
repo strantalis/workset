@@ -1,10 +1,13 @@
 <script lang="ts">
+	import { Terminal, X } from '@lucide/svelte';
 	import { onDestroy } from 'svelte';
 	import TerminalLayoutNode from './TerminalLayoutNode.svelte';
 	import {
 		createWorkspaceTerminal,
+		fetchTerminalBootstrap,
 		fetchWorkspaceTerminalLayout,
 		persistWorkspaceTerminalLayout,
+		stopWorkspaceTerminal,
 	} from '../api/terminal-layout';
 	import { fetchSettings, setDefaultSetting } from '../api/settings';
 	import { generateTerminalName } from '../names';
@@ -22,25 +25,26 @@
 	} from '../terminal/terminalKeybindings';
 	import {
 		LAYOUT_VERSION,
+		activeTab,
 		buildPane,
 		buildPanePositions,
 		buildTab,
-		collectPaneIds,
-		collectTabs,
-		ensureFocusedPane,
+		collectTerminalIds,
+		collectTerminalIdsFromUnknownLayout,
+		ensureActiveTab,
 		findAdjacentPane,
 		findPane,
+		findTab,
+		firstPaneId,
 		moveTab,
-		newId,
 		normalizeLayout,
 		removePane,
 		splitPane,
-		updatePane,
 		updateSplitRatio,
-		type LayoutNode,
-		type PaneNode,
+		updateTab,
 		type TerminalLayout,
 	} from '../terminal/terminalLayoutTree';
+	import { shouldHandlePaneKeydown } from './terminalLayoutKeydown';
 
 	interface Props {
 		workspaceId: string;
@@ -48,9 +52,16 @@
 		active?: boolean;
 	}
 
+	type TabDragState = {
+		tabId: string;
+		sourceIndex: number;
+	} | null;
+
 	const { workspaceId, workspaceName, active = true }: Props = $props();
 
 	const SAVE_DEBOUNCE_MS = 300;
+	const MIN_RATIO = 0.15;
+	const MAX_RATIO = 0.85;
 
 	let layout = $state<TerminalLayout | null>(null);
 	let initError = $state('');
@@ -59,6 +70,17 @@
 	let pendingLayout: TerminalLayout | null = null;
 	let pendingWorkspaceId = '';
 	let resolvedKeybindings: ResolvedTerminalKeybindings = resolveTerminalKeybindings();
+	let tabDragState = $state<TabDragState>(null);
+	let topBarDropIndex = $state<number | null>(null);
+	// eslint-disable-next-line prefer-const
+	let workspaceTabs = $derived(layout?.tabs ?? []);
+	// eslint-disable-next-line prefer-const
+	let activeWorkspaceTabId = $derived(layout?.activeTabId ?? '');
+	// eslint-disable-next-line prefer-const
+	let currentWorkspaceTab = $derived(layout ? activeTab(layout) : null);
+	let prewarmedWorkspaceId = '';
+	const prewarmedTerminalIds = new Set<string>();
+	const prewarmingTerminalIds = new Set<string>();
 
 	const scheduleSaveLayout = (next: TerminalLayout): void => {
 		if (!workspaceId) return;
@@ -78,27 +100,24 @@
 		}, SAVE_DEBOUNCE_MS);
 	};
 
-	const loadLayout = async (id: string): Promise<TerminalLayout | null> => {
-		if (!id) return null;
-		try {
-			const payload = await fetchWorkspaceTerminalLayout(id);
-			return normalizeLayout(payload?.layout);
-		} catch {
-			return null;
-		}
-	};
+	const nextTitle = (nextLayout: TerminalLayout | null): string =>
+		generateTerminalName(workspaceName, nextLayout?.tabs.length ?? 0);
 
-	const nextTitle = (node: LayoutNode): string => {
-		const count = collectTabs(node).length;
-		return generateTerminalName(workspaceName, count);
+	const buildFreshLayout = (terminalId: string, title: string): TerminalLayout => {
+		const tab = buildTab(terminalId, title);
+		return {
+			version: LAYOUT_VERSION,
+			tabs: [tab],
+			activeTabId: tab.id,
+		};
 	};
 
 	const setLayout = (next: TerminalLayout): void => {
-		layout = ensureFocusedPane(next);
+		layout = ensureActiveTab(next);
 	};
 
 	const updateLayout = (next: TerminalLayout): void => {
-		const normalized = ensureFocusedPane(next);
+		const normalized = ensureActiveTab(next);
 		layout = normalized;
 		scheduleSaveLayout(normalized);
 	};
@@ -107,6 +126,54 @@
 		void setDefaultSetting('defaults.terminal_font_size', String(getCurrentFontSize())).catch(
 			() => undefined,
 		);
+	};
+
+	const createAndPersistFreshLayout = async (
+		targetWorkspaceId: string,
+		targetWorkspaceName: string,
+	): Promise<TerminalLayout> => {
+		const created = await createWorkspaceTerminal(targetWorkspaceId);
+		const freshLayout = buildFreshLayout(
+			created.terminalId,
+			generateTerminalName(targetWorkspaceName, 0),
+		);
+		await persistWorkspaceTerminalLayout(targetWorkspaceId, freshLayout);
+		return freshLayout;
+	};
+
+	const stopLayoutSessions = async (layoutLike: unknown): Promise<void> => {
+		const terminalIds = collectTerminalIdsFromUnknownLayout(layoutLike);
+		if (terminalIds.length === 0) return;
+		await Promise.allSettled(
+			terminalIds.map((terminalId) => stopWorkspaceTerminal(workspaceId, terminalId)),
+		);
+	};
+
+	const closeLayoutTerminals = async (terminalIds: string[]): Promise<void> => {
+		if (terminalIds.length === 0) return;
+		await Promise.allSettled(
+			terminalIds.map((terminalId) => closeTerminal(workspaceId, terminalId)),
+		);
+	};
+
+	const prewarmTerminal = (terminalId: string): void => {
+		if (!workspaceId || !terminalId) return;
+		if (prewarmedTerminalIds.has(terminalId) || prewarmingTerminalIds.has(terminalId)) return;
+		prewarmingTerminalIds.add(terminalId);
+		void fetchTerminalBootstrap(workspaceId, terminalId)
+			.then(() => {
+				prewarmedTerminalIds.add(terminalId);
+			})
+			.catch(() => undefined)
+			.finally(() => {
+				prewarmingTerminalIds.delete(terminalId);
+			});
+	};
+
+	const prewarmTab = (tab: NonNullable<typeof currentWorkspaceTab>): void => {
+		for (const terminalId of collectTerminalIds(tab.root)) {
+			prewarmTerminal(terminalId);
+		}
 	};
 
 	let initToken = 0;
@@ -120,17 +187,20 @@
 		initError = '';
 		layout = null;
 		try {
-			const stored = await loadLayout(targetWorkspaceId);
+			const payload = await fetchWorkspaceTerminalLayout(targetWorkspaceId);
 			if (token !== initToken || workspaceId !== targetWorkspaceId) return;
-			if (stored) {
-				setLayout(stored);
+			const normalized = normalizeLayout(payload?.layout);
+			if (normalized) {
+				setLayout(normalized);
 				return;
 			}
-			const created = await createWorkspaceTerminal(targetWorkspaceId);
+			if (payload?.layout) {
+				await stopLayoutSessions(payload.layout);
+				if (token !== initToken || workspaceId !== targetWorkspaceId) return;
+			}
+			const freshLayout = await createAndPersistFreshLayout(targetWorkspaceId, targetWorkspaceName);
 			if (token !== initToken || workspaceId !== targetWorkspaceId) return;
-			const tab = buildTab(created.terminalId, generateTerminalName(targetWorkspaceName, 0));
-			const pane = buildPane(tab);
-			updateLayout({ version: LAYOUT_VERSION, root: pane, focusedPaneId: pane.id });
+			setLayout(freshLayout);
 		} catch (error) {
 			if (token !== initToken || workspaceId !== targetWorkspaceId) return;
 			initError = String(error);
@@ -141,214 +211,161 @@
 		}
 	};
 
-	const handleFocusPane = (paneId: string): void => {
-		if (!layout) return;
-		if (layout.focusedPaneId === paneId) return;
-		updateLayout({ ...layout, focusedPaneId: paneId });
+	const handleSelectWorkspaceTab = (tabId: string): void => {
+		if (!layout || layout.activeTabId === tabId) return;
+		updateLayout({ ...layout, activeTabId: tabId });
 	};
 
-	const handleSelectTab = (paneId: string, tabId: string): void => {
-		if (!layout) return;
-		const nextRoot = updatePane(layout.root, paneId, (pane) => ({
-			...pane,
-			activeTabId: tabId,
-		}));
-		updateLayout({ ...layout, root: nextRoot, focusedPaneId: paneId });
-	};
-
-	const handleAddTab = async (paneId: string): Promise<void> => {
+	const handleAddWorkspaceTab = async (): Promise<void> => {
 		if (!layout) return;
 		try {
 			const created = await createWorkspaceTerminal(workspaceId);
-			const title = nextTitle(layout.root);
-			const tab = buildTab(created.terminalId, title);
-			const nextRoot = updatePane(layout.root, paneId, (pane) => ({
-				...pane,
-				tabs: [...pane.tabs, tab],
+			const tab = buildTab(created.terminalId, nextTitle(layout));
+			updateLayout({
+				...layout,
+				tabs: [...layout.tabs, tab],
 				activeTabId: tab.id,
-			}));
-			updateLayout({ ...layout, root: nextRoot, focusedPaneId: paneId });
+			});
 		} catch (error) {
 			initError = String(error);
 		}
+	};
+
+	const handleCloseWorkspaceTab = async (tabId: string): Promise<void> => {
+		if (!layout) return;
+		const currentLayout = layout;
+		const closingTab = findTab(currentLayout, tabId);
+		if (!closingTab) return;
+		await closeLayoutTerminals(collectTerminalIds(closingTab.root));
+
+		if (currentLayout.tabs.length === 1) {
+			try {
+				const freshLayout = await createAndPersistFreshLayout(workspaceId, workspaceName);
+				setLayout(freshLayout);
+			} catch (error) {
+				initError = String(error);
+			}
+			return;
+		}
+
+		const nextTabs = currentLayout.tabs.filter((tab) => tab.id !== tabId);
+		const closingIndex = currentLayout.tabs.findIndex((tab) => tab.id === tabId);
+		const nextActive = nextTabs[Math.max(0, closingIndex - 1)] ?? nextTabs[0];
+		updateLayout({
+			...currentLayout,
+			tabs: nextTabs,
+			activeTabId: nextActive.id,
+		});
+	};
+
+	const handleFocusPane = (paneId: string): void => {
+		if (!layout) return;
+		const currentTab = activeTab(layout);
+		if (!currentTab || currentTab.focusedPaneId === paneId) return;
+		updateLayout(
+			updateTab(layout, currentTab.id, (tab) => ({
+				...tab,
+				focusedPaneId: paneId,
+			})),
+		);
+	};
+
+	const handleClosePane = async (paneId: string): Promise<void> => {
+		if (!layout) return;
+		const currentLayout = layout;
+		const currentTab = activeTab(currentLayout);
+		if (!currentTab) return;
+		const closingPane = findPane(currentTab.root, paneId);
+		if (!closingPane) return;
+
+		await closeTerminal(workspaceId, closingPane.terminalId);
+
+		const nextRoot = removePane(currentTab.root, paneId);
+		if (!nextRoot) {
+			await handleCloseWorkspaceTab(currentTab.id);
+			return;
+		}
+
+		const nextFocusedPaneId =
+			currentTab.focusedPaneId === paneId ? firstPaneId(nextRoot) : currentTab.focusedPaneId;
+		updateLayout(
+			updateTab(currentLayout, currentTab.id, (tab) => ({
+				...tab,
+				root: nextRoot,
+				focusedPaneId: nextFocusedPaneId,
+			})),
+		);
 	};
 
 	const handleSplitPane = async (paneId: string, direction: 'row' | 'column'): Promise<void> => {
 		if (!layout) return;
+		const currentTab = activeTab(layout);
+		if (!currentTab) return;
 		try {
 			const created = await createWorkspaceTerminal(workspaceId);
-			const title = nextTitle(layout.root);
-			const tab = buildTab(created.terminalId, title);
-			const pane = buildPane(tab);
-			const nextRoot = splitPane(layout.root, paneId, direction, pane);
-			updateLayout({ ...layout, root: nextRoot, focusedPaneId: paneId });
+			const newPane = buildPane(created.terminalId);
+			const nextRoot = splitPane(currentTab.root, paneId, direction, newPane);
+			updateLayout(
+				updateTab(layout, currentTab.id, (tab) => ({
+					...tab,
+					root: nextRoot,
+					focusedPaneId: newPane.id,
+				})),
+			);
 		} catch (error) {
 			initError = String(error);
 		}
 	};
 
-	const handleCloseTab = (paneId: string, tabId: string): void => {
-		if (!layout) return;
-		const pane = findPane(layout.root, paneId);
-		if (!pane) return;
-		const closing = pane.tabs.find((tab) => tab.id === tabId);
-		if (closing) {
-			void closeTerminal(workspaceId, closing.terminalId);
-		}
-		const remaining = pane.tabs.filter((tab) => tab.id !== tabId);
-		if (remaining.length === 0) {
-			handleClosePane(paneId);
-			return;
-		}
-		const nextActive = pane.activeTabId === tabId ? remaining[0].id : pane.activeTabId;
-		const nextRoot = updatePane(layout.root, paneId, (existing) => ({
-			...existing,
-			tabs: remaining,
-			activeTabId: nextActive,
-		}));
-		updateLayout({ ...layout, root: nextRoot, focusedPaneId: paneId });
-	};
-
-	const handleClosePane = (paneId: string): void => {
-		if (!layout) return;
-		const pane = findPane(layout.root, paneId);
-		if (pane) {
-			for (const tab of pane.tabs) {
-				void closeTerminal(workspaceId, tab.terminalId);
-			}
-		}
-		const nextRoot = removePane(layout.root, paneId);
-		if (!nextRoot) {
-			void (async () => {
-				try {
-					const created = await createWorkspaceTerminal(workspaceId);
-					const tab = buildTab(created.terminalId, generateTerminalName(workspaceName, 0));
-					const pane = buildPane(tab);
-					updateLayout({ version: LAYOUT_VERSION, root: pane, focusedPaneId: pane.id });
-				} catch (error) {
-					initError = String(error);
-				}
-			})();
-			return;
-		}
-		updateLayout({ ...layout, root: nextRoot });
-	};
-
-	const MIN_RATIO = 0.15;
-	const MAX_RATIO = 0.85;
-
 	const handleResizeSplit = (splitId: string, ratio: number): void => {
 		if (!layout) return;
+		const currentTab = activeTab(layout);
+		if (!currentTab) return;
 		const clampedRatio = Math.max(MIN_RATIO, Math.min(MAX_RATIO, ratio));
-		const nextRoot = updateSplitRatio(layout.root, splitId, clampedRatio);
-		updateLayout({ ...layout, root: nextRoot });
+		const nextRoot = updateSplitRatio(currentTab.root, splitId, clampedRatio);
+		updateLayout(
+			updateTab(layout, currentTab.id, (tab) => ({
+				...tab,
+				root: nextRoot,
+			})),
+		);
 	};
 
-	// Drag state for tab reordering
-	type DragState = {
-		tabId: string;
-		sourcePaneId: string;
-		sourceIndex: number;
-	} | null;
+	const handleTabDragStart = (tabId: string, index: number, event: DragEvent): void => {
+		tabDragState = { tabId, sourceIndex: index };
+		topBarDropIndex = index;
+		event.dataTransfer?.setData('text/plain', tabId);
+		if (event.dataTransfer) {
+			event.dataTransfer.effectAllowed = 'move';
+		}
+	};
 
-	let dragState = $state<DragState>(null);
+	const handleTabDragOver = (index: number, event: DragEvent): void => {
+		if (!tabDragState) return;
+		event.preventDefault();
+		topBarDropIndex = index;
+		if (event.dataTransfer) {
+			event.dataTransfer.dropEffect = 'move';
+		}
+	};
 
-	const handleTabDragStart = (paneId: string, tabId: string, index: number): void => {
-		dragState = { tabId, sourcePaneId: paneId, sourceIndex: index };
+	const handleTabDrop = (index: number, event: DragEvent): void => {
+		if (!layout || !tabDragState) return;
+		event.preventDefault();
+		updateLayout(moveTab(layout, tabDragState.sourceIndex, index));
+		tabDragState = null;
+		topBarDropIndex = null;
 	};
 
 	const handleTabDragEnd = (): void => {
-		dragState = null;
-	};
-
-	const handleTabDrop = (targetPaneId: string, targetIndex: number): void => {
-		if (!layout || !dragState) return;
-		const { tabId, sourcePaneId } = dragState;
-
-		// Move the tab
-		let nextRoot = moveTab(layout.root, sourcePaneId, targetPaneId, tabId, targetIndex);
-
-		// Check if source pane is now empty and needs to be removed
-		const sourcePane = findPane(nextRoot, sourcePaneId);
-		if (sourcePane && sourcePane.tabs.length === 0) {
-			const removed = removePane(nextRoot, sourcePaneId);
-			if (removed) {
-				nextRoot = removed;
-			}
-		}
-
-		updateLayout({ ...layout, root: nextRoot, focusedPaneId: targetPaneId });
-		dragState = null;
-	};
-
-	const handleTabSplitDrop = (
-		targetPaneId: string,
-		direction: 'row' | 'column',
-		position: 'before' | 'after',
-	): void => {
-		if (!layout || !dragState) return;
-		const { tabId, sourcePaneId } = dragState;
-
-		// Find the tab in source pane
-		const sourcePane = findPane(layout.root, sourcePaneId);
-		if (!sourcePane) return;
-		const tab = sourcePane.tabs.find((t) => t.id === tabId);
-		if (!tab) return;
-
-		// Create a new pane with the tab
-		const newPane: PaneNode = {
-			id: newId(),
-			kind: 'pane',
-			tabs: [tab],
-			activeTabId: tab.id,
-		};
-
-		// Remove tab from source pane
-		let nextRoot = updatePane(layout.root, sourcePaneId, (pane) => ({
-			...pane,
-			tabs: pane.tabs.filter((t) => t.id !== tabId),
-			activeTabId:
-				pane.activeTabId === tabId
-					? (pane.tabs.find((t) => t.id !== tabId)?.id ?? pane.activeTabId)
-					: pane.activeTabId,
-		}));
-
-		// Check if source pane is now empty and needs to be removed
-		const updatedSourcePane = findPane(nextRoot, sourcePaneId);
-		if (updatedSourcePane && updatedSourcePane.tabs.length === 0) {
-			const removed = removePane(nextRoot, sourcePaneId);
-			if (removed) {
-				nextRoot = removed;
-			}
-		}
-
-		// Split the target pane with the new pane
-		// position 'before' means new pane goes first, 'after' means new pane goes second
-		const splitWithNewPane = (node: LayoutNode): LayoutNode => {
-			if (node.kind === 'pane') {
-				if (node.id !== targetPaneId) return node;
-				return {
-					id: newId(),
-					kind: 'split',
-					direction,
-					ratio: 0.5,
-					first: position === 'before' ? newPane : node,
-					second: position === 'before' ? node : newPane,
-				};
-			}
-			const first = splitWithNewPane(node.first);
-			const second = splitWithNewPane(node.second);
-			if (first === node.first && second === node.second) return node;
-			return { ...node, first, second };
-		};
-
-		nextRoot = splitWithNewPane(nextRoot);
-		updateLayout({ ...layout, root: nextRoot, focusedPaneId: newPane.id });
-		dragState = null;
+		tabDragState = null;
+		topBarDropIndex = null;
 	};
 
 	const handleWorkspaceKeydown = (event: KeyboardEvent): void => {
 		if (!layout) return;
+		const currentLayout = layout;
+		const currentTab = activeTab(currentLayout);
 		const action = matchTerminalKeybinding(event, resolvedKeybindings);
 		if (!action) return;
 
@@ -357,15 +374,15 @@
 			case 'terminal.focus_pane_down':
 			case 'terminal.focus_pane_left':
 			case 'terminal.focus_pane_right': {
-				if (!layout.focusedPaneId) return;
+				if (!currentTab?.focusedPaneId) return;
 				const direction = action.replace('terminal.focus_pane_', '') as
 					| 'up'
 					| 'down'
 					| 'left'
 					| 'right';
 				event.preventDefault();
-				const positions = buildPanePositions(layout.root);
-				const nextPaneId = findAdjacentPane(layout.focusedPaneId, direction, positions);
+				const positions = buildPanePositions(currentTab.root);
+				const nextPaneId = findAdjacentPane(currentTab.focusedPaneId, direction, positions);
 				if (nextPaneId) {
 					handleFocusPane(nextPaneId);
 				}
@@ -373,41 +390,38 @@
 			}
 			case 'terminal.next_tab':
 			case 'terminal.prev_tab': {
-				if (!layout.focusedPaneId) return;
-				const pane = findPane(layout.root, layout.focusedPaneId);
-				if (!pane || pane.tabs.length <= 1) return;
+				if (currentLayout.tabs.length <= 1) return;
 				event.preventDefault();
-				const currentIndex = pane.tabs.findIndex((t) => t.id === pane.activeTabId);
+				const currentIndex = currentLayout.tabs.findIndex(
+					(tab) => tab.id === currentLayout.activeTabId,
+				);
 				const delta = action === 'terminal.prev_tab' ? -1 : 1;
-				const nextIndex = (currentIndex + delta + pane.tabs.length) % pane.tabs.length;
-				handleSelectTab(layout.focusedPaneId, pane.tabs[nextIndex].id);
+				const nextIndex =
+					(currentIndex + delta + currentLayout.tabs.length) % currentLayout.tabs.length;
+				handleSelectWorkspaceTab(currentLayout.tabs[nextIndex].id);
 				return;
 			}
 			case 'terminal.close_tab': {
-				if (!layout.focusedPaneId) return;
-				const pane = findPane(layout.root, layout.focusedPaneId);
-				if (pane && pane.activeTabId) {
-					event.preventDefault();
-					handleCloseTab(layout.focusedPaneId, pane.activeTabId);
-				}
+				if (!currentTab) return;
+				event.preventDefault();
+				void handleCloseWorkspaceTab(currentTab.id);
 				return;
 			}
 			case 'terminal.new_tab': {
-				if (!layout.focusedPaneId) return;
 				event.preventDefault();
-				void handleAddTab(layout.focusedPaneId);
+				void handleAddWorkspaceTab();
 				return;
 			}
 			case 'terminal.split_vertical': {
-				if (!layout.focusedPaneId) return;
+				if (!currentTab?.focusedPaneId) return;
 				event.preventDefault();
-				void handleSplitPane(layout.focusedPaneId, 'row');
+				void handleSplitPane(currentTab.focusedPaneId, 'row');
 				return;
 			}
 			case 'terminal.split_horizontal': {
-				if (!layout.focusedPaneId) return;
+				if (!currentTab?.focusedPaneId) return;
 				event.preventDefault();
-				void handleSplitPane(layout.focusedPaneId, 'column');
+				void handleSplitPane(currentTab.focusedPaneId, 'column');
 				return;
 			}
 			case 'terminal.font_increase': {
@@ -429,19 +443,14 @@
 				return;
 			}
 			default: {
-				if (action.startsWith('terminal.focus_tab_')) {
-					if (!layout.focusedPaneId) return;
-					const index = Number.parseInt(action.replace('terminal.focus_tab_', ''), 10);
-					if (!Number.isFinite(index) || index < 1 || index > 9) return;
-					const pane = findPane(layout.root, layout.focusedPaneId);
-					if (!pane) return;
-					const tabIndex = index - 1;
-					if (tabIndex < pane.tabs.length) {
-						event.preventDefault();
-						handleSelectTab(layout.focusedPaneId, pane.tabs[tabIndex].id);
-					}
+				if (!action.startsWith('terminal.focus_tab_')) return;
+				const index = Number.parseInt(action.replace('terminal.focus_tab_', ''), 10);
+				if (!Number.isFinite(index) || index < 1 || index > 9) return;
+				const tabIndex = index - 1;
+				if (tabIndex < currentLayout.tabs.length) {
+					event.preventDefault();
+					handleSelectWorkspaceTab(currentLayout.tabs[tabIndex].id);
 				}
-				return;
 			}
 		}
 	};
@@ -455,6 +464,21 @@
 	$effect(() => {
 		if (!workspaceId) return;
 		void initWorkspace();
+	});
+
+	$effect(() => {
+		if (!workspaceId) return;
+		if (workspaceId !== prewarmedWorkspaceId) {
+			prewarmedWorkspaceId = workspaceId;
+			prewarmedTerminalIds.clear();
+			prewarmingTerminalIds.clear();
+		}
+	});
+
+	$effect(() => {
+		if (!active || !workspaceId) return;
+		if (!currentWorkspaceTab) return;
+		prewarmTab(currentWorkspaceTab);
 	});
 
 	$effect(() => {
@@ -491,7 +515,6 @@
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<!-- role="application" is a complex widget that manages its own keyboard handling -->
 <section
 	class="terminal-workspace"
 	role="application"
@@ -529,28 +552,115 @@
 				<span>Starting thread terminals…</span>
 			</div>
 		{:else}
-			{@const rootNode = layout?.root ?? null}
-			{@const totalPaneCount = rootNode ? collectPaneIds(rootNode).length : 0}
-			<TerminalLayoutNode
-				node={rootNode}
-				{workspaceId}
-				{workspaceName}
-				{active}
-				focusedPaneId={layout?.focusedPaneId}
-				{totalPaneCount}
-				{dragState}
-				onFocusPane={handleFocusPane}
-				onSelectTab={handleSelectTab}
-				onAddTab={handleAddTab}
-				onSplitPane={handleSplitPane}
-				onCloseTab={handleCloseTab}
-				onClosePane={handleClosePane}
-				onResizeSplit={handleResizeSplit}
-				onTabDragStart={handleTabDragStart}
-				onTabDragEnd={handleTabDragEnd}
-				onTabDrop={handleTabDrop}
-				onTabSplitDrop={handleTabSplitDrop}
-			/>
+			{@const focusedPaneId = currentWorkspaceTab?.focusedPaneId ?? ''}
+			<div class="workspace-shell">
+				<div class="workspace-tabs" role="tablist" aria-label="Terminal tabs">
+					<div class="workspace-tabs-scroll">
+						{#each workspaceTabs as tab, index (tab.id)}
+							<div
+								class="workspace-tab"
+								class:active={tab.id === activeWorkspaceTabId}
+								class:dragging={tabDragState?.tabId === tab.id}
+								class:drop-target={topBarDropIndex === index && tabDragState?.tabId !== tab.id}
+								role="tab"
+								tabindex="0"
+								aria-selected={tab.id === activeWorkspaceTabId}
+								draggable="true"
+								onclick={() => handleSelectWorkspaceTab(tab.id)}
+								onkeydown={(event) => {
+									if (!shouldHandlePaneKeydown(event)) return;
+									event.preventDefault();
+									handleSelectWorkspaceTab(tab.id);
+								}}
+								ondragstart={(event) => handleTabDragStart(tab.id, index, event)}
+								ondragover={(event) => handleTabDragOver(index, event)}
+								ondrop={(event) => handleTabDrop(index, event)}
+								ondragend={handleTabDragEnd}
+							>
+								<span class="workspace-tab-prompt"><Terminal size={12} /></span>
+								<span class="workspace-tab-title">{tab.title}</span>
+								<button
+									type="button"
+									class="workspace-tab-close"
+									aria-label={`Close ${tab.title}`}
+									onclick={(event) => {
+										event.stopPropagation();
+										void handleCloseWorkspaceTab(tab.id);
+									}}
+								>
+									<X size={14} />
+								</button>
+							</div>
+						{/each}
+					</div>
+					{#if focusedPaneId}
+						<div class="workspace-tab-actions">
+							<button
+								type="button"
+								class="ws-icon-action-btn"
+								data-hover-label="Split vertical (⌘\\)"
+								aria-label="Split vertical"
+								onclick={() => void handleSplitPane(focusedPaneId, 'row')}
+							>
+								<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+									<rect
+										x="1"
+										y="2"
+										width="12"
+										height="10"
+										rx="1.5"
+										stroke="currentColor"
+										stroke-width="1.2"
+									/>
+									<path d="M7 2v10" stroke="currentColor" stroke-width="1.2" />
+								</svg>
+							</button>
+							<button
+								type="button"
+								class="ws-icon-action-btn"
+								data-hover-label="Split horizontal (⌘⇧\\)"
+								aria-label="Split horizontal"
+								onclick={() => void handleSplitPane(focusedPaneId, 'column')}
+							>
+								<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+									<rect
+										x="1"
+										y="2"
+										width="12"
+										height="10"
+										rx="1.5"
+										stroke="currentColor"
+										stroke-width="1.2"
+									/>
+									<path d="M1 7h12" stroke="currentColor" stroke-width="1.2" />
+								</svg>
+							</button>
+						</div>
+					{/if}
+					<button
+						type="button"
+						class="workspace-tab-add"
+						aria-label="New terminal tab"
+						data-hover-label="New tab (⌘T)"
+						onclick={() => void handleAddWorkspaceTab()}
+					>
+						+
+					</button>
+				</div>
+				<div class="workspace-layout">
+					<TerminalLayoutNode
+						node={currentWorkspaceTab?.root ?? null}
+						{workspaceId}
+						{workspaceName}
+						{active}
+						focusedPaneId={currentWorkspaceTab?.focusedPaneId}
+						onFocusPane={handleFocusPane}
+						onClosePane={handleClosePane}
+						onSplitPane={handleSplitPane}
+						onResizeSplit={handleResizeSplit}
+					/>
+				</div>
+			</div>
 		{/if}
 	</div>
 </section>
@@ -572,6 +682,166 @@
 		border-radius: 0;
 		background: var(--panel);
 		overflow: hidden;
+	}
+
+	.workspace-shell {
+		display: flex;
+		flex: 1;
+		min-height: 0;
+		flex-direction: column;
+	}
+
+	.workspace-tabs {
+		display: flex;
+		align-items: center;
+		gap: 0;
+		padding: 0 4px;
+		border-bottom: 1px solid var(--border);
+		background: var(--panel-strong);
+	}
+
+	.workspace-tabs-scroll {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		flex: 1;
+		min-width: 0;
+		overflow-x: auto;
+		scrollbar-width: none;
+	}
+
+	.workspace-tabs-scroll::-webkit-scrollbar {
+		display: none;
+	}
+
+	.workspace-tab {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		min-width: 0;
+		max-width: 280px;
+		padding: 6px 12px;
+		background: transparent;
+		color: var(--muted);
+		cursor: grab;
+		border: none;
+		border-radius: 0;
+		box-shadow: none;
+		transition:
+			color var(--transition-fast),
+			background var(--transition-fast),
+			box-shadow var(--transition-fast);
+		position: relative;
+	}
+
+	.workspace-tab:hover {
+		color: var(--text);
+		background: var(--hover-bg);
+	}
+
+	.workspace-tab:active {
+		cursor: grabbing;
+	}
+
+	.workspace-tab.active {
+		color: var(--text);
+		background: var(--panel);
+		box-shadow: inset 0 2px 0 var(--accent);
+	}
+
+	.workspace-tab.dragging {
+		opacity: 0.4;
+	}
+
+	.workspace-tab.drop-target {
+		box-shadow:
+			inset 2px 0 0 var(--accent),
+			inset 0 2px 0 color-mix(in srgb, var(--accent) 35%, transparent);
+	}
+
+	.workspace-tab-title {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-size: var(--text-sm);
+	}
+
+	.workspace-tab-prompt {
+		display: inline-flex;
+		align-items: center;
+		color: var(--accent);
+		font-weight: 500;
+		flex-shrink: 0;
+	}
+
+	.workspace-tab-close,
+	.workspace-tab-add {
+		border: none;
+		background: none;
+		color: inherit;
+		cursor: pointer;
+	}
+
+	.workspace-tab-close {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 18px;
+		height: 18px;
+		margin-left: 6px;
+		border-radius: 3px;
+		font-size: 14px;
+		line-height: 1;
+		opacity: 0;
+		transition:
+			opacity var(--transition-fast),
+			background var(--transition-fast),
+			color var(--transition-fast);
+	}
+
+	.workspace-tab:hover .workspace-tab-close,
+	.workspace-tab.active .workspace-tab-close {
+		opacity: 0.7;
+	}
+
+	.workspace-tab-close:hover {
+		opacity: 1;
+		background: color-mix(in srgb, var(--warning) 20%, transparent);
+		color: var(--warning);
+	}
+
+	.workspace-tab-add {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 24px;
+		height: 24px;
+		margin-left: 4px;
+		border-radius: 4px;
+		font-size: 16px;
+		color: var(--muted);
+		flex-shrink: 0;
+	}
+
+	.workspace-tab-actions {
+		display: inline-flex;
+		align-items: center;
+		gap: 2px;
+		margin-left: 6px;
+		flex-shrink: 0;
+	}
+
+	.workspace-tab-add:hover {
+		color: var(--text);
+		background: var(--hover-bg);
+	}
+
+	.workspace-layout {
+		flex: 1;
+		min-height: 0;
+		display: flex;
 	}
 
 	.terminal-loading {
@@ -620,32 +890,21 @@
 	}
 
 	.error-title {
-		font-weight: 500;
-		font-size: var(--text-md);
+		font-weight: 600;
 	}
 
 	.error-detail {
+		max-width: 420px;
 		color: var(--muted);
-		max-width: 400px;
-		word-break: break-word;
 	}
 
 	.retry-action {
 		margin-top: 8px;
-		border: 1px solid var(--danger-soft);
-		border-radius: 6px;
-		padding: 6px 16px;
-		font-size: var(--text-sm);
-		background: color-mix(in srgb, var(--danger) 10%, transparent);
+		border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+		background: color-mix(in srgb, var(--accent) 16%, transparent);
 		color: var(--text);
+		border-radius: 8px;
+		padding: 8px 12px;
 		cursor: pointer;
-		transition:
-			background var(--transition-fast),
-			border-color var(--transition-fast);
-	}
-
-	.retry-action:hover {
-		border-color: var(--danger);
-		background: color-mix(in srgb, var(--danger) 18%, transparent);
 	}
 </style>

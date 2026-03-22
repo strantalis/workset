@@ -4,15 +4,16 @@ import type {
 	TerminalLayoutTab as TerminalLayoutTabType,
 } from '../types';
 
-export type TerminalTab = TerminalLayoutTabType;
-export type PaneNode = Omit<TerminalLayoutNodeType, 'kind' | 'tabs' | 'activeTabId'> & {
+export type PaneNode = Omit<
+	TerminalLayoutNodeType,
+	'kind' | 'direction' | 'ratio' | 'first' | 'second'
+> & {
 	kind: 'pane';
-	tabs: TerminalTab[];
-	activeTabId: string;
+	terminalId: string;
 };
 export type SplitNode = Omit<
 	TerminalLayoutNodeType,
-	'kind' | 'first' | 'second' | 'direction' | 'ratio'
+	'kind' | 'terminalId' | 'first' | 'second' | 'direction' | 'ratio'
 > & {
 	kind: 'split';
 	first: LayoutNode;
@@ -21,9 +22,12 @@ export type SplitNode = Omit<
 	ratio: number;
 };
 export type LayoutNode = PaneNode | SplitNode;
-export type TerminalLayout = Omit<TerminalLayoutType, 'root'> & {
+export type TerminalTab = Omit<TerminalLayoutTabType, 'root'> & {
 	root: LayoutNode;
 	focusedPaneId?: string;
+};
+export type TerminalLayout = Omit<TerminalLayoutType, 'tabs'> & {
+	tabs: TerminalTab[];
 };
 
 export type PanePosition = {
@@ -34,7 +38,7 @@ export type PanePosition = {
 	h: number;
 };
 
-export const LAYOUT_VERSION = 1;
+export const LAYOUT_VERSION = 2;
 
 export const newId = (): string => {
 	if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -48,31 +52,29 @@ const coerceId = (value: unknown): string => {
 	return newId();
 };
 
-const normalizeTab = (tab: TerminalTab | undefined | null): TerminalTab | null => {
+const normalizeTab = (tab: TerminalLayoutTabType | undefined | null): TerminalTab | null => {
 	if (!tab) return null;
-	if (typeof tab.id !== 'string' || typeof tab.terminalId !== 'string') return null;
-	if (!tab.id.trim() || !tab.terminalId.trim()) return null;
+	if (typeof tab.id !== 'string') return null;
+	if (!tab.id.trim()) return null;
 	const title =
 		typeof tab.title === 'string' && tab.title.trim().length > 0 ? tab.title : 'Terminal';
-	return { id: tab.id, terminalId: tab.terminalId, title };
+	const root = normalizeNode(tab.root);
+	if (!root) return null;
+	const focusedPaneId =
+		typeof tab.focusedPaneId === 'string' && collectPaneIds(root).includes(tab.focusedPaneId)
+			? tab.focusedPaneId
+			: firstPaneId(root);
+	return { id: tab.id, title, root, focusedPaneId };
 };
 
 const normalizeNode = (node: TerminalLayoutNodeType | null | undefined): LayoutNode | null => {
 	if (!node || typeof node !== 'object') return null;
 	if (node.kind === 'pane') {
-		const tabs = Array.isArray(node.tabs)
-			? node.tabs.map(normalizeTab).filter((tab): tab is TerminalTab => tab !== null)
-			: [];
-		if (tabs.length === 0) return null;
-		const activeTabId =
-			typeof node.activeTabId === 'string' && tabs.some((tab) => tab.id === node.activeTabId)
-				? node.activeTabId
-				: tabs[0].id;
+		if (typeof node.terminalId !== 'string' || !node.terminalId.trim()) return null;
 		return {
 			id: coerceId(node.id),
 			kind: 'pane',
-			tabs,
-			activeTabId,
+			terminalId: node.terminalId,
 		};
 	}
 	if (node.kind === 'split') {
@@ -106,22 +108,22 @@ export const normalizeLayout = (
 	candidate: TerminalLayoutType | null | undefined,
 ): TerminalLayout | null => {
 	if (!candidate || candidate.version !== LAYOUT_VERSION) return null;
-	const root = normalizeNode(candidate.root);
-	if (!root) return null;
+	const tabs = Array.isArray(candidate.tabs)
+		? candidate.tabs
+				.map((tab) => normalizeTab(tab))
+				.filter((tab): tab is TerminalTab => tab !== null)
+		: [];
+	if (tabs.length === 0) return null;
+	const activeTabId =
+		typeof candidate.activeTabId === 'string' &&
+		tabs.some((tab) => tab.id === candidate.activeTabId)
+			? candidate.activeTabId
+			: tabs[0].id;
 	return {
 		version: LAYOUT_VERSION,
-		root,
-		focusedPaneId: candidate.focusedPaneId,
+		tabs,
+		activeTabId,
 	};
-};
-
-export const collectTabs = (node: LayoutNode, tabs: TerminalTab[] = []): TerminalTab[] => {
-	if (node.kind === 'pane') {
-		return tabs.concat(node.tabs);
-	}
-	collectTabs(node.first, tabs);
-	collectTabs(node.second, tabs);
-	return tabs;
 };
 
 export const collectPaneIds = (node: LayoutNode, ids: string[] = []): string[] => {
@@ -208,41 +210,25 @@ export const updateSplitRatio = (node: LayoutNode, splitId: string, ratio: numbe
 };
 
 export const moveTab = (
-	node: LayoutNode,
-	sourcePaneId: string,
-	targetPaneId: string,
-	tabId: string,
+	layout: TerminalLayout,
+	sourceIndex: number,
 	targetIndex: number,
-): LayoutNode => {
-	const sourcePane = findPane(node, sourcePaneId);
-	if (!sourcePane) return node;
-	const tab = sourcePane.tabs.find((t) => t.id === tabId);
-	if (!tab) return node;
-
-	if (sourcePaneId === targetPaneId) {
-		return updatePane(node, sourcePaneId, (pane) => {
-			const tabs = pane.tabs.filter((t) => t.id !== tabId);
-			tabs.splice(targetIndex, 0, tab);
-			return { ...pane, tabs };
-		});
+): TerminalLayout => {
+	if (sourceIndex === targetIndex) return layout;
+	if (
+		sourceIndex < 0 ||
+		targetIndex < 0 ||
+		sourceIndex >= layout.tabs.length ||
+		targetIndex >= layout.tabs.length
+	) {
+		return layout;
 	}
 
-	let updated = updatePane(node, sourcePaneId, (pane) => ({
-		...pane,
-		tabs: pane.tabs.filter((t) => t.id !== tabId),
-		activeTabId:
-			pane.activeTabId === tabId
-				? (pane.tabs.find((t) => t.id !== tabId)?.id ?? pane.activeTabId)
-				: pane.activeTabId,
-	}));
-
-	updated = updatePane(updated, targetPaneId, (pane) => {
-		const tabs = [...pane.tabs];
-		tabs.splice(targetIndex, 0, tab);
-		return { ...pane, tabs, activeTabId: tab.id };
-	});
-
-	return updated;
+	const tabs = [...layout.tabs];
+	const [tab] = tabs.splice(sourceIndex, 1);
+	if (!tab) return layout;
+	tabs.splice(targetIndex, 0, tab);
+	return { ...layout, tabs };
 };
 
 export const firstPaneId = (node: LayoutNode): string => {
@@ -250,27 +236,118 @@ export const firstPaneId = (node: LayoutNode): string => {
 	return firstPaneId(node.first);
 };
 
-export const buildTab = (terminalId: string, title: string): TerminalTab => ({
-	id: newId(),
-	terminalId,
-	title,
-});
+export const buildTab = (terminalId: string, title: string): TerminalTab => {
+	const root = buildPane(terminalId);
+	return {
+		id: newId(),
+		title,
+		root,
+		focusedPaneId: root.id,
+	};
+};
 
-export const buildPane = (tab: TerminalTab): PaneNode => ({
+export const buildPane = (terminalId: string): PaneNode => ({
 	id: newId(),
 	kind: 'pane',
-	tabs: [tab],
-	activeTabId: tab.id,
+	terminalId,
 });
 
-export const ensureFocusedPane = (next: TerminalLayout): TerminalLayout => {
-	if (!next.focusedPaneId) {
-		return { ...next, focusedPaneId: firstPaneId(next.root) };
+export const ensureFocusedPane = (tab: TerminalTab): TerminalTab => {
+	if (collectPaneIds(tab.root).includes(tab.focusedPaneId ?? '')) {
+		return tab;
 	}
-	if (collectPaneIds(next.root).includes(next.focusedPaneId)) {
-		return next;
+	return { ...tab, focusedPaneId: firstPaneId(tab.root) };
+};
+
+export const ensureActiveTab = (layout: TerminalLayout): TerminalLayout => {
+	const tabs = layout.tabs.map(ensureFocusedPane);
+	const activeTabId = tabs.some((tab) => tab.id === layout.activeTabId)
+		? layout.activeTabId
+		: (tabs[0]?.id ?? '');
+	return { ...layout, tabs, activeTabId };
+};
+
+export const findTab = (layout: TerminalLayout, tabId: string): TerminalTab | null =>
+	layout.tabs.find((tab) => tab.id === tabId) ?? null;
+
+export const updateTab = (
+	layout: TerminalLayout,
+	tabId: string,
+	updater: (tab: TerminalTab) => TerminalTab,
+): TerminalLayout => {
+	const tabs = layout.tabs.map((tab) => (tab.id === tabId ? updater(tab) : tab));
+	return ensureActiveTab({ ...layout, tabs });
+};
+
+export const activeTab = (layout: TerminalLayout): TerminalTab | null =>
+	findTab(layout, layout.activeTabId);
+
+export const collectTerminalIds = (node: LayoutNode, ids: string[] = []): string[] => {
+	if (node.kind === 'pane') {
+		ids.push(node.terminalId);
+		return ids;
 	}
-	return { ...next, focusedPaneId: firstPaneId(next.root) };
+	collectTerminalIds(node.first, ids);
+	collectTerminalIds(node.second, ids);
+	return ids;
+};
+
+type LegacyLayoutNode = {
+	kind?: string;
+	terminalId?: string;
+	tabs?: Array<{ terminalId?: string }>;
+	first?: LegacyLayoutNode | null;
+	second?: LegacyLayoutNode | null;
+};
+
+const collectLegacyNodeTerminalIds = (
+	node: LegacyLayoutNode | null | undefined,
+	ids: string[],
+): void => {
+	if (!node) return;
+	if (node.kind === 'pane') {
+		if (typeof node.terminalId === 'string' && node.terminalId.trim()) {
+			ids.push(node.terminalId);
+		}
+		if (Array.isArray(node.tabs)) {
+			for (const tab of node.tabs) {
+				if (typeof tab?.terminalId === 'string' && tab.terminalId.trim()) {
+					ids.push(tab.terminalId);
+				}
+			}
+		}
+		return;
+	}
+	collectLegacyNodeTerminalIds(node.first ?? null, ids);
+	collectLegacyNodeTerminalIds(node.second ?? null, ids);
+};
+
+export const collectTerminalIdsFromUnknownLayout = (layout: unknown): string[] => {
+	if (!layout || typeof layout !== 'object') return [];
+	const ids: string[] = [];
+	const candidate = layout as {
+		tabs?: Array<{ root?: LayoutNode | LegacyLayoutNode | null }>;
+		root?: LegacyLayoutNode | null;
+	};
+
+	if (Array.isArray(candidate.tabs)) {
+		for (const tab of candidate.tabs) {
+			const root = tab?.root;
+			if (!root) continue;
+			if (
+				(root as LayoutNode).kind === 'pane' &&
+				typeof (root as LayoutNode & { terminalId?: string }).terminalId === 'string'
+			) {
+				collectTerminalIds(root as LayoutNode, ids);
+				continue;
+			}
+			collectLegacyNodeTerminalIds(root as LegacyLayoutNode, ids);
+		}
+		return Array.from(new Set(ids));
+	}
+
+	collectLegacyNodeTerminalIds(candidate.root ?? null, ids);
+	return Array.from(new Set(ids));
 };
 
 export const buildPanePositions = (

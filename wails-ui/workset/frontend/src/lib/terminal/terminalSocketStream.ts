@@ -61,6 +61,7 @@ type TerminalSocketDependencies = {
 		id: string,
 		details: {
 			intentional: boolean;
+			serverClosed: boolean;
 			reason: string;
 			code: number;
 			sessionID: string;
@@ -89,6 +90,7 @@ type ActiveSocket = {
 	ready: boolean;
 	readyMeta: TerminalSocketAttachReady;
 	canWrite: boolean;
+	serverClosed: boolean;
 	pendingMessages: string[];
 	deliveryQueue: Array<() => Promise<void> | void>;
 	deliveryDraining: boolean;
@@ -273,6 +275,7 @@ export const createTerminalSocketStream = (deps: TerminalSocketDependencies) => 
 			ready: false,
 			readyMeta: {},
 			canWrite: false,
+			serverClosed: false,
 			pendingMessages: [],
 			deliveryQueue: [],
 			deliveryDraining: false,
@@ -441,6 +444,10 @@ export const createTerminalSocketStream = (deps: TerminalSocketDependencies) => 
 						return;
 					}
 					if (message.type === 'closed') {
+						const current = getCurrent();
+						if (current) {
+							current.serverClosed = true;
+						}
 						deps.logDebug?.(id, 'socket_server_closed', {
 							socketURL,
 							sessionID,
@@ -475,6 +482,7 @@ export const createTerminalSocketStream = (deps: TerminalSocketDependencies) => 
 				const intentional = current?.intentional ?? false;
 				const closeDetails = {
 					intentional,
+					serverClosed: current?.serverClosed ?? false,
 					reason: event.reason || 'closed',
 					code: event.code,
 					sessionID,

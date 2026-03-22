@@ -72,6 +72,7 @@ describe('workspace + terminal API compatibility exports', () => {
 							headRepo: 'example/repo-1',
 							headBranch: 'feature/redesign',
 							updatedAt: '2026-02-09T10:00:00.000Z',
+							reviewCommentsCount: 2,
 						},
 					},
 				],
@@ -130,7 +131,7 @@ describe('workspace + terminal API compatibility exports', () => {
 							updatedAt: '2026-02-09T10:00:00.000Z',
 							merged: false,
 							commentsCount: 0,
-							reviewCommentsCount: 0,
+							reviewCommentsCount: 2,
 						},
 						diff: { added: 2, removed: 1 },
 						files: [{ path: 'README.md', added: 2, removed: 1, hunks: [] }],
@@ -178,14 +179,20 @@ describe('workspace + terminal API compatibility exports', () => {
 
 	test('terminal layout compatibility exports pass through to wails API', async () => {
 		const layout: TerminalLayout = {
-			version: 1,
-			root: {
-				id: 'pane-1',
-				kind: 'pane',
-				tabs: [{ id: 'tab-1', terminalId: 'term-1', title: 'Terminal' }],
-				activeTabId: 'tab-1',
-			},
-			focusedPaneId: 'pane-1',
+			version: 2,
+			tabs: [
+				{
+					id: 'tab-1',
+					title: 'Terminal',
+					root: {
+						id: 'pane-1',
+						kind: 'pane',
+						terminalId: 'term-1',
+					},
+					focusedPaneId: 'pane-1',
+				},
+			],
+			activeTabId: 'tab-1',
 		};
 		const terminalLayoutPayload = {
 			workspaceId: 'ws-1',

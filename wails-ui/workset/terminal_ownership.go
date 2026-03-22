@@ -232,7 +232,9 @@ func (a *App) workspaceTerminalSessionDescriptor(
 	if err != nil {
 		return TerminalSessionDescriptor{}, err
 	}
-	serverInfo, err := client.Info(inspectCtx)
+	infoCtx, infoCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer infoCancel()
+	serverInfo, err := a.getSessiondInfo(infoCtx)
 	if err != nil {
 		return TerminalSessionDescriptor{}, err
 	}
@@ -246,8 +248,8 @@ func (a *App) workspaceTerminalSessionDescriptor(
 		CanWrite:      owner == "" || owner == windowName,
 		Running:       info.Running,
 		CurrentOffset: info.CurrentOffset,
-		SocketURL:     strings.TrimSpace(serverInfo.WebSocketURL),
-		SocketToken:   strings.TrimSpace(serverInfo.WebSocketToken),
+		SocketURL:     serverInfo.WebSocketURL,
+		SocketToken:   serverInfo.WebSocketToken,
 		Transport:     "sessiond-websocket",
 	}, nil
 }

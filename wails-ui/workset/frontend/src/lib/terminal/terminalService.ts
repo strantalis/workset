@@ -549,6 +549,15 @@ const terminalSocketStream = createTerminalSocketStream({
 			reconnectAttempts.delete(id);
 			return;
 		}
+		if (details.serverClosed || details.reason === 'subscriber closed') {
+			reconnectAttempts.delete(id);
+			lifecycle.markStopped(id);
+			lifecycle.setInput(id, false);
+			lifecycle.setStatusAndMessage(id, 'closed', 'Terminal exited.');
+			runtime.setHealth(id, 'unknown', '');
+			emitState(id);
+			return;
+		}
 		const descriptor = lastSocketDescriptor.get(id);
 		const attempt = (reconnectAttempts.get(id) ?? 0) + 1;
 		if (descriptor && attempt <= MAX_RECONNECT_ATTEMPTS) {

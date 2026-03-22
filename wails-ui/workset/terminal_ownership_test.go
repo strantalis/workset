@@ -144,6 +144,40 @@ func TestWorkspaceTerminalSessionDescriptorDeniesWriteToNonOwner(t *testing.T) {
 	}
 }
 
+func TestWorkspaceTerminalSessionDescriptorUsesCachedSessiondInfo(t *testing.T) {
+	client, cleanup := startSessiondClientForTerminalOwnershipTest(t)
+	defer cleanup()
+
+	app := NewApp()
+	app.sessiondClient = client
+	app.sessiondReady = true
+	app.sessiondInfo = &sessiond.InfoResponse{
+		WebSocketURL:   "ws://cached.example/stream",
+		WebSocketToken: "cached-token",
+	}
+
+	workspaceID := "test-workspace"
+	terminalID := "term-1"
+	sessionID := terminalSessionID(workspaceID, terminalID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := client.Create(ctx, sessionID, "/tmp"); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	desc, err := app.workspaceTerminalSessionDescriptor(workspaceID, terminalID, "main")
+	if err != nil {
+		t.Fatalf("get descriptor: %v", err)
+	}
+	if desc.SocketURL != "ws://cached.example/stream" {
+		t.Fatalf("expected cached socket URL, got %q", desc.SocketURL)
+	}
+	if desc.SocketToken != "cached-token" {
+		t.Fatalf("expected cached socket token, got %q", desc.SocketToken)
+	}
+}
+
 func TestTransferWorkspaceTerminalOwnerUpdatesDaemonLease(t *testing.T) {
 	client, cleanup := startSessiondClientForTerminalOwnershipTest(t)
 	defer cleanup()
@@ -318,5 +352,23 @@ func TestStopWorkspaceTerminalForWindowAllowsOwnerAndCleansUp(t *testing.T) {
 	}
 	if app.terminals[sessionID] != nil {
 		t.Fatal("expected terminal session to be removed after successful stop")
+	}
+}
+
+func TestClearSessiondClientResetsDescriptorCache(t *testing.T) {
+	app := NewApp()
+	app.sessiondReady = true
+	app.sessiondInfo = &sessiond.InfoResponse{
+		WebSocketURL:   "ws://cached.example/stream",
+		WebSocketToken: "cached-token",
+	}
+
+	app.clearSessiondClient()
+
+	if app.sessiondReady {
+		t.Fatal("expected descriptor support cache to be cleared")
+	}
+	if app.sessiondInfo != nil {
+		t.Fatal("expected cached sessiond info to be cleared")
 	}
 }

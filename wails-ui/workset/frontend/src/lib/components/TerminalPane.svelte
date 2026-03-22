@@ -8,6 +8,7 @@
 		terminalId: string;
 		active?: boolean;
 		compact?: boolean;
+		onTerminalClosed?: () => void;
 	}
 
 	const {
@@ -16,6 +17,7 @@
 		terminalId,
 		active = true,
 		compact = false,
+		onTerminalClosed = undefined,
 	}: Props = $props();
 
 	let terminalContainer: HTMLDivElement | null = $state(null);
@@ -109,6 +111,19 @@
 	const handleStateChange = (state: typeof controllerState): void => {
 		controllerState = state;
 	};
+
+	let closeNotified = $state(false);
+
+	$effect(() => {
+		if (controllerState.status === 'closed') {
+			if (!closeNotified) {
+				closeNotified = true;
+				onTerminalClosed?.();
+			}
+			return;
+		}
+		closeNotified = false;
+	});
 
 	$effect(() => {
 		if (!active) return;

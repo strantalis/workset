@@ -1,92 +1,64 @@
 <script lang="ts">
-	import TerminalDropZones from './TerminalDropZones.svelte';
+	import DropdownMenu from './ui/DropdownMenu.svelte';
 	import TerminalPane from './TerminalPane.svelte';
-	import TerminalPaneActions from './TerminalPaneActions.svelte';
-	import TerminalPaneTab from './TerminalPaneTab.svelte';
 	import Self from './TerminalLayoutNode.svelte';
 	import { shouldHandlePaneKeydown } from './terminalLayoutKeydown';
 
-	type DragState = {
-		tabId: string;
-		sourcePaneId: string;
-		sourceIndex: number;
-	} | null;
-
-	type DropZone = 'left' | 'right' | 'top' | 'bottom' | 'center' | null;
-
-	// Props must use 'let' for Svelte 5 reactivity ($props() pattern)
-	let {
-		// eslint-disable-next-line prefer-const
+	const {
 		node,
-		// eslint-disable-next-line prefer-const
 		workspaceId,
-		// eslint-disable-next-line prefer-const
 		workspaceName,
-		// eslint-disable-next-line prefer-const
 		active = true,
-		// eslint-disable-next-line prefer-const
 		focusedPaneId,
-		// eslint-disable-next-line prefer-const
-		totalPaneCount,
-		// eslint-disable-next-line prefer-const
-		dragState = null,
-		// eslint-disable-next-line prefer-const
 		onFocusPane,
-		// eslint-disable-next-line prefer-const
-		onSelectTab,
-		// eslint-disable-next-line prefer-const
-		onAddTab,
-		// eslint-disable-next-line prefer-const
-		onSplitPane,
-		// eslint-disable-next-line prefer-const
-		onCloseTab,
-		// eslint-disable-next-line prefer-const
 		onClosePane,
-		// eslint-disable-next-line prefer-const
+		onSplitPane,
 		onResizeSplit,
-		// eslint-disable-next-line prefer-const
-		onTabDragStart,
-		// eslint-disable-next-line prefer-const
-		onTabDragEnd,
-		// eslint-disable-next-line prefer-const
-		onTabDrop,
-		// eslint-disable-next-line prefer-const
-		onTabSplitDrop,
 	}: {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		node: any;
+		node: {
+			id?: string;
+			kind?: string;
+			terminalId?: string;
+			direction?: 'row' | 'column';
+			ratio?: number;
+			first?: unknown;
+			second?: unknown;
+		} | null;
 		workspaceId: string;
 		workspaceName: string;
 		active?: boolean;
 		focusedPaneId?: string;
-		totalPaneCount: number;
-		dragState?: DragState;
 		onFocusPane: (paneId: string) => void;
-		onSelectTab: (paneId: string, tabId: string) => void;
-		onAddTab: (paneId: string) => void;
-		onSplitPane: (paneId: string, direction: 'row' | 'column') => void;
-		onCloseTab: (paneId: string, tabId: string) => void;
 		onClosePane: (paneId: string) => void;
+		onSplitPane: (paneId: string, direction: 'row' | 'column') => void;
 		onResizeSplit?: (splitId: string, ratio: number) => void;
-		onTabDragStart?: (paneId: string, tabId: string, index: number) => void;
-		onTabDragEnd?: () => void;
-		onTabDrop?: (targetPaneId: string, targetIndex: number) => void;
-		onTabSplitDrop?: (
-			targetPaneId: string,
-			direction: 'row' | 'column',
-			position: 'before' | 'after',
-		) => void;
 	} = $props();
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const isPane = (value: any): boolean => value?.kind === 'pane';
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const isSplit = (value: any): boolean => value?.kind === 'split';
+	const isPane = (value: typeof node): boolean => value?.kind === 'pane';
+	const isSplit = (value: typeof node): boolean => value?.kind === 'split';
 
-	// Divider drag state
 	let isDraggingDivider = $state(false);
 	let dividerRef: HTMLDivElement | null = null;
 	let splitContainerRef = $state<HTMLDivElement | null>(null);
+	let contextMenuOpen = $state(false);
+	let contextMenuPoint = $state<{ top: number; left: number } | null>(null);
+
+	const openContextMenu = (event: MouseEvent, paneId: string): void => {
+		event.preventDefault();
+		onFocusPane(paneId);
+		contextMenuPoint = { top: event.clientY, left: event.clientX };
+		contextMenuOpen = true;
+	};
+
+	const closeContextMenu = (): void => {
+		contextMenuOpen = false;
+		contextMenuPoint = null;
+	};
+
+	const handleSplitFromMenu = (paneId: string, direction: 'row' | 'column'): void => {
+		onSplitPane(paneId, direction);
+		closeContextMenu();
+	};
 
 	const handleDividerPointerDown = (event: PointerEvent): void => {
 		if (!onResizeSplit || !isSplit(node)) return;
@@ -98,17 +70,13 @@
 
 	const handleDividerPointerMove = (event: PointerEvent): void => {
 		if (!isDraggingDivider || !splitContainerRef || !onResizeSplit || !isSplit(node)) return;
-
+		const splitNode = node as NonNullable<typeof node> & { kind: 'split' };
 		const rect = splitContainerRef.getBoundingClientRect();
-		let ratio: number;
-
-		if (node.direction === 'row') {
-			ratio = (event.clientX - rect.left) / rect.width;
-		} else {
-			ratio = (event.clientY - rect.top) / rect.height;
-		}
-
-		onResizeSplit(node.id, ratio);
+		const ratio =
+			splitNode.direction === 'row'
+				? (event.clientX - rect.left) / rect.width
+				: (event.clientY - rect.top) / rect.height;
+		onResizeSplit(splitNode.id ?? '', ratio);
 	};
 
 	const handleDividerPointerUp = (event: PointerEvent): void => {
@@ -122,11 +90,12 @@
 
 	const handleDividerKeyDown = (event: KeyboardEvent): void => {
 		if (!onResizeSplit || !isSplit(node)) return;
+		const splitNode = node as NonNullable<typeof node> & { kind: 'split' };
 
 		const step = event.shiftKey ? 0.1 : 0.02;
 		let delta = 0;
 
-		if (node.direction === 'row') {
+		if (splitNode.direction === 'row') {
 			if (event.key === 'ArrowLeft') delta = -step;
 			else if (event.key === 'ArrowRight') delta = step;
 		} else {
@@ -136,207 +105,7 @@
 
 		if (delta !== 0) {
 			event.preventDefault();
-			onResizeSplit(node.id, node.ratio + delta);
-		}
-	};
-
-	// Tab scrolling
-	let tabsRef = $state<HTMLDivElement | null>(null);
-	let canScrollLeft = $state(false);
-	let canScrollRight = $state(false);
-	let scrollRepeatTimer: number | null = null;
-
-	const TAB_SCROLL_STEP = 80;
-
-	const updateScrollIndicators = (): void => {
-		if (!tabsRef) {
-			canScrollLeft = false;
-			canScrollRight = false;
-			return;
-		}
-		canScrollLeft = tabsRef.scrollLeft > 0;
-		canScrollRight = tabsRef.scrollLeft + tabsRef.clientWidth < tabsRef.scrollWidth - 1;
-	};
-
-	const scrollTabs = (direction: -1 | 1): void => {
-		if (!tabsRef) return;
-		tabsRef.scrollBy({ left: direction * TAB_SCROLL_STEP, behavior: 'smooth' });
-		requestAnimationFrame(updateScrollIndicators);
-	};
-
-	const startScrollRepeat = (direction: -1 | 1): void => {
-		stopScrollRepeat();
-		scrollTabs(direction);
-		// After initial delay, repeat faster while held
-		scrollRepeatTimer = window.setTimeout(() => {
-			scrollRepeatTimer = window.setInterval(() => scrollTabs(direction), 120);
-		}, 300);
-	};
-
-	const stopScrollRepeat = (): void => {
-		if (scrollRepeatTimer !== null) {
-			window.clearTimeout(scrollRepeatTimer);
-			window.clearInterval(scrollRepeatTimer);
-			scrollRepeatTimer = null;
-		}
-	};
-
-	const scrollActiveTabIntoView = (): void => {
-		if (!tabsRef) return;
-		const activeEl = tabsRef.querySelector(
-			'[class*="pane-tab"][class*="active"]',
-		) as HTMLElement | null;
-		if (!activeEl) return;
-		// Manual scroll calculation — scrollIntoView can scroll parent containers
-		const containerRect = tabsRef.getBoundingClientRect();
-		const tabRect = activeEl.getBoundingClientRect();
-		if (tabRect.left < containerRect.left) {
-			tabsRef.scrollLeft -= containerRect.left - tabRect.left + 8;
-		} else if (tabRect.right > containerRect.right) {
-			tabsRef.scrollLeft += tabRect.right - containerRect.right + 8;
-		}
-		requestAnimationFrame(updateScrollIndicators);
-	};
-
-	// Attach wheel listener imperatively with { passive: false } so
-	// preventDefault() works — Svelte 5 onwheel is passive by default.
-	$effect(() => {
-		const el = tabsRef;
-		if (!el) return;
-		const onWheel = (event: WheelEvent): void => {
-			if (el.scrollWidth <= el.clientWidth) return;
-			event.preventDefault();
-			el.scrollLeft += event.deltaY !== 0 ? event.deltaY : event.deltaX;
-			updateScrollIndicators();
-		};
-		el.addEventListener('wheel', onWheel, { passive: false });
-		return () => el.removeEventListener('wheel', onWheel);
-	});
-
-	$effect(() => {
-		// Re-check overflow whenever tabs change or container mounts
-		if (!tabsRef || !isPane(node)) return;
-		// Access node.activeTabId and node.tabs.length to create reactive dependencies
-		void node?.activeTabId;
-		void node?.tabs?.length;
-		// Defer to next frame so DOM has updated
-		requestAnimationFrame(() => {
-			updateScrollIndicators();
-			scrollActiveTabIntoView();
-		});
-	});
-
-	// Clean up scroll repeat on destroy
-	$effect(() => {
-		return () => stopScrollRepeat();
-	});
-
-	// Tab drag handlers
-	let dropTargetIndex = $state<number | null>(null);
-	let activeDropZone = $state<DropZone>(null);
-	let paneBodyRef = $state<HTMLDivElement | null>(null);
-
-	const EDGE_THRESHOLD = 0.25; // 25% from edge triggers split zone
-
-	const getDropZone = (event: DragEvent, element: HTMLElement): DropZone => {
-		const rect = element.getBoundingClientRect();
-		const x = (event.clientX - rect.left) / rect.width;
-		const y = (event.clientY - rect.top) / rect.height;
-
-		// Check edges (25% threshold)
-		if (x < EDGE_THRESHOLD) return 'left';
-		if (x > 1 - EDGE_THRESHOLD) return 'right';
-		if (y < EDGE_THRESHOLD) return 'top';
-		if (y > 1 - EDGE_THRESHOLD) return 'bottom';
-		return 'center';
-	};
-
-	const handleTabDragStart = (event: DragEvent, tabId: string, index: number): void => {
-		if (!onTabDragStart || !isPane(node)) return;
-		const paneId = node?.id ?? '';
-		if (!paneId) return;
-		event.dataTransfer?.setData('text/plain', tabId);
-		event.dataTransfer!.effectAllowed = 'move';
-		onTabDragStart(paneId, tabId, index);
-	};
-
-	const handleTabDragEnd = (): void => {
-		dropTargetIndex = null;
-		activeDropZone = null;
-		onTabDragEnd?.();
-	};
-
-	const handleTabDragOver = (event: DragEvent, index: number): void => {
-		if (!dragState || !isPane(node)) return;
-		event.preventDefault();
-		event.dataTransfer!.dropEffect = 'move';
-		dropTargetIndex = index;
-	};
-
-	const handleHeaderDragOver = (event: DragEvent): void => {
-		if (!dragState || !isPane(node)) return;
-		event.preventDefault();
-		event.dataTransfer!.dropEffect = 'move';
-		dropTargetIndex = node?.tabs?.length ?? 0;
-		activeDropZone = 'center';
-	};
-
-	const handleHeaderDrop = (event: DragEvent): void => {
-		event.preventDefault();
-		if (!dragState || !onTabDrop || !isPane(node)) return;
-		const paneId = node?.id ?? '';
-		if (!paneId) return;
-		onTabDrop(paneId, node?.tabs?.length ?? 0);
-		dropTargetIndex = null;
-		activeDropZone = null;
-	};
-
-	const handleBodyDragOver = (event: DragEvent): void => {
-		if (!dragState || !isPane(node) || !paneBodyRef) return;
-		event.preventDefault();
-		event.dataTransfer!.dropEffect = 'move';
-		activeDropZone = getDropZone(event, paneBodyRef);
-	};
-
-	const handleBodyDrop = (event: DragEvent): void => {
-		event.preventDefault();
-		if (!dragState || !isPane(node)) return;
-		const paneId = node?.id ?? '';
-		if (!paneId) return;
-
-		if (activeDropZone === 'center' || !activeDropZone) {
-			// Drop as tab
-			onTabDrop?.(paneId, node?.tabs?.length ?? 0);
-		} else if (onTabSplitDrop) {
-			// Split drop
-			const direction: 'row' | 'column' =
-				activeDropZone === 'left' || activeDropZone === 'right' ? 'row' : 'column';
-			const position: 'before' | 'after' =
-				activeDropZone === 'left' || activeDropZone === 'top' ? 'before' : 'after';
-			onTabSplitDrop(paneId, direction, position);
-		}
-
-		dropTargetIndex = null;
-		activeDropZone = null;
-	};
-
-	const handleTabDrop = (event: DragEvent, index: number): void => {
-		event.preventDefault();
-		if (!dragState || !onTabDrop || !isPane(node)) return;
-		const paneId = node?.id ?? '';
-		if (!paneId) return;
-		onTabDrop(paneId, index);
-		dropTargetIndex = null;
-		activeDropZone = null;
-	};
-
-	const handleDragLeave = (event: DragEvent): void => {
-		// Only clear if leaving the pane entirely
-		const relatedTarget = event.relatedTarget as HTMLElement | null;
-		const pane = event.currentTarget as HTMLElement;
-		if (!relatedTarget || !pane.contains(relatedTarget)) {
-			dropTargetIndex = null;
-			activeDropZone = null;
+			onResizeSplit(splitNode.id ?? '', (splitNode.ratio ?? 0.5) + delta);
 		}
 	};
 </script>
@@ -358,22 +127,12 @@
 				{workspaceName}
 				{active}
 				{focusedPaneId}
-				{totalPaneCount}
-				{dragState}
 				{onFocusPane}
-				{onSelectTab}
-				{onAddTab}
-				{onSplitPane}
-				{onCloseTab}
 				{onClosePane}
+				{onSplitPane}
 				{onResizeSplit}
-				{onTabDragStart}
-				{onTabDragEnd}
-				{onTabDrop}
-				{onTabSplitDrop}
 			/>
 		</div>
-		<!-- role="separator" with tabindex makes this an interactive widget per WAI-ARIA -->
 		<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 		<div
 			class="split-divider"
@@ -397,147 +156,68 @@
 				{workspaceName}
 				{active}
 				{focusedPaneId}
-				{totalPaneCount}
-				{dragState}
 				{onFocusPane}
-				{onSelectTab}
-				{onAddTab}
-				{onSplitPane}
-				{onCloseTab}
 				{onClosePane}
+				{onSplitPane}
 				{onResizeSplit}
-				{onTabDragStart}
-				{onTabDragEnd}
-				{onTabDrop}
-				{onTabSplitDrop}
 			/>
 		</div>
-	</div>
-{:else if (node?.tabs?.length ?? 0) === 0}
-	<div class="pane-empty">
-		<span class="empty-label">No terminals</span>
 	</div>
 {:else if !isPane(node)}
 	<div class="pane-empty">
 		<span class="empty-label">Terminal layout unavailable</span>
 	</div>
 {:else}
-	{@const paneTabs = node?.tabs ?? []}
 	{@const paneId = node?.id ?? ''}
-	{@const activeTab =
-		paneTabs.find((tab: { id: string }) => tab.id === node?.activeTabId) ?? paneTabs[0]}
-	{@const activeTabId = activeTab?.id ?? ''}
-	{@const activeTerminalId = activeTab?.terminalId ?? ''}
 	{@const isFocused = focusedPaneId === paneId}
-	{@const isDragTarget = dragState && dragState.sourcePaneId !== paneId}
 	<div
 		class="pane"
 		class:focused={isFocused}
-		class:drag-active={isDragTarget && activeDropZone}
 		data-pane-id={paneId}
 		role="button"
 		tabindex="0"
+		oncontextmenu={(event) => paneId && openContextMenu(event, paneId)}
 		onclick={() => paneId && onFocusPane(paneId)}
 		onkeydown={(event) => {
-			if (!shouldHandlePaneKeydown(event)) {
-				return;
-			}
+			if (!shouldHandlePaneKeydown(event)) return;
 			event.preventDefault();
-			if (paneId) {
-				onFocusPane(paneId);
-			}
+			if (paneId) onFocusPane(paneId);
 		}}
-		ondragleave={handleDragLeave}
 	>
-		<div
-			class="pane-header"
-			class:drop-target={isDragTarget}
-			role="tablist"
-			tabindex="-1"
-			ondragover={handleHeaderDragOver}
-			ondrop={handleHeaderDrop}
-		>
-			{#if canScrollLeft}
-				<button
-					type="button"
-					class="tab-scroll-btn left"
-					aria-label="Scroll tabs left"
-					onpointerdown={() => startScrollRepeat(-1)}
-					onpointerup={stopScrollRepeat}
-					onpointerleave={stopScrollRepeat}
-				>
-					<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-						<path
-							d="M7.5 2.5L4 6l3.5 3.5"
-							stroke="currentColor"
-							stroke-width="1.5"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						/>
-					</svg>
-				</button>
-			{/if}
-			<div class="pane-tabs" bind:this={tabsRef} onscroll={updateScrollIndicators}>
-				{#each paneTabs as tab, index (tab.id)}
-					<TerminalPaneTab
-						{tab}
-						{paneId}
-						{index}
-						isActive={tab.id === activeTabId}
-						isDragging={dragState?.tabId === tab.id}
-						isDropBefore={dropTargetIndex === index}
-						showClose={totalPaneCount > 1 || paneTabs.length > 1}
-						{onSelectTab}
-						{onCloseTab}
-						onTabDragStart={(event, idx) => handleTabDragStart(event, tab.id, idx)}
-						onTabDragEnd={handleTabDragEnd}
-						onTabDragOver={handleTabDragOver}
-						onTabDrop={handleTabDrop}
-					/>
-				{/each}
-			</div>
-			{#if canScrollRight}
-				<button
-					type="button"
-					class="tab-scroll-btn right"
-					aria-label="Scroll tabs right"
-					onpointerdown={() => startScrollRepeat(1)}
-					onpointerup={stopScrollRepeat}
-					onpointerleave={stopScrollRepeat}
-				>
-					<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-						<path
-							d="M4.5 2.5L8 6l-3.5 3.5"
-							stroke="currentColor"
-							stroke-width="1.5"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						/>
-					</svg>
-				</button>
-			{/if}
-			<TerminalPaneActions {paneId} {onAddTab} {onSplitPane} />
-		</div>
-		<div
-			class="pane-body"
-			role="region"
-			bind:this={paneBodyRef}
-			ondragover={handleBodyDragOver}
-			ondrop={handleBodyDrop}
-		>
+		<div class="pane-body" role="region">
 			<TerminalPane
 				{workspaceId}
 				{workspaceName}
-				terminalId={activeTerminalId}
+				terminalId={node?.terminalId ?? ''}
 				active={isFocused && active}
 				compact={true}
-			/>
-
-			<TerminalDropZones
-				show={Boolean(dragState && dragState.sourcePaneId !== paneId)}
-				{activeDropZone}
+				onTerminalClosed={() => paneId && onClosePane(paneId)}
 			/>
 		</div>
+		<DropdownMenu open={contextMenuOpen} onClose={closeContextMenu} anchorPoint={contextMenuPoint}>
+			<button type="button" onclick={() => paneId && onClosePane(paneId)}>
+				<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+					<rect x="1.5" y="2" width="11" height="9.5" rx="1.5" />
+					<path d="M4.5 5l5 4" />
+					<path d="M9.5 5l-5 4" />
+				</svg>
+				Close split
+			</button>
+			<button type="button" onclick={() => handleSplitFromMenu(paneId, 'row')}>
+				<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+					<rect x="1" y="2" width="12" height="10" rx="1.5" />
+					<path d="M7 2v10" />
+				</svg>
+				Split vertical
+			</button>
+			<button type="button" onclick={() => handleSplitFromMenu(paneId, 'column')}>
+				<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+					<rect x="1" y="2" width="12" height="10" rx="1.5" />
+					<path d="M1 7h12" />
+				</svg>
+				Split horizontal
+			</button>
+		</DropdownMenu>
 	</div>
 {/if}
 
@@ -581,16 +261,13 @@
 	.split.row > .split-divider {
 		width: 1px;
 		cursor: col-resize;
-		margin: 0;
 	}
 
 	.split.column > .split-divider {
 		height: 1px;
 		cursor: row-resize;
-		margin: 0;
 	}
 
-	/* Expanded hit area (12px) for easier grabbing */
 	.split-divider::before {
 		content: '';
 		position: absolute;
@@ -619,144 +296,39 @@
 		background: var(--accent);
 	}
 
-	/* Make divider thicker on hover for better visibility */
-	.split.row > .split-divider:hover,
-	.split.row > .split-divider:focus,
-	.split.row > .split-divider.active {
-		width: 3px;
-		margin: 0 -1px;
-	}
-
-	.split.column > .split-divider:hover,
-	.split.column > .split-divider:focus,
-	.split.column > .split-divider.active {
-		height: 3px;
-		margin: -1px 0;
-	}
-
-	.split-divider:focus {
-		outline: none;
-	}
-
 	.pane {
 		display: flex;
-		flex-direction: column;
 		flex: 1;
-		min-height: 0;
 		min-width: 0;
-		background: var(--panel);
-		border-radius: 0;
-		overflow: hidden;
-		border: none;
-		box-shadow: none;
-		position: relative;
-	}
-
-	/* Left-edge accent bar for focused pane (VS Code-style indicator) */
-	.pane::before {
-		content: '';
-		position: absolute;
-		left: 0;
-		top: 0;
-		bottom: 0;
-		width: 2px;
-		background: transparent;
-		z-index: 5;
-		transition: background var(--transition-fast);
-	}
-
-	.pane.focused::before {
-		background: var(--accent);
+		min-height: 0;
+		flex-direction: column;
+		background: color-mix(in srgb, var(--panel) 92%, black 8%);
+		border: 1px solid transparent;
 	}
 
 	.pane.focused {
-		box-shadow: none;
-	}
-
-	.pane.drag-active {
-		box-shadow: none;
-	}
-
-	.pane-header {
-		display: flex;
-		align-items: center;
-		padding: 0 4px;
-		background: var(--panel-strong);
-		transition: background var(--transition-fast);
-		border-bottom: 1px solid var(--border);
-	}
-
-	/* Active tab connects to content by matching its background to pane-body */
-	.pane-header.drop-target {
-		background: color-mix(in srgb, var(--accent) 8%, var(--panel-strong));
-	}
-
-	.pane-tabs {
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		flex: 1;
-		min-width: 0;
-		overflow-x: auto;
-		scrollbar-width: none;
-		padding: 0 0 0 2px;
-	}
-
-	.pane-tabs::-webkit-scrollbar {
-		display: none;
-	}
-
-	.tab-scroll-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-		width: 20px;
-		height: 100%;
-		border: none;
-		background: var(--panel-strong);
-		color: var(--muted);
-		cursor: pointer;
-		padding: 0;
-		transition:
-			color var(--transition-fast),
-			background var(--transition-fast);
-	}
-
-	.tab-scroll-btn:hover {
-		color: var(--text);
-		background: color-mix(in srgb, var(--panel-strong) 80%, var(--panel));
-	}
-
-	.tab-scroll-btn:active {
-		color: var(--accent);
+		border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 	}
 
 	.pane-body {
 		flex: 1;
 		min-height: 0;
-		padding: 0;
-		position: relative;
-		transition: opacity var(--transition-fast);
-	}
-
-	/* Subtle dimming for inactive panes — keep content readable (~85%) */
-	.pane:not(.focused) .pane-body {
-		opacity: 0.85;
+		min-width: 0;
 	}
 
 	.pane-empty {
-		flex: 1;
 		display: flex;
-		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 8px;
+		flex: 1;
 		color: var(--muted);
-		font-size: var(--text-sm);
 	}
 
-	.empty-label {
-		opacity: 0.6;
+	:global(.dropdown-menu button svg rect),
+	:global(.dropdown-menu button svg path) {
+		stroke: currentColor;
+		stroke-width: 1.2;
+		stroke-linecap: round;
+		stroke-linejoin: round;
 	}
 </style>

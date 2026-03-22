@@ -10,19 +10,19 @@ import (
 	"time"
 )
 
-const terminalLayoutStoreVersion = 1
+const terminalLayoutStoreVersion = 2
 
 type TerminalLayoutTab struct {
-	ID         string `json:"id"`
-	TerminalID string `json:"terminalId"`
-	Title      string `json:"title"`
+	ID            string              `json:"id"`
+	Title         string              `json:"title"`
+	Root          *TerminalLayoutNode `json:"root"`
+	FocusedPaneID string              `json:"focusedPaneId,omitempty"`
 }
 
 type TerminalLayoutNode struct {
 	ID          string              `json:"id"`
 	Kind        string              `json:"kind"`
-	Tabs        []TerminalLayoutTab `json:"tabs,omitempty"`
-	ActiveTabID string              `json:"activeTabId,omitempty"`
+	TerminalID  string              `json:"terminalId,omitempty"`
 	Direction   string              `json:"direction,omitempty"`
 	Ratio       float64             `json:"ratio,omitempty"`
 	First       *TerminalLayoutNode `json:"first,omitempty"`
@@ -30,9 +30,9 @@ type TerminalLayoutNode struct {
 }
 
 type TerminalLayout struct {
-	Version       int                 `json:"version"`
-	Root          *TerminalLayoutNode `json:"root"`
-	FocusedPaneID string              `json:"focusedPaneId,omitempty"`
+	Version     int                 `json:"version"`
+	Tabs        []TerminalLayoutTab `json:"tabs"`
+	ActiveTabID string              `json:"activeTabId"`
 }
 
 type TerminalLayoutPayload struct {
@@ -77,7 +77,7 @@ func (a *App) GetWorkspaceTerminalLayout(workspaceID string) (TerminalLayoutPayl
 		return TerminalLayoutPayload{}, err
 	}
 	entry, ok := store.Layouts[path]
-	if !ok || entry.Layout.Root == nil {
+	if !ok || len(entry.Layout.Tabs) == 0 {
 		return TerminalLayoutPayload{WorkspaceID: workspaceID, WorkspacePath: path}, nil
 	}
 	layout := entry.Layout
@@ -89,8 +89,8 @@ func (a *App) SetWorkspaceTerminalLayout(input TerminalLayoutRequest) error {
 	if workspaceID == "" {
 		return fmt.Errorf("workspace id required")
 	}
-	if input.Layout.Root == nil {
-		return fmt.Errorf("layout root required")
+	if len(input.Layout.Tabs) == 0 {
+		return fmt.Errorf("layout tabs required")
 	}
 	layout := input.Layout
 	if layout.Version == 0 {

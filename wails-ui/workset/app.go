@@ -27,6 +27,8 @@ type App struct {
 	terminals        map[string]*terminalSession
 	sessiondMu       sync.Mutex
 	sessiondClient   *sessiond.Client
+	sessiondInfo     *sessiond.InfoResponse
+	sessiondReady    bool
 	sessiondStart    *sessiondStartState
 	sessiondRestart  *sessiondRestartState
 	repoDiffWatchers *repoDiffWatchManager
