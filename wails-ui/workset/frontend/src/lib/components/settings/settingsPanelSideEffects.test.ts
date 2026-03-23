@@ -145,6 +145,25 @@ describe('settingsPanelSideEffects', () => {
 		expect(result.error).toBeTruthy();
 	});
 
+	it('setAutoCheck writes the auto-check preference', async () => {
+		const setUpdatePreferences = vi.fn().mockResolvedValue({
+			channel: 'stable',
+			autoCheck: false,
+			dismissedVersion: '',
+		});
+		const sideEffects = createSettingsPanelSideEffects({
+			setUpdatePreferences,
+		});
+
+		const result = await sideEffects.setAutoCheck(false);
+		expect(setUpdatePreferences).toHaveBeenCalledWith({ autoCheck: false });
+		expect(result.updatePreferences).toEqual({
+			channel: 'stable',
+			autoCheck: false,
+			dismissedVersion: '',
+		});
+	});
+
 	it('loadUpdateBootstrap falls back to defaults on fetch failures', async () => {
 		const sideEffects = createSettingsPanelSideEffects({
 			fetchUpdatePreferences: vi.fn().mockRejectedValue(new Error('boom')),

@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
@@ -20,6 +21,9 @@ func TestResolveUpdateChannelUsesPersistedPreference(t *testing.T) {
 	if prefs.Channel != string(UpdateChannelAlpha) {
 		t.Fatalf("expected persisted alpha channel, got %q", prefs.Channel)
 	}
+	if prefs.DismissedVersion != "" {
+		t.Fatalf("expected empty dismissed version by default, got %q", prefs.DismissedVersion)
+	}
 
 	channel, err := a.resolveUpdateChannel("")
 	if err != nil {
@@ -35,6 +39,68 @@ func TestResolveUpdateChannelUsesPersistedPreference(t *testing.T) {
 	}
 	if channel != UpdateChannelStable {
 		t.Fatalf("expected explicit stable channel to override preferences, got %q", channel)
+	}
+}
+
+func TestSetUpdatePreferencesPartialPreservesOtherFields(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	a := &App{}
+
+	dismissedVersion := "v1.2.3"
+	enabled := false
+	prefs, err := a.SetUpdatePreferences(UpdatePreferencesInput{
+		Channel:          string(UpdateChannelAlpha),
+		AutoCheck:        &enabled,
+		DismissedVersion: &dismissedVersion,
+	})
+	if err != nil {
+		t.Fatalf("SetUpdatePreferences initial write returned error: %v", err)
+	}
+	if prefs.DismissedVersion != dismissedVersion {
+		t.Fatalf("expected dismissed version %q, got %q", dismissedVersion, prefs.DismissedVersion)
+	}
+
+	updated, err := a.SetUpdatePreferences(UpdatePreferencesInput{Channel: string(UpdateChannelStable)})
+	if err != nil {
+		t.Fatalf("SetUpdatePreferences partial update returned error: %v", err)
+	}
+	if updated.Channel != string(UpdateChannelStable) {
+		t.Fatalf("expected stable channel, got %q", updated.Channel)
+	}
+	if updated.AutoCheck != enabled {
+		t.Fatalf("expected auto-check to stay %v, got %v", enabled, updated.AutoCheck)
+	}
+	if updated.DismissedVersion != dismissedVersion {
+		t.Fatalf(
+			"expected dismissed version to stay %q, got %q",
+			dismissedVersion,
+			updated.DismissedVersion,
+		)
+	}
+}
+
+func TestGetUpdatePreferencesBackfillsDismissedVersionForOlderFiles(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	a := &App{}
+
+	appDir, err := worksetAppDir()
+	if err != nil {
+		t.Fatalf("worksetAppDir returned error: %v", err)
+	}
+	if err := os.MkdirAll(appDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	legacyJSON := `{"version":1,"preferences":{"channel":"stable","autoCheck":true}}`
+	if err := os.WriteFile(filepath.Join(appDir, "ui_update_preferences.json"), []byte(legacyJSON), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	prefs, err := a.GetUpdatePreferences()
+	if err != nil {
+		t.Fatalf("GetUpdatePreferences returned error: %v", err)
+	}
+	if prefs.DismissedVersion != "" {
+		t.Fatalf("expected empty dismissed version for legacy file, got %q", prefs.DismissedVersion)
 	}
 }
 

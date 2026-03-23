@@ -6,6 +6,7 @@
 		UpdatePreferences,
 		UpdateState,
 	} from '../../../types';
+	import { resolveUpdateNotesUrl } from '../../../updatePreferences';
 	import Select from '../../ui/Select.svelte';
 
 	interface Props {
@@ -16,6 +17,7 @@
 		updateBusy: boolean;
 		updateError: string | null;
 		onUpdateChannelChange: (channel: string) => void;
+		onAutoCheckChange: (enabled: boolean) => void;
 		onCheckForUpdates: () => void;
 		onUpdateAndRestart: () => void;
 	}
@@ -28,6 +30,7 @@
 		updateBusy,
 		updateError,
 		onUpdateChannelChange,
+		onAutoCheckChange,
 		onCheckForUpdates,
 		onUpdateAndRestart,
 	}: Props = $props();
@@ -67,6 +70,15 @@
 	const handleChannelChange = (value: string): void => {
 		onUpdateChannelChange(value);
 	};
+
+	const handleAutoCheckChange = (event: Event): void => {
+		const target = event.currentTarget as HTMLInputElement | null;
+		onAutoCheckChange(target?.checked ?? false);
+	};
+
+	const updateNotesUrl = $derived.by(() =>
+		updateCheck?.release ? resolveUpdateNotesUrl(updateCheck.release) : null,
+	);
 </script>
 
 <div class="about-container">
@@ -78,8 +90,8 @@
 	</div>
 
 	<!-- Version Card -->
-	{#if appVersion}
-		<div class="version-card">
+	<div class="version-card">
+		{#if appVersion}
 			<div class="version-row">
 				<span class="row-label">Version</span>
 				<div class="row-value-with-action">
@@ -148,21 +160,36 @@
 					</div>
 				</div>
 			{/if}
-			<div class="version-row">
-				<span class="row-label">Channel</span>
-				<div class="channel-select-wrap">
-					<Select
-						value={updatePreferences.channel}
-						options={[
-							{ label: 'Stable', value: 'stable' },
-							{ label: 'Alpha', value: 'alpha' },
-						]}
-						onchange={handleChannelChange}
-					/>
-				</div>
+		{/if}
+		<div class="version-row">
+			<span class="row-label">Channel</span>
+			<div class="channel-select-wrap">
+				<Select
+					value={updatePreferences.channel}
+					options={[
+						{ label: 'Stable', value: 'stable' },
+						{ label: 'Alpha', value: 'alpha' },
+					]}
+					onchange={handleChannelChange}
+				/>
 			</div>
 		</div>
-	{/if}
+		<div class="version-row version-row--stacked">
+			<div class="toggle-copy">
+				<span class="row-label">Auto-check</span>
+				<span class="row-copy">Check on launch and every 6 hours.</span>
+			</div>
+			<label class="toggle-switch">
+				<input
+					type="checkbox"
+					checked={updatePreferences.autoCheck}
+					aria-label="Automatically check for updates"
+					onchange={handleAutoCheckChange}
+				/>
+				<span>{updatePreferences.autoCheck ? 'On' : 'Off'}</span>
+			</label>
+		</div>
+	</div>
 
 	<!-- Action Links -->
 	<div class="action-links">
@@ -194,15 +221,31 @@
 	<!-- Update Actions -->
 	{#if updateCheck?.status === 'update_available'}
 		<div class="update-banner">
-			<span class="update-message">{updateCheck.message}</span>
-			<button
-				type="button"
-				class="update-action-btn"
-				onclick={onUpdateAndRestart}
-				disabled={updateBusy}
-			>
-				{updateBusy ? 'Preparing...' : 'Update and Restart'}
-			</button>
+			<div class="update-copy">
+				<span class="update-message">{updateCheck.message}</span>
+				<span class="update-meta">Target version: {updateCheck.latestVersion}</span>
+			</div>
+			<div class="update-actions">
+				{#if updateNotesUrl}
+					<a
+						href={updateNotesUrl}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="update-secondary-link"
+					>
+						Release Notes
+						<ExternalLink size={12} />
+					</a>
+				{/if}
+				<button
+					type="button"
+					class="update-action-btn"
+					onclick={onUpdateAndRestart}
+					disabled={updateBusy}
+				>
+					{updateBusy ? 'Preparing...' : 'Update and Restart'}
+				</button>
+			</div>
 		</div>
 	{/if}
 
@@ -287,6 +330,10 @@
 		border-bottom: none;
 	}
 
+	.version-row--stacked {
+		align-items: flex-start;
+	}
+
 	.row-label {
 		font-size: var(--text-md);
 		color: var(--muted);
@@ -319,6 +366,31 @@
 
 	.channel-select-wrap {
 		width: 120px;
+	}
+
+	.toggle-copy {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.row-copy {
+		font-size: var(--text-sm);
+		color: var(--subtle);
+		max-width: 220px;
+		text-align: left;
+	}
+
+	.toggle-switch {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		font-size: var(--text-sm);
+		color: var(--text);
+	}
+
+	.toggle-switch input[type='checkbox'] {
+		accent-color: var(--accent);
 	}
 
 	.action-links {
@@ -360,7 +432,8 @@
 	.update-banner {
 		display: flex;
 		align-items: center;
-		justify-content: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
 		gap: var(--space-3);
 		padding: var(--space-3) var(--space-4);
 		background: var(--accent-soft);
@@ -384,6 +457,38 @@
 		font-size: var(--text-base);
 		color: var(--text);
 		flex: 1;
+	}
+
+	.update-copy {
+		display: flex;
+		flex: 1 1 220px;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.update-meta {
+		font-size: var(--text-sm);
+		color: var(--muted);
+	}
+
+	.update-actions {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+		flex-wrap: wrap;
+	}
+
+	.update-secondary-link {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		font-size: var(--text-sm);
+		color: var(--accent);
+		text-decoration: none;
+	}
+
+	.update-secondary-link:hover {
+		text-decoration: underline;
 	}
 
 	.update-action-btn {

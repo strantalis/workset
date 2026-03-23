@@ -35,6 +35,7 @@
 	import EmptyState from './lib/components/EmptyState.svelte';
 	import GitHubLoginModal from './lib/components/GitHubLoginModal.svelte';
 	import SettingsPanel from './lib/components/SettingsPanel.svelte';
+	import UpdateNotificationCard from './lib/components/UpdateNotificationCard.svelte';
 	import WorkspaceActionModal from './lib/components/WorkspaceActionModal.svelte';
 	import CommandPalette, { type AppView } from './lib/components/chrome/CommandPalette.svelte';
 	import FileSearchPalette from './lib/components/chrome/FileSearchPalette.svelte';
@@ -46,7 +47,7 @@
 		type RepoDiffPrReviewsEvent,
 		type RepoDiffPrStatusEvent,
 	} from './lib/components/repo-diff/prStatusController';
-	import type { RepoDiffSummary, Workspace } from './lib/types';
+	import type { RepoDiffSummary, UpdatePreferences, Workspace } from './lib/types';
 	import SkillRegistryView from './lib/components/views/SkillRegistryView.svelte';
 	import SpacesWorkbenchView from './lib/components/views/SpacesWorkbenchView.svelte';
 	import {
@@ -68,8 +69,13 @@
 	import { createWorkspaceActionModal } from './lib/composables/createWorkspaceActionModal.svelte';
 	import { createPopoutManager } from './lib/composables/createPopoutManager.svelte';
 	import { createNotifications } from './lib/composables/createNotifications.svelte';
+	import { createUpdateNotificationController } from './lib/composables/createUpdateNotificationController.svelte';
 	import { provideNotifications } from './lib/contexts/notifications';
 	import { provideWorkspaceActions } from './lib/contexts/workspaceActions';
+	import {
+		UPDATE_PREFERENCES_CHANGED_EVENT,
+		type UpdatePreferencesChangedDetail,
+	} from './lib/updatePreferences';
 
 	type RepoDiffLocalStatusEvent = {
 		workspaceId: string;
@@ -131,6 +137,7 @@
 	let currentView = $state<AppView>(initialView);
 	const workspaceAction = createWorkspaceActionModal();
 	const notifications = createNotifications();
+	const updateNotification = createUpdateNotificationController();
 	provideNotifications(notifications);
 
 	let commandPaletteOpen = $state(false);
@@ -441,10 +448,23 @@
 		popoutOpenedUnsubscribe: (() => void) | null = null,
 		popoutClosedUnsubscribe: (() => void) | null = null,
 		terminalActivityUnsubscribe: (() => void) | null = null;
+	let updatePreferencesListener: ((event: Event) => void) | null = null;
 
 	onMount(() => {
 		void loadWorkspaces(true);
 		void popoutManager.loadState();
+		if (!popoutMode) {
+			void updateNotification.init();
+			updatePreferencesListener = (event: Event) => {
+				const detail = (event as CustomEvent<UpdatePreferencesChangedDetail>).detail;
+				const preferences = detail?.preferences as UpdatePreferences | undefined;
+				if (!preferences) {
+					return;
+				}
+				void updateNotification.applyPreferences(preferences);
+			};
+			window.addEventListener(UPDATE_PREFERENCES_CHANGED_EVENT, updatePreferencesListener);
+		}
 		if (!popoutMode && AUTO_GITHUB_AUTH_CHECK) {
 			void checkGitHubAuth();
 		}
@@ -526,7 +546,12 @@
 		popoutClosedUnsubscribe = null;
 		terminalActivityUnsubscribe?.();
 		terminalActivityUnsubscribe = null;
+		if (updatePreferencesListener) {
+			window.removeEventListener(UPDATE_PREFERENCES_CHANGED_EVENT, updatePreferencesListener);
+			updatePreferencesListener = null;
+		}
 		terminalActivity.destroy();
+		updateNotification.destroy();
 		notifications.destroy();
 	});
 
@@ -787,8 +812,16 @@
 		</div>
 	{/if}
 
-	{#if notifications.notifications.length > 0}
+	{#if updateNotification.card || notifications.notifications.length > 0}
 		<div class="notification-stack">
+			{#if updateNotification.card}
+				<UpdateNotificationCard
+					notification={updateNotification.card}
+					busy={updateNotification.busy}
+					onDismiss={() => void updateNotification.dismiss()}
+					onUpdate={() => void updateNotification.startUpdate()}
+				/>
+			{/if}
 			{#each notifications.notifications as notif (notif.id)}
 				<button
 					type="button"

@@ -14,10 +14,7 @@
 	import { toErrorMessage } from '../errors';
 	import { X } from '@lucide/svelte';
 	import SettingsSidebar from './settings/SettingsSidebar.svelte';
-	import {
-		createSettingsPanelSideEffects,
-		DEFAULT_UPDATE_PREFERENCES,
-	} from './settings/settingsPanelSideEffects';
+	import { createSettingsPanelSideEffects } from './settings/settingsPanelSideEffects';
 	import WorkspaceDefaults from './settings/sections/WorkspaceDefaults.svelte';
 	import SessionDefaults from './settings/sections/SessionDefaults.svelte';
 	import SystemSection from './settings/sections/SystemSection.svelte';
@@ -25,6 +22,10 @@
 	import AliasManager from './settings/sections/AliasManager.svelte';
 	import AboutSection from './settings/sections/AboutSection.svelte';
 	import Button from './ui/Button.svelte';
+	import {
+		dispatchUpdatePreferencesChanged,
+		DEFAULT_UPDATE_PREFERENCES,
+	} from '../updatePreferences';
 
 	interface Props {
 		onClose: () => void;
@@ -264,7 +265,21 @@
 		}
 		if (result.updatePreferences) {
 			updatePreferences = result.updatePreferences;
+			dispatchUpdatePreferencesChanged(updatePreferences);
 			updateCheck = null;
+		}
+	};
+
+	const handleUpdateAutoCheckChange = async (enabled: boolean): Promise<void> => {
+		updateError = null;
+		const result = await sideEffects.setAutoCheck(enabled);
+		if (result.error) {
+			updateError = result.error;
+			return;
+		}
+		if (result.updatePreferences) {
+			updatePreferences = result.updatePreferences;
+			dispatchUpdatePreferencesChanged(updatePreferences);
 		}
 	};
 
@@ -370,6 +385,7 @@
 							{updateBusy}
 							{updateError}
 							onUpdateChannelChange={handleUpdateChannelChange}
+							onAutoCheckChange={handleUpdateAutoCheckChange}
 							onCheckForUpdates={handleCheckForUpdates}
 							onUpdateAndRestart={handleUpdateAndRestart}
 						/>

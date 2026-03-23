@@ -4,6 +4,9 @@
 .cache/
 dist/
 wails-ui/workset/frontend/dist/
+!wails-ui/workset/frontend/dist/
+wails-ui/workset/frontend/dist/*
+!wails-ui/workset/frontend/dist/.gitkeep
 bin/
 /workset
 go.work.sum

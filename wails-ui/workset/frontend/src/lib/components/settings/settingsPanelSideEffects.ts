@@ -27,11 +27,12 @@ import type {
 	UpdateState,
 	Workspace,
 } from '../../types';
+import { DEFAULT_UPDATE_PREFERENCES } from '../../updatePreferences';
+
+export { DEFAULT_UPDATE_PREFERENCES } from '../../updatePreferences';
 
 const SESSIOND_RESTART_TIMEOUT_MS = 20000;
 const LAYOUT_VERSION = 2;
-
-export const DEFAULT_UPDATE_PREFERENCES: UpdatePreferences = { channel: 'stable', autoCheck: true };
 
 export type SettingsPanelActionResult = {
 	success?: string;
@@ -63,6 +64,7 @@ export type SettingsPanelSideEffects = {
 	restartSessiond: () => Promise<SettingsPanelActionResult>;
 	resetTerminalLayout: (workspace: Workspace) => Promise<SettingsPanelActionResult>;
 	setUpdateChannel: (channel: string) => Promise<UpdateChannelResult>;
+	setAutoCheck: (enabled: boolean) => Promise<UpdateChannelResult>;
 	checkForUpdates: (channel: UpdatePreferences['channel']) => Promise<UpdateCheckActionResult>;
 	startUpdate: (channel: UpdatePreferences['channel']) => Promise<StartUpdateActionResult>;
 	loadAppVersion: () => Promise<AppVersion | null>;
@@ -253,6 +255,18 @@ export const createSettingsPanelSideEffects = (
 			} catch (error) {
 				return {
 					error: deps.toErrorMessage(error, 'Failed to update channel preference.'),
+				};
+			}
+		},
+
+		setAutoCheck: async (enabled) => {
+			try {
+				return {
+					updatePreferences: await deps.setUpdatePreferences({ autoCheck: enabled }),
+				};
+			} catch (error) {
+				return {
+					error: deps.toErrorMessage(error, 'Failed to update auto-check preference.'),
 				};
 			}
 		},

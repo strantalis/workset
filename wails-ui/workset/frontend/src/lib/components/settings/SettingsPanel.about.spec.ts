@@ -62,6 +62,7 @@ describe('SettingsPanel About Section', () => {
 		vi.mocked(api.fetchUpdatePreferences).mockResolvedValue({
 			channel: 'stable',
 			autoCheck: true,
+			dismissedVersion: '',
 		});
 		vi.mocked(api.fetchUpdateState).mockResolvedValue({
 			phase: 'idle',
@@ -301,6 +302,39 @@ describe('SettingsPanel About Section', () => {
 		expect(getByText('Report an Issue')).toBeInTheDocument();
 	});
 
+	test('toggles auto-check preference from the about section', async () => {
+		vi.mocked(api.fetchSettings).mockResolvedValue({
+			configPath: '/test/config.yaml',
+			defaults: buildDefaults(),
+		});
+		vi.mocked(api.fetchAppVersion).mockResolvedValue({
+			version: '1.0.0',
+			commit: 'abc123',
+			dirty: false,
+		});
+		vi.mocked(api.setUpdatePreferences).mockResolvedValue({
+			channel: 'stable',
+			autoCheck: false,
+			dismissedVersion: '',
+		});
+
+		const { getByText, getByLabelText, queryByText } = render(SettingsPanel, {
+			props: {
+				onClose: mockOnClose,
+			},
+		});
+
+		await waitForLoadingAndClickAbout(getByText, queryByText);
+
+		const checkbox = getByLabelText('Automatically check for updates') as HTMLInputElement;
+		expect(checkbox.checked).toBe(true);
+		await fireEvent.click(checkbox);
+
+		await waitFor(() => {
+			expect(api.setUpdatePreferences).toHaveBeenCalledWith({ autoCheck: false });
+		});
+	});
+
 	test('displays GitHub links', async () => {
 		vi.mocked(api.fetchSettings).mockResolvedValue({
 			configPath: '/test/config.yaml',
@@ -352,6 +386,56 @@ describe('SettingsPanel About Section', () => {
 			expect(getByText('network timeout while fetching manifest')).toBeInTheDocument();
 		});
 		expect(queryByText('Failed to update settings.')).not.toBeInTheDocument();
+	});
+
+	test('renders release notes link for an available update', async () => {
+		vi.mocked(api.fetchSettings).mockResolvedValue({
+			configPath: '/test/config.yaml',
+			defaults: buildDefaults(),
+		});
+		vi.mocked(api.fetchAppVersion).mockResolvedValue({
+			version: '1.0.0',
+			commit: 'abc123',
+			dirty: false,
+		});
+		vi.mocked(api.checkForUpdates).mockResolvedValue({
+			status: 'update_available',
+			channel: 'stable',
+			currentVersion: 'v1.0.0',
+			latestVersion: 'v1.1.0',
+			message: 'Update available: v1.1.0',
+			release: {
+				version: 'v1.1.0',
+				pubDate: '2026-03-22T00:00:00Z',
+				notesUrl: 'https://github.com/anomalyco/workset/releases/tag/v1.1.0',
+				minimumVersion: '',
+				asset: {
+					name: 'workset-v1.1.0.zip',
+					url: 'https://example.com/workset.zip',
+					sha256: 'abc123',
+				},
+				signing: {
+					teamId: 'ABCDE12345',
+				},
+			},
+		});
+
+		const { getByText, getByRole, queryByText } = render(SettingsPanel, {
+			props: {
+				onClose: mockOnClose,
+			},
+		});
+
+		await waitForLoadingAndClickAbout(getByText, queryByText);
+		await fireEvent.click(getByText('Check for Updates'));
+
+		await waitFor(() => {
+			expect(getByText('Target version: v1.1.0')).toBeInTheDocument();
+		});
+		expect(getByRole('link', { name: /Release Notes/i })).toHaveAttribute(
+			'href',
+			'https://github.com/anomalyco/workset/releases/tag/v1.1.0',
+		);
 	});
 
 	test('shows backend object message when update check fails', async () => {

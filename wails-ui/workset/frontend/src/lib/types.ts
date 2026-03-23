@@ -267,6 +267,7 @@ export type UpdateChannel = 'stable' | 'alpha';
 export type UpdatePreferences = {
 	channel: UpdateChannel;
 	autoCheck: boolean;
+	dismissedVersion: string;
 };
 
 export type UpdateReleaseAsset = {

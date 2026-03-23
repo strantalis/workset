@@ -31,13 +31,15 @@ const (
 )
 
 type UpdatePreferences struct {
-	Channel   string `json:"channel"`
-	AutoCheck bool   `json:"autoCheck"`
+	Channel          string `json:"channel"`
+	AutoCheck        bool   `json:"autoCheck"`
+	DismissedVersion string `json:"dismissedVersion"`
 }
 
 type UpdatePreferencesInput struct {
-	Channel   string `json:"channel"`
-	AutoCheck *bool  `json:"autoCheck,omitempty"`
+	Channel          string  `json:"channel"`
+	AutoCheck        *bool   `json:"autoCheck,omitempty"`
+	DismissedVersion *string `json:"dismissedVersion,omitempty"`
 }
 
 type UpdateCheckRequest struct {
@@ -137,6 +139,9 @@ func (a *App) SetUpdatePreferences(input UpdatePreferencesInput) (UpdatePreferen
 	if input.AutoCheck != nil {
 		prefs.AutoCheck = *input.AutoCheck
 	}
+	if input.DismissedVersion != nil {
+		prefs.DismissedVersion = strings.TrimSpace(*input.DismissedVersion)
+	}
 
 	if err := a.persistUpdatePreferencesLocked(prefs); err != nil {
 		return UpdatePreferences{}, err
@@ -181,7 +186,11 @@ func (a *App) resolveUpdateChannel(raw string) (UpdateChannel, error) {
 }
 
 func (a *App) loadUpdatePreferencesLocked() (UpdatePreferences, error) {
-	defaults := UpdatePreferences{Channel: string(UpdateChannelStable), AutoCheck: true}
+	defaults := UpdatePreferences{
+		Channel:          string(UpdateChannelStable),
+		AutoCheck:        true,
+		DismissedVersion: "",
+	}
 	path, err := a.updatePreferencesPath()
 	if err != nil {
 		return defaults, err
@@ -215,6 +224,7 @@ func (a *App) persistUpdatePreferencesLocked(prefs UpdatePreferences) error {
 	if prefs.Channel == "" {
 		prefs.Channel = string(UpdateChannelStable)
 	}
+	prefs.DismissedVersion = strings.TrimSpace(prefs.DismissedVersion)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
