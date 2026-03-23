@@ -55,7 +55,6 @@ func TestResolveBranchRefs(t *testing.T) {
 func TestRepoDiffGitWatchTargetsMatches(t *testing.T) {
 	targets := repoDiffGitWatchTargets{
 		adminDir: filepath.Clean("/tmp/repo/.git"),
-		refsDir:  filepath.Clean("/tmp/repo/.git/refs"),
 		exactFiles: map[string]struct{}{
 			filepath.Clean("/tmp/repo/.git/HEAD"):  {},
 			filepath.Clean("/tmp/repo/.git/index"): {},
@@ -65,21 +64,14 @@ func TestRepoDiffGitWatchTargetsMatches(t *testing.T) {
 	if !targets.matches("/tmp/repo/.git/HEAD") {
 		t.Fatal("expected exact git admin file to match")
 	}
-	if !targets.matches("/tmp/repo/.git/refs/heads/main") {
-		t.Fatal("expected refs path to match")
+	if !targets.matches("/tmp/repo/.git/index.lock") {
+		t.Fatal("expected direct git admin child to match")
+	}
+	if targets.matches("/tmp/repo/.git/refs/heads/main") {
+		t.Fatal("expected nested refs path to rely on polling")
 	}
 	if targets.matches("/tmp/repo/src/main.go") {
 		t.Fatal("expected unrelated path to be ignored")
-	}
-}
-
-func TestPathWithin(t *testing.T) {
-	root := filepath.Clean("/tmp/repo/.git/refs")
-	if !pathWithin(filepath.Join(root, "heads", "main"), root) {
-		t.Fatal("expected nested refs path to match")
-	}
-	if pathWithin("/tmp/repo/src/main.go", root) {
-		t.Fatal("expected unrelated path to be outside root")
 	}
 }
 
@@ -97,17 +89,24 @@ func TestHashPayloadDeterminism(t *testing.T) {
 }
 
 func TestShouldEmitDedupes(t *testing.T) {
-	watch := &repoDiffWatch{}
-	var last string
+	origEmit := repoDiffEmit
+	defer func() {
+		repoDiffEmit = origEmit
+	}()
 
-	if !watch.shouldEmit(&last, map[string]string{"a": "b"}) {
-		t.Fatal("expected first payload to emit")
+	var events int
+	repoDiffEmit = func(_ context.Context, _ string, _ ...interface{}) {
+		events++
 	}
-	if watch.shouldEmit(&last, map[string]string{"a": "b"}) {
-		t.Fatal("expected duplicate payload to be suppressed")
-	}
-	if !watch.shouldEmit(&last, map[string]string{"a": "c"}) {
-		t.Fatal("expected changed payload to emit")
+
+	subscriber := newRepoDiffSubscription(repoDiffWatchKey{workspaceID: "ws-1", repoID: "repo-1"}, "repo", true)
+	status := worksetapi.RepoLocalStatusJSON{CurrentBranch: "main"}
+	subscriber.emitLocalStatus(context.Background(), status)
+	subscriber.emitLocalStatus(context.Background(), status)
+	subscriber.emitLocalStatus(context.Background(), worksetapi.RepoLocalStatusJSON{CurrentBranch: "feature"})
+
+	if events != 2 {
+		t.Fatalf("expected duplicate payloads to be suppressed, got %d events", events)
 	}
 }
 
@@ -121,9 +120,6 @@ func TestResolveRepoDiffGitWatchTargetsUsesGitAdminPaths(t *testing.T) {
 
 	if targets.adminDir != gitRevParsePath(t, repo, "--git-dir") {
 		t.Fatalf("unexpected admin dir: %q", targets.adminDir)
-	}
-	if targets.refsDir != gitRevParsePath(t, repo, "--git-path", "refs") {
-		t.Fatalf("unexpected refs dir: %q", targets.refsDir)
 	}
 	for _, spec := range []string{"HEAD", "index", "packed-refs", "FETCH_HEAD"} {
 		resolved := gitRevParsePath(t, repo, "--git-path", spec)
@@ -150,9 +146,6 @@ func TestResolveRepoDiffGitWatchTargetsSupportsWorktrees(t *testing.T) {
 	if targets.adminDir != gitRevParsePath(t, worktree, "--git-dir") {
 		t.Fatalf("unexpected worktree admin dir: %q", targets.adminDir)
 	}
-	if targets.refsDir != gitRevParsePath(t, worktree, "--git-path", "refs") {
-		t.Fatalf("unexpected worktree refs dir: %q", targets.refsDir)
-	}
 }
 
 func TestRefreshLocalEmitsEventsOnce(t *testing.T) {
@@ -176,16 +169,19 @@ func TestRefreshLocalEmitsEventsOnce(t *testing.T) {
 		}
 	}
 
-	repoDiffGetLocalStatus = func(_ context.Context, _ *App, _ repoDiffWatchKey, _ string) (worksetapi.RepoLocalStatusJSON, error) {
-		return worksetapi.RepoLocalStatusJSON{
-			HasUncommitted: true,
-			Ahead:          1,
-			Behind:         0,
-			CurrentBranch:  "main",
+	repoDiffGetLocalStatus = func(_ context.Context, _ *App, _ repoDiffWatchKey, _ string, _ string) (repoLocalStatusSnapshot, error) {
+		return repoLocalStatusSnapshot{
+			payload: worksetapi.RepoLocalStatusJSON{
+				HasUncommitted: true,
+				Ahead:          1,
+				Behind:         0,
+				CurrentBranch:  "main",
+			},
+			summarySignature: "dirty-1",
 		}, nil
 	}
 
-	repoDiffCollectLocalSummary = func(_ context.Context, _ string) (RepoDiffSummary, error) {
+	repoDiffCollectLocalSummary = func(_ context.Context, _ *App, _ repoDiffWatchKey, _ string, _ string, _ string) (RepoDiffSummary, error) {
 		return RepoDiffSummary{
 			Files: []RepoDiffFile{
 				{Path: "file.txt", Added: 3, Removed: 1, Status: "modified"},
@@ -196,12 +192,12 @@ func TestRefreshLocalEmitsEventsOnce(t *testing.T) {
 	}
 
 	watch := &repoDiffWatch{
-		app:      &App{ctx: context.Background()},
-		ctx:      context.Background(),
-		key:      repoDiffWatchKey{workspaceID: "ws-1", repoID: "repo-1"},
-		repoName: "repo",
-		fullRefs: 1,
+		app:         &App{ctx: context.Background()},
+		ctx:         context.Background(),
+		repoPath:    "/tmp/repo",
+		subscribers: map[repoDiffWatchKey]*repoDiffSubscription{},
 	}
+	watch.addSubscriber(repoDiffWatchKey{workspaceID: "ws-1", repoID: "repo-1"}, "repo", false)
 
 	watch.refreshLocal()
 	if len(events) != 3 {
@@ -217,6 +213,50 @@ func TestRefreshLocalEmitsEventsOnce(t *testing.T) {
 	}
 	if summaryPayload.Files == nil {
 		t.Fatal("expected summary files to be non-nil")
+	}
+}
+
+func TestRefreshLocalReusesSummaryForUnchangedDirtySignature(t *testing.T) {
+	origGetLocalStatus := repoDiffGetLocalStatus
+	origCollectLocalSummary := repoDiffCollectLocalSummary
+	defer func() {
+		repoDiffGetLocalStatus = origGetLocalStatus
+		repoDiffCollectLocalSummary = origCollectLocalSummary
+	}()
+
+	collectCalls := 0
+	repoDiffGetLocalStatus = func(_ context.Context, _ *App, _ repoDiffWatchKey, _ string, _ string) (repoLocalStatusSnapshot, error) {
+		return repoLocalStatusSnapshot{
+			payload: worksetapi.RepoLocalStatusJSON{
+				HasUncommitted: true,
+				CurrentBranch:  "main",
+			},
+			summarySignature: "same-dirty-state",
+		}, nil
+	}
+	repoDiffCollectLocalSummary = func(_ context.Context, _ *App, _ repoDiffWatchKey, _ string, _ string, _ string) (RepoDiffSummary, error) {
+		collectCalls++
+		return RepoDiffSummary{
+			Files:        []RepoDiffFile{{Path: "file.txt", Added: 1, Removed: 0, Status: "modified"}},
+			TotalAdded:   1,
+			TotalRemoved: 0,
+		}, nil
+	}
+
+	watch := &repoDiffWatch{
+		app:              &App{ctx: context.Background(), repoDiffSummaries: map[string]repoDiffSummaryCacheEntry{}},
+		ctx:              context.Background(),
+		repoPath:         "/tmp/repo",
+		subscribers:      map[repoDiffWatchKey]*repoDiffSubscription{},
+		lastLocalSummary: emptyRepoDiffSummary(),
+	}
+	watch.addSubscriber(repoDiffWatchKey{workspaceID: "ws-1", repoID: "repo-1"}, "repo", false)
+
+	watch.refreshLocal()
+	watch.refreshLocal()
+
+	if collectCalls != 1 {
+		t.Fatalf("expected one summary recomputation, got %d", collectCalls)
 	}
 }
 
@@ -278,13 +318,14 @@ func TestRefreshPrEmitsEventsOnce(t *testing.T) {
 	}
 
 	watch := &repoDiffWatch{
-		app:      &App{ctx: context.Background()},
-		ctx:      context.Background(),
-		key:      repoDiffWatchKey{workspaceID: "ws-1", repoID: "repo-1"},
-		repoName: "repo",
-		fullRefs: 1,
+		app:         &App{ctx: context.Background()},
+		ctx:         context.Background(),
+		repoPath:    "/tmp/repo",
+		subscribers: map[repoDiffWatchKey]*repoDiffSubscription{},
 	}
-	watch.prNumber = 42
+	key := repoDiffWatchKey{workspaceID: "ws-1", repoID: "repo-1"}
+	watch.addSubscriber(key, "repo", false)
+	watch.updatePrInfo(key, 42, "feature")
 
 	watch.refreshPr()
 	if len(events) != 3 {
@@ -317,16 +358,19 @@ func TestLocalOnlySkipsSummaryAndPr(t *testing.T) {
 		events = append(events, name)
 	}
 
-	repoDiffGetLocalStatus = func(_ context.Context, _ *App, _ repoDiffWatchKey, _ string) (worksetapi.RepoLocalStatusJSON, error) {
-		return worksetapi.RepoLocalStatusJSON{
-			HasUncommitted: true,
-			Ahead:          0,
-			Behind:         0,
-			CurrentBranch:  "main",
+	repoDiffGetLocalStatus = func(_ context.Context, _ *App, _ repoDiffWatchKey, _ string, _ string) (repoLocalStatusSnapshot, error) {
+		return repoLocalStatusSnapshot{
+			payload: worksetapi.RepoLocalStatusJSON{
+				HasUncommitted: true,
+				Ahead:          0,
+				Behind:         0,
+				CurrentBranch:  "main",
+			},
+			summarySignature: "dirty-1",
 		}, nil
 	}
 
-	repoDiffCollectLocalSummary = func(_ context.Context, _ string) (RepoDiffSummary, error) {
+	repoDiffCollectLocalSummary = func(_ context.Context, _ *App, _ repoDiffWatchKey, _ string, _ string, _ string) (RepoDiffSummary, error) {
 		return RepoDiffSummary{
 			Files:        []RepoDiffFile{{Path: "file.txt", Added: 1, Removed: 0, Status: "modified"}},
 			TotalAdded:   1,
@@ -340,11 +384,12 @@ func TestLocalOnlySkipsSummaryAndPr(t *testing.T) {
 	}
 
 	watch := &repoDiffWatch{
-		app:      &App{ctx: context.Background()},
-		ctx:      context.Background(),
-		key:      repoDiffWatchKey{workspaceID: "ws-1", repoID: "repo-1"},
-		repoName: "repo",
+		app:         &App{ctx: context.Background()},
+		ctx:         context.Background(),
+		repoPath:    "/tmp/repo",
+		subscribers: map[repoDiffWatchKey]*repoDiffSubscription{},
 	}
+	watch.addSubscriber(repoDiffWatchKey{workspaceID: "ws-1", repoID: "repo-1"}, "repo", true)
 
 	watch.refreshLocal()
 	if len(events) != 2 {
@@ -412,6 +457,64 @@ func TestRepoDiffWatchManagerStartDedupesConcurrentStarts(t *testing.T) {
 	manager.stop(input)
 }
 
+func TestRepoDiffWatchManagerSharesWatchAcrossWorkspaceKeysForSameRepoPath(t *testing.T) {
+	origRun := repoDiffRunWatch
+	origResolvePath := repoDiffResolveRepoPath
+	origResolveAlias := repoDiffResolveRepoAlias
+	defer func() {
+		repoDiffRunWatch = origRun
+		repoDiffResolveRepoPath = origResolvePath
+		repoDiffResolveRepoAlias = origResolveAlias
+	}()
+
+	repoPath := t.TempDir()
+	repoDiffResolveRepoPath = func(_ context.Context, _ *App, _ string, _ string) (string, error) {
+		return repoPath, nil
+	}
+	repoDiffResolveRepoAlias = func(_ string, _ string) (string, error) {
+		return "repo", nil
+	}
+
+	var runCount int32
+	repoDiffRunWatch = func(_ *repoDiffWatch) {
+		atomic.AddInt32(&runCount, 1)
+	}
+
+	manager := newRepoDiffWatchManager()
+	app := &App{ctx: context.Background()}
+
+	first := RepoDiffWatchRequest{WorkspaceID: "ws-1", RepoID: "ws-1::repo", LocalOnly: true}
+	second := RepoDiffWatchRequest{WorkspaceID: "ws-2", RepoID: "ws-2::repo", LocalOnly: true}
+
+	if _, err := manager.start(context.Background(), app, first); err != nil {
+		t.Fatalf("start first watch: %v", err)
+	}
+	if _, err := manager.start(context.Background(), app, second); err != nil {
+		t.Fatalf("start second watch: %v", err)
+	}
+
+	for i := 0; i < 10 && atomic.LoadInt32(&runCount) == 0; i++ {
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	if got := atomic.LoadInt32(&runCount); got != 1 {
+		t.Fatalf("expected one shared watcher run, got %d", got)
+	}
+	if got := len(manager.watches); got != 1 {
+		t.Fatalf("expected one shared watcher entry, got %d", got)
+	}
+	if got := len(manager.subscriptions); got != 2 {
+		t.Fatalf("expected two subscriptions, got %d", got)
+	}
+
+	if stopped := manager.stop(first); stopped {
+		t.Fatal("expected first stop to keep shared watcher alive")
+	}
+	if stopped := manager.stop(second); !stopped {
+		t.Fatal("expected last stop to tear down shared watcher")
+	}
+}
+
 func TestRepoDiffWatchStopStopsRefreshTimer(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	watch := &repoDiffWatch{
@@ -434,25 +537,30 @@ func TestRepoDiffWatchStopStopsRefreshTimer(t *testing.T) {
 }
 
 func TestRepoDiffWatchUpdatePrInfoEmptyInputDoesNotClearState(t *testing.T) {
+	key := repoDiffWatchKey{workspaceID: "ws-1", repoID: "repo-1"}
 	watch := &repoDiffWatch{
-		fullRefs: 1,
-		prNumber: 42,
-		prBranch: "feature/foo",
-		lastPrStatus: &worksetapi.PullRequestStatusJSON{
-			Number: 42,
-			State:  "open",
-		},
+		subscribers: map[repoDiffWatchKey]*repoDiffSubscription{},
 	}
+	watch.addSubscriber(key, "repo", false)
+	subscriber := watch.getSubscriber(key)
+	if subscriber == nil {
+		t.Fatal("expected subscriber to exist")
+	}
+	subscriber.updatePrInfo(42, "feature/foo")
+	subscriber.setLastPrStatus(&worksetapi.PullRequestStatusJSON{
+		Number: 42,
+		State:  "open",
+	})
 
-	watch.updatePrInfo(0, "")
+	watch.updatePrInfo(key, 0, "")
 
-	if watch.prNumber != 42 {
-		t.Fatalf("expected pr number to remain unchanged, got %d", watch.prNumber)
+	if got, _ := subscriber.currentPrInfo(); got != 42 {
+		t.Fatalf("expected pr number to remain unchanged, got %d", got)
 	}
-	if watch.prBranch != "feature/foo" {
-		t.Fatalf("expected pr branch to remain unchanged, got %q", watch.prBranch)
+	if _, branch := subscriber.currentPrInfo(); branch != "feature/foo" {
+		t.Fatalf("expected pr branch to remain unchanged, got %q", branch)
 	}
-	if watch.lastPrStatus == nil {
+	if !subscriber.hasActivePr() {
 		t.Fatal("expected last PR status to remain set")
 	}
 }
@@ -465,11 +573,11 @@ func TestRepoDiffWatchHandleFsnotifyEventTriggersRefreshes(t *testing.T) {
 		ctx:            ctx,
 		localRefreshCh: make(chan struct{}, 1),
 		prRefreshCh:    make(chan struct{}, 1),
-		fullRefs:       1,
+		subscribers:    map[repoDiffWatchKey]*repoDiffSubscription{},
 	}
+	watch.addSubscriber(repoDiffWatchKey{workspaceID: "ws-1", repoID: "repo-1"}, "repo", false)
 	targets := repoDiffGitWatchTargets{
 		exactFiles: map[string]struct{}{filepath.Clean("/tmp/repo/.git/index"): {}},
-		refsDir:    filepath.Clean("/tmp/repo/.git/refs"),
 	}
 
 	watch.handleFsnotifyEvent(nil, targets, fsnotify.Event{
@@ -500,11 +608,11 @@ func TestRepoDiffWatchHandleFsnotifyEventIgnoresUnrelatedPaths(t *testing.T) {
 		ctx:            ctx,
 		localRefreshCh: make(chan struct{}, 1),
 		prRefreshCh:    make(chan struct{}, 1),
-		fullRefs:       1,
+		subscribers:    map[repoDiffWatchKey]*repoDiffSubscription{},
 	}
+	watch.addSubscriber(repoDiffWatchKey{workspaceID: "ws-1", repoID: "repo-1"}, "repo", false)
 	targets := repoDiffGitWatchTargets{
 		exactFiles: map[string]struct{}{filepath.Clean("/tmp/repo/.git/index"): {}},
-		refsDir:    filepath.Clean("/tmp/repo/.git/refs"),
 	}
 
 	watch.handleFsnotifyEvent(nil, targets, fsnotify.Event{
@@ -540,23 +648,23 @@ func TestRepoDiffWatchRunLocalOnlyCreatesGitWatcher(t *testing.T) {
 		return fsnotify.NewWatcher()
 	}
 	adminDir := filepath.Join(t.TempDir(), ".git")
-	refsDir := filepath.Join(adminDir, "refs")
-	if err := os.MkdirAll(refsDir, 0o755); err != nil {
-		t.Fatalf("mkdir refs: %v", err)
+	if err := os.MkdirAll(adminDir, 0o755); err != nil {
+		t.Fatalf("mkdir admin dir: %v", err)
 	}
 	repoDiffResolveGitWatchTargets = func(_ context.Context, _ string) (repoDiffGitWatchTargets, error) {
 		return repoDiffGitWatchTargets{
 			adminDir: adminDir,
-			refsDir:  refsDir,
 			exactFiles: map[string]struct{}{
 				filepath.Join(adminDir, "HEAD"): {},
 			},
 		}, nil
 	}
-	repoDiffGetLocalStatus = func(_ context.Context, _ *App, _ repoDiffWatchKey, _ string) (worksetapi.RepoLocalStatusJSON, error) {
-		return worksetapi.RepoLocalStatusJSON{
-			HasUncommitted: false,
-			CurrentBranch:  "main",
+	repoDiffGetLocalStatus = func(_ context.Context, _ *App, _ repoDiffWatchKey, _ string, _ string) (repoLocalStatusSnapshot, error) {
+		return repoLocalStatusSnapshot{
+			payload: worksetapi.RepoLocalStatusJSON{
+				HasUncommitted: false,
+				CurrentBranch:  "main",
+			},
 		}, nil
 	}
 
@@ -591,32 +699,38 @@ func TestRepoDiffWatchRunLocalOnlyCreatesGitWatcher(t *testing.T) {
 	}
 }
 
-func TestRepoDiffWatchAddWatchRecursiveDedupesPaths(t *testing.T) {
+func TestRepoDiffWatchAddGitWatchTargetsDedupesPaths(t *testing.T) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		t.Fatalf("create watcher: %v", err)
 	}
 	defer watcher.Close()
 
-	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "a", "b"), 0o755); err != nil {
+	root := filepath.Join(t.TempDir(), ".git")
+	if err := os.MkdirAll(root, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.MkdirAll(filepath.Join(root, "c"), 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
+	headPath := filepath.Join(root, "HEAD")
+	if err := os.WriteFile(headPath, []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+		t.Fatalf("write head: %v", err)
 	}
-
 	watch := &repoDiffWatch{watchedPaths: map[string]struct{}{}}
-	if err := watch.addWatchRecursive(watcher, root); err != nil {
-		t.Fatalf("add first recursive watch: %v", err)
+	targets := repoDiffGitWatchTargets{
+		adminDir: root,
+		exactFiles: map[string]struct{}{
+			headPath: {},
+		},
+	}
+	if err := watch.addGitWatchTargets(watcher, targets); err != nil {
+		t.Fatalf("add first git watch: %v", err)
 	}
 	firstCount := len(watch.watchedPaths)
 	if firstCount == 0 {
 		t.Fatal("expected at least one watched path")
 	}
 
-	if err := watch.addWatchRecursive(watcher, root); err != nil {
-		t.Fatalf("add second recursive watch: %v", err)
+	if err := watch.addGitWatchTargets(watcher, targets); err != nil {
+		t.Fatalf("add second git watch: %v", err)
 	}
 	if got := len(watch.watchedPaths); got != firstCount {
 		t.Fatalf("expected deduped watch count %d, got %d", firstCount, got)

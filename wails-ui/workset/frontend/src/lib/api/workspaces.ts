@@ -296,8 +296,9 @@ export async function reorderWorkspaces(orders: Record<string, number>): Promise
 
 export const reorderThreads = reorderWorkspaces;
 
-export async function updateWorkspaceLastUsed(workspaceId: string): Promise<void> {
-	await UpdateWorkspaceLastUsed(workspaceId);
+export async function updateWorkspaceLastUsed(workspaceId: string): Promise<string> {
+	const result = await UpdateWorkspaceLastUsed(workspaceId);
+	return result.last_used ?? result.created_at ?? '';
 }
 
 export const updateThreadLastUsed = updateWorkspaceLastUsed;

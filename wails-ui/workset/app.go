@@ -16,39 +16,42 @@ const mainWindowName = "main"
 
 // App struct
 type App struct {
-	ctx              context.Context
-	runtimeApp       *application.App
-	mainWindowName   string
-	service          *worksetapi.Service
-	serviceOnce      sync.Once
-	repoFileIndexMu  sync.Mutex
-	repoFileIndexes  map[string]repoFileIndexCacheEntry
-	terminalMu       sync.Mutex
-	terminals        map[string]*terminalSession
-	sessiondMu       sync.Mutex
-	sessiondClient   *sessiond.Client
-	sessiondInfo     *sessiond.InfoResponse
-	sessiondReady    bool
-	sessiondStart    *sessiondStartState
-	sessiondRestart  *sessiondRestartState
-	repoDiffWatchers *repoDiffWatchManager
-	githubOps        *githubOperationManager
-	popoutMu         sync.Mutex
-	popouts          map[string]string
+	ctx               context.Context
+	runtimeApp        *application.App
+	mainWindowName    string
+	service           *worksetapi.Service
+	serviceOnce       sync.Once
+	repoFileIndexMu   sync.Mutex
+	repoFileIndexes   map[string]repoFileIndexCacheEntry
+	repoDiffSummaryMu sync.Mutex
+	repoDiffSummaries map[string]repoDiffSummaryCacheEntry
+	terminalMu        sync.Mutex
+	terminals         map[string]*terminalSession
+	sessiondMu        sync.Mutex
+	sessiondClient    *sessiond.Client
+	sessiondInfo      *sessiond.InfoResponse
+	sessiondReady     bool
+	sessiondStart     *sessiondStartState
+	sessiondRestart   *sessiondRestartState
+	repoDiffWatchers  *repoDiffWatchManager
+	githubOps         *githubOperationManager
+	popoutMu          sync.Mutex
+	popouts           map[string]string
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{
-		service:          nil,
-		mainWindowName:   mainWindowName,
-		repoFileIndexes:  map[string]repoFileIndexCacheEntry{},
-		terminals:        map[string]*terminalSession{},
-		sessiondStart:    &sessiondStartState{},
-		sessiondRestart:  &sessiondRestartState{},
-		repoDiffWatchers: newRepoDiffWatchManager(),
-		githubOps:        newGitHubOperationManager(),
-		popouts:          map[string]string{},
+		service:           nil,
+		mainWindowName:    mainWindowName,
+		repoFileIndexes:   map[string]repoFileIndexCacheEntry{},
+		repoDiffSummaries: map[string]repoDiffSummaryCacheEntry{},
+		terminals:         map[string]*terminalSession{},
+		sessiondStart:     &sessiondStartState{},
+		sessiondRestart:   &sessiondRestartState{},
+		repoDiffWatchers:  newRepoDiffWatchManager(),
+		githubOps:         newGitHubOperationManager(),
+		popouts:           map[string]string{},
 	}
 }
 
@@ -79,6 +82,9 @@ func (a *App) shutdown(_ context.Context) {
 	a.repoFileIndexMu.Lock()
 	a.repoFileIndexes = map[string]repoFileIndexCacheEntry{}
 	a.repoFileIndexMu.Unlock()
+	a.repoDiffSummaryMu.Lock()
+	a.repoDiffSummaries = map[string]repoDiffSummaryCacheEntry{}
+	a.repoDiffSummaryMu.Unlock()
 	a.terminalMu.Lock()
 	defer a.terminalMu.Unlock()
 	for _, session := range a.terminals {

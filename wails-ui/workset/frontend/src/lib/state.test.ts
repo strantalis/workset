@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest';
 import { get } from 'svelte/store';
 import type { Workspace } from './types';
 import {
+	applyWorkspaceLastUsed,
 	applyRepoDiffSummary,
 	applyRepoLocalStatus,
 	applyTrackedPullRequest,
@@ -222,5 +223,18 @@ describe('state repo diff updates', () => {
 		const second = get(workspaces);
 		expect(second[0]).toBe(firstWorkspace);
 		expect(second[0].repos[0]).toBe(firstRepo);
+	});
+
+	it('updates workspace last used locally without churning unrelated entries', () => {
+		const before = get(workspaces);
+		const untouchedWorkspace = before[1];
+		const untouchedRepo = before[0].repos[0];
+
+		applyWorkspaceLastUsed('ws-1', '2024-01-03T00:00:00Z');
+
+		const next = get(workspaces);
+		expect(next[0].lastUsed).toBe('2024-01-03T00:00:00Z');
+		expect(next[1]).toBe(untouchedWorkspace);
+		expect(next[0].repos[0]).toBe(untouchedRepo);
 	});
 });

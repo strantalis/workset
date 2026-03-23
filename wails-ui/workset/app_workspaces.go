@@ -91,6 +91,10 @@ func (a *App) ListWorkspaceSnapshots(input WorkspaceSnapshotRequest) ([]Workspac
 		repos := make([]RepoSnapshot, 0, len(workspace.Repos))
 		for _, repo := range workspace.Repos {
 			repoID := workspace.Name + "::" + repo.Name
+			repoPath := repo.LocalPath
+			if resolvedPath, resolveErr := resolveWorkspaceRepoRoot(workspace.Path, repo.RepoDir, repo.LocalPath); resolveErr == nil {
+				repoPath = resolvedPath
+			}
 			var tracked *TrackedPullRequestRef
 			if repo.TrackedPullRequest != nil {
 				tracked = &TrackedPullRequestRef{
@@ -115,7 +119,7 @@ func (a *App) ListWorkspaceSnapshots(input WorkspaceSnapshotRequest) ([]Workspac
 			repoSnapshot := RepoSnapshot{
 				ID:                 repoID,
 				Name:               repo.Name,
-				Path:               repo.LocalPath,
+				Path:               repoPath,
 				Remote:             repo.Remote,
 				DefaultBranch:      repo.DefaultBranch,
 				Dirty:              repo.Dirty,
@@ -126,20 +130,17 @@ func (a *App) ListWorkspaceSnapshots(input WorkspaceSnapshotRequest) ([]Workspac
 				TrackedPullRequest: tracked,
 			}
 
-			if input.IncludeStatus && !workspace.Placeholder && !repo.Missing {
-				localStatus, localErr := svc.GetRepoLocalStatus(ctx, worksetapi.RepoLocalStatusInput{
-					Workspace: worksetapi.WorkspaceSelector{Value: workspace.Name},
-					Repo:      repo.Name,
-				})
+			if input.IncludeStatus && !workspace.Placeholder && !repo.Missing && repoPath != "" {
+				localStatus, localErr := loadRepoLocalStatus(ctx, repoPath, repo.DefaultBranch)
 				if localErr == nil {
-					repoSnapshot.Dirty = localStatus.Payload.HasUncommitted
+					repoSnapshot.Dirty = localStatus.payload.HasUncommitted
 					repoSnapshot.StatusKnown = true
-					repoSnapshot.Ahead = localStatus.Payload.Ahead
-					repoSnapshot.Behind = localStatus.Payload.Behind
-					repoSnapshot.CurrentBranch = localStatus.Payload.CurrentBranch
+					repoSnapshot.Ahead = localStatus.payload.Ahead
+					repoSnapshot.Behind = localStatus.payload.Behind
+					repoSnapshot.CurrentBranch = localStatus.payload.CurrentBranch
 
-					if localStatus.Payload.HasUncommitted {
-						diffSummary, diffErr := a.GetRepoDiffSummary(workspace.Name, repoID)
+					if localStatus.payload.HasUncommitted {
+						diffSummary, diffErr := a.cachedRepoDiffSummary(ctx, repoPath, localStatus)
 						if diffErr == nil {
 							repoSnapshot.Diff = RepoDiffStatSnapshot{
 								Added:   diffSummary.TotalAdded,

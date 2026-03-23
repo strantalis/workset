@@ -32,6 +32,11 @@ type RepoDiffSummary struct {
 	TotalRemoved int            `json:"totalRemoved"`
 }
 
+type repoDiffSummaryCacheEntry struct {
+	signature string
+	summary   RepoDiffSummary
+}
+
 type RepoFileDiffSnapshot struct {
 	Patch      string `json:"patch"`
 	Truncated  bool   `json:"truncated"`
@@ -63,17 +68,44 @@ func (a *App) GetRepoDiffSummary(workspaceID, repoID string) (RepoDiffSummary, e
 	if err != nil {
 		return RepoDiffSummary{}, err
 	}
+	status, err := loadRepoLocalStatus(ctx, repoPath, "")
+	if err != nil {
+		return RepoDiffSummary{}, err
+	}
+	return a.cachedRepoDiffSummary(ctx, repoPath, status)
+}
 
-	files, err := collectRepoDiffSummary(ctx, repoPath)
+func (a *App) cachedRepoDiffSummary(
+	ctx context.Context,
+	repoPath string,
+	status repoLocalStatusSnapshot,
+) (RepoDiffSummary, error) {
+	if !status.payload.HasUncommitted {
+		summary := emptyRepoDiffSummary()
+		a.repoDiffSummaryMu.Lock()
+		delete(a.repoDiffSummaries, repoPath)
+		a.repoDiffSummaryMu.Unlock()
+		return summary, nil
+	}
+
+	a.repoDiffSummaryMu.Lock()
+	cached, ok := a.repoDiffSummaries[repoPath]
+	a.repoDiffSummaryMu.Unlock()
+	if ok && cached.signature == status.summarySignature {
+		return cached.summary, nil
+	}
+
+	summary, err := repoDiffCollectLocalSummary(ctx, a, repoDiffWatchKey{}, "", repoPath, status.summarySignature)
 	if err != nil {
 		return RepoDiffSummary{}, err
 	}
 
-	summary := RepoDiffSummary{Files: files}
-	for _, file := range files {
-		summary.TotalAdded += file.Added
-		summary.TotalRemoved += file.Removed
+	a.repoDiffSummaryMu.Lock()
+	a.repoDiffSummaries[repoPath] = repoDiffSummaryCacheEntry{
+		signature: status.summarySignature,
+		summary:   summary,
 	}
+	a.repoDiffSummaryMu.Unlock()
 	return summary, nil
 }
 
@@ -209,7 +241,7 @@ func gitDiff(ctx context.Context, repoPath string, cached bool) (string, error) 
 	if cached {
 		args = append(args, "--cached")
 	}
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := newGitCommandContext(ctx, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		if exitErr := (&exec.ExitError{}); errors.As(err, &exitErr) {
@@ -238,7 +270,7 @@ func gitFileDiff(ctx context.Context, repoPath, path, prevPath string, cached bo
 	if prevPath != "" && prevPath != path {
 		args = append(args, prevPath)
 	}
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := newGitCommandContext(ctx, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		if exitErr := (&exec.ExitError{}); errors.As(err, &exitErr) {
@@ -252,7 +284,7 @@ func gitFileDiff(ctx context.Context, repoPath, path, prevPath string, cached bo
 }
 
 func gitUntracked(ctx context.Context, repoPath string) ([]string, error) {
-	cmd := exec.CommandContext(ctx, "git", "-C", repoPath, "ls-files", "--others", "--exclude-standard", "-z")
+	cmd := newGitCommandContext(ctx, "-C", repoPath, "ls-files", "--others", "--exclude-standard", "-z")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("git ls-files failed: %w", err)
@@ -292,7 +324,7 @@ func gitDiffNoIndex(ctx context.Context, repoPath, relativePath string) (string,
 		os.DevNull,
 		relativePath,
 	}
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := newGitCommandContext(ctx, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		if exitErr := (&exec.ExitError{}); errors.As(err, &exitErr) {
@@ -392,6 +424,10 @@ func collectRepoDiffSummary(ctx context.Context, repoPath string) ([]RepoDiffFil
 	return files, nil
 }
 
+func emptyRepoDiffSummary() RepoDiffSummary {
+	return RepoDiffSummary{Files: []RepoDiffFile{}}
+}
+
 func collectNameStatus(ctx context.Context, repoPath string) ([]nameStatusEntry, error) {
 	entries := []nameStatusEntry{}
 	for _, cached := range []bool{false, true} {
@@ -421,7 +457,7 @@ func gitNameStatus(ctx context.Context, repoPath string, cached bool) ([]byte, e
 	if cached {
 		args = append(args, "--cached")
 	}
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := newGitCommandContext(ctx, args...)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("git name-status failed: %w", err)
@@ -434,7 +470,7 @@ func gitNumstat(ctx context.Context, repoPath string, cached bool) ([]byte, erro
 	if cached {
 		args = append(args, "--cached")
 	}
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := newGitCommandContext(ctx, args...)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("git numstat failed: %w", err)
@@ -637,7 +673,7 @@ func gitDiffNoIndexNumstatBatch(ctx context.Context, repoPath, emptyDir string, 
 	}
 	args = append(args, paths...)
 
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := newGitCommandContext(ctx, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		if exitErr := (&exec.ExitError{}); errors.As(err, &exitErr) {
@@ -662,7 +698,7 @@ func gitDiffNoIndexNumstatSingle(ctx context.Context, repoPath, relativePath str
 		os.DevNull,
 		relativePath,
 	}
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := newGitCommandContext(ctx, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		if exitErr := (&exec.ExitError{}); errors.As(err, &exitErr) {
@@ -811,7 +847,7 @@ func collectBranchDiffSummary(ctx context.Context, repoPath, base, head string) 
 }
 
 func gitMergeBase(ctx context.Context, repoPath, ref1, ref2 string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", "-C", repoPath, "merge-base", ref1, ref2)
+	cmd := newGitCommandContext(ctx, "-C", repoPath, "merge-base", ref1, ref2)
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("git merge-base failed: %w", err)
@@ -821,7 +857,7 @@ func gitMergeBase(ctx context.Context, repoPath, ref1, ref2 string) (string, err
 
 func gitBranchNameStatus(ctx context.Context, repoPath, base, head string) ([]nameStatusEntry, error) {
 	args := []string{"-C", repoPath, "diff", "--name-status", "--find-renames", "-z", base, head}
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := newGitCommandContext(ctx, args...)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("git diff name-status failed: %w", err)
@@ -831,7 +867,7 @@ func gitBranchNameStatus(ctx context.Context, repoPath, base, head string) ([]na
 
 func gitBranchNumstat(ctx context.Context, repoPath, base, head string) ([]numstatEntry, error) {
 	args := []string{"-C", repoPath, "diff", "--numstat", "--find-renames", "-z", base, head}
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := newGitCommandContext(ctx, args...)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("git diff numstat failed: %w", err)
@@ -861,7 +897,7 @@ func gitBranchFileDiff(ctx context.Context, repoPath, base, head, path, prevPath
 	if prevPath != "" && prevPath != path {
 		args = append(args, prevPath)
 	}
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := newGitCommandContext(ctx, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		if exitErr := (&exec.ExitError{}); errors.As(err, &exitErr) {

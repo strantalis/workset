@@ -328,6 +328,23 @@ export const unpinnedWorkspaces = derived(workspaces, ($workspaces) =>
 		}),
 );
 
+export function applyWorkspaceLastUsed(workspaceId: string, lastUsed: string): void {
+	const normalizedLastUsed = lastUsed.trim();
+	if (normalizedLastUsed === '') return;
+
+	structuralWorkspaces.update((list) => {
+		let changed = false;
+		const next = list.map((workspace) => {
+			if (workspace.id !== workspaceId || workspace.lastUsed === normalizedLastUsed) {
+				return workspace;
+			}
+			changed = true;
+			return { ...workspace, lastUsed: normalizedLastUsed };
+		});
+		return changed ? next : list;
+	});
+}
+
 export function selectWorkspace(workspaceId: string): void {
 	const target = get(workspaces).find((workspace) => workspace.id === workspaceId);
 	if (!target || target.placeholder === true) {
@@ -336,10 +353,11 @@ export function selectWorkspace(workspaceId: string): void {
 	activeWorkspaceId.set(workspaceId);
 	activeRepoId.set(null);
 	// Update last used timestamp in background
-	void apiUpdateWorkspaceLastUsed(workspaceId).then(() => {
-		// Refresh workspace list to get updated lastUsed
-		void refreshWorkspacesStatus();
-	});
+	void apiUpdateWorkspaceLastUsed(workspaceId)
+		.then((lastUsed) => {
+			applyWorkspaceLastUsed(workspaceId, lastUsed);
+		})
+		.catch(() => {});
 }
 
 // Update workspace pin status

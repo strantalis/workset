@@ -341,7 +341,7 @@ func repoFileSize(repoRoot, relPath string) (int, bool) {
 }
 
 func listRepoFiles(ctx context.Context, repoPath string) ([]string, error) {
-	cmd := exec.CommandContext(ctx, "git", "-C", repoPath, "ls-files", "-z", "-c", "-o", "--exclude-standard")
+	cmd := newGitCommandContext(ctx, "-C", repoPath, "ls-files", "-z", "-c", "-o", "--exclude-standard")
 	output, err := cmd.Output()
 	if err != nil {
 		var exitErr *exec.ExitError
@@ -583,7 +583,7 @@ func (a *App) ReadWorkspaceRepoFileAtRef(input RepoFileAtRefRequest) (RepoFileAt
 		return RepoFileAtRefResponse{}, fmt.Errorf("repo %q not found in workspace %q", repoID, workspaceID)
 	}
 
-	cmd := exec.CommandContext(ctx, "git", "-C", repo.path, "show", ref+":"+path)
+	cmd := newGitCommandContext(ctx, "-C", repo.path, "show", ref+":"+path)
 	output, err := cmd.Output()
 	if err != nil {
 		// File may not exist at that ref (new file)
@@ -913,7 +913,7 @@ func (a *App) GetRepoBlame(input RepoBlameRequest) ([]RepoBlameEntry, error) {
 		return nil, err
 	}
 
-	cmd := exec.CommandContext(ctx, "git", "blame", "--line-porcelain", ref, "--", normalizedPath)
+	cmd := newGitCommandContext(ctx, "blame", "--line-porcelain", ref, "--", normalizedPath)
 	cmd.Dir = repo.path
 	output, err := cmd.Output()
 	if err != nil {
