@@ -11,7 +11,7 @@ require (
 	github.com/knadh/koanf/providers/confmap v1.0.0
 	github.com/knadh/koanf/providers/file v1.2.1
 	github.com/knadh/koanf/providers/rawbytes v1.0.0
-	github.com/knadh/koanf/v2 v2.3.2
+	github.com/knadh/koanf/v2 v2.3.4
 	github.com/rogpeppe/go-internal v1.14.1
 	github.com/urfave/cli/v3 v3.7.0
 	github.com/zalando/go-keyring v0.2.6
