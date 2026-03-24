@@ -12,7 +12,16 @@ describe('repo tree helpers', () => {
 		const dirEntries = new Map<string, RepoDirectoryEntry[]>([
 			[
 				createRepoDirEntriesKey(repoId, ''),
-				[{ name: 'src', path: 'src', isDir: true, childCount: 1 }],
+				[
+					{
+						name: 'src',
+						path: 'src',
+						isDir: true,
+						sizeBytes: 0,
+						isMarkdown: false,
+						childCount: 1,
+					},
+				],
 			],
 			[
 				createRepoDirEntriesKey(repoId, 'src'),
@@ -23,6 +32,7 @@ describe('repo tree helpers', () => {
 						isDir: false,
 						sizeBytes: 42,
 						isMarkdown: false,
+						childCount: 0,
 					},
 				],
 			],

@@ -1,9 +1,15 @@
-import type { RepoFileContent, RepoFileSearchResult, RepoImageContent } from '../types';
+import type {
+	RepoFileContent,
+	RepoFileSearchResult,
+	RepoImageContent,
+	WorkspaceExtraRoot,
+} from '../types';
 import {
 	CreateWorkspaceRepoFile,
 	DeleteWorkspaceRepoFile,
 	GetRepoBlame,
 	ListRepoDirectory,
+	ListWorkspaceExtraRoots,
 	ReadWorkspaceRepoFile,
 	ReadWorkspaceRepoFileAtRef,
 	ReadWorkspaceRepoImageBase64,
@@ -50,6 +56,33 @@ const isCacheFresh = (
 
 export function clearRepoFileSearchCache(): void {
 	repoFileSearchCache.clear();
+}
+
+const extraRootCache = new LruTtlCache<WorkspaceExtraRoot[]>({
+	maxEntries: 20,
+	maxBytes: 64 * 1024,
+	ttlMs: 30_000,
+	softTtlMs: 10_000,
+	sizeOf: (roots) => JSON.stringify(roots).length,
+});
+
+export async function listWorkspaceExtraRoots(workspaceId: string): Promise<WorkspaceExtraRoot[]> {
+	const key = workspaceId.trim();
+	const cached = extraRootCache.get(key);
+	if (cached && !cached.stale) return cached.value;
+
+	const result = (await ListWorkspaceExtraRoots(workspaceId)) as WorkspaceExtraRoot[] | undefined;
+	const roots = result ?? [];
+	extraRootCache.set(key, roots);
+	return roots;
+}
+
+export function invalidateWorkspaceExtraRoots(workspaceId: string): void {
+	extraRootCache.remove(workspaceId.trim());
+}
+
+export function clearWorkspaceExtraRootsCache(): void {
+	extraRootCache.clear();
 }
 
 export async function searchWorkspaceRepoFiles(

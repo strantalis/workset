@@ -14,8 +14,6 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
-
-	"github.com/strantalis/workset/pkg/worksetapi"
 )
 
 const (
@@ -157,25 +155,12 @@ func (a *App) ReadWorkspaceRepoFile(input RepoFileReadRequest) (RepoFileReadResp
 		return RepoFileReadResponse{}, errors.New("workspace and repo are required")
 	}
 
-	repos, err := a.resolveWorkspaceRepos(ctx, workspaceID)
+	root, err := a.resolveWorkspaceContentRoot(ctx, workspaceID, repoID)
 	if err != nil {
 		return RepoFileReadResponse{}, err
 	}
-	var repo workspaceRepoRef
-	found := false
-	for _, candidate := range repos {
-		if candidate.id != repoID {
-			continue
-		}
-		repo = candidate
-		found = true
-		break
-	}
-	if !found {
-		return RepoFileReadResponse{}, fmt.Errorf("repo %q not found in workspace %q", repoID, workspaceID)
-	}
 
-	resolvedPath, normalizedPath, err := resolveRepoFilePath(repo.path, input.Path)
+	resolvedPath, normalizedPath, err := resolveRepoFilePath(root.path, input.Path)
 	if err != nil {
 		return RepoFileReadResponse{}, err
 	}
@@ -186,8 +171,8 @@ func (a *App) ReadWorkspaceRepoFile(input RepoFileReadRequest) (RepoFileReadResp
 
 	return RepoFileReadResponse{
 		WorkspaceID: workspaceID,
-		RepoID:      repo.id,
-		RepoName:    repo.name,
+		RepoID:      root.id,
+		RepoName:    root.name,
 		Path:        normalizedPath,
 		Content:     content.content,
 		SizeBytes:   content.sizeBytes,
@@ -195,52 +180,6 @@ func (a *App) ReadWorkspaceRepoFile(input RepoFileReadRequest) (RepoFileReadResp
 		IsTruncated: content.truncated,
 		IsMarkdown:  isMarkdownPath(normalizedPath),
 	}, nil
-}
-
-func (a *App) resolveWorkspaceRepos(ctx context.Context, workspaceID string) ([]workspaceRepoRef, error) {
-	if strings.TrimSpace(workspaceID) == "" {
-		return nil, errors.New("workspace is required")
-	}
-	workspacePath, err := a.resolveWorkspacePath(ctx, workspaceID)
-	if err != nil {
-		return nil, err
-	}
-
-	_, svc := a.serviceContext()
-	repos, err := svc.ListRepos(ctx, worksetapi.WorkspaceSelector{Value: workspaceID})
-	if err != nil {
-		return nil, err
-	}
-
-	entries := make([]workspaceRepoRef, 0, len(repos.Repos))
-	for _, repo := range repos.Repos {
-		repoPath, err := resolveWorkspaceRepoRoot(workspacePath, repo.RepoDir, repo.LocalPath)
-		if err != nil {
-			return nil, fmt.Errorf("resolve repo %q: %w", repo.Name, err)
-		}
-		entries = append(entries, workspaceRepoRef{
-			id:   workspaceID + "::" + repo.Name,
-			name: repo.Name,
-			path: repoPath,
-		})
-	}
-	return entries, nil
-}
-
-func resolveWorkspaceRepoRoot(workspacePath, repoDir, localPath string) (string, error) {
-	if repoDir != "" && workspacePath != "" {
-		worktreePath := filepath.Join(workspacePath, repoDir)
-		if stat, err := os.Stat(worktreePath); err == nil && stat.IsDir() {
-			return filepath.Clean(worktreePath), nil
-		}
-	}
-	if localPath != "" {
-		if stat, err := os.Stat(localPath); err == nil && stat.IsDir() {
-			return filepath.Clean(localPath), nil
-		}
-		return "", fmt.Errorf("repo path unavailable: %s", localPath)
-	}
-	return "", errors.New("repo path not found")
 }
 
 func normalizeRepoFileSearchLimit(limit int) int {
@@ -366,99 +305,6 @@ func listRepoFiles(ctx context.Context, repoPath string) ([]string, error) {
 	return paths, nil
 }
 
-func resolveRepoFilePath(repoRoot, rawPath string) (string, string, error) {
-	repoRoot = filepath.Clean(strings.TrimSpace(repoRoot))
-	if repoRoot == "" {
-		return "", "", errors.New("repo root is required")
-	}
-	cleanPath := filepath.Clean(strings.TrimSpace(rawPath))
-	if cleanPath == "." || cleanPath == "" {
-		return "", "", errors.New("file path is required")
-	}
-	if filepath.IsAbs(cleanPath) {
-		return "", "", errors.New("file path must be relative")
-	}
-	if cleanPath == ".." || strings.HasPrefix(cleanPath, ".."+string(filepath.Separator)) {
-		return "", "", errors.New("file path escapes repo root")
-	}
-
-	resolvedRoot, err := filepath.EvalSymlinks(repoRoot)
-	if err != nil {
-		return "", "", fmt.Errorf("resolve repo root: %w", err)
-	}
-	targetPath := filepath.Join(repoRoot, cleanPath)
-	resolvedTarget, err := filepath.EvalSymlinks(targetPath)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return "", "", fmt.Errorf("file %q not found", filepath.ToSlash(cleanPath))
-		}
-		return "", "", fmt.Errorf("resolve file path: %w", err)
-	}
-	rel, err := filepath.Rel(resolvedRoot, resolvedTarget)
-	if err != nil {
-		return "", "", fmt.Errorf("resolve file path: %w", err)
-	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", "", errors.New("file path escapes repo root")
-	}
-
-	info, err := os.Stat(resolvedTarget)
-	if err != nil {
-		return "", "", err
-	}
-	if info.IsDir() {
-		return "", "", errors.New("file path points to a directory")
-	}
-
-	return resolvedTarget, filepath.ToSlash(cleanPath), nil
-}
-
-func readRepoFileContent(path string, maxBytes int) (repoFileContent, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return repoFileContent{}, err
-	}
-	defer file.Close()
-
-	info, err := file.Stat()
-	if err != nil {
-		return repoFileContent{}, err
-	}
-
-	limit := maxBytes
-	if limit <= 0 {
-		limit = maxRepoFileReadBytes
-	}
-	buffer := make([]byte, limit+1)
-	n, readErr := file.Read(buffer)
-	if readErr != nil && !errors.Is(readErr, io.EOF) {
-		return repoFileContent{}, readErr
-	}
-	data := buffer[:n]
-	truncated := false
-	if len(data) > limit {
-		data = data[:limit]
-		truncated = true
-	} else if info.Size() > int64(limit) {
-		truncated = true
-	}
-
-	if isBinaryContent(data) {
-		return repoFileContent{
-			sizeBytes: int(info.Size()),
-			binary:    true,
-			truncated: truncated,
-		}, nil
-	}
-
-	return repoFileContent{
-		content:   string(data),
-		sizeBytes: int(info.Size()),
-		binary:    false,
-		truncated: truncated,
-	}, nil
-}
-
 func isBinaryContent(data []byte) bool {
 	if len(data) == 0 {
 		return false
@@ -508,25 +354,12 @@ func (a *App) WriteWorkspaceRepoFile(input RepoFileWriteRequest) (RepoFileWriteR
 		return RepoFileWriteResponse{}, fmt.Errorf("content too large (%d bytes, limit %d)", len(input.Content), maxRepoFileWriteBytes)
 	}
 
-	repos, err := a.resolveWorkspaceRepos(ctx, workspaceID)
+	root, err := a.resolveWorkspaceContentRoot(ctx, workspaceID, repoID)
 	if err != nil {
 		return RepoFileWriteResponse{}, err
 	}
-	var repo workspaceRepoRef
-	found := false
-	for _, candidate := range repos {
-		if candidate.id != repoID {
-			continue
-		}
-		repo = candidate
-		found = true
-		break
-	}
-	if !found {
-		return RepoFileWriteResponse{}, fmt.Errorf("repo %q not found in workspace %q", repoID, workspaceID)
-	}
 
-	resolvedPath, _, err := resolveRepoFilePath(repo.path, input.Path)
+	resolvedPath, _, err := resolveRepoFilePath(root.path, input.Path)
 	if err != nil {
 		return RepoFileWriteResponse{}, err
 	}
@@ -627,30 +460,17 @@ func (a *App) ReadWorkspaceRepoImageBase64(input RepoImageReadRequest) (RepoImag
 		return RepoImageReadResponse{}, errors.New("workspace and repo are required")
 	}
 
-	repos, err := a.resolveWorkspaceRepos(ctx, workspaceID)
-	if err != nil {
-		return RepoImageReadResponse{}, err
-	}
-	var repo workspaceRepoRef
-	found := false
-	for _, candidate := range repos {
-		if candidate.id != repoID {
-			continue
-		}
-		repo = candidate
-		found = true
-		break
-	}
-	if !found {
-		return RepoImageReadResponse{}, fmt.Errorf("repo %q not found in workspace %q", repoID, workspaceID)
-	}
-
 	mimeType := mimeTypeFromImageExt(input.Path)
 	if mimeType == "" {
 		return RepoImageReadResponse{Error: "unsupported image type"}, nil
 	}
 
-	resolvedPath, _, err := resolveRepoFilePath(repo.path, input.Path)
+	root, err := a.resolveWorkspaceContentRoot(ctx, workspaceID, repoID)
+	if err != nil {
+		return RepoImageReadResponse{}, err
+	}
+
+	resolvedPath, _, err := resolveRepoFilePath(root.path, input.Path)
 	if err != nil {
 		return RepoImageReadResponse{Error: err.Error()}, nil
 	}
@@ -749,22 +569,19 @@ func (a *App) ListRepoDirectory(input RepoDirectoryListRequest) ([]RepoDirectory
 	// Normalise: strip trailing slash.
 	dirPath = strings.TrimRight(dirPath, "/")
 
-	repos, err := a.resolveWorkspaceRepos(ctx, workspaceID)
+	root, err := a.resolveWorkspaceContentRoot(ctx, workspaceID, repoID)
 	if err != nil {
 		return nil, err
 	}
-	var repo *workspaceRepoRef
-	for i := range repos {
-		if repos[i].id == repoID {
-			repo = &repos[i]
-			break
-		}
-	}
-	if repo == nil {
-		return nil, fmt.Errorf("repo %q not found in workspace", repoID)
+	if !root.isRepo {
+		return listFileSystemDirectory(root.path, dirPath)
 	}
 
-	items, err := a.loadRepoFileIndex(ctx, *repo)
+	items, err := a.loadRepoFileIndex(ctx, workspaceRepoRef{
+		id:   root.id,
+		name: root.name,
+		path: root.path,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -1056,24 +873,12 @@ func (a *App) CreateWorkspaceRepoFile(input RepoFileCreateRequest) (RepoFileWrit
 		return RepoFileWriteResponse{}, fmt.Errorf("content too large (%d bytes, limit %d)", len(input.Content), maxRepoFileWriteBytes)
 	}
 
-	repos, err := a.resolveWorkspaceRepos(ctx, workspaceID)
+	root, err := a.resolveWorkspaceContentRoot(ctx, workspaceID, repoID)
 	if err != nil {
 		return RepoFileWriteResponse{}, err
 	}
-	var repo workspaceRepoRef
-	found := false
-	for _, candidate := range repos {
-		if candidate.id == repoID {
-			repo = candidate
-			found = true
-			break
-		}
-	}
-	if !found {
-		return RepoFileWriteResponse{}, fmt.Errorf("repo %q not found in workspace %q", repoID, workspaceID)
-	}
 
-	targetPath, _, err := resolveRepoFilePathForCreate(repo.path, input.Path)
+	targetPath, _, err := resolveRepoFilePathForCreate(root.path, input.Path)
 	if err != nil {
 		return RepoFileWriteResponse{}, err
 	}
@@ -1125,24 +930,12 @@ func (a *App) DeleteWorkspaceRepoFile(input RepoFileDeleteRequest) (RepoFileDele
 		return RepoFileDeleteResponse{}, errors.New("workspace and repo are required")
 	}
 
-	repos, err := a.resolveWorkspaceRepos(ctx, workspaceID)
+	root, err := a.resolveWorkspaceContentRoot(ctx, workspaceID, repoID)
 	if err != nil {
 		return RepoFileDeleteResponse{}, err
 	}
-	var repo workspaceRepoRef
-	found := false
-	for _, candidate := range repos {
-		if candidate.id == repoID {
-			repo = candidate
-			found = true
-			break
-		}
-	}
-	if !found {
-		return RepoFileDeleteResponse{}, fmt.Errorf("repo %q not found in workspace %q", repoID, workspaceID)
-	}
 
-	resolvedPath, normalizedPath, err := resolveRepoFilePath(repo.path, input.Path)
+	resolvedPath, normalizedPath, err := resolveRepoFilePath(root.path, input.Path)
 	if err != nil {
 		return RepoFileDeleteResponse{}, err
 	}

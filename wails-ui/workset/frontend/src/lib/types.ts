@@ -33,6 +33,13 @@ export type RepoImageContent = {
 	error?: string;
 };
 
+export type WorkspaceExtraRoot = {
+	id: string;
+	label: string;
+	relativePath: string;
+	gitDetected: boolean;
+};
+
 export type Repo = {
 	id: string;
 	name: string;

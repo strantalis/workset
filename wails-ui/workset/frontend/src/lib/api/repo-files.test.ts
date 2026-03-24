@@ -1,17 +1,25 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { clearRepoFileSearchCache, searchWorkspaceRepoFiles } from './repo-files';
-import { SearchWorkspaceRepoFiles } from '../../../bindings/workset/app';
+import {
+	clearRepoFileSearchCache,
+	clearWorkspaceExtraRootsCache,
+	listWorkspaceExtraRoots,
+	searchWorkspaceRepoFiles,
+} from './repo-files';
+import { ListWorkspaceExtraRoots, SearchWorkspaceRepoFiles } from '../../../bindings/workset/app';
 
 vi.mock('../../../bindings/workset/app', () => ({
 	SearchWorkspaceRepoFiles: vi.fn(),
+	ListWorkspaceExtraRoots: vi.fn(),
 	ReadWorkspaceRepoFile: vi.fn(),
 }));
 
 const mockedSearchWorkspaceRepoFiles = vi.mocked(SearchWorkspaceRepoFiles);
+const mockedListWorkspaceExtraRoots = vi.mocked(ListWorkspaceExtraRoots);
 
 describe('searchWorkspaceRepoFiles cache', () => {
 	beforeEach(() => {
 		clearRepoFileSearchCache();
+		clearWorkspaceExtraRootsCache();
 		vi.clearAllMocks();
 	});
 
@@ -74,5 +82,24 @@ describe('searchWorkspaceRepoFiles cache', () => {
 			query: '',
 			limit: 5000,
 		});
+	});
+
+	test('caches workspace extra roots', async () => {
+		mockedListWorkspaceExtraRoots.mockResolvedValue([
+			{
+				id: 'thread-alpha::extra::scratch',
+				label: 'scratch',
+				relativePath: 'scratch',
+				gitDetected: false,
+			},
+		]);
+
+		const first = await listWorkspaceExtraRoots('thread-alpha');
+		const second = await listWorkspaceExtraRoots('thread-alpha');
+
+		expect(first).toHaveLength(1);
+		expect(second).toHaveLength(1);
+		expect(mockedListWorkspaceExtraRoots).toHaveBeenCalledTimes(1);
+		expect(mockedListWorkspaceExtraRoots).toHaveBeenCalledWith('thread-alpha');
 	});
 });

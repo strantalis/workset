@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/strantalis/workset/pkg/worksetapi"
 )
 
 func TestListRepoFilesIncludesTrackedAndUntracked(t *testing.T) {
@@ -300,5 +303,97 @@ func TestReadRepoFileBytesRespectsLimit(t *testing.T) {
 	_, err = readRepoFileBytes(largePath, 64)
 	if err == nil {
 		t.Fatalf("expected readRepoFileBytes to fail for oversized file")
+	}
+}
+
+func setupRepoFilesAppWithWorkspace(
+	t *testing.T,
+	workspaceName string,
+	worksetYAML string,
+) (*App, string) {
+	t.Helper()
+
+	root := t.TempDir()
+	workspaceRoot := filepath.Join(root, "workspace")
+	if err := os.MkdirAll(workspaceRoot, 0o755); err != nil {
+		t.Fatalf("mkdir workspace root: %v", err)
+	}
+
+	configPath := filepath.Join(root, "config.yaml")
+	globalConfig := fmt.Sprintf(
+		"defaults:\n  workset_root: %s\nworksets:\n  %s:\n    path: %s\n",
+		root,
+		workspaceName,
+		workspaceRoot,
+	)
+	if err := os.WriteFile(configPath, []byte(globalConfig), 0o644); err != nil {
+		t.Fatalf("write global config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workspaceRoot, "workset.yaml"), []byte(worksetYAML), 0o644); err != nil {
+		t.Fatalf("write workset config: %v", err)
+	}
+
+	app := NewApp()
+	app.service = worksetapi.NewService(worksetapi.Options{ConfigPath: configPath})
+	return app, workspaceRoot
+}
+
+func TestListWorkspaceExtraRootsExcludesConfiguredRepos(t *testing.T) {
+	app, workspaceRoot := setupRepoFilesAppWithWorkspace(t, "ws-1", "name: ws-1\nrepos:\n  - name: repo-a\n    repo_dir: repo-a\n")
+
+	for _, dir := range []string{"repo-a", "scratch", "manual-repo", ".workset"} {
+		if err := os.MkdirAll(filepath.Join(workspaceRoot, dir), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(workspaceRoot, "manual-repo", ".git"), []byte("gitdir\n"), 0o644); err != nil {
+		t.Fatalf("write .git marker: %v", err)
+	}
+
+	roots, err := app.ListWorkspaceExtraRoots("ws-1")
+	if err != nil {
+		t.Fatalf("ListWorkspaceExtraRoots: %v", err)
+	}
+	if len(roots) != 2 {
+		t.Fatalf("expected 2 extra roots, got %+v", roots)
+	}
+	if roots[0].Label != "manual-repo" || !roots[0].GitDetected {
+		t.Fatalf("expected manual-repo git root, got %+v", roots[0])
+	}
+	if roots[1].Label != "scratch" || roots[1].GitDetected {
+		t.Fatalf("expected scratch non-git root, got %+v", roots[1])
+	}
+}
+
+func TestListRepoDirectorySupportsWorkspaceExtraRoots(t *testing.T) {
+	app, workspaceRoot := setupRepoFilesAppWithWorkspace(t, "ws-1", "name: ws-1\nrepos: []\n")
+
+	scratchRoot := filepath.Join(workspaceRoot, "scratch")
+	if err := os.MkdirAll(filepath.Join(scratchRoot, "docs"), 0o755); err != nil {
+		t.Fatalf("mkdir scratch/docs: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(scratchRoot, ".git"), 0o755); err != nil {
+		t.Fatalf("mkdir scratch/.git: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(scratchRoot, "notes.md"), []byte("# notes\n"), 0o644); err != nil {
+		t.Fatalf("write notes.md: %v", err)
+	}
+
+	entries, err := app.ListRepoDirectory(RepoDirectoryListRequest{
+		WorkspaceID: "ws-1",
+		RepoID:      buildWorkspaceExtraRootID("ws-1", "scratch"),
+		DirPath:     "",
+	})
+	if err != nil {
+		t.Fatalf("ListRepoDirectory: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %+v", entries)
+	}
+	if !entries[0].IsDir || entries[0].Name != "docs" {
+		t.Fatalf("expected docs directory first, got %+v", entries[0])
+	}
+	if entries[1].Name != "notes.md" || !entries[1].IsMarkdown {
+		t.Fatalf("expected markdown file second, got %+v", entries[1])
 	}
 }
