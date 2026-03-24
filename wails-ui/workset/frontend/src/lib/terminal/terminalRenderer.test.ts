@@ -19,11 +19,13 @@ describe('createTerminalInstance', () => {
 
 	it('uses the packaged ghostty-web defaults and terminal theme colors', async () => {
 		const { createTerminalInstance } = await import('./terminalRenderer');
+		const openLink = vi.fn();
 
 		await createTerminalInstance({
 			fontSize: 14,
 			cursorBlink: false,
 			getToken: (_name, fallback) => fallback,
+			openLink,
 		});
 
 		const options = terminalCtor.mock.calls[0]?.[0];
@@ -40,6 +42,7 @@ describe('createTerminalInstance', () => {
 				fontFamily: '"SF Mono", Menlo, Monaco, Consolas, monospace',
 				cursorStyle: 'bar',
 				cursorBlink: false,
+				openLink,
 			}),
 		);
 	});

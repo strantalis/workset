@@ -1,10 +1,4 @@
-import {
-	FitAddon,
-	OSC8LinkProvider,
-	Terminal,
-	UrlRegexProvider,
-} from '@strantalis/workset-ghostty-web';
-import type { TerminalLinkProviderLike, TerminalLinkRange } from './terminalEmulatorContracts';
+import { FitAddon, Terminal } from '@strantalis/workset-ghostty-web';
 import { createTerminalAttachOpenLifecycle } from './terminalAttachOpenLifecycle';
 import { createTerminalFontSizeController } from './terminalFontSizeController';
 import {
@@ -15,7 +9,6 @@ import {
 type TerminalInstanceOrchestrationDependencies = {
 	terminalHandles: Map<string, TerminalInstanceHandle>;
 	createTerminalInstance: (fontSize: number, cursorBlink: boolean) => Promise<Terminal>;
-	openURL: (url: string) => Promise<void>;
 	setStatusAndMessage: (id: string, status: string, message: string) => void;
 	setHealth: (id: string, state: 'unknown' | 'checking' | 'ok' | 'stale', message?: string) => void;
 	emitState: (id: string) => void;
@@ -29,50 +22,6 @@ type TerminalInstanceOrchestrationDependencies = {
 	markAttached: (id: string) => void;
 	traceAttach?: (id: string, event: string, details: Record<string, unknown>) => void;
 	traceRenderer?: (id: string, event: string, details: Record<string, unknown>) => void;
-};
-
-type LinkProviderSource = {
-	provideLinks: (
-		y: number,
-		callback: (links: { text: string; range: TerminalLinkRange }[] | undefined) => void,
-	) => void;
-	dispose?: () => void;
-};
-
-const wrapLinkProvider = (
-	provider: LinkProviderSource,
-	openURL: (url: string) => Promise<void>,
-): TerminalLinkProviderLike => ({
-	provideLinks: (row, callback) => {
-		provider.provideLinks(row, (links) => {
-			if (!links) {
-				callback(undefined);
-				return;
-			}
-			callback(
-				links.map((link) => ({
-					...link,
-					activate: (event: MouseEvent) => {
-						event.preventDefault();
-						event.stopPropagation();
-						void openURL(link.text).catch(() => undefined);
-					},
-				})),
-			);
-		});
-	},
-	dispose: () => {
-		provider.dispose?.();
-	},
-});
-
-const createLinkProviders = (
-	terminal: unknown,
-	openURL: (url: string) => Promise<void>,
-): TerminalLinkProviderLike[] => {
-	const osc8Provider = new OSC8LinkProvider(terminal as never);
-	const urlProvider = new UrlRegexProvider(terminal as never);
-	return [osc8Provider, urlProvider].map((provider) => wrapLinkProvider(provider, openURL));
 };
 
 export const createTerminalInstanceOrchestration = (
@@ -118,7 +67,6 @@ export const createTerminalInstanceOrchestration = (
 				terminalFontSizeController.getCursorBlink(),
 			),
 		createFitAddon: () => new FitAddon({ scrollbarWidth: 0 }),
-		createLinkProviders: (terminal) => createLinkProviders(terminal, deps.openURL),
 		onData: (id, data) => {
 			deps.setInput(id, true);
 			deps.sendInput(id, data);

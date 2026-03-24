@@ -32,7 +32,6 @@ describe('terminalInstanceOrchestration', () => {
 						cursorBlink: true,
 					},
 				}) as never,
-			openURL: vi.fn(async () => undefined),
 			setStatusAndMessage: vi.fn(),
 			setHealth: vi.fn(),
 			emitState: vi.fn(),

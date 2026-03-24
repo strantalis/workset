@@ -1,16 +1,6 @@
 import { get } from 'svelte/store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-type RegisteredLinkProvider = {
-	provideLinks: (
-		y: number,
-		callback: (
-			links: { text: string; range: unknown; activate?: (event: MouseEvent) => void }[] | undefined,
-		) => void,
-	) => void;
-	dispose?: () => void;
-};
-
 class MockTerminal {
 	public buffer = {
 		active: {
@@ -32,7 +22,6 @@ class MockTerminal {
 	public clear = vi.fn();
 	public reset = vi.fn();
 	public onDataCallback: ((data: string) => void) | null = null;
-	public registeredProviders: RegisteredLinkProvider[] = [];
 
 	constructor(options: Record<string, unknown>) {
 		this.options = options;
@@ -50,10 +39,6 @@ class MockTerminal {
 
 	open(container: HTMLElement): void {
 		this.element = { parentElement: container };
-	}
-
-	registerLinkProvider(provider: RegisteredLinkProvider): void {
-		this.registeredProviders.push(provider);
 	}
 
 	emitData(data: string): void {
@@ -118,28 +103,6 @@ class MockFitAddon {
 	proposeDimensions(): { cols: number; rows: number } {
 		return { cols: 80, rows: 24 };
 	}
-}
-
-class MockOSC8LinkProvider {
-	constructor(_terminal: MockTerminal) {}
-	provideLinks(
-		_row: number,
-		callback: (links: { text: string; range: unknown }[] | undefined) => void,
-	): void {
-		callback([{ text: 'https://osc8.example.com', range: {} }]);
-	}
-	dispose(): void {}
-}
-
-class MockUrlRegexProvider {
-	constructor(_terminal: MockTerminal) {}
-	provideLinks(
-		_row: number,
-		callback: (links: { text: string; range: unknown }[] | undefined) => void,
-	): void {
-		callback([{ text: 'https://urlregex.example.com', range: {} }]);
-	}
-	dispose(): void {}
 }
 
 const createdTerminals: MockTerminal[] = [];
@@ -208,8 +171,6 @@ vi.mock('@strantalis/workset-ghostty-web', () => ({
 	init: vi.fn(async () => undefined),
 	Terminal: MockTerminal,
 	FitAddon: MockFitAddon,
-	OSC8LinkProvider: MockOSC8LinkProvider,
-	UrlRegexProvider: MockUrlRegexProvider,
 }));
 
 vi.mock('@wailsio/runtime', () => runtimeMock);
@@ -364,25 +325,16 @@ describe('terminalService resize flow', () => {
 		});
 		expect(createdTerminals).toHaveLength(1);
 		const terminal = createdTerminals[0];
-		expect(terminal.registeredProviders.length).toBeGreaterThan(0);
+		const openLink = terminal.options.openLink as
+			| ((url: string, event: MouseEvent) => void | Promise<void>)
+			| undefined;
 
-		let activatedUrl = '';
-		const preventDefault = vi.fn();
-		const stopPropagation = vi.fn();
-		const provider = terminal.registeredProviders[0];
-		provider.provideLinks(0, (links) => {
-			links?.[0]?.activate?.({
-				preventDefault,
-				stopPropagation,
-			} as unknown as MouseEvent);
-			activatedUrl = links?.[0]?.text ?? '';
-		});
+		expect(openLink).toBeTypeOf('function');
+
+		await openLink?.('https://osc8.example.com', {} as MouseEvent);
 
 		await Promise.resolve();
 
-		expect(activatedUrl).toBe('https://osc8.example.com');
-		expect(preventDefault).toHaveBeenCalledTimes(1);
-		expect(stopPropagation).toHaveBeenCalledTimes(1);
 		expect(runtimeMock.Browser.OpenURL).toHaveBeenCalledWith('https://osc8.example.com');
 	});
 

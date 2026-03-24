@@ -7,6 +7,7 @@ export const createTerminalInstance = async (input: {
 	fontSize: number;
 	cursorBlink: boolean;
 	getToken: TokenResolver;
+	openLink?: (url: string, event: MouseEvent) => void | Promise<void>;
 }): Promise<Terminal> => {
 	await ensureGhosttyInitialized();
 
@@ -35,6 +36,7 @@ export const createTerminalInstance = async (input: {
 		fontSize: input.fontSize,
 		cursorStyle: 'bar',
 		cursorBlink: input.cursorBlink,
+		openLink: input.openLink,
 		theme: {
 			background: themeBackground,
 			foreground: themeForeground,
