@@ -46,6 +46,7 @@ type GitHubClient interface {
 	GetCheckRunAnnotations(ctx context.Context, owner, repo string, checkRunID int64) ([]CheckAnnotationJSON, error)
 	GetRepoDefaultBranch(ctx context.Context, owner, repo string) (string, error)
 	GetCurrentUser(ctx context.Context) (GitHubUserJSON, []string, error)
+	ListCurrentUserOrganizations(ctx context.Context) ([]string, error)
 	ReviewThreadMap(ctx context.Context, owner, repo string, number int) (map[string]threadInfo, error)
 	GetReviewThreadID(ctx context.Context, commentNodeID string) (string, error)
 	ResolveReviewThread(ctx context.Context, threadID string, resolve bool) (bool, error)

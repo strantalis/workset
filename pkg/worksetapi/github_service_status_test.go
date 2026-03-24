@@ -2,6 +2,7 @@ package worksetapi
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -75,6 +76,12 @@ func TestSearchGitHubRepositoriesReturnsMappedRepositories(t *testing.T) {
 				},
 			}, nil
 		},
+		getCurrentUserFunc: func(_ context.Context) (GitHubUserJSON, []string, error) {
+			return GitHubUserJSON{Login: "strantalis"}, nil, nil
+		},
+		listCurrentUserOrgsFunc: func(_ context.Context) ([]string, error) {
+			return []string{"acme"}, nil
+		},
 	}
 	provider := &readHelpersGitHubProvider{client: client}
 	svc := &Service{github: provider}
@@ -100,6 +107,99 @@ func TestSearchGitHubRepositoriesReturnsMappedRepositories(t *testing.T) {
 	}
 	if len(client.searchRepositoriesCalls) != 1 {
 		t.Fatalf("expected one search call, got %d", len(client.searchRepositoriesCalls))
+	}
+}
+
+func TestSearchGitHubRepositoriesRanksSelfThenOrganizationsThenOthers(t *testing.T) {
+	client := &readHelpersGitHubClient{
+		searchRepositoriesFunc: func(_ context.Context, _ string, _ int) ([]GitHubRepositorySearchResult, error) {
+			return []GitHubRepositorySearchResult{
+				{Name: "external-a", FullName: "other/external-a", Owner: "other"},
+				{Name: "org-a", FullName: "acme/org-a", Owner: "acme"},
+				{Name: "self-a", FullName: "strantalis/self-a", Owner: "strantalis"},
+				{Name: "org-b", FullName: "acme/org-b", Owner: "acme"},
+				{Name: "self-b", FullName: "strantalis/self-b", Owner: "strantalis"},
+				{Name: "external-b", FullName: "else/external-b", Owner: "else"},
+			}, nil
+		},
+		getCurrentUserFunc: func(_ context.Context) (GitHubUserJSON, []string, error) {
+			return GitHubUserJSON{Login: "strantalis"}, nil, nil
+		},
+		listCurrentUserOrgsFunc: func(_ context.Context) ([]string, error) {
+			return []string{"acme"}, nil
+		},
+	}
+	svc := &Service{github: &readHelpersGitHubProvider{client: client}}
+
+	result, err := svc.SearchGitHubRepositories(context.Background(), GitHubRepoSearchInput{
+		Query: "workset",
+		Limit: 8,
+	})
+	if err != nil {
+		t.Fatalf("SearchGitHubRepositories: %v", err)
+	}
+
+	got := make([]string, 0, len(result.Repositories))
+	for _, repository := range result.Repositories {
+		got = append(got, repository.FullName)
+	}
+	want := []string{
+		"strantalis/self-a",
+		"strantalis/self-b",
+		"acme/org-a",
+		"acme/org-b",
+		"other/external-a",
+		"else/external-b",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("unexpected ranked result count: got=%d want=%d", len(got), len(want))
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("unexpected ranking at index %d: got=%v want=%v", index, got, want)
+		}
+	}
+}
+
+func TestSearchGitHubRepositoriesFallsBackToOriginalOrderWhenOrgLookupFails(t *testing.T) {
+	client := &readHelpersGitHubClient{
+		searchRepositoriesFunc: func(_ context.Context, _ string, _ int) ([]GitHubRepositorySearchResult, error) {
+			return []GitHubRepositorySearchResult{
+				{Name: "external-a", FullName: "other/external-a", Owner: "other"},
+				{Name: "self-a", FullName: "strantalis/self-a", Owner: "strantalis"},
+				{Name: "org-a", FullName: "acme/org-a", Owner: "acme"},
+			}, nil
+		},
+		getCurrentUserFunc: func(_ context.Context) (GitHubUserJSON, []string, error) {
+			return GitHubUserJSON{Login: "strantalis"}, nil, nil
+		},
+		listCurrentUserOrgsFunc: func(_ context.Context) ([]string, error) {
+			return nil, errors.New("org lookup failed")
+		},
+	}
+	svc := &Service{github: &readHelpersGitHubProvider{client: client}}
+
+	result, err := svc.SearchGitHubRepositories(context.Background(), GitHubRepoSearchInput{
+		Query: "workset",
+		Limit: 8,
+	})
+	if err != nil {
+		t.Fatalf("SearchGitHubRepositories: %v", err)
+	}
+
+	got := make([]string, 0, len(result.Repositories))
+	for _, repository := range result.Repositories {
+		got = append(got, repository.FullName)
+	}
+	want := []string{
+		"other/external-a",
+		"strantalis/self-a",
+		"acme/org-a",
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("expected original ordering when org lookup fails: got=%v want=%v", got, want)
+		}
 	}
 }
 

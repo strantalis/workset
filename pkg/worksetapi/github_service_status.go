@@ -284,6 +284,7 @@ func (s *Service) SearchGitHubRepositories(ctx context.Context, input GitHubRepo
 	if err != nil {
 		return GitHubRepoSearchResult{}, ValidationError{Message: formatGitHubAPIError(err)}
 	}
+	repositories = s.rankGitHubRepositoriesByOwnership(ctx, client, repositories)
 
 	items := make([]GitHubRepoSearchItemJSON, 0, len(repositories))
 	for _, repository := range repositories {
@@ -305,6 +306,74 @@ func (s *Service) SearchGitHubRepositories(ctx context.Context, input GitHubRepo
 	}
 
 	return GitHubRepoSearchResult{Repositories: items}, nil
+}
+
+func (s *Service) rankGitHubRepositoriesByOwnership(
+	ctx context.Context,
+	client GitHubClient,
+	repositories []GitHubRepositorySearchResult,
+) []GitHubRepositorySearchResult {
+	if len(repositories) < 2 || client == nil {
+		return repositories
+	}
+
+	user, _, err := client.GetCurrentUser(ctx)
+	if err != nil {
+		s.logGitHubRepoSearchRankingFailure("current user", err)
+		return repositories
+	}
+	login := strings.TrimSpace(user.Login)
+	if login == "" {
+		return repositories
+	}
+
+	orgs, err := client.ListCurrentUserOrganizations(ctx)
+	if err != nil {
+		s.logGitHubRepoSearchRankingFailure("organizations", err)
+		return repositories
+	}
+
+	orgSet := make(map[string]struct{}, len(orgs))
+	for _, org := range orgs {
+		org = strings.ToLower(strings.TrimSpace(org))
+		if org == "" {
+			continue
+		}
+		orgSet[org] = struct{}{}
+	}
+
+	selfOwner := strings.ToLower(login)
+	selfRepos := make([]GitHubRepositorySearchResult, 0, len(repositories))
+	orgRepos := make([]GitHubRepositorySearchResult, 0, len(repositories))
+	otherRepos := make([]GitHubRepositorySearchResult, 0, len(repositories))
+	for _, repository := range repositories {
+		owner := strings.ToLower(strings.TrimSpace(repository.Owner))
+		switch {
+		case owner == selfOwner:
+			selfRepos = append(selfRepos, repository)
+		case owner != "":
+			if _, ok := orgSet[owner]; ok {
+				orgRepos = append(orgRepos, repository)
+				continue
+			}
+			otherRepos = append(otherRepos, repository)
+		default:
+			otherRepos = append(otherRepos, repository)
+		}
+	}
+
+	ranked := make([]GitHubRepositorySearchResult, 0, len(repositories))
+	ranked = append(ranked, selfRepos...)
+	ranked = append(ranked, orgRepos...)
+	ranked = append(ranked, otherRepos...)
+	return ranked
+}
+
+func (s *Service) logGitHubRepoSearchRankingFailure(step string, err error) {
+	if s.logf == nil || err == nil {
+		return
+	}
+	s.logf("workset: repo search ownership ranking skipped while loading %s: %v", step, err)
 }
 
 // GetRepoLocalStatus returns the local uncommitted/ahead/behind status for a repo.

@@ -62,6 +62,8 @@ type readHelpersGitHubClient struct {
 	listPullRequestsCalls     []readHelpersPRCall
 	listCheckRunsCalls        []readHelpersCheckRunCall
 	searchRepositoriesCalls   []readHelpersRepoSearchCall
+	currentUserCalls          int
+	currentUserOrgCalls       int
 
 	getPullRequestFunc         func(ctx context.Context, owner, repo string, number int) (GitHubPullRequest, error)
 	getRepoDefaultBranchFunc   func(ctx context.Context, owner, repo string) (string, error)
@@ -70,6 +72,8 @@ type readHelpersGitHubClient struct {
 	listPullRequestsFunc       func(ctx context.Context, owner, repo, head, state string, page, perPage int) ([]GitHubPullRequest, int, error)
 	listCheckRunsFunc          func(ctx context.Context, owner, repo, ref string, page, perPage int) ([]PullRequestCheckJSON, int, error)
 	searchRepositoriesFunc     func(ctx context.Context, query string, perPage int) ([]GitHubRepositorySearchResult, error)
+	getCurrentUserFunc         func(ctx context.Context) (GitHubUserJSON, []string, error)
+	listCurrentUserOrgsFunc    func(ctx context.Context) ([]string, error)
 }
 
 func (c *readHelpersGitHubClient) CreatePullRequest(_ context.Context, _ string, _ string, _ GitHubNewPullRequest) (GitHubPullRequest, error) {
@@ -167,8 +171,20 @@ func (c *readHelpersGitHubClient) GetRepoDefaultBranch(ctx context.Context, owne
 	return c.getRepoDefaultBranchFunc(ctx, owner, repo)
 }
 
-func (c *readHelpersGitHubClient) GetCurrentUser(_ context.Context) (GitHubUserJSON, []string, error) {
-	return GitHubUserJSON{}, nil, nil
+func (c *readHelpersGitHubClient) GetCurrentUser(ctx context.Context) (GitHubUserJSON, []string, error) {
+	c.currentUserCalls++
+	if c.getCurrentUserFunc == nil {
+		return GitHubUserJSON{}, nil, nil
+	}
+	return c.getCurrentUserFunc(ctx)
+}
+
+func (c *readHelpersGitHubClient) ListCurrentUserOrganizations(ctx context.Context) ([]string, error) {
+	c.currentUserOrgCalls++
+	if c.listCurrentUserOrgsFunc == nil {
+		return nil, nil
+	}
+	return c.listCurrentUserOrgsFunc(ctx)
 }
 
 func (c *readHelpersGitHubClient) ReviewThreadMap(_ context.Context, _ string, _ string, _ int) (map[string]threadInfo, error) {

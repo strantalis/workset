@@ -348,6 +348,30 @@ func (c *githubPATClient) GetCurrentUser(ctx context.Context) (GitHubUserJSON, [
 	}, parseGitHubScopes(resp), nil
 }
 
+func (c *githubPATClient) ListCurrentUserOrganizations(ctx context.Context) ([]string, error) {
+	orgs := make([]string, 0)
+	opts := &github.ListOptions{PerPage: 100}
+	for {
+		items, resp, err := c.client.Organizations.List(ctx, "", opts)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range items {
+			if item == nil {
+				continue
+			}
+			login := strings.TrimSpace(item.GetLogin())
+			if login != "" {
+				orgs = append(orgs, login)
+			}
+		}
+		if resp == nil || resp.NextPage == 0 {
+			return orgs, nil
+		}
+		opts.Page = resp.NextPage
+	}
+}
+
 func (c *githubPATClient) ReviewThreadMap(ctx context.Context, owner, repo string, number int) (map[string]threadInfo, error) {
 	return graphQLReviewThreadMap(ctx, c.token, c.host, owner, repo, number)
 }

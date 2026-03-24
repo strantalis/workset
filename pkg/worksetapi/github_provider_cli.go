@@ -374,6 +374,40 @@ func (c *githubCLIClient) GetCurrentUser(ctx context.Context) (GitHubUserJSON, [
 	return GitHubUserJSON(user), nil, nil
 }
 
+func (c *githubCLIClient) ListCurrentUserOrganizations(ctx context.Context) ([]string, error) {
+	orgs := make([]string, 0)
+	page := 1
+	for {
+		params := url.Values{}
+		params.Set("per_page", "100")
+		params.Set("page", strconv.Itoa(page))
+		path := "user/orgs?" + params.Encode()
+		resp, err := c.rest.RequestWithContext(ctx, http.MethodGet, path, nil)
+		if err != nil {
+			return nil, wrapAuthError(err)
+		}
+		var items []struct {
+			Login string `json:"login"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&items)
+		_ = resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range items {
+			login := strings.TrimSpace(item.Login)
+			if login != "" {
+				orgs = append(orgs, login)
+			}
+		}
+		next := nextPageFromLink(resp.Header.Get("Link"))
+		if next == 0 {
+			return orgs, nil
+		}
+		page = next
+	}
+}
+
 func (c *githubCLIClient) ReviewThreadMap(ctx context.Context, owner, repo string, number int) (map[string]threadInfo, error) {
 	threadMap := make(map[string]threadInfo)
 	var cursor *string
