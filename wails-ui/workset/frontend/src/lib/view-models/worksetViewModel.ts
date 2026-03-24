@@ -65,6 +65,7 @@ export type ExplorerWorksetSummary = {
 export type WorksetThreadGroup = {
 	id: string;
 	label: string;
+	repos: string[];
 	threads: Workspace[];
 };
 
@@ -289,8 +290,14 @@ export const mapWorkspacesToThreadGroups = (workspaces: Workspace[]): WorksetThr
 	const byId = new Map<string, WorksetThreadGroup>();
 	for (const workspace of workspaces) {
 		const { id, label } = deriveWorksetIdentity(workspace);
+		const repoNames = workspace.repos.map((repo) => repo.name);
 		const existing = byId.get(id);
 		if (existing) {
+			for (const repoName of repoNames) {
+				if (!existing.repos.includes(repoName)) {
+					existing.repos.push(repoName);
+				}
+			}
 			if (workspace.placeholder !== true) {
 				existing.threads.push(workspace);
 			}
@@ -299,12 +306,14 @@ export const mapWorkspacesToThreadGroups = (workspaces: Workspace[]): WorksetThr
 		byId.set(id, {
 			id,
 			label,
+			repos: [...new Set(repoNames)],
 			threads: workspace.placeholder === true ? [] : [workspace],
 		});
 	}
 	return [...byId.values()]
 		.map((group) => ({
 			...group,
+			repos: [...group.repos],
 			threads: [...group.threads],
 		}))
 		.sort((left, right) => left.label.localeCompare(right.label));

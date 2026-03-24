@@ -12,14 +12,17 @@
 	interface Props {
 		activeWorkspaceId: string | null;
 		worksetGroups: WorksetThreadGroup[];
+		selectedWorksetId?: string | null;
 		threadSummaryMap: Map<string, ThreadShellSummary>;
 		popoutMode?: boolean;
 		useGlobalExplorer?: boolean;
 		preferredSurface?: SurfaceTab;
 		pendingFileSelection?: { repoId: string; path: string } | null;
 		onSelectWorkspace: (workspaceId: string) => void;
+		onSelectWorkset?: (worksetId: string) => void;
 		onCreateWorkspace: () => void;
 		onCreateThread?: (worksetId: string) => void;
+		onAddRepo?: (worksetId: string) => void;
 		onSurfaceChange?: (surface: SurfaceTab) => void;
 		onFileSelectionHandled?: () => void;
 	}
@@ -27,14 +30,17 @@
 	const {
 		activeWorkspaceId,
 		worksetGroups,
+		selectedWorksetId = null,
 		threadSummaryMap,
 		popoutMode = false,
 		useGlobalExplorer = false,
 		preferredSurface = 'terminal',
 		pendingFileSelection = null,
 		onSelectWorkspace,
+		onSelectWorkset = () => {},
 		onCreateWorkspace,
 		onCreateThread = () => {},
+		onAddRepo = () => {},
 		onSurfaceChange = () => {},
 		onFileSelectionHandled = () => {},
 	}: Props = $props();
@@ -64,6 +70,10 @@
 	});
 
 	const selectedWorkset = $derived.by(() => {
+		if (selectedWorksetId) {
+			const match = worksetGroups.find((group) => group.id === selectedWorksetId);
+			if (match) return match;
+		}
 		if (activeWorksetId) {
 			const match = worksetGroups.find((group) => group.id === activeWorksetId);
 			if (match) return match;
@@ -72,6 +82,7 @@
 	});
 
 	const visibleThreads = $derived(selectedWorkset?.threads ?? []);
+	const selectedWorksetHasThreads = $derived((selectedWorkset?.threads.length ?? 0) > 0);
 	const showThreadPanel = $derived(!useGlobalExplorer);
 	const showWorkbenchHeader = $derived(!useGlobalExplorer);
 	const showSurfaceTabs = $derived(!useGlobalExplorer);
@@ -133,6 +144,20 @@
 							</div>
 						</button>
 					{/each}
+					{#if selectedWorkset && !selectedWorksetHasThreads}
+						<button
+							type="button"
+							class="thread-item thread-item-workset"
+							class:active={selectedWorksetId === selectedWorkset.id}
+							onclick={() => onSelectWorkset(selectedWorkset.id)}
+						>
+							<div class="thread-name">{selectedWorkset.label}</div>
+							<div class="thread-meta">
+								<span>0 threads</span>
+								<span>{selectedWorkset.repos.length} repos</span>
+							</div>
+						</button>
+					{/if}
 					{#if !popoutMode}
 						<button
 							type="button"
@@ -235,6 +260,36 @@
 						</div>
 					{/if}
 				</div>
+			{:else if selectedWorkset && !selectedWorksetHasThreads}
+				<div class="spaces-empty-state spaces-empty-workset">
+					<p class="spaces-empty-eyebrow">Workset</p>
+					<h3>{selectedWorkset.label}</h3>
+					<p>No threads yet. Create the first thread or add repos to shape this workset.</p>
+					<div class="spaces-empty-actions">
+						<button
+							type="button"
+							class="create-btn"
+							onclick={() => onCreateThread(selectedWorkset.id)}
+						>
+							<Plus size={14} />
+							New Thread
+						</button>
+						<button
+							type="button"
+							class="create-btn create-btn-secondary"
+							onclick={() => onAddRepo(selectedWorkset.id)}
+						>
+							<FolderTree size={14} />
+							Add Repo
+						</button>
+					</div>
+					{#if selectedWorkset.repos.length > 0}
+						<p class="spaces-empty-meta">
+							{selectedWorkset.repos.length} repo{selectedWorkset.repos.length === 1 ? '' : 's'} ready
+							in this workset.
+						</p>
+					{/if}
+				</div>
 			{:else}
 				<div class="spaces-empty-state">
 					<p>Select a thread to continue.</p>
@@ -281,6 +336,10 @@
 
 	.create-btn:hover {
 		border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+	}
+
+	.create-btn-secondary {
+		background: transparent;
 	}
 
 	.spaces-workbench {
@@ -353,6 +412,10 @@
 		background: var(--active-accent-bg);
 		border-color: var(--active-accent-border);
 		color: var(--text);
+	}
+
+	.thread-item-workset {
+		border-style: dashed;
 	}
 
 	.thread-create-row {
@@ -506,6 +569,46 @@
 
 	.surface-tab-icon {
 		color: var(--accent);
+	}
+
+	.spaces-empty-state {
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 10px;
+		padding: 24px;
+		text-align: center;
+		color: var(--muted);
+	}
+
+	.spaces-empty-state p,
+	.spaces-empty-state h3 {
+		margin: 0;
+	}
+
+	.spaces-empty-workset h3 {
+		color: var(--text);
+		font-size: var(--text-xl);
+	}
+
+	.spaces-empty-eyebrow {
+		font-size: var(--text-xs);
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+
+	.spaces-empty-actions {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 10px;
+	}
+
+	.spaces-empty-meta {
+		font-size: var(--text-xs);
 	}
 
 	.surface-tab-badge {

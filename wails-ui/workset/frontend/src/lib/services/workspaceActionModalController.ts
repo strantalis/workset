@@ -1,6 +1,8 @@
 import type { HookExecution } from '../types';
+import type { Workspace } from '../types';
 import type { WorkspaceActionMode } from './workspaceActionContextService';
 import { evaluateHookTransition, type WorkspaceActionPendingHook } from './workspaceActionService';
+import { deriveWorksetIdentity } from '../view-models/worksetViewModel';
 
 export type WorkspaceActionModalPhase = 'form' | 'hook-results';
 
@@ -36,6 +38,17 @@ export type HookTransitionResolution = {
 	success: string | null;
 	shouldClose: boolean;
 	shouldAutoClose: boolean;
+};
+
+type PostCreateSelectionInput = {
+	workspaceName: string;
+	worksetOnly: boolean;
+	workspaces: Workspace[];
+};
+
+export type PostCreateSelectionResolution = {
+	workspaceId: string | null;
+	worksetId: string | null;
 };
 
 type ModalSubtitleInput = {
@@ -145,6 +158,43 @@ export const deriveWorkspaceActionModalSize = (
 	if (mode === 'create-thread') return 'lg';
 	if (mode === 'create') return 'wide';
 	return 'md';
+};
+
+const normalizeWorksetIdentity = (value: string): string =>
+	value.trim().toLowerCase().replace(/\s+/g, '-');
+
+export const resolvePostCreateSelection = ({
+	workspaceName,
+	worksetOnly,
+	workspaces,
+}: PostCreateSelectionInput): PostCreateSelectionResolution => {
+	if (!worksetOnly) {
+		return {
+			workspaceId: workspaceName,
+			worksetId: null,
+		};
+	}
+
+	const normalizedName = workspaceName.trim().toLowerCase();
+	const matchedWorkspace = workspaces.find((workspace) => {
+		const identity = deriveWorksetIdentity(workspace);
+		const candidates = [
+			workspace.name,
+			workspace.workset,
+			workspace.worksetLabel,
+			identity.label,
+			identity.id,
+			workspace.worksetKey,
+		];
+		return candidates.some((candidate) => candidate?.trim().toLowerCase() === normalizedName);
+	});
+
+	return {
+		workspaceId: null,
+		worksetId: matchedWorkspace
+			? deriveWorksetIdentity(matchedWorkspace).id
+			: `workset:${normalizeWorksetIdentity(workspaceName)}`,
+	};
 };
 
 export const resolveRemovalState = (input: RemovalStateInput): RemovalStateResolution => ({

@@ -10,6 +10,7 @@
 		applyTrackedPullRequest,
 		applyTrackedPullRequestReviewComments,
 		clearRepo,
+		clearWorkspace,
 		loadWorkspaces,
 		loadingWorkspaces,
 		selectWorkspace,
@@ -149,6 +150,7 @@
 	let popoutSelectionApplied = $state(false);
 	let workbenchSurface = $state<'terminal' | 'pull-requests'>('terminal');
 	let warmWorksetIds = $state<string[]>([]);
+	let selectedWorksetId = $state<string | null>(null);
 
 	const getWorksetThreads = (workspaceId: string): Workspace[] => {
 		const target = $workspaces.find(
@@ -223,11 +225,9 @@
 		() => new Map(threadShellSummaries.map((summary) => [summary.id, summary])),
 	);
 	const explorerWorksets = $derived.by(() =>
-		mapWorkspacesToExplorerWorksets(threadVisibleWorkspaces, shortcutMap),
+		mapWorkspacesToExplorerWorksets(visibleWorkspaces, shortcutMap),
 	);
-	const worksetThreadGroups = $derived.by(() =>
-		mapWorkspacesToThreadGroups(threadVisibleWorkspaces),
-	);
+	const worksetThreadGroups = $derived.by(() => mapWorkspacesToThreadGroups(visibleWorkspaces));
 	const activeSummary = $derived.by(
 		() => worksetSummaries.find((summary) => summary.id === $activeWorkspaceId) ?? null,
 	);
@@ -268,11 +268,13 @@
 
 	const handleSelectWorkspace = (workspaceId: string): void => {
 		const workspace = visibleWorkspaces.find((entry) => entry.id === workspaceId);
+		if (!workspace) return;
 		if (workspace?.placeholder) return;
 		if (fixedWorkspaceId && !visibleWorkspaces.some((workspace) => workspace.id === workspaceId)) {
 			return;
 		}
 		const previousWorkspaceId = $activeWorkspaceId;
+		selectedWorksetId = deriveWorksetIdentity(workspace).id;
 		selectWorkspace(workspaceId);
 		if (
 			shouldClearPreviousWorkspaceTerminalActivity({
@@ -292,6 +294,7 @@
 			return;
 		}
 		const previousWorkspaceId = $activeWorkspaceId;
+		selectedWorksetId = deriveWorksetIdentity(workspace).id;
 		selectWorkspace(workspaceId);
 		if (
 			shouldClearPreviousWorkspaceTerminalActivity({
@@ -304,6 +307,20 @@
 		}
 		currentView = 'workspaces';
 		clearRepo();
+	};
+
+	const handleSelectWorkset = (worksetId: string): void => {
+		const selected = worksetThreadGroups.find((group) => group.id === worksetId);
+		if (!selected) return;
+		selectedWorksetId = selected.id;
+		currentView = 'workspaces';
+		clearRepo();
+		const firstThread = selected.threads[0];
+		if (firstThread) {
+			handleSelectWorkspace(firstThread.id);
+			return;
+		}
+		clearWorkspace();
 	};
 
 	const handleCreateWorkspace = (): void => {
@@ -560,11 +577,24 @@
 	});
 
 	$effect(() => {
+		if (selectedWorksetId && !worksetThreadGroups.some((group) => group.id === selectedWorksetId)) {
+			selectedWorksetId = null;
+		}
+	});
+
+	$effect(() => {
 		const activeWorksetId = resolveWorksetIdForWorkspace(
 			threadVisibleWorkspaces,
 			$activeWorkspaceId,
 		);
 		warmWorksetIds = rememberWorksetId(warmWorksetIds, activeWorksetId);
+	});
+
+	$effect(() => {
+		if (!$activeWorkspaceId) return;
+		const active = threadVisibleWorkspaces.find((workspace) => workspace.id === $activeWorkspaceId);
+		if (!active) return;
+		selectedWorksetId = deriveWorksetIdentity(active).id;
 	});
 
 	$effect(() => {
@@ -584,6 +614,7 @@
 			return;
 		}
 		selectWorkspace(target.id);
+		selectedWorksetId = deriveWorksetIdentity(target).id;
 		clearRepo();
 		if (!popoutViews.has(currentView)) {
 			currentView = 'workspaces';
@@ -623,6 +654,7 @@
 					<ExplorerPanel
 						activeWorkspaceId={$activeWorkspaceId}
 						groupedWorksets={explorerWorksets}
+						{selectedWorksetId}
 						lockWorksetSelection={popoutMode}
 						canManageRepos={!popoutMode}
 						activeView={currentView === 'skill-registry' ? 'skill-registry' : 'workspaces'}
@@ -630,6 +662,7 @@
 						filesActive={workbenchSurface === 'pull-requests'}
 						activeTerminalWorkspaceIds={terminalActivity.activeIds}
 						onSelectWorkspace={handleSelectWorkspace}
+						onSelectWorkset={handleSelectWorkset}
 						onOpenFiles={handleOpenFiles}
 						onOpenSkills={() =>
 							setView(currentView === 'skill-registry' ? 'workspaces' : 'skill-registry')}
@@ -695,6 +728,7 @@
 								<SpacesWorkbenchView
 									activeWorkspaceId={$activeWorkspaceId}
 									worksetGroups={worksetThreadGroups}
+									{selectedWorksetId}
 									{threadSummaryMap}
 									{popoutMode}
 									useGlobalExplorer={showExplorer}
@@ -702,8 +736,10 @@
 									{pendingFileSelection}
 									onSurfaceChange={(surface) => (workbenchSurface = surface)}
 									onSelectWorkspace={handleSelectWorkspace}
+									onSelectWorkset={handleSelectWorkset}
 									onCreateWorkspace={handleCreateWorkspace}
 									onCreateThread={handleCreateThread}
+									onAddRepo={handleAddRepoToWorkset}
 									onFileSelectionHandled={() => (pendingFileSelection = null)}
 								/>
 							{/if}
@@ -765,6 +801,7 @@
 				repoName={workspaceAction.repoName}
 				worksetName={workspaceAction.worksetName}
 				worksetRepos={workspaceAction.worksetRepos}
+				selectWorkset={handleSelectWorkset}
 			/>
 		</aside>
 	{/if}

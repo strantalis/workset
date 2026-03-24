@@ -30,7 +30,9 @@
 		activeView?: 'workspaces' | 'skill-registry';
 		activeSurface?: 'terminal' | 'pull-requests';
 		filesActive?: boolean;
+		selectedWorksetId?: string | null;
 		onSelectWorkspace: (workspaceId: string) => void;
+		onSelectWorkset?: (worksetId: string) => void;
 		onCreateWorkspace?: () => void;
 		onCreateThread?: (worksetId: string) => void;
 		onAddRepo?: (worksetId: string) => void;
@@ -50,7 +52,9 @@
 		activeView = 'workspaces',
 		activeSurface = 'terminal',
 		filesActive = false,
+		selectedWorksetId: selectedWorksetIdProp = undefined,
 		onSelectWorkspace,
+		onSelectWorkset = () => {},
 		onCreateWorkspace: onCreateWorkspaceProp,
 		onCreateThread: onCreateThreadProp,
 		onAddRepo: onAddRepoProp,
@@ -89,7 +93,14 @@
 		return active?.id ?? null;
 	});
 
-	let selectedWorksetId = $state<string | null>(null);
+	let localSelectedWorksetId = $state<string | null>(null);
+
+	const selectedWorksetId = $derived.by(() => {
+		const preferred = selectedWorksetIdProp ?? localSelectedWorksetId;
+		if (preferred) return preferred;
+		if (activeWorksetId) return activeWorksetId;
+		return groupedWorksets[0]?.id ?? null;
+	});
 
 	const selectedWorkset = $derived.by<ExplorerWorksetSummary | null>(() => {
 		if (selectedWorksetId) {
@@ -161,7 +172,10 @@
 	const selectWorkset = (worksetId: string): void => {
 		const workset = groupedWorksets.find((item) => item.id === worksetId);
 		if (!workset) return;
-		selectedWorksetId = workset.id;
+		if (selectedWorksetIdProp === undefined) {
+			localSelectedWorksetId = workset.id;
+		}
+		onSelectWorkset(workset.id);
 		const thread = workset.threads[0];
 		if (thread) {
 			selectThread(thread.id);
@@ -203,16 +217,17 @@
 
 	$effect(() => {
 		if (groupedWorksets.length === 0) {
-			selectedWorksetId = null;
+			localSelectedWorksetId = null;
 			switcherOpen = false;
 			switcherQuery = '';
 			switcherFocusIndex = 0;
 			return;
 		}
 		if (activeWorkspaceId) return;
+		if (selectedWorksetIdProp !== undefined) return;
 
-		if (selectedWorksetId) {
-			const selected = groupedWorksets.find((item) => item.id === selectedWorksetId);
+		if (localSelectedWorksetId) {
+			const selected = groupedWorksets.find((item) => item.id === localSelectedWorksetId);
 			if (selected) {
 				const firstSelectedThread = selected.threads[0];
 				if (firstSelectedThread) onSelectWorkspace(firstSelectedThread.id);
@@ -225,8 +240,8 @@
 	});
 
 	$effect(() => {
-		if (activeWorksetId) {
-			selectedWorksetId = activeWorksetId;
+		if (selectedWorksetIdProp === undefined && activeWorksetId) {
+			localSelectedWorksetId = activeWorksetId;
 		}
 	});
 

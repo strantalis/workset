@@ -40,6 +40,7 @@
 		deriveWorkspaceActionModalTitle,
 		resetWorkspaceActionFlow,
 		resolveMutationHookTransition,
+		resolvePostCreateSelection,
 		resolveRemovalState,
 		shouldRefreshRemoveRepoStatus,
 	} from '../services/workspaceActionModalController';
@@ -79,6 +80,7 @@
 		repoName?: string | null;
 		worksetName?: string | null;
 		worksetRepos?: string[];
+		selectWorkset?: (worksetId: string) => void;
 	}
 
 	const {
@@ -89,6 +91,7 @@
 		repoName = null,
 		worksetName = null,
 		worksetRepos = [],
+		selectWorkset = () => {},
 	}: Props = $props();
 
 	let workspace: Workspace | null = $state(null);
@@ -573,7 +576,17 @@
 				await setWorkspaceDescription(result.workspaceName, description.trim());
 			}
 			await loadWorkspaces(true);
-			selectWorkspace(result.workspaceName);
+			const selection = resolvePostCreateSelection({
+				workspaceName: result.workspaceName,
+				worksetOnly: !plan.isThreadMode,
+				workspaces: get(workspaces),
+			});
+			if (selection.worksetId) {
+				selectWorkset(selection.worksetId);
+			}
+			if (selection.workspaceId) {
+				selectWorkspace(selection.workspaceId);
+			}
 			warnings = result.warnings;
 			applyMutationTransition(
 				resolveMutationHookTransition({

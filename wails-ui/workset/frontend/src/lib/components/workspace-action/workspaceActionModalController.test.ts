@@ -5,6 +5,7 @@ import {
 	deriveWorkspaceActionModalTitle,
 	resetWorkspaceActionFlow,
 	resolveMutationHookTransition,
+	resolvePostCreateSelection,
 	resolveRemovalState,
 	shouldRefreshRemoveRepoStatus,
 } from '../../services/workspaceActionModalController';
@@ -150,5 +151,47 @@ describe('workspaceActionModalController', () => {
 		expect(shouldRefreshRemoveRepoStatus(true, false)).toBe(true);
 		expect(shouldRefreshRemoveRepoStatus(true, true)).toBe(false);
 		expect(shouldRefreshRemoveRepoStatus(false, false)).toBe(false);
+	});
+
+	it('focuses the created workset after workset-only create', () => {
+		expect(
+			resolvePostCreateSelection({
+				workspaceName: 'Platform Core',
+				worksetOnly: true,
+				workspaces: [
+					{
+						id: 'platform-core',
+						name: 'Platform Core',
+						path: '',
+						workset: 'Platform Core',
+						worksetKey: 'workset:platform-core',
+						worksetLabel: 'Platform Core',
+						placeholder: true,
+						archived: false,
+						repos: [],
+						pinned: false,
+						pinOrder: 0,
+						expanded: false,
+						lastUsed: '',
+					},
+				],
+			}),
+		).toEqual({
+			workspaceId: null,
+			worksetId: 'workset:platform-core',
+		});
+	});
+
+	it('keeps thread create selection on the new workspace', () => {
+		expect(
+			resolvePostCreateSelection({
+				workspaceName: 'oauth2-migration',
+				worksetOnly: false,
+				workspaces: [],
+			}),
+		).toEqual({
+			workspaceId: 'oauth2-migration',
+			worksetId: null,
+		});
 	});
 });

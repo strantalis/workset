@@ -215,6 +215,46 @@ describe('worksetViewModel', () => {
 		expect(grouped[0].shortcutNumber).toBe(1);
 	});
 
+	it('retains placeholder-only worksets in explorer grouping', () => {
+		const alpha = {
+			...baseWorkspace([], 'Alpha'),
+			id: 'thread-alpha',
+			name: 'Alpha Thread',
+			worksetKey: 'workset:alpha',
+			worksetLabel: 'Alpha',
+		} as Workspace;
+		const betaPlaceholder = {
+			...baseWorkspace(
+				[
+					{
+						id: 'r-beta',
+						name: 'repo-beta',
+						path: '',
+						dirty: false,
+						missing: false,
+						diff: { added: 0, removed: 0 },
+						files: [],
+					},
+				],
+				'Beta',
+			),
+			id: 'placeholder-beta',
+			name: 'Beta Placeholder',
+			worksetKey: 'workset:beta',
+			worksetLabel: 'Beta',
+			placeholder: true,
+		} as Workspace;
+
+		const grouped = mapWorkspacesToExplorerWorksets(
+			[alpha, betaPlaceholder],
+			new Map([['thread-alpha', 1]]),
+		);
+
+		expect(grouped.map((group) => group.id)).toEqual(['workset:alpha', 'workset:beta']);
+		expect(grouped[1].threads).toEqual([]);
+		expect(grouped[1].repos).toEqual(['repo-beta']);
+	});
+
 	it('groups threads by workset and retains placeholder-only worksets', () => {
 		const alpha = {
 			...baseWorkspace([], 'Alpha'),
@@ -237,5 +277,6 @@ describe('worksetViewModel', () => {
 		expect(groups.map((group) => group.id)).toEqual(['workset:alpha', 'workset:beta']);
 		expect(groups[0].threads.map((thread) => thread.id)).toEqual(['thread-alpha']);
 		expect(groups[1].threads).toEqual([]);
+		expect(groups[1].repos).toEqual([]);
 	});
 });
