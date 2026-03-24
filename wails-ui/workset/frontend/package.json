@@ -73,7 +73,7 @@
 		"@wailsio/runtime": "^3.0.0-alpha.79",
 		"dompurify": "^3.3.1",
 		"fzf": "^0.5.2",
-		"marked": "^17.0.3",
+		"marked": "^17.0.5",
 		"mermaid": "^11.12.3",
 		"shiki": "^4.0.1"
 	}
