@@ -108,7 +108,8 @@
 	display: flex;
 	align-items: center;
 	gap: 5px;
-	width: 100%;
+	flex: 1;
+	min-width: 0;
 	padding: 4px 8px;
 	padding-left: calc(8px + var(--depth, 0) * 14px);
 	border: none;
@@ -118,6 +119,15 @@
 	font-size: var(--text-xxs);
 	cursor: pointer;
 	transition: background var(--transition-fast);
+}
+
+.urv-tree-file-row {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	width: 100%;
+	min-width: 0;
+	padding-right: 6px;
 }
 
 .urv-tree-repo:hover,
@@ -134,6 +144,12 @@
 	background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
+.urv-tree-repo.active,
+.urv-tree-dir.active,
+.urv-tree-file.active {
+	background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
 .urv-tree-list:focus-visible {
 	outline: none;
 }
@@ -142,6 +158,11 @@
 	font-weight: 500;
 	padding-top: 6px;
 	padding-bottom: 6px;
+}
+
+.urv-tree-repo.extra-root {
+	font-weight: 400;
+	color: var(--muted);
 }
 
 .urv-tree-label {
@@ -163,6 +184,19 @@
 	gap: 4px;
 	font-size: var(--text-mono-2xs);
 	font-family: var(--font-mono);
+	flex-shrink: 0;
+}
+
+.urv-tree-extra-badge {
+	display: inline-flex;
+	align-items: center;
+	padding: 0 5px;
+	border-radius: 999px;
+	font-size: var(--text-mono-2xs);
+	font-family: var(--font-mono);
+	color: var(--muted);
+	background: color-mix(in srgb, var(--border) 35%, transparent);
+	border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
 	flex-shrink: 0;
 }
 
@@ -414,19 +448,85 @@
 	align-items: center;
 	justify-content: center;
 	flex-shrink: 0;
-	padding: 2px;
-	border-radius: 3px;
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	border-radius: 4px;
+	border: none;
+	background: transparent;
 	color: var(--muted);
 	cursor: pointer;
+	transition: background var(--transition-fast);
 }
 
-.urv-tree-file:hover .urv-tree-file-delete {
+.urv-tree-file-row:hover .urv-tree-file-delete {
 	display: inline-flex;
+}
+
+.urv-tree-file-delete:focus-visible {
+	display: inline-flex;
+	outline: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+	outline-offset: 1px;
 }
 
 .urv-tree-file-delete:hover {
 	color: var(--danger);
 	background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+.urv-tree-file-confirm {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	flex-shrink: 0;
+}
+
+.urv-tree-file-confirm-btn {
+	border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+	background: color-mix(in srgb, var(--panel-strong) 78%, var(--panel));
+	color: var(--text);
+	border-radius: 999px;
+	padding: 2px 8px;
+	font-size: var(--text-mono-2xs);
+	font-family: var(--font-mono);
+	cursor: pointer;
+}
+
+.urv-tree-file-confirm-btn:hover {
+	background: var(--hover-bg);
+}
+
+.urv-tree-file-confirm-btn.danger {
+	border-color: color-mix(in srgb, var(--danger) 60%, transparent);
+	color: var(--danger);
+	background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.urv-tree-inline {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	padding: 4px 8px;
+	padding-left: calc(8px + var(--depth, 0) * 14px);
+	background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.urv-tree-inline-input {
+	flex: 1;
+	min-width: 0;
+	padding: 4px 6px;
+	border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+	border-radius: 5px;
+	background: var(--panel);
+	color: var(--text);
+	font-size: var(--text-xxs);
+	font-family: var(--font-mono);
+}
+
+.urv-tree-inline-input:focus {
+	outline: none;
+	border-color: var(--accent);
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 /* Directory change indicator */

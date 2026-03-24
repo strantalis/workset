@@ -14,6 +14,7 @@ const notifications = vi.hoisted(() => ({
 }));
 
 const repoFilesMocks = vi.hoisted(() => ({
+	clearRepoFileSearchCache: vi.fn(),
 	readWorkspaceRepoFile: vi.fn(),
 	readWorkspaceRepoFileAtRef: vi.fn(),
 	searchWorkspaceRepoFiles: vi.fn(),
@@ -21,8 +22,11 @@ const repoFilesMocks = vi.hoisted(() => ({
 	invalidateRepoFileContent: vi.fn(),
 	clearFileContentCache: vi.fn(),
 	listRepoDirectory: vi.fn(),
+	listWorkspaceExtraRoots: vi.fn(),
 	invalidateRepoDirCache: vi.fn(),
 	clearDirListCache: vi.fn(),
+	invalidateWorkspaceExtraRoots: vi.fn(),
+	clearWorkspaceExtraRootsCache: vi.fn(),
 	getRepoBlame: vi.fn(),
 	createWorkspaceRepoFile: vi.fn(),
 	deleteWorkspaceRepoFile: vi.fn(),
@@ -142,6 +146,11 @@ const buildMultiRepoWorkspace = (): Workspace => ({
 	],
 });
 
+const buildWorkspaceWithoutRepos = (): Workspace => ({
+	...buildWorkspace(),
+	repos: [],
+});
+
 const createDeferredResults = () => {
 	let resolve!: (value: RepoFileSearchResult[]) => void;
 	const promise = new Promise<RepoFileSearchResult[]>((resolver) => {
@@ -154,6 +163,21 @@ describe('UnifiedRepoView lazy directory tree', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		repoFilesMocks.listRepoDirectory.mockReset();
+		repoFilesMocks.listWorkspaceExtraRoots.mockResolvedValue([]);
+		repoFilesMocks.readWorkspaceRepoFile.mockImplementation(
+			async (_workspaceId: string, repoId: string, path: string) => ({
+				workspaceId: 'ws-1',
+				repoId,
+				repoName: 'repo-alpha',
+				path,
+				content: 'console.log("hello");\n',
+				isMarkdown: false,
+				isBinary: false,
+				isTruncated: false,
+				sizeBytes: 21,
+			}),
+		);
+		repoFilesMocks.createWorkspaceRepoFile.mockResolvedValue({ written: true });
 		repoDiffMocks.fetchRepoDiffSummary.mockResolvedValue(emptySummary);
 		repoDiffMocks.fetchRepoFileDiff.mockResolvedValue({
 			patch: '',
@@ -195,7 +219,7 @@ describe('UnifiedRepoView lazy directory tree', () => {
 				},
 			]);
 
-		const { getByRole } = render(UnifiedRepoView, {
+		const { getByRole, getByTitle } = render(UnifiedRepoView, {
 			props: {
 				workspace: buildWorkspace(),
 			},
@@ -214,7 +238,7 @@ describe('UnifiedRepoView lazy directory tree', () => {
 				'src',
 			),
 		);
-		await waitFor(() => expect(getByRole('button', { name: /main\.ts/i })).toBeInTheDocument());
+		await waitFor(() => expect(getByTitle('src/main.ts')).toBeInTheDocument());
 	});
 
 	test('shows an inline directory error when expansion loading fails', async () => {
@@ -281,7 +305,7 @@ describe('UnifiedRepoView lazy directory tree', () => {
 			checks: [],
 		});
 
-		const { container, getByRole } = render(UnifiedRepoView, {
+		const { container, getByRole, getByTitle } = render(UnifiedRepoView, {
 			props: {
 				workspace: buildWorkspace(true),
 			},
@@ -304,7 +328,7 @@ describe('UnifiedRepoView lazy directory tree', () => {
 		await fireEvent.click(getByRole('button', { name: /src/i }));
 
 		await waitFor(() => {
-			const fileRow = getByRole('button', { name: /main\.ts/i });
+			const fileRow = getByTitle('src/main.ts');
 			expect(fileRow.querySelector('.urv-tree-file-comments')?.textContent).toContain('1');
 		});
 	});
@@ -361,5 +385,247 @@ describe('UnifiedRepoView lazy directory tree', () => {
 		);
 
 		alphaDeferred.resolve([]);
+	});
+
+	test('creates a root-level file inline without requiring a prior tree selection', async () => {
+		repoFilesMocks.listRepoDirectory.mockResolvedValueOnce([]);
+
+		const { getByPlaceholderText, getByTitle } = render(UnifiedRepoView, {
+			props: {
+				workspace: buildWorkspace(),
+			},
+		});
+
+		await waitFor(() =>
+			expect(repoFilesMocks.listRepoDirectory).toHaveBeenCalledWith('ws-1', 'ws-1::repo-alpha', ''),
+		);
+
+		await fireEvent.click(getByTitle('New file'));
+
+		const input = getByPlaceholderText('new-file.ts') as HTMLInputElement;
+		await fireEvent.input(input, { target: { value: 'n' } });
+		await Promise.resolve();
+		expect(input.selectionStart).toBe(1);
+		expect(input.selectionEnd).toBe(1);
+		await fireEvent.input(input, { target: { value: 'notes.ts' } });
+		await fireEvent.keyDown(input, { key: 'Enter' });
+
+		await waitFor(() =>
+			expect(repoFilesMocks.createWorkspaceRepoFile).toHaveBeenCalledWith(
+				'ws-1',
+				'ws-1::repo-alpha',
+				'notes.ts',
+			),
+		);
+		await waitFor(() => expect(getByTitle('notes.ts')).toBeInTheDocument());
+	});
+
+	test('creates a child file inline when a directory is selected', async () => {
+		repoFilesMocks.listRepoDirectory
+			.mockResolvedValueOnce([{ name: 'src', path: 'src', isDir: true, childCount: 0 }])
+			.mockResolvedValueOnce([]);
+
+		const { getByPlaceholderText, getByRole, getByTitle } = render(UnifiedRepoView, {
+			props: {
+				workspace: buildWorkspace(),
+			},
+		});
+
+		await waitFor(() =>
+			expect(repoFilesMocks.listRepoDirectory).toHaveBeenCalledWith('ws-1', 'ws-1::repo-alpha', ''),
+		);
+
+		await fireEvent.click(getByRole('button', { name: /^src/ }));
+		await waitFor(() =>
+			expect(repoFilesMocks.listRepoDirectory).toHaveBeenCalledWith(
+				'ws-1',
+				'ws-1::repo-alpha',
+				'src',
+			),
+		);
+
+		await fireEvent.click(getByTitle('New file'));
+
+		const input = getByPlaceholderText('new-file.ts');
+		await fireEvent.input(input, { target: { value: 'child.ts' } });
+		await fireEvent.keyDown(input, { key: 'Enter' });
+
+		await waitFor(() =>
+			expect(repoFilesMocks.createWorkspaceRepoFile).toHaveBeenCalledWith(
+				'ws-1',
+				'ws-1::repo-alpha',
+				'src/child.ts',
+			),
+		);
+		await waitFor(() => expect(getByTitle('src/child.ts')).toBeInTheDocument());
+	});
+
+	test('creates a sibling file inline when a file is selected', async () => {
+		repoFilesMocks.listRepoDirectory
+			.mockResolvedValueOnce([{ name: 'src', path: 'src', isDir: true, childCount: 1 }])
+			.mockResolvedValueOnce([
+				{
+					name: 'main.ts',
+					path: 'src/main.ts',
+					isDir: false,
+					sizeBytes: 18,
+					isMarkdown: false,
+				},
+			]);
+
+		const { getByPlaceholderText, getByRole, getByTitle } = render(UnifiedRepoView, {
+			props: {
+				workspace: buildWorkspace(),
+			},
+		});
+
+		await waitFor(() =>
+			expect(repoFilesMocks.listRepoDirectory).toHaveBeenCalledWith('ws-1', 'ws-1::repo-alpha', ''),
+		);
+
+		await fireEvent.click(getByRole('button', { name: /^src/ }));
+		await waitFor(() => expect(getByTitle('src/main.ts')).toBeInTheDocument());
+		await fireEvent.click(getByTitle('src/main.ts'));
+
+		await fireEvent.click(getByTitle('New file'));
+
+		const input = getByPlaceholderText('new-file.ts');
+		await fireEvent.input(input, { target: { value: 'sibling.ts' } });
+		await fireEvent.keyDown(input, { key: 'Enter' });
+
+		await waitFor(() =>
+			expect(repoFilesMocks.createWorkspaceRepoFile).toHaveBeenCalledWith(
+				'ws-1',
+				'ws-1::repo-alpha',
+				'src/sibling.ts',
+			),
+		);
+		await waitFor(() => expect(getByTitle('src/sibling.ts')).toBeInTheDocument());
+	});
+
+	test('shows inline delete confirmation, removes the file, and supports undo for text files', async () => {
+		repoFilesMocks.listRepoDirectory.mockResolvedValueOnce([
+			{
+				name: 'notes.ts',
+				path: 'notes.ts',
+				isDir: false,
+				sizeBytes: 18,
+				isMarkdown: false,
+			},
+		]);
+		repoFilesMocks.deleteWorkspaceRepoFile.mockResolvedValue({ deleted: true });
+
+		const { getByRole, getByTitle, queryByTitle } = render(UnifiedRepoView, {
+			props: {
+				workspace: buildWorkspace(),
+			},
+		});
+
+		await waitFor(() => expect(getByTitle('notes.ts')).toBeInTheDocument());
+
+		await fireEvent.click(getByRole('button', { name: /delete notes\.ts/i }));
+		expect(getByRole('button', { name: /confirm delete notes\.ts/i })).toBeInTheDocument();
+
+		await fireEvent.click(getByRole('button', { name: /confirm delete notes\.ts/i }));
+
+		await waitFor(() =>
+			expect(repoFilesMocks.deleteWorkspaceRepoFile).toHaveBeenCalledWith(
+				'ws-1',
+				'ws-1::repo-alpha',
+				'notes.ts',
+			),
+		);
+		await waitFor(() => expect(queryByTitle('notes.ts')).not.toBeInTheDocument());
+
+		const undoNotification = notifications.info.mock.calls.find(
+			([message]) => message === 'Deleted notes.ts',
+		)?.[1] as { actionLabel?: string; onAction?: () => Promise<void> } | undefined;
+		expect(undoNotification?.actionLabel).toBe('Undo');
+
+		await undoNotification?.onAction?.();
+		await waitFor(() =>
+			expect(repoFilesMocks.createWorkspaceRepoFile).toHaveBeenCalledWith(
+				'ws-1',
+				'ws-1::repo-alpha',
+				'notes.ts',
+				'console.log("hello");\n',
+			),
+		);
+		await waitFor(() => expect(getByTitle('notes.ts')).toBeInTheDocument());
+	});
+
+	test('shows workspace-root extras when no configured repos exist', async () => {
+		repoFilesMocks.listWorkspaceExtraRoots.mockResolvedValue([
+			{
+				id: 'ws-1::extra::scratch',
+				label: 'scratch',
+				relativePath: 'scratch',
+				gitDetected: false,
+			},
+		]);
+		repoFilesMocks.listRepoDirectory.mockResolvedValue([
+			{
+				name: 'notes.md',
+				path: 'notes.md',
+				isDir: false,
+				sizeBytes: 12,
+				isMarkdown: true,
+			},
+		]);
+
+		const { getByRole, getByTitle } = render(UnifiedRepoView, {
+			props: {
+				workspace: buildWorkspaceWithoutRepos(),
+			},
+		});
+
+		await waitFor(() =>
+			expect(repoFilesMocks.listWorkspaceExtraRoots).toHaveBeenCalledWith('ws-1'),
+		);
+		await waitFor(() =>
+			expect(repoFilesMocks.listRepoDirectory).toHaveBeenCalledWith(
+				'ws-1',
+				'ws-1::extra::scratch',
+				'',
+			),
+		);
+		expect(getByRole('button', { name: /^scratch/ })).toBeInTheDocument();
+		expect(getByTitle('notes.md')).toBeInTheDocument();
+	});
+
+	test('does not index workspace-root extras during file search', async () => {
+		repoFilesMocks.listRepoDirectory.mockResolvedValue([]);
+		repoFilesMocks.listWorkspaceExtraRoots.mockResolvedValue([
+			{
+				id: 'ws-1::extra::scratch',
+				label: 'scratch',
+				relativePath: 'scratch',
+				gitDetected: false,
+			},
+		]);
+		repoFilesMocks.searchWorkspaceRepoFiles.mockResolvedValue([]);
+
+		const { getByPlaceholderText, getByRole } = render(UnifiedRepoView, {
+			props: {
+				workspace: buildWorkspace(),
+			},
+		});
+
+		await waitFor(() =>
+			expect(repoFilesMocks.listRepoDirectory).toHaveBeenCalledWith('ws-1', 'ws-1::repo-alpha', ''),
+		);
+
+		await fireEvent.click(getByRole('button', { name: /^scratch/ }));
+		await fireEvent.input(getByPlaceholderText('Filter files...'), {
+			target: { value: 'main' },
+		});
+
+		await waitFor(() => expect(repoFilesMocks.searchWorkspaceRepoFiles).toHaveBeenCalledTimes(1));
+		expect(repoFilesMocks.searchWorkspaceRepoFiles).toHaveBeenCalledWith(
+			'ws-1',
+			'',
+			5000,
+			'ws-1::repo-alpha',
+		);
 	});
 });

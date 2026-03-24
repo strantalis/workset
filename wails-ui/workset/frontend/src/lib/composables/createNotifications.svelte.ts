@@ -5,13 +5,21 @@ export type Notification = {
 	level: NotificationLevel;
 	message: string;
 	timestamp: number;
+	actionLabel?: string;
+	onAction?: () => void | Promise<void>;
+};
+
+type NotificationOptions = {
+	duration?: number;
+	actionLabel?: string;
+	onAction?: () => void | Promise<void>;
 };
 
 export type NotificationManager = {
 	readonly notifications: Notification[];
-	error: (message: string, options?: { duration?: number }) => void;
-	warn: (message: string, options?: { duration?: number }) => void;
-	info: (message: string, options?: { duration?: number }) => void;
+	error: (message: string, options?: NotificationOptions) => void;
+	warn: (message: string, options?: NotificationOptions) => void;
+	info: (message: string, options?: NotificationOptions) => void;
 	dismiss: (id: string) => void;
 	destroy: () => void;
 };
@@ -24,14 +32,20 @@ export function createNotifications(): NotificationManager {
 	let notifications = $state<Notification[]>([]);
 	const timers = new Map<string, ReturnType<typeof setTimeout>>();
 
-	const add = (
-		level: NotificationLevel,
-		message: string,
-		options?: { duration?: number },
-	): void => {
+	const add = (level: NotificationLevel, message: string, options?: NotificationOptions): void => {
 		const id = `notif-${++nextId}`;
 		const duration = options?.duration ?? DEFAULT_DURATION_MS;
-		notifications = [...notifications, { id, level, message, timestamp: Date.now() }];
+		notifications = [
+			...notifications,
+			{
+				id,
+				level,
+				message,
+				timestamp: Date.now(),
+				actionLabel: options?.actionLabel,
+				onAction: options?.onAction,
+			},
+		];
 		if (duration > 0) {
 			timers.set(
 				id,

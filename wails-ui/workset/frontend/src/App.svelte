@@ -823,13 +823,33 @@
 				/>
 			{/if}
 			{#each notifications.notifications as notif (notif.id)}
-				<button
-					type="button"
+				<div
 					class="notification-toast notification-toast--{notif.level}"
+					role="button"
+					tabindex="0"
 					onclick={() => notifications.dismiss(notif.id)}
+					onkeydown={(event) => {
+						if (event.key === 'Enter' || event.key === ' ') {
+							event.preventDefault();
+							notifications.dismiss(notif.id);
+						}
+					}}
 				>
-					{notif.message}
-				</button>
+					<span>{notif.message}</span>
+					{#if notif.actionLabel && notif.onAction}
+						<button
+							type="button"
+							class="notification-toast__action"
+							onclick={(event) => {
+								event.stopPropagation();
+								void notif.onAction?.();
+								notifications.dismiss(notif.id);
+							}}
+						>
+							{notif.actionLabel}
+						</button>
+					{/if}
+				</div>
 			{/each}
 		</div>
 	{/if}

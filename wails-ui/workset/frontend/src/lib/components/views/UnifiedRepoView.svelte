@@ -1,30 +1,20 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import Icon from '@iconify/svelte';
 	import {
-		ChevronDown,
 		ChevronLeft,
 		ChevronRight,
 		Columns2,
 		Edit3,
 		Eye,
 		FileCode,
-		FilePlus,
 		FolderTree,
 		GitBranch,
-		GitMerge,
-		GitPullRequest,
-		LoaderCircle,
-		MessageCircle,
 		Minus,
-		PanelLeftClose,
 		PanelLeftOpen,
 		Plus,
 		Rows2,
 		BookOpen,
 		Save,
-		Search,
-		Trash2,
 		X,
 	} from '@lucide/svelte';
 	import type {
@@ -34,6 +24,7 @@
 		RepoFileDiff,
 		RepoFileSearchResult,
 		Workspace,
+		WorkspaceExtraRoot,
 	} from '../../types';
 	import {
 		fetchRepoDiffSummary,
@@ -49,6 +40,7 @@
 	import type { ReviewComment } from '../editor/reviewDecorations';
 	import type { CIAnnotation } from '../editor/ciAnnotations';
 	import {
+		clearRepoFileSearchCache,
 		readWorkspaceRepoFile,
 		readWorkspaceRepoFileAtRef,
 		searchWorkspaceRepoFiles,
@@ -56,8 +48,11 @@
 		invalidateRepoFileContent,
 		clearFileContentCache,
 		listRepoDirectory,
+		listWorkspaceExtraRoots,
 		invalidateRepoDirCache,
 		clearDirListCache,
+		invalidateWorkspaceExtraRoots,
+		clearWorkspaceExtraRootsCache,
 		type RepoDirectoryEntry,
 	} from '../../api/repo-files';
 	import { resolveMarkdownImages, clearImageCache } from '../../markdownImages';
@@ -75,7 +70,6 @@
 		shouldReplaceExpandedNodeSet,
 		type RepoTreeNode,
 	} from '../repo-files/tree';
-	import { getRepoFileIcon } from '../repo-files/fileIcons';
 	import { renderMarkdownDocument, type DocumentRenderResult } from '../../documentRender';
 	import { calculateMermaidOverlayFit } from '../repo-files/mermaidOverlay';
 	import ResizablePanel from '../ui/ResizablePanel.svelte';
@@ -84,6 +78,23 @@
 	import PrCreateDrawer from './PrCreateDrawer.svelte';
 	import LocalMergeDrawer from './LocalMergeDrawer.svelte';
 	import PrLifecycleDrawer from './PrLifecycleDrawer.svelte';
+	import UnifiedRepoSidebar from './UnifiedRepoSidebar.svelte';
+	import {
+		buildDirNodeKey,
+		buildFileNodeKey,
+		buildRepoNodeKey,
+		type ExplorerTreeNode,
+		getParentDirPath,
+		insertInlineCreateNode,
+		type InlineCreateState,
+		removeDeletedDirectoryEntry,
+		removeLoadedRepoFileState,
+		resolveInlineCreate,
+		type TreeSelection,
+		upsertCreatedDirectoryEntries,
+		upsertLoadedRepoFileState,
+		validateInlineCreateFileName,
+	} from './unifiedRepoInlineCreate';
 	import { useNotifications } from '../../contexts/notifications';
 	import { dirtyIndicator, setCleanDoc } from '../editor/dirtyIndicator';
 	import { navigationKeymap } from '../editor/navigationKeymap';
@@ -93,7 +104,6 @@
 		createWorkspaceRepoFile,
 		deleteWorkspaceRepoFile,
 	} from '../../api/repo-files';
-	import Modal from '../Modal.svelte';
 	import type { EditorView } from '@codemirror/view';
 	import type { Extension } from '@codemirror/state';
 	import { buildReviewThreadCountsByFile } from '../../pullRequestUiHelpers';
@@ -115,6 +125,7 @@
 		| { status: 'loaded'; files: RepoFileSearchResult[] }
 		| { status: 'error'; message: string };
 	let repoFileStates = $state<Map<string, RepoFileState>>(new Map());
+	let extraRoots = $state<WorkspaceExtraRoot[]>([]);
 	let dirEntries = $state<Map<string, RepoDirectoryEntry[]>>(new Map());
 	let dirEntryErrors = $state<Map<string, string>>(new Map());
 	let expandedNodes = $state<Set<string>>(new Set());
@@ -124,21 +135,19 @@
 	let branchDiffMap = $state<Map<string, RepoDiffSummary>>(new Map());
 	let prReviewComments = $state<ReviewComment[]>([]);
 	let prCiAnnotations = $state<CIAnnotation[]>([]);
-	// Per-file unresolved review thread counts for tree badges (repoId:path → count)
 	let prFileCommentCounts = $state<Map<string, number>>(new Map());
 	let blameMode = $state(false);
-	let newFileDialogOpen = $state(false);
-	let newFilePath = $state('');
 	let deleteConfirmPath = $state<string | null>(null);
 	let deleteConfirmRepoId = $state<string | null>(null);
 	let selectedRepoId: string | null = $state(null);
 	let selectedFilePath: string | null = $state(null);
+	let selectedTree = $state<TreeSelection>(null);
+	let inlineCreate = $state<InlineCreateState | null>(null);
 	let fileDiffContent: RepoFileDiff | null = $state(null);
 	let fileDiffLoading = $state(false);
 	let fileDiffError: string | null = $state(null);
 	let fileDiffRequestId = 0;
 
-	// Full file contents for diff view (original = HEAD, modified = working tree)
 	let originalFileContent: string | null = $state(null);
 	let modifiedFileContent: string | null = $state(null);
 	let fullDiffLoading = $state(false);
@@ -241,7 +250,6 @@
 	let saving = $state(false);
 	let editorView: EditorView | null = null;
 
-	// CM6 extensions for edit mode: dirty indicator + file navigation keymap
 	const editExtensions: Extension[] = [
 		dirtyIndicator(),
 		navigationKeymap({
@@ -249,7 +257,6 @@
 			onNextFile: () => navigateChangedFile(1),
 		}),
 	];
-	// CM6 extensions for read-only mode: file navigation keymap + optional blame
 	const viewExtensions = $derived.by((): Extension[] => {
 		const exts: Extension[] = [
 			navigationKeymap({
@@ -298,7 +305,7 @@
 	};
 	let focusedNodeIndex = $state(-1);
 	const handleTreeKeydown = (event: KeyboardEvent): void => {
-		const nodes = treeNodes;
+		const nodes = visibleTreeNodes;
 		if (nodes.length === 0) return;
 
 		let handled = true;
@@ -315,6 +322,9 @@
 			case ' ': {
 				const node = nodes[focusedNodeIndex];
 				if (!node) break;
+				if (node.kind === 'inline-create') {
+					break;
+				}
 				if (node.kind === 'file') {
 					selectTreeFile(node.path, node.repoId);
 				} else {
@@ -324,14 +334,24 @@
 			}
 			case 'ArrowRight': {
 				const node = nodes[focusedNodeIndex];
-				if (node && node.kind !== 'file' && !expandedNodes.has(node.key)) {
+				if (
+					node &&
+					node.kind !== 'file' &&
+					node.kind !== 'inline-create' &&
+					!expandedNodes.has(node.key)
+				) {
 					toggleNode(node);
 				}
 				break;
 			}
 			case 'ArrowLeft': {
 				const node = nodes[focusedNodeIndex];
-				if (node && node.kind !== 'file' && expandedNodes.has(node.key)) {
+				if (
+					node &&
+					node.kind !== 'file' &&
+					node.kind !== 'inline-create' &&
+					expandedNodes.has(node.key)
+				) {
 					toggleNode(node);
 				}
 				break;
@@ -357,12 +377,33 @@
 	let drawerMode: 'none' | 'pr-create' | 'local-merge' | 'pr-lifecycle' = $state('none');
 	const closeDrawer = (): void => void (drawerMode = 'none');
 	const wsId = $derived(workspace?.id ?? '');
-	const repos = $derived.by(() => workspace?.repos.map((r) => ({ id: r.id, name: r.name })) ?? []);
+	const explorerRoots = $derived.by(() => {
+		const repoRoots =
+			workspace?.repos.map((repo) => ({
+				id: repo.id,
+				label: repo.name,
+				kind: 'repo' as const,
+				gitDetected: false,
+			})) ?? [];
+		const extraRootItems = extraRoots.map((root) => ({
+			id: root.id,
+			label: root.label,
+			kind: 'extra' as const,
+			gitDetected: root.gitDetected,
+		}));
+		return [...repoRoots, ...extraRootItems].sort((left, right) =>
+			left.label.localeCompare(right.label),
+		);
+	});
+	const explorerRootById = $derived.by(() => new Map(explorerRoots.map((root) => [root.id, root])));
+	const repos = $derived.by(() => explorerRoots.map((root) => ({ id: root.id, name: root.label })));
+	const searchableRepoIds = $derived.by(() =>
+		explorerRoots.filter((root) => root.kind === 'repo').map((root) => root.id),
+	);
 	const selectedRepo = $derived.by(
 		() => workspace?.repos.find((r) => r.id === selectedRepoId) ?? null,
 	);
 
-	// File tree data
 	const repoFiles = $derived.by<RepoFileSearchResult[]>(() => {
 		const all: RepoFileSearchResult[] = [];
 		for (const state of repoFileStates.values()) {
@@ -384,8 +425,16 @@
 		const expandedRepoIds = [...expandedNodes]
 			.filter((key) => key.startsWith('repo:'))
 			.map((key) => key.slice(5));
-		if (!selectedRepoId || !expandedRepoIds.includes(selectedRepoId)) return expandedRepoIds;
-		return [selectedRepoId, ...expandedRepoIds.filter((repoId) => repoId !== selectedRepoId)];
+		const searchableExpandedRepoIds = expandedRepoIds.filter((repoId) =>
+			searchableRepoIds.includes(repoId),
+		);
+		if (!selectedRepoId || !searchableExpandedRepoIds.includes(selectedRepoId)) {
+			return searchableExpandedRepoIds;
+		}
+		return [
+			selectedRepoId,
+			...searchableExpandedRepoIds.filter((repoId) => repoId !== selectedRepoId),
+		];
 	});
 	const searchRepoLoadingCount = $derived.by(() => {
 		let count = 0;
@@ -396,18 +445,26 @@
 	});
 	const treeNodes = $derived.by<RepoTreeNode[]>(() =>
 		isSearchActive
-			? buildRepoTree(repos, filteredRepoFiles, expandedNodes)
+			? buildRepoTree(
+					repos.filter((root) => searchableRepoIds.includes(root.id)),
+					filteredRepoFiles,
+					expandedNodes,
+				)
 			: buildRepoTreeFromDirectories(repos, dirEntries, expandedNodes),
 	);
+	const visibleTreeNodes = $derived.by<ExplorerTreeNode[]>(() => {
+		return insertInlineCreateNode(treeNodes, inlineCreate);
+	});
+	const pendingDeleteKey = $derived.by(() => {
+		if (!deleteConfirmPath || !deleteConfirmRepoId) return null;
+		return buildFileNodeKey(deleteConfirmRepoId, deleteConfirmPath);
+	});
 	const childCounts = $derived.by(() =>
 		isSearchActive
 			? computeRepoTreeChildCounts(filteredRepoFiles)
 			: computeRepoTreeDirectoryCounts(dirEntries),
 	);
 
-	// Active diff map based on mode
-	// When a repo has a tracked PR, prefer branch diffs; otherwise use working-tree diffs.
-	// Merge both: branch diffs for repos with PRs, working-tree diffs for the rest.
 	const activeDiffMap = $derived.by(() => {
 		const merged = new Map(repoDiffMap);
 		for (const [repoId, summary] of branchDiffMap) {
@@ -420,7 +477,6 @@
 		return merged;
 	});
 
-	// Determine if repo has an open tracked PR (for branch diff mode)
 	const selectedRepoPr = $derived.by(() => {
 		const repo = selectedRepo;
 		const pr = repo?.trackedPullRequest;
@@ -428,7 +484,6 @@
 		return null;
 	});
 
-	// Changed files set: "repoId:path" for quick lookup
 	const changedFileSet = $derived.by(() => {
 		const set = new Set<string>();
 		for (const [repoId, summary] of activeDiffMap) {
@@ -439,7 +494,6 @@
 		return set;
 	});
 
-	// Get diff info for the currently selected file
 	const selectedDiffFile = $derived.by((): RepoDiffFileSummary | null => {
 		if (!selectedRepoId || !selectedFilePath) return null;
 		const summary = activeDiffMap.get(selectedRepoId);
@@ -459,7 +513,6 @@
 		isChangedFile && previewMode && isMarkdownPath(selectedFilePath),
 	);
 
-	// Changed files for current repo (for prev/next navigation)
 	const currentRepoChangedFiles = $derived.by((): RepoDiffFileSummary[] => {
 		if (!selectedRepoId) return [];
 		return repoDiffMap.get(selectedRepoId)?.files ?? [];
@@ -469,7 +522,6 @@
 		return currentRepoChangedFiles.findIndex((f) => f.path === selectedFilePath);
 	});
 
-	// Repo change stats for badges
 	const repoChangeStats = $derived.by(() => {
 		const map = new Map<string, { added: number; removed: number; count: number }>();
 		for (const [repoId, summary] of repoDiffMap) {
@@ -482,7 +534,6 @@
 		return map;
 	});
 
-	// Directory change indicators: which dirs contain changed files
 	const changedDirSet = $derived.by(() => {
 		const set = new Set<string>();
 		for (const [repoId, summary] of repoDiffMap) {
@@ -496,7 +547,6 @@
 		return set;
 	});
 
-	// Per-directory change counts
 	const dirChangeCount = $derived.by(() => {
 		const map = new Map<string, number>();
 		for (const [repoId, summary] of repoDiffMap) {
@@ -525,7 +575,6 @@
 		return map;
 	});
 
-	// Repo PR state lookup
 	const getRepoPrState = (repoId: string): 'none' | 'open' | 'merged' | 'draft' => {
 		const repo = workspace?.repos.find((r) => r.id === repoId);
 		const tracked = repo?.trackedPullRequest;
@@ -579,6 +628,15 @@
 				dirEntryErrors = new Map(dirEntryErrors).set(key, message);
 			});
 	};
+	const loadWorkspaceExtraRootState = (workspaceId: string): void => {
+		void listWorkspaceExtraRoots(workspaceId)
+			.then((roots) => {
+				extraRoots = roots;
+			})
+			.catch(() => {
+				extraRoots = [];
+			});
+	};
 	const loadRepoDiff = async (
 		workspaceId: string,
 		repoId: string,
@@ -613,7 +671,6 @@
 		}
 	};
 
-	// All PR review comments keyed by repo, used for tree badges + per-file filtering
 	let allPrReviewCommentsByRepo = $state<
 		Map<string, import('../../types').PullRequestReviewComment[]>
 	>(new Map());
@@ -734,34 +791,169 @@
 			// blame failed — ignore silently
 		}
 	};
+	const selectRepoNode = (repoId: string): void => {
+		selectedRepoId = repoId;
+		selectedTree = { kind: 'repo', key: buildRepoNodeKey(repoId), repoId };
+		deleteConfirmPath = null;
+		deleteConfirmRepoId = null;
+	};
+	const selectDirNode = (repoId: string, path: string): void => {
+		selectedRepoId = repoId;
+		selectedTree = { kind: 'dir', key: buildDirNodeKey(repoId, path), repoId, path };
+		deleteConfirmPath = null;
+		deleteConfirmRepoId = null;
+	};
+	const cancelInlineCreate = (): void => {
+		inlineCreate = null;
+	};
+	const setInlineCreateDraft = (draftName: string): void => {
+		if (!inlineCreate) return;
+		inlineCreate = { ...inlineCreate, draftName };
+	};
+	const upsertCreatedFileInTree = (repoId: string, fullPath: string): void => {
+		const parentDirPath = getParentDirPath(fullPath);
+		const dirKey = createRepoDirEntriesKey(repoId, parentDirPath);
+		dirEntries = upsertCreatedDirectoryEntries(
+			dirEntries,
+			dirKey,
+			fullPath,
+			isMarkdownPath(fullPath),
+		);
+
+		const rootLabel = explorerRootById.get(repoId)?.label ?? repoId;
+		const existingState = repoFileStates.get(repoId);
+		if (existingState?.status === 'loaded') {
+			repoFileStates = new Map(repoFileStates).set(repoId, {
+				status: 'loaded',
+				files: upsertLoadedRepoFileState(
+					existingState.files,
+					wsId,
+					repoId,
+					rootLabel,
+					fullPath,
+					isMarkdownPath(fullPath),
+				),
+			});
+		}
+	};
+	const startInlineCreate = (): void => {
+		const fallbackRepoId = selectedRepoId ?? explorerRoots[0]?.id ?? null;
+		if (!fallbackRepoId) {
+			notifications.error('No repository or folder is available for new files.');
+			return;
+		}
+
+		const resolution = resolveInlineCreate(selectedTree, fallbackRepoId, expandedNodes);
+		expandedNodes = resolution.nextExpandedNodes;
+		if (wsId) {
+			for (const dirPath of resolution.dirPathsToLoad) {
+				loadDirEntries(wsId, resolution.inlineCreate.repoId, dirPath);
+			}
+		}
+		if (resolution.shouldSelectRepo) {
+			selectRepoNode(resolution.inlineCreate.repoId);
+		}
+		inlineCreate = resolution.inlineCreate;
+	};
 	const handleCreateFile = async (): Promise<void> => {
-		const path = newFilePath.trim();
-		if (!path || !wsId || !selectedRepoId) return;
+		const createState = inlineCreate;
+		if (!createState || !wsId) return;
+		const fileName = createState.draftName.trim();
+		const validationError = validateInlineCreateFileName(fileName);
+		if (validationError) {
+			notifications.error(validationError);
+			return;
+		}
+
+		const path =
+			createState.parentDirPath === '' ? fileName : `${createState.parentDirPath}/${fileName}`;
+		inlineCreate = { ...createState, creating: true };
 		try {
-			await createWorkspaceRepoFile(wsId, selectedRepoId, path);
+			await createWorkspaceRepoFile(wsId, createState.repoId, path);
 			notifications.info(`Created ${path}`);
-			invalidateRepoDirCache(wsId, selectedRepoId);
-			invalidateRepoFileContent(wsId, selectedRepoId);
-			newFileDialogOpen = false;
-			newFilePath = '';
-			selectTreeFile(path, selectedRepoId);
+			clearRepoFileSearchCache();
+			invalidateRepoDirCache(wsId, createState.repoId);
+			invalidateRepoFileContent(wsId, createState.repoId);
+			upsertCreatedFileInTree(createState.repoId, path);
+			inlineCreate = null;
+			selectTreeFile(path, createState.repoId);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : 'Unknown error';
+			inlineCreate = { ...createState, creating: false };
 			notifications.error(`Create failed: ${msg}`);
+		}
+	};
+	const undoDeletedFile = async (
+		workspaceId: string,
+		repoId: string,
+		path: string,
+		content: string,
+	): Promise<void> => {
+		try {
+			await createWorkspaceRepoFile(workspaceId, repoId, path, content);
+			clearRepoFileSearchCache();
+			invalidateRepoDirCache(workspaceId, repoId);
+			invalidateRepoFileContent(workspaceId, repoId);
+			upsertCreatedFileInTree(repoId, path);
+			selectTreeFile(path, repoId);
+			notifications.info(`Restored ${path}`);
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : 'Unknown error';
+			notifications.error(`Undo delete failed: ${msg}`);
 		}
 	};
 	const handleDeleteFile = async (): Promise<void> => {
 		if (!deleteConfirmPath || !deleteConfirmRepoId || !wsId) return;
 		const repoId = deleteConfirmRepoId;
 		const path = deleteConfirmPath;
+		let undoContent: string | null = null;
+		try {
+			const existingFile = await readWorkspaceRepoFile(wsId, repoId, path);
+			if (!existingFile.isBinary && !existingFile.isTruncated) {
+				undoContent = existingFile.content;
+			}
+		} catch {
+			undoContent = null;
+		}
 		try {
 			await deleteWorkspaceRepoFile(wsId, repoId, path);
-			notifications.info(`Deleted ${path}`);
 			invalidateRepoDirCache(wsId, repoId);
 			invalidateRepoFileContent(wsId, repoId);
+			const parentDirPath = getParentDirPath(path);
+			dirEntries = removeDeletedDirectoryEntry(
+				dirEntries,
+				createRepoDirEntriesKey(repoId, parentDirPath),
+				path,
+			);
+			const existingState = repoFileStates.get(repoId);
+			if (existingState?.status === 'loaded') {
+				repoFileStates = new Map(repoFileStates).set(repoId, {
+					status: 'loaded',
+					files: removeLoadedRepoFileState(existingState.files, path),
+				});
+			}
 			if (selectedRepoId === repoId && selectedFilePath === path) {
 				selectedFilePath = null;
 				fileContent = null;
+				selectedTree =
+					parentDirPath === ''
+						? { kind: 'repo', key: buildRepoNodeKey(repoId), repoId }
+						: {
+								kind: 'dir',
+								key: buildDirNodeKey(repoId, parentDirPath),
+								repoId,
+								path: parentDirPath,
+							};
+			}
+			if (undoContent !== null) {
+				const workspaceId = wsId;
+				notifications.info(`Deleted ${path}`, {
+					duration: 10_000,
+					actionLabel: 'Undo',
+					onAction: () => undoDeletedFile(workspaceId, repoId, path, undoContent ?? ''),
+				});
+			} else {
+				notifications.info(`Deleted ${path}`);
 			}
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : 'Unknown error';
@@ -785,15 +977,64 @@
 			void loadFileContent(currentWsId, repoId, path);
 		}
 	};
+	const refreshExplorerTree = (): void => {
+		const currentWsId = wsId;
+		if (!currentWsId) return;
+
+		inlineCreate = null;
+		clearRepoFileSearchCache();
+		invalidateWorkspaceExtraRoots(currentWsId);
+		loadWorkspaceExtraRootState(currentWsId);
+		clearDirListCache();
+		dirEntries = new Map();
+		dirEntryErrors = new Map();
+
+		const expandedRepoIds = [...expandedNodes]
+			.filter((key) => key.startsWith('repo:'))
+			.map((key) => key.slice(5));
+		for (const repoId of expandedRepoIds) {
+			loadDirEntries(currentWsId, repoId, '');
+			if (explorerRootById.get(repoId)?.kind === 'repo') {
+				void loadRepoDiff(currentWsId, repoId, true);
+				maybeLoadBranchData(currentWsId, repoId);
+			}
+		}
+		for (const node of treeNodes) {
+			if (node.kind !== 'dir' || !expandedNodes.has(node.key)) continue;
+			loadDirEntries(currentWsId, node.repoId, node.path);
+		}
+		if (selectedRepoId) {
+			invalidateRepoFileContent(currentWsId, selectedRepoId);
+			refreshCurrentFile();
+		}
+	};
 	const getDirEntryError = (repoId: string, dirPath: string): string | undefined =>
 		dirEntryErrors.get(createRepoDirEntriesKey(repoId, dirPath));
+	const getRootState = (
+		repoId: string,
+	): { status: 'idle' | 'loading' | 'loaded' | 'error'; message?: string } | undefined => {
+		const state = repoFileStates.get(repoId);
+		if (!state) return undefined;
+		if (state.status === 'error') {
+			return { status: state.status, message: state.message };
+		}
+		return { status: state.status };
+	};
 	const toggleNode = (node: Extract<RepoTreeNode, { kind: 'repo' | 'dir' }>): void => {
+		inlineCreate = null;
+		deleteConfirmPath = null;
+		deleteConfirmRepoId = null;
+		if (node.kind === 'repo') {
+			selectRepoNode(node.repoId);
+		} else {
+			selectDirNode(node.repoId, node.path);
+		}
 		const { key } = node;
 		const next = new Set(expandedNodes);
 		if (next.has(key)) {
 			next.delete(key);
 			// Evict diff data and stop watcher for collapsed repos
-			if (node.kind === 'repo') {
+			if (node.kind === 'repo' && explorerRootById.get(node.repoId)?.kind === 'repo') {
 				const { repoId } = node;
 				if (repoDiffMap.has(repoId)) {
 					const nextMap = new Map(repoDiffMap);
@@ -810,11 +1051,12 @@
 			next.add(key);
 			if (node.kind === 'repo' && wsId) {
 				const { repoId } = node;
-				selectedRepoId = repoId;
 				// Lazy-load root directory entries for browsing
 				loadDirEntries(wsId, repoId, '');
-				void loadRepoDiff(wsId, repoId);
-				maybeLoadBranchData(wsId, repoId);
+				if (explorerRootById.get(repoId)?.kind === 'repo') {
+					void loadRepoDiff(wsId, repoId);
+					maybeLoadBranchData(wsId, repoId);
+				}
 			} else if (node.kind === 'dir' && wsId) {
 				// Lazy-load directory children on expand
 				loadDirEntries(wsId, node.repoId, node.path);
@@ -826,6 +1068,10 @@
 		const sameFile = selectedRepoId === repoId && selectedFilePath === path;
 		selectedRepoId = repoId;
 		selectedFilePath = path;
+		selectedTree = { kind: 'file', key: buildFileNodeKey(repoId, path), repoId, path };
+		inlineCreate = null;
+		deleteConfirmPath = null;
+		deleteConfirmRepoId = null;
 		editMode = false;
 		previewMode = false;
 		editedContent = null;
@@ -990,6 +1236,7 @@
 		if (ws.id === lastWorkspaceId) return;
 		lastWorkspaceId = ws.id;
 		repoFileStates = new Map();
+		extraRoots = [];
 		dirEntries = new Map();
 		dirEntryErrors = new Map();
 		repoDiffMap = new Map();
@@ -998,23 +1245,44 @@
 		allPrReviewCommentsByRepo = new Map();
 		selectedRepoId = null;
 		selectedFilePath = null;
+		selectedTree = null;
+		inlineCreate = null;
 		fileDiffContent = null;
 		fileContent = null;
 		expandedNodes = new Set();
 		searchQuery = '';
+		clearRepoFileSearchCache();
 		clearImageCache();
 		clearFileContentCache();
 		clearDirListCache();
-		// Auto-expand first repo
+		clearWorkspaceExtraRootsCache();
+		loadWorkspaceExtraRootState(ws.id);
+		// Auto-expand first configured repo
 		const firstRepo = ws.repos[0];
 		if (firstRepo) {
 			expandedNodes = new Set([`repo:${firstRepo.id}`]);
+			selectRepoNode(firstRepo.id);
 			untrack(() => {
 				loadDirEntries(ws.id, firstRepo.id, '');
 				void loadRepoDiff(ws.id, firstRepo.id);
 				maybeLoadBranchData(ws.id, firstRepo.id);
 			});
 		}
+	});
+
+	$effect(() => {
+		const currentWsId = wsId;
+		if (!currentWsId) return;
+		if (workspace?.repos.length) return;
+		if (expandedNodes.size > 0) return;
+		const firstExtraRoot = extraRoots[0];
+		if (!firstExtraRoot) return;
+
+		expandedNodes = new Set([`repo:${firstExtraRoot.id}`]);
+		selectRepoNode(firstExtraRoot.id);
+		untrack(() => {
+			loadDirEntries(currentWsId, firstExtraRoot.id, '');
+		});
 	});
 
 	// Load file content or diff when selection changes
@@ -1088,7 +1356,16 @@
 		const currentWsId = wsId;
 		const repoId = selectedRepoId;
 		const path = selectedFilePath;
-		if (!blame || !currentWsId || !repoId || !path || editMode) return;
+		if (
+			!blame ||
+			!currentWsId ||
+			!repoId ||
+			!path ||
+			editMode ||
+			explorerRootById.get(repoId)?.kind !== 'repo'
+		) {
+			return;
+		}
 		void loadBlame(currentWsId, repoId, path);
 	});
 
@@ -1182,249 +1459,66 @@
 			<FolderTree size={48} />
 			<p>Select a thread to view files</p>
 		</div>
-	{:else if workspace.repos.length === 0}
+	{:else if explorerRoots.length === 0}
 		<div class="urv-empty">
 			<FolderTree size={48} />
-			<p>No repositories in this workspace</p>
+			<p>No repositories or workspace folders in this workspace</p>
 		</div>
 	{:else}
 		{#snippet sidebarPane()}
-			<aside class="urv-sidebar">
-				<div class="urv-tree-header">
-					<div class="urv-tree-title">
-						<FolderTree size={12} />
-						<span>Files</span>
-					</div>
-					<div class="urv-tree-actions">
-						{#if selectedRepo}
-							{@const tracked = selectedRepo.trackedPullRequest}
-							{#if tracked && tracked.state.toLowerCase() === 'open'}
-								<button
-									type="button"
-									class="urv-tree-action urv-action-pr"
-									title="View Pull Request"
-									onclick={() => (drawerMode = 'pr-lifecycle')}
-								>
-									<GitPullRequest size={11} />
-								</button>
-							{:else}
-								<button
-									type="button"
-									class="urv-tree-action"
-									title="Create Pull Request"
-									onclick={() => (drawerMode = 'pr-create')}
-								>
-									<GitPullRequest size={11} />
-								</button>
-								<button
-									type="button"
-									class="urv-tree-action"
-									title="Local Merge"
-									onclick={() => (drawerMode = 'local-merge')}
-								>
-									<GitMerge size={11} />
-								</button>
-							{/if}
-						{/if}
-						<button
-							type="button"
-							class="urv-tree-action"
-							title="New file"
-							onclick={() => {
-								newFilePath = '';
-								newFileDialogOpen = true;
-							}}
-						>
-							<FilePlus size={12} />
-						</button>
-						<button
-							type="button"
-							class="urv-tree-action"
-							title="Hide file tree"
-							onclick={() => (showFileTree = false)}
-						>
-							<PanelLeftClose size={12} />
-						</button>
-					</div>
-				</div>
-				<div class="urv-tree-search">
-					<Search size={11} />
-					<input
-						type="text"
-						placeholder="Filter files..."
-						value={searchQuery}
-						oninput={(e) => (searchQuery = (e.currentTarget as HTMLInputElement).value)}
-					/>
-				</div>
-				<div class="urv-tree-list" tabindex="0" role="tree" onkeydown={handleTreeKeydown}>
-					{#each treeNodes as node, idx (node.key)}
-						{#if node.kind === 'repo'}
-							{@const stats = repoChangeStats.get(node.repoId)}
-							{@const prState = getRepoPrState(node.repoId)}
-							<button
-								type="button"
-								class="urv-tree-repo"
-								class:expanded={expandedNodes.has(node.key)}
-								class:focused={idx === focusedNodeIndex}
-								style={`--depth:${node.depth};`}
-								onclick={() => toggleNode(node)}
-							>
-								{#if expandedNodes.has(node.key)}
-									<ChevronDown size={11} />
-								{:else}
-									<ChevronRight size={11} />
-								{/if}
-								<GitBranch size={12} />
-								<span class="urv-tree-label">{node.label}</span>
-								{#if prState === 'open'}
-									<span
-										class="urv-pr-indicator urv-pr-open"
-										role="button"
-										tabindex="-1"
-										title="View Pull Request"
-										onclick={(e) => {
-											e.stopPropagation();
-											selectedRepoId = node.repoId;
-											drawerMode = 'pr-lifecycle';
-										}}
-										onkeydown={() => {}}
-									>
-										<GitPullRequest size={10} />
-									</span>
-								{:else if prState === 'draft'}
-									<span
-										class="urv-pr-indicator urv-pr-draft"
-										role="button"
-										tabindex="-1"
-										title="View Draft PR"
-										onclick={(e) => {
-											e.stopPropagation();
-											selectedRepoId = node.repoId;
-											drawerMode = 'pr-lifecycle';
-										}}
-										onkeydown={() => {}}
-									>
-										<GitPullRequest size={10} />
-									</span>
-								{/if}
-								{#if stats && stats.count > 0}
-									<span class="urv-tree-change-badge">
-										<span class="urv-badge-add">+{stats.added}</span>
-										<span class="urv-badge-del">-{stats.removed}</span>
-									</span>
-								{:else if childCounts.has(node.key)}
-									<span class="urv-tree-count">{childCounts.get(node.key)}</span>
-								{/if}
-							</button>
-							{#if expandedNodes.has(node.key)}
-								{@const repoState = repoFileStates.get(node.repoId)}
-								{#if repoState?.status === 'loading'}
-									<div class="urv-tree-state" style="--depth:1;">
-										<span class="spin"><LoaderCircle size={14} /></span>
-										<span>Loading...</span>
-									</div>
-								{:else if repoState?.status === 'error'}
-									<div class="urv-tree-state error" style="--depth:1;">
-										{repoState.message}
-									</div>
-								{/if}
-							{/if}
-						{:else if node.kind === 'dir'}
-							{@const dirChanged = changedDirSet.has(node.key)}
-							{@const dirChanges = dirChangeCount.get(node.key) ?? 0}
-							{@const commentCount = dirCommentCount.get(node.key) ?? 0}
-							<button
-								type="button"
-								class="urv-tree-dir"
-								class:expanded={expandedNodes.has(node.key)}
-								class:has-changes={dirChanged}
-								class:focused={idx === focusedNodeIndex}
-								style={`--depth:${node.depth};`}
-								onclick={() => toggleNode(node)}
-							>
-								{#if expandedNodes.has(node.key)}
-									<ChevronDown size={11} />
-								{:else}
-									<ChevronRight size={11} />
-								{/if}
-								<span class="urv-tree-label">{node.label}</span>
-								{#if commentCount > 0}
-									<span
-										class="urv-tree-comment-badge"
-										title={`${commentCount} unresolved review thread${commentCount === 1 ? '' : 's'}`}
-									>
-										<MessageCircle size={10} />
-										<span>{commentCount}</span>
-									</span>
-								{/if}
-								{#if dirChanged && dirChanges > 0}
-									<span class="urv-tree-dir-changes">{dirChanges}</span>
-								{:else if childCounts.has(node.key)}
-									<span class="urv-tree-count">{childCounts.get(node.key)}</span>
-								{/if}
-							</button>
-							{#if expandedNodes.has(node.key) && getDirEntryError(node.repoId, node.path)}
-								<div class="urv-tree-state error" style={`--depth:${node.depth + 1};`}>
-									{getDirEntryError(node.repoId, node.path)}
-								</div>
-							{/if}
-						{:else}
-							{@const changed = isFileChanged(node.repoId, node.path)}
-							{@const diffInfo = changed ? getFileDiffInfo(node.repoId, node.path) : undefined}
-							<button
-								type="button"
-								class="urv-tree-file"
-								class:selected={node.path === selectedFilePath && node.repoId === selectedRepoId}
-								class:changed
-								class:dirty={node.repoId === selectedRepoId &&
-									node.path === selectedFilePath &&
-									editedContent !== null}
-								class:focused={idx === focusedNodeIndex}
-								style={`--depth:${node.depth};`}
-								title={node.path}
-								onclick={() => selectTreeFile(node.path, node.repoId)}
-							>
-								<span class="urv-file-icon" data-icon={getRepoFileIcon(node.path)}>
-									<Icon icon={getRepoFileIcon(node.path)} width="12" />
-								</span>
-								<span class="urv-tree-file-name">{node.label}</span>
-								{#if diffInfo}
-									<span class="urv-tree-file-diff">
-										{#if diffInfo.added > 0}<span class="urv-badge-add">+{diffInfo.added}</span
-											>{/if}
-										{#if diffInfo.removed > 0}<span class="urv-badge-del">-{diffInfo.removed}</span
-											>{/if}
-									</span>
-								{/if}
-								{#if getFileCommentCount(node.repoId, node.path) > 0}
-									{@const commentCount = getFileCommentCount(node.repoId, node.path)}
-									<span
-										class="urv-tree-comment-badge urv-tree-file-comments"
-										title={`${commentCount} unresolved review thread${commentCount === 1 ? '' : 's'}`}
-									>
-										<MessageCircle size={10} />
-										<span>{commentCount}</span>
-									</span>
-								{/if}
-								<span
-									class="urv-tree-file-delete"
-									role="button"
-									tabindex="-1"
-									title="Delete file"
-									onclick={(e) => {
-										e.stopPropagation();
-										deleteConfirmRepoId = node.repoId;
-										deleteConfirmPath = node.path;
-									}}
-									onkeydown={() => {}}
-								>
-									<Trash2 size={10} />
-								</span>
-							</button>
-						{/if}
-					{/each}
-				</div>
-			</aside>
+			<UnifiedRepoSidebar
+				showRepoActions={selectedRepo !== null}
+				showSelectedPrAction={selectedRepo?.trackedPullRequest?.state?.toLowerCase() === 'open'}
+				{searchQuery}
+				treeNodes={visibleTreeNodes}
+				{focusedNodeIndex}
+				{expandedNodes}
+				{childCounts}
+				{repoChangeStats}
+				{changedDirSet}
+				{dirChangeCount}
+				{dirCommentCount}
+				selectedTreeKey={selectedTree?.key ?? null}
+				{pendingDeleteKey}
+				{selectedRepoId}
+				{selectedFilePath}
+				{editedContent}
+				inlineCreateDraft={inlineCreate?.draftName ?? ''}
+				inlineCreatePending={inlineCreate?.creating ?? false}
+				getRootMeta={(repoId) => explorerRootById.get(repoId)}
+				{getRepoPrState}
+				{getRootState}
+				{getDirEntryError}
+				{isFileChanged}
+				{getFileDiffInfo}
+				{getFileCommentCount}
+				onOpenSelectedPr={() => (drawerMode = 'pr-lifecycle')}
+				onCreatePr={() => (drawerMode = 'pr-create')}
+				onLocalMerge={() => (drawerMode = 'local-merge')}
+				onRefresh={refreshExplorerTree}
+				onNewFile={startInlineCreate}
+				onHideTree={() => (showFileTree = false)}
+				onSearchQueryChange={(value) => (searchQuery = value)}
+				onToggleNode={toggleNode}
+				onTreeKeydown={handleTreeKeydown}
+				onInlineCreateDraftChange={setInlineCreateDraft}
+				onCommitInlineCreate={() => void handleCreateFile()}
+				onCancelInlineCreate={cancelInlineCreate}
+				onOpenTrackedPr={(repoId) => {
+					selectRepoNode(repoId);
+					drawerMode = 'pr-lifecycle';
+				}}
+				onSelectFile={(repoId, path) => selectTreeFile(path, repoId)}
+				onDeleteFile={(repoId, path) => {
+					deleteConfirmRepoId = repoId;
+					deleteConfirmPath = path;
+				}}
+				onConfirmDelete={() => void handleDeleteFile()}
+				onCancelDelete={() => {
+					deleteConfirmRepoId = null;
+					deleteConfirmPath = null;
+				}}
+			/>
 		{/snippet}
 
 		{#snippet mainPanel()}
@@ -1516,7 +1610,7 @@
 									<Save size={13} />
 								</button>
 							{/if}
-							{#if !editMode && !isChangedFile}
+							{#if !editMode && !isChangedFile && selectedRepo}
 								<button
 									type="button"
 									class="urv-toggle-btn"
@@ -1749,62 +1843,4 @@
 		onClose={closeDrawer}
 		onStatusChanged={() => {}}
 	/>
-{/if}
-
-{#if newFileDialogOpen}
-	<Modal title="Create New File" size="sm" onClose={() => (newFileDialogOpen = false)}>
-		<div class="urv-new-file-dialog">
-			<label>
-				<span>File path (relative to repo root)</span>
-				<input
-					type="text"
-					bind:value={newFilePath}
-					placeholder="src/components/NewFile.ts"
-					onkeydown={(e) => {
-						if (e.key === 'Enter') void handleCreateFile();
-					}}
-				/>
-			</label>
-		</div>
-		{#snippet footer()}
-			<button type="button" class="urv-dialog-btn" onclick={() => (newFileDialogOpen = false)}
-				>Cancel</button
-			>
-			<button
-				type="button"
-				class="urv-dialog-btn urv-dialog-btn-primary"
-				onclick={() => void handleCreateFile()}>Create</button
-			>
-		{/snippet}
-	</Modal>
-{/if}
-
-{#if deleteConfirmPath}
-	<Modal
-		title="Delete File"
-		size="sm"
-		onClose={() => {
-			deleteConfirmPath = null;
-			deleteConfirmRepoId = null;
-		}}
-	>
-		<p class="urv-delete-confirm-text">
-			Are you sure you want to delete <strong>{deleteConfirmPath}</strong>?
-		</p>
-		{#snippet footer()}
-			<button
-				type="button"
-				class="urv-dialog-btn"
-				onclick={() => {
-					deleteConfirmPath = null;
-					deleteConfirmRepoId = null;
-				}}>Cancel</button
-			>
-			<button
-				type="button"
-				class="urv-dialog-btn urv-dialog-btn-danger"
-				onclick={() => void handleDeleteFile()}>Delete</button
-			>
-		{/snippet}
-	</Modal>
 {/if}
