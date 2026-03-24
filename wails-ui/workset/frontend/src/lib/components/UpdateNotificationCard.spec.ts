@@ -18,14 +18,14 @@ describe('UpdateNotificationCard', () => {
 			},
 		});
 
-		expect(getByText('Workset v1.1.0 is available.')).toBeInTheDocument();
-		expect(getByText('Update ready')).toBeInTheDocument();
+		expect(getByText('v1.1.0 available')).toBeInTheDocument();
+		expect(getByText('Update available: v1.1.0')).toBeInTheDocument();
 		expect(getByRole('link', { name: /Release Notes/i })).toHaveAttribute(
 			'href',
 			'https://github.com/anomalyco/workset/releases/tag/v1.1.0',
 		);
 		expect(getByRole('button', { name: 'Dismiss' })).toBeInTheDocument();
-		expect(getByRole('button', { name: 'Update and Restart' })).toBeInTheDocument();
+		expect(getByRole('button', { name: 'Update & Restart' })).toBeInTheDocument();
 	});
 
 	it('hides action buttons while an update is applying', () => {
@@ -43,9 +43,9 @@ describe('UpdateNotificationCard', () => {
 			},
 		});
 
-		expect(getByText('Applying update')).toBeInTheDocument();
-		expect(getByText('Workset is installing the new build.')).toBeInTheDocument();
+		expect(getByText('Installing update v1.1.0…')).toBeInTheDocument();
+		expect(getByText('Applying update. The app will restart shortly.')).toBeInTheDocument();
 		expect(queryByRole('button', { name: 'Dismiss' })).toBeNull();
-		expect(queryByRole('button', { name: 'Update and Restart' })).toBeNull();
+		expect(queryByRole('button', { name: 'Update & Restart' })).toBeNull();
 	});
 });

@@ -19,12 +19,24 @@
 	<div class="update-toast__header">
 		{#if isApplying}
 			<span class="update-toast__icon spinning"><RefreshCw size={13} /></span>
-			<span class="update-toast__title">Installing update{notification.latestVersion ? ` ${notification.latestVersion}` : ''}…</span>
+			<span class="update-toast__title"
+				>Installing update{notification.latestVersion
+					? ` ${notification.latestVersion}`
+					: ''}…</span
+			>
 		{:else}
 			<span class="update-toast__title">
-				{notification.latestVersion ? `v${notification.latestVersion} available` : 'Update available'}
+				{notification.latestVersion
+					? `${notification.latestVersion} available`
+					: 'Update available'}
 			</span>
-			<button type="button" class="update-toast__close" aria-label="Dismiss" onclick={onDismiss} disabled={busy}>
+			<button
+				type="button"
+				class="update-toast__close"
+				aria-label="Dismiss"
+				onclick={onDismiss}
+				disabled={busy}
+			>
 				<X size={13} />
 			</button>
 		{/if}
@@ -152,7 +164,11 @@
 	}
 
 	@keyframes updateSpin {
-		from { transform: rotate(0deg); }
-		to { transform: rotate(360deg); }
+		from {
+			transform: rotate(0deg);
+		}
+		to {
+			transform: rotate(360deg);
+		}
 	}
 </style>
