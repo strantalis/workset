@@ -109,8 +109,12 @@ export const worksetTheme = EditorView.theme(
 		'.cm-changedLine': {
 			backgroundColor: `color-mix(in srgb, ${accent} 8%, transparent)`,
 		},
-		'.cm-changedText': {
-			backgroundColor: `color-mix(in srgb, ${accent} 20%, transparent)`,
+		// Override @codemirror/merge base theme which draws a 2px linear-gradient
+		// "underline" on .cm-changedText. Using `background` (shorthand) and
+		// matching the `&.cm-merge-a` / `&.cm-merge-b` specificity to fully
+		// replace the gradient with a flat color.
+		'.cm-changedText, &.cm-merge-a .cm-changedText, &.cm-merge-b .cm-changedText': {
+			background: `color-mix(in srgb, ${accent} 20%, transparent)`,
 		},
 		'.cm-insertedLine, .cm-mergeView .cm-changedLine.cm-insertedLine': {
 			backgroundColor: `color-mix(in srgb, ${success} 10%, transparent)`,
@@ -119,10 +123,10 @@ export const worksetTheme = EditorView.theme(
 			backgroundColor: `color-mix(in srgb, ${danger} 10%, transparent)`,
 		},
 		'.cm-insertedText': {
-			backgroundColor: `color-mix(in srgb, ${success} 25%, transparent)`,
+			background: `color-mix(in srgb, ${success} 25%, transparent)`,
 		},
-		'.cm-deletedText': {
-			backgroundColor: `color-mix(in srgb, ${danger} 25%, transparent)`,
+		'.cm-deletedText, .cm-deletedChunk .cm-deletedText': {
+			background: `color-mix(in srgb, ${danger} 25%, transparent)`,
 		},
 		'.cm-collapsedLines': {
 			backgroundColor: panelStrong,
