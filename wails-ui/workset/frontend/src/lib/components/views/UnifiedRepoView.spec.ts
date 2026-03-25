@@ -641,4 +641,13 @@ describe('UnifiedRepoView lazy directory tree', () => {
 		).toBeGreaterThan(0);
 		expect(unifiedRepoViewSource).toContain('editorViewVersion === viewVersion');
 	});
+
+	test('keeps semantic hover extensions independent from editor view readiness', () => {
+		expect(unifiedRepoViewSource).toContain(
+			'const handleDefinitionNavigate = createRepoDefinitionNavigateHandler(',
+		);
+		expect(unifiedRepoViewSource).toContain(
+			'const semanticHoverExtensions = $derived.by(() => createRepoSemanticHoverExtensions(wsId, selectedRepoId, selectedFilePath, handleDefinitionNavigate));',
+		);
+	});
 });

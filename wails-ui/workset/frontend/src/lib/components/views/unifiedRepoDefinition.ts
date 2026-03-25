@@ -10,6 +10,14 @@ type DefinitionNavigationOptions = {
 	selectTreeFile: (path: string, repoId: string) => void;
 };
 
+type DefinitionNavigateHandlerOptions = {
+	getEditorView: () => EditorView | null;
+	getSelectedRepoId: () => string | null;
+	getSelectedFilePath: () => string | null;
+	getSelectTreeFile: () => (path: string, repoId: string) => void;
+	setPendingTarget: (target: RepoFileDefinitionTarget | null) => void;
+};
+
 type PendingDefinitionOptions = {
 	target: RepoFileDefinitionTarget | null;
 	editorView: EditorView | null;
@@ -30,6 +38,20 @@ export function navigateRepoDefinitionTarget(options: DefinitionNavigationOption
 		return;
 	}
 	selectTreeFile(target.path, target.repoId);
+}
+
+export function createRepoDefinitionNavigateHandler(
+	options: DefinitionNavigateHandlerOptions,
+): (target: RepoFileDefinitionTarget) => void {
+	return (target) =>
+		navigateRepoDefinitionTarget({
+			target,
+			editorView: options.getEditorView(),
+			selectedRepoId: options.getSelectedRepoId(),
+			selectedFilePath: options.getSelectedFilePath(),
+			setPendingTarget: options.setPendingTarget,
+			selectTreeFile: options.getSelectTreeFile(),
+		});
 }
 
 export function flushPendingRepoDefinitionTarget(options: PendingDefinitionOptions): void {

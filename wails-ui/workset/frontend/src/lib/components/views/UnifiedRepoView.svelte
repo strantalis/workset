@@ -96,10 +96,8 @@
 		upsertLoadedRepoFileState,
 		validateInlineCreateFileName,
 	} from './unifiedRepoInlineCreate';
-	import {
-		flushPendingRepoDefinitionTarget,
-		navigateRepoDefinitionTarget,
-	} from './unifiedRepoDefinition';
+	// prettier-ignore
+	import { createRepoDefinitionNavigateHandler, flushPendingRepoDefinitionTarget } from './unifiedRepoDefinition';
 	import {
 		findChangedFilePath,
 		getRepoFileDiffInfo,
@@ -259,11 +257,10 @@
 	let editorViewPath = $state<string | null>(null);
 	let editorViewVersion = $state(0);
 	let pendingDefinitionTarget = $state<RepoFileDefinitionTarget | null>(null);
-
 	// prettier-ignore
-	const semanticHoverExtensions = $derived.by(() =>
-		createRepoSemanticHoverExtensions(wsId, selectedRepoId, selectedFilePath, (target) => navigateRepoDefinitionTarget({ target, editorView, selectedRepoId, selectedFilePath, setPendingTarget: (nextTarget) => (pendingDefinitionTarget = nextTarget), selectTreeFile })),
-	);
+	const handleDefinitionNavigate = createRepoDefinitionNavigateHandler({ getEditorView: () => editorView, getSelectedRepoId: () => selectedRepoId, getSelectedFilePath: () => selectedFilePath, getSelectTreeFile: () => selectTreeFile, setPendingTarget: (nextTarget) => (pendingDefinitionTarget = nextTarget) });
+	// prettier-ignore
+	const semanticHoverExtensions = $derived.by(() => createRepoSemanticHoverExtensions(wsId, selectedRepoId, selectedFilePath, handleDefinitionNavigate));
 	const editExtensions = $derived.by((): Extension[] => [
 		dirtyIndicator(),
 		navigationKeymap({
