@@ -21,6 +21,7 @@
 		RepoDiffFileSummary,
 		RepoDiffSummary,
 		RepoFileContent,
+		RepoFileDefinitionTarget,
 		RepoFileDiff,
 		RepoFileSearchResult,
 		Workspace,
@@ -95,6 +96,18 @@
 		upsertLoadedRepoFileState,
 		validateInlineCreateFileName,
 	} from './unifiedRepoInlineCreate';
+	import {
+		flushPendingRepoDefinitionTarget,
+		navigateRepoDefinitionTarget,
+	} from './unifiedRepoDefinition';
+	import {
+		findChangedFilePath,
+		getRepoFileDiffInfo,
+		handleEditorSaveKeydown,
+		ignoreError,
+		isRepoFileChanged,
+		maybeLoadBranchDataForRepo,
+	} from './unifiedRepoView.helpers';
 	import { useNotifications } from '../../contexts/notifications';
 	import { dirtyIndicator, setCleanDoc } from '../editor/dirtyIndicator';
 	import { navigationKeymap } from '../editor/navigationKeymap';
@@ -107,6 +120,7 @@
 	import type { EditorView } from '@codemirror/view';
 	import type { Extension } from '@codemirror/state';
 	import { buildReviewThreadCountsByFile } from '../../pullRequestUiHelpers';
+	import { createRepoSemanticHoverExtensions } from './unifiedRepoHover';
 	import './UnifiedRepoView.css';
 	interface Props {
 		workspace: Workspace | null;
@@ -147,7 +161,6 @@
 	let fileDiffLoading = $state(false);
 	let fileDiffError: string | null = $state(null);
 	let fileDiffRequestId = 0;
-
 	let originalFileContent: string | null = $state(null);
 	let modifiedFileContent: string | null = $state(null);
 	let fullDiffLoading = $state(false);
@@ -166,8 +179,8 @@
 	let mermaidFitScale = $state(1);
 	let mermaidDragging = $state(false);
 	let mermaidDragPointerId = $state<number | null>(null);
-	let mermaidDragOriginX = 0;
-	let mermaidDragOriginY = 0;
+	let mermaidDragOriginX = 0,
+		mermaidDragOriginY = 0;
 	let mermaidDragStartOffsetX = 0;
 	let mermaidDragStartOffsetY = 0;
 	let mermaidCanvasEl = $state<HTMLElement | null>(null);
@@ -186,18 +199,12 @@
 		mermaidIntrinsicH = 0;
 		mermaidOverlayOpen = true;
 	};
-	const closeMermaidOverlay = (): void => {
-		mermaidOverlayOpen = false;
-		mermaidOverlayMarkup = '';
-	};
+	const closeMermaid = (): void => void ((mermaidOverlayOpen = false), (mermaidOverlayMarkup = ''));
 	const adjustMermaidZoom = (delta: number): void => {
 		mermaidZoom = Math.min(2.5, Math.max(0.5, Math.round((mermaidZoom + delta) * 100) / 100));
 	};
-	const resetMermaidZoom = (): void => {
-		mermaidZoom = 1;
-		mermaidOffsetX = 0;
-		mermaidOffsetY = 0;
-	};
+	// prettier-ignore
+	const resetMermaidZoom = (): void => void ((mermaidZoom = 1), (mermaidOffsetX = 0), (mermaidOffsetY = 0));
 	const updateMermaidFit = (): void => {
 		if (!mermaidCanvasEl || !mermaidStageEl) return;
 		const svg = mermaidStageEl.querySelector('svg');
@@ -249,30 +256,33 @@
 	let editedContent = $state<string | null>(null);
 	let saving = $state(false);
 	let editorView: EditorView | null = null;
+	let editorViewPath = $state<string | null>(null);
+	let editorViewVersion = $state(0);
+	let pendingDefinitionTarget = $state<RepoFileDefinitionTarget | null>(null);
 
-	const editExtensions: Extension[] = [
+	// prettier-ignore
+	const semanticHoverExtensions = $derived.by(() =>
+		createRepoSemanticHoverExtensions(wsId, selectedRepoId, selectedFilePath, (target) => navigateRepoDefinitionTarget({ target, editorView, selectedRepoId, selectedFilePath, setPendingTarget: (nextTarget) => (pendingDefinitionTarget = nextTarget), selectTreeFile })),
+	);
+	const editExtensions = $derived.by((): Extension[] => [
 		dirtyIndicator(),
 		navigationKeymap({
 			onPrevFile: () => navigateChangedFile(-1),
 			onNextFile: () => navigateChangedFile(1),
 		}),
-	];
-	const viewExtensions = $derived.by((): Extension[] => {
-		const exts: Extension[] = [
-			navigationKeymap({
-				onPrevFile: () => navigateChangedFile(-1),
-				onNextFile: () => navigateChangedFile(1),
-			}),
-		];
-		if (blameMode) exts.push(blameExtension());
-		return exts;
-	});
-	const handleEditorReady = (view: EditorView): void => {
-		editorView = view;
-	};
-	const handleContentChange = (content: string): void => {
-		editedContent = content;
-	};
+		...semanticHoverExtensions,
+	]);
+	const viewExtensions = $derived.by((): Extension[] => [
+		navigationKeymap({
+			onPrevFile: () => navigateChangedFile(-1),
+			onNextFile: () => navigateChangedFile(1),
+		}),
+		...semanticHoverExtensions,
+		...(blameMode ? [blameExtension()] : []),
+	]);
+	// prettier-ignore
+	const handleEditorReady = (view: EditorView): void => void ((editorView = view), (editorViewPath = selectedFilePath), (editorViewVersion += 1));
+	const handleContentChange = (content: string): void => void (editedContent = content);
 	const saveFile = async (): Promise<void> => {
 		if (!editMode || saving || editedContent === null) return;
 		if (!wsId || !selectedRepoId || !selectedFilePath) return;
@@ -280,12 +290,10 @@
 		try {
 			const savedContent = editedContent;
 			await writeWorkspaceRepoFile(wsId, selectedRepoId, selectedFilePath, editedContent);
-			// Update local state to reflect saved content
 			if (fileContent) {
 				fileContent = { ...fileContent, content: editedContent };
 			}
 			editedContent = null;
-			// Tell CM6 dirty indicator the doc is now clean
 			if (editorView) {
 				editorView.dispatch({ effects: setCleanDoc.of(savedContent) });
 			}
@@ -298,10 +306,7 @@
 		}
 	};
 	const handleKeydown = (event: KeyboardEvent): void => {
-		if ((event.metaKey || event.ctrlKey) && event.key === 's' && editMode) {
-			event.preventDefault();
-			void saveFile();
-		}
+		handleEditorSaveKeydown(event, editMode, () => void saveFile());
 	};
 	let focusedNodeIndex = $state(-1);
 	const handleTreeKeydown = (event: KeyboardEvent): void => {
@@ -368,7 +373,6 @@
 
 		if (handled) {
 			event.preventDefault();
-			// Scroll focused node into view
 			const treeList = event.currentTarget as HTMLElement;
 			const focusedEl = treeList.children[focusedNodeIndex] as HTMLElement | undefined;
 			focusedEl?.scrollIntoView({ block: 'nearest' });
@@ -654,7 +658,7 @@
 			repoDiffMap = new Map(repoDiffMap).set(repoId, fetched);
 			repoDiffCache.setSummary(cacheKey, fetched);
 		} catch {
-			// keep cached if available
+			ignoreError();
 		}
 	};
 	const loadBranchDiff = async (
@@ -667,7 +671,7 @@
 			const fetched = await fetchBranchDiffSummary(workspaceId, repoId, baseBranch, headBranch);
 			branchDiffMap = new Map(branchDiffMap).set(repoId, fetched);
 		} catch {
-			// keep existing if available
+			ignoreError();
 		}
 	};
 
@@ -737,7 +741,6 @@
 			return;
 		}
 
-		// Filter cached comments for this file
 		const repoComments = allPrReviewCommentsByRepo.get(repoId) ?? [];
 		const fileComments = repoComments.filter((c) => c.path === filePath && c.line != null);
 		prReviewComments = fileComments.map((c) => ({
@@ -751,7 +754,6 @@
 			threadId: c.threadId,
 		}));
 
-		// Fetch CI annotations
 		try {
 			const statusResult = await fetchPullRequestStatus(wsId, repoId, pr.number, pr.headBranch);
 			const annotations: CIAnnotation[] = [];
@@ -773,7 +775,7 @@
 						});
 					}
 				} catch {
-					// skip this check run
+					ignoreError();
 				}
 			}
 			prCiAnnotations = annotations;
@@ -788,28 +790,17 @@
 				editorView.dispatch({ effects: setBlameData.of(entries) });
 			}
 		} catch {
-			// blame failed — ignore silently
+			ignoreError();
 		}
 	};
-	const selectRepoNode = (repoId: string): void => {
-		selectedRepoId = repoId;
-		selectedTree = { kind: 'repo', key: buildRepoNodeKey(repoId), repoId };
-		deleteConfirmPath = null;
-		deleteConfirmRepoId = null;
-	};
-	const selectDirNode = (repoId: string, path: string): void => {
-		selectedRepoId = repoId;
-		selectedTree = { kind: 'dir', key: buildDirNodeKey(repoId, path), repoId, path };
-		deleteConfirmPath = null;
-		deleteConfirmRepoId = null;
-	};
-	const cancelInlineCreate = (): void => {
-		inlineCreate = null;
-	};
-	const setInlineCreateDraft = (draftName: string): void => {
-		if (!inlineCreate) return;
-		inlineCreate = { ...inlineCreate, draftName };
-	};
+	// prettier-ignore
+	const selectRepoNode = (repoId: string): void => void ((selectedRepoId = repoId), (selectedTree = { kind: 'repo', key: buildRepoNodeKey(repoId), repoId }), (deleteConfirmPath = null), (deleteConfirmRepoId = null));
+	// prettier-ignore
+	const selectDirNode = (repoId: string, path: string): void => void ((selectedRepoId = repoId), (selectedTree = { kind: 'dir', key: buildDirNodeKey(repoId, path), repoId, path }), (deleteConfirmPath = null), (deleteConfirmRepoId = null));
+	// prettier-ignore
+	const cancelInlineCreate = (): void => void (inlineCreate = null);
+	// prettier-ignore
+	const setInlineCreateDraft = (draftName: string): void => void (inlineCreate && (inlineCreate = { ...inlineCreate, draftName }));
 	const upsertCreatedFileInTree = (repoId: string, fullPath: string): void => {
 		const parentDirPath = getParentDirPath(fullPath);
 		const dirKey = createRepoDirEntriesKey(repoId, parentDirPath);
@@ -933,6 +924,9 @@
 				});
 			}
 			if (selectedRepoId === repoId && selectedFilePath === path) {
+				editorView = null;
+				editorViewPath = null;
+				editorViewVersion += 1;
 				selectedFilePath = null;
 				fileContent = null;
 				selectedTree =
@@ -964,7 +958,6 @@
 		}
 	};
 
-	// Refresh the currently viewed file content
 	const refreshCurrentFile = (): void => {
 		const currentWsId = wsId;
 		const repoId = selectedRepoId;
@@ -996,7 +989,7 @@
 			loadDirEntries(currentWsId, repoId, '');
 			if (explorerRootById.get(repoId)?.kind === 'repo') {
 				void loadRepoDiff(currentWsId, repoId, true);
-				maybeLoadBranchData(currentWsId, repoId);
+				/* prettier-ignore */ maybeLoadBranchDataForRepo(workspace, currentWsId, repoId, loadBranchDiff, loadAllPrReviewComments);
 			}
 		}
 		for (const node of treeNodes) {
@@ -1033,7 +1026,6 @@
 		const next = new Set(expandedNodes);
 		if (next.has(key)) {
 			next.delete(key);
-			// Evict diff data and stop watcher for collapsed repos
 			if (node.kind === 'repo' && explorerRootById.get(node.repoId)?.kind === 'repo') {
 				const { repoId } = node;
 				if (repoDiffMap.has(repoId)) {
@@ -1051,14 +1043,12 @@
 			next.add(key);
 			if (node.kind === 'repo' && wsId) {
 				const { repoId } = node;
-				// Lazy-load root directory entries for browsing
 				loadDirEntries(wsId, repoId, '');
 				if (explorerRootById.get(repoId)?.kind === 'repo') {
 					void loadRepoDiff(wsId, repoId);
-					maybeLoadBranchData(wsId, repoId);
+					/* prettier-ignore */ maybeLoadBranchDataForRepo(workspace, wsId, repoId, loadBranchDiff, loadAllPrReviewComments);
 				}
 			} else if (node.kind === 'dir' && wsId) {
-				// Lazy-load directory children on expand
 				loadDirEntries(wsId, node.repoId, node.path);
 			}
 		}
@@ -1066,6 +1056,11 @@
 	};
 	const selectTreeFile = (path: string, repoId: string): void => {
 		const sameFile = selectedRepoId === repoId && selectedFilePath === path;
+		if (!sameFile) {
+			editorView = null;
+			editorViewPath = null;
+			editorViewVersion += 1;
+		}
 		selectedRepoId = repoId;
 		selectedFilePath = path;
 		selectedTree = { kind: 'file', key: buildFileNodeKey(repoId, path), repoId, path };
@@ -1088,11 +1083,9 @@
 		fileContentRequestId += 1;
 	};
 
-	// Handle pending file selection from Cmd+P search
 	$effect(() => {
 		if (pendingFileSelection) {
 			const { repoId, path } = pendingFileSelection;
-			// Expand the repo node if collapsed
 			const repoKey = `repo:${repoId}`;
 			if (!expandedNodes.has(repoKey)) {
 				expandedNodes = new Set([...expandedNodes, repoKey]);
@@ -1101,14 +1094,8 @@
 			onFileSelectionHandled();
 		}
 	});
-	const navigateChangedFile = (delta: number): void => {
-		const files = currentRepoChangedFiles;
-		if (files.length === 0 || selectedChangedFileIdx < 0) return;
-		const next = Math.max(0, Math.min(files.length - 1, selectedChangedFileIdx + delta));
-		if (next !== selectedChangedFileIdx) {
-			selectTreeFile(files[next].path, selectedRepoId!);
-		}
-	};
+	// prettier-ignore
+	const navigateChangedFile = (delta: number): void => { const nextPath = findChangedFilePath(currentRepoChangedFiles, selectedChangedFileIdx, delta); if (nextPath && selectedRepoId) selectTreeFile(nextPath, selectedRepoId); };
 	const loadFileDiff = async (
 		wsId: string,
 		repoId: string,
@@ -1179,7 +1166,6 @@
 			}
 		} catch {
 			if (requestId !== fullDiffRequestId) return;
-			// Fall back to patch-only mode
 			originalFileContent = null;
 			modifiedFileContent = null;
 		} finally {
@@ -1201,7 +1187,6 @@
 		}
 	};
 
-	// Index one repo at a time for tree search, prioritizing the selected repo so early results feel fast.
 	$effect(() => {
 		const currentWsId = wsId;
 		if (!currentWsId) return;
@@ -1216,7 +1201,6 @@
 		}
 	});
 
-	// Auto-expand search results
 	$effect(() => {
 		const query = searchQuery.trim().toLowerCase();
 		if (query.length === 0) return;
@@ -1228,7 +1212,6 @@
 		}
 	});
 
-	// Reset only when workspace ID changes (not on every reference update from polling)
 	let lastWorkspaceId = '';
 	$effect(() => {
 		const ws = workspace;
@@ -1244,6 +1227,9 @@
 		prFileCommentCounts = new Map();
 		allPrReviewCommentsByRepo = new Map();
 		selectedRepoId = null;
+		editorView = null;
+		editorViewPath = null;
+		editorViewVersion += 1;
 		selectedFilePath = null;
 		selectedTree = null;
 		inlineCreate = null;
@@ -1256,8 +1242,8 @@
 		clearFileContentCache();
 		clearDirListCache();
 		clearWorkspaceExtraRootsCache();
+		pendingDefinitionTarget = null;
 		loadWorkspaceExtraRootState(ws.id);
-		// Auto-expand first configured repo
 		const firstRepo = ws.repos[0];
 		if (firstRepo) {
 			expandedNodes = new Set([`repo:${firstRepo.id}`]);
@@ -1265,7 +1251,7 @@
 			untrack(() => {
 				loadDirEntries(ws.id, firstRepo.id, '');
 				void loadRepoDiff(ws.id, firstRepo.id);
-				maybeLoadBranchData(ws.id, firstRepo.id);
+				/* prettier-ignore */ maybeLoadBranchDataForRepo(workspace, ws.id, firstRepo.id, loadBranchDiff, loadAllPrReviewComments);
 			});
 		}
 	});
@@ -1285,7 +1271,6 @@
 		});
 	});
 
-	// Load file content or diff when selection changes
 	$effect(() => {
 		const currentWsId = wsId;
 		const repoId = selectedRepoId;
@@ -1293,12 +1278,10 @@
 		const diffFile = selectedDiffFile;
 		const editing = editMode;
 		if (!currentWsId || !repoId || !path) return;
-		// Load file content for edit mode or preview mode
 		if (editing || previewMode) {
 			if (!fileContent || fileContent.path !== path) {
 				void loadFileContent(currentWsId, repoId, path);
 			}
-			// Also load diff if we have a changed file (for when preview is toggled off)
 			if (diffFile && !fileDiffContent) {
 				void loadFileDiff(currentWsId, repoId, diffFile);
 			}
@@ -1311,16 +1294,6 @@
 			void loadFileContent(currentWsId, repoId, path);
 		}
 	});
-
-	// Helper: load branch diff + PR comments if repo has a tracked PR
-	const maybeLoadBranchData = (currentWsId: string, repoId: string): void => {
-		const repo = workspace?.repos.find((r) => r.id === repoId);
-		const repoPr = repo?.trackedPullRequest;
-		if (repoPr && repoPr.state.toLowerCase() === 'open') {
-			void loadBranchDiff(currentWsId, repoId, repoPr.baseBranch, repoPr.headBranch);
-			void loadAllPrReviewComments(currentWsId, repoId);
-		}
-	};
 
 	$effect(() => {
 		const currentWsId = wsId;
@@ -1336,7 +1309,6 @@
 		return () => clearInterval(timer);
 	});
 
-	// Load PR annotations when viewing a file in a repo with a tracked PR
 	$effect(() => {
 		const currentWsId = wsId;
 		const repoId = selectedRepoId;
@@ -1350,7 +1322,6 @@
 		void loadPrAnnotations(currentWsId, repoId, path);
 	});
 
-	// Load blame when blame mode is toggled on or file changes
 	$effect(() => {
 		const blame = blameMode;
 		const currentWsId = wsId;
@@ -1369,7 +1340,6 @@
 		void loadBlame(currentWsId, repoId, path);
 	});
 
-	// Render markdown when file content loads (for unchanged files or diff preview)
 	$effect(() => {
 		const content = fileContent;
 		const shouldRender = showRenderedMarkdown || showDiffPreview;
@@ -1393,7 +1363,7 @@
 							}),
 						};
 					} catch {
-						// Show markdown without images on failure
+						ignoreError();
 					}
 				}
 				if (token !== renderToken) return;
@@ -1407,15 +1377,12 @@
 			});
 	});
 
-	// Update mermaid overlay fit when opened
 	$effect(() => {
 		if (mermaidOverlayOpen && mermaidOverlayMarkup) {
-			// Wait for DOM to render the SVG
 			queueMicrotask(updateMermaidFit);
 		}
 	});
 
-	// Subscribe to repo diff events — refresh data when files change on disk
 	$effect(() => {
 		const currentWsId = wsId;
 		if (!currentWsId) return;
@@ -1425,16 +1392,13 @@
 			summary: import('../../types').RepoDiffSummary;
 		}>(EVENT_REPO_DIFF_LOCAL_SUMMARY, (payload) => {
 			if (payload.workspaceId !== currentWsId) return;
-			// Update the diff summary for this repo
 			repoDiffMap = new Map(repoDiffMap).set(payload.repoId, payload.summary);
 			repoDiffCache.setSummary(
 				buildSummaryLocalCacheKey(currentWsId, payload.repoId),
 				payload.summary,
 			);
-			// Invalidate cached file/dir content for this repo (files changed on disk)
 			invalidateRepoFileContent(currentWsId, payload.repoId);
 			invalidateRepoDirCache(currentWsId, payload.repoId);
-			// If we're viewing a file in this repo, refresh it
 			if (payload.repoId === selectedRepoId && selectedFilePath) {
 				refreshCurrentFile();
 			}
@@ -1442,13 +1406,18 @@
 		return unsub;
 	});
 
-	// Check if file is changed helper
-	const isFileChanged = (repoId: string, path: string): boolean =>
-		changedFileSet.has(`${repoId}:${path}`);
-	const getFileDiffInfo = (repoId: string, path: string): RepoDiffFileSummary | undefined => {
-		const summary = repoDiffMap.get(repoId);
-		return summary?.files.find((f) => f.path === path);
-	};
+	$effect(() => {
+		const target = pendingDefinitionTarget;
+		const view = editorView;
+		const viewPath = editorViewPath;
+		const viewVersion = editorViewVersion;
+		/* prettier-ignore */ flushPendingRepoDefinitionTarget({ target, editorView: view, editorViewPath: viewPath, selectedRepoId, selectedFilePath, isCurrent: () => pendingDefinitionTarget === target && editorView === view && editorViewPath === viewPath && editorViewVersion === viewVersion, setPendingTarget: (nextTarget) => (pendingDefinitionTarget = nextTarget) });
+	});
+
+	// prettier-ignore
+	const isFileChanged = (repoId: string, path: string): boolean => isRepoFileChanged(changedFileSet, repoId, path);
+	// prettier-ignore
+	const getFileDiffInfo = (repoId: string, path: string): RepoDiffFileSummary | undefined => getRepoFileDiffInfo(repoDiffMap, repoId, path);
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -1689,6 +1658,7 @@
 								filePath={selectedFilePath}
 								readOnly={true}
 								extensions={viewExtensions}
+								onViewReady={handleEditorReady}
 							/>
 						{:else if fileContentLoading}
 							<div class="urv-placeholder"><p>Loading file...</p></div>
@@ -1733,9 +1703,9 @@
 		role="button"
 		tabindex="0"
 		aria-label="Close diagram"
-		onclick={closeMermaidOverlay}
+		onclick={closeMermaid}
 		onkeydown={(e) => {
-			if (e.key === 'Escape') closeMermaidOverlay();
+			if (e.key === 'Escape') closeMermaid();
 		}}
 	>
 		<div
@@ -1764,7 +1734,7 @@
 						onclick={() => adjustMermaidZoom(0.1)}><Plus size={15} /></button
 					>
 				</div>
-				<button type="button" class="mm-btn" aria-label="Close" onclick={closeMermaidOverlay}
+				<button type="button" class="mm-btn" aria-label="Close" onclick={closeMermaid}
 					><X size={15} /></button
 				>
 			</div>

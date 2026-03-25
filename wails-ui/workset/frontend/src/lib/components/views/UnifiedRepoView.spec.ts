@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import UnifiedRepoView from './UnifiedRepoView.svelte';
+import unifiedRepoViewSource from './UnifiedRepoView.svelte?raw';
 import type {
 	PullRequestCreated,
 	RepoDiffSummary,
@@ -627,5 +628,17 @@ describe('UnifiedRepoView lazy directory tree', () => {
 			5000,
 			'ws-1::repo-alpha',
 		);
+	});
+
+	test('wires onViewReady for both edit and read-only code editors', () => {
+		expect(unifiedRepoViewSource.match(/onViewReady=\{handleEditorReady\}/g)).toHaveLength(2);
+	});
+
+	test('tracks editor readiness with reactive version state for cross-file definition jumps', () => {
+		expect(unifiedRepoViewSource).toContain('let editorViewVersion = $state(0);');
+		expect(
+			unifiedRepoViewSource.match(/\(editorViewVersion \+= 1\)/g)?.length ?? 0,
+		).toBeGreaterThan(0);
+		expect(unifiedRepoViewSource).toContain('editorViewVersion === viewVersion');
 	});
 });

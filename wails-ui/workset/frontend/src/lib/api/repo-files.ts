@@ -1,9 +1,12 @@
 import type {
 	RepoFileContent,
+	RepoFileDefinitionResult,
+	RepoFileHoverResult,
 	RepoFileSearchResult,
 	RepoImageContent,
 	WorkspaceExtraRoot,
 } from '../types';
+import { Call } from '@wailsio/runtime';
 import {
 	CreateWorkspaceRepoFile,
 	DeleteWorkspaceRepoFile,
@@ -165,6 +168,28 @@ export async function readWorkspaceRepoImageBase64(
 		repoId,
 		path,
 	})) as RepoImageContent;
+}
+
+export async function getRepoFileHover(input: {
+	workspaceId: string;
+	repoId: string;
+	path: string;
+	content: string;
+	line: number;
+	character: number;
+}): Promise<RepoFileHoverResult> {
+	return (await Call.ByName('main.App.GetRepoFileHover', input)) as RepoFileHoverResult;
+}
+
+export async function getRepoFileDefinition(input: {
+	workspaceId: string;
+	repoId: string;
+	path: string;
+	content: string;
+	line: number;
+	character: number;
+}): Promise<RepoFileDefinitionResult> {
+	return (await Call.ByName('main.App.GetRepoFileDefinition', input)) as RepoFileDefinitionResult;
 }
 
 export type RepoFileWriteResult = {

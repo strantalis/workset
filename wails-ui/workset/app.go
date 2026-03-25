@@ -23,6 +23,8 @@ type App struct {
 	serviceOnce       sync.Once
 	repoFileIndexMu   sync.Mutex
 	repoFileIndexes   map[string]repoFileIndexCacheEntry
+	repoHoverMu       sync.Mutex
+	repoHoverClients  map[string]repoHoverBackend
 	repoDiffSummaryMu sync.Mutex
 	repoDiffSummaries map[string]repoDiffSummaryCacheEntry
 	terminalMu        sync.Mutex
@@ -45,6 +47,7 @@ func NewApp() *App {
 		service:           nil,
 		mainWindowName:    mainWindowName,
 		repoFileIndexes:   map[string]repoFileIndexCacheEntry{},
+		repoHoverClients:  map[string]repoHoverBackend{},
 		repoDiffSummaries: map[string]repoDiffSummaryCacheEntry{},
 		terminals:         map[string]*terminalSession{},
 		sessiondStart:     &sessiondStartState{},
@@ -82,6 +85,12 @@ func (a *App) shutdown(_ context.Context) {
 	a.repoFileIndexMu.Lock()
 	a.repoFileIndexes = map[string]repoFileIndexCacheEntry{}
 	a.repoFileIndexMu.Unlock()
+	a.repoHoverMu.Lock()
+	for _, client := range a.repoHoverClients {
+		_ = client.Close()
+	}
+	a.repoHoverClients = map[string]repoHoverBackend{}
+	a.repoHoverMu.Unlock()
 	a.repoDiffSummaryMu.Lock()
 	a.repoDiffSummaries = map[string]repoDiffSummaryCacheEntry{}
 	a.repoDiffSummaryMu.Unlock()

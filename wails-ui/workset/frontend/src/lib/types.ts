@@ -27,6 +27,48 @@ export type RepoFileContent = {
 	sizeBytes: number;
 };
 
+export type RepoFileHoverRange = {
+	startLine: number;
+	startCharacter: number;
+	endLine: number;
+	endCharacter: number;
+};
+
+export type RepoFileHoverResult = {
+	supported: boolean;
+	available: boolean;
+	found: boolean;
+	language?: string;
+	provider?: string;
+	header?: string;
+	documentation?: string;
+	documentationKind?: string;
+	source?: string;
+	range?: RepoFileHoverRange | null;
+	unavailableReason?: string;
+	installHint?: string;
+};
+
+export type RepoFileDefinitionTarget = {
+	repoId: string;
+	path: string;
+	line: number;
+	character: number;
+	endLine: number;
+	endCharacter: number;
+};
+
+export type RepoFileDefinitionResult = {
+	supported: boolean;
+	available: boolean;
+	found: boolean;
+	language?: string;
+	provider?: string;
+	targets?: RepoFileDefinitionTarget[];
+	unavailableReason?: string;
+	installHint?: string;
+};
+
 export type RepoImageContent = {
 	base64: string;
 	mimeType: string;
