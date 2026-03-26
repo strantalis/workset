@@ -12,6 +12,7 @@ describe('SettingsSidebar', () => {
 			props: {
 				activeSection: 'defaults',
 				onSelectSection: () => {},
+				onClose: () => {},
 				aliasCount: 0,
 			},
 		});
@@ -28,6 +29,7 @@ describe('SettingsSidebar', () => {
 			props: {
 				activeSection: 'defaults',
 				onSelectSection: () => {},
+				onClose: () => {},
 				aliasCount: 0,
 			},
 		});
@@ -40,6 +42,7 @@ describe('SettingsSidebar', () => {
 			props: {
 				activeSection: 'defaults',
 				onSelectSection: () => {},
+				onClose: () => {},
 				aliasCount: 0,
 			},
 		});
@@ -66,6 +69,7 @@ describe('SettingsSidebar', () => {
 			props: {
 				activeSection: 'defaults',
 				onSelectSection: () => {},
+				onClose: () => {},
 				aliasCount: 5,
 			},
 		});
@@ -78,6 +82,7 @@ describe('SettingsSidebar', () => {
 			props: {
 				activeSection: 'about',
 				onSelectSection: () => {},
+				onClose: () => {},
 				aliasCount: 0,
 			},
 		});
@@ -93,6 +98,7 @@ describe('SettingsSidebar', () => {
 			props: {
 				activeSection: 'defaults',
 				onSelectSection: handleSelect,
+				onClose: () => {},
 				aliasCount: 0,
 			},
 		});

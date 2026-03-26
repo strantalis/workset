@@ -27,7 +27,7 @@
 		activeTerminalWorkspaceIds?: string[];
 		lockWorksetSelection?: boolean;
 		canManageRepos?: boolean;
-		activeView?: 'workspaces' | 'skill-registry';
+		activeView?: 'workspaces' | 'skill-registry' | 'settings';
 		activeSurface?: 'terminal' | 'pull-requests';
 		filesActive?: boolean;
 		selectedWorksetId?: string | null;
@@ -672,7 +672,8 @@
 			<div class="footer-utils">
 				<button
 					type="button"
-					class="ws-icon-action-btn tooltip-up"
+					class="footer-pane-btn"
+					class:active={activeView === 'settings'}
 					data-hover-label="Settings"
 					aria-label="Open settings"
 					onclick={onOpenSettings}

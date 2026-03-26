@@ -1,9 +1,18 @@
 <script lang="ts">
-	import { Settings2, Terminal, Wrench, Github, Database, Info } from '@lucide/svelte';
+	import {
+		Settings2,
+		Terminal,
+		Wrench,
+		Github,
+		Database,
+		Info,
+		ArrowLeft,
+	} from '@lucide/svelte';
 
 	interface Props {
 		activeSection: string;
 		onSelectSection: (section: string) => void;
+		onClose: () => void;
 		aliasCount?: number;
 		dirtySections?: Set<string>;
 	}
@@ -11,6 +20,7 @@
 	const {
 		activeSection,
 		onSelectSection,
+		onClose,
 		aliasCount = 0,
 		dirtySections = new Set(),
 	}: Props = $props();
@@ -56,6 +66,10 @@
 
 <nav class="sidebar">
 	<div class="sidebar-header">
+		<button type="button" class="back-btn" onclick={onClose}>
+			<ArrowLeft size={14} />
+			<span>Back</span>
+		</button>
 		<h1 class="sidebar-title">Settings</h1>
 		<p class="sidebar-subtitle">Configure your workset environment.</p>
 	</div>
@@ -102,6 +116,27 @@
 		margin-bottom: var(--space-3);
 		padding-bottom: var(--space-3);
 		border-bottom: 1px solid var(--border);
+	}
+
+	.back-btn {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 4px 8px;
+		margin: 0 0 var(--space-2) -8px;
+		border: none;
+		background: transparent;
+		color: var(--muted);
+		font-size: var(--text-sm);
+		font-weight: 500;
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+		transition: all var(--transition-fast);
+	}
+
+	.back-btn:hover {
+		background: var(--hover-bg-solid);
+		color: var(--text);
 	}
 
 	.sidebar-title {

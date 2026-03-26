@@ -330,6 +330,14 @@
 			updatePreferences = bootstrap.updatePreferences;
 			updateState = bootstrap.updateState;
 		})();
+
+		const handleKeydown = (e: KeyboardEvent): void => {
+			if (e.key === 'Escape') {
+				onClose();
+			}
+		};
+		window.addEventListener('keydown', handleKeydown);
+		return () => window.removeEventListener('keydown', handleKeydown);
 	});
 </script>
 
@@ -346,6 +354,7 @@
 			<SettingsSidebar
 				{activeSection}
 				onSelectSection={selectSection}
+				{onClose}
 				{aliasCount}
 				{dirtySections}
 			/>
