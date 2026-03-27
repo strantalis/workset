@@ -341,7 +341,7 @@
 						onclick={() => onSelectFile(node.repoId, node.path)}
 					>
 						<span class="urv-file-icon" data-icon={getRepoFileIcon(node.path)}>
-							<Icon icon={getRepoFileIcon(node.path)} width="12" />
+							<Icon icon={getRepoFileIcon(node.path)} width="13" />
 						</span>
 						<span class="urv-tree-file-name">{node.label}</span>
 						{#if diffInfo}

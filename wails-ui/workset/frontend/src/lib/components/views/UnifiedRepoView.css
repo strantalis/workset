@@ -107,16 +107,17 @@
 .urv-tree-file {
 	display: flex;
 	align-items: center;
-	gap: 5px;
+	gap: 6px;
 	flex: 1;
 	min-width: 0;
-	padding: 4px 8px;
+	padding: 5px 8px;
 	padding-left: calc(8px + var(--depth, 0) * 14px);
 	border: none;
 	background: transparent;
 	color: var(--text);
 	text-align: left;
-	font-size: var(--text-xxs);
+	font-size: var(--text-xs);
+	line-height: 1.35;
 	cursor: pointer;
 	transition: background var(--transition-fast);
 }
@@ -156,8 +157,8 @@
 
 .urv-tree-repo {
 	font-weight: 500;
-	padding-top: 6px;
-	padding-bottom: 6px;
+	padding-top: 7px;
+	padding-bottom: 7px;
 }
 
 .urv-tree-repo.extra-root {
@@ -174,7 +175,7 @@
 }
 
 .urv-tree-count {
-	font-size: var(--text-2xs);
+	font-size: var(--text-xxs);
 	color: var(--subtle);
 	font-family: var(--font-mono);
 }
@@ -182,7 +183,7 @@
 .urv-tree-change-badge {
 	display: inline-flex;
 	gap: 4px;
-	font-size: var(--text-mono-2xs);
+	font-size: var(--text-xxs);
 	font-family: var(--font-mono);
 	flex-shrink: 0;
 }
@@ -190,9 +191,9 @@
 .urv-tree-extra-badge {
 	display: inline-flex;
 	align-items: center;
-	padding: 0 5px;
+	padding: 1px 5px;
 	border-radius: 999px;
-	font-size: var(--text-mono-2xs);
+	font-size: var(--text-xxs);
 	font-family: var(--font-mono);
 	color: var(--muted);
 	background: color-mix(in srgb, var(--border) 35%, transparent);
@@ -214,7 +215,7 @@
 	gap: 6px;
 	padding: 6px 8px;
 	padding-left: calc(8px + var(--depth, 0) * 14px);
-	font-size: var(--text-2xs);
+	font-size: var(--text-xxs);
 	color: var(--muted);
 }
 
@@ -420,7 +421,7 @@
 .urv-tree-file-diff {
 	display: inline-flex;
 	gap: 3px;
-	font-size: var(--text-mono-2xs);
+	font-size: var(--text-xxs);
 	font-family: var(--font-mono);
 	flex-shrink: 0;
 }
@@ -429,9 +430,9 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 3px;
-	padding: 0 5px;
+	padding: 1px 5px;
 	border-radius: 999px;
-	font-size: var(--text-mono-2xs);
+	font-size: var(--text-xxs);
 	font-family: var(--font-mono);
 	color: color-mix(in srgb, #d28a1f 82%, white);
 	background: color-mix(in srgb, #d28a1f 14%, transparent);
@@ -487,7 +488,7 @@
 	color: var(--text);
 	border-radius: 999px;
 	padding: 2px 8px;
-	font-size: var(--text-mono-2xs);
+	font-size: var(--text-xxs);
 	font-family: var(--font-mono);
 	cursor: pointer;
 }
@@ -519,7 +520,7 @@
 	border-radius: 5px;
 	background: var(--panel);
 	color: var(--text);
-	font-size: var(--text-xxs);
+	font-size: var(--text-xs);
 	font-family: var(--font-mono);
 }
 
@@ -535,11 +536,11 @@
 }
 
 .urv-tree-dir-changes {
-	font-size: var(--text-mono-2xs);
+	font-size: var(--text-xxs);
 	font-family: var(--font-mono);
 	color: var(--warning);
 	background: color-mix(in srgb, var(--warning) 12%, transparent);
-	padding: 0 5px;
+	padding: 1px 5px;
 	border-radius: 8px;
 	flex-shrink: 0;
 }
@@ -586,30 +587,6 @@
 	min-width: 0;
 	background: var(--bg);
 	position: relative;
-}
-
-.urv-show-tree-btn {
-	position: absolute;
-	top: 8px;
-	left: 8px;
-	z-index: 5;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 28px;
-	height: 28px;
-	padding: 0;
-	border: 1px solid var(--border);
-	border-radius: 6px;
-	background: var(--panel);
-	color: var(--muted);
-	cursor: pointer;
-	transition: all var(--transition-fast);
-}
-
-.urv-show-tree-btn:hover {
-	color: var(--text);
-	background: var(--hover-bg);
 }
 
 .urv-file-header {

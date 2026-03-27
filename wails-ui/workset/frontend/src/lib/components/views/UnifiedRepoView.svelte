@@ -10,7 +10,6 @@
 		FolderTree,
 		GitBranch,
 		Minus,
-		PanelLeftOpen,
 		Plus,
 		Rows2,
 		BookOpen,
@@ -1492,11 +1491,12 @@
 				{#if !showFileTree}
 					<button
 						type="button"
-						class="urv-show-tree-btn"
+						class="ws-panel-edge-tab ws-panel-edge-tab--left ws-panel-edge-tab--absolute"
+						style="left: 0"
 						aria-label="Show file tree"
+						title="Show file tree"
 						onclick={() => (showFileTree = true)}
 					>
-						<PanelLeftOpen size={14} />
 					</button>
 				{/if}
 				{#if selectedFilePath}
