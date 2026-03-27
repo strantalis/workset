@@ -670,7 +670,11 @@
 						{selectedWorksetId}
 						lockWorksetSelection={popoutMode}
 						canManageRepos={!popoutMode}
-						activeView={currentView === 'skill-registry' ? 'skill-registry' : currentView === 'settings' ? 'settings' : 'workspaces'}
+						activeView={currentView === 'skill-registry'
+							? 'skill-registry'
+							: currentView === 'settings'
+								? 'settings'
+								: 'workspaces'}
 						activeSurface={workbenchSurface}
 						filesActive={workbenchSurface === 'pull-requests'}
 						activeTerminalWorkspaceIds={terminalActivity.activeIds}

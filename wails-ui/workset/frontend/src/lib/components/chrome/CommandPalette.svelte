@@ -1,8 +1,22 @@
 <script lang="ts">
-	import { Search, Command, Box, Terminal, GitBranch, Sparkles, Plus, Keyboard } from '@lucide/svelte';
+	import {
+		Search,
+		Command,
+		Box,
+		Terminal,
+		GitBranch,
+		Sparkles,
+		Plus,
+		Keyboard,
+	} from '@lucide/svelte';
 	import type { WorksetSummary } from '../../view-models/worksetViewModel';
 
-	export type AppView = 'workspaces' | 'skill-registry' | 'settings' | 'onboarding' | 'keyboard-shortcuts';
+	export type AppView =
+		| 'workspaces'
+		| 'skill-registry'
+		| 'settings'
+		| 'onboarding'
+		| 'keyboard-shortcuts';
 
 	type PaletteItem = {
 		id: string;

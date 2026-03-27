@@ -1,13 +1,5 @@
 <script lang="ts">
-	import {
-		Settings2,
-		Terminal,
-		Wrench,
-		Github,
-		Database,
-		Info,
-		ArrowLeft,
-	} from '@lucide/svelte';
+	import { Settings2, Terminal, Wrench, Github, Database, Info, ArrowLeft } from '@lucide/svelte';
 
 	interface Props {
 		activeSection: string;
