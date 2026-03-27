@@ -406,6 +406,10 @@
 	color: #dad8d8;
 }
 
+.urv-file-icon[data-icon='file-icons:terraform'] {
+	color: #844fba;
+}
+
 .urv-file-icon[data-icon='codicon:table'] {
 	color: #41a35d;
 }

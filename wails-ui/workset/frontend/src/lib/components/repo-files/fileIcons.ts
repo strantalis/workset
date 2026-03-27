@@ -69,6 +69,8 @@ const EXTENSION_ICON_MAP: Record<string, string> = {
 	ps1: 'file-icons:powershell',
 	psm1: 'file-icons:powershell',
 	sql: 'codicon:database',
+	tf: 'file-icons:terraform',
+	tfvars: 'file-icons:terraform',
 	vue: 'file-icons:vue',
 	svelte: 'file-icons:svelte',
 	css: 'file-icons:css',
@@ -106,6 +108,12 @@ const EXTENSION_ICON_MAP: Record<string, string> = {
 	dockerfile: 'file-icons:docker',
 };
 
+const PATH_SUFFIX_ICON_MAP: Record<string, string> = {
+	'.tfcomponent.hcl': 'file-icons:terraform',
+	'.tfdeploy.hcl': 'file-icons:terraform',
+	'.tfquery.hcl': 'file-icons:terraform',
+};
+
 const FILE_NAME_ICON_MAP: Record<string, string> = {
 	dockerfile: 'file-icons:docker',
 	'go.mod': 'file-icons:go',
@@ -133,5 +141,10 @@ const FILE_NAME_ICON_MAP: Record<string, string> = {
 export const getRepoFileIcon = (path: string): string => {
 	const ext = path.split('.').pop()?.toLowerCase() ?? '';
 	const fileName = path.split('/').pop()?.toLowerCase() ?? '';
-	return FILE_NAME_ICON_MAP[fileName] ?? EXTENSION_ICON_MAP[ext] ?? 'file-icons:default';
+	const suffixIcon = Object.entries(PATH_SUFFIX_ICON_MAP).find(([suffix]) =>
+		fileName.endsWith(suffix),
+	)?.[1];
+	return (
+		suffixIcon ?? FILE_NAME_ICON_MAP[fileName] ?? EXTENSION_ICON_MAP[ext] ?? 'file-icons:default'
+	);
 };
