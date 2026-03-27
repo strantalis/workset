@@ -36,6 +36,7 @@
 	import EmptyState from './lib/components/EmptyState.svelte';
 	import GitHubLoginModal from './lib/components/GitHubLoginModal.svelte';
 	import SettingsPanel from './lib/components/SettingsPanel.svelte';
+	import KeyboardShortcutsPanel from './lib/components/KeyboardShortcutsPanel.svelte';
 	import UpdateNotificationCard from './lib/components/UpdateNotificationCard.svelte';
 	import WorkspaceActionModal from './lib/components/WorkspaceActionModal.svelte';
 	import CommandPalette, { type AppView } from './lib/components/chrome/CommandPalette.svelte';
@@ -145,6 +146,7 @@
 	let fileSearchOpen = $state(false);
 	let pendingFileSelection = $state<{ repoId: string; path: string } | null>(null);
 	let authModalOpen = $state(false);
+	let shortcutsOpen = $state(false);
 	let authModalDismissed = $state(false);
 	let explorerOpen = $state(readExplorerOpenPreference());
 	let popoutSelectionApplied = $state(false);
@@ -260,6 +262,10 @@
 		if (popoutMode && !popoutViews.has(view)) return;
 		if (view === 'onboarding') {
 			workspaceAction.open('create');
+			return;
+		}
+		if (view === 'keyboard-shortcuts') {
+			shortcutsOpen = true;
 			return;
 		}
 		currentView = view;
@@ -413,20 +419,22 @@
 		const key = event.key.toLowerCase();
 		if (key === 'p' && $activeWorkspaceId) {
 			event.preventDefault();
-			commandPaletteOpen = false;
 			if (event.shiftKey) {
-				// Cmd+Shift+P: toggle surface
-				workbenchSurface = workbenchSurface === 'pull-requests' ? 'terminal' : 'pull-requests';
+				// Cmd+Shift+P: command palette (VS Code convention)
+				commandPaletteOpen = !commandPaletteOpen;
 			} else {
 				// Cmd+P: file search
+				commandPaletteOpen = false;
 				fileSearchOpen = !fileSearchOpen;
 			}
 			return;
 		}
 		if (popoutMode) return;
-		if (key === 'k') {
+		if (key === 'k' && $activeWorkspaceId) {
 			event.preventDefault();
-			commandPaletteOpen = !commandPaletteOpen;
+			// Cmd+K: toggle workbench surface
+			commandPaletteOpen = false;
+			workbenchSurface = workbenchSurface === 'pull-requests' ? 'terminal' : 'pull-requests';
 			return;
 		}
 		if (key >= '1' && key <= '5') {
@@ -437,6 +445,11 @@
 		if (key === 'b' && showExplorer) {
 			event.preventDefault();
 			explorerOpen = !explorerOpen;
+			return;
+		}
+		if (key === '?' || (key === '/' && event.shiftKey)) {
+			event.preventDefault();
+			shortcutsOpen = !shortcutsOpen;
 		}
 	};
 
@@ -775,6 +788,10 @@
 			onClose={() => (fileSearchOpen = false)}
 			onSelectFile={handleFileSearchSelect}
 		/>
+	{/if}
+
+	{#if shortcutsOpen}
+		<KeyboardShortcutsPanel onClose={() => (shortcutsOpen = false)} />
 	{/if}
 
 	{#if !popoutMode && workspaceAction.mode}

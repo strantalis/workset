@@ -140,6 +140,113 @@ func TestResolveRepoHoverRuntimeUsesRepoLocalSvelteServer(t *testing.T) {
 	}
 }
 
+func TestResolveRepoHoverRuntimeUsesTerraformLanguageServer(t *testing.T) {
+	repoPath := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repoPath, "main.tf"), []byte("terraform {}\n"), 0o644); err != nil {
+		t.Fatalf("write main.tf: %v", err)
+	}
+
+	originalLookPath := hoverLookPath
+	defer func() {
+		hoverLookPath = originalLookPath
+	}()
+	hoverLookPath = func(name string) (string, error) {
+		if name != "terraform-ls" {
+			return "", errors.New("not found")
+		}
+		return filepath.Join(repoPath, "terraform-ls"), nil
+	}
+
+	runtime, supported, err := resolveRepoHoverRuntime(repoPath, filepath.Join(repoPath, "main.tf"))
+	if err != nil {
+		t.Fatalf("resolveRepoHoverRuntime: %v", err)
+	}
+	if !supported {
+		t.Fatalf("expected Terraform file to be supported")
+	}
+	if runtime.provider != "terraform-ls" {
+		t.Fatalf("expected terraform-ls provider, got %q", runtime.provider)
+	}
+	if runtime.languageID != "terraform" {
+		t.Fatalf("expected terraform language id, got %q", runtime.languageID)
+	}
+	if runtime.rootPath != repoPath {
+		t.Fatalf("expected repo root %q, got %q", repoPath, runtime.rootPath)
+	}
+}
+
+func TestResolveRepoHoverRuntimeSupportsTerraformStackSuffixes(t *testing.T) {
+	repoPath := t.TempDir()
+	stackDir := filepath.Join(repoPath, "stacks", "prod")
+	if err := os.MkdirAll(stackDir, 0o755); err != nil {
+		t.Fatalf("mkdir stack dir: %v", err)
+	}
+	stackFile := filepath.Join(stackDir, "app.tfcomponent.hcl")
+	if err := os.WriteFile(stackFile, []byte("component \"app\" {}\n"), 0o644); err != nil {
+		t.Fatalf("write stack file: %v", err)
+	}
+
+	runtime, supported, err := resolveRepoHoverRuntime(repoPath, stackFile)
+	if err != nil {
+		t.Fatalf("resolveRepoHoverRuntime: %v", err)
+	}
+	if !supported {
+		t.Fatalf("expected terraform stack file to be supported")
+	}
+	if runtime.languageID != "terraform-stack" {
+		t.Fatalf("expected terraform-stack language id, got %q", runtime.languageID)
+	}
+	if runtime.rootPath != stackDir {
+		t.Fatalf("expected nearest terraform root %q, got %q", stackDir, runtime.rootPath)
+	}
+}
+
+func TestResolveRepoHoverRuntimeDoesNotSupportGenericHCL(t *testing.T) {
+	repoPath := t.TempDir()
+	filePath := filepath.Join(repoPath, "settings.hcl")
+	if err := os.WriteFile(filePath, []byte("value = 1\n"), 0o644); err != nil {
+		t.Fatalf("write settings.hcl: %v", err)
+	}
+
+	_, supported, err := resolveRepoHoverRuntime(repoPath, filePath)
+	if err != nil {
+		t.Fatalf("resolveRepoHoverRuntime: %v", err)
+	}
+	if supported {
+		t.Fatalf("expected generic hcl file to be unsupported")
+	}
+}
+
+func TestResolveRepoHoverRuntimeUsesNearestTerraformRoot(t *testing.T) {
+	repoPath := t.TempDir()
+	nestedRoot := filepath.Join(repoPath, "infra", "prod")
+	moduleDir := filepath.Join(nestedRoot, "modules", "app")
+	if err := os.MkdirAll(moduleDir, 0o755); err != nil {
+		t.Fatalf("mkdir module dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoPath, "main.tf"), []byte("terraform {}\n"), 0o644); err != nil {
+		t.Fatalf("write repo main.tf: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(nestedRoot, "main.tf"), []byte("module \"app\" {}\n"), 0o644); err != nil {
+		t.Fatalf("write nested main.tf: %v", err)
+	}
+	targetFile := filepath.Join(moduleDir, "variables.tf")
+	if err := os.WriteFile(targetFile, []byte("variable \"name\" {}\n"), 0o644); err != nil {
+		t.Fatalf("write module variables.tf: %v", err)
+	}
+
+	runtime, supported, err := resolveRepoHoverRuntime(repoPath, targetFile)
+	if err != nil {
+		t.Fatalf("resolveRepoHoverRuntime: %v", err)
+	}
+	if !supported {
+		t.Fatalf("expected Terraform file to be supported")
+	}
+	if runtime.rootPath != moduleDir {
+		t.Fatalf("expected nearest terraform root %q, got %q", moduleDir, runtime.rootPath)
+	}
+}
+
 func TestGetRepoFileHoverReturnsUnavailableWhenProviderMissing(t *testing.T) {
 	originalLookPath := hoverLookPath
 	defer func() {
@@ -293,6 +400,46 @@ func TestGetRepoFileDefinitionReturnsUnavailableWhenProviderMissing(t *testing.T
 	}
 	if response.InstallHint == "" {
 		t.Fatalf("expected install hint when provider is unavailable")
+	}
+}
+
+func TestGetRepoFileHoverReturnsUnavailableWhenTerraformProviderMissing(t *testing.T) {
+	originalLookPath := hoverLookPath
+	defer func() {
+		hoverLookPath = originalLookPath
+	}()
+	hoverLookPath = func(string) (string, error) {
+		return "", errors.New("not found")
+	}
+
+	app, workspaceRoot := setupRepoFilesAppWithWorkspace(t, "ws-1", "name: ws-1\nrepos:\n  - name: infra\n    repo_dir: repo\n")
+	repoPath := filepath.Join(workspaceRoot, "repo")
+	if err := os.MkdirAll(repoPath, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoPath, "main.tf"), []byte("terraform {}\n"), 0o644); err != nil {
+		t.Fatalf("write main.tf: %v", err)
+	}
+
+	response, err := app.GetRepoFileHover(RepoFileHoverRequest{
+		WorkspaceID: "ws-1",
+		RepoID:      "ws-1::infra",
+		Path:        "main.tf",
+		Content:     "terraform {}\n",
+		Line:        0,
+		Character:   1,
+	})
+	if err != nil {
+		t.Fatalf("GetRepoFileHover: %v", err)
+	}
+	if !response.Supported {
+		t.Fatalf("expected Terraform hover to be supported")
+	}
+	if response.Available {
+		t.Fatalf("expected Terraform hover provider to be unavailable")
+	}
+	if response.InstallHint == "" {
+		t.Fatalf("expected install hint when Terraform provider is unavailable")
 	}
 }
 

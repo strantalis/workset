@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { Search, Command, Box, Terminal, GitBranch, Sparkles, Plus } from '@lucide/svelte';
+	import { Search, Command, Box, Terminal, GitBranch, Sparkles, Plus, Keyboard } from '@lucide/svelte';
 	import type { WorksetSummary } from '../../view-models/worksetViewModel';
 
-	export type AppView = 'workspaces' | 'skill-registry' | 'settings' | 'onboarding';
+	export type AppView = 'workspaces' | 'skill-registry' | 'settings' | 'onboarding' | 'keyboard-shortcuts';
 
 	type PaletteItem = {
 		id: string;
@@ -50,6 +50,13 @@
 			label: 'New Workset',
 			description: 'Create and initialize a new workset',
 			view: 'onboarding',
+		},
+		{
+			id: 'view:keyboard-shortcuts',
+			type: 'view',
+			label: 'Keyboard Shortcuts',
+			description: 'View keyboard shortcuts and commands',
+			view: 'keyboard-shortcuts',
 		},
 	];
 
@@ -241,6 +248,8 @@
 										<Sparkles size={14} />
 									{:else if item.view === 'onboarding'}
 										<Plus size={14} />
+									{:else if item.view === 'keyboard-shortcuts'}
+										<Keyboard size={14} />
 									{:else}
 										<Command size={14} />
 									{/if}
@@ -259,7 +268,7 @@
 				<span><kbd class="kbd ui-kbd">↵</kbd> open</span>
 				<span><kbd class="kbd ui-kbd">esc</kbd> close</span>
 				<span><kbd class="kbd ui-kbd">⌘1-5</kbd> direct switch</span>
-				<span><kbd class="kbd ui-kbd">⌘K</kbd> toggle</span>
+				<span><kbd class="kbd ui-kbd">⌘⇧P</kbd> toggle</span>
 			</div>
 		</div>
 	</div>

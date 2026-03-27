@@ -77,12 +77,13 @@ type repoHoverCandidate struct {
 }
 
 type repoHoverSpec struct {
-	language    string
-	extensions  []string
-	languageIDs map[string]string
-	rootMarkers []string
-	candidates  []repoHoverCandidate
-	installHint string
+	language         string
+	pathSuffixes     []string
+	languageIDs      map[string]string
+	rootMarkers      []string
+	rootFileSuffixes []string
+	candidates       []repoHoverCandidate
+	installHint      string
 }
 
 var hoverLookPath = exec.LookPath
@@ -100,10 +101,10 @@ var newRepoHoverBackend = func(ctx context.Context, runtime repoHoverRuntime) (r
 
 var repoHoverSpecs = []repoHoverSpec{
 	{
-		language:    "typescript",
-		extensions:  []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"},
-		languageIDs: map[string]string{".ts": "typescript", ".tsx": "typescriptreact", ".js": "javascript", ".jsx": "javascriptreact", ".mjs": "javascript", ".cjs": "javascript", ".mts": "typescript", ".cts": "typescript"},
-		rootMarkers: []string{"tsconfig.json", "jsconfig.json", "package.json"},
+		language:     "typescript",
+		pathSuffixes: []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"},
+		languageIDs:  map[string]string{".ts": "typescript", ".tsx": "typescriptreact", ".js": "javascript", ".jsx": "javascriptreact", ".mjs": "javascript", ".cjs": "javascript", ".mts": "typescript", ".cts": "typescript"},
+		rootMarkers:  []string{"tsconfig.json", "jsconfig.json", "package.json"},
 		candidates: []repoHoverCandidate{
 			{
 				backendType:   "lsp",
@@ -129,10 +130,10 @@ var repoHoverSpecs = []repoHoverSpec{
 		installHint: "Install vtsls or typescript-language-server, or add a local TypeScript install that provides tsserver.",
 	},
 	{
-		language:    "svelte",
-		extensions:  []string{".svelte"},
-		languageIDs: map[string]string{".svelte": "svelte"},
-		rootMarkers: []string{"svelte.config.js", "svelte.config.cjs", "svelte.config.mjs", "svelte.config.ts", "package.json", "tsconfig.json", "jsconfig.json"},
+		language:     "svelte",
+		pathSuffixes: []string{".svelte"},
+		languageIDs:  map[string]string{".svelte": "svelte"},
+		rootMarkers:  []string{"svelte.config.js", "svelte.config.cjs", "svelte.config.mjs", "svelte.config.ts", "package.json", "tsconfig.json", "jsconfig.json"},
 		candidates: []repoHoverCandidate{
 			{
 				backendType:   "lsp",
@@ -145,20 +146,20 @@ var repoHoverSpecs = []repoHoverSpec{
 		installHint: "Install svelte-language-server in the repo or on PATH to enable Svelte hover.",
 	},
 	{
-		language:    "go",
-		extensions:  []string{".go"},
-		languageIDs: map[string]string{".go": "go"},
-		rootMarkers: []string{"go.work", "go.mod"},
+		language:     "go",
+		pathSuffixes: []string{".go"},
+		languageIDs:  map[string]string{".go": "go"},
+		rootMarkers:  []string{"go.work", "go.mod"},
 		candidates: []repoHoverCandidate{
 			{backendType: "lsp", provider: "gopls", execName: "gopls"},
 		},
 		installHint: "Install gopls on PATH to enable Go hover.",
 	},
 	{
-		language:    "python",
-		extensions:  []string{".py"},
-		languageIDs: map[string]string{".py": "python"},
-		rootMarkers: []string{"pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "Pipfile"},
+		language:     "python",
+		pathSuffixes: []string{".py"},
+		languageIDs:  map[string]string{".py": "python"},
+		rootMarkers:  []string{"pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "Pipfile"},
 		candidates: []repoHoverCandidate{
 			{
 				backendType:   "lsp",
@@ -184,14 +185,42 @@ var repoHoverSpecs = []repoHoverSpec{
 		installHint: "Install basedpyright-langserver, pyright-langserver, or pylsp to enable Python hover.",
 	},
 	{
-		language:    "rust",
-		extensions:  []string{".rs"},
-		languageIDs: map[string]string{".rs": "rust"},
-		rootMarkers: []string{"Cargo.toml"},
+		language:     "rust",
+		pathSuffixes: []string{".rs"},
+		languageIDs:  map[string]string{".rs": "rust"},
+		rootMarkers:  []string{"Cargo.toml"},
 		candidates: []repoHoverCandidate{
 			{backendType: "lsp", provider: "rust-analyzer", execName: "rust-analyzer"},
 		},
 		installHint: "Install rust-analyzer on PATH to enable Rust hover.",
+	},
+	{
+		language: "terraform",
+		pathSuffixes: []string{
+			".tfcomponent.hcl",
+			".tfdeploy.hcl",
+			".tfquery.hcl",
+			".tfvars",
+			".tf",
+		},
+		languageIDs: map[string]string{
+			".tfcomponent.hcl": "terraform-stack",
+			".tfdeploy.hcl":    "terraform-deploy",
+			".tfquery.hcl":     "terraform-search",
+			".tfvars":          "terraform-vars",
+			".tf":              "terraform",
+		},
+		rootFileSuffixes: []string{
+			".tfcomponent.hcl",
+			".tfdeploy.hcl",
+			".tfquery.hcl",
+			".tfvars",
+			".tf",
+		},
+		candidates: []repoHoverCandidate{
+			{backendType: "lsp", provider: "terraform-ls", execName: "terraform-ls", args: []string{"serve"}},
+		},
+		installHint: "Install terraform-ls on PATH to enable Terraform hover.",
 	},
 }
 
@@ -271,7 +300,7 @@ func resolveRepoHoverRuntime(repoPath, resolvedPath string) (repoHoverRuntime, b
 		return repoHoverRuntime{}, false, nil
 	}
 
-	rootPath := findRepoHoverRoot(repoPath, filepath.Dir(resolvedPath), spec.rootMarkers)
+	rootPath := findRepoHoverRoot(repoPath, filepath.Dir(resolvedPath), spec.rootMarkers, spec.rootFileSuffixes)
 	command, backendType, provider, args := resolveRepoHoverCommand(rootPath, spec.candidates)
 	return repoHoverRuntime{
 		backendType: backendType,
@@ -286,33 +315,39 @@ func resolveRepoHoverRuntime(repoPath, resolvedPath string) (repoHoverRuntime, b
 }
 
 func repoHoverSpecForPath(filePath string) (repoHoverSpec, bool) {
-	ext := strings.ToLower(filepath.Ext(filePath))
+	normalizedPath := strings.ToLower(filePath)
 	for _, spec := range repoHoverSpecs {
-		for _, candidate := range spec.extensions {
-			if ext == candidate {
-				return spec, true
-			}
+		if _, ok := repoHoverMatchingSuffix(spec, normalizedPath); ok {
+			return spec, true
 		}
 	}
 	return repoHoverSpec{}, false
 }
 
 func repoHoverLanguageID(spec repoHoverSpec, filePath string) string {
-	ext := strings.ToLower(filepath.Ext(filePath))
-	if languageID, ok := spec.languageIDs[ext]; ok && languageID != "" {
-		return languageID
+	if matchedSuffix, ok := repoHoverMatchingSuffix(spec, strings.ToLower(filePath)); ok {
+		if languageID, ok := spec.languageIDs[matchedSuffix]; ok && languageID != "" {
+			return languageID
+		}
 	}
 	return spec.language
 }
 
-func findRepoHoverRoot(repoPath, startDir string, markers []string) string {
+func repoHoverMatchingSuffix(spec repoHoverSpec, normalizedPath string) (string, bool) {
+	for _, suffix := range spec.pathSuffixes {
+		if strings.HasSuffix(normalizedPath, suffix) {
+			return suffix, true
+		}
+	}
+	return "", false
+}
+
+func findRepoHoverRoot(repoPath, startDir string, markers []string, fileSuffixes []string) string {
 	repoPath = filepath.Clean(repoPath)
 	current := filepath.Clean(startDir)
 	for {
-		for _, marker := range markers {
-			if _, err := os.Stat(filepath.Join(current, marker)); err == nil {
-				return current
-			}
+		if hasRepoHoverRootMarker(current, markers) || hasRepoHoverRootFileSuffix(current, fileSuffixes) {
+			return current
 		}
 		if current == repoPath {
 			return repoPath
@@ -323,6 +358,37 @@ func findRepoHoverRoot(repoPath, startDir string, markers []string) string {
 		}
 		current = parent
 	}
+}
+
+func hasRepoHoverRootMarker(dir string, markers []string) bool {
+	for _, marker := range markers {
+		if _, err := os.Stat(filepath.Join(dir, marker)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+func hasRepoHoverRootFileSuffix(dir string, fileSuffixes []string) bool {
+	if len(fileSuffixes) == 0 {
+		return false
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := strings.ToLower(entry.Name())
+		for _, suffix := range fileSuffixes {
+			if strings.HasSuffix(name, suffix) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func resolveRepoHoverCommand(rootPath string, candidates []repoHoverCandidate) (command, backendType, provider string, args []string) {

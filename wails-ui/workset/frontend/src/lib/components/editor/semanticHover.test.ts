@@ -25,6 +25,12 @@ describe('semantic hover helpers', () => {
 		expect(supportsSemanticHover('pkg/server.go')).toBe(true);
 		expect(supportsSemanticHover('script.py')).toBe(true);
 		expect(supportsSemanticHover('src/lib.rs')).toBe(true);
+		expect(supportsSemanticHover('infra/main.tf')).toBe(true);
+		expect(supportsSemanticHover('infra/dev.tfvars')).toBe(true);
+		expect(supportsSemanticHover('stacks/api.tfcomponent.hcl')).toBe(true);
+		expect(supportsSemanticHover('deploy/prod.tfdeploy.hcl')).toBe(true);
+		expect(supportsSemanticHover('queries/network.tfquery.hcl')).toBe(true);
+		expect(supportsSemanticHover('generic/settings.hcl')).toBe(false);
 		expect(supportsSemanticHover('README.md')).toBe(false);
 	});
 
@@ -86,6 +92,7 @@ describe('semantic hover helpers', () => {
 		expect(semanticHoverAccent('go')).toBe('go');
 		expect(semanticHoverAccent('python')).toBe('python');
 		expect(semanticHoverAccent('rust')).toBe('rust');
+		expect(semanticHoverAccent('terraform')).toBe('terraform');
 		expect(semanticHoverAccent('unknown')).toBe('default');
 		expect(semanticHoverAccent(null)).toBe('default');
 	});
@@ -96,6 +103,7 @@ describe('semantic hover helpers', () => {
 		expect(semanticHoverCodeLanguage('go')).toBe('go');
 		expect(semanticHoverCodeLanguage('python')).toBe('python');
 		expect(semanticHoverCodeLanguage('rust')).toBe('rust');
+		expect(semanticHoverCodeLanguage('terraform')).toBe('terraform');
 		expect(semanticHoverCodeLanguage('unknown')).toBeNull();
 	});
 

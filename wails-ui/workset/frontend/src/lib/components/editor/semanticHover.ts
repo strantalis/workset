@@ -28,10 +28,19 @@ const supportedExtensions = new Set([
 	'.go',
 	'.py',
 	'.rs',
+	'.tf',
+	'.tfvars',
 ]);
+
+const supportedSuffixes = ['.tfcomponent.hcl', '.tfdeploy.hcl', '.tfquery.hcl'] as const;
 
 export function supportsSemanticHover(filePath: string): boolean {
 	const normalized = filePath.toLowerCase();
+	for (const suffix of supportedSuffixes) {
+		if (normalized.endsWith(suffix)) {
+			return true;
+		}
+	}
 	for (const ext of supportedExtensions) {
 		if (normalized.endsWith(ext)) {
 			return true;
@@ -119,6 +128,8 @@ export function semanticHoverAccent(language?: string | null): string {
 			return 'python';
 		case 'rust':
 			return 'rust';
+		case 'terraform':
+			return 'terraform';
 		default:
 			return 'default';
 	}
@@ -136,6 +147,8 @@ export function semanticHoverCodeLanguage(language?: string | null): string | nu
 			return 'python';
 		case 'rust':
 			return 'rust';
+		case 'terraform':
+			return 'terraform';
 		default:
 			return null;
 	}
@@ -338,5 +351,8 @@ const semanticHoverTheme = EditorView.baseTheme({
 	},
 	'.cm-semantic-hover[data-language="rust"]': {
 		'--cm-semantic-hover-accent': '#ce7e00',
+	},
+	'.cm-semantic-hover[data-language="terraform"]': {
+		'--cm-semantic-hover-accent': '#7b42bc',
 	},
 });

@@ -3,6 +3,8 @@ import type { Extension } from '@codemirror/state';
 
 type LanguageLoader = () => Promise<Extension>;
 
+const TERRAFORM_HCL_SUFFIXES = ['.tfcomponent.hcl', '.tfdeploy.hcl', '.tfquery.hcl'] as const;
+
 /** Helper to wrap a legacy CM5 mode as a CM6 extension. */
 const legacy = (
 	importFn: () => Promise<Record<string, unknown>>,
@@ -38,6 +40,9 @@ const languageMap: Record<string, LanguageLoader> = {
 	yml: () => import('@codemirror/lang-yaml').then((m) => m.yaml()),
 	py: () => import('@codemirror/lang-python').then((m) => m.python()),
 	python: () => import('@codemirror/lang-python').then((m) => m.python()),
+	tf: () => import('codemirror-lang-hcl').then((m) => m.hcl()),
+	tfvars: () => import('codemirror-lang-hcl').then((m) => m.hcl()),
+	hcl: () => import('codemirror-lang-hcl').then((m) => m.hcl()),
 
 	// ── Legacy CM5 modes (via @codemirror/legacy-modes) ──
 	sh: legacy(() => import('@codemirror/legacy-modes/mode/shell'), 'shell'),
@@ -79,6 +84,19 @@ const fileNameFromPath = (path: string): string => {
 	return (slash >= 0 ? path.slice(slash + 1) : path).toLowerCase();
 };
 
+const suffixLoaderEntries: ReadonlyArray<readonly [string, LanguageLoader]> =
+	TERRAFORM_HCL_SUFFIXES.map((suffix) => [suffix, languageMap.hcl] as const);
+
+const suffixLoaderFromPath = (path: string): LanguageLoader | null => {
+	const normalizedPath = path.toLowerCase();
+	for (const [suffix, loader] of suffixLoaderEntries) {
+		if (normalizedPath.endsWith(suffix)) {
+			return loader;
+		}
+	}
+	return null;
+};
+
 /**
  * Dynamically load the CodeMirror language extension for a file path.
  * Returns null if no language support is available.
@@ -91,6 +109,15 @@ export const loadLanguage = async (filePath: string): Promise<Extension | null> 
 	if (fnLoader) {
 		try {
 			return await fnLoader();
+		} catch {
+			return null;
+		}
+	}
+
+	const suffixLoader = suffixLoaderFromPath(filePath);
+	if (suffixLoader) {
+		try {
+			return await suffixLoader();
 		} catch {
 			return null;
 		}
