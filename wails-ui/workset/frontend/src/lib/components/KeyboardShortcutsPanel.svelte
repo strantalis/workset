@@ -88,15 +88,15 @@
 			</button>
 		</header>
 		<div class="shortcuts-body">
-			{#each groups as group}
+			{#each groups as group (group.title)}
 				<section class="shortcut-group">
 					<h3 class="group-title">{group.title}</h3>
 					<div class="shortcut-list">
-						{#each group.items as item}
+						{#each group.items as item (`${group.title}-${item.action}`)}
 							<div class="shortcut-row">
 								<span class="shortcut-action">{item.action}</span>
 								<span class="shortcut-keys">
-									{#each item.keys as key, i}
+									{#each item.keys as key, i (`${group.title}-${item.action}-${i}-${key}`)}
 										{#if i > 0}<span class="key-sep">+</span>{/if}
 										<kbd class="ui-kbd">{key}</kbd>
 									{/each}

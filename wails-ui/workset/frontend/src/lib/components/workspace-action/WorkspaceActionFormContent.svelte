@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import type { RepoHooksPreviewUnavailableReason } from '../../api/workspaces';
 	import type { Alias, Repo } from '../../types';
 	import type {
 		ExistingRepoContext,
@@ -24,6 +25,7 @@
 		repoName: string;
 		hooks: string[];
 		hasSource: boolean;
+		previewUnavailableReason: RepoHooksPreviewUnavailableReason | null;
 	};
 
 	interface Props {

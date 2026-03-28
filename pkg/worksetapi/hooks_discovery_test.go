@@ -119,6 +119,9 @@ func TestPreviewRepoHooksAliasURLMissingFile(t *testing.T) {
 	if result.Payload.Exists {
 		t.Fatalf("expected missing hooks file")
 	}
+	if result.Payload.PreviewUnavailableReason != "" {
+		t.Fatalf("expected no unavailable reason, got %q", result.Payload.PreviewUnavailableReason)
+	}
 }
 
 func TestPreviewRepoHooksAliasPathMissingFile(t *testing.T) {
@@ -136,6 +139,9 @@ func TestPreviewRepoHooksAliasPathMissingFile(t *testing.T) {
 	}
 	if result.Payload.Exists {
 		t.Fatalf("expected missing hooks file")
+	}
+	if result.Payload.PreviewUnavailableReason != "" {
+		t.Fatalf("expected no unavailable reason, got %q", result.Payload.PreviewUnavailableReason)
 	}
 }
 
@@ -174,5 +180,62 @@ func TestPreviewRepoHooksPropagatesGitHubClientErrors(t *testing.T) {
 	_, err := env.svc.PreviewRepoHooks(ctx, RepoHooksPreviewInput{Source: "widgets"})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected %v, got %v", wantErr, err)
+	}
+}
+
+func TestPreviewRepoHooksAliasURLWithoutGitHubAuthReturnsSoftMiss(t *testing.T) {
+	ctx := context.Background()
+	env := newTestEnv(t)
+
+	cfg := env.loadConfig()
+	cfg.Repos["widgets"] = config.RegisteredRepo{
+		URL: "https://github.com/acme/widgets.git",
+	}
+	env.saveConfig(cfg)
+
+	result, err := env.svc.PreviewRepoHooks(ctx, RepoHooksPreviewInput{Source: "widgets"})
+	if err != nil {
+		t.Fatalf("PreviewRepoHooks: %v", err)
+	}
+	if result.Payload.Exists {
+		t.Fatalf("expected missing hooks file when auth is unavailable")
+	}
+	if result.Payload.PreviewUnavailableReason != repoHooksPreviewUnavailableReasonAuthRequired {
+		t.Fatalf("expected auth-required preview reason, got %q", result.Payload.PreviewUnavailableReason)
+	}
+	if result.Payload.Owner != "acme" || result.Payload.Repo != "widgets" {
+		t.Fatalf("unexpected remote metadata: %+v", result.Payload)
+	}
+}
+
+func TestPreviewRepoHooksAuthRequiredFromGitHubClientReturnsSoftMiss(t *testing.T) {
+	ctx := context.Background()
+	env := newTestEnv(t)
+
+	cfg := env.loadConfig()
+	cfg.Repos["widgets"] = config.RegisteredRepo{
+		URL: "https://github.com/acme/widgets.git",
+	}
+	env.saveConfig(cfg)
+
+	client := &readHelpersGitHubClient{
+		getFileContentFunc: func(_ context.Context, _ string, _ string, _ string, _ string) ([]byte, bool, error) {
+			return nil, false, AuthRequiredError{Message: "GitHub authentication required"}
+		},
+	}
+	env.svc.github = &readHelpersGitHubProvider{client: client}
+
+	result, err := env.svc.PreviewRepoHooks(ctx, RepoHooksPreviewInput{Source: "widgets"})
+	if err != nil {
+		t.Fatalf("PreviewRepoHooks: %v", err)
+	}
+	if result.Payload.Exists {
+		t.Fatalf("expected missing hooks file when auth is unavailable")
+	}
+	if result.Payload.PreviewUnavailableReason != repoHooksPreviewUnavailableReasonAuthRequired {
+		t.Fatalf("expected auth-required preview reason, got %q", result.Payload.PreviewUnavailableReason)
+	}
+	if result.Payload.Owner != "acme" || result.Payload.Repo != "widgets" {
+		t.Fatalf("unexpected remote metadata: %+v", result.Payload)
 	}
 }

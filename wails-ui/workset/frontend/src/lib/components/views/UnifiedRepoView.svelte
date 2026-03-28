@@ -170,6 +170,7 @@
 	let fileContent: RepoFileContent | null = $state(null);
 	let fileContentLoading = $state(false);
 	let fileContentRequestId = 0;
+	let workspaceGeneration = $state(0);
 	let renderedMarkdown: DocumentRenderResult | null = $state(null);
 	let renderLoading = $state(false);
 	let renderToken = 0;
@@ -307,6 +308,8 @@
 			saving = false;
 		}
 	};
+	const isWorkspaceRequestCurrent = (workspaceId: string, generation: number): boolean =>
+		workspaceGeneration === generation && wsId === workspaceId;
 	const handleKeydown = (event: KeyboardEvent): void => {
 		handleEditorSaveKeydown(event, editMode, () => void saveFile());
 	};
@@ -647,14 +650,17 @@
 
 	/** Load the full file index for search (deferred until user types). */
 	const loadRepoFiles = (workspaceId: string, repoId: string): void => {
+		const generation = workspaceGeneration;
 		const current = repoFileStates.get(repoId);
 		if (current?.status === 'loaded' || current?.status === 'loading') return;
 		repoFileStates = new Map(repoFileStates).set(repoId, { status: 'loading' });
 		void searchWorkspaceRepoFiles(workspaceId, '', 5000, repoId)
 			.then((files) => {
+				if (!isWorkspaceRequestCurrent(workspaceId, generation)) return;
 				repoFileStates = new Map(repoFileStates).set(repoId, { status: 'loaded', files });
 			})
 			.catch((err) => {
+				if (!isWorkspaceRequestCurrent(workspaceId, generation)) return;
 				repoFileStates = new Map(repoFileStates).set(repoId, {
 					status: 'error',
 					message: err instanceof Error ? err.message : 'Failed to load files.',
@@ -664,16 +670,19 @@
 
 	/** Load directory entries for lazy tree browsing. */
 	const loadDirEntries = (workspaceId: string, repoId: string, dirPath: string): void => {
+		const generation = workspaceGeneration;
 		const key = createRepoDirEntriesKey(repoId, dirPath);
 		if (dirEntries.has(key)) return; // already loaded
 		void listRepoDirectory(workspaceId, repoId, dirPath)
 			.then((entries) => {
+				if (!isWorkspaceRequestCurrent(workspaceId, generation)) return;
 				const nextErrors = new Map(dirEntryErrors);
 				nextErrors.delete(key);
 				dirEntryErrors = nextErrors;
 				dirEntries = new Map(dirEntries).set(key, entries);
 			})
 			.catch((err) => {
+				if (!isWorkspaceRequestCurrent(workspaceId, generation)) return;
 				const message =
 					err instanceof Error && err.message.trim().length > 0
 						? err.message
@@ -682,11 +691,14 @@
 			});
 	};
 	const loadWorkspaceExtraRootState = (workspaceId: string): void => {
+		const generation = workspaceGeneration;
 		void listWorkspaceExtraRoots(workspaceId)
 			.then((roots) => {
+				if (!isWorkspaceRequestCurrent(workspaceId, generation)) return;
 				extraRoots = roots;
 			})
 			.catch(() => {
+				if (!isWorkspaceRequestCurrent(workspaceId, generation)) return;
 				extraRoots = [];
 			});
 	};
@@ -695,6 +707,7 @@
 		repoId: string,
 		force = false,
 	): Promise<void> => {
+		const generation = workspaceGeneration;
 		if (!force && repoDiffMap.has(repoId)) return;
 		const cacheKey = buildSummaryLocalCacheKey(workspaceId, repoId);
 		const cached = repoDiffCache.getSummary(cacheKey);
@@ -704,6 +717,7 @@
 		}
 		try {
 			const fetched = await fetchRepoDiffSummary(workspaceId, repoId);
+			if (!isWorkspaceRequestCurrent(workspaceId, generation)) return;
 			repoDiffMap = new Map(repoDiffMap).set(repoId, fetched);
 			repoDiffCache.setSummary(cacheKey, fetched);
 		} catch {
@@ -715,9 +729,11 @@
 		repoId: string,
 		pr: PullRequestSummary,
 	): Promise<void> => {
+		const generation = workspaceGeneration;
 		try {
 			const refs = await resolveTrackedPrRefs(workspaceId, repoId, pr);
 			const fetched = await fetchBranchDiffSummary(workspaceId, repoId, refs.base, refs.head);
+			if (!isWorkspaceRequestCurrent(workspaceId, generation)) return;
 			branchDiffMap = new Map(branchDiffMap).set(repoId, fetched);
 		} catch {
 			ignoreError();
@@ -749,6 +765,7 @@
 	const getFileCommentCount = (repoId: string, path: string): number =>
 		prFileCommentCounts.get(buildRepoFileCommentKey(repoId, path)) ?? 0;
 	const loadAllPrReviewComments = async (wsId: string, repoId: string): Promise<void> => {
+		const generation = workspaceGeneration;
 		const pr = getOpenTrackedPrForRepo(repoId);
 		if (!pr) {
 			const nextComments = new Map(allPrReviewCommentsByRepo);
@@ -759,6 +776,7 @@
 		}
 		try {
 			const comments = await fetchPullRequestReviews(wsId, repoId, pr.number, pr.headBranch);
+			if (!isWorkspaceRequestCurrent(wsId, generation)) return;
 			const nextComments = new Map(allPrReviewCommentsByRepo);
 			nextComments.set(repoId, comments);
 			allPrReviewCommentsByRepo = nextComments;
@@ -772,6 +790,7 @@
 			const counts = buildReviewThreadCountsByFile(comments, repoFiles);
 			prFileCommentCounts = replaceRepoFileCommentCounts(prFileCommentCounts, repoId, counts);
 		} catch {
+			if (!isWorkspaceRequestCurrent(wsId, generation)) return;
 			const nextComments = new Map(allPrReviewCommentsByRepo);
 			nextComments.delete(repoId);
 			allPrReviewCommentsByRepo = nextComments;
@@ -1147,6 +1166,7 @@
 		repoId: string,
 		file: RepoDiffFileSummary,
 	): Promise<void> => {
+		const generation = workspaceGeneration;
 		const requestId = ++fileDiffRequestId;
 		fileDiffLoading = true;
 		fileDiffError = null;
@@ -1172,6 +1192,7 @@
 					file.status ?? '',
 				);
 			}
+			if (!isWorkspaceRequestCurrent(wsId, generation)) return;
 			if (requestId !== fileDiffRequestId) return;
 			fileDiffContent = fetched;
 		} catch (err) {
@@ -1187,6 +1208,7 @@
 		repoId: string,
 		path: string,
 	): Promise<void> => {
+		const generation = workspaceGeneration;
 		const requestId = ++fullDiffRequestId;
 		fullDiffLoading = true;
 		originalFileContent = null;
@@ -1200,6 +1222,7 @@
 					readWorkspaceRepoFileAtRef(wsId, repoId, path, refs.base),
 					readWorkspaceRepoFileAtRef(wsId, repoId, path, refs.head),
 				]);
+				if (!isWorkspaceRequestCurrent(wsId, generation)) return;
 				if (requestId !== fullDiffRequestId) return;
 				originalFileContent = origResult.found ? origResult.content : '';
 				modifiedFileContent = modResult.found ? modResult.content : '';
@@ -1208,6 +1231,7 @@
 					readWorkspaceRepoFileAtRef(wsId, repoId, path, 'HEAD'),
 					readWorkspaceRepoFile(wsId, repoId, path),
 				]);
+				if (!isWorkspaceRequestCurrent(wsId, generation)) return;
 				if (requestId !== fullDiffRequestId) return;
 				originalFileContent = origResult.found ? origResult.content : '';
 				modifiedFileContent = modResult.content;
@@ -1221,10 +1245,12 @@
 		}
 	};
 	const loadFileContent = async (wsId: string, repoId: string, path: string): Promise<void> => {
+		const generation = workspaceGeneration;
 		const requestId = ++fileContentRequestId;
 		fileContentLoading = true;
 		try {
 			const content = await readWorkspaceRepoFile(wsId, repoId, path);
+			if (!isWorkspaceRequestCurrent(wsId, generation)) return;
 			if (requestId !== fileContentRequestId) return;
 			fileContent = content;
 		} catch {
@@ -1267,6 +1293,10 @@
 		if (!ws) return;
 		if (ws.id === lastWorkspaceId) return;
 		lastWorkspaceId = ws.id;
+		workspaceGeneration += 1;
+		fileDiffRequestId += 1;
+		fullDiffRequestId += 1;
+		fileContentRequestId += 1;
 		repoFileStates = new Map();
 		extraRoots = [];
 		dirEntries = new Map();

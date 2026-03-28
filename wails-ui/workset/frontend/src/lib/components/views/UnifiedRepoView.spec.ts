@@ -140,6 +140,18 @@ const buildWorkspace = (withTrackedPr = false): Workspace => ({
 	lastUsed: '2026-03-20T00:00:00Z',
 });
 
+const buildWorkspaceWithId = (workspaceId: string, withTrackedPr = false): Workspace => ({
+	...buildWorkspace(withTrackedPr),
+	id: workspaceId,
+	name: `Workset ${workspaceId.toUpperCase()}`,
+	path: `/tmp/${workspaceId}`,
+	repos: buildWorkspace(withTrackedPr).repos.map((repo, index) => ({
+		...repo,
+		id: `${workspaceId}::repo-${index === 0 ? 'alpha' : `repo-${index}`}`,
+		path: `/tmp/${workspaceId}/${repo.name}`,
+	})),
+});
+
 const buildMultiRepoWorkspace = (): Workspace => ({
 	...buildWorkspace(),
 	repos: [
@@ -177,9 +189,22 @@ const buildWorkspaceWithoutRepos = (): Workspace => ({
 	repos: [],
 });
 
+const buildWorkspaceWithoutReposWithId = (workspaceId: string): Workspace => ({
+	...buildWorkspaceWithId(workspaceId),
+	repos: [],
+});
+
 const createDeferredResults = () => {
 	let resolve!: (value: RepoFileSearchResult[]) => void;
 	const promise = new Promise<RepoFileSearchResult[]>((resolver) => {
+		resolve = resolver;
+	});
+	return { promise, resolve };
+};
+
+const createDeferredValue = <T>() => {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((resolver) => {
 		resolve = resolver;
 	});
 	return { promise, resolve };
@@ -751,6 +776,59 @@ describe('UnifiedRepoView lazy directory tree', () => {
 			5000,
 			'ws-1::repo-alpha',
 		);
+	});
+
+	test('ignores stale workspace extra-root responses after switching workspaces', async () => {
+		const ws1Deferred =
+			createDeferredValue<
+				{ id: string; label: string; relativePath: string; gitDetected: boolean }[]
+			>();
+		repoFilesMocks.listRepoDirectory.mockResolvedValue([]);
+		repoFilesMocks.listWorkspaceExtraRoots.mockImplementation((workspaceId: string) => {
+			if (workspaceId === 'ws-1') return ws1Deferred.promise;
+			if (workspaceId === 'ws-2') {
+				return Promise.resolve([
+					{
+						id: 'ws-2::extra::docs',
+						label: 'docs',
+						relativePath: 'docs',
+						gitDetected: false,
+					},
+				]);
+			}
+			return Promise.resolve([]);
+		});
+
+		const view = render(UnifiedRepoView, {
+			props: {
+				workspace: buildWorkspaceWithoutReposWithId('ws-1'),
+			},
+		});
+
+		await waitFor(() =>
+			expect(repoFilesMocks.listWorkspaceExtraRoots).toHaveBeenCalledWith('ws-1'),
+		);
+
+		await view.rerender({
+			workspace: buildWorkspaceWithoutReposWithId('ws-2'),
+		});
+
+		await waitFor(() =>
+			expect(repoFilesMocks.listWorkspaceExtraRoots).toHaveBeenCalledWith('ws-2'),
+		);
+		await waitFor(() => expect(view.getByRole('button', { name: /^docs/ })).toBeInTheDocument());
+
+		ws1Deferred.resolve([
+			{
+				id: 'ws-1::extra::scratch',
+				label: 'scratch',
+				relativePath: 'scratch',
+				gitDetected: false,
+			},
+		]);
+		await Promise.resolve();
+
+		expect(view.queryByRole('button', { name: /^scratch/ })).not.toBeInTheDocument();
 	});
 
 	test('wires onViewReady for both edit and read-only code editors', () => {

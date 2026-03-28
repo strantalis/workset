@@ -14,6 +14,8 @@ type repoHooksPreviewSource struct {
 	remoteURL      string
 }
 
+const repoHooksPreviewUnavailableReasonAuthRequired = "auth_required"
+
 // PreviewRepoHooks discovers repository hook definitions from local paths or GitHub remotes.
 func (s *Service) PreviewRepoHooks(ctx context.Context, input RepoHooksPreviewInput) (RepoHooksPreviewResult, error) {
 	cfg, info, err := s.loadGlobal(ctx)
@@ -69,10 +71,18 @@ func (s *Service) PreviewRepoHooks(ctx context.Context, input RepoHooksPreviewIn
 
 	client, err := s.githubClient(ctx, host)
 	if err != nil {
+		if IsAuthRequiredError(err) {
+			result.Payload.PreviewUnavailableReason = repoHooksPreviewUnavailableReasonAuthRequired
+			return result, nil
+		}
 		return RepoHooksPreviewResult{}, err
 	}
 	data, exists, err := client.GetFileContent(ctx, remote.Owner, remote.Repo, hooks.RepoHooksPath, strings.TrimSpace(input.Ref))
 	if err != nil {
+		if IsAuthRequiredError(err) {
+			result.Payload.PreviewUnavailableReason = repoHooksPreviewUnavailableReasonAuthRequired
+			return result, nil
+		}
 		return RepoHooksPreviewResult{}, err
 	}
 	if !exists {

@@ -168,13 +168,31 @@ describe('workspace + terminal API compatibility exports', () => {
 			],
 		} as Awaited<ReturnType<typeof PreviewRepoHooks>>);
 
-		const hooks = await previewRepoHooks('git@github.com:example/repo.git');
+		const preview = await previewRepoHooks('git@github.com:example/repo.git');
 
 		expect(PreviewRepoHooks).toHaveBeenCalledWith({
 			source: 'git@github.com:example/repo.git',
 			ref: undefined,
 		});
-		expect(hooks).toEqual(['bootstrap', 'npm run build && npm test']);
+		expect(preview).toEqual({
+			hooks: ['bootstrap', 'npm run build && npm test'],
+			previewUnavailableReason: null,
+		});
+	});
+
+	test('previewRepoHooks preserves auth-required soft miss state', async () => {
+		vi.mocked(PreviewRepoHooks).mockResolvedValue({
+			source: 'git@github.com:example/private-repo.git',
+			exists: false,
+			preview_unavailable_reason: 'auth_required',
+		} as Awaited<ReturnType<typeof PreviewRepoHooks>>);
+
+		const preview = await previewRepoHooks('git@github.com:example/private-repo.git');
+
+		expect(preview).toEqual({
+			hooks: [],
+			previewUnavailableReason: 'auth_required',
+		});
 	});
 
 	test('terminal layout compatibility exports pass through to wails API', async () => {

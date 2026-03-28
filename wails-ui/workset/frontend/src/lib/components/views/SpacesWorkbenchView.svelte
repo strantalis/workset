@@ -46,9 +46,10 @@
 	}: Props = $props();
 
 	const activeThread = $derived.by(() => {
-		if (!activeWorkspaceId) return null;
+		const workspaceId = activeWorkspaceId;
+		if (!workspaceId) return null;
 		for (const group of worksetGroups) {
-			const thread = group.threads.find((candidate) => candidate.id === activeWorkspaceId);
+			const thread = group.threads.find((candidate) => candidate.id === workspaceId);
 			if (thread) return thread;
 		}
 		return null;
@@ -62,9 +63,10 @@
 	const activeThreadSummary = $derived.by(() => getThreadSummary(activeThread));
 
 	const activeWorksetId = $derived.by(() => {
-		if (!activeThread) return null;
+		const workspaceId = activeWorkspaceId;
+		if (!workspaceId) return null;
 		for (const group of worksetGroups) {
-			if (group.threads.some((thread) => thread.id === activeThread.id)) return group.id;
+			if (group.threads.some((thread) => thread.id === workspaceId)) return group.id;
 		}
 		return null;
 	});
@@ -92,9 +94,10 @@
 	});
 
 	const primaryRepoLabel = $derived.by(() => {
-		if (!activeThread) return 'terminal';
-		const summary = getThreadSummary(activeThread);
-		return summary?.repoNames[0] ?? activeThread.name;
+		const thread = activeThread;
+		if (!thread) return 'terminal';
+		const summary = getThreadSummary(thread);
+		return summary?.repoNames[0] ?? thread.name;
 	});
 
 	const openPrCount = $derived(activeThreadSummary?.openPrs ?? 0);

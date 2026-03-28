@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import { ArrowRight, Check, Loader2, Search } from '@lucide/svelte';
+	import type { RepoHooksPreviewUnavailableReason } from '../../api/workspaces';
 	import type { Alias } from '../../types';
 	import type { GitHubRepoSearchItem } from '../../types';
 	import type { WorkspaceActionDirectRepo } from '../../services/workspaceActionContextService';
@@ -11,6 +12,7 @@
 		repoName: string;
 		hooks: string[];
 		hasSource: boolean;
+		previewUnavailableReason: RepoHooksPreviewUnavailableReason | null;
 	};
 
 	interface Props {
@@ -132,6 +134,16 @@
 	onDestroy(() => {
 		repoSearch.destroy();
 	});
+
+	const getThreadHookEmptyMessage = (row: ThreadHookPreviewRow): string => {
+		if (!row.hasSource) {
+			return 'No source in catalog';
+		}
+		if (row.previewUnavailableReason === 'auth_required') {
+			return 'GitHub auth required to preview hooks';
+		}
+		return 'No hooks';
+	};
 </script>
 
 {#if isThreadMode}
@@ -168,10 +180,8 @@
 							{#each threadHookRows as row (`${row.repoName}`)}
 								<div class="thread-hooks-row">
 									<div class="thread-hooks-repo">{row.repoName}</div>
-									{#if !row.hasSource}
-										<div class="thread-hooks-empty">No source in catalog</div>
-									{:else if row.hooks.length === 0}
-										<div class="thread-hooks-empty">No hooks</div>
+									{#if !row.hasSource || row.hooks.length === 0}
+										<div class="thread-hooks-empty">{getThreadHookEmptyMessage(row)}</div>
 									{:else}
 										<div class="thread-hooks-chip-row">
 											{#each row.hooks as hook (`${row.repoName}-${hook}`)}

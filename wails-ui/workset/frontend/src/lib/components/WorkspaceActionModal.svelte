@@ -1,7 +1,11 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { get } from 'svelte/store';
-	import { previewRepoHooks, setWorkspaceDescription } from '../api/workspaces';
+	import {
+		previewRepoHooks,
+		setWorkspaceDescription,
+		type RepoHooksPreviewUnavailableReason,
+	} from '../api/workspaces';
 	import {
 		activeWorkspaceId,
 		clearRepo,
@@ -132,7 +136,14 @@
 
 	let selectedAliases: Set<string> = $state(new Set());
 	let seededThreadAliases = $state(false);
-	let threadHookRows = $state<Array<{ repoName: string; hooks: string[]; hasSource: boolean }>>([]);
+	let threadHookRows = $state<
+		Array<{
+			repoName: string;
+			hooks: string[];
+			hasSource: boolean;
+			previewUnavailableReason: RepoHooksPreviewUnavailableReason | null;
+		}>
+	>([]);
 	let threadHooksLoading = $state(false);
 	let threadHooksError: string | null = $state(null);
 	let threadHooksFingerprint = $state('');
@@ -258,17 +269,19 @@
 							repoName,
 							hooks: [] as string[],
 							hasSource: false,
+							previewUnavailableReason: null,
 							failed: false,
 						};
 					}
 					try {
-						const hooks = await previewRepoHooks(source);
+						const preview = await previewRepoHooks(source);
 						return {
 							repoName,
 							hooks: Array.from(
-								new Set(hooks.map((hook) => hook.trim()).filter((hook) => hook.length > 0)),
+								new Set(preview.hooks.map((hook) => hook.trim()).filter((hook) => hook.length > 0)),
 							),
 							hasSource: true,
+							previewUnavailableReason: preview.previewUnavailableReason,
 							failed: false,
 						};
 					} catch {
@@ -276,16 +289,18 @@
 							repoName,
 							hooks: [] as string[],
 							hasSource: true,
+							previewUnavailableReason: null,
 							failed: true,
 						};
 					}
 				}),
 			);
 			if (sequence !== threadHooksPreviewSequence) return;
-			threadHookRows = rows.map(({ repoName, hooks, hasSource }) => ({
+			threadHookRows = rows.map(({ repoName, hooks, hasSource, previewUnavailableReason }) => ({
 				repoName,
 				hooks,
 				hasSource,
+				previewUnavailableReason,
 			}));
 			const failedRepos = rows.filter((row) => row.failed).map((row) => row.repoName);
 			if (failedRepos.length === 1) {

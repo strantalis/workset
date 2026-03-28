@@ -33,6 +33,13 @@ import {
 	UpdateWorkspaceLastUsed,
 } from '../../../bindings/workset/app';
 
+export type RepoHooksPreviewUnavailableReason = 'auth_required';
+
+export type RepoHooksPreviewSummary = {
+	hooks: string[];
+	previewUnavailableReason: RepoHooksPreviewUnavailableReason | null;
+};
+
 export async function fetchThreads(
 	includeArchived = false,
 	includeStatus = false,
@@ -222,13 +229,18 @@ export async function trustRepoHooks(repo: string): Promise<void> {
 	await TrustRepoHooks(repo);
 }
 
-export async function previewRepoHooks(source: string, ref = ''): Promise<string[]> {
+export async function previewRepoHooks(source: string, ref = ''): Promise<RepoHooksPreviewSummary> {
 	const payload = await PreviewRepoHooks({
 		source,
 		ref: ref.trim() || undefined,
 	});
+	const previewUnavailableReason =
+		payload.preview_unavailable_reason === 'auth_required' ? 'auth_required' : null;
 	if (!payload.exists || !payload.hooks || payload.hooks.length === 0) {
-		return [];
+		return {
+			hooks: [],
+			previewUnavailableReason,
+		};
 	}
 
 	const unique = new Set<string>();
@@ -243,7 +255,10 @@ export async function previewRepoHooks(source: string, ref = ''): Promise<string
 			unique.add(run.join(' && '));
 		}
 	}
-	return Array.from(unique);
+	return {
+		hooks: Array.from(unique),
+		previewUnavailableReason,
+	};
 }
 
 export async function removeRepo(

@@ -149,11 +149,13 @@ describe('WorkspaceActionCreateForm', () => {
 						repoName: 'auth-service',
 						hooks: ['npm install', 'npm run build'],
 						hasSource: true,
+						previewUnavailableReason: null,
 					},
 					{
 						repoName: 'user-api',
 						hooks: [],
 						hasSource: false,
+						previewUnavailableReason: null,
 					},
 				],
 				threadHooksLoading: false,
@@ -166,5 +168,30 @@ describe('WorkspaceActionCreateForm', () => {
 		expect(getByText('npm install')).toBeInTheDocument();
 		expect(getByText('npm run build')).toBeInTheDocument();
 		expect(getByText('No source in catalog')).toBeInTheDocument();
+	});
+
+	test('renders auth-required hook preview state distinctly from no hooks', () => {
+		const { getByText, queryByText } = render(WorkspaceActionCreateForm, {
+			props: {
+				...baseProps(),
+				modeVariant: 'thread' as const,
+				worksetLabel: 'Platform Core',
+				workspaceName: 'oauth2-migration',
+				selectedAliases: new Set(['private-repo']),
+				threadHookRows: [
+					{
+						repoName: 'private-repo',
+						hooks: [],
+						hasSource: true,
+						previewUnavailableReason: 'auth_required',
+					},
+				],
+				threadHooksLoading: false,
+				threadHooksError: null,
+			},
+		});
+
+		expect(getByText('GitHub auth required to preview hooks')).toBeInTheDocument();
+		expect(queryByText('No hooks')).not.toBeInTheDocument();
 	});
 });

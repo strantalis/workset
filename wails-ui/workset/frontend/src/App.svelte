@@ -230,6 +230,13 @@
 		mapWorkspacesToExplorerWorksets(visibleWorkspaces, shortcutMap),
 	);
 	const worksetThreadGroups = $derived.by(() => mapWorkspacesToThreadGroups(visibleWorkspaces));
+	const visibleActiveWorkspaceId = $derived.by(() => {
+		const workspaceId = $activeWorkspaceId;
+		if (!workspaceId) return null;
+		return threadVisibleWorkspaces.some((workspace) => workspace.id === workspaceId)
+			? workspaceId
+			: null;
+	});
 	const activeSummary = $derived.by(
 		() => worksetSummaries.find((summary) => summary.id === $activeWorkspaceId) ?? null,
 	);
@@ -665,7 +672,7 @@
 			{#if showExplorer && explorerOpen}
 				<aside class="explorer-shell" in:fly={{ x: -10, duration: 120 }}>
 					<ExplorerPanel
-						activeWorkspaceId={$activeWorkspaceId}
+						activeWorkspaceId={visibleActiveWorkspaceId}
 						groupedWorksets={explorerWorksets}
 						{selectedWorksetId}
 						lockWorksetSelection={popoutMode}
@@ -730,20 +737,21 @@
 								variant="centered"
 							/>
 						{:else if currentView === 'workspaces'}
-							{#if !popoutMode && popoutManager.isWorkspacePoppedOut($activeWorkspaceId)}
+							{#if !popoutMode && popoutManager.isWorkspacePoppedOut(visibleActiveWorkspaceId)}
 								<EmptyState
 									title="This workset is open in a popout"
 									body="Use the popout window to continue. Return it here anytime."
 									actionLabel="Focus Popout"
-									onAction={() => void popoutManager.handlePopout($activeWorkspaceId ?? '', true)}
+									onAction={() =>
+										void popoutManager.handlePopout(visibleActiveWorkspaceId ?? '', true)}
 									secondaryActionLabel="Return To Main Window"
 									onSecondaryAction={() =>
-										void popoutManager.handlePopout($activeWorkspaceId ?? '', false)}
+										void popoutManager.handlePopout(visibleActiveWorkspaceId ?? '', false)}
 									variant="centered"
 								/>
 							{:else}
 								<SpacesWorkbenchView
-									activeWorkspaceId={$activeWorkspaceId}
+									activeWorkspaceId={visibleActiveWorkspaceId}
 									worksetGroups={worksetThreadGroups}
 									{selectedWorksetId}
 									{threadSummaryMap}

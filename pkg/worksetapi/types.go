@@ -226,14 +226,15 @@ type RepoHookPreviewJSON struct {
 
 // RepoHooksPreviewJSON is the JSON payload for pre-clone hook discovery.
 type RepoHooksPreviewJSON struct {
-	Source         string                `json:"source"`
-	ResolvedSource string                `json:"resolved_source,omitempty"`
-	Host           string                `json:"host,omitempty"`
-	Owner          string                `json:"owner,omitempty"`
-	Repo           string                `json:"repo,omitempty"`
-	Ref            string                `json:"ref,omitempty"`
-	Exists         bool                  `json:"exists"`
-	Hooks          []RepoHookPreviewJSON `json:"hooks,omitempty"`
+	Source                   string                `json:"source"`
+	ResolvedSource           string                `json:"resolved_source,omitempty"`
+	Host                     string                `json:"host,omitempty"`
+	Owner                    string                `json:"owner,omitempty"`
+	Repo                     string                `json:"repo,omitempty"`
+	Ref                      string                `json:"ref,omitempty"`
+	Exists                   bool                  `json:"exists"`
+	PreviewUnavailableReason string                `json:"preview_unavailable_reason,omitempty"`
+	Hooks                    []RepoHookPreviewJSON `json:"hooks,omitempty"`
 }
 
 // RepoHooksPreviewResult wraps hook preview payload with config metadata.

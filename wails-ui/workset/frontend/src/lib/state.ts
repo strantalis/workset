@@ -37,6 +37,11 @@ export const loadingWorkspaces = writable(false);
 export const workspaceError = writable<string | null>(null);
 let loadSequence = 0;
 
+type SelectionSnapshot = {
+	activeWorkspaceId: string | null;
+	activeRepoId: string | null;
+};
+
 const workspaceOverlayCache = new Map<
 	string,
 	{
@@ -448,7 +453,7 @@ export function clearWorkspace(): void {
 	activeRepoId.set(null);
 }
 
-const syncSelection = (data: Workspace[]): void => {
+const resolveSelectionSnapshot = (data: Workspace[]): SelectionSnapshot => {
 	const currentWorkspaceId = get(activeWorkspaceId);
 	const currentRepoId = get(activeRepoId);
 	const activeWorkspace =
@@ -460,12 +465,26 @@ const syncSelection = (data: Workspace[]): void => {
 				workspace.placeholder !== true,
 		);
 	if (!activeWorkspace) {
-		activeWorkspaceId.set(null);
-		activeRepoId.set(null);
-		return;
+		return {
+			activeWorkspaceId: null,
+			activeRepoId: null,
+		};
 	}
-	if (currentRepoId && !activeWorkspace.repos.some((repo) => repo.id === currentRepoId)) {
-		activeRepoId.set(null);
+	return {
+		activeWorkspaceId: activeWorkspace.id,
+		activeRepoId:
+			currentRepoId && activeWorkspace.repos.some((repo) => repo.id === currentRepoId)
+				? currentRepoId
+				: null,
+	};
+};
+
+const applySelectionSnapshot = (snapshot: SelectionSnapshot): void => {
+	if (get(activeWorkspaceId) !== snapshot.activeWorkspaceId) {
+		activeWorkspaceId.set(snapshot.activeWorkspaceId);
+	}
+	if (get(activeRepoId) !== snapshot.activeRepoId) {
+		activeRepoId.set(snapshot.activeRepoId);
 	}
 };
 
@@ -478,8 +497,9 @@ export async function loadWorkspaces(includeArchived = false): Promise<void> {
 		if (sequence !== loadSequence) {
 			return;
 		}
+		const selection = resolveSelectionSnapshot(data);
 		workspaces.set(data);
-		syncSelection(data);
+		applySelectionSnapshot(selection);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Failed to load workspaces.';
 		workspaceError.set(message);
@@ -492,8 +512,9 @@ export async function loadWorkspaces(includeArchived = false): Promise<void> {
 			if (sequence !== loadSequence) {
 				return;
 			}
+			const selection = resolveSelectionSnapshot(data);
 			workspaces.set(data);
-			syncSelection(data);
+			applySelectionSnapshot(selection);
 		})
 		.catch(() => {});
 }
@@ -505,8 +526,9 @@ export async function refreshWorkspacesStatus(includeArchived = false): Promise<
 		if (sequence !== loadSequence) {
 			return;
 		}
+		const selection = resolveSelectionSnapshot(data);
 		workspaces.set(data);
-		syncSelection(data);
+		applySelectionSnapshot(selection);
 	} catch {
 		// Ignore status refresh failures to avoid interrupting the UI.
 	}
