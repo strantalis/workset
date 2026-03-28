@@ -13,7 +13,7 @@ require (
 	github.com/knadh/koanf/providers/rawbytes v1.0.0
 	github.com/knadh/koanf/v2 v2.3.4
 	github.com/rogpeppe/go-internal v1.14.1
-	github.com/urfave/cli/v3 v3.7.0
+	github.com/urfave/cli/v3 v3.8.0
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/term v0.41.0
 	gopkg.in/yaml.v3 v3.0.1
