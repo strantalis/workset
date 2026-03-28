@@ -179,15 +179,15 @@ Add task-specific guidance here.
 			newContent.trim().length > 0,
 	);
 
-	const availableToolOptions = $derived.by(() =>
-		TOOL_OPTIONS.filter((option) => !(newScope === 'global' && option.globalOnly === false)),
+	const effectiveNewScope = $derived<SkillScope>(
+		!workspaceId && newScope === 'project' ? 'global' : newScope,
 	);
 
-	$effect(() => {
-		if (!workspaceId && newScope === 'project') {
-			newScope = 'global';
-		}
-	});
+	const availableToolOptions = $derived.by(() =>
+		TOOL_OPTIONS.filter(
+			(option) => !(effectiveNewScope === 'global' && option.globalOnly === false),
+		),
+	);
 
 	const resetCreateForm = (): void => {
 		newDirName = '';
@@ -318,11 +318,17 @@ Add task-specific guidance here.
 		const tools = [...newTools];
 		try {
 			for (const tool of tools) {
-				await saveSkillContent(newScope, dirName, tool, newContent, workspaceId ?? undefined);
+				await saveSkillContent(
+					effectiveNewScope,
+					dirName,
+					tool,
+					newContent,
+					workspaceId ?? undefined,
+				);
 			}
 			creating = false;
 			success = `Created ${dirName} for ${tools.join(', ')}.`;
-			await refreshSkills(`${newScope}:${dirName}`);
+			await refreshSkills(`${effectiveNewScope}:${dirName}`);
 		} catch (createError) {
 			error = toErrorMessage(createError, `Failed to create ${dirName}`);
 		} finally {

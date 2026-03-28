@@ -95,6 +95,16 @@
 
 	let localSelectedWorksetId = $state<string | null>(null);
 
+	// Sync local workset selection from active workspace.
+	// Must be an effect (not $derived) because it needs to REMEMBER the last active
+	// workset — when the active thread is removed, localSelectedWorksetId retains the
+	// workset so the panel stays on the same workset and can re-select a sibling thread.
+	$effect(() => {
+		if (selectedWorksetIdProp === undefined && activeWorksetId) {
+			localSelectedWorksetId = activeWorksetId;
+		}
+	});
+
 	const selectedWorksetId = $derived.by(() => {
 		const preferred = selectedWorksetIdProp ?? localSelectedWorksetId;
 		if (preferred) return preferred;
@@ -205,7 +215,7 @@
 		}
 		if (event.key === 'Enter') {
 			event.preventDefault();
-			const focused = switcherFlatWorksets[switcherFocusIndex];
+			const focused = switcherFlatWorksets[clampedFocusIndex];
 			if (focused) selectWorkset(focused.id);
 			return;
 		}
@@ -215,6 +225,9 @@
 		}
 	};
 
+	// Auto-select a workspace when none is active, and reset state when empty.
+	// This is reactive (not onMount) because it must also handle the case where
+	// the active thread is removed and activeWorkspaceId becomes null.
 	$effect(() => {
 		if (groupedWorksets.length === 0) {
 			localSelectedWorksetId = null;
@@ -240,12 +253,6 @@
 	});
 
 	$effect(() => {
-		if (selectedWorksetIdProp === undefined && activeWorksetId) {
-			localSelectedWorksetId = activeWorksetId;
-		}
-	});
-
-	$effect(() => {
 		if (!worksetSwitcherEnabled && switcherOpen) {
 			switcherOpen = false;
 		}
@@ -259,16 +266,14 @@
 		return () => cancelAnimationFrame(token);
 	});
 
-	$effect(() => {
-		if (!switcherOpen) return;
-		const maxIndex = Math.max(0, switcherFlatWorksets.length - 1);
-		switcherFocusIndex = Math.min(switcherFocusIndex, maxIndex);
-	});
+	const clampedFocusIndex = $derived(
+		Math.min(switcherFocusIndex, Math.max(0, switcherFlatWorksets.length - 1)),
+	);
 
 	$effect(() => {
 		if (!switcherOpen || !switcherListEl) return;
 		const activeItem = switcherListEl.querySelector<HTMLElement>(
-			`[data-switcher-index="${switcherFocusIndex}"]`,
+			`[data-switcher-index="${clampedFocusIndex}"]`,
 		);
 		activeItem?.scrollIntoView({ block: 'nearest' });
 	});
@@ -369,7 +374,7 @@
 									<button
 										type="button"
 										class="switcher-item switcher-item-rich"
-										class:focused={switcherFocusIndex === index}
+										class:focused={clampedFocusIndex === index}
 										onmouseenter={() => (switcherFocusIndex = index)}
 										onclick={() => selectWorkset(workset.id)}
 										data-switcher-index={index}
@@ -417,7 +422,7 @@
 													<span class="ws-dot ws-dot-xs ws-dot-{status}"></span>
 												{/each}
 											</span>
-											{#if switcherFocusIndex === index}
+											{#if clampedFocusIndex === index}
 												<Check size={10} class="switcher-item-check" />
 											{/if}
 										</span>
@@ -437,7 +442,7 @@
 									<button
 										type="button"
 										class="switcher-item switcher-item-rich"
-										class:focused={switcherFocusIndex ===
+										class:focused={clampedFocusIndex ===
 											switcherPinnedWorksets.length + recentIndex}
 										onmouseenter={() =>
 											(switcherFocusIndex = switcherPinnedWorksets.length + recentIndex)}
@@ -487,7 +492,7 @@
 													<span class="ws-dot ws-dot-xs ws-dot-{status}"></span>
 												{/each}
 											</span>
-											{#if switcherFocusIndex === switcherPinnedWorksets.length + recentIndex}
+											{#if clampedFocusIndex === switcherPinnedWorksets.length + recentIndex}
 												<Check size={10} class="switcher-item-check" />
 											{/if}
 										</span>

@@ -96,6 +96,35 @@ describe('createRepoStatusWatchers', () => {
 		expect(repoDiffApiMocks.updateRepoDiffWatch).not.toHaveBeenCalled();
 	});
 
+	it('bails out after MAX_SYNC_BURST calls in one microtask', async () => {
+		const manager = createRepoStatusWatchers();
+		const workspace = buildWorkspace();
+		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+		// Call sync 25 times synchronously (burst limit is 20)
+		for (let i = 0; i < 25; i++) {
+			manager.sync([workspace]);
+		}
+
+		// First call starts the watch, subsequent calls are no-ops (same entries),
+		// calls beyond 20 should be rejected by burst guard
+		expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('possible reactive loop'));
+		expect(repoDiffApiMocks.startRepoStatusWatch).toHaveBeenCalledTimes(1);
+
+		// After microtask flush the burst counter resets
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		warnSpy.mockClear();
+		repoDiffApiMocks.startRepoStatusWatch.mockClear();
+
+		// New sync calls should work again
+		manager.stopAll();
+		manager.sync([workspace]);
+		expect(warnSpy).not.toHaveBeenCalled();
+		expect(repoDiffApiMocks.startRepoStatusWatch).toHaveBeenCalledTimes(1);
+
+		warnSpy.mockRestore();
+	});
+
 	it('upgrades local watches to full PR watches and keeps PR refs updated', async () => {
 		const manager = createRepoStatusWatchers();
 

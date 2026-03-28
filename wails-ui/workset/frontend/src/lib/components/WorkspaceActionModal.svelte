@@ -41,7 +41,6 @@
 		resetWorkspaceActionFlow,
 		resolveMutationHookTransition,
 		resolvePostCreateSelection,
-		resolveRemovalState,
 		shouldRefreshRemoveRepoStatus,
 	} from '../services/workspaceActionModalController';
 	import {
@@ -336,10 +335,22 @@
 	let removeRepoStatusRequested = $state(false);
 	let removeRepoStatusRefreshing = $state(false);
 
-	const removeConfirmValid = $derived(!removeDeleteFiles || removeConfirmText === 'DELETE');
 	const removeRepoConfirmRequired = $derived(removeDeleteWorktree);
+
+	const effectiveRemoveForceDelete = $derived(removeDeleteFiles ? removeForceDelete : false);
+	const effectiveRemoveConfirmText = $derived(removeDeleteFiles ? removeConfirmText : '');
+	const effectiveRemoveRepoConfirmText = $derived(
+		removeRepoConfirmRequired ? removeRepoConfirmText : '',
+	);
+	const effectiveRemoveRepoStatusRequested = $derived(
+		removeRepoConfirmRequired ? removeRepoStatusRequested : false,
+	);
+
+	const removeConfirmValid = $derived(
+		!removeDeleteFiles || effectiveRemoveConfirmText === 'DELETE',
+	);
 	const removeRepoConfirmValid = $derived(
-		!removeRepoConfirmRequired || removeRepoConfirmText === 'DELETE',
+		!removeRepoConfirmRequired || effectiveRemoveRepoConfirmText === 'DELETE',
 	);
 	const removeRepoStatus = $derived(
 		workspaceId && repoName
@@ -350,29 +361,21 @@
 	);
 
 	$effect(() => {
-		const resolved = resolveRemovalState({
-			removeDeleteFiles,
-			removeForceDelete,
-			removeConfirmText,
-			removeRepoConfirmRequired,
-			removeRepoConfirmText,
-			removeRepoStatusRequested,
-		});
-		removeForceDelete = resolved.removeForceDelete;
-		removeConfirmText = resolved.removeConfirmText;
-		removeRepoConfirmText = resolved.removeRepoConfirmText;
-		removeRepoStatusRequested = resolved.removeRepoStatusRequested;
-	});
-
-	$effect(() => {
-		if (shouldRefreshRemoveRepoStatus(removeRepoConfirmRequired, removeRepoStatusRequested)) {
-			removeRepoStatusRequested = true;
-			removeRepoStatusRefreshing = true;
-			void (async () => {
-				await refreshWorkspacesStatus(true);
-				removeRepoStatusRefreshing = false;
-			})();
+		if (
+			!shouldRefreshRemoveRepoStatus(removeRepoConfirmRequired, effectiveRemoveRepoStatusRequested)
+		) {
+			return;
 		}
+		removeRepoStatusRequested = true;
+		removeRepoStatusRefreshing = true;
+		let cancelled = false;
+		void (async () => {
+			await refreshWorkspacesStatus(true);
+			if (!cancelled) removeRepoStatusRefreshing = false;
+		})();
+		return () => {
+			cancelled = true;
+		};
 	});
 
 	const modeTitle = $derived(deriveWorkspaceActionModalTitle(mode, phase));
@@ -859,7 +862,7 @@
 			const result = await workspaceActionMutations.removeWorkspace({
 				workspaceId,
 				deleteFiles: removeDeleteFiles,
-				force: removeForceDelete,
+				force: effectiveRemoveForceDelete,
 			});
 			workspaces.update((current) => current.filter((entry) => entry.id !== result.workspaceId));
 			if (get(activeWorkspaceId) === result.workspaceId) {
@@ -1009,8 +1012,8 @@
 			{removing}
 			{removalSuccess}
 			{removeDeleteFiles}
-			{removeForceDelete}
-			{removeConfirmText}
+			removeForceDelete={effectiveRemoveForceDelete}
+			removeConfirmText={effectiveRemoveConfirmText}
 			{removeConfirmValid}
 			onRemoveWorkspaceDeleteFilesToggle={(checked) => (removeDeleteFiles = checked)}
 			onRemoveWorkspaceForceDeleteToggle={(checked) => (removeForceDelete = checked)}
@@ -1018,7 +1021,7 @@
 			onRemoveWorkspaceSubmit={handleRemoveWorkspace}
 			{removeDeleteWorktree}
 			{removeRepoConfirmRequired}
-			{removeRepoConfirmText}
+			removeRepoConfirmText={effectiveRemoveRepoConfirmText}
 			{removeRepoStatusRefreshing}
 			{removeRepoStatus}
 			{removeRepoConfirmValid}

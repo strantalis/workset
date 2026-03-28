@@ -55,9 +55,11 @@
 		const isRestarting = restartingSessiond;
 		if (previousRestarting && !isRestarting) {
 			restartCompleted = true;
-			setTimeout(() => {
+			const timer = setTimeout(() => {
 				restartCompleted = false;
 			}, 1500);
+			previousRestarting = isRestarting;
+			return () => clearTimeout(timer);
 		}
 		previousRestarting = isRestarting;
 	});
@@ -66,9 +68,11 @@
 		const isResetting = resettingTerminalLayout;
 		if (previousResetting && !isResetting) {
 			resetCompleted = true;
-			setTimeout(() => {
+			const timer = setTimeout(() => {
 				resetCompleted = false;
 			}, 1500);
+			previousResetting = isResetting;
+			return () => clearTimeout(timer);
 		}
 		previousResetting = isResetting;
 	});

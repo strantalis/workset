@@ -70,7 +70,32 @@ const stopWatch = async (entry: WatchEntry): Promise<void> => {
 export function createRepoStatusWatchers(): RepoStatusWatcherManager {
 	const watchers = new Map<string, WatchEntry>();
 
+	// Safety net: detect runaway sync cycles within a single microtask flush.
+	// Runtime patches must not change which repos are watched — only metadata
+	// (status, diff counts, PR state). If that invariant is violated, the
+	// event→patch→derived→sync chain could loop. This counter catches it.
+	// Limit is 20 because rapid workspace switching legitimately fires multiple
+	// sync calls per tick (each switch: activeId → warmIds → watchedWs → sync).
+	let syncBurstCount = 0;
+	let syncBurstTimer: ReturnType<typeof setTimeout> | null = null;
+	const MAX_SYNC_BURST = 20;
+
 	const sync = (workspaces: Workspace[]): void => {
+		syncBurstCount++;
+		if (!syncBurstTimer) {
+			syncBurstTimer = setTimeout(() => {
+				syncBurstCount = 0;
+				syncBurstTimer = null;
+			}, 0);
+		}
+		if (syncBurstCount > MAX_SYNC_BURST) {
+			// eslint-disable-next-line no-console -- intentional safety net for reactive loop detection
+			console.warn(
+				`[RepoStatusWatchers] sync() called ${syncBurstCount} times in one tick — possible reactive loop, skipping`,
+			);
+			return;
+		}
+
 		const nextEntries = new Map<string, WatchEntry>();
 		for (const workspace of workspaces) {
 			if (workspace.archived) continue;

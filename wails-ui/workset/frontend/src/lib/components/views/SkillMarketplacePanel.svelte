@@ -268,10 +268,9 @@
 	let debouncedSearch: ReturnType<typeof setTimeout> | null = null;
 	let searchGeneration = 0;
 
-	let installScope = $state<SkillScope>('global');
+	let installScopeOverride = $state<SkillScope | null>(null);
 	let installDirName = $state('');
 	const installTools = new SvelteSet<string>(['agents']);
-	let installScopeInitialized = false;
 	let installConfigOpen = $state(false);
 	let securityOpen = $state(false);
 	let backfilledInstallScopes = $state<Record<string, SkillScope[]>>({});
@@ -283,8 +282,15 @@
 		return results.find((entry) => skillKey(entry) === selectedKey) ?? selectedSkill;
 	});
 
+	const effectiveInstallScope = $derived.by<SkillScope>(() => {
+		const base = installScopeOverride ?? (workspaceId ? 'project' : 'global');
+		return !workspaceId && base === 'project' ? 'global' : base;
+	});
+
 	const availableToolOptions = $derived.by(() =>
-		TOOL_OPTIONS.filter((option) => !(installScope === 'global' && option.globalOnly === false)),
+		TOOL_OPTIONS.filter(
+			(option) => !(effectiveInstallScope === 'global' && option.globalOnly === false),
+		),
 	);
 
 	const renderedMarkdown = $derived.by(() => {
@@ -307,19 +313,8 @@
 			installDirName.trim().length > 0 &&
 			/^[a-z0-9_-]+$/.test(installDirName.trim()) &&
 			installTools.size > 0 &&
-			!(installScope === 'project' && !workspaceId),
+			!(effectiveInstallScope === 'project' && !workspaceId),
 	);
-
-	$effect(() => {
-		if (!installScopeInitialized) {
-			installScope = workspaceId ? 'project' : 'global';
-			installScopeInitialized = true;
-			return;
-		}
-		if (!workspaceId && installScope === 'project') {
-			installScope = 'global';
-		}
-	});
 
 	$effect(() => {
 		if (!availableToolOptions.some((option) => installTools.has(option.id))) {
@@ -528,7 +523,7 @@
 			const installedSkill = await installMarketplaceSkill(
 				{
 					skill: selectedSkill,
-					scope: installScope,
+					scope: effectiveInstallScope,
 					dirName: installDirName.trim(),
 					tools: [...installTools],
 				},
@@ -853,18 +848,18 @@
 									<button
 										type="button"
 										class="scope-btn"
-										class:active={installScope === 'global'}
+										class:active={effectiveInstallScope === 'global'}
 										onclick={() => {
-											installScope = 'global';
+											installScopeOverride = 'global';
 										}}>Global</button
 									>
 									<button
 										type="button"
 										class="scope-btn"
-										class:active={installScope === 'project'}
+										class:active={effectiveInstallScope === 'project'}
 										disabled={!workspaceId}
 										onclick={() => {
-											installScope = 'project';
+											installScopeOverride = 'project';
 										}}>Workset</button
 									>
 								</div>

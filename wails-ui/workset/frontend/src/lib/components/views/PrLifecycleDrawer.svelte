@@ -85,7 +85,12 @@
 	let pushLoading = $state(false);
 	let pushSuccess = $state(false);
 	let pushError: string | null = $state(null);
-	let descriptionHtml = $state('');
+	const descriptionHtml = $derived.by(() => {
+		const body = activeTrackedPr?.body;
+		if (!body) return '';
+		const raw = marked.parse(body, { gfm: true, breaks: true }) as string;
+		return DOMPurify.sanitize(raw);
+	});
 	let statusRequestId = 0;
 
 	let prTitle = $state('');
@@ -331,16 +336,6 @@
 			createStage = null;
 			createError = null;
 		}
-	});
-
-	$effect(() => {
-		const body = activeTrackedPr?.body;
-		if (!body) {
-			descriptionHtml = '';
-			return;
-		}
-		const raw = marked.parse(body, { gfm: true, breaks: true }) as string;
-		descriptionHtml = DOMPurify.sanitize(raw);
 	});
 
 	$effect(() => {
