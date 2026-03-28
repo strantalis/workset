@@ -22,6 +22,8 @@ const (
 	repoDiffDebounceWindow    = 400 * time.Millisecond
 )
 
+var repoDiffGitReadTimeout = 5 * time.Second
+
 var (
 	repoDiffEmit            = emitRuntimeEvent
 	repoDiffResolveRepoPath = func(ctx context.Context, app *App, workspaceID, repoID string) (string, error) {
@@ -58,7 +60,9 @@ func (t repoDiffGitWatchTargets) matches(path string) bool {
 }
 
 var repoDiffGetLocalStatus = func(ctx context.Context, _ *App, _ repoDiffWatchKey, _ string, repoPath string) (repoLocalStatusSnapshot, error) {
-	return loadRepoLocalStatus(ctx, repoPath, "")
+	timeoutCtx, cancel := context.WithTimeout(ctx, repoDiffGitReadTimeout)
+	defer cancel()
+	return loadRepoLocalStatus(timeoutCtx, repoPath, "")
 }
 
 var repoDiffCollectLocalSummary = func(
@@ -69,6 +73,8 @@ var repoDiffCollectLocalSummary = func(
 	repoPath string,
 	summarySignature string,
 ) (RepoDiffSummary, error) {
+	timeoutCtx, cancel := context.WithTimeout(ctx, repoDiffGitReadTimeout)
+	defer cancel()
 	if app != nil {
 		app.repoDiffSummaryMu.Lock()
 		cached, ok := app.repoDiffSummaries[repoPath]
@@ -77,7 +83,7 @@ var repoDiffCollectLocalSummary = func(
 			return cached.summary, nil
 		}
 	}
-	files, err := collectRepoDiffSummary(ctx, repoPath)
+	files, err := collectRepoDiffSummary(timeoutCtx, repoPath)
 	if err != nil {
 		return RepoDiffSummary{}, err
 	}
@@ -142,7 +148,9 @@ var repoDiffListRemotes = func(ctx context.Context, app *App, key repoDiffWatchK
 }
 
 var repoDiffCollectBranchSummary = func(ctx context.Context, repoPath, base, head string) (RepoDiffSummary, error) {
-	files, err := collectBranchDiffSummary(ctx, repoPath, base, head)
+	timeoutCtx, cancel := context.WithTimeout(ctx, repoDiffGitReadTimeout)
+	defer cancel()
+	files, err := collectBranchDiffSummary(timeoutCtx, repoPath, base, head)
 	if err != nil {
 		return RepoDiffSummary{}, err
 	}
@@ -1006,9 +1014,11 @@ func resolveRepoDiffGitWatchTargets(ctx context.Context, repoPath string) (repoD
 }
 
 func repoDiffRevParsePath(ctx context.Context, repoPath string, args ...string) (string, error) {
+	timeoutCtx, cancel := context.WithTimeout(ctx, repoDiffGitReadTimeout)
+	defer cancel()
 	cmdArgs := []string{"-C", repoPath, "rev-parse"}
 	cmdArgs = append(cmdArgs, args...)
-	cmd := newGitCommandContext(ctx, cmdArgs...)
+	cmd := newReadOnlyGitCommandContext(timeoutCtx, cmdArgs...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", errors.New(strings.TrimSpace(string(output)))

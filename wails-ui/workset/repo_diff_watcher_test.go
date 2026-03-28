@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -257,6 +258,33 @@ func TestRefreshLocalReusesSummaryForUnchangedDirtySignature(t *testing.T) {
 
 	if collectCalls != 1 {
 		t.Fatalf("expected one summary recomputation, got %d", collectCalls)
+	}
+}
+
+func TestRepoDiffGetLocalStatusUsesBoundedTimeout(t *testing.T) {
+	origRunCommand := repoLocalStatusRunCommand
+	origTimeout := repoDiffGitReadTimeout
+	defer func() {
+		repoLocalStatusRunCommand = origRunCommand
+		repoDiffGitReadTimeout = origTimeout
+	}()
+
+	repoDiffGitReadTimeout = 10 * time.Millisecond
+	repoLocalStatusRunCommand = func(ctx context.Context, _ string) (string, error) {
+		<-ctx.Done()
+		return "", ctx.Err()
+	}
+
+	start := time.Now()
+	_, err := repoDiffGetLocalStatus(context.Background(), nil, repoDiffWatchKey{}, "", "/tmp/repo")
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected deadline exceeded, got %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 250*time.Millisecond {
+		t.Fatalf("expected bounded timeout, got %s", elapsed)
 	}
 }
 

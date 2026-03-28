@@ -22,6 +22,21 @@ type WatchEntry = {
 	prBranch?: string;
 };
 
+const buildEntrySignature = (entries: Map<string, WatchEntry>): string =>
+	Array.from(entries.entries())
+		.sort(([left], [right]) => left.localeCompare(right))
+		.map(([key, entry]) =>
+			[
+				key,
+				entry.workspaceId,
+				entry.repoId,
+				entry.mode,
+				entry.prNumber ?? 0,
+				entry.prBranch ?? '',
+			].join('|'),
+		)
+		.join('\n');
+
 const getTrackedPrWatch = (
 	repo: Workspace['repos'][number],
 ): { prNumber: number; prBranch: string } | null => {
@@ -112,6 +127,10 @@ export function createRepoStatusWatchers(): RepoStatusWatcherManager {
 					});
 				}
 			}
+		}
+
+		if (buildEntrySignature(watchers) === buildEntrySignature(nextEntries)) {
+			return;
 		}
 
 		for (const [key, entry] of watchers.entries()) {

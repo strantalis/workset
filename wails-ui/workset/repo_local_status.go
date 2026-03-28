@@ -19,8 +19,7 @@ type repoLocalStatusSnapshot struct {
 }
 
 var repoLocalStatusRunCommand = func(ctx context.Context, repoPath string) (string, error) {
-	cmd := newGitCommandContext(ctx, "-C", repoPath, "status", "--porcelain=v2", "--branch")
-	cmd.Env = os.Environ()
+	cmd := newReadOnlyGitCommandContext(ctx, "-C", repoPath, "status", "--porcelain=v2", "--branch")
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout

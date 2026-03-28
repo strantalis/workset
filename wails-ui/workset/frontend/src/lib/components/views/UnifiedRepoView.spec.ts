@@ -41,16 +41,41 @@ const repoDiffMocks = vi.hoisted(() => ({
 }));
 
 const pullRequestMocks = vi.hoisted(() => ({
+	listRemotes: vi.fn(),
 	fetchPullRequestReviews: vi.fn(),
 	fetchPullRequestStatus: vi.fn(),
 	fetchCheckAnnotations: vi.fn(),
 }));
 
+const repoDiffEventBus = vi.hoisted(() => {
+	const listeners = new Map<string, Set<(payload: unknown) => void>>();
+	return {
+		listeners,
+		subscribe: vi.fn((event: string, handler: (payload: unknown) => void) => {
+			const handlers = listeners.get(event) ?? new Set<(payload: unknown) => void>();
+			handlers.add(handler);
+			listeners.set(event, handlers);
+			return () => {
+				const nextHandlers = listeners.get(event);
+				if (!nextHandlers) return;
+				nextHandlers.delete(handler);
+				if (nextHandlers.size === 0) listeners.delete(event);
+			};
+		}),
+		emit: (event: string, payload: unknown) => {
+			for (const handler of listeners.get(event) ?? []) {
+				handler(payload);
+			}
+		},
+		reset: () => listeners.clear(),
+	};
+});
+
 vi.mock('../../api/repo-files', () => repoFilesMocks);
 vi.mock('../../api/repo-diff', () => repoDiffMocks);
 vi.mock('../../api/github/pull-request', () => pullRequestMocks);
 vi.mock('../../repoDiffService', () => ({
-	subscribeRepoDiffEvent: vi.fn(() => () => {}),
+	subscribeRepoDiffEvent: repoDiffEventBus.subscribe,
 }));
 vi.mock('../../state', () => ({
 	applyTrackedPullRequest: vi.fn(),
@@ -160,9 +185,18 @@ const createDeferredResults = () => {
 	return { promise, resolve };
 };
 
+const emitRepoDiffSummaryEvent = (payload: {
+	workspaceId: string;
+	repoId: string;
+	summary: RepoDiffSummary;
+}): void => {
+	repoDiffEventBus.emit('repodiff:summary', payload);
+};
+
 describe('UnifiedRepoView lazy directory tree', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		repoDiffEventBus.reset();
 		repoFilesMocks.listRepoDirectory.mockReset();
 		repoFilesMocks.listWorkspaceExtraRoots.mockResolvedValue([]);
 		repoFilesMocks.readWorkspaceRepoFile.mockImplementation(
@@ -195,6 +229,7 @@ describe('UnifiedRepoView lazy directory tree', () => {
 			totalBytes: 0,
 			totalLines: 0,
 		});
+		pullRequestMocks.listRemotes.mockResolvedValue([]);
 		pullRequestMocks.fetchPullRequestReviews.mockResolvedValue([]);
 		pullRequestMocks.fetchPullRequestStatus.mockResolvedValue({
 			pullRequest: null,
@@ -332,6 +367,94 @@ describe('UnifiedRepoView lazy directory tree', () => {
 			const fileRow = getByTitle('src/main.ts');
 			expect(fileRow.querySelector('.urv-tree-file-comments')?.textContent).toContain('1');
 		});
+	});
+
+	test('uses resolved remote refs for tracked PR summaries and file diffs', async () => {
+		repoFilesMocks.listRepoDirectory.mockResolvedValueOnce([
+			{
+				name: 'README.md',
+				path: 'README.md',
+				isDir: false,
+				sizeBytes: 18,
+				isMarkdown: true,
+			},
+		]);
+		pullRequestMocks.listRemotes.mockResolvedValue([
+			{ name: 'origin', owner: 'octo', repo: 'repo-alpha' },
+		]);
+		repoDiffMocks.fetchBranchDiffSummary.mockResolvedValue({
+			files: [{ path: 'README.md', added: 3, removed: 1, status: 'modified', binary: false }],
+			totalAdded: 3,
+			totalRemoved: 1,
+		});
+
+		const { getByTitle } = render(UnifiedRepoView, {
+			props: {
+				workspace: buildWorkspace(true),
+			},
+		});
+
+		await waitFor(() =>
+			expect(repoDiffMocks.fetchBranchDiffSummary).toHaveBeenCalledWith(
+				'ws-1',
+				'ws-1::repo-alpha',
+				'origin/main',
+				'origin/feature/lazy-tree',
+			),
+		);
+
+		await fireEvent.click(getByTitle('README.md'));
+
+		await waitFor(() =>
+			expect(repoDiffMocks.fetchBranchFileDiff).toHaveBeenCalledWith(
+				'ws-1',
+				'ws-1::repo-alpha',
+				'origin/main',
+				'origin/feature/lazy-tree',
+				'README.md',
+				'',
+			),
+		);
+	});
+
+	test('refreshes PR drawer stats from repo diff summary events', async () => {
+		repoFilesMocks.listRepoDirectory.mockResolvedValue([]);
+		repoDiffMocks.fetchBranchDiffSummary.mockResolvedValue({
+			files: [{ path: 'src/main.ts', added: 2, removed: 1, status: 'modified', binary: false }],
+			totalAdded: 2,
+			totalRemoved: 1,
+		});
+		pullRequestMocks.fetchPullRequestStatus.mockResolvedValue({
+			pullRequest: trackedPr,
+			checks: [],
+		});
+
+		const { container, getByText } = render(UnifiedRepoView, {
+			props: {
+				workspace: buildWorkspace(true),
+			},
+		});
+
+		const prIndicator = container.querySelector('.urv-pr-indicator');
+		expect(prIndicator).not.toBeNull();
+		await fireEvent.click(prIndicator!);
+
+		await waitFor(() => expect(getByText('1 file')).toBeInTheDocument());
+		await waitFor(() => expect(getByText('+2')).toBeInTheDocument());
+		await waitFor(() => expect(getByText('-1')).toBeInTheDocument());
+
+		emitRepoDiffSummaryEvent({
+			workspaceId: 'ws-1',
+			repoId: 'ws-1::repo-alpha',
+			summary: {
+				files: [{ path: 'src/main.ts', added: 7, removed: 3, status: 'modified', binary: false }],
+				totalAdded: 7,
+				totalRemoved: 3,
+			},
+		});
+
+		await waitFor(() => expect(getByText('+7')).toBeInTheDocument());
+		await waitFor(() => expect(getByText('-3')).toBeInTheDocument());
 	});
 
 	test('indexes the selected repo first and loads one repo at a time during tree search', async () => {
@@ -649,5 +772,16 @@ describe('UnifiedRepoView lazy directory tree', () => {
 		expect(unifiedRepoViewSource).toContain(
 			'const semanticHoverExtensions = $derived.by(() => createRepoSemanticHoverExtensions(wsId, selectedRepoId, selectedFilePath, handleDefinitionNavigate));',
 		);
+	});
+
+	test('uses request-keyed file refresh state instead of loading from mutable payload effects', () => {
+		expect(unifiedRepoViewSource).toContain('let fileRefreshVersion = $state(0);');
+		expect(unifiedRepoViewSource).toContain("let fileLoadRequestKey = '';");
+		expect(unifiedRepoViewSource).toContain(
+			'const selectedDiffFileSignature = $derived.by(() => {',
+		);
+		expect(unifiedRepoViewSource).toContain('if (requestKey === fileLoadRequestKey) return;');
+		expect(unifiedRepoViewSource).toContain('fileRefreshVersion += 1;');
+		expect(unifiedRepoViewSource).toContain('if (editMode && editedContent !== null) return;');
 	});
 });

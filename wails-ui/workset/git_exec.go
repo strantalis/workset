@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"sync"
 )
@@ -26,4 +27,10 @@ func newGitCommand(args ...string) *exec.Cmd {
 
 func newGitCommandContext(ctx context.Context, args ...string) *exec.Cmd {
 	return exec.CommandContext(ctx, gitExecutable(), args...)
+}
+
+func newReadOnlyGitCommandContext(ctx context.Context, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, gitExecutable(), args...)
+	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
+	return cmd
 }

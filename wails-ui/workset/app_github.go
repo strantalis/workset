@@ -23,6 +23,8 @@ type PullRequestCreateRequest struct {
 type StartCreatePullRequestAsyncRequest struct {
 	WorkspaceID string `json:"workspaceId"`
 	RepoID      string `json:"repoId"`
+	Title       string `json:"title,omitempty"`
+	Body        string `json:"body,omitempty"`
 	Base        string `json:"base,omitempty"`
 	Head        string `json:"head,omitempty"`
 	BaseRemote  string `json:"baseRemote,omitempty"`

@@ -5,9 +5,9 @@
 		ChevronDown,
 		Circle,
 		ExternalLink,
+		FileCode,
 		FileDiff,
 		GitCommit,
-		FileCode,
 		Loader2,
 		MessageCircle,
 		Upload,
@@ -15,10 +15,20 @@
 	} from '@lucide/svelte';
 	import DOMPurify from 'dompurify';
 	import { marked } from 'marked';
+	import {
+		fetchGitHubOperationStatus,
+		fetchPullRequestStatus,
+		fetchRepoLocalStatus,
+		generatePullRequestText,
+		startCommitAndPushAsync,
+		startCreatePullRequestAsync,
+	} from '../../api/github';
+	import type {
+		GitHubOperationStage,
+		GitHubOperationStatus,
+		RepoLocalStatus,
+	} from '../../api/github';
 	import type { PullRequestCreated, PullRequestStatusResult } from '../../types';
-	import { fetchPullRequestStatus, startCommitAndPushAsync } from '../../api/github';
-	import type { GitHubOperationStatus, RepoLocalStatus } from '../../api/github';
-	import { fetchRepoLocalStatus } from '../../api/github';
 	import { subscribeGitHubOperationEvent } from '../../githubOperationService';
 	import { Browser } from '@wailsio/runtime';
 	import SlideDrawer from '../ui/SlideDrawer.svelte';
@@ -34,6 +44,8 @@
 		cachedAt: number;
 	};
 
+	type CreateStage = Extract<GitHubOperationStage, 'queued' | 'generating' | 'creating'> | null;
+
 	const statusCache = new Map<string, StatusCacheEntry>();
 
 	interface Props {
@@ -42,11 +54,13 @@
 		repoId: string;
 		repoName: string;
 		branch: string;
+		baseBranch: string;
 		trackedPr: PullRequestCreated | null;
 		diffStats?: { filesChanged: number; additions: number; deletions: number } | null;
 		unresolvedThreads?: number;
 		onClose: () => void;
 		onStatusChanged: () => void;
+		onTrackedPrChanged: (pr: PullRequestCreated) => void;
 	}
 
 	const {
@@ -55,11 +69,13 @@
 		repoId,
 		repoName,
 		branch,
+		baseBranch,
 		trackedPr,
 		diffStats = null,
 		unresolvedThreads = 0,
 		onClose,
 		onStatusChanged,
+		onTrackedPrChanged,
 	}: Props = $props();
 
 	let checksExpanded = $state(false);
@@ -69,11 +85,34 @@
 	let pushLoading = $state(false);
 	let pushSuccess = $state(false);
 	let pushError: string | null = $state(null);
-	let descriptionHtml: string = $state('');
+	let descriptionHtml = $state('');
 	let statusRequestId = 0;
 
+	let prTitle = $state('');
+	let prBody = $state('');
+	let isDraft = $state(false);
+	let suggestionLoading = $state(false);
+	let createStage: CreateStage = $state(null);
+	let createError: string | null = $state(null);
+	let generationRequestId = 0;
+	let createStatusRequestId = 0;
+	let lastCreateContextKey = '';
+	let recoveredPullRequest: PullRequestCreated | null = $state(null);
+	let recoveredPullRequestContextKey = $state('');
+
+	const buildCreateContextKey = (): string =>
+		`${workspaceId}\u0000${repoId}\u0000${branch}\u0000${baseBranch}`;
+
+	const activeTrackedPr = $derived.by(() => {
+		if (trackedPr) return trackedPr;
+		if (recoveredPullRequest && recoveredPullRequestContextKey === buildCreateContextKey()) {
+			return recoveredPullRequest;
+		}
+		return null;
+	});
+
 	const buildStatusCacheKey = (): string =>
-		`${workspaceId}\u0000${repoId}\u0000${trackedPr?.number ?? 0}\u0000${branch}`;
+		`${workspaceId}\u0000${repoId}\u0000${activeTrackedPr?.number ?? 0}\u0000${branch}`;
 
 	const readCachedStatus = (): StatusCacheEntry | null => {
 		const cached = statusCache.get(buildStatusCacheKey());
@@ -88,15 +127,16 @@
 	const checkStats = $derived(buildCheckStats(prStatus));
 
 	const isMerged = $derived(
-		trackedPr != null && (trackedPr.merged === true || trackedPr.state.toLowerCase() === 'merged'),
+		activeTrackedPr != null &&
+			(activeTrackedPr.merged === true || activeTrackedPr.state.toLowerCase() === 'merged'),
 	);
 
 	const prState = $derived.by(() => {
-		if (!trackedPr) return 'open';
-		if (trackedPr.draft) return 'draft';
-		const s = trackedPr.state.toLowerCase();
-		if (s === 'merged' || trackedPr.merged) return 'merged';
-		if (s === 'closed') return 'closed';
+		if (!activeTrackedPr) return 'open';
+		if (activeTrackedPr.draft) return 'draft';
+		const state = activeTrackedPr.state.toLowerCase();
+		if (state === 'merged' || activeTrackedPr.merged) return 'merged';
+		if (state === 'closed') return 'closed';
 		return 'open';
 	});
 
@@ -114,27 +154,55 @@
 		return 'pass';
 	});
 
-	// Auto-expand checks when there are failures
-	$effect(() => {
-		if (checkStats.failed > 0) checksExpanded = true;
-	});
-
 	const pushBarNeedsAction = $derived.by(() => {
-		const ls = localStatus;
-		if (!ls) return false;
-		return ls.hasUncommitted || ls.ahead > 0;
+		const status = localStatus;
+		if (!status) return false;
+		return status.hasUncommitted || status.ahead > 0;
 	});
 
 	const pushDisabled = $derived.by(() => {
-		const ls = localStatus;
-		return pushLoading || !ls || (!ls.hasUncommitted && ls.ahead === 0);
+		const status = localStatus;
+		return pushLoading || !status || (!status.hasUncommitted && status.ahead === 0);
 	});
 
+	const createInProgress = $derived(createStage !== null);
+	const createButtonDisabled = $derived(createInProgress || !prTitle.trim());
+	const createStageLabel = $derived.by(() => {
+		switch (createStage) {
+			case 'queued':
+				return 'Starting pull request...';
+			case 'generating':
+				return 'Generating pull request...';
+			case 'creating':
+				return 'Creating pull request...';
+			default:
+				return 'Create Pull Request';
+		}
+	});
+
+	const resetCreateDraft = (): void => {
+		prTitle = '';
+		prBody = '';
+		isDraft = false;
+		suggestionLoading = false;
+		createStage = null;
+		createError = null;
+		generationRequestId += 1;
+		createStatusRequestId += 1;
+	};
+
+	const clearRecoveredPullRequest = (): void => {
+		recoveredPullRequest = null;
+		recoveredPullRequestContextKey = '';
+	};
+
 	const loadStatus = async (): Promise<void> => {
+		const pr = activeTrackedPr;
+		if (!pr) return;
 		const requestId = ++statusRequestId;
 		try {
 			const [status, local] = await Promise.all([
-				fetchPullRequestStatus(workspaceId, repoId, trackedPr?.number, branch),
+				fetchPullRequestStatus(workspaceId, repoId, pr.number, branch),
 				fetchRepoLocalStatus(workspaceId, repoId),
 			]);
 			if (requestId !== statusRequestId) return;
@@ -150,6 +218,98 @@
 		}
 	};
 
+	const loadSuggestion = async (): Promise<void> => {
+		const requestId = ++generationRequestId;
+		suggestionLoading = true;
+		try {
+			const generated = await generatePullRequestText(workspaceId, repoId);
+			if (requestId !== generationRequestId) return;
+			if (generated.title && !prTitle) prTitle = generated.title;
+			if (generated.body && !prBody) prBody = generated.body;
+		} catch {
+			// non-fatal
+		} finally {
+			if (requestId === generationRequestId) suggestionLoading = false;
+		}
+	};
+
+	const applyTrackedPullRequest = (pullRequest: PullRequestCreated): void => {
+		recoveredPullRequest = pullRequest;
+		recoveredPullRequestContextKey = buildCreateContextKey();
+		createStage = null;
+		createError = null;
+		onTrackedPrChanged(pullRequest);
+		void loadStatus();
+	};
+
+	const applyCreateOperationStatus = (status: GitHubOperationStatus): void => {
+		if (status.workspaceId !== workspaceId || status.repoId !== repoId) return;
+		if (status.type !== 'create_pr') return;
+
+		if (status.state === 'running') {
+			if (status.stage === 'generating' || status.stage === 'creating') {
+				createStage = status.stage;
+			} else {
+				createStage = 'queued';
+			}
+			createError = null;
+			return;
+		}
+
+		createStage = null;
+		if (status.state === 'completed') {
+			createError = null;
+			if (status.pullRequest) {
+				applyTrackedPullRequest(status.pullRequest);
+			}
+			return;
+		}
+
+		createError = status.error || 'Failed to create pull request.';
+	};
+
+	const loadCreateOperationStatus = async (): Promise<boolean> => {
+		const requestId = ++createStatusRequestId;
+		try {
+			const status = await fetchGitHubOperationStatus(workspaceId, repoId, 'create_pr');
+			if (requestId !== createStatusRequestId) return true;
+			if (!status) return false;
+			applyCreateOperationStatus(status);
+			return true;
+		} catch {
+			if (requestId !== createStatusRequestId) return true;
+			return false;
+		}
+	};
+
+	const handleCreate = async (): Promise<void> => {
+		if (createStage) return;
+		const title = prTitle.trim();
+		if (!title) {
+			createError = 'Title is required.';
+			return;
+		}
+
+		createStage = 'queued';
+		createError = null;
+		generationRequestId += 1;
+		suggestionLoading = false;
+
+		try {
+			const status = await startCreatePullRequestAsync(workspaceId, repoId, {
+				title,
+				body: prBody.trim(),
+				base: baseBranch,
+				head: branch,
+				draft: isDraft,
+			});
+			applyCreateOperationStatus(status);
+		} catch (error) {
+			createStage = null;
+			createError = error instanceof Error ? error.message : 'Failed to create pull request.';
+		}
+	};
+
 	const handlePush = async (): Promise<void> => {
 		if (pushLoading) return;
 		pushLoading = true;
@@ -162,9 +322,19 @@
 		}
 	};
 
-	// Render description as markdown
 	$effect(() => {
-		const body = trackedPr?.body;
+		if (checkStats.failed > 0) checksExpanded = true;
+	});
+
+	$effect(() => {
+		if (activeTrackedPr) {
+			createStage = null;
+			createError = null;
+		}
+	});
+
+	$effect(() => {
+		const body = activeTrackedPr?.body;
 		if (!body) {
 			descriptionHtml = '';
 			return;
@@ -173,9 +343,10 @@
 		descriptionHtml = DOMPurify.sanitize(raw);
 	});
 
-	// Load status on open, poll while open
 	$effect(() => {
-		if (!open || !trackedPr) {
+		const drawerOpen = open;
+		const currentTrackedPr = activeTrackedPr;
+		if (!drawerOpen || !currentTrackedPr) {
 			prStatus = null;
 			localStatus = null;
 			pushSuccess = false;
@@ -195,11 +366,14 @@
 		return () => clearInterval(timer);
 	});
 
-	// Listen for push events
 	$effect(() => {
 		if (!open) return;
-		const unsub = subscribeGitHubOperationEvent((status: GitHubOperationStatus) => {
+		const unsubscribe = subscribeGitHubOperationEvent((status: GitHubOperationStatus) => {
 			if (status.workspaceId !== workspaceId || status.repoId !== repoId) return;
+			if (status.type === 'create_pr') {
+				applyCreateOperationStatus(status);
+				return;
+			}
 			if (status.type !== 'commit_push') return;
 			if (status.state === 'completed') {
 				pushLoading = false;
@@ -211,29 +385,54 @@
 				pushError = status.error || 'Push failed.';
 			}
 		});
-		return unsub;
+		return unsubscribe;
+	});
+
+	$effect(() => {
+		const drawerOpen = open;
+		const currentTrackedPr = activeTrackedPr;
+		const contextKey = buildCreateContextKey();
+		if (!drawerOpen || currentTrackedPr) return;
+
+		let cancelled = false;
+		const hydrateCreateState = async (): Promise<void> => {
+			const hasAsyncStatus = await loadCreateOperationStatus();
+			if (cancelled) return;
+			if (hasAsyncStatus) return;
+			if (lastCreateContextKey === contextKey) return;
+			clearRecoveredPullRequest();
+			resetCreateDraft();
+			lastCreateContextKey = contextKey;
+			void loadSuggestion();
+		};
+
+		void hydrateCreateState();
+
+		return () => {
+			cancelled = true;
+			createStatusRequestId += 1;
+		};
 	});
 </script>
 
 <SlideDrawer {open} title="Pull Request" {onClose}>
-	{#if trackedPr}
+	{#if activeTrackedPr}
 		<div class="pld-content">
-			<!-- Header + GitHub link -->
 			<div class="pld-header-info">
 				<div class="pld-title-row">
-					<h3 class="pld-pr-title">{trackedPr.title}</h3>
+					<h3 class="pld-pr-title">{activeTrackedPr.title}</h3>
 					<span class="pld-state-badge pld-state-{prState}">{prStateLabel}</span>
 				</div>
 				<div class="pld-meta-row">
 					<div class="pld-meta">
 						<span class="pld-repo">{repoName}</span>
 						<span class="pld-dot">/</span>
-						<span class="pld-branch">{branch} → {trackedPr.baseBranch ?? 'main'}</span>
+						<span class="pld-branch">{branch} → {activeTrackedPr.baseBranch ?? 'main'}</span>
 					</div>
 					<button
 						type="button"
 						class="pld-github-link"
-						onclick={() => trackedPr?.url && Browser.OpenURL(trackedPr.url)}
+						onclick={() => activeTrackedPr.url && Browser.OpenURL(activeTrackedPr.url)}
 					>
 						<ExternalLink size={11} />
 						GitHub
@@ -241,7 +440,6 @@
 				</div>
 			</div>
 
-			<!-- Push status -->
 			{#if !isMerged}
 				<div class="pld-push-bar" class:pld-push-bar--action={pushBarNeedsAction}>
 					<div class="pld-push-stats">
@@ -293,7 +491,6 @@
 				</div>
 			{/if}
 
-			<!-- Stats + Review (compact, at-a-glance) -->
 			<div class="pld-overview">
 				{#if diffStats}
 					<div class="pld-overview-stats">
@@ -328,7 +525,6 @@
 				</div>
 			</div>
 
-			<!-- Checks (collapsible) -->
 			<div class="pld-section pld-section--divided">
 				<button
 					type="button"
@@ -374,7 +570,6 @@
 				{/if}
 			</div>
 
-			<!-- Description (collapsible) -->
 			{#if descriptionHtml}
 				<div class="pld-section pld-section--divided">
 					<button
@@ -397,20 +592,103 @@
 			{/if}
 		</div>
 	{:else}
-		<div class="pld-empty">
-			<p>No tracked pull request.</p>
+		<div class="pld-create">
+			<div class="pld-create-context">
+				<span class="pld-repo">{repoName}</span>
+				<span class="pld-dot">/</span>
+				<span class="pld-branch">{branch} → {baseBranch}</span>
+			</div>
+
+			{#if suggestionLoading}
+				<div class="pld-create-note">
+					<Loader2 size={12} class="spin" />
+					AI is drafting title and description...
+				</div>
+			{/if}
+
+			{#if createStage}
+				<div class="pld-progress-card">
+					<div class="pld-progress-head">
+						<Loader2 size={14} class="spin" />
+						<span>{createStageLabel}</span>
+					</div>
+					<p>Closing this drawer will not cancel the pull request creation.</p>
+				</div>
+			{/if}
+
+			<label class="pld-field">
+				<span class="pld-label">Title</span>
+				<input
+					type="text"
+					class="pld-input"
+					class:pld-shimmer={suggestionLoading && !prTitle}
+					value={prTitle}
+					disabled={createInProgress}
+					oninput={(event) => {
+						prTitle = (event.currentTarget as HTMLInputElement).value;
+						if (createError) createError = null;
+					}}
+					placeholder={suggestionLoading && !prTitle ? 'Generating...' : 'PR title'}
+				/>
+			</label>
+
+			<label class="pld-field">
+				<span class="pld-label">Description</span>
+				<textarea
+					class="pld-textarea"
+					class:pld-shimmer={suggestionLoading && !prBody}
+					rows={5}
+					value={prBody}
+					disabled={createInProgress}
+					oninput={(event) => {
+						prBody = (event.currentTarget as HTMLTextAreaElement).value;
+						if (createError) createError = null;
+					}}
+					placeholder={suggestionLoading && !prBody ? 'Generating...' : 'Describe the changes...'}
+				></textarea>
+			</label>
+
+			<label class="pld-draft">
+				<input
+					type="checkbox"
+					checked={isDraft}
+					disabled={createInProgress}
+					onchange={(event) => {
+						isDraft = (event.currentTarget as HTMLInputElement).checked;
+					}}
+				/>
+				<span>Create as draft</span>
+			</label>
+
+			{#if createError}
+				<div class="pld-error">{createError}</div>
+			{/if}
+
+			<Button
+				variant="primary"
+				size="sm"
+				disabled={createButtonDisabled}
+				onclick={() => void handleCreate()}
+			>
+				{#if createInProgress}
+					<Loader2 size={12} class="spin" />
+					{createStageLabel}
+				{:else}
+					Create Pull Request
+				{/if}
+			</Button>
 		</div>
 	{/if}
 </SlideDrawer>
 
 <style>
-	.pld-content {
+	.pld-content,
+	.pld-create {
 		display: flex;
 		flex-direction: column;
 		gap: 20px;
 	}
 
-	/* ── Header ──────────────────────────────────────── */
 	.pld-header-info {
 		display: flex;
 		flex-direction: column;
@@ -430,16 +708,15 @@
 		flex: 1;
 		min-width: 0;
 	}
-	.pld-meta-row {
+	.pld-meta-row,
+	.pld-create-context {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		gap: 8px;
 	}
-	.pld-meta {
-		display: flex;
-		align-items: center;
-		gap: 6px;
+	.pld-meta,
+	.pld-create-context {
 		font-size: var(--text-2xs);
 		color: var(--muted);
 		min-width: 0;
@@ -476,7 +753,6 @@
 		color: var(--accent);
 	}
 
-	/* ── State badge ─────────────────────────────────── */
 	.pld-state-badge {
 		display: inline-flex;
 		align-items: center;
@@ -487,9 +763,6 @@
 		letter-spacing: 0.02em;
 		white-space: nowrap;
 		flex-shrink: 0;
-	}
-	.pld-state-badge--inline {
-		padding: 1px 6px;
 	}
 	.pld-state-open {
 		background: color-mix(in srgb, var(--success) 14%, transparent);
@@ -512,252 +785,221 @@
 		color: var(--warning);
 	}
 
-	/* ── Sections ────────────────────────────────────── */
+	.pld-progress-card,
+	.pld-push-bar {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		padding: 12px 14px;
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		background: color-mix(in srgb, var(--panel-strong) 72%, transparent);
+	}
+	.pld-progress-head {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--text);
+	}
+	.pld-progress-card p {
+		margin: 0;
+		font-size: var(--text-2xs);
+		color: var(--muted);
+	}
+	.pld-push-bar--action {
+		border-color: color-mix(in srgb, var(--accent) 26%, var(--border));
+	}
+	.pld-push-stats {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+	.pld-push-stat {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		font-size: var(--text-2xs);
+		color: var(--muted);
+	}
+	.pld-push-success,
+	.pld-push-ok,
+	.pld-check-pass {
+		color: var(--success);
+	}
+	.pld-push-error,
+	.pld-check-fail {
+		color: var(--danger);
+	}
+	.pld-check-pending,
+	.pld-icon-warn {
+		color: var(--warning);
+	}
+	.pld-check-neutral {
+		color: var(--muted);
+	}
+
+	.pld-overview {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.pld-overview-stats,
+	.pld-overview-review {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+	.pld-overview-stat {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 5px 8px;
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--panel-strong) 70%, transparent);
+		font-size: var(--text-2xs);
+		color: var(--muted);
+	}
+	.pld-icon-accent,
+	.pld-stat-add {
+		color: var(--success);
+	}
+	.pld-stat-del {
+		color: var(--danger);
+	}
+
 	.pld-section {
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
 	}
 	.pld-section--divided {
-		border-top: 1px solid var(--border);
 		padding-top: 16px;
-	}
-	.pld-section-head {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		font-size: var(--text-xxs);
-		color: var(--subtle);
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
-		font-weight: 500;
+		border-top: 1px solid var(--border);
 	}
 	.pld-section-toggle {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		width: 100%;
+		gap: 8px;
 		padding: 0;
-		border: none;
+		border: 0;
 		background: transparent;
-		cursor: pointer;
 		color: inherit;
+		cursor: pointer;
 	}
-	.pld-section-toggle:hover .pld-section-head {
+	.pld-section-head {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-size: var(--text-xs);
+		font-weight: 600;
 		color: var(--text);
 	}
 	.pld-section-chevron {
-		color: var(--subtle);
-		transition: transform 150ms ease;
+		display: inline-flex;
+		color: var(--muted);
+		transition: transform var(--transition-fast);
 	}
 	.pld-section-chevron.expanded {
 		transform: rotate(180deg);
 	}
-
-	/* ── Overview (compact stats + review) ───────────── */
-	.pld-overview {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		padding: 10px 12px;
-		border-radius: 8px;
-		background: var(--panel-strong);
-		border: 1px solid var(--border);
-	}
-	.pld-overview-stats,
-	.pld-overview-review {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-	}
-	.pld-overview-stat {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		font-size: var(--text-xs);
-		color: var(--muted);
-	}
-
-	/* ── Description (markdown) ──────────────────────── */
-	.pld-description {
-		font-size: var(--text-sm);
-		color: var(--muted);
-		line-height: 1.65;
-		margin: 0;
-		background: var(--panel-strong);
-		border: 1px solid var(--border);
-		border-radius: 8px;
-		padding: 12px 14px;
-		overflow: hidden;
-	}
-	.pld-description :global(> *:first-child) {
-		margin-top: 0;
-	}
-	.pld-description :global(> *:last-child) {
-		margin-bottom: 0;
-	}
-	.pld-description :global(h1),
-	.pld-description :global(h2),
-	.pld-description :global(h3) {
-		color: var(--text);
-		margin: 0.8em 0 0.3em;
-		font-size: var(--text-sm);
-		font-weight: 600;
-	}
-	.pld-description :global(p) {
-		margin: 0.4em 0;
-	}
-	.pld-description :global(ul),
-	.pld-description :global(ol) {
-		padding-left: 1.4em;
-		margin: 0.3em 0;
-	}
-	.pld-description :global(li) {
-		margin: 0.15em 0;
-	}
-	.pld-description :global(code) {
-		font-family: var(--font-mono);
-		font-size: var(--text-mono-xs);
-		background: var(--panel);
-		padding: 1px 4px;
-		border-radius: 3px;
-	}
-	.pld-description :global(pre) {
-		background: var(--panel);
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		padding: 10px 12px;
-		overflow-x: auto;
-		margin: 0.5em 0;
-	}
-	.pld-description :global(pre code) {
-		background: none;
-		padding: 0;
-	}
-	.pld-description :global(a) {
-		color: var(--accent);
-		text-decoration: none;
-	}
-	.pld-description :global(a:hover) {
-		text-decoration: underline;
-	}
-	.pld-description :global(blockquote) {
-		border-left: 2px solid var(--accent);
-		padding-left: 10px;
-		color: var(--subtle);
-		margin: 0.5em 0;
-	}
-
-	/* ── Push bar ────────────────────────────────────── */
-	.pld-push-bar {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 10px;
-		padding: 8px 12px;
-		background: color-mix(in srgb, var(--panel-strong) 50%, transparent);
-		border: 1px solid var(--border);
-		border-radius: 8px;
-		transition:
-			background var(--transition-fast),
-			border-color var(--transition-fast);
-	}
-	.pld-push-bar--action {
-		background: color-mix(in srgb, var(--warning) 6%, var(--panel-strong));
-		border-color: color-mix(in srgb, var(--warning) 20%, var(--border));
-	}
-	.pld-push-stats {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		font-size: var(--text-xs);
-		color: var(--muted);
-	}
-	.pld-push-stat {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-	}
-	.pld-push-success {
-		color: var(--success);
-	}
-	.pld-push-ok {
-		color: var(--subtle);
-	}
-	.pld-push-error {
-		color: var(--danger);
-	}
-
-	/* ── Checks ──────────────────────────────────────── */
 	.pld-checks-container {
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
-		padding: 10px 12px;
-		border-radius: 8px;
-		border: 1px solid var(--border);
-		background: var(--panel-strong);
-		transition:
-			background var(--transition-fast),
-			border-color var(--transition-fast);
-	}
-	.pld-checks-pass {
-		background: color-mix(in srgb, var(--success) 6%, var(--panel-strong));
-		border-color: color-mix(in srgb, var(--success) 25%, var(--border));
-	}
-	.pld-checks-fail {
-		background: color-mix(in srgb, var(--danger) 6%, var(--panel-strong));
-		border-color: color-mix(in srgb, var(--danger) 25%, var(--border));
-	}
-	.pld-checks-pending {
-		background: color-mix(in srgb, var(--warning) 6%, var(--panel-strong));
-		border-color: color-mix(in srgb, var(--warning) 25%, var(--border));
+		gap: 8px;
 	}
 	.pld-check-row {
-		display: flex;
+		display: inline-flex;
 		align-items: center;
 		gap: 8px;
 		font-size: var(--text-xs);
+		color: var(--muted);
 	}
 	.pld-check-name {
-		color: var(--muted);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		min-width: 0;
 	}
-	:global(.pld-check-pass) {
-		color: var(--success);
-	}
-	:global(.pld-check-fail) {
-		color: var(--danger);
-	}
-	:global(.pld-check-pending) {
-		color: var(--warning);
-	}
-	:global(.pld-check-neutral) {
-		color: var(--muted);
+	.pld-description {
+		font-size: var(--text-xs);
+		color: var(--text);
+		line-height: 1.6;
 	}
 
-	/* ── Stats ───────────────────────────────────────── */
-	.pld-stat-add {
-		color: var(--success);
-		font-family: var(--font-mono);
-		font-size: var(--text-mono-xs);
-	}
-	.pld-stat-del {
-		color: var(--danger);
-		font-family: var(--font-mono);
-		font-size: var(--text-mono-xs);
-	}
-	.pld-icon-accent {
-		color: var(--accent);
-	}
-	.pld-icon-warn {
-		color: var(--warning);
-	}
-	.pld-empty {
-		color: var(--muted);
+	.pld-create-note {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
 		font-size: var(--text-xs);
+		color: color-mix(in srgb, var(--accent) 65%, var(--text));
+	}
+	.pld-field {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+	.pld-label {
+		font-size: var(--text-2xs);
+		color: var(--muted);
+	}
+	.pld-input,
+	.pld-textarea {
+		width: 100%;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		background: color-mix(in srgb, var(--panel-strong) 70%, transparent);
+		color: var(--text);
+		font-family: inherit;
+		font-size: var(--text-xs);
+		padding: 8px 10px;
+	}
+	.pld-textarea {
+		resize: vertical;
+		min-height: 96px;
+	}
+	.pld-input:disabled,
+	.pld-textarea:disabled {
+		opacity: 0.75;
+		cursor: not-allowed;
+	}
+	.pld-input:focus,
+	.pld-textarea:focus {
+		outline: 1px solid color-mix(in srgb, var(--accent) 60%, var(--border));
+		outline-offset: 0;
+	}
+	.pld-shimmer {
+		background: linear-gradient(
+				110deg,
+				color-mix(in srgb, var(--panel-strong) 78%, transparent) 8%,
+				color-mix(in srgb, var(--accent) 14%, transparent) 18%,
+				color-mix(in srgb, var(--panel-strong) 78%, transparent) 33%
+			)
+			0 0 / 220% 100%;
+		animation: pld-shimmer 1.1s linear infinite;
+	}
+	.pld-draft {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-size: var(--text-xs);
+		color: var(--muted);
+	}
+	.pld-error {
+		font-size: var(--text-xs);
+		color: var(--danger);
+	}
+	.spin {
+		animation: pld-spin 0.85s linear infinite;
+	}
+
+	@keyframes pld-shimmer {
+		to {
+			background-position: -220% 0;
+		}
+	}
+	@keyframes pld-spin {
+		to {
+			transform: rotate(360deg);
+		}
 	}
 </style>

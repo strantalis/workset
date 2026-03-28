@@ -83,6 +83,19 @@ describe('createRepoStatusWatchers', () => {
 		expect(repoDiffApiMocks.startRepoStatusWatch).not.toHaveBeenCalled();
 	});
 
+	it('skips duplicate sync work when the watch scope is unchanged', () => {
+		const manager = createRepoStatusWatchers();
+		const workspace = buildWorkspace();
+
+		manager.sync([workspace]);
+		manager.sync([workspace]);
+
+		expect(repoDiffApiMocks.startRepoStatusWatch).toHaveBeenCalledTimes(1);
+		expect(repoDiffApiMocks.stopRepoStatusWatch).not.toHaveBeenCalled();
+		expect(repoDiffApiMocks.startRepoDiffWatch).not.toHaveBeenCalled();
+		expect(repoDiffApiMocks.updateRepoDiffWatch).not.toHaveBeenCalled();
+	});
+
 	it('upgrades local watches to full PR watches and keeps PR refs updated', async () => {
 		const manager = createRepoStatusWatchers();
 

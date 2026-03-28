@@ -30,6 +30,7 @@
 	let view: EditorView | null = null;
 	let currentFilePath = '';
 	let langExt: Extension | null = null;
+	let languageRequestId = 0;
 
 	const buildExtensions = (): Extension[] => [
 		EditorView.lineWrapping,
@@ -81,6 +82,22 @@
 	let prevReadOnly: boolean | null = null;
 	let prevExtraExtensions: Extension[] | null = null;
 
+	$effect(() => {
+		const el = container;
+		if (!el) return;
+
+		return () => {
+			languageRequestId += 1;
+			if (view) {
+				view.destroy();
+				view = null;
+			}
+			currentFilePath = '';
+			prevReadOnly = null;
+			prevExtraExtensions = null;
+		};
+	});
+
 	// Load language + create/update view when deps change
 	$effect(() => {
 		const el = container;
@@ -88,6 +105,7 @@
 		const ro = readOnly;
 		const ext = extraExtensions;
 		if (!el) return;
+		const requestId = ++languageRequestId;
 
 		const path = filePath;
 		const languageChanged = path !== currentFilePath;
@@ -99,7 +117,7 @@
 			prevExtraExtensions = ext;
 			if (path) {
 				void loadLanguage(path).then((langResult) => {
-					if (filePath !== path) return;
+					if (requestId !== languageRequestId || filePath !== path || container !== el) return;
 					langExt = langResult;
 					createView(el, doc);
 				});
@@ -118,13 +136,6 @@
 		} else {
 			createView(el, doc);
 		}
-
-		return () => {
-			if (view) {
-				view.destroy();
-				view = null;
-			}
-		};
 	});
 </script>
 

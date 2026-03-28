@@ -24,6 +24,5 @@ ignore:
 
 allowlist:
   - wails-ui/workset/frontend/src/lib/components/settings/sections/AliasManager.svelte
-  - wails-ui/workset/frontend/src/lib/components/views/PROrchestrationView.svelte
   - wails-ui/workset/frontend/src/lib/components/views/UnifiedRepoView.svelte
   - wails-ui/workset/app_repo_files.go

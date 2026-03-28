@@ -1,4 +1,9 @@
-import type { RepoDiffFileSummary, RepoDiffSummary, Workspace } from '../../types';
+import type {
+	PullRequestSummary,
+	RepoDiffFileSummary,
+	RepoDiffSummary,
+	Workspace,
+} from '../../types';
 
 export function handleEditorSaveKeydown(
 	event: KeyboardEvent,
@@ -26,18 +31,13 @@ export function maybeLoadBranchDataForRepo(
 	workspace: Workspace | null,
 	workspaceId: string,
 	repoId: string,
-	loadBranchDiff: (
-		workspaceId: string,
-		repoId: string,
-		baseBranch: string,
-		headBranch: string,
-	) => Promise<void>,
+	loadBranchDiff: (workspaceId: string, repoId: string, pr: PullRequestSummary) => Promise<void>,
 	loadAllPrReviewComments: (workspaceId: string, repoId: string) => Promise<void>,
 ): void {
 	const repo = workspace?.repos.find((entry) => entry.id === repoId);
 	const trackedPr = repo?.trackedPullRequest;
 	if (!trackedPr || trackedPr.state.toLowerCase() !== 'open') return;
-	void loadBranchDiff(workspaceId, repoId, trackedPr.baseBranch, trackedPr.headBranch);
+	void loadBranchDiff(workspaceId, repoId, trackedPr);
 	void loadAllPrReviewComments(workspaceId, repoId);
 }
 

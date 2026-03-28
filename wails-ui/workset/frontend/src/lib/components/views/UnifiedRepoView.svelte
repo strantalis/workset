@@ -17,6 +17,7 @@
 		X,
 	} from '@lucide/svelte';
 	import type {
+		PullRequestSummary,
 		RepoDiffFileSummary,
 		RepoDiffSummary,
 		RepoFileContent,
@@ -33,10 +34,12 @@
 		fetchBranchFileDiff,
 	} from '../../api/repo-diff';
 	import {
+		listRemotes,
 		fetchPullRequestReviews,
 		fetchPullRequestStatus,
 		fetchCheckAnnotations,
 	} from '../../api/github/pull-request';
+	import { resolveBranchRefs } from '../../diff/branchRefs';
 	import type { ReviewComment } from '../editor/reviewDecorations';
 	import type { CIAnnotation } from '../editor/ciAnnotations';
 	import {
@@ -58,7 +61,7 @@
 	import { resolveMarkdownImages, clearImageCache } from '../../markdownImages';
 	import { buildSummaryLocalCacheKey, repoDiffCache } from '../../cache/repoDiffCache';
 	import { subscribeRepoDiffEvent } from '../../repoDiffService';
-	import { EVENT_REPO_DIFF_LOCAL_SUMMARY } from '../../events';
+	import { EVENT_REPO_DIFF_LOCAL_SUMMARY, EVENT_REPO_DIFF_SUMMARY } from '../../events';
 	import { applyTrackedPullRequest, refreshWorkspacesStatus } from '../../state';
 	import {
 		buildExpandedRepoTreeKeysForQuery,
@@ -75,7 +78,6 @@
 	import ResizablePanel from '../ui/ResizablePanel.svelte';
 	import CodeEditor from '../editor/CodeEditor.svelte';
 	import CodeDiffView from '../editor/CodeDiffView.svelte';
-	import PrCreateDrawer from './PrCreateDrawer.svelte';
 	import LocalMergeDrawer from './LocalMergeDrawer.svelte';
 	import PrLifecycleDrawer from './PrLifecycleDrawer.svelte';
 	import UnifiedRepoSidebar from './UnifiedRepoSidebar.svelte';
@@ -144,6 +146,9 @@
 	let showFileTree = $state(true);
 	let repoDiffMap = $state<Map<string, RepoDiffSummary>>(new Map());
 	let branchDiffMap = $state<Map<string, RepoDiffSummary>>(new Map());
+	type BranchDiffRefs = { base: string; head: string };
+	type BranchDiffRefCacheEntry = { signature: string; refs: BranchDiffRefs };
+	let branchRefMap = $state<Map<string, BranchDiffRefCacheEntry>>(new Map());
 	let prReviewComments = $state<ReviewComment[]>([]);
 	let prCiAnnotations = $state<CIAnnotation[]>([]);
 	let prFileCommentCounts = $state<Map<string, number>>(new Map());
@@ -252,6 +257,7 @@
 	let previewMode = $state(false);
 	let editedContent = $state<string | null>(null);
 	let saving = $state(false);
+	let fileRefreshVersion = $state(0);
 	let editorView: EditorView | null = null;
 	let editorViewPath = $state<string | null>(null);
 	let editorViewVersion = $state(0);
@@ -374,7 +380,7 @@
 			focusedEl?.scrollIntoView({ block: 'nearest' });
 		}
 	};
-	let drawerMode: 'none' | 'pr-create' | 'local-merge' | 'pr-lifecycle' = $state('none');
+	let drawerMode: 'none' | 'pr' | 'local-merge' = $state('none');
 	const closeDrawer = (): void => void (drawerMode = 'none');
 	const wsId = $derived(workspace?.id ?? '');
 	const explorerRoots = $derived.by(() => {
@@ -483,6 +489,41 @@
 		if (pr && pr.state.toLowerCase() === 'open') return pr;
 		return null;
 	});
+	const buildTrackedPrSignature = (pr: PullRequestSummary): string =>
+		[
+			pr.number,
+			pr.baseRepo,
+			pr.baseBranch,
+			pr.headRepo,
+			pr.headBranch,
+			pr.state,
+			pr.merged ? 'merged' : 'open',
+		].join('\u0000');
+	const clearBranchRefsForRepo = (repoId: string): void => {
+		if (!branchRefMap.has(repoId)) return;
+		const nextMap = new Map(branchRefMap);
+		nextMap.delete(repoId);
+		branchRefMap = nextMap;
+	};
+	const resolveTrackedPrRefs = async (
+		workspaceId: string,
+		repoId: string,
+		pr: PullRequestSummary,
+	): Promise<BranchDiffRefs> => {
+		const signature = buildTrackedPrSignature(pr);
+		const cached = branchRefMap.get(repoId);
+		if (cached?.signature === signature) {
+			return cached.refs;
+		}
+
+		const remotes = await listRemotes(workspaceId, repoId);
+		const refs = resolveBranchRefs(remotes, pr) ?? {
+			base: pr.baseBranch,
+			head: pr.headBranch,
+		};
+		branchRefMap = new Map(branchRefMap).set(repoId, { signature, refs });
+		return refs;
+	};
 
 	const changedFileSet = $derived.by(() => {
 		const set = new Set<string>();
@@ -498,6 +539,18 @@
 		if (!selectedRepoId || !selectedFilePath) return null;
 		const summary = activeDiffMap.get(selectedRepoId);
 		return summary?.files.find((f) => f.path === selectedFilePath) ?? null;
+	});
+	const selectedDiffFileSignature = $derived.by(() => {
+		const file = selectedDiffFile;
+		if (!file) return '';
+		return [
+			file.path,
+			file.prevPath ?? '',
+			file.status ?? '',
+			String(file.added ?? 0),
+			String(file.removed ?? 0),
+			file.binary ? '1' : '0',
+		].join('\u0000');
 	});
 	const isChangedFile = $derived(selectedDiffFile != null);
 	const isMarkdownPath = (path: string | null): boolean => {
@@ -660,11 +713,11 @@
 	const loadBranchDiff = async (
 		workspaceId: string,
 		repoId: string,
-		baseBranch: string,
-		headBranch: string,
+		pr: PullRequestSummary,
 	): Promise<void> => {
 		try {
-			const fetched = await fetchBranchDiffSummary(workspaceId, repoId, baseBranch, headBranch);
+			const refs = await resolveTrackedPrRefs(workspaceId, repoId, pr);
+			const fetched = await fetchBranchDiffSummary(workspaceId, repoId, refs.base, refs.head);
 			branchDiffMap = new Map(branchDiffMap).set(repoId, fetched);
 		} catch {
 			ignoreError();
@@ -959,12 +1012,8 @@
 		const repoId = selectedRepoId;
 		const path = selectedFilePath;
 		if (!currentWsId || !repoId || !path) return;
-		const diffFile = selectedDiffFile;
-		if (diffFile) {
-			void loadFileDiff(currentWsId, repoId, diffFile);
-		} else {
-			void loadFileContent(currentWsId, repoId, path);
-		}
+		if (editMode && editedContent !== null) return;
+		fileRefreshVersion += 1;
 	};
 	const refreshExplorerTree = (): void => {
 		const currentWsId = wsId;
@@ -1034,6 +1083,7 @@
 					nextMap.delete(repoId);
 					branchDiffMap = nextMap;
 				}
+				clearBranchRefsForRepo(repoId);
 			}
 		} else {
 			next.add(key);
@@ -1104,11 +1154,12 @@
 			let fetched;
 			const pr = selectedRepoPr;
 			if (pr) {
+				const refs = await resolveTrackedPrRefs(wsId, repoId, pr);
 				fetched = await fetchBranchFileDiff(
 					wsId,
 					repoId,
-					pr.baseBranch,
-					pr.headBranch,
+					refs.base,
+					refs.head,
 					file.path,
 					file.prevPath ?? '',
 				);
@@ -1144,9 +1195,10 @@
 			const pr = selectedRepoPr;
 			let origResult, modResult;
 			if (pr) {
+				const refs = await resolveTrackedPrRefs(wsId, repoId, pr);
 				[origResult, modResult] = await Promise.all([
-					readWorkspaceRepoFileAtRef(wsId, repoId, path, pr.baseBranch),
-					readWorkspaceRepoFileAtRef(wsId, repoId, path, pr.headBranch),
+					readWorkspaceRepoFileAtRef(wsId, repoId, path, refs.base),
+					readWorkspaceRepoFileAtRef(wsId, repoId, path, refs.head),
 				]);
 				if (requestId !== fullDiffRequestId) return;
 				originalFileContent = origResult.found ? origResult.content : '';
@@ -1209,6 +1261,7 @@
 	});
 
 	let lastWorkspaceId = '';
+	let fileLoadRequestKey = '';
 	$effect(() => {
 		const ws = workspace;
 		if (!ws) return;
@@ -1220,6 +1273,7 @@
 		dirEntryErrors = new Map();
 		repoDiffMap = new Map();
 		branchDiffMap = new Map();
+		branchRefMap = new Map();
 		prFileCommentCounts = new Map();
 		allPrReviewCommentsByRepo = new Map();
 		selectedRepoId = null;
@@ -1272,13 +1326,26 @@
 		const repoId = selectedRepoId;
 		const path = selectedFilePath;
 		const diffFile = selectedDiffFile;
-		const editing = editMode;
-		if (!currentWsId || !repoId || !path) return;
-		if (editing || previewMode) {
-			if (!fileContent || fileContent.path !== path) {
-				void loadFileContent(currentWsId, repoId, path);
-			}
-			if (diffFile && !fileDiffContent) {
+		const diffSignature = selectedDiffFileSignature;
+		const mode = editMode ? 'edit' : previewMode ? 'preview' : diffFile ? 'diff' : 'view';
+		const refreshVersion = fileRefreshVersion;
+		if (!currentWsId || !repoId || !path) {
+			fileLoadRequestKey = '';
+			return;
+		}
+		const requestKey = [
+			currentWsId,
+			repoId,
+			path,
+			mode,
+			diffSignature,
+			String(refreshVersion),
+		].join('\u0000');
+		if (requestKey === fileLoadRequestKey) return;
+		fileLoadRequestKey = requestKey;
+		if (mode === 'edit' || mode === 'preview') {
+			void loadFileContent(currentWsId, repoId, path);
+			if (diffFile) {
 				void loadFileDiff(currentWsId, repoId, diffFile);
 			}
 			return;
@@ -1295,7 +1362,7 @@
 		const currentWsId = wsId;
 		const repoId = selectedRepoId;
 		const pr = selectedRepoPr;
-		const drawerOpen = drawerMode === 'pr-lifecycle';
+		const drawerOpen = drawerMode === 'pr';
 		if (!drawerOpen || !currentWsId || !repoId || !pr) return;
 
 		void loadAllPrReviewComments(currentWsId, repoId);
@@ -1403,6 +1470,23 @@
 	});
 
 	$effect(() => {
+		const currentWsId = wsId;
+		if (!currentWsId) return;
+		const unsub = subscribeRepoDiffEvent<{
+			workspaceId: string;
+			repoId: string;
+			summary: import('../../types').RepoDiffSummary;
+		}>(EVENT_REPO_DIFF_SUMMARY, (payload) => {
+			if (payload.workspaceId !== currentWsId) return;
+			branchDiffMap = new Map(branchDiffMap).set(payload.repoId, payload.summary);
+			if (payload.repoId === selectedRepoId && selectedRepoPr && selectedFilePath) {
+				refreshCurrentFile();
+			}
+		});
+		return unsub;
+	});
+
+	$effect(() => {
 		const target = pendingDefinitionTarget;
 		const view = editorView;
 		const viewPath = editorViewPath;
@@ -1457,8 +1541,8 @@
 				{isFileChanged}
 				{getFileDiffInfo}
 				{getFileCommentCount}
-				onOpenSelectedPr={() => (drawerMode = 'pr-lifecycle')}
-				onCreatePr={() => (drawerMode = 'pr-create')}
+				onOpenSelectedPr={() => (drawerMode = 'pr')}
+				onCreatePr={() => (drawerMode = 'pr')}
 				onLocalMerge={() => (drawerMode = 'local-merge')}
 				onRefresh={refreshExplorerTree}
 				onNewFile={startInlineCreate}
@@ -1471,7 +1555,7 @@
 				onCancelInlineCreate={cancelInlineCreate}
 				onOpenTrackedPr={(repoId) => {
 					selectRepoNode(repoId);
-					drawerMode = 'pr-lifecycle';
+					drawerMode = 'pr';
 				}}
 				onSelectFile={(repoId, path) => selectTreeFile(path, repoId)}
 				onDeleteFile={(repoId, path) => {
@@ -1761,19 +1845,6 @@
 {/if}
 
 {#if workspace && selectedRepo}
-	<PrCreateDrawer
-		open={drawerMode === 'pr-create'}
-		workspaceId={workspace.id}
-		repoId={selectedRepo.id}
-		repoName={selectedRepo.name}
-		branch={selectedRepo.currentBranch || 'main'}
-		baseBranch={selectedRepo.defaultBranch || 'main'}
-		onClose={closeDrawer}
-		onCreated={(created) => {
-			applyTrackedPullRequest(workspace.id, selectedRepo.id, created);
-			closeDrawer();
-		}}
-	/>
 	<LocalMergeDrawer
 		open={drawerMode === 'local-merge'}
 		workspaceId={workspace.id}
@@ -1789,11 +1860,12 @@
 	{@const prDiffSummary = branchDiffMap.get(selectedRepo.id)}
 	{@const repoCommentCounts = prFileCommentCounts}
 	<PrLifecycleDrawer
-		open={drawerMode === 'pr-lifecycle'}
+		open={drawerMode === 'pr'}
 		workspaceId={workspace.id}
 		repoId={selectedRepo.id}
 		repoName={selectedRepo.name}
 		branch={selectedRepo.currentBranch || 'main'}
+		baseBranch={selectedRepo.defaultBranch || 'main'}
 		trackedPr={selectedRepo.trackedPullRequest ?? null}
 		diffStats={prDiffSummary
 			? {
@@ -1809,5 +1881,8 @@
 		})()}
 		onClose={closeDrawer}
 		onStatusChanged={() => {}}
+		onTrackedPrChanged={(created) => {
+			applyTrackedPullRequest(workspace.id, selectedRepo.id, created);
+		}}
 	/>
 {/if}

@@ -3,7 +3,6 @@ import {
 	GetGitHubOperationStatus,
 	GetRepoLocalStatus,
 	StartCommitAndPushAsync,
-	StartCreatePullRequestAsync,
 } from '../../../../bindings/workset/app';
 import { Call } from '@wailsio/runtime';
 import { isOperationStatusNotFound, mapGitHubOperationStatus } from './mappers';
@@ -21,15 +20,19 @@ export async function startCreatePullRequestAsync(
 	workspaceId: string,
 	repoId: string,
 	payload: {
+		title?: string;
+		body?: string;
 		base?: string;
 		head?: string;
 		baseRemote?: string;
 		draft: boolean;
 	},
 ): Promise<GitHubOperationStatus> {
-	const result = (await StartCreatePullRequestAsync({
+	const result = (await Call.ByName('main.App.StartCreatePullRequestAsync', {
 		workspaceId,
 		repoId,
+		title: payload.title ?? '',
+		body: payload.body ?? '',
 		base: payload.base ?? '',
 		head: payload.head ?? '',
 		baseRemote: payload.baseRemote ?? '',

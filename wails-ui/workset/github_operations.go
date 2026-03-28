@@ -343,19 +343,31 @@ func (a *App) emitGitHubOperation(status GitHubOperationStatusPayload) {
 func (a *App) runCreatePullRequestAsync(ctx context.Context, key githubOperationKey, repoName string, input StartCreatePullRequestAsyncRequest) {
 	manager := a.ensureGitHubOperationManager()
 	svc := a.ensureService()
-	if status, ok := manager.setStage(key, GitHubOperationStageGenerating); ok {
-		a.emitGitHubOperation(status)
-	}
+	title := strings.TrimSpace(input.Title)
+	body := strings.TrimSpace(input.Body)
 
-	generated, err := svc.GeneratePullRequestText(ctx, worksetapi.PullRequestGenerateInput{
-		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
-		Repo:      repoName,
-	})
-	if err != nil {
-		if status, ok := manager.fail(key, err); ok {
+	if title == "" || body == "" {
+		if status, ok := manager.setStage(key, GitHubOperationStageGenerating); ok {
 			a.emitGitHubOperation(status)
 		}
-		return
+
+		generated, err := svc.GeneratePullRequestText(ctx, worksetapi.PullRequestGenerateInput{
+			Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
+			Repo:      repoName,
+		})
+		if err != nil {
+			if status, ok := manager.fail(key, err); ok {
+				a.emitGitHubOperation(status)
+			}
+			return
+		}
+
+		if title == "" {
+			title = strings.TrimSpace(generated.Payload.Title)
+		}
+		if body == "" {
+			body = strings.TrimSpace(generated.Payload.Body)
+		}
 	}
 
 	if status, ok := manager.setStage(key, GitHubOperationStageCreating); ok {
@@ -368,8 +380,8 @@ func (a *App) runCreatePullRequestAsync(ctx context.Context, key githubOperation
 		Base:       input.Base,
 		Head:       input.Head,
 		BaseRemote: input.BaseRemote,
-		Title:      generated.Payload.Title,
-		Body:       generated.Payload.Body,
+		Title:      title,
+		Body:       body,
 		Draft:      input.Draft,
 		AutoCommit: true,
 		AutoPush:   true,
