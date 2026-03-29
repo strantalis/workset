@@ -73,7 +73,7 @@
 		"@strantalis/workset-ghostty-web": "^0.3.1-workset.15",
 		"@wailsio/runtime": "^3.0.0-alpha.79",
 		"codemirror-lang-hcl": "^0.1.0",
-		"dompurify": "^3.3.1",
+		"dompurify": "^3.3.3",
 		"fzf": "^0.5.2",
 		"marked": "^17.0.5",
 		"mermaid": "^11.13.0",
