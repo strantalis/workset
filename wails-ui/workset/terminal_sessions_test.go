@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -18,7 +19,7 @@ func startTerminalServiceClientForTerminalSessionsTest(t *testing.T) (*terminals
 	t.Setenv("TMPDIR", "/tmp")
 	tmp := t.TempDir()
 	opts := terminalservice.DefaultOptions()
-	opts.SocketPath = filepath.Join(tmp, "terminal-service.sock")
+	opts.SocketPath = filepath.Join("/tmp", fmt.Sprintf("workset-terminal-service-%d.sock", time.Now().UnixNano()))
 	opts.TranscriptDir = filepath.Join(tmp, "terminal_logs")
 	opts.RecordDir = filepath.Join(tmp, "records")
 

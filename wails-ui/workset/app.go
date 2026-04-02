@@ -68,6 +68,7 @@ func (a *App) startup(ctx context.Context) {
 	ensureDevConfig()
 	_, _ = worksetapi.EnsureLoginEnv(ctx)
 	ensureDevTerminalServiceSocket()
+	ensureLegacySessiondRetired()
 	ensureTerminalServiceStarted(a)
 }
 

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -32,13 +34,14 @@ func (a *App) getTerminalServiceClientInternal() (*terminalservice.Client, error
 	a.terminalServiceMu.Unlock()
 	if client != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-		err := client.Ping(ctx)
+		info, err := a.validateTerminalServiceClient(ctx, client)
 		cancel()
 		if err == nil {
+			a.setCachedTerminalServiceInfo(info)
 			logTerminalServicef("client_ready")
 			return client, nil
 		}
-		logTerminalServicef("client_ping_failed err=%v", err)
+		logTerminalServicef("client_validation_failed err=%v", err)
 		a.stopEmbeddedTerminalService()
 	}
 
@@ -60,6 +63,106 @@ func (a *App) getTerminalServiceClientInternal() (*terminalservice.Client, error
 	}
 	logTerminalServicef("client_ready_after_start")
 	return client, nil
+}
+
+func (a *App) validateTerminalServiceClient(
+	ctx context.Context,
+	client *terminalservice.Client,
+) (terminalservice.InfoResponse, error) {
+	if client == nil {
+		return terminalservice.InfoResponse{}, errors.New("terminal service client unavailable")
+	}
+
+	info, err := client.Info(ctx)
+	if err != nil {
+		pingCtx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+		pingErr := client.Ping(pingCtx)
+		cancel()
+		if pingErr == nil {
+			a.requestTerminalServiceShutdown(client, "terminal service info probe failed")
+		}
+		return terminalservice.InfoResponse{}, err
+	}
+
+	currentExecutable, currentHash, err := currentTerminalServiceBinary()
+	if err != nil {
+		logTerminalServicef("current_binary_probe_failed err=%v", err)
+		return info, nil
+	}
+	if terminalServiceMatchesCurrentBinary(info, currentExecutable, currentHash) {
+		return info, nil
+	}
+
+	a.requestTerminalServiceShutdown(
+		client,
+		fmt.Sprintf(
+			"terminal service binary mismatch current=%s service=%s",
+			currentHash,
+			strings.TrimSpace(info.BinaryHash),
+		),
+	)
+	return terminalservice.InfoResponse{}, fmt.Errorf(
+		"terminal service binary mismatch current=%s service=%s",
+		currentHash,
+		strings.TrimSpace(info.BinaryHash),
+	)
+}
+
+func currentTerminalServiceBinary() (string, string, error) {
+	executable, err := os.Executable()
+	if err != nil {
+		return "", "", err
+	}
+	hash, err := terminalservice.BinaryHash(executable)
+	if err != nil {
+		return "", "", err
+	}
+	return executable, hash, nil
+}
+
+func terminalServiceMatchesCurrentBinary(
+	info terminalservice.InfoResponse,
+	currentExecutable string,
+	currentHash string,
+) bool {
+	serviceHash := strings.TrimSpace(info.BinaryHash)
+	currentHash = strings.TrimSpace(currentHash)
+	if serviceHash != "" && currentHash != "" {
+		return serviceHash == currentHash
+	}
+
+	serviceExecutable := strings.TrimSpace(info.Executable)
+	currentExecutable = strings.TrimSpace(currentExecutable)
+	if serviceExecutable == "" || currentExecutable == "" {
+		return true
+	}
+	return filepath.Clean(serviceExecutable) == filepath.Clean(currentExecutable)
+}
+
+func (a *App) requestTerminalServiceShutdown(client *terminalservice.Client, reason string) {
+	if client == nil {
+		return
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	err := client.ShutdownWithReason(shutdownCtx, "workset", reason)
+	cancel()
+	if err != nil {
+		logTerminalServicef("shutdown_request_failed err=%v", err)
+		return
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		pingCtx, pingCancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		pingErr := client.Ping(pingCtx)
+		pingCancel()
+		if pingErr != nil {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	logTerminalServicef("shutdown_wait_timeout reason=%q", reason)
 }
 
 func (a *App) terminalServiceOptions() (terminalservice.Options, error) {

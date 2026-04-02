@@ -7,7 +7,7 @@ import (
 )
 
 func TestStartWorkspaceTerminalRecreatesRemoteClosedSession(t *testing.T) {
-	client, cleanup := startTerminalServiceClientForTerminalOwnershipTest(t)
+	client, cleanup := startTerminalServiceClientForTerminalSessionsTest(t)
 	defer cleanup()
 
 	app := NewApp()
