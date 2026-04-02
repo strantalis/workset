@@ -4,17 +4,10 @@ includes:
   common: ../Taskfile.yml
 
 tasks:
-  build:helpers:
-    summary: Builds helper binaries required at runtime
-    cmds:
-      - mkdir -p "{{.BIN_DIR}}"
-      - go build -o "{{.BIN_DIR}}/workset-sessiond.exe" "../../cmd/workset-sessiond"
-
   build:
     summary: Builds the application for Windows
     cmds:
       - task: common:generate:icons
-      - task: build:helpers
       - task: common:build:frontend
       - go build -tags production {{if .LDFLAGS}}-ldflags "{{.LDFLAGS}}" {{end}}-o "{{.BIN_DIR}}/{{.APP_NAME}}.exe"
     env:
@@ -26,7 +19,6 @@ tasks:
     summary: Builds the application for Windows local development
     cmds:
       - task: common:generate:icons
-      - task: build:helpers
       - task: common:build:frontend:dev
       - go build -tags dev {{if .LDFLAGS}}-ldflags "{{.LDFLAGS}}" {{end}}-o "{{.BIN_DIR}}/{{.APP_NAME}}.exe"
     env:

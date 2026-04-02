@@ -2,24 +2,21 @@ import type { AgentCLIStatus, EnvSnapshotResult, RegisteredRepo, SettingsSnapsho
 import {
 	CheckAgentStatus,
 	GetSettings,
-	GetSessiondStatus,
+	GetTerminalServiceStatus,
 	ListRegisteredRepos,
 	OpenDirectoryDialog,
 	OpenFileDialog,
 	RegisterRepo,
 	ReloadLoginEnv,
-	RestartSessiond,
-	RestartSessiondWithReason,
 	SetAgentCLIPath,
 	SetDefaultSetting,
 	UnregisterRepo,
 	UpdateRegisteredRepo,
 } from '../../../bindings/workset/app';
 
-export type SessiondStatusResponse = {
+export type TerminalServiceStatusResponse = {
 	available: boolean;
 	error?: string;
-	warning?: string;
 };
 
 export async function reloadLoginEnv(): Promise<EnvSnapshotResult> {
@@ -45,16 +42,8 @@ export async function openDirectoryDialog(
 	return OpenDirectoryDialog(title, defaultDirectory);
 }
 
-export async function fetchSessiondStatus(): Promise<SessiondStatusResponse> {
-	return GetSessiondStatus();
-}
-
-export async function restartSessiond(reason?: string): Promise<SessiondStatusResponse> {
-	const trimmed = reason?.trim();
-	if (trimmed) {
-		return RestartSessiondWithReason(trimmed);
-	}
-	return RestartSessiond();
+export async function fetchTerminalServiceStatus(): Promise<TerminalServiceStatusResponse> {
+	return GetTerminalServiceStatus();
 }
 
 export async function listRegisteredRepos(): Promise<RegisteredRepo[]> {

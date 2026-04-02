@@ -1,9 +1,12 @@
+import type { TerminalSnapshotLike } from './terminalEmulatorContracts';
+
 type TerminalSyncInput = {
 	workspaceId: string;
 	terminalId: string;
 	container: HTMLDivElement | null;
 	active: boolean;
 	source?: string;
+	initialSnapshot?: TerminalSnapshotLike | null;
 };
 
 type TerminalDetachOptions = {
@@ -16,6 +19,7 @@ type TerminalSyncContext = {
 	terminalId: string;
 	container: HTMLDivElement | null;
 	active: boolean;
+	initialSnapshot?: TerminalSnapshotLike | null;
 };
 
 type TerminalAttachTraceMeta = {
@@ -29,7 +33,12 @@ export type TerminalSyncControllerDependencies = {
 	ensureContext: (input: TerminalSyncContext) => TerminalSyncContext;
 	hasContext?: (key: string) => boolean;
 	deleteContext: (key: string) => void;
-	attachTerminal: (id: string, container: HTMLDivElement | null, active: boolean) => unknown;
+	attachTerminal: (
+		id: string,
+		container: HTMLDivElement | null,
+		active: boolean,
+		initialSnapshot?: TerminalSnapshotLike | null,
+	) => unknown;
 	attachResizeObserver: (id: string, container: HTMLDivElement) => void;
 	detachResizeObserver: (id: string) => void;
 	syncTerminalStream: (id: string) => void;
@@ -55,6 +64,7 @@ export const createTerminalSyncController = (deps: TerminalSyncControllerDepende
 			terminalId: string;
 			container: HTMLDivElement | null;
 			active: boolean;
+			initialSnapshot?: TerminalSnapshotLike | null;
 		}
 	>();
 	const attachmentState = new Map<string, TerminalAttachmentState>();
@@ -64,6 +74,7 @@ export const createTerminalSyncController = (deps: TerminalSyncControllerDepende
 		id: string,
 		container: HTMLDivElement,
 		active: boolean,
+		initialSnapshot: TerminalSnapshotLike | null | undefined,
 		trace: TerminalAttachTraceMeta,
 	): Promise<boolean> => {
 		const displacedId = containerOwners.get(container);
@@ -101,7 +112,7 @@ export const createTerminalSyncController = (deps: TerminalSyncControllerDepende
 			});
 			return true;
 		}
-		const attachResult = deps.attachTerminal(id, container, active);
+		const attachResult = deps.attachTerminal(id, container, active, initialSnapshot);
 		if (attachResult && typeof (attachResult as Promise<unknown>).then === 'function') {
 			try {
 				await attachResult;
@@ -193,6 +204,7 @@ export const createTerminalSyncController = (deps: TerminalSyncControllerDepende
 				terminalId: input.terminalId,
 				container: input.container,
 				active: input.active,
+				initialSnapshot: input.initialSnapshot,
 			});
 			deps.ensureContext({
 				terminalKey,
@@ -200,6 +212,7 @@ export const createTerminalSyncController = (deps: TerminalSyncControllerDepende
 				terminalId: input.terminalId,
 				container: input.container,
 				active: input.active,
+				initialSnapshot: input.initialSnapshot,
 			});
 
 			if (!input.container) {
@@ -210,10 +223,16 @@ export const createTerminalSyncController = (deps: TerminalSyncControllerDepende
 				return;
 			}
 
-			const attached = await requestAttach(terminalKey, input.container, input.active, {
-				reason: 'sync_terminal_attach',
-				source,
-			});
+			const attached = await requestAttach(
+				terminalKey,
+				input.container,
+				input.active,
+				input.initialSnapshot,
+				{
+					reason: 'sync_terminal_attach',
+					source,
+				},
+			);
 			if (!attached) {
 				const current = lastSyncState.get(terminalKey);
 				if (

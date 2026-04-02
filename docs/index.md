@@ -11,7 +11,7 @@ Workset links Git worktrees across repos so you can spin up isolated threads wit
 
 Every dev has that one side project that started as "I'll just write a quick script" and somehow ended up with a build pipeline. This is mine.
 
-The problem was simple: I work across multiple repos and kept losing track of which branches went together. The reasonable fix was a shell alias. What I built instead has a CLI, a desktop app with embedded terminals, AI-generated pull requests, a daemon that manages PTY sessions, and a skill marketplace. At no point did anyone ask for this.
+The problem was simple: I work across multiple repos and kept losing track of which branches went together. The reasonable fix was a shell alias. What I built instead has a CLI, a desktop app with embedded terminals, AI-generated pull requests, an in-process terminal service that manages PTY sessions, and a skill marketplace. At no point did anyone ask for this.
 
 If you're here, you either have the same multi-repo problem or you're morbidly curious about what happens when scope creep goes unsupervised. Either way, welcome.
 

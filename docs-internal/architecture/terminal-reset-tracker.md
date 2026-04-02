@@ -1,4 +1,6 @@
-# Terminal Simplification Plan
+# Historical: Terminal Simplification Plan
+
+> Historical archive: this planning doc predates the embedded terminal-service hard cut and no longer describes the shipped product. It is preserved only as prior design context. For the current runtime, use `docs-internal/architecture/terminal.md`.
 
 ## Goal
 

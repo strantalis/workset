@@ -2,7 +2,9 @@
 description: Execution plan to simplify terminal ownership and streaming during the Wails v3 migration.
 ---
 
-# Terminal Ownership Simplification Plan
+# Historical: Terminal Ownership Simplification Plan
+
+> Historical archive: this migration plan predates the embedded terminal-service hard cut and no longer describes the shipped architecture. It is preserved for background only. For the current runtime, use `docs-internal/architecture/terminal.md`.
 
 ## Objective
 
@@ -96,7 +98,7 @@ Exit criteria:
 ### M6. Validation and rollout
 
 - [ ] Unit tests:
-  - [ ] `pkg/sessiond` ownership/lease and stream tests.
+  - [ ] `pkg/terminalservice` ownership/lease and stream tests.
   - [ ] `wails-ui/workset` backend ownership/bridge tests.
   - [ ] frontend terminal orchestration tests.
 - [ ] E2E tests:

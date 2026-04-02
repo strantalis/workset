@@ -36,8 +36,8 @@ Remote names and default branches come from registered repos (`repos.<name>.remo
 | `repo_store_root`        | Where URL-based repos are cloned.                                                                                                                                     |
 | `agent`                  | Default agent for PR text generation, commit messages, and the GUI terminal launcher. Supported values: `codex`, `claude`.                                            |
 | `agent_model`            | Optional model override for PR text generation and commit messages (does not affect the terminal launcher). Examples: `gpt-5.1-codex-mini` (Codex), `haiku` (Claude). |
-| `terminal_idle_timeout`  | Idle timeout for GUI terminals/sessiond (duration like `30m`; use `0` to disable). Default is `0`.                                                                    |
-| `terminal_protocol_log`  | Enable sessiond protocol logging (`on`/`off`). Requires daemon restart.                                                                                               |
+| `terminal_idle_timeout`  | Idle timeout for desktop terminals/terminal service (duration like `30m`; use `0` to disable). Default is `0`.                                                       |
+| `terminal_protocol_log`  | Enable terminal service protocol logging (`on`/`off`). Applies on next app launch.                                                                                     |
 | `terminal_debug_overlay` | Show the terminal debug overlay (`on`/`off`).                                                                                                                         |
 | `terminal_font_size`     | Terminal text size in pixels. Must be an integer between `8` and `28`. Default is `13`.                                                                               |
 | `terminal_cursor_blink`  | Whether the terminal cursor blinks (`on`/`off`). Default is `on`.                                                                                                     |

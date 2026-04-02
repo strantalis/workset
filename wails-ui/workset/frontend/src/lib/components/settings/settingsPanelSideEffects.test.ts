@@ -8,38 +8,24 @@ import {
 } from './settingsPanelSideEffects';
 
 describe('settingsPanelSideEffects', () => {
-	it('collectTerminalIds walks pane trees', () => {
+	it('collectTerminalIds walks flat panes and legacy layouts during cleanup', () => {
 		const ids = collectTerminalIds({
-			version: 2,
+			version: 3,
 			tabs: [
 				{
 					id: 'tab-1',
 					title: 'One',
-					root: {
-						id: 'root',
-						kind: 'split',
-						direction: 'row',
-						first: {
-							id: 'left',
-							kind: 'pane',
-							terminalId: 'term-1',
-						},
-						second: {
-							id: 'right',
-							kind: 'pane',
-							terminalId: 'term-2',
-						},
-					},
+					panes: [
+						{ id: 'left', terminalId: 'term-1' },
+						{ id: 'right', terminalId: 'term-2' },
+					],
+					splitDirection: 'vertical',
 					focusedPaneId: 'left',
 				},
 				{
 					id: 'tab-2',
 					title: 'Two',
-					root: {
-						id: 'solo',
-						kind: 'pane',
-						terminalId: 'term-3',
-					},
+					panes: [{ id: 'solo', terminalId: 'term-3' }],
 					focusedPaneId: 'solo',
 				},
 			],
@@ -58,17 +44,13 @@ describe('settingsPanelSideEffects', () => {
 			() => idSequence.shift() ?? 'fallback-id',
 		);
 
-		expect(layout.version).toBe(2);
+		expect(layout.version).toBe(3);
 		expect(layout.activeTabId).toBe('tab-abc');
 		expect(layout.tabs).toEqual([
 			{
 				id: 'tab-abc',
 				title: 'Workspace-0',
-				root: {
-					id: 'pane-def',
-					kind: 'pane',
-					terminalId: 'terminal-new',
-				},
+				panes: [{ id: 'pane-def', terminalId: 'terminal-new' }],
 				focusedPaneId: 'pane-def',
 			},
 		]);
@@ -117,16 +99,12 @@ describe('settingsPanelSideEffects', () => {
 		expect(stopWorkspaceTerminal).toHaveBeenCalledWith('ws-1', 'term-a');
 		expect(stopWorkspaceTerminal).toHaveBeenCalledWith('ws-1', 'term-b');
 		expect(persistWorkspaceTerminalLayout).toHaveBeenCalledWith('ws-1', {
-			version: 2,
+			version: 3,
 			tabs: [
 				{
 					id: 'tab-new',
 					title: 'Workspace One-0',
-					root: {
-						id: 'pane-new',
-						kind: 'pane',
-						terminalId: 'term-new',
-					},
+					panes: [{ id: 'pane-new', terminalId: 'term-new' }],
 					focusedPaneId: 'pane-new',
 				},
 			],

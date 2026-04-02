@@ -72,7 +72,7 @@ Update manifests are fetched from `WORKSET_UPDATES_BASE_URL` when set, otherwise
 <summary>Terminal settings</summary>
 
 - `defaults.terminal_idle_timeout` controls idle shutdown for GUI terminals.
-- `defaults.terminal_protocol_log` enables sessiond protocol logging (restart daemon to apply).
+- `defaults.terminal_protocol_log` enables terminal service protocol logging (applies on next app launch).
 - `defaults.terminal_debug_overlay` shows the terminal debug overlay.
 - `defaults.terminal_font_size` controls terminal text size.
 - `defaults.terminal_cursor_blink` controls whether the terminal cursor blinks.

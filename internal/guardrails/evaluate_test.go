@@ -34,14 +34,14 @@ func TestEvaluateAllowlistedGrowth(t *testing.T) {
 	cfg := mustCompileConfig(t, Config{
 		Thresholds: Thresholds{Source: 1000, Tests: 1200},
 		SourceExts: []string{".go"},
-		Allowlist:  []string{"pkg/sessiond/session.go"},
+		Allowlist:  []string{"pkg/terminalservice/session.go"},
 	})
 
 	head := map[string]int{
-		"pkg/sessiond/session.go": 2100,
+		"pkg/terminalservice/session.go": 2100,
 	}
 	base := map[string]int{
-		"pkg/sessiond/session.go": 2000,
+		"pkg/terminalservice/session.go": 2000,
 	}
 
 	result := Evaluate(cfg, head, base, true)
@@ -57,14 +57,14 @@ func TestEvaluateAllowlistedShrinkPasses(t *testing.T) {
 	cfg := mustCompileConfig(t, Config{
 		Thresholds: Thresholds{Source: 1000, Tests: 1200},
 		SourceExts: []string{".go"},
-		Allowlist:  []string{"pkg/sessiond/session.go"},
+		Allowlist:  []string{"pkg/terminalservice/session.go"},
 	})
 
 	head := map[string]int{
-		"pkg/sessiond/session.go": 2050,
+		"pkg/terminalservice/session.go": 2050,
 	}
 	base := map[string]int{
-		"pkg/sessiond/session.go": 2100,
+		"pkg/terminalservice/session.go": 2100,
 	}
 
 	result := Evaluate(cfg, head, base, true)

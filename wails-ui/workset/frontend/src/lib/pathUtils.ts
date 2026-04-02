@@ -8,8 +8,8 @@
  * @returns The formatted path string
  *
  * @example
- * formatPath('pkg/sessiond/client.go')
- * // returns: 'pkg/sessiond/client.go' (fits entirely)
+ * formatPath('pkg/terminalservice/client.go')
+ * // returns: 'pkg/terminalservice/client.go' (fits entirely)
  *
  * @example
  * formatPath('wails-ui/workset/frontend/src/lib/components/RepoDiff.svelte')

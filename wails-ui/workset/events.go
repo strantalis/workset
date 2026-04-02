@@ -5,8 +5,6 @@ const (
 
 	EventGitHubOperation = "github:operation"
 
-	EventSessiondRestarted = "sessiond:restarted"
-
 	EventWorkspacePopoutOpened = "workspace:popout-opened"
 	EventWorkspacePopoutClosed = "workspace:popout-closed"
 

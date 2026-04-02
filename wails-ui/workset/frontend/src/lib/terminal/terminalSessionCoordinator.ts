@@ -13,14 +13,14 @@ type TerminalSettingsPayload = {
 	};
 };
 
-type TerminalSessiondStatusPayload = {
+type TerminalServiceStatusPayload = {
 	available?: boolean | null;
 };
 
 type TerminalCoordinatorLifecycle = {
 	hasStarted: (id: string) => boolean;
 	hasStartInFlight: (id: string) => boolean;
-	isSessiondAvailable: () => boolean | null;
+	isTerminalServiceAvailable: () => boolean | null;
 	markStarted: (id: string) => void;
 	markStopped: (id: string) => void;
 	setStatusAndMessage: (id: string, status: string, message: string) => void;
@@ -29,7 +29,7 @@ type TerminalCoordinatorLifecycle = {
 	clearStartInFlight: (id: string) => void;
 	clearStartupTimeout: (id: string) => void;
 	dropHealthCheck: (id: string) => void;
-	setSessiondStatus: (available: boolean | null) => void;
+	setTerminalServiceStatus: (available: boolean | null) => void;
 };
 
 type TerminalCoordinatorDependencies = {
@@ -40,7 +40,7 @@ type TerminalCoordinatorDependencies = {
 		start: (workspaceId: string, terminalId: string) => Promise<TerminalSessionStartResult>;
 		write: (workspaceId: string, terminalId: string, data: string) => Promise<void>;
 		fetchSettings: () => Promise<TerminalSettingsPayload | null>;
-		fetchSessiondStatus: () => Promise<TerminalSessiondStatusPayload | null>;
+		fetchTerminalServiceStatus: () => Promise<TerminalServiceStatusPayload | null>;
 	};
 	setHealth: (id: string, state: 'unknown' | 'checking' | 'ok' | 'stale', message?: string) => void;
 	emitState: (id: string) => void;
@@ -64,12 +64,8 @@ export const createTerminalSessionCoordinator = (deps: TerminalCoordinatorDepend
 		descriptor: TerminalSessionStartResult,
 	): Record<string, unknown> => ({
 		sessionId: descriptor.sessionId,
-		windowName: descriptor.windowName ?? '',
-		owner: descriptor.owner ?? '',
-		canWrite: descriptor.canWrite,
-		running: descriptor.running,
-		currentOffset: descriptor.currentOffset,
-		transport: descriptor.transport,
+		socketUrl: descriptor.socketUrl,
+		socketTokenPresent: Boolean(descriptor.socketToken),
 	});
 
 	const log = (id: string, event: string, details: Record<string, unknown>): void => {
@@ -92,12 +88,12 @@ export const createTerminalSessionCoordinator = (deps: TerminalCoordinatorDepend
 		return Math.min(MAX_TERMINAL_FONT_SIZE, Math.max(MIN_TERMINAL_FONT_SIZE, parsed));
 	};
 
-	const refreshSessiondStatus = async (): Promise<void> => {
+	const refreshTerminalServiceStatus = async (): Promise<void> => {
 		try {
-			const status = await deps.transport.fetchSessiondStatus();
-			deps.lifecycle.setSessiondStatus(status?.available ?? false);
+			const status = await deps.transport.fetchTerminalServiceStatus();
+			deps.lifecycle.setTerminalServiceStatus(status?.available ?? false);
 		} catch {
-			deps.lifecycle.setSessiondStatus(false);
+			deps.lifecycle.setTerminalServiceStatus(false);
 		}
 	};
 
@@ -141,12 +137,12 @@ export const createTerminalSessionCoordinator = (deps: TerminalCoordinatorDepend
 			const descriptor = await deps.transport.start(workspaceId, terminalId);
 			await deps.onSessionReady?.(id, descriptor);
 			deps.lifecycle.markStarted(id);
-			deps.lifecycle.setInput(id, descriptor.canWrite);
+			deps.lifecycle.setInput(id, true);
 			deps.lifecycle.setStatusAndMessage(id, 'ready', '');
 			deps.setHealth(id, 'ok', 'Session active.');
 			log(id, 'session_begin_transport_ok', summarizeStartResult(descriptor));
 			const queued = deps.pendingInput.get(id);
-			if (queued && descriptor.canWrite) {
+			if (queued) {
 				log(id, 'session_begin_flush_pending', {
 					bytes: queued.length,
 				});
@@ -162,12 +158,6 @@ export const createTerminalSessionCoordinator = (deps: TerminalCoordinatorDepend
 						bytes: queued.length,
 					});
 				}
-			} else if (queued) {
-				deps.pendingInput.delete(id);
-				log(id, 'session_begin_drop_pending_read_only', {
-					bytes: queued.length,
-					...summarizeStartResult(descriptor),
-				});
 			}
 			deps.emitState(id);
 		} catch (error) {
@@ -236,7 +226,7 @@ export const createTerminalSessionCoordinator = (deps: TerminalCoordinatorDepend
 
 	return {
 		loadTerminalDefaults,
-		refreshSessiondStatus,
+		refreshTerminalServiceStatus,
 		ensureSessionActive,
 		beginTerminal,
 		initTerminal,

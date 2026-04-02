@@ -53,14 +53,8 @@ const createDescriptor = () => ({
 	workspaceId: 'ws',
 	terminalId: 'term',
 	sessionId: 'ws::term',
-	windowName: 'main',
-	owner: 'main',
-	canWrite: true,
-	running: true,
-	currentOffset: 0,
 	socketUrl: 'ws://127.0.0.1:9001/stream',
 	socketToken: 'token',
-	transport: 'sessiond-websocket',
 });
 
 const encodeChunk = (seq: number, value: string): Uint8Array => {
@@ -71,19 +65,6 @@ const encodeChunk = (seq: number, value: string): Uint8Array => {
 	payload.set(text, 8);
 	return payload;
 };
-
-const createSnapshot = () => ({
-	version: 1,
-	nextOffset: 22,
-	cols: 80,
-	rows: 24,
-	activeBuffer: 'normal' as const,
-	normalViewportY: 0,
-	cursor: { x: 0, y: 0, visible: true },
-	modes: { dec: [], ansi: [] },
-	normalTail: ['hello'],
-	normalScreen: ['hello'],
-});
 
 const waitForExpectation = async (check: () => void, attempts = 20): Promise<void> => {
 	let lastError: unknown;
@@ -104,35 +85,26 @@ describe('terminalSocketStream', () => {
 		vi.useRealTimers();
 	});
 
-	it('sends an attach request with resume offset and token', async () => {
+	it('sends an attach request with token', async () => {
 		const socket = new MockWebSocket('ws://127.0.0.1:9001/stream');
 		const onChunk = vi.fn();
 		const stream = createTerminalSocketStream({
 			createWebSocket: () => socket as unknown as WebSocket,
-			getWindowName: async () => 'main',
 			onChunk,
 		});
 
-		const connectPromise = stream.connect('ws::term', createDescriptor(), 14);
+		const connectPromise = stream.connect('ws::term', createDescriptor());
 		await Promise.resolve();
 		socket.open();
-		socket.emitText({ type: 'ready', ready: { running: true } });
+		socket.emitText({ type: 'ready' });
 
-		expect(socket.sent).toHaveLength(2);
+		expect(socket.sent).toHaveLength(1);
 		expect(JSON.parse(String(socket.sent[0]))).toEqual({
 			protocolVersion: 2,
 			type: 'attach',
 			sessionId: 'ws::term',
 			streamId: expect.any(String),
-			clientId: 'main',
 			token: 'token',
-			since: 14,
-			withBuffer: true,
-		});
-		expect(JSON.parse(String(socket.sent[1]))).toEqual({
-			protocolVersion: 2,
-			type: 'set_owner',
-			owner: 'main',
 		});
 		expect(onChunk).not.toHaveBeenCalled();
 		await connectPromise;
@@ -143,14 +115,13 @@ describe('terminalSocketStream', () => {
 		const onChunk = vi.fn();
 		const stream = createTerminalSocketStream({
 			createWebSocket: () => socket as unknown as WebSocket,
-			getWindowName: async () => 'main',
 			onChunk,
 		});
 
-		const connectPromise = stream.connect('ws::term', createDescriptor(), 0);
+		const connectPromise = stream.connect('ws::term', createDescriptor());
 		await Promise.resolve();
 		socket.open();
-		socket.emitText({ type: 'ready', ready: { running: true } });
+		socket.emitText({ type: 'ready' });
 		await connectPromise;
 		socket.emitBinary(encodeChunk(22, 'hello'));
 
@@ -164,121 +135,16 @@ describe('terminalSocketStream', () => {
 		);
 	});
 
-	it('delivers snapshot hydration before subsequent chunks', async () => {
-		const socket = new MockWebSocket('ws://127.0.0.1:9001/stream');
-		const onChunk = vi.fn();
-		const order: string[] = [];
-		let releaseSnapshot: (() => void) | undefined;
-		const snapshotPromise = new Promise<void>((resolve) => {
-			releaseSnapshot = resolve;
-		});
-		const stream = createTerminalSocketStream({
-			createWebSocket: () => socket as unknown as WebSocket,
-			getWindowName: async () => 'main',
-			onChunk: (...args) => {
-				order.push('chunk');
-				onChunk(...args);
-			},
-			onSnapshot: async () => {
-				order.push('snapshot:start');
-				await snapshotPromise;
-				order.push('snapshot:end');
-			},
-		});
-
-		const connectPromise = stream.connect('ws::term', createDescriptor(), 0);
-		await Promise.resolve();
-		socket.open();
-		socket.emitText({ type: 'ready', ready: { running: true } });
-		await connectPromise;
-
-		socket.emitText({ type: 'snapshot', snapshot: createSnapshot() });
-		socket.emitBinary(encodeChunk(30, 'delta'));
-		await Promise.resolve();
-
-		expect(order).toEqual(['snapshot:start']);
-		expect(onChunk).not.toHaveBeenCalled();
-
-		releaseSnapshot?.();
-
-		await waitForExpectation(() => {
-			expect(order).toEqual(['snapshot:start', 'snapshot:end', 'chunk']);
-			expect(onChunk).toHaveBeenCalledTimes(1);
-		});
-	});
-
-	it('awaits snapshot publish acknowledgement when requested', async () => {
-		const socket = new MockWebSocket('ws://127.0.0.1:9001/stream');
-		const stream = createTerminalSocketStream({
-			createWebSocket: () => socket as unknown as WebSocket,
-			getWindowName: async () => 'main',
-			onChunk: vi.fn(),
-		});
-
-		const connectPromise = stream.connect('ws::term', createDescriptor(), 0);
-		await Promise.resolve();
-		socket.open();
-		socket.emitText({ type: 'ready', ready: { running: true } });
-		await connectPromise;
-
-		const publishPromise = stream.publishSnapshot('ws::term', createSnapshot(), true);
-		const payload = JSON.parse(String(socket.sent.at(-1)));
-		expect(payload).toMatchObject({
-			protocolVersion: 2,
-			type: 'snapshot',
-			owner: 'main',
-			requestId: expect.any(String),
-		});
-
-		let settled = false;
-		void publishPromise.then(() => {
-			settled = true;
-		});
-		await Promise.resolve();
-		expect(settled).toBe(false);
-
-		socket.emitText({ type: 'snapshot_ack', requestId: payload.requestId });
-		await publishPromise;
-		expect(settled).toBe(true);
-	});
-
-	it('times out snapshot acknowledgement waits so callers do not hang forever', async () => {
-		vi.useFakeTimers();
-		const socket = new MockWebSocket('ws://127.0.0.1:9001/stream');
-		const stream = createTerminalSocketStream({
-			createWebSocket: () => socket as unknown as WebSocket,
-			getWindowName: async () => 'main',
-			onChunk: vi.fn(),
-			setTimeoutFn: (callback, timeoutMs) => setTimeout(callback, timeoutMs),
-			clearTimeoutFn: (handle) => clearTimeout(handle),
-		});
-
-		const connectPromise = stream.connect('ws::term', createDescriptor(), 0);
-		await Promise.resolve();
-		socket.open();
-		socket.emitText({ type: 'ready', ready: { running: true } });
-		await connectPromise;
-
-		const publishPromise = stream.publishSnapshot('ws::term', createSnapshot(), true);
-		const publishAssertion = expect(publishPromise).rejects.toThrow(
-			'terminal snapshot acknowledgement timed out',
-		);
-		await vi.advanceTimersByTimeAsync(751);
-
-		await publishAssertion;
-	});
-
 	it('rejects connect on remote attach error', async () => {
 		const socket = new MockWebSocket('ws://127.0.0.1:9001/stream');
 		const onClosed = vi.fn();
 		const stream = createTerminalSocketStream({
 			createWebSocket: () => socket as unknown as WebSocket,
-			getWindowName: async () => 'main',
 			onChunk: vi.fn(),
 			onClosed,
 		});
 
-		const connectPromise = stream.connect('ws::term', createDescriptor(), 0);
+		const connectPromise = stream.connect('ws::term', createDescriptor());
 		await Promise.resolve();
 		socket.open();
 		socket.emitText({ type: 'error', error: 'invalid websocket token' });
@@ -295,22 +161,21 @@ describe('terminalSocketStream', () => {
 				sockets.push(socket);
 				return socket as unknown as WebSocket;
 			},
-			getWindowName: async () => 'main',
 			onChunk: vi.fn(),
 			onClosed,
 		});
 
-		const firstConnect = stream.connect('ws::term', createDescriptor(), 0);
+		const firstConnect = stream.connect('ws::term', createDescriptor());
 		await Promise.resolve();
 		sockets[0].open();
-		sockets[0].emitText({ type: 'ready', ready: { running: true } });
+		sockets[0].emitText({ type: 'ready' });
 		await firstConnect;
 
 		const nextDescriptor = {
 			...createDescriptor(),
 			socketToken: 'token-2',
 		};
-		const secondConnect = stream.connect('ws::term', nextDescriptor, 0);
+		const secondConnect = stream.connect('ws::term', nextDescriptor);
 		await Promise.resolve();
 
 		expect(onClosed).toHaveBeenCalledWith(
@@ -320,19 +185,17 @@ describe('terminalSocketStream', () => {
 				reason: 'terminal socket reset',
 				code: 1000,
 				sessionID: 'ws::term',
-				windowName: 'main',
 				socketURL: 'ws://127.0.0.1:9001/stream',
 				ready: true,
-				canWrite: true,
 			}),
 		);
 
 		sockets[1].open();
-		sockets[1].emitText({ type: 'ready', ready: { running: true } });
+		sockets[1].emitText({ type: 'ready' });
 		await secondConnect;
 	});
 
-	it('skips reconnecting when the same session socket is already live', async () => {
+	it('skips duplicate attaches when the same session socket is already live', async () => {
 		const sockets: MockWebSocket[] = [];
 		const logDebug = vi.fn();
 		const stream = createTerminalSocketStream({
@@ -341,19 +204,18 @@ describe('terminalSocketStream', () => {
 				sockets.push(socket);
 				return socket as unknown as WebSocket;
 			},
-			getWindowName: async () => 'main',
 			onChunk: vi.fn(),
 			logDebug,
 		});
 
 		const descriptor = createDescriptor();
-		const firstConnect = stream.connect('ws::term', descriptor, 0);
+		const firstConnect = stream.connect('ws::term', descriptor);
 		await Promise.resolve();
 		sockets[0].open();
-		sockets[0].emitText({ type: 'ready', ready: { running: true } });
+		sockets[0].emitText({ type: 'ready' });
 		await firstConnect;
 
-		await stream.connect('ws::term', descriptor, 128);
+		await stream.connect('ws::term', descriptor);
 
 		expect(sockets).toHaveLength(1);
 		expect(logDebug).toHaveBeenCalledWith(
@@ -361,53 +223,41 @@ describe('terminalSocketStream', () => {
 			'socket_connect_skip_existing',
 			expect.objectContaining({
 				sessionID: 'ws::term',
-				since: 128,
 			}),
 		);
 	});
 
-	it('sends input, resize, snapshot, and stop over the live websocket', async () => {
+	it('sends input, resize, and stop over the live websocket', async () => {
 		const socket = new MockWebSocket('ws://127.0.0.1:9001/stream');
 		const stream = createTerminalSocketStream({
 			createWebSocket: () => socket as unknown as WebSocket,
-			getWindowName: async () => 'main',
 			onChunk: vi.fn(),
 		});
 
-		const connectPromise = stream.connect('ws::term', createDescriptor(), 0);
+		const connectPromise = stream.connect('ws::term', createDescriptor());
 		await Promise.resolve();
 		socket.open();
-		socket.emitText({ type: 'ready', ready: { running: true } });
+		socket.emitText({ type: 'ready' });
 		await connectPromise;
 
 		stream.write('ws::term', 'ls\n');
 		stream.resize('ws::term', 120, 32);
-		stream.publishSnapshot('ws::term', createSnapshot());
 		stream.stop('ws::term');
 
-		expect(JSON.parse(String(socket.sent[2]))).toEqual({
+		expect(JSON.parse(String(socket.sent[1]))).toEqual({
 			protocolVersion: 2,
 			type: 'input',
 			data: 'ls\n',
-			owner: 'main',
 		});
-		expect(JSON.parse(String(socket.sent[3]))).toEqual({
+		expect(JSON.parse(String(socket.sent[2]))).toEqual({
 			protocolVersion: 2,
 			type: 'resize',
 			cols: 120,
 			rows: 32,
-			owner: 'main',
 		});
-		expect(JSON.parse(String(socket.sent[4]))).toEqual({
-			protocolVersion: 2,
-			type: 'snapshot',
-			snapshot: createSnapshot(),
-			owner: 'main',
-		});
-		expect(JSON.parse(String(socket.sent[5]))).toEqual({
+		expect(JSON.parse(String(socket.sent[3]))).toEqual({
 			protocolVersion: 2,
 			type: 'stop',
-			owner: 'main',
 		});
 	});
 });

@@ -11,7 +11,7 @@ func TestCompiledConfigPathPolicies(t *testing.T) {
 		SourceExts:     []string{".go", ".ts", ".svelte"},
 		TestPatterns:   []string{"*_test.go", "*.spec.ts"},
 		IgnorePatterns: []string{"**/node_modules/**", "wails-ui/workset/frontend/dist/**"},
-		Allowlist:      []string{"pkg/sessiond/session.go", "wails-ui/workset/frontend/src/lib/components/*.svelte"},
+		Allowlist:      []string{"pkg/terminalservice/session.go", "wails-ui/workset/frontend/src/lib/components/*.svelte"},
 	}
 
 	compiled, err := cfg.Compile()
@@ -19,7 +19,7 @@ func TestCompiledConfigPathPolicies(t *testing.T) {
 		t.Fatalf("compile config: %v", err)
 	}
 
-	if !compiled.IsSourceFile("pkg/sessiond/session.go") {
+	if !compiled.IsSourceFile("pkg/terminalservice/session.go") {
 		t.Fatalf("expected .go file to be a source file")
 	}
 	if compiled.IsSourceFile("README.md") {

@@ -7,8 +7,7 @@ tasks:
   build:helpers:
     summary: Builds helper binaries required at runtime
     cmds:
-      - mkdir -p "build/sessiond" "build/updater"
-      - go build -o "build/sessiond/workset-sessiond" "../../cmd/workset-sessiond"
+      - mkdir -p "build/updater"
       - go build -o "build/updater/workset-updater" "../../cmd/workset-updater"
 
   build:
@@ -48,7 +47,6 @@ tasks:
       - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/MacOS"
       - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources"
       - cp build/darwin/icons.icns "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources"
-      - cp "build/sessiond/workset-sessiond" "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources/workset-sessiond"
       - cp "build/updater/workset-updater" "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources/workset-updater"
       - |
         if [ -f build/darwin/Assets.car ]; then
@@ -77,7 +75,6 @@ tasks:
       - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS"
       - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Resources"
       - cp build/darwin/icons.icns "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Resources"
-      - cp "build/sessiond/workset-sessiond" "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Resources/workset-sessiond"
       - cp "build/updater/workset-updater" "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Resources/workset-updater"
       - |
         if [ -f build/darwin/Assets.car ]; then

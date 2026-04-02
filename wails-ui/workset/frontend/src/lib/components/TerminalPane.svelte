@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { createTerminalPerformanceSampler } from '../terminal/terminalPerformance';
+	import type { TerminalSnapshotLike } from '../terminal/terminalEmulatorContracts';
 	import TerminalController from '../terminal/TerminalController.svelte';
 
 	interface Props {
 		workspaceId: string;
 		workspaceName: string;
 		terminalId: string;
+		initialSnapshot?: TerminalSnapshotLike | null;
 		active?: boolean;
 		compact?: boolean;
 		onTerminalClosed?: () => void;
@@ -15,6 +17,7 @@
 		workspaceId,
 		workspaceName,
 		terminalId,
+		initialSnapshot = null,
 		active = true,
 		compact = false,
 		onTerminalClosed = undefined,
@@ -97,8 +100,8 @@
 		message: '',
 		health: 'unknown' as 'unknown' | 'checking' | 'ok' | 'stale',
 		healthMessage: '',
-		sessiondAvailable: null as boolean | null,
-		sessiondChecked: false,
+		terminalServiceAvailable: null as boolean | null,
+		terminalServiceChecked: false,
 		debugEnabled: false,
 		debugStats: {
 			bytesIn: 0,
@@ -134,7 +137,7 @@
 	const activeMessage = $derived(controllerState.message);
 	const activeHealth = $derived(controllerState.health);
 	const activeHealthMessage = $derived(controllerState.healthMessage);
-	const sessiondAvailable = $derived(controllerState.sessiondAvailable);
+	const terminalServiceAvailable = $derived(controllerState.terminalServiceAvailable);
 	const debugEnabled = $derived(controllerState.debugEnabled);
 	const debugStats = $derived(controllerState.debugStats);
 	const rendererLabel = $derived(performanceSnapshot.renderer);
@@ -187,6 +190,7 @@
 		{workspaceId}
 		{workspaceName}
 		{terminalId}
+		{initialSnapshot}
 		{active}
 		{terminalContainer}
 		onStateChange={handleStateChange}
@@ -203,9 +207,9 @@
 						class="health-badge"
 						class:stale={activeHealth === 'stale'}
 						class:checking={activeHealth === 'checking'}
-						title="{sessiondAvailable === true
-							? 'daemon'
-							: sessiondAvailable === false
+						title="{terminalServiceAvailable === true
+							? 'service'
+							: terminalServiceAvailable === false
 								? 'local'
 								: 'checking'} | ghostty | {activeHealth}"
 					>
@@ -218,18 +222,18 @@
 				{/if}
 				{#if debugEnabled}
 					<div
-						class="daemon-status"
-						class:offline={sessiondAvailable === false}
-						class:online={sessiondAvailable === true}
-						title={sessiondAvailable === true
-							? 'Session daemon active'
-							: sessiondAvailable === false
-								? 'Session daemon unavailable (using local shell)'
-								: 'Checking session daemon status'}
+						class="service-status"
+						class:offline={terminalServiceAvailable === false}
+						class:online={terminalServiceAvailable === true}
+						title={terminalServiceAvailable === true
+							? 'Terminal service active'
+							: terminalServiceAvailable === false
+								? 'Terminal service unavailable (using local shell)'
+								: 'Checking terminal service status'}
 					>
-						{#if sessiondAvailable === true}
-							daemon
-						{:else if sessiondAvailable === false}
+						{#if terminalServiceAvailable === true}
+							service
+						{:else if terminalServiceAvailable === false}
 							local
 						{:else}
 							checking
@@ -391,7 +395,7 @@
 		border-radius: 0;
 	}
 
-	.daemon-status {
+	.service-status {
 		font-size: var(--text-xs);
 		color: var(--muted);
 		border: 1px solid var(--border);
@@ -401,13 +405,13 @@
 		letter-spacing: 0.02em;
 	}
 
-	.daemon-status.online {
+	.service-status.online {
 		color: var(--success);
 		border-color: color-mix(in srgb, var(--success) 50%, var(--border));
 		background: color-mix(in srgb, var(--success) 12%, transparent);
 	}
 
-	.daemon-status.offline {
+	.service-status.offline {
 		color: var(--warning);
 		border-color: color-mix(in srgb, var(--warning) 50%, var(--border));
 		background: color-mix(in srgb, var(--warning) 12%, transparent);

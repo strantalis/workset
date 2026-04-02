@@ -1,6 +1,10 @@
 import { Browser } from '@wailsio/runtime';
 import type { TerminalSessionDescriptor } from '../../../bindings/workset/models';
-import { fetchSessiondStatus, fetchSettings, type SessiondStatusResponse } from '../api/settings';
+import {
+	fetchTerminalServiceStatus,
+	fetchSettings,
+	type TerminalServiceStatusResponse,
+} from '../api/settings';
 import {
 	fetchTerminalBootstrap,
 	logTerminalDebug,
@@ -31,12 +35,15 @@ const logWindowResolution = async (
 	}
 };
 
-export type TerminalSessionStartResult = TerminalSessionDescriptor;
+export type TerminalSessionStartResult = Pick<
+	TerminalSessionDescriptor,
+	'workspaceId' | 'terminalId' | 'sessionId' | 'socketUrl' | 'socketToken'
+>;
 
 export type TerminalTransport = {
 	start: (workspaceId: string, terminalId: string) => Promise<TerminalSessionStartResult>;
 	stop: (workspaceId: string, terminalId: string) => Promise<void>;
-	fetchSessiondStatus: () => Promise<SessiondStatusResponse>;
+	fetchTerminalServiceStatus: () => Promise<TerminalServiceStatusResponse>;
 	fetchSettings: () => Promise<SettingsSnapshot>;
 	logDebug: (
 		workspaceId: string,
@@ -50,22 +57,25 @@ export type TerminalTransport = {
 export const terminalTransport: TerminalTransport = {
 	start: async (workspaceId, terminalId) => {
 		await logWindowResolution(workspaceId, terminalId, 'transport_start_request', {
-			source: 'sessiond-bootstrap',
+			source: 'terminal-service-bootstrap',
 		});
 		const descriptor = await fetchTerminalBootstrap(workspaceId, terminalId);
-		await logWindowResolution(workspaceId, terminalId, 'transport_start_descriptor', {
-			windowName: descriptor.windowName ?? '',
+		const result: TerminalSessionStartResult = {
+			workspaceId: descriptor.workspaceId,
+			terminalId: descriptor.terminalId,
 			sessionId: descriptor.sessionId,
-			owner: descriptor.owner ?? '',
-			canWrite: descriptor.canWrite,
-			running: descriptor.running,
-			currentOffset: descriptor.currentOffset,
-			transport: descriptor.transport,
+			socketUrl: descriptor.socketUrl,
+			socketToken: descriptor.socketToken,
+		};
+		await logWindowResolution(workspaceId, terminalId, 'transport_start_descriptor', {
+			sessionId: result.sessionId,
+			socketUrl: result.socketUrl,
+			socketTokenPresent: Boolean(result.socketToken),
 		});
-		return descriptor;
+		return result;
 	},
 	stop: stopWorkspaceTerminal,
-	fetchSessiondStatus,
+	fetchTerminalServiceStatus,
 	fetchSettings,
 	logDebug: logTerminalDebug,
 	openURL: async (url) => {

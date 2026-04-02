@@ -112,7 +112,7 @@ func TestStagedExecutableRelativePathsNoExecutables(t *testing.T) {
 	}
 }
 
-func TestStagedUpdateBinaryRelativePathsIncludesSessiond(t *testing.T) {
+func TestStagedUpdateBinaryRelativePathsIncludesAppExecutablesOnly(t *testing.T) {
 	t.Parallel()
 
 	stagedApp := filepath.Join(t.TempDir(), "workset.app")
@@ -128,9 +128,6 @@ func TestStagedUpdateBinaryRelativePathsIncludesSessiond(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(macosDir, "workset"), []byte("binary"), 0o755); err != nil {
 		t.Fatalf("WriteFile workset: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(resourcesDir, "workset-sessiond"), []byte("sessiond"), 0o755); err != nil {
-		t.Fatalf("WriteFile workset-sessiond: %v", err)
-	}
 	if err := os.WriteFile(filepath.Join(resourcesDir, "workset-updater"), []byte("updater"), 0o755); err != nil {
 		t.Fatalf("WriteFile workset-updater: %v", err)
 	}
@@ -141,7 +138,6 @@ func TestStagedUpdateBinaryRelativePathsIncludesSessiond(t *testing.T) {
 	}
 	want := []string{
 		filepath.Join("Contents", "MacOS", "workset"),
-		filepath.Join("Contents", "Resources", "workset-sessiond"),
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("unexpected update binary paths: got %v want %v", got, want)

@@ -3,20 +3,26 @@
 
 	interface Props {
 		direction?: 'horizontal' | 'vertical';
+		ratio?: number;
 		initialRatio?: number;
 		minRatio?: number;
 		maxRatio?: number;
+		collapsedSecond?: boolean;
 		storageKey?: string;
+		onRatioChange?: (ratio: number) => void;
 		children: Snippet;
 		second: Snippet;
 	}
 
 	const {
 		direction = 'horizontal',
+		ratio: controlledRatio = undefined,
 		initialRatio = 0.2,
 		minRatio = 0.1,
 		maxRatio = 0.9,
+		collapsedSecond = false,
 		storageKey,
+		onRatioChange = undefined,
 		children,
 		second,
 	}: Props = $props();
@@ -37,9 +43,10 @@
 		return initialRatio;
 	};
 
-	let ratio = $state(loadInitialRatio());
+	let internalRatio = $state(loadInitialRatio());
 	let isDragging = $state(false);
 	let containerRef = $state<HTMLDivElement | null>(null);
+	const ratio = $derived(controlledRatio ?? internalRatio);
 
 	const persist = (): void => {
 		if (!storageKey) return;
@@ -48,6 +55,14 @@
 		} catch {
 			// storage unavailable
 		}
+	};
+
+	const applyRatio = (nextRatio: number): void => {
+		const clampedRatio = Math.max(minRatio, Math.min(maxRatio, nextRatio));
+		if (controlledRatio === undefined) {
+			internalRatio = clampedRatio;
+		}
+		onRatioChange?.(clampedRatio);
 	};
 
 	const handlePointerDown = (event: PointerEvent): void => {
@@ -66,7 +81,7 @@
 		} else {
 			newRatio = (event.clientY - rect.top) / rect.height;
 		}
-		ratio = Math.max(minRatio, Math.min(maxRatio, newRatio));
+		applyRatio(newRatio);
 	};
 
 	const handlePointerUp = (event: PointerEvent): void => {
@@ -89,36 +104,38 @@
 		}
 		if (delta !== 0) {
 			event.preventDefault();
-			ratio = Math.max(minRatio, Math.min(maxRatio, ratio + delta));
+			applyRatio(ratio + delta);
 			persist();
 		}
 	};
 </script>
 
 <div class="resizable-panel {direction}" class:dragging={isDragging} bind:this={containerRef}>
-	<div class="panel-first" style="flex: {ratio} 1 0%">
+	<div class="panel-first" style="flex: {collapsedSecond ? 1 : ratio} 1 0%">
 		{@render children()}
 	</div>
-	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-	<div
-		class="panel-divider"
-		class:active={isDragging}
-		role="separator"
-		tabindex="0"
-		aria-orientation={direction === 'horizontal' ? 'vertical' : 'horizontal'}
-		aria-valuenow={Math.round(ratio * 100)}
-		aria-valuemin={Math.round(minRatio * 100)}
-		aria-valuemax={Math.round(maxRatio * 100)}
-		onpointerdown={handlePointerDown}
-		onpointermove={handlePointerMove}
-		onpointerup={handlePointerUp}
-		onpointercancel={handlePointerUp}
-		onkeydown={handleKeyDown}
-	></div>
-	<div class="panel-second" style="flex: {1 - ratio} 1 0%">
-		{@render second()}
-	</div>
+	{#if !collapsedSecond}
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+		<div
+			class="panel-divider"
+			class:active={isDragging}
+			role="separator"
+			tabindex="0"
+			aria-orientation={direction === 'horizontal' ? 'vertical' : 'horizontal'}
+			aria-valuenow={Math.round(ratio * 100)}
+			aria-valuemin={Math.round(minRatio * 100)}
+			aria-valuemax={Math.round(maxRatio * 100)}
+			onpointerdown={handlePointerDown}
+			onpointermove={handlePointerMove}
+			onpointerup={handlePointerUp}
+			onpointercancel={handlePointerUp}
+			onkeydown={handleKeyDown}
+		></div>
+		<div class="panel-second" style="flex: {1 - ratio} 1 0%">
+			{@render second()}
+		</div>
+	{/if}
 </div>
 
 <style>

@@ -12,13 +12,12 @@ import {
 	persistWorkspaceTerminalLayout as persistWorkspaceTerminalLayoutApi,
 	stopWorkspaceTerminal as stopWorkspaceTerminalApi,
 } from '../../api/terminal-layout';
-import {
-	restartSessiond as restartSessiondApi,
-	type SessiondStatusResponse,
-} from '../../api/settings';
 import { toErrorMessage as toErrorMessageApi } from '../../errors';
 import { generateTerminalName as generateTerminalNameApi } from '../../names';
-import { collectTerminalIdsFromUnknownLayout } from '../../terminal/terminalLayoutTree';
+import {
+	collectLayoutTerminalIdsFromUnknown,
+	LAYOUT_VERSION,
+} from '../../terminal/terminalLayoutModel';
 import type {
 	AppVersion,
 	TerminalLayout,
@@ -30,9 +29,6 @@ import type {
 import { DEFAULT_UPDATE_PREFERENCES } from '../../updatePreferences';
 
 export { DEFAULT_UPDATE_PREFERENCES } from '../../updatePreferences';
-
-const SESSIOND_RESTART_TIMEOUT_MS = 20000;
-const LAYOUT_VERSION = 2;
 
 export type SettingsPanelActionResult = {
 	success?: string;
@@ -61,7 +57,6 @@ export type UpdateBootstrapResult = {
 };
 
 export type SettingsPanelSideEffects = {
-	restartSessiond: () => Promise<SettingsPanelActionResult>;
 	resetTerminalLayout: (workspace: Workspace) => Promise<SettingsPanelActionResult>;
 	setUpdateChannel: (channel: string) => Promise<UpdateChannelResult>;
 	setAutoCheck: (enabled: boolean) => Promise<UpdateChannelResult>;
@@ -72,8 +67,6 @@ export type SettingsPanelSideEffects = {
 };
 
 export type SettingsPanelSideEffectDeps = {
-	restartSessiond: (reason?: string) => Promise<SessiondStatusResponse>;
-	setTimeout: (handler: () => void, timeoutMs: number) => number;
 	fetchWorkspaceTerminalLayout: (
 		workspaceId: string,
 	) => Promise<{ workspaceId: string; workspacePath: string; layout?: TerminalLayout }>;
@@ -118,7 +111,7 @@ const resolveId = (randomUUID?: () => string): string => {
 };
 
 export const collectTerminalIds = (layoutLike: unknown): string[] =>
-	collectTerminalIdsFromUnknownLayout(layoutLike);
+	collectLayoutTerminalIdsFromUnknown(layoutLike);
 
 const stopSessionsForLayout = async (
 	workspaceId: string,
@@ -151,11 +144,12 @@ export const buildFreshLayout = (
 			{
 				id: tabId,
 				title: generateTerminalName(workspaceName, 0),
-				root: {
-					id: paneId,
-					kind: 'pane',
-					terminalId,
-				},
+				panes: [
+					{
+						id: paneId,
+						terminalId,
+					},
+				],
 				focusedPaneId: paneId,
 			},
 		],
@@ -167,8 +161,6 @@ export const createSettingsPanelSideEffects = (
 	overrides: Partial<SettingsPanelSideEffectDeps> = {},
 ): SettingsPanelSideEffects => {
 	const deps: SettingsPanelSideEffectDeps = {
-		restartSessiond: restartSessiondApi,
-		setTimeout: (handler, timeoutMs) => window.setTimeout(handler, timeoutMs),
 		fetchWorkspaceTerminalLayout: fetchWorkspaceTerminalLayoutApi,
 		createWorkspaceTerminal: createWorkspaceTerminalApi,
 		persistWorkspaceTerminalLayout: persistWorkspaceTerminalLayoutApi,
@@ -186,36 +178,6 @@ export const createSettingsPanelSideEffects = (
 	};
 
 	return {
-		restartSessiond: async () => {
-			try {
-				const status = await Promise.race([
-					deps.restartSessiond('settings_panel'),
-					new Promise<SessiondStatusResponse>((_, reject) => {
-						deps.setTimeout(() => {
-							reject(new Error('Session daemon restart timed out.'));
-						}, SESSIOND_RESTART_TIMEOUT_MS);
-					}),
-				]);
-				if (status?.available) {
-					return {
-						success: status.warning
-							? `Session daemon restarted. ${status.warning}`
-							: 'Session daemon restarted.',
-					};
-				}
-				const warning = status?.warning ? ` ${status.warning}` : '';
-				return {
-					error: status?.error
-						? `Failed to restart: ${status.error}${warning}`
-						: `Failed to restart session daemon.${warning}`,
-				};
-			} catch (error) {
-				return {
-					error: `Failed to restart: ${deps.toErrorMessage(error, 'Failed to update settings.')}`,
-				};
-			}
-		},
-
 		resetTerminalLayout: async (workspace) => {
 			try {
 				let layoutToStop: TerminalLayout | null = null;

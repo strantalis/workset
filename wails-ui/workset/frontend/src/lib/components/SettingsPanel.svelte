@@ -59,7 +59,6 @@
 	let snapshot: SettingsSnapshot | null = $state(null);
 	let loading = $state(true);
 	let saving = $state(false);
-	let restartingSessiond = $state(false);
 	let resettingTerminalLayout = $state(false);
 	let error: string | null = $state(null);
 	let success: string | null = $state(null);
@@ -143,7 +142,7 @@
 				field.id === 'terminalFontSize' ||
 				field.id === 'terminalCursorBlink',
 		);
-		const shouldRestartSessiond = updates.some(
+		const hasTerminalServiceConfigChanges = updates.some(
 			(field) => field.id === 'terminalProtocolLog' || field.id === 'terminalIdleTimeout',
 		);
 		const statusMessage =
@@ -172,41 +171,18 @@
 				const { refreshTerminalDefaults } = await import('../terminal/terminalService');
 				await refreshTerminalDefaults();
 			}
-			if (shouldRestartSessiond) {
-				const restartResult = await sideEffects.restartSessiond();
-				if (restartResult.error) {
-					error = `Saved settings, but failed to restart session daemon to apply terminal settings: ${restartResult.error}`;
-				} else if (restartResult.success) {
-					success = `${statusMessage} ${restartResult.success}`;
-				}
-			}
-
-			if (!error && !success) {
-				success = statusMessage;
+			if (!error) {
+				success = hasTerminalServiceConfigChanges
+					? `${statusMessage} Restart Workset to apply terminal service changes.`
+					: statusMessage;
 			}
 		}
 
 		saving = false;
 	};
 
-	const handleRestartSessiond = async (): Promise<void> => {
-		if (saving || restartingSessiond) {
-			return;
-		}
-		restartingSessiond = true;
-		error = null;
-		success = null;
-		try {
-			const result = await sideEffects.restartSessiond();
-			error = result.error ?? null;
-			success = result.success ?? null;
-		} finally {
-			restartingSessiond = false;
-		}
-	};
-
 	const handleResetTerminalLayout = async (): Promise<void> => {
-		if (saving || restartingSessiond || resettingTerminalLayout) {
+		if (saving || resettingTerminalLayout) {
 			return;
 		}
 		const thread = $activeWorkspace;
@@ -376,9 +352,7 @@
 							{draft}
 							{baseline}
 							onUpdate={updateField}
-							onRestartSessiond={handleRestartSessiond}
 							onResetTerminalLayout={handleResetTerminalLayout}
-							{restartingSessiond}
 							{resettingTerminalLayout}
 						/>
 					{:else if activeSection === 'github'}

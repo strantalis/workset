@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
+	import type { TerminalSnapshotLike } from './terminalEmulatorContracts';
 	import {
 		detachTerminal,
 		focusTerminalInstance,
@@ -14,6 +15,7 @@
 		workspaceId: string;
 		workspaceName: string;
 		terminalId: string;
+		initialSnapshot?: TerminalSnapshotLike | null;
 		active?: boolean;
 		terminalContainer?: HTMLDivElement | null;
 		onStateChange?: (state: TerminalViewState) => void;
@@ -25,6 +27,8 @@
 		workspaceId,
 		// eslint-disable-next-line prefer-const
 		terminalId,
+		// eslint-disable-next-line prefer-const
+		initialSnapshot = null,
 		// eslint-disable-next-line prefer-const
 		active = true,
 		// eslint-disable-next-line prefer-const
@@ -39,6 +43,7 @@
 	let lastSyncSnapshot: {
 		workspaceId: string;
 		terminalId: string;
+		initialSnapshot: TerminalSnapshotLike | null;
 		container: HTMLDivElement | null;
 		active: boolean;
 	} | null = null;
@@ -46,6 +51,7 @@
 	const deriveSyncSource = (current: {
 		workspaceId: string;
 		terminalId: string;
+		initialSnapshot: TerminalSnapshotLike | null;
 		container: HTMLDivElement | null;
 		active: boolean;
 	}): string => {
@@ -72,7 +78,7 @@
 		if (previous.active !== current.active) {
 			return 'controller.active_change';
 		}
-		return 'controller.effect_replay';
+		return 'controller.effect_repeat';
 	};
 
 	const bindStore = (workspace: string, terminal: string): void => {
@@ -105,6 +111,7 @@
 		const snapshot = {
 			workspaceId,
 			terminalId,
+			initialSnapshot,
 			container: terminalContainer,
 			active,
 		};
@@ -114,6 +121,7 @@
 			terminalId,
 			container: terminalContainer,
 			active,
+			initialSnapshot,
 			source,
 		});
 		lastSyncSnapshot = snapshot;

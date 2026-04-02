@@ -133,35 +133,23 @@ const appMock = vi.hoisted(() => ({
 		workspaceId: 'ws',
 		terminalId: 'term',
 		sessionId: 'ws::term',
-		windowName: 'main',
-		owner: 'main',
-		canWrite: true,
-		running: true,
-		currentOffset: 0,
 		socketUrl: 'ws://127.0.0.1:9001/stream',
 		socketToken: 'token',
-		transport: 'sessiond-websocket',
 	}),
 	StopWorkspaceTerminalForWindow: vi.fn().mockResolvedValue(undefined),
-	GetSessiondStatus: vi.fn().mockResolvedValue({ available: false }),
+	GetTerminalServiceStatus: vi.fn().mockResolvedValue({ available: false }),
 	GetSettings: vi.fn().mockResolvedValue({ defaults: {} }),
 }));
 
 const apiMock = vi.hoisted(() => ({
-	fetchSessiondStatus: vi.fn().mockResolvedValue({ available: false }),
+	fetchTerminalServiceStatus: vi.fn().mockResolvedValue({ available: false }),
 	fetchSettings: vi.fn().mockResolvedValue({ defaults: {} }),
 	fetchTerminalBootstrap: vi.fn().mockResolvedValue({
 		workspaceId: 'ws',
 		terminalId: 'term',
 		sessionId: 'ws::term',
-		windowName: 'main',
-		owner: 'main',
-		canWrite: true,
-		running: true,
-		currentOffset: 0,
 		socketUrl: 'ws://127.0.0.1:9001/stream',
 		socketToken: 'token',
-		transport: 'sessiond-websocket',
 	}),
 	logTerminalDebug: vi.fn().mockResolvedValue(undefined),
 	stopWorkspaceTerminal: vi.fn().mockResolvedValue(undefined),
@@ -176,7 +164,7 @@ vi.mock('@strantalis/workset-ghostty-web', () => ({
 vi.mock('@wailsio/runtime', () => runtimeMock);
 vi.mock('../../../bindings/workset/app', () => appMock);
 vi.mock('../api/settings', () => ({
-	fetchSessiondStatus: apiMock.fetchSessiondStatus,
+	fetchTerminalServiceStatus: apiMock.fetchTerminalServiceStatus,
 	fetchSettings: apiMock.fetchSettings,
 }));
 vi.mock('../api/terminal-layout', () => ({
@@ -270,7 +258,7 @@ describe('terminalService resize flow', () => {
 		});
 		const socket = createdSockets[0];
 		socket.open();
-		socket.emitText({ type: 'ready', ready: { running: true } });
+		socket.emitText({ type: 'ready' });
 		await vi.waitFor(() => {
 			expect(apiMock.fetchTerminalBootstrap).toHaveBeenCalled();
 		});
@@ -304,7 +292,6 @@ describe('terminalService resize flow', () => {
 					protocolVersion: 2,
 					type: 'input',
 					data: '\x1b[<64;10;10M',
-					owner: 'main',
 				}),
 			);
 		});
@@ -357,7 +344,7 @@ describe('terminalService resize flow', () => {
 		const terminal = createdTerminals[0];
 		const socket = createdSockets[0];
 		socket.open();
-		socket.emitText({ type: 'ready', ready: { running: true } });
+		socket.emitText({ type: 'ready' });
 
 		terminal.write.mockClear();
 		socket.emitBinary(encodeChunk(5, 'hello '));
@@ -387,7 +374,7 @@ describe('terminalService resize flow', () => {
 
 		const socket = createdSockets[0];
 		socket.open();
-		socket.emitText({ type: 'ready', ready: { running: true } });
+		socket.emitText({ type: 'ready' });
 		await vi.waitFor(() => {
 			expect(apiMock.fetchTerminalBootstrap).toHaveBeenCalled();
 		});
@@ -399,7 +386,6 @@ describe('terminalService resize flow', () => {
 			JSON.stringify({
 				protocolVersion: 2,
 				type: 'stop',
-				owner: 'main',
 			}),
 		);
 		expect(apiMock.stopWorkspaceTerminal).not.toHaveBeenCalled();
@@ -422,7 +408,7 @@ describe('terminalService resize flow', () => {
 
 		const socket = createdSockets[0];
 		socket.open();
-		socket.emitText({ type: 'ready', ready: { running: true } });
+		socket.emitText({ type: 'ready' });
 		await vi.waitFor(() => {
 			expect(apiMock.fetchTerminalBootstrap).toHaveBeenCalled();
 		});
@@ -477,7 +463,7 @@ describe('terminalService resize flow', () => {
 			});
 			const socket = createdSockets[0];
 			socket.open();
-			socket.emitText({ type: 'ready', ready: { running: true } });
+			socket.emitText({ type: 'ready' });
 			await vi.runAllTimersAsync();
 			apiMock.fetchTerminalBootstrap.mockClear();
 			socket.sent.length = 0;

@@ -14,9 +14,8 @@ const api = {
 
 vi.mock('../../api/settings', () => ({
 	fetchSettings: vi.fn(),
-	fetchSessiondStatus: vi.fn(),
 	setDefaultSetting: vi.fn(),
-	restartSessiond: vi.fn(),
+	fetchTerminalServiceStatus: vi.fn(),
 }));
 
 vi.mock('../../api/updates', () => ({
@@ -206,7 +205,7 @@ describe('SettingsPanel About Section', () => {
 		expect(getByText('dev')).toBeInTheDocument();
 	});
 
-	test('restarts session daemon when terminal idle timeout changes', async () => {
+	test('shows relaunch guidance when terminal service settings change', async () => {
 		vi.mocked(api.fetchSettings).mockResolvedValue({
 			configPath: '/test/config.yaml',
 			defaults: buildDefaults(),
@@ -217,7 +216,6 @@ describe('SettingsPanel About Section', () => {
 			dirty: false,
 		});
 		vi.mocked(api.setDefaultSetting).mockResolvedValue(undefined);
-		vi.mocked(api.restartSessiond).mockResolvedValue({ available: true });
 
 		const { getByText, getByLabelText, getByRole, queryByText } = render(SettingsPanel, {
 			props: {
@@ -237,7 +235,9 @@ describe('SettingsPanel About Section', () => {
 		await waitFor(() => {
 			expect(api.setDefaultSetting).toHaveBeenCalledWith('defaults.terminal_idle_timeout', '15m');
 		});
-		expect(api.restartSessiond).toHaveBeenCalledTimes(1);
+		expect(
+			getByText('Saved 1 change. Restart Workset to apply terminal service changes.'),
+		).toBeInTheDocument();
 	});
 
 	test('renders About section even when version fetch fails', async () => {

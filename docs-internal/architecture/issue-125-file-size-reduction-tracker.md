@@ -1,5 +1,7 @@
 # Issue #125 File-Size Reduction Tracker
 
+> Historical archive: this tracker captures older file-size decomposition work and still references pre-simplification terminal architecture. It is preserved for background only.
+
 Owner: Sean + Codex  
 Source issue: `https://github.com/strantalis/workset/issues/125`  
 Last updated: 2026-02-07 (main-agent pass 46)
@@ -20,7 +22,7 @@ Reduce architecture risk from oversized files by splitting high-complexity modul
 Largest files by LOC right now:
 
 - `wails-ui/workset/app_diffs.go` (926)
-- `pkg/sessiond/terminal_filter.go` (889)
+- `pkg/terminalservice/terminal_filter.go` (889)
 - `wails-ui/workset/repo_diff_watcher.go` (816)
 - `internal/git/cli.go` (795)
 - `wails-ui/workset/frontend/src/lib/components/WorkspaceActionModal.svelte` (699)
@@ -29,7 +31,7 @@ Largest files by LOC right now:
 - `internal/ops/remove.go` (680)
 - `cmd/workset/pr.go` (678)
 - `wails-ui/workset/frontend/src/lib/components/TerminalWorkspace.svelte` (677)
-- `pkg/sessiond/server.go` (669)
+- `pkg/terminalservice/server.go` (669)
 - `wails-ui/workset/frontend/src/lib/components/settings/sections/SkillManager.svelte` (663)
 - `pkg/worksetapi/github_service_read_helpers_test.go` (662)
 - `wails-ui/workset/app_github.go` (641)
@@ -305,7 +307,7 @@ Verification:
 
 Primary file:
 
-- `pkg/sessiond/session.go`
+- `pkg/terminalservice/session.go`
 
 Target architecture:
 
@@ -316,19 +318,19 @@ Target architecture:
 
 Tasks:
 
-- [x] Extract terminal filter + protocol parsing/logging block into `pkg/sessiond/terminal_filter.go`.
-- [x] Extract stream/subscriber fanout + credit handling into `pkg/sessiond/stream.go`.
-- [x] Extract persistence/snapshot + transcript/recording subsystem into `pkg/sessiond/session_persist.go`.
+- [x] Extract terminal filter + protocol parsing/logging block into `pkg/terminalservice/terminal_filter.go`.
+- [x] Extract stream/subscriber fanout + credit handling into `pkg/terminalservice/stream.go`.
+- [x] Extract persistence/snapshot + transcript/recording subsystem into `pkg/terminalservice/session_persist.go`.
 - [x] Extract protocol message handling package.
-- [x] Extract backlog/snapshot response shaping into `pkg/sessiond/session_response.go`.
+- [x] Extract backlog/snapshot response shaping into `pkg/terminalservice/session_response.go`.
 - [x] Extract lifecycle + process supervision package.
 - [x] Keep public session behavior and API unchanged.
 - [x] Add churn tests around create/stop/restore.
 
 Verification:
 
-- [x] `go test ./pkg/sessiond -count=1`
-- [x] `go test ./pkg/sessiond -run "TestRepeatedCreateStop|TestSessionCloseWithReasonReapsProcess|TestSessiondSnapshotAndBacklog|TestIdleCloseRecreateSession" -count=1`
+- [x] `go test ./pkg/terminalservice -count=1`
+- [x] `go test ./pkg/terminalservice -run "TestRepeatedCreateStop|TestSessionCloseWithReasonReapsProcess|TestSessiondSnapshotAndBacklog|TestIdleCloseRecreateSession" -count=1`
 
 ## `#120` BE-GITHUB
 
@@ -457,3 +459,4 @@ Verification:
 
 1. Keep threshold at 1000 and reject new non-allowlisted violations in CI/local checks.
 2. Treat deeper decomposition of current 700-1000 LOC files as optional architecture work, not policy-blocking work.
+> Historical archive: this tracker captures older file-size decomposition work and still references pre-simplification terminal architecture. It is preserved for background only.

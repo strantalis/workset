@@ -29,7 +29,6 @@
 		EVENT_WORKSPACE_POPOUT_OPENED,
 	} from './lib/events';
 	import { subscribeRepoDiffEvent } from './lib/repoDiffService';
-	import { releaseWorkspaceTerminals } from './lib/terminal/terminalService';
 	import { shouldClearPreviousWorkspaceTerminalActivity } from './lib/terminal/terminalActivity';
 	import { subscribeTerminalActivity } from './lib/terminal/terminalActivityBus';
 	import { subscribeWailsEvent } from './lib/wailsEventRegistry';
@@ -171,21 +170,9 @@
 			.sort((left, right) => left.id.localeCompare(right.id));
 	};
 
-	const releaseWorksetTerminals = (workspaceId: string): void => {
-		const threads = getWorksetThreads(workspaceId);
-		if (threads.length === 0) {
-			releaseWorkspaceTerminals(workspaceId);
-			return;
-		}
-		for (const thread of threads) {
-			releaseWorkspaceTerminals(thread.id);
-		}
-	};
-
 	const popoutManager = createPopoutManager({
 		popoutMode,
 		getWorksetThreads,
-		releaseWorksetTerminals,
 	});
 
 	const visibleWorkspaces = $derived.by(() => {

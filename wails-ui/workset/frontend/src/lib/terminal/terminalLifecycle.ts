@@ -5,8 +5,8 @@ export type TerminalLifecycleSnapshot = {
 	message: string;
 	health: TerminalHealthState;
 	healthMessage: string;
-	sessiondAvailable: boolean | null;
-	sessiondChecked: boolean;
+	terminalServiceAvailable: boolean | null;
+	terminalServiceChecked: boolean;
 };
 
 type StartupTimeoutOptions = {
@@ -43,8 +43,8 @@ export const createTerminalLifecycle = (deps: TerminalLifecycleDependencies) => 
 	const startedSessions = new Set<string>();
 	const startInFlight = new Set<string>();
 
-	let sessiondAvailable: boolean | null = null;
-	let sessiondChecked = false;
+	let terminalServiceAvailable: boolean | null = null;
+	let terminalServiceChecked = false;
 	let statusMap: Record<string, string> = {};
 	let messageMap: Record<string, string> = {};
 	let inputMap: Record<string, boolean> = {};
@@ -82,8 +82,8 @@ export const createTerminalLifecycle = (deps: TerminalLifecycleDependencies) => 
 			message: messageMap[id] ?? '',
 			health: healthMap[id] ?? 'unknown',
 			healthMessage: healthMessageMap[id] ?? '',
-			sessiondAvailable,
-			sessiondChecked,
+			terminalServiceAvailable,
+			terminalServiceChecked,
 		}),
 		setHealth,
 		setStatus: (id: string, status: string): void => {
@@ -124,15 +124,15 @@ export const createTerminalLifecycle = (deps: TerminalLifecycleDependencies) => 
 			startedSessions.delete(id);
 			startInFlight.delete(id);
 		},
-		isSessiondChecked: (): boolean => sessiondChecked,
-		isSessiondAvailable: (): boolean | null => sessiondAvailable,
-		setSessiondStatus: (available: boolean | null): void => {
-			sessiondAvailable = available;
-			sessiondChecked = true;
+		isTerminalServiceChecked: (): boolean => terminalServiceChecked,
+		isTerminalServiceAvailable: (): boolean | null => terminalServiceAvailable,
+		setTerminalServiceStatus: (available: boolean | null): void => {
+			terminalServiceAvailable = available;
+			terminalServiceChecked = true;
 			deps.emitAllStates();
 		},
-		resetSessiondChecked: (): void => {
-			sessiondChecked = false;
+		resetTerminalServiceChecked: (): void => {
+			terminalServiceChecked = false;
 		},
 		scheduleStartupTimeout: (id: string, options: StartupTimeoutOptions): void => {
 			clearStartupTimeout(id);

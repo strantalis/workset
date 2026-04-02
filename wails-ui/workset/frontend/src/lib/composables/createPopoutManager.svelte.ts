@@ -23,12 +23,10 @@ type PopoutManagerOptions = {
 	popoutMode: boolean;
 	/** Get all current workspaces for thread resolution. */
 	getWorksetThreads: (workspaceId: string) => Workspace[];
-	/** Release terminals for a workset when popping out. */
-	releaseWorksetTerminals: (workspaceId: string) => void;
 };
 
 export function createPopoutManager(options: PopoutManagerOptions): PopoutManager {
-	const { popoutMode, getWorksetThreads, releaseWorksetTerminals } = options;
+	const { getWorksetThreads } = options;
 
 	let openPopouts = $state<Record<string, string>>({});
 	let busy = $state(false);
@@ -58,9 +56,6 @@ export function createPopoutManager(options: PopoutManagerOptions): PopoutManage
 		if (!id) return;
 		if (open) {
 			openPopouts = { ...openPopouts, [id]: windowName };
-			if (!popoutMode) {
-				releaseWorksetTerminals(id);
-			}
 			return;
 		}
 		if (openPopouts[id] === undefined) return;
@@ -78,11 +73,6 @@ export function createPopoutManager(options: PopoutManagerOptions): PopoutManage
 				next[state.workspaceId] = state.windowName;
 			}
 			openPopouts = next;
-			if (!popoutMode) {
-				for (const workspaceId of Object.keys(next)) {
-					releaseWorksetTerminals(workspaceId);
-				}
-			}
 		} catch {
 			// ignore state probe failures
 		}

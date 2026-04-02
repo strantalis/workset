@@ -7,11 +7,11 @@ import (
 )
 
 func TestStartWorkspaceTerminalRecreatesRemoteClosedSession(t *testing.T) {
-	client, cleanup := startSessiondClientForTerminalOwnershipTest(t)
+	client, cleanup := startTerminalServiceClientForTerminalOwnershipTest(t)
 	defer cleanup()
 
 	app := NewApp()
-	app.sessiondClient = client
+	app.terminalServiceClient = client
 
 	workspaceID := "test-workspace"
 	terminalID := "term-1"

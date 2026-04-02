@@ -77,7 +77,7 @@ func (a *App) startWorkspaceTerminal(workspaceID, terminalID string) error {
 		}
 
 		session := newTerminalSession(workspaceID, terminalID, root)
-		client, err := a.getSessiondClient()
+		client, err := a.getTerminalServiceClient()
 		if err != nil {
 			return err
 		}
@@ -123,7 +123,7 @@ func (a *App) LogTerminalDebug(payload TerminalDebugPayload) {
 	logTerminalDebug(payload)
 }
 
-func (a *App) stopWorkspaceTerminalWithOwner(workspaceID, terminalID, owner string) error {
+func (a *App) stopWorkspaceTerminal(workspaceID, terminalID string) error {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
 		return fmt.Errorf("workspace id required")
@@ -144,7 +144,7 @@ func (a *App) stopWorkspaceTerminalWithOwner(workspaceID, terminalID, owner stri
 	session.mu.Unlock()
 	if client != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		err := client.StopWithOwner(ctx, sessionID, owner)
+		err := client.Stop(ctx, sessionID)
 		cancel()
 		if err != nil {
 			if !isTransientTerminalCallError(err) {
@@ -231,7 +231,7 @@ func (a *App) invalidateTerminalSessions(_ string) {
 	}
 	a.terminalMu.Unlock()
 	for _, session := range sessions {
-		_ = session.CloseWithReason("sessiond reset")
+		_ = session.CloseWithReason("terminal service reset")
 		session.mu.Lock()
 		session.client = nil
 		session.mu.Unlock()

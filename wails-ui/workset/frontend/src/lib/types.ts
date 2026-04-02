@@ -124,21 +124,21 @@ export type Thread = {
 
 export type Workspace = Thread;
 
+export type TerminalSplitDirection = 'horizontal' | 'vertical';
+
+export type TerminalLayoutPane = {
+	id: string;
+	terminalId: string;
+	snapshot?: TerminalSnapshotLike;
+};
+
 export type TerminalLayoutTab = {
 	id: string;
 	title: string;
-	root: TerminalLayoutNode;
+	panes: TerminalLayoutPane[];
+	splitDirection?: TerminalSplitDirection;
+	splitRatio?: number;
 	focusedPaneId?: string;
-};
-
-export type TerminalLayoutNode = {
-	id: string;
-	kind: 'pane' | 'split';
-	terminalId?: string;
-	direction?: 'row' | 'column';
-	ratio?: number;
-	first?: TerminalLayoutNode;
-	second?: TerminalLayoutNode;
 };
 
 export type TerminalLayout = {
@@ -499,3 +499,4 @@ export type RemoteInfo = {
 	owner: string;
 	repo: string;
 };
+import type { TerminalSnapshotLike } from './terminal/terminalEmulatorContracts';

@@ -65,25 +65,22 @@ describe('terminalSnapshotManager', () => {
 		const manager = createTerminalSnapshotManager({
 			terminalHandles,
 			getOffset: () => 0,
-			canPublish: () => true,
-			publish: vi.fn(),
 			beforeRestore,
 			afterRestore,
 		});
 
 		const snapshot = createSnapshot();
-		await manager.restore('ws::term', snapshot, { requestedOffset: 10 });
+		await manager.restore('ws::term', snapshot);
 
 		expect(beforeRestore).toHaveBeenCalledWith('ws::term', snapshot);
 		expect(terminal.restoreState).toHaveBeenCalledWith(snapshot);
 		expect(afterRestore).toHaveBeenCalledWith('ws::term', snapshot);
 	});
 
-	it('forwards awaitAck when flushing snapshots', async () => {
+	it('captures snapshots without publishing them', () => {
 		const terminal = createTerminal();
 		const snapshot = createSnapshot();
 		terminal.serializeState = vi.fn(() => snapshot);
-		const publish = vi.fn(async () => undefined);
 		const manager = createTerminalSnapshotManager({
 			terminalHandles: new Map([
 				[
@@ -95,13 +92,9 @@ describe('terminalSnapshotManager', () => {
 				],
 			]),
 			getOffset: () => 22,
-			canPublish: () => true,
-			publish,
 		});
 
-		await manager.flush('ws::term', 'workspace_popout', true);
-
-		expect(publish).toHaveBeenCalledWith('ws::term', snapshot, true);
+		expect(manager.capture('ws::term')).toEqual(snapshot);
 	});
 
 	it('queues restore until the terminal is opened', async () => {
@@ -114,12 +107,10 @@ describe('terminalSnapshotManager', () => {
 		const manager = createTerminalSnapshotManager({
 			terminalHandles,
 			getOffset: () => 0,
-			canPublish: () => true,
-			publish: vi.fn(),
 		});
 
 		const snapshot = createSnapshot();
-		await manager.restore('ws::term', snapshot, { requestedOffset: 10 });
+		await manager.restore('ws::term', snapshot);
 		expect(terminal.restoreState).not.toHaveBeenCalled();
 
 		handle.opened = true;
@@ -127,10 +118,9 @@ describe('terminalSnapshotManager', () => {
 		expect(terminal.restoreState).toHaveBeenCalledWith(snapshot);
 	});
 
-	it('skips snapshot publish when the terminal is not open', async () => {
+	it('skips snapshot capture when the terminal is not open', () => {
 		const terminal = createTerminal();
 		terminal.serializeState = vi.fn(() => createSnapshot());
-		const publish = vi.fn(async () => undefined);
 		const manager = createTerminalSnapshotManager({
 			terminalHandles: new Map([
 				[
@@ -142,13 +132,9 @@ describe('terminalSnapshotManager', () => {
 				],
 			]),
 			getOffset: () => 22,
-			canPublish: () => true,
-			publish,
 		});
 
-		await manager.flush('ws::term', 'detach', true);
-
+		expect(manager.capture('ws::term')).toBeNull();
 		expect(terminal.serializeState).not.toHaveBeenCalled();
-		expect(publish).not.toHaveBeenCalled();
 	});
 });

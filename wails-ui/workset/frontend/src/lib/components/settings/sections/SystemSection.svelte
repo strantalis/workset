@@ -19,9 +19,7 @@
 		draft: Record<FieldId, string>;
 		baseline: Record<FieldId, string>;
 		onUpdate: (id: FieldId, value: string) => void;
-		onRestartSessiond: () => void;
 		onResetTerminalLayout: () => void;
-		restartingSessiond?: boolean;
 		resettingTerminalLayout?: boolean;
 	}
 
@@ -29,9 +27,7 @@
 		draft,
 		baseline,
 		onUpdate,
-		onRestartSessiond,
 		onResetTerminalLayout,
-		restartingSessiond = false,
 		resettingTerminalLayout = false,
 	}: Props = $props();
 
@@ -46,23 +42,8 @@
 	let envError = $state<string | null>(null);
 
 	// --- Maintenance completion states ---
-	let restartCompleted = $state(false);
-	let previousRestarting = $state(false);
 	let resetCompleted = $state(false);
 	let previousResetting = $state(false);
-
-	$effect(() => {
-		const isRestarting = restartingSessiond;
-		if (previousRestarting && !isRestarting) {
-			restartCompleted = true;
-			const timer = setTimeout(() => {
-				restartCompleted = false;
-			}, 1500);
-			previousRestarting = isRestarting;
-			return () => clearTimeout(timer);
-		}
-		previousRestarting = isRestarting;
-	});
 
 	$effect(() => {
 		const isResetting = resettingTerminalLayout;
@@ -279,28 +260,6 @@
 		<p class="subsection-hint">These actions take effect immediately — no need to save.</p>
 
 		<div class="maintenance-actions">
-			<div class="maintenance-action" class:action-completed={restartCompleted}>
-				<div class="action-info">
-					<span class="action-label">Restart daemon</span>
-					<span class="action-hint ws-hint"
-						>Restart if terminals get stuck or after changing daemon settings.</span
-					>
-				</div>
-				<button
-					class="action-btn"
-					type="button"
-					onclick={onRestartSessiond}
-					disabled={restartingSessiond}
-					class:busy={restartingSessiond}
-				>
-					{#if restartingSessiond}
-						<span class="spin-icon">⟳</span> Restarting…
-					{:else}
-						Restart
-					{/if}
-				</button>
-			</div>
-
 			<div class="maintenance-action" class:action-completed={resetCompleted}>
 				<div class="action-info">
 					<span class="action-label">Reset terminal layout</span>
@@ -564,11 +523,6 @@
 	.action-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
-	}
-
-	.spin-icon {
-		display: inline-block;
-		animation: spin 1s linear infinite;
 	}
 
 	.action-btn :global(.spin) {

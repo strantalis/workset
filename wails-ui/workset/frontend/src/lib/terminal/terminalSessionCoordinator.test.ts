@@ -1,26 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createTerminalSessionCoordinator } from './terminalSessionCoordinator';
-import type { TerminalSessionDescriptor } from '../../../bindings/workset/models';
+import type { TerminalSessionStartResult } from './terminalTransport';
 
-const defaultDescriptor: TerminalSessionDescriptor = {
+const defaultDescriptor: TerminalSessionStartResult = {
 	workspaceId: 'ws',
 	terminalId: 'term',
 	sessionId: 'ws::term',
-	windowName: 'main',
-	owner: 'main',
-	canWrite: true,
-	running: true,
-	currentOffset: 0,
 	socketUrl: 'ws://127.0.0.1:9001/stream',
 	socketToken: 'token',
-	transport: 'sessiond-websocket',
 };
 
 const createCoordinator = (input?: {
-	start?: () => Promise<TerminalSessionDescriptor>;
+	start?: () => Promise<TerminalSessionStartResult>;
 	write?: () => Promise<void>;
 	pendingInput?: Map<string, string>;
-	onSessionReady?: (id: string, descriptor: TerminalSessionDescriptor) => void;
+	onSessionReady?: (id: string, descriptor: TerminalSessionStartResult) => void;
 }) => {
 	const started = new Set<string>();
 	const startInFlight = new Set<string>();
@@ -38,14 +32,14 @@ const createCoordinator = (input?: {
 		start: vi.fn(input?.start ?? (async () => defaultDescriptor)),
 		write: vi.fn(input?.write ?? (async () => undefined)),
 		fetchSettings: vi.fn(async () => null),
-		fetchSessiondStatus: vi.fn(async () => null),
+		fetchTerminalServiceStatus: vi.fn(async () => null),
 	};
 
 	const coordinator = createTerminalSessionCoordinator({
 		lifecycle: {
 			hasStarted: (id) => started.has(id),
 			hasStartInFlight: (id) => startInFlight.has(id),
-			isSessiondAvailable: () => true,
+			isTerminalServiceAvailable: () => true,
 			markStarted: (id) => started.add(id),
 			markStopped: (id) => started.delete(id),
 			setStatusAndMessage,
@@ -54,7 +48,7 @@ const createCoordinator = (input?: {
 			clearStartInFlight,
 			clearStartupTimeout,
 			dropHealthCheck: vi.fn(),
-			setSessiondStatus: vi.fn(),
+			setTerminalServiceStatus: vi.fn(),
 		},
 		getWorkspaceId: () => 'ws',
 		getTerminalId: () => 'term',

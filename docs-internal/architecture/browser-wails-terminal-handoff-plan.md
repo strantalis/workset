@@ -2,7 +2,9 @@
 description: Comprehensive hybrid architecture plan with worksetapi as shared domain core and terminal handoff across browser and Wails clients.
 ---
 
-# Browser + Wails Terminal Handoff Plan
+# Historical: Browser + Wails Terminal Handoff Plan
+
+> Historical archive: this plan predates the embedded terminal-service hard cut and no longer reflects current product direction. It is preserved for background only. For the current runtime, use `docs-internal/architecture/terminal.md`.
 
 ## Objective
 
@@ -26,7 +28,7 @@ This means the migration is mostly adapter work for non-terminal features, plus 
 ## Non-goals (initial rollout)
 
 - Rewriting `sessiond` internals.
-- Exposing `sessiond.sock` directly over the network.
+- Exposing `terminal-service.sock` directly over the network.
 - Requiring Linux containers to mirror macOS host paths/tooling.
 - Replacing CLI flows; CLI continues using `worksetapi` directly.
 

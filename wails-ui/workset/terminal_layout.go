@@ -10,23 +10,21 @@ import (
 	"time"
 )
 
-const terminalLayoutStoreVersion = 2
+const terminalLayoutStoreVersion = 3
 
-type TerminalLayoutTab struct {
-	ID            string              `json:"id"`
-	Title         string              `json:"title"`
-	Root          *TerminalLayoutNode `json:"root"`
-	FocusedPaneID string              `json:"focusedPaneId,omitempty"`
+type TerminalLayoutPane struct {
+	ID         string          `json:"id"`
+	TerminalID string          `json:"terminalId"`
+	Snapshot   json.RawMessage `json:"snapshot,omitempty"`
 }
 
-type TerminalLayoutNode struct {
-	ID          string              `json:"id"`
-	Kind        string              `json:"kind"`
-	TerminalID  string              `json:"terminalId,omitempty"`
-	Direction   string              `json:"direction,omitempty"`
-	Ratio       float64             `json:"ratio,omitempty"`
-	First       *TerminalLayoutNode `json:"first,omitempty"`
-	Second      *TerminalLayoutNode `json:"second,omitempty"`
+type TerminalLayoutTab struct {
+	ID             string               `json:"id"`
+	Title          string               `json:"title"`
+	Panes          []TerminalLayoutPane `json:"panes"`
+	SplitDirection string               `json:"splitDirection,omitempty"`
+	SplitRatio     float64              `json:"splitRatio,omitempty"`
+	FocusedPaneID  string               `json:"focusedPaneId,omitempty"`
 }
 
 type TerminalLayout struct {
@@ -77,7 +75,7 @@ func (a *App) GetWorkspaceTerminalLayout(workspaceID string) (TerminalLayoutPayl
 		return TerminalLayoutPayload{}, err
 	}
 	entry, ok := store.Layouts[path]
-	if !ok || len(entry.Layout.Tabs) == 0 {
+	if !ok || entry.Layout.Version != terminalLayoutStoreVersion || len(entry.Layout.Tabs) == 0 {
 		return TerminalLayoutPayload{WorkspaceID: workspaceID, WorkspacePath: path}, nil
 	}
 	layout := entry.Layout

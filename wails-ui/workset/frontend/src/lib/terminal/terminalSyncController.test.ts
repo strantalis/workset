@@ -48,7 +48,7 @@ describe('terminalSyncController', () => {
 			container,
 			active: true,
 		});
-		expect(attachTerminal).toHaveBeenCalledWith('ws::term', container, true);
+		expect(attachTerminal).toHaveBeenCalledWith('ws::term', container, true, undefined);
 		expect(attachResizeObserver).toHaveBeenCalledWith('ws::term', container);
 		expect(focusTerminal).not.toHaveBeenCalled();
 		expect(syncTerminalStream).toHaveBeenCalledWith('ws::term');
@@ -395,8 +395,8 @@ describe('terminalSyncController', () => {
 			active: true,
 		});
 
-		expect(attachTerminal).toHaveBeenCalledWith('ws::term-a', container, true);
-		expect(attachTerminal).toHaveBeenCalledWith('ws::term-b', container, true);
+		expect(attachTerminal).toHaveBeenCalledWith('ws::term-a', container, true, undefined);
+		expect(attachTerminal).toHaveBeenCalledWith('ws::term-b', container, true, undefined);
 		expect(markDetached).toHaveBeenCalledWith('ws::term-a');
 		expect(detachResizeObserver).toHaveBeenCalledWith('ws::term-a');
 		expect(ensureContext).toHaveBeenCalledWith({

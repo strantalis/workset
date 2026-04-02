@@ -2,19 +2,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const terminalLayoutMocks = vi.hoisted(() => ({
 	fetchTerminalBootstrap: vi.fn(async () => ({
+		workspaceId: 'ws-1',
+		terminalId: 'term-1',
 		sessionId: 'session-1',
-		owner: 'window-1',
-		canWrite: true,
-		running: true,
-		currentOffset: 0,
-		transport: 'socket',
+		socketUrl: 'ws://127.0.0.1:9001/stream',
+		socketToken: 'token',
 	})),
 	logTerminalDebug: vi.fn(),
 	stopWorkspaceTerminal: vi.fn(),
 }));
 
 vi.mock('../api/settings', () => ({
-	fetchSessiondStatus: vi.fn(),
+	fetchTerminalServiceStatus: vi.fn(),
 	fetchSettings: vi.fn(),
 }));
 vi.mock('../api/terminal-layout', () => terminalLayoutMocks);

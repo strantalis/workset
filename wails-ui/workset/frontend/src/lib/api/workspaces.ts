@@ -7,7 +7,6 @@ import type {
 	Workspace,
 	WorkspaceCreateResponse,
 } from '../types';
-import { flushWorkspaceTerminalSnapshots } from '../terminal/terminalService';
 import type { WorkspaceRefJSON } from '../../../bindings/github.com/strantalis/workset/pkg/worksetapi/models';
 import {
 	AddRepo,
@@ -319,7 +318,6 @@ export async function updateWorkspaceLastUsed(workspaceId: string): Promise<stri
 export const updateThreadLastUsed = updateWorkspaceLastUsed;
 
 export async function openWorkspacePopout(workspaceId: string): Promise<WorkspacePopoutState> {
-	await flushWorkspaceTerminalSnapshots(workspaceId);
 	return OpenWorkspacePopout(workspaceId);
 }
 
@@ -333,7 +331,6 @@ export async function openThreadPopout(workspaceId: string): Promise<ThreadPopou
 }
 
 export async function closeWorkspacePopout(workspaceId: string): Promise<void> {
-	await flushWorkspaceTerminalSnapshots(workspaceId);
 	await CloseWorkspacePopout(workspaceId);
 }
 

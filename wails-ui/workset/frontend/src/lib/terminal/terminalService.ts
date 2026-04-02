@@ -27,14 +27,15 @@ import { createTerminalServiceState } from './terminalServiceState';
 import { createTerminalServiceRuntime } from './terminalServiceRuntime';
 import { createTerminalSocketStream } from './terminalSocketStream';
 import { emitTerminalActivity } from './terminalActivityBus';
+import type { TerminalSnapshotLike } from './terminalEmulatorContracts';
 
 export type TerminalViewState = {
 	status: string;
 	message: string;
 	health: 'unknown' | 'checking' | 'ok' | 'stale';
 	healthMessage: string;
-	sessiondAvailable: boolean | null;
-	sessiondChecked: boolean;
+	terminalServiceAvailable: boolean | null;
+	terminalServiceChecked: boolean;
 	debugEnabled: boolean;
 	debugStats: {
 		bytesIn: number;
@@ -67,16 +68,7 @@ const terminalServiceState = createTerminalServiceState();
 const { pendingInput } = terminalServiceState;
 const lastInboundSeq = new Map<string, { seq: number; bytes: number; at: number }>();
 const lastStreamOffset = new Map<string, number>();
-const lastSocketDescriptor = new Map<
-	string,
-	{ sessionId: string; socketUrl?: string; socketToken?: string }
->();
-const reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const RECONNECT_DELAY_MS = 1000;
-const MAX_RECONNECT_ATTEMPTS = 3;
-const reconnectAttempts = new Map<string, number>();
-const replayMuted = new Set<string>();
-const replayEndOffsets = new Map<string, number>();
+const consumedStartupSnapshots = new Set<string>();
 
 const buildTerminalKey = terminalContextRegistry.buildTerminalKey;
 
@@ -134,7 +126,7 @@ const {
 	ensureSessionActive,
 	beginTerminal,
 	loadTerminalDefaults,
-	refreshSessiondStatus,
+	refreshTerminalServiceStatus,
 	initTerminal,
 } = terminalSessionBridge;
 
@@ -157,16 +149,8 @@ const terminalInputOrchestrator = createTerminalInputOrchestrator({
 });
 
 const sendInput = (id: string, data: string): void => terminalInputOrchestrator.sendInput(id, data);
-const sendProtocolResponse = (id: string, data: string): void => {
-	if (replayMuted.has(id)) {
-		runtime.logDebug(id, 'protocol_response_suppressed_replay', {
-			bytes: data.length,
-			preview: data.slice(0, 32),
-		});
-		return;
-	}
+const sendProtocolResponse = (id: string, data: string): void =>
 	terminalInputOrchestrator.sendProtocolResponse(id, data);
-};
 
 const terminalResizeBridge = createTerminalResizeBridge({
 	getWorkspaceId,
@@ -216,9 +200,14 @@ const attachTerminal = async (
 	id: string,
 	container: HTMLDivElement | null,
 	active: boolean,
+	initialSnapshot?: TerminalSnapshotLike | null,
 ): Promise<TerminalHandle> => {
 	const handle = await terminalInstanceOrchestration.attachTerminal(id, container, active);
 	terminalSnapshotManager.register(id, handle);
+	if (initialSnapshot && !consumedStartupSnapshots.has(id)) {
+		consumedStartupSnapshots.add(id);
+		await terminalSnapshotManager.restore(id, initialSnapshot);
+	}
 	scheduleTerminalWriteQueue(id);
 	return handle;
 };
@@ -342,23 +331,11 @@ const pumpTerminalWriteQueue = (id: string): void => {
 	});
 	handle.terminal.write(mergedChunk, () => {
 		runtime.updateStatsLastOutput(id);
-		if (replayMuted.has(id)) {
-			const replayEnd = replayEndOffsets.get(id);
-			if (replayEnd !== undefined && last.seq >= replayEnd) {
-				replayMuted.delete(id);
-				replayEndOffsets.delete(id);
-				runtime.logDebug(id, 'protocol_response_unmute_replay_complete', {
-					replayEnd,
-					lastSeq: last.seq,
-				});
-			}
-		}
 		const current = terminalWriteQueues.get(id);
 		if (!current) return;
 		if (current.queue.length > 0) {
 			current.queue.splice(0, batch.length);
 		}
-		terminalSnapshotManager.scheduleFromOutput(id);
 		current.inFlight = false;
 		if (current.queue.length === 0) {
 			terminalWriteQueues.delete(id);
@@ -470,8 +447,6 @@ const resetSessionState = (id: string): void => {
 	clearTerminalWriteQueue(id);
 	lastInboundSeq.delete(id);
 	lastStreamOffset.delete(id);
-	replayMuted.delete(id);
-	replayEndOffsets.delete(id);
 	baseTerminalResourceLifecycle.resetSessionState(id);
 	const buffered = terminalServiceState.consumeBufferedOutput(id);
 	if (buffered.length === 0) return;
@@ -487,46 +462,15 @@ const resetSessionState = (id: string): void => {
 
 const terminalSocketStream = createTerminalSocketStream({
 	logDebug: (id, event, details) => runtime.logDebug(id, event, details),
-	onReady: (id, ready) => {
-		runtime.logDebug(id, 'frontend_socket_ready', ready);
-		const currentOffset = Math.max(ready.currentOffset ?? 0, ready.replayNext ?? 0);
-		lastStreamOffset.set(id, currentOffset);
-		const requestedOffset = ready.requestedOffset ?? 0;
-		const replayStart = ready.replayStart ?? requestedOffset;
-		// Mute protocol responses BEFORE any terminal reset to prevent
-		// escape sequence responses (CPR/DA) from leaking to the shell.
-		const replayEnd = ready.replayNext ?? 0;
-		const hasReplayData = ready.replayRequested && replayEnd > replayStart;
-		if (hasReplayData) {
-			replayMuted.add(id);
-			replayEndOffsets.set(id, replayEnd);
-			setTimeout(() => {
-				if (replayMuted.has(id)) {
-					runtime.logDebug(id, 'protocol_response_unmute_timeout', { replayEnd });
-					replayMuted.delete(id);
-					replayEndOffsets.delete(id);
-				}
-			}, 5000);
-		} else if (replayMuted.has(id)) {
-			// Early mute was set (from reset/open) but no replay data — unmute now.
-			replayMuted.delete(id);
-			replayEndOffsets.delete(id);
-		}
-		if (ready.replaySkipped || ready.replayTruncated || replayStart !== requestedOffset) {
-			clearTerminalWriteQueue(id);
-			lastInboundSeq.delete(id);
-			baseTerminalResourceLifecycle.resetTerminalInstance(id);
-		}
-	},
-	onSnapshot: async (id, snapshot, ready) => {
-		await terminalSnapshotManager.restore(id, snapshot, ready);
+	onReady: (id) => {
+		runtime.logDebug(id, 'frontend_socket_ready', {});
 	},
 	onChunk: (id, nextOffset, chunk) => {
 		const bytes = chunk.length;
 		runtime.logDebug(id, 'frontend_output_event_received', {
 			seq: nextOffset,
 			bytes,
-			source: 'sessiond-websocket',
+			source: 'terminal-service-websocket',
 		});
 		lifecycle.markInput(id);
 		const workspaceId = getWorkspaceId(id);
@@ -546,11 +490,9 @@ const terminalSocketStream = createTerminalSocketStream({
 	onClosed: (id, details) => {
 		runtime.logDebug(id, 'frontend_socket_closed', details);
 		if (details.intentional) {
-			reconnectAttempts.delete(id);
 			return;
 		}
 		if (details.serverClosed || details.reason === 'subscriber closed') {
-			reconnectAttempts.delete(id);
 			lifecycle.markStopped(id);
 			lifecycle.setInput(id, false);
 			lifecycle.setStatusAndMessage(id, 'closed', 'Terminal exited.');
@@ -558,72 +500,6 @@ const terminalSocketStream = createTerminalSocketStream({
 			emitState(id);
 			return;
 		}
-		const descriptor = lastSocketDescriptor.get(id);
-		const attempt = (reconnectAttempts.get(id) ?? 0) + 1;
-		if (descriptor && attempt <= MAX_RECONNECT_ATTEMPTS) {
-			reconnectAttempts.set(id, attempt);
-			runtime.logDebug(id, 'frontend_socket_reconnect_scheduled', {
-				attempt,
-				maxAttempts: MAX_RECONNECT_ATTEMPTS,
-				delayMs: RECONNECT_DELAY_MS,
-				sessionId: descriptor.sessionId,
-				socketUrl: descriptor.socketUrl,
-				socketTokenPresent: Boolean(descriptor.socketToken),
-				lastOffset: lastStreamOffset.get(id) ?? 0,
-				closeCode: details.code,
-				closeReason: details.reason,
-				streamID: details.streamID,
-				windowName: details.windowName,
-				ready: details.ready,
-				canWrite: details.canWrite,
-			});
-			lifecycle.setStatusAndMessage(id, 'loading', 'Reconnecting...');
-			emitState(id);
-			const timer = setTimeout(async () => {
-				reconnectTimers.delete(id);
-				const handle = terminalHandles.get(id);
-				// Mute protocol responses before reset — terminal.reset() can
-				// trigger Ghostty to send DA/CPR queries whose responses would
-				// otherwise leak to the shell as garbled text.
-				replayMuted.add(id);
-				// Reset terminal state before reconnect so stale modes (mouse
-				// tracking, etc.) from the old stream don't persist.  The
-				// server will send a snapshot or buffer replay to restore
-				// content.
-				clearTerminalWriteQueue(id);
-				lastInboundSeq.delete(id);
-				baseTerminalResourceLifecycle.resetTerminalInstance(id);
-				try {
-					await terminalSocketStream.connect(
-						id,
-						{
-							...descriptor,
-							cols: handle?.terminal.cols ?? 0,
-							rows: handle?.terminal.rows ?? 0,
-						},
-						0, // reconnect from zero so server sends snapshot with filtered modes
-					);
-					reconnectAttempts.delete(id);
-					lifecycle.markStarted(id);
-					lifecycle.setInput(id, true);
-					lifecycle.setStatusAndMessage(id, 'ready', '');
-					runtime.setHealth(id, 'ok', 'Session active.');
-					runtime.logDebug(id, 'frontend_socket_reconnect_ok', { attempt });
-					emitState(id);
-				} catch (error) {
-					runtime.logDebug(id, 'frontend_socket_reconnect_failed', {
-						attempt,
-						error: String(error),
-						sessionId: descriptor.sessionId,
-						socketUrl: descriptor.socketUrl,
-					});
-					// onClosed will fire again from the failed connect, triggering next attempt
-				}
-			}, RECONNECT_DELAY_MS);
-			reconnectTimers.set(id, timer);
-			return;
-		}
-		reconnectAttempts.delete(id);
 		lifecycle.markStopped(id);
 		lifecycle.setInput(id, false);
 		lifecycle.setStatusAndMessage(id, 'error', 'Terminal stream disconnected.');
@@ -634,35 +510,19 @@ const terminalSocketStream = createTerminalSocketStream({
 
 const terminalResourceLifecycle = {
 	resetSessionState: (id: string): void => {
-		const timer = reconnectTimers.get(id);
-		if (timer) {
-			clearTimeout(timer);
-			reconnectTimers.delete(id);
-		}
-		reconnectAttempts.delete(id);
-		replayMuted.delete(id);
-		replayEndOffsets.delete(id);
 		terminalSnapshotManager.clear(id);
+		consumedStartupSnapshots.delete(id);
 		terminalSocketStream.disconnect(id);
 		clearTerminalWriteQueue(id);
 		lastStreamOffset.delete(id);
-		lastSocketDescriptor.delete(id);
 		baseTerminalResourceLifecycle.resetSessionState(id);
 	},
 	disposeTerminalResources: (id: string): void => {
-		const timer = reconnectTimers.get(id);
-		if (timer) {
-			clearTimeout(timer);
-			reconnectTimers.delete(id);
-		}
-		reconnectAttempts.delete(id);
-		replayMuted.delete(id);
-		replayEndOffsets.delete(id);
 		terminalSnapshotManager.clear(id);
+		consumedStartupSnapshots.delete(id);
 		terminalSocketStream.disconnect(id);
 		clearTerminalWriteQueue(id);
 		lastStreamOffset.delete(id);
-		lastSocketDescriptor.delete(id);
 		baseTerminalResourceLifecycle.disposeTerminalResources(id);
 	},
 };
@@ -670,8 +530,6 @@ const terminalResourceLifecycle = {
 const terminalSnapshotManager = createTerminalSnapshotManager({
 	terminalHandles,
 	getOffset: (id) => lastStreamOffset.get(id) ?? 0,
-	canPublish: (id) => terminalSocketStream.canWrite(id) && lifecycle.hasStarted(id),
-	publish: (id, snapshot, awaitAck) => terminalSocketStream.publishSnapshot(id, snapshot, awaitAck),
 	logDebug: (id, event, details) => runtime.logDebug(id, event, details),
 	beforeRestore: (id, snapshot) => {
 		clearTerminalWriteQueue(id);
@@ -688,10 +546,6 @@ const terminalSnapshotManager = createTerminalSnapshotManager({
 	},
 });
 
-window.addEventListener('beforeunload', () => {
-	void terminalSnapshotManager.flushAll('beforeunload');
-});
-
 const terminalSessionCoordinator = createTerminalSessionCoordinator({
 	lifecycle,
 	getWorkspaceId,
@@ -702,7 +556,7 @@ const terminalSessionCoordinator = createTerminalSessionCoordinator({
 			terminalSocketStream.write(buildTerminalKey(workspaceId, terminalId), data);
 		},
 		fetchSettings: () => terminalTransport.fetchSettings(),
-		fetchSessiondStatus: () => terminalTransport.fetchSessiondStatus(),
+		fetchTerminalServiceStatus: () => terminalTransport.fetchTerminalServiceStatus(),
 	},
 	setHealth: runtime.setHealth,
 	emitState,
@@ -719,24 +573,8 @@ const terminalSessionCoordinator = createTerminalSessionCoordinator({
 	getCurrentCursorBlink: () => terminalFontSizeController.getCursorBlink(),
 	setCurrentCursorBlink: (value) => terminalFontSizeController.setCursorBlink(value),
 	onSessionReady: async (id, descriptor) => {
-		lastStreamOffset.set(id, descriptor.currentOffset ?? 0);
-		lastSocketDescriptor.set(id, {
-			sessionId: descriptor.sessionId,
-			socketUrl: descriptor.socketUrl,
-			socketToken: descriptor.socketToken,
-		});
-		reconnectAttempts.delete(id);
-		const handle = terminalHandles.get(id);
 		try {
-			await terminalSocketStream.connect(
-				id,
-				{
-					...descriptor,
-					cols: handle?.terminal.cols ?? 0,
-					rows: handle?.terminal.rows ?? 0,
-				},
-				lastInboundSeq.get(id)?.seq ?? 0,
-			);
+			await terminalSocketStream.connect(id, descriptor);
 		} catch (error) {
 			runtime.logDebug(id, 'frontend_socket_connect_failed', {
 				error: String(error),
@@ -769,7 +607,7 @@ const ensureGlobals = (): void =>
 			globalsInitialized = true;
 		},
 		loadTerminalDefaults,
-		refreshSessiondStatus,
+		refreshTerminalServiceStatus,
 		onFocus: (callback) => window.addEventListener('focus', callback),
 		forEachAttached: (callback) => terminalAttachState.forEachAttached(callback),
 		ensureSessionActive: async (id) => ensureSessionActive(id),
@@ -790,7 +628,6 @@ const terminalServiceExports = createTerminalServiceExports<TerminalViewState>({
 		terminalStreamOrchestrator,
 		terminalAttachState: {
 			markDetached: (id: string) => {
-				void terminalSnapshotManager.flush(id, 'detach').catch(() => undefined);
 				terminalAttachState.markDetached(id);
 			},
 		},
@@ -808,6 +645,7 @@ const terminalServiceExports = createTerminalServiceExports<TerminalViewState>({
 			},
 		},
 	}),
+	captureSnapshot: (id) => terminalSnapshotManager.capture(id),
 });
 
 export const refreshTerminalDefaults = terminalServiceExports.refreshTerminalDefaults;
@@ -818,6 +656,7 @@ export const closeTerminal = terminalServiceExports.closeTerminal;
 export const focusTerminalInstance = terminalServiceExports.focusTerminalInstance;
 export const scrollTerminalToBottom = terminalServiceExports.scrollTerminalToBottom;
 export const isTerminalAtBottom = terminalServiceExports.isTerminalAtBottom;
+export const captureTerminalSnapshot = terminalServiceExports.captureTerminalSnapshot;
 
 export const releaseWorkspaceTerminals = (workspaceId: string): void => {
 	const targetWorkspace = workspaceId.trim();
@@ -825,24 +664,12 @@ export const releaseWorkspaceTerminals = (workspaceId: string): void => {
 	for (const key of terminalContextRegistry.keys()) {
 		if (getWorkspaceId(key) !== targetWorkspace) continue;
 		terminalResourceLifecycle.disposeTerminalResources(key);
+		consumedStartupSnapshots.delete(key);
 		terminalContextRegistry.deleteContext(key);
 	}
 };
 
-export const flushWorkspaceTerminalSnapshots = async (workspaceId: string): Promise<void> => {
-	const targetWorkspace = workspaceId.trim();
-	if (!targetWorkspace) return;
-	const pending: Promise<void>[] = [];
-	for (const key of terminalContextRegistry.keys()) {
-		if (getWorkspaceId(key) !== targetWorkspace) continue;
-		pending.push(terminalSnapshotManager.flush(key, 'workspace_popout', true));
-	}
-	if (pending.length === 0) return;
-	await Promise.allSettled(pending);
-};
-
 export const shutdownTerminalService = (): void => {
-	void terminalSnapshotManager.flushAll('shutdown');
 	terminalSocketStream.disconnectAll();
 };
 

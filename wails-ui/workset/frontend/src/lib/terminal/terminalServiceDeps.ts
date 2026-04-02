@@ -1,3 +1,4 @@
+import type { TerminalSnapshotLike } from './terminalEmulatorContracts';
 import type { TerminalSyncControllerDependencies } from './terminalSyncController';
 
 type ResourceLifecycleDepsInput<THandle> = {
@@ -37,7 +38,12 @@ type SyncControllerDepsInput = {
 		getContext: (key: string) => unknown;
 		deleteContext: (key: string) => void;
 	};
-	attachTerminal: (id: string, container: HTMLDivElement | null, active: boolean) => unknown;
+	attachTerminal: (
+		id: string,
+		container: HTMLDivElement | null,
+		active: boolean,
+		initialSnapshot?: TerminalSnapshotLike | null,
+	) => unknown;
 	terminalViewportResizeController: {
 		attachResizeObserver: (id: string, container: HTMLDivElement) => void;
 		detachResizeObserver: (id: string) => void;
@@ -103,7 +109,7 @@ type SessionCoordinatorBridge = {
 	ensureSessionActive: (id: string) => Promise<void>;
 	beginTerminal: (id: string, quiet?: boolean) => Promise<void>;
 	loadTerminalDefaults: () => Promise<void>;
-	refreshSessiondStatus: () => Promise<void>;
+	refreshTerminalServiceStatus: () => Promise<void>;
 	initTerminal: (id: string) => Promise<void>;
 };
 
@@ -112,7 +118,8 @@ export const createTerminalSessionBridge = (getCoordinator: () => SessionCoordin
 	beginTerminal: (id: string, quiet = false): Promise<void> =>
 		getCoordinator().beginTerminal(id, quiet),
 	loadTerminalDefaults: (): Promise<void> => getCoordinator().loadTerminalDefaults(),
-	refreshSessiondStatus: (): Promise<void> => getCoordinator().refreshSessiondStatus(),
+	refreshTerminalServiceStatus: (): Promise<void> =>
+		getCoordinator().refreshTerminalServiceStatus(),
 	initTerminal: (id: string): Promise<void> => getCoordinator().initTerminal(id),
 });
 
@@ -120,7 +127,7 @@ type EnsureTerminalGlobalsDeps = {
 	isInitialized: () => boolean;
 	markInitialized: () => void;
 	loadTerminalDefaults: () => Promise<void>;
-	refreshSessiondStatus: () => Promise<void>;
+	refreshTerminalServiceStatus: () => Promise<void>;
 	onFocus: (callback: () => void) => void;
 	forEachAttached: (callback: (id: string) => void) => void;
 	ensureSessionActive: (id: string) => Promise<void>;
@@ -130,7 +137,7 @@ export const ensureTerminalGlobals = (deps: EnsureTerminalGlobalsDeps): void => 
 	if (deps.isInitialized()) return;
 	deps.markInitialized();
 	void deps.loadTerminalDefaults();
-	void deps.refreshSessiondStatus();
+	void deps.refreshTerminalServiceStatus();
 	deps.onFocus(() => {
 		deps.forEachAttached((id) => {
 			void deps.ensureSessionActive(id);

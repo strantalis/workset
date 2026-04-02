@@ -386,20 +386,7 @@ func stagedExecutableRelativePaths(stagedApp string) ([]string, error) {
 }
 
 func stagedUpdateBinaryRelativePaths(stagedApp string) ([]string, error) {
-	paths, err := stagedExecutableRelativePaths(stagedApp)
-	if err != nil {
-		return nil, err
-	}
-
-	// Keep sessiond in sync with the main app binary while skipping the updater helper.
-	sessiondRelativePath := filepath.Join("Contents", "Resources", "workset-sessiond")
-	sessiondPath := filepath.Join(stagedApp, sessiondRelativePath)
-	if info, err := os.Stat(sessiondPath); err == nil && info.Mode().IsRegular() {
-		paths = append(paths, sessiondRelativePath)
-	}
-
-	sort.Strings(paths)
-	return paths, nil
+	return stagedExecutableRelativePaths(stagedApp)
 }
 
 func replaceTargetFile(stagedPath, targetPath, backupPath, relativePath string) (updatedFile, error) {

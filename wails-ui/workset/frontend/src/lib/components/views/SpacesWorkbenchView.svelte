@@ -233,21 +233,24 @@
 					</div>
 				{/if}
 				<div class="spaces-main-body">
-					{#if layoutMode === 'terminal-with-prs'}
-						<ResizablePanel
-							direction="horizontal"
-							initialRatio={0.62}
-							minRatio={0.3}
-							maxRatio={0.8}
-							storageKey="workset:workbench:splitRatio"
-						>
-							<div class="spaces-surface">
+					<ResizablePanel
+						direction="horizontal"
+						initialRatio={0.62}
+						minRatio={0.3}
+						maxRatio={0.8}
+						collapsedSecond={layoutMode !== 'terminal-with-prs'}
+						storageKey="workset:workbench:splitRatio"
+					>
+						<div class="spaces-surface">
+							{#key activeThread.id}
 								<TerminalWorkspace
 									workspaceId={activeThread.id}
 									workspaceName={activeThread.name}
 								/>
-							</div>
-							{#snippet second()}
+							{/key}
+						</div>
+						{#snippet second()}
+							{#if layoutMode === 'terminal-with-prs'}
 								<aside class="spaces-side-pane spaces-pr-pane">
 									<UnifiedRepoView
 										workspace={activeThread}
@@ -255,13 +258,9 @@
 										{onFileSelectionHandled}
 									/>
 								</aside>
-							{/snippet}
-						</ResizablePanel>
-					{:else}
-						<div class="spaces-surface">
-							<TerminalWorkspace workspaceId={activeThread.id} workspaceName={activeThread.name} />
-						</div>
-					{/if}
+							{/if}
+						{/snippet}
+					</ResizablePanel>
 				</div>
 			{:else if selectedWorkset && !selectedWorksetHasThreads}
 				<div class="spaces-empty-state spaces-empty-workset">

@@ -2,12 +2,9 @@ package main
 
 import (
 	"context"
-	"os"
-	"path/filepath"
-	"runtime"
 	"sync"
 
-	"github.com/strantalis/workset/pkg/sessiond"
+	"github.com/strantalis/workset/pkg/terminalservice"
 	"github.com/strantalis/workset/pkg/worksetapi"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -16,45 +13,46 @@ const mainWindowName = "main"
 
 // App struct
 type App struct {
-	ctx               context.Context
-	runtimeApp        *application.App
-	mainWindowName    string
-	service           *worksetapi.Service
-	serviceOnce       sync.Once
-	repoFileIndexMu   sync.Mutex
-	repoFileIndexes   map[string]repoFileIndexCacheEntry
-	repoHoverMu       sync.Mutex
-	repoHoverClients  map[string]repoHoverBackend
-	repoDiffSummaryMu sync.Mutex
-	repoDiffSummaries map[string]repoDiffSummaryCacheEntry
-	terminalMu        sync.Mutex
-	terminals         map[string]*terminalSession
-	sessiondMu        sync.Mutex
-	sessiondClient    *sessiond.Client
-	sessiondInfo      *sessiond.InfoResponse
-	sessiondReady     bool
-	sessiondStart     *sessiondStartState
-	sessiondRestart   *sessiondRestartState
-	repoDiffWatchers  *repoDiffWatchManager
-	githubOps         *githubOperationManager
-	popoutMu          sync.Mutex
-	popouts           map[string]string
+	ctx                   context.Context
+	runtimeApp            *application.App
+	mainWindowName        string
+	service               *worksetapi.Service
+	serviceOnce           sync.Once
+	repoFileIndexMu       sync.Mutex
+	repoFileIndexes       map[string]repoFileIndexCacheEntry
+	repoHoverMu           sync.Mutex
+	repoHoverClients      map[string]repoHoverBackend
+	repoDiffSummaryMu     sync.Mutex
+	repoDiffSummaries     map[string]repoDiffSummaryCacheEntry
+	terminalMu            sync.Mutex
+	terminals             map[string]*terminalSession
+	terminalServiceMu     sync.Mutex
+	terminalServiceServer *terminalservice.Server
+	terminalServiceCancel context.CancelFunc
+	terminalServiceDone   chan struct{}
+	terminalServiceClient *terminalservice.Client
+	terminalServiceInfo   *terminalservice.InfoResponse
+	terminalServiceReady  bool
+	terminalServiceStart  *terminalServiceStartState
+	repoDiffWatchers      *repoDiffWatchManager
+	githubOps             *githubOperationManager
+	popoutMu              sync.Mutex
+	popouts               map[string]string
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{
-		service:           nil,
-		mainWindowName:    mainWindowName,
-		repoFileIndexes:   map[string]repoFileIndexCacheEntry{},
-		repoHoverClients:  map[string]repoHoverBackend{},
-		repoDiffSummaries: map[string]repoDiffSummaryCacheEntry{},
-		terminals:         map[string]*terminalSession{},
-		sessiondStart:     &sessiondStartState{},
-		sessiondRestart:   &sessiondRestartState{},
-		repoDiffWatchers:  newRepoDiffWatchManager(),
-		githubOps:         newGitHubOperationManager(),
-		popouts:           map[string]string{},
+		service:              nil,
+		mainWindowName:       mainWindowName,
+		repoFileIndexes:      map[string]repoFileIndexCacheEntry{},
+		repoHoverClients:     map[string]repoHoverBackend{},
+		repoDiffSummaries:    map[string]repoDiffSummaryCacheEntry{},
+		terminals:            map[string]*terminalSession{},
+		terminalServiceStart: &terminalServiceStartState{},
+		repoDiffWatchers:     newRepoDiffWatchManager(),
+		githubOps:            newGitHubOperationManager(),
+		popouts:              map[string]string{},
 	}
 }
 
@@ -66,13 +64,11 @@ func (a *App) setRuntime(app *application.App) {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	logRestartf("app_startup build_marker=restart-logging-v2")
+	logTerminalServicef("app_startup build_marker=restart-logging-v2")
 	ensureDevConfig()
 	_, _ = worksetapi.EnsureLoginEnv(ctx)
-	ensureDevSessiondSocket()
-	setSessiondPathFromCwd()
-	ensureSessiondUpToDate(a)
-	ensureSessiondStarted(a)
+	ensureDevTerminalServiceSocket()
+	ensureTerminalServiceStarted(a)
 }
 
 func (a *App) shutdown(_ context.Context) {
@@ -95,11 +91,12 @@ func (a *App) shutdown(_ context.Context) {
 	a.repoDiffSummaries = map[string]repoDiffSummaryCacheEntry{}
 	a.repoDiffSummaryMu.Unlock()
 	a.terminalMu.Lock()
-	defer a.terminalMu.Unlock()
 	for _, session := range a.terminals {
 		_ = session.CloseWithReason("shutdown")
 	}
 	a.terminals = map[string]*terminalSession{}
+	a.terminalMu.Unlock()
+	a.stopEmbeddedTerminalService()
 }
 
 func (a *App) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
@@ -110,28 +107,4 @@ func (a *App) ServiceStartup(ctx context.Context, _ application.ServiceOptions) 
 func (a *App) ServiceShutdown() error {
 	a.shutdown(a.ctx)
 	return nil
-}
-
-func setSessiondPathFromCwd() {
-	if os.Getenv("WORKSET_SESSIOND_PATH") != "" {
-		return
-	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return
-	}
-	exeName := "workset-sessiond"
-	if runtime.GOOS == "windows" {
-		exeName += ".exe"
-	}
-	candidates := []string{
-		filepath.Join(cwd, "build", "sessiond", exeName),
-		filepath.Join(cwd, "wails-ui", "workset", "build", "sessiond", exeName),
-	}
-	for _, candidate := range candidates {
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-			_ = os.Setenv("WORKSET_SESSIOND_PATH", candidate)
-			return
-		}
-	}
 }

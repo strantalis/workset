@@ -14,10 +14,7 @@ import {
 	SetWorkspaceTerminalLayout,
 } from '../../bindings/workset/app';
 import type { TerminalLayout } from './types';
-
-vi.mock('./terminal/terminalService', () => ({
-	flushWorkspaceTerminalSnapshots: vi.fn(),
-}));
+import type { TerminalSnapshotLike } from './terminal/terminalEmulatorContracts';
 
 vi.mock('../../bindings/workset/app', () => ({
 	GetWorkspaceTerminalLayout: vi.fn(),
@@ -28,8 +25,6 @@ vi.mock('../../bindings/workset/app', () => ({
 	RemoveWorkspace: vi.fn(),
 	SetWorkspaceTerminalLayout: vi.fn(),
 }));
-
-import { flushWorkspaceTerminalSnapshots } from './terminal/terminalService';
 
 describe('workspace + terminal API compatibility exports', () => {
 	beforeEach(() => {
@@ -196,17 +191,25 @@ describe('workspace + terminal API compatibility exports', () => {
 	});
 
 	test('terminal layout compatibility exports pass through to wails API', async () => {
+		const snapshot: TerminalSnapshotLike = {
+			version: 1,
+			nextOffset: 12,
+			cols: 80,
+			rows: 24,
+			activeBuffer: 'normal',
+			normalViewportY: 0,
+			cursor: { x: 0, y: 0, visible: true },
+			modes: { dec: [], ansi: [] },
+			normalTail: ['hello'],
+			normalScreen: ['hello'],
+		};
 		const layout: TerminalLayout = {
-			version: 2,
+			version: 3,
 			tabs: [
 				{
 					id: 'tab-1',
 					title: 'Terminal',
-					root: {
-						id: 'pane-1',
-						kind: 'pane',
-						terminalId: 'term-1',
-					},
+					panes: [{ id: 'pane-1', terminalId: 'term-1', snapshot }],
 					focusedPaneId: 'pane-1',
 				},
 			],
@@ -234,7 +237,7 @@ describe('workspace + terminal API compatibility exports', () => {
 		});
 	});
 
-	test('openWorkspacePopout flushes terminal snapshots before opening the popout window', async () => {
+	test('openWorkspacePopout opens the popout window', async () => {
 		vi.mocked(OpenWorkspacePopout).mockResolvedValue({
 			workspaceId: 'ws-1',
 			windowName: 'workspace-ws-1-popout',
@@ -244,21 +247,13 @@ describe('workspace + terminal API compatibility exports', () => {
 		const { openWorkspacePopout } = await import('./api/workspaces');
 		await openWorkspacePopout('ws-1');
 
-		expect(flushWorkspaceTerminalSnapshots).toHaveBeenCalledWith('ws-1');
 		expect(OpenWorkspacePopout).toHaveBeenCalledWith('ws-1');
-		expect(vi.mocked(flushWorkspaceTerminalSnapshots).mock.invocationCallOrder[0]).toBeLessThan(
-			vi.mocked(OpenWorkspacePopout).mock.invocationCallOrder[0],
-		);
 	});
 
-	test('closeWorkspacePopout flushes terminal snapshots before returning the popout window', async () => {
+	test('closeWorkspacePopout closes the popout window', async () => {
 		const { closeWorkspacePopout } = await import('./api/workspaces');
 		await closeWorkspacePopout('ws-1');
 
-		expect(flushWorkspaceTerminalSnapshots).toHaveBeenCalledWith('ws-1');
 		expect(CloseWorkspacePopout).toHaveBeenCalledWith('ws-1');
-		expect(vi.mocked(flushWorkspaceTerminalSnapshots).mock.invocationCallOrder[0]).toBeLessThan(
-			vi.mocked(CloseWorkspacePopout).mock.invocationCallOrder[0],
-		);
 	});
 });

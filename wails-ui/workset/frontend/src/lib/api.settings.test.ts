@@ -2,15 +2,12 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
 	listRegisteredRepos,
 	registerRepo,
-	restartSessiond,
 	unregisterRepo,
 	updateRegisteredRepo,
 } from './api/settings';
 import {
 	ListRegisteredRepos,
 	RegisterRepo,
-	RestartSessiond,
-	RestartSessiondWithReason,
 	UnregisterRepo,
 	UpdateRegisteredRepo,
 } from '../../bindings/workset/app';
@@ -18,8 +15,6 @@ import {
 vi.mock('../../bindings/workset/app', () => ({
 	ListRegisteredRepos: vi.fn(),
 	RegisterRepo: vi.fn(),
-	RestartSessiond: vi.fn(),
-	RestartSessiondWithReason: vi.fn(),
 	UnregisterRepo: vi.fn(),
 	UpdateRegisteredRepo: vi.fn(),
 }));
@@ -27,29 +22,6 @@ vi.mock('../../bindings/workset/app', () => ({
 describe('settings API', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-	});
-
-	test('restartSessiond uses default restart when reason is missing or blank', async () => {
-		vi.mocked(RestartSessiond).mockResolvedValue({ available: true, error: '', warning: '' });
-
-		await restartSessiond();
-		await restartSessiond('   ');
-
-		expect(RestartSessiond).toHaveBeenCalledTimes(2);
-		expect(RestartSessiondWithReason).not.toHaveBeenCalled();
-	});
-
-	test('restartSessiond forwards trimmed reason when provided', async () => {
-		vi.mocked(RestartSessiondWithReason).mockResolvedValue({
-			available: true,
-			error: '',
-			warning: '',
-		});
-
-		await restartSessiond('  maintenance window  ');
-
-		expect(RestartSessiondWithReason).toHaveBeenCalledWith('maintenance window');
-		expect(RestartSessiond).not.toHaveBeenCalled();
 	});
 
 	test('registered repo helpers call the expected underlying API payloads', async () => {

@@ -1,5 +1,7 @@
 # Desktop Hardening Execution Tracker
 
+> Historical archive: this tracker includes work completed before the terminal sidecar was removed. It is preserved for background only; use `docs-internal/architecture/terminal.md` for the current runtime model.
+
 Owner: Codex + Sean  
 Last updated: 2026-02-06
 
@@ -27,7 +29,7 @@ Stabilize and simplify the desktop architecture so terminal/session reliability 
 
 - [x] Fix stream/socket release path in terminal stream teardown (`wails-ui/workset/terminal_stream.go`, `wails-ui/workset/terminal_types.go`).
 - [x] Add regression tests for stream release semantics (`wails-ui/workset/terminal_stream_lifecycle_test.go`).
-- [x] Close parent-side daemon log FD after spawn (`pkg/sessiond/client.go`).
+- [x] Close parent-side daemon log FD after spawn (`pkg/terminalservice/client.go`).
 - [x] Verify stress path with repeated start/stop/attach once local FD pressure is cleared.
 
 ### Phase 1: Boundary Hardening (in progress)
@@ -88,7 +90,7 @@ Stabilize and simplify the desktop architecture so terminal/session reliability 
 - [x] Add Go constants for:
   - `hooks:progress`
   - `github:operation`
-  - `sessiond:restarted`
+  - historical `sessiond:restarted` restart event
   - `terminal:*`
   - `repodiff:*`
 - [x] Replace hardcoded backend emit strings with constants.
@@ -118,34 +120,34 @@ If terminal starts fail with `open /dev/null: too many open files`, use this seq
    - `launchctl limit maxfiles` (macOS)
 2. Find descriptor-heavy processes:
    - `lsof -nP | awk '{print $2}' | sort | uniq -c | sort -nr | head -20`
-3. Inspect workset/sessiond specifically:
+3. Inspect Workset terminal-service processes specifically:
    - `pgrep -fl "workset|workset-sessiond"`
    - `lsof -nP -p <PID> | wc -l`
-4. Clear stale daemon state if needed:
+4. Clear stale historical sidecar state if needed:
    - `pkill -f workset-sessiond`
-   - `rm -f ~/.workset/sessiond.sock`
+   - `rm -f ~/.workset/terminal-service.sock`
 5. Re-run targeted tests before full suite.
 
 ## Terminal Churn Repro Commands
 
 Use these targeted commands once local FD pressure is healthy:
 
-- `go test ./pkg/sessiond -run "TestRepeatedCreateStop|TestSessionCloseWithReasonReapsProcess" -count=1`
+- `go test ./pkg/terminalservice -run "TestRepeatedCreateStop|TestSessionCloseWithReasonReapsProcess" -count=1`
 - `go test ./wails-ui/workset -run "TestTerminalSessionReleaseStream|TestEnsureServiceConcurrent" -count=1`
-- `go test ./pkg/sessiond -run "TestSessiondSnapshotAndBacklog|TestIdleCloseRecreateSession" -count=1`
+- `go test ./pkg/terminalservice -run "TestSessiondSnapshotAndBacklog|TestIdleCloseRecreateSession" -count=1`
 - `go test ./...`
 
 ## Targeted Reliability Notes
 
-1. Terminal reconnect after daemon restart
-   - Start a terminal, run a long command (`while true; do date; sleep 1; done`), trigger `RestartSessiondWithReason`.
+1. Historical terminal reconnect after sidecar restart
+   - Start a terminal, run a long command (`while true; do date; sleep 1; done`), trigger the old sidecar restart path.
    - Expect lifecycle `error` then `started`, stream resumes without duplicate listeners.
 2. Idle timeout close
    - Set a short terminal idle timeout in settings and wait without interaction.
    - Expect lifecycle `idle` and no stale stream FD retention.
 3. Repeated tab create/close churn
    - Repeatedly create/close the same terminal tab and alternate workspace focus.
-   - Expect no growth trend in `lsof -nP -p <workset-sessiond-pid> | wc -l`.
+   - Expect no growth trend in terminal-service file descriptors.
 4. Bootstrap replay correctness
    - Start terminal, emit buffered output, detach/reattach.
    - Expect single ordered replay (`bootstrap` then `bootstrap_done`) without duplicate backlog chunks.
@@ -155,7 +157,7 @@ Use these targeted commands once local FD pressure is healthy:
 - 2026-02-06: `go test ./...` -> failed due to `too many open files in system`.
 - 2026-02-06: `make check` -> failed because frontend `prettier` missing.
 - 2026-02-06: `make test` -> failed because frontend `@testing-library/svelte` missing.
-- 2026-02-06: `go test ./pkg/sessiond -run "TestSessionCloseWithReasonReapsProcess|TestRepeatedCreateStop" -count=1` -> failed due to `too many open files in system`.
+- 2026-02-06: `go test ./pkg/terminalservice -run "TestSessionCloseWithReasonReapsProcess|TestRepeatedCreateStop" -count=1` -> failed due to `too many open files in system`.
 - 2026-02-06: `go test ./wails-ui/workset -run "TestEnsureServiceConcurrent|TestTerminalSessionReleaseStream" -count=1` -> failed due to `too many open files in system`.
 - 2026-02-06: `npm run format:check` -> failed (`prettier: command not found`).
 - 2026-02-06: `npm run lint` -> failed (`eslint: command not found`).
@@ -167,8 +169,8 @@ Use these targeted commands once local FD pressure is healthy:
 - 2026-02-06: `make check` -> failed (`prettier: command not found`).
 - 2026-02-06: set `go.mod`, `go.work`, `wails-ui/workset/go.mod` to `go 1.25.6`; verified `go list std` and `go build ./cmd/workset-sessiond` pass.
 - 2026-02-06: `go test ./...` -> passed.
-- 2026-02-06: `go test ./pkg/sessiond -run "TestRepeatedCreateStop|TestSessionCloseWithReasonReapsProcess" -count=1` -> passed.
-- 2026-02-06: `go test ./pkg/sessiond -run "TestSessiondSnapshotAndBacklog|TestIdleCloseRecreateSession" -count=1` -> passed.
+- 2026-02-06: `go test ./pkg/terminalservice -run "TestRepeatedCreateStop|TestSessionCloseWithReasonReapsProcess" -count=1` -> passed.
+- 2026-02-06: `go test ./pkg/terminalservice -run "TestSessiondSnapshotAndBacklog|TestIdleCloseRecreateSession" -count=1` -> passed.
 - 2026-02-06: `go test ./wails-ui/workset -run "TestTerminalSessionReleaseStream|TestEnsureServiceConcurrent" -count=1` -> passed.
 - 2026-02-06: `cd wails-ui/workset/frontend && npm run format` -> applied formatting changes.
 - 2026-02-06: `cd wails-ui/workset/frontend && npm run format:check` -> passed.

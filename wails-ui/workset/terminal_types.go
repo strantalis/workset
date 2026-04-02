@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/strantalis/workset/pkg/sessiond"
+	"github.com/strantalis/workset/pkg/terminalservice"
 )
 
 type TerminalDebugPayload struct {
@@ -23,17 +23,11 @@ type TerminalCreatePayload struct {
 }
 
 type TerminalSessionDescriptor struct {
-	WorkspaceID   string `json:"workspaceId"`
-	TerminalID    string `json:"terminalId"`
-	SessionID     string `json:"sessionId"`
-	WindowName    string `json:"windowName,omitempty"`
-	Owner         string `json:"owner,omitempty"`
-	CanWrite      bool   `json:"canWrite"`
-	Running       bool   `json:"running"`
-	CurrentOffset int64  `json:"currentOffset"`
-	SocketURL     string `json:"socketUrl,omitempty"`
-	SocketToken   string `json:"socketToken,omitempty"`
-	Transport     string `json:"transport"`
+	WorkspaceID string `json:"workspaceId"`
+	TerminalID  string `json:"terminalId"`
+	SessionID   string `json:"sessionId"`
+	SocketURL   string `json:"socketUrl,omitempty"`
+	SocketToken string `json:"socketToken,omitempty"`
 }
 
 type terminalSession struct {
@@ -43,7 +37,7 @@ type terminalSession struct {
 	path        string
 	mu          sync.Mutex
 
-	client *sessiond.Client
+	client *terminalservice.Client
 
 	starting bool
 	startErr error
@@ -120,17 +114,13 @@ func (s *terminalSession) bumpActivity() {
 }
 
 func (s *terminalSession) Write(data string) error {
-	return s.WriteAsOwner(data, "")
-}
-
-func (s *terminalSession) WriteAsOwner(data, owner string) error {
 	s.mu.Lock()
 	client := s.client
 	s.mu.Unlock()
 	if client != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		err := client.SendWithOwner(ctx, s.id, data, owner)
+		err := client.Send(ctx, s.id, data)
 		if err == nil {
 			s.bumpActivity()
 		}
