@@ -526,8 +526,7 @@ jobs:
           Stable releases are prepared locally with plain Git now.
 
           Run locally:
-            1. Stage the release notes or other release changes.
-            2. make release-stable TAG=vX.Y.Z
+            make release-stable TAG=vX.Y.Z
 
           Then:
             1. git push origin HEAD:main

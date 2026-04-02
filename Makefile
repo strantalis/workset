@@ -95,8 +95,8 @@ release-stable:
 			echo "Working tree has unstaged changes. Stage or stash them before running release-stable."; \
 			exit 1; \
 		fi; \
-		if git diff --cached --quiet; then \
-			echo "No staged release changes found. Stage the release notes or other release changes first."; \
+		if ! git diff --cached --quiet; then \
+			echo "release-stable now creates an empty signed release commit. Commit or stash staged changes first."; \
 			exit 1; \
 		fi; \
 		signing_key="$$(git config --get user.signingkey || true)"; \
@@ -114,12 +114,12 @@ release-stable:
 			echo "Repo checks modified tracked files. Review and restage them before running release-stable."; \
 			exit 1; \
 		fi; \
-		if git diff --cached --quiet; then \
-			echo "Staged release changes disappeared during checks. Restage them before running release-stable."; \
+		if ! git diff --cached --quiet; then \
+			echo "Repo checks left staged changes behind. Commit or stash them before running release-stable."; \
 			exit 1; \
 		fi; \
 		echo "Creating signed release commit and tag with Git CLI..."; \
-		git commit -S -m "chore(release): $$tag" >/dev/null; \
+		git commit --allow-empty -S -m "chore(release): $$tag" >/dev/null; \
 		git tag -s "$$tag" -m "$$tag"; \
 		if ! git cat-file -p HEAD | grep -q '^gpgsig '; then \
 			echo "Release commit is missing an embedded git signature."; \
