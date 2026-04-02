@@ -519,9 +519,8 @@ jobs:
         id: release
         uses: cocogitto/cocogitto-action@v4
         with:
-          release: true
-          check: true
-          check-latest-tag-only: true
+          command: bump
+          args: --auto
           git-user: "github-actions[bot]"
           git-user-email: "41898282+github-actions[bot]@users.noreply.github.com"
       - name: Push release commit and tag
