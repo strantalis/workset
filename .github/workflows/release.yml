@@ -515,14 +515,39 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
         with:
           fetch-depth: 0
+      - name: Install Cocogitto
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=6.4.0
+          arch="$(uname -m)"
+          case "$arch" in
+            x86_64|amd64) arch="x86_64" ;;
+            aarch64|arm64) arch="aarch64" ;;
+            *) echo "Unsupported architecture: $arch" >&2; exit 1 ;;
+          esac
+          platform="$(uname -s | tr '[:upper:]' '[:lower:]')"
+          case "$platform" in
+            linux) platform="unknown-linux-musl" ;;
+            darwin) platform="apple-darwin" ;;
+            *) echo "Unsupported platform: $platform" >&2; exit 1 ;;
+          esac
+          tarball="cocogitto-${version}-${arch}-${platform}.tar.gz"
+          curl -fsSL "https://github.com/cocogitto/cocogitto/releases/download/${version}/${tarball}" -o "$RUNNER_TEMP/${tarball}"
+          mkdir -p "$HOME/.local/bin"
+          tar --strip-components=1 -xzf "$RUNNER_TEMP/${tarball}" -C "$HOME/.local/bin" "${arch}-${platform}/cog"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Cocogitto release
         id: release
-        uses: cocogitto/cocogitto-action@v4
-        with:
-          command: bump
-          args: --auto
-          git-user: "github-actions[bot]"
-          git-user-email: "41898282+github-actions[bot]@users.noreply.github.com"
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cog --version
+          cog bump --auto
+          version="$(git describe --tags "$(git rev-list --tags --max-count=1)")"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
       - name: Push release commit and tag
         run: |
           set -euo pipefail
