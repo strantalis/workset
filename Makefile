@@ -3,7 +3,6 @@ PYTHON ?= python3
 VENV ?= .venv
 PORT ?= 8000
 GOLANGCI_LINT_CACHE ?= /tmp/golangci-lint-cache
-COG ?= cog
 
 UV := $(shell command -v uv 2>/dev/null)
 BASE_SHA ?= $(shell git merge-base HEAD origin/main 2>/dev/null)
@@ -25,7 +24,7 @@ help:
 		"  guardrails  Run LOC guardrails (ratcheted against origin/main when available)" \
 		"  deprecations Validate deprecation register deadlines and metadata" \
 		"  check       fmt + test + lint + guardrails" \
-		"  release-stable Prepare a signed stable bump+tag locally on a release branch"
+		"  release-stable Create a signed stable release commit and tag from staged changes (TAG=vX.Y.Z)"
 
 docs-venv:
 	@if [ -z "$(UV)" ]; then \
@@ -78,13 +77,26 @@ check: fmt test lint guardrails deprecations
 
 release-stable:
 	@set -euo pipefail; \
-		branch="$$(git rev-parse --abbrev-ref HEAD)"; \
-		if ! command -v "$(COG)" >/dev/null 2>&1; then \
-			echo "cog is not installed. Install Cocogitto and rerun 'make release-stable'."; \
+		tag="$${TAG:-}"; \
+		if [ -z "$$tag" ]; then \
+			echo "TAG is required. Example: make release-stable TAG=v0.6.0"; \
 			exit 1; \
 		fi; \
-		if ! git diff --quiet || ! git diff --cached --quiet; then \
-			echo "Working tree must be clean before preparing a stable release."; \
+		case "$$tag" in \
+			v[0-9]*.[0-9]*.[0-9]*) ;; \
+			*) echo "TAG must look like vX.Y.Z. Got '$$tag'."; exit 1 ;; \
+		esac; \
+		if printf '%s' "$$tag" | grep -q -- '-'; then \
+			echo "release-stable only supports stable tags. Use TAG=vX.Y.Z."; \
+			exit 1; \
+		fi; \
+		branch="$$(git rev-parse --abbrev-ref HEAD)"; \
+		if ! git diff --quiet; then \
+			echo "Working tree has unstaged changes. Stage or stash them before running release-stable."; \
+			exit 1; \
+		fi; \
+		if git diff --cached --quiet; then \
+			echo "No staged release changes found. Stage the release notes or other release changes first."; \
 			exit 1; \
 		fi; \
 		signing_key="$$(git config --get user.signingkey || true)"; \
@@ -92,21 +104,23 @@ release-stable:
 			echo "git user.signingkey is not configured."; \
 			exit 1; \
 		fi; \
-		echo "Running repo checks before creating the release commit and tag..."; \
+		if git rev-parse "$$tag" >/dev/null 2>&1; then \
+			echo "Tag '$$tag' already exists locally."; \
+			exit 1; \
+		fi; \
+		echo "Running repo checks before creating the signed release commit and tag..."; \
 		$(MAKE) check; \
-		echo "Creating release commit and tag with Cocogitto..."; \
-		annotation="stable release"; \
-		GIT_CONFIG_COUNT=2 \
-		GIT_CONFIG_KEY_0=commit.gpgsign \
-		GIT_CONFIG_VALUE_0=false \
-		GIT_CONFIG_KEY_1=tag.gpgsign \
-		GIT_CONFIG_VALUE_1=false \
-		"$(COG)" bump --auto --annotated "$$annotation"; \
-		tag="$$(git describe --tags --abbrev=0)"; \
-		echo "Re-signing release commit and tag with Git CLI..."; \
-		git tag -d "$$tag" >/dev/null; \
-		git commit --amend -S --no-edit >/dev/null; \
-		git tag -s "$$tag" -m "$$annotation"; \
+		if ! git diff --quiet; then \
+			echo "Repo checks modified tracked files. Review and restage them before running release-stable."; \
+			exit 1; \
+		fi; \
+		if git diff --cached --quiet; then \
+			echo "Staged release changes disappeared during checks. Restage them before running release-stable."; \
+			exit 1; \
+		fi; \
+		echo "Creating signed release commit and tag with Git CLI..."; \
+		git commit -S -m "chore(release): $$tag" >/dev/null; \
+		git tag -s "$$tag" -m "$$tag"; \
 		if ! git cat-file -p HEAD | grep -q '^gpgsig '; then \
 			echo "Release commit is missing an embedded git signature."; \
 			exit 1; \

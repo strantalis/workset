@@ -508,46 +508,30 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
         with:
           fetch-depth: 0
-      - name: Install Cocogitto
-        shell: bash
-        run: |
-          set -euo pipefail
-          version=6.4.0
-          arch="$(uname -m)"
-          case "$arch" in
-            x86_64|amd64) arch="x86_64" ;;
-            aarch64|arm64) arch="aarch64" ;;
-            *) echo "Unsupported architecture: $arch" >&2; exit 1 ;;
-          esac
-          platform="$(uname -s | tr '[:upper:]' '[:lower:]')"
-          case "$platform" in
-            linux) platform="unknown-linux-musl" ;;
-            darwin) platform="apple-darwin" ;;
-            *) echo "Unsupported platform: $platform" >&2; exit 1 ;;
-          esac
-          tarball="cocogitto-${version}-${arch}-${platform}.tar.gz"
-          curl -fsSL "https://github.com/cocogitto/cocogitto/releases/download/${version}/${tarball}" -o "$RUNNER_TEMP/${tarball}"
-          mkdir -p "$HOME/.local/bin"
-          tar --strip-components=1 -xzf "$RUNNER_TEMP/${tarball}" -C "$HOME/.local/bin" "${arch}-${platform}/cog"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
+        with:
+          go-version-file: go.mod
+      - name: Set up Node
+        uses: actions/setup-node@d02c89dce7e1ba9ef629ce0680989b3a1cc72edb # v6.2.0
+        with:
+          node-version: "24"
       - name: Stable release preflight
         shell: bash
-        run: |
-          set -euo pipefail
-          cog --version
-          cog bump --auto --dry-run
+        run: make check
       - name: Print local release steps
         shell: bash
         run: |
           cat <<'EOF'
-          Stable releases are prepared locally now.
+          Stable releases are prepared locally with plain Git now.
 
           Run locally:
-            make release-stable
+            1. Stage the release notes or other release changes.
+            2. make release-stable TAG=vX.Y.Z
 
           Then:
-            1. Push the signed release commit to main.
-            2. Push the signed stable tag.
+            1. git push origin HEAD:main
+            2. git push origin vX.Y.Z
             3. This workflow will publish artifacts automatically from the pushed stable tag.
           EOF
 
@@ -576,30 +560,6 @@ jobs:
         run: |
           set -euo pipefail
           echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-      - name: Install Cocogitto
-        shell: bash
-        run: |
-          set -euo pipefail
-          version=6.4.0
-          arch="$(uname -m)"
-          case "$arch" in
-            x86_64|amd64) arch="x86_64" ;;
-            aarch64|arm64) arch="aarch64" ;;
-            *) echo "Unsupported architecture: $arch" >&2; exit 1 ;;
-          esac
-          platform="$(uname -s | tr '[:upper:]' '[:lower:]')"
-          case "$platform" in
-            linux) platform="unknown-linux-musl" ;;
-            darwin) platform="apple-darwin" ;;
-            *) echo "Unsupported platform: $platform" >&2; exit 1 ;;
-          esac
-          tarball="cocogitto-${version}-${arch}-${platform}.tar.gz"
-          curl -fsSL "https://github.com/cocogitto/cocogitto/releases/download/${version}/${tarball}" -o "$RUNNER_TEMP/${tarball}"
-          mkdir -p "$HOME/.local/bin"
-          tar --strip-components=1 -xzf "$RUNNER_TEMP/${tarball}" -C "$HOME/.local/bin" "${arch}-${platform}/cog"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - name: Generate release notes
-        run: cog changelog --at "${{ steps.tag.outputs.value }}" -t remote > GITHUB_CHANGELOG.md
       - name: Set up Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
@@ -635,7 +595,7 @@ jobs:
         uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
         with:
           distribution: goreleaser-pro
-          args: release --release-notes=GITHUB_CHANGELOG.md --clean
+          args: release --clean
         env:
           GORELEASER_KEY: ${{ secrets.GORELEASER_PRO }}
       - uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v3
