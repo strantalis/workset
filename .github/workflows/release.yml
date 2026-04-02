@@ -1,6 +1,9 @@
 name: release
 
 on:
+  push:
+    tags:
+      - "v*"
   schedule:
     - cron: "0 4 * * *"
   workflow_dispatch:
@@ -498,18 +501,8 @@ jobs:
 
   stable-release:
     needs: determine
-    if: ${{ needs.determine.outputs.mode == 'stable' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && needs.determine.outputs.mode == 'stable' }}
     runs-on: ubuntu-latest
-    outputs:
-      tag: ${{ steps.release.outputs.version }}
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      GORELEASER_GH_TOKEN: ${{ secrets.GORELEASER_GH_TOKEN }}
-      MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
-      MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
-      MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
-      MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
-      MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
@@ -537,24 +530,76 @@ jobs:
           mkdir -p "$HOME/.local/bin"
           tar --strip-components=1 -xzf "$RUNNER_TEMP/${tarball}" -C "$HOME/.local/bin" "${arch}-${platform}/cog"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - name: Cocogitto release
-        id: release
+      - name: Stable release preflight
         shell: bash
         run: |
           set -euo pipefail
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           cog --version
-          cog bump --auto
-          version="$(git describe --tags "$(git rev-list --tags --max-count=1)")"
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-      - name: Push release commit and tag
+          cog bump --auto --dry-run
+      - name: Print local release steps
+        shell: bash
+        run: |
+          cat <<'EOF'
+          Stable releases are prepared locally now.
+
+          Run from a release branch:
+            make release-stable
+
+          Then:
+            1. Push the branch without tags and merge the PR into main.
+            2. After the release commit is on main, push the signed tag.
+            3. This workflow will publish artifacts automatically from the pushed stable tag.
+          EOF
+
+  stable-publish:
+    needs: determine
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-alpha.') }}
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.value }}
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GORELEASER_GH_TOKEN: ${{ secrets.GORELEASER_GH_TOKEN }}
+      MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+      MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+      MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+      MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+      MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
+        with:
+          fetch-depth: 0
+      - name: Resolve stable tag
+        id: tag
+        shell: bash
         run: |
           set -euo pipefail
-          git push origin HEAD:main
-          git push origin "${{ steps.release.outputs.version }}"
+          echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+      - name: Install Cocogitto
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=6.4.0
+          arch="$(uname -m)"
+          case "$arch" in
+            x86_64|amd64) arch="x86_64" ;;
+            aarch64|arm64) arch="aarch64" ;;
+            *) echo "Unsupported architecture: $arch" >&2; exit 1 ;;
+          esac
+          platform="$(uname -s | tr '[:upper:]' '[:lower:]')"
+          case "$platform" in
+            linux) platform="unknown-linux-musl" ;;
+            darwin) platform="apple-darwin" ;;
+            *) echo "Unsupported platform: $platform" >&2; exit 1 ;;
+          esac
+          tarball="cocogitto-${version}-${arch}-${platform}.tar.gz"
+          curl -fsSL "https://github.com/cocogitto/cocogitto/releases/download/${version}/${tarball}" -o "$RUNNER_TEMP/${tarball}"
+          mkdir -p "$HOME/.local/bin"
+          tar --strip-components=1 -xzf "$RUNNER_TEMP/${tarball}" -C "$HOME/.local/bin" "${arch}-${platform}/cog"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Generate release notes
-        run: cog changelog --at "${{ steps.release.outputs.version }}" -t remote > GITHUB_CHANGELOG.md
+        run: cog changelog --at "${{ steps.tag.outputs.value }}" -t remote > GITHUB_CHANGELOG.md
       - name: Set up Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
@@ -598,8 +643,8 @@ jobs:
           subject-checksums: dist/checksums.txt
 
   wails-macos-stable:
-    needs: stable-release
-    if: ${{ needs.stable-release.outputs.tag != '' }}
+    needs: stable-publish
+    if: ${{ needs.stable-publish.outputs.tag != '' }}
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -618,7 +663,7 @@ jobs:
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha.70
       - name: Build Wails app
         env:
-          LDFLAGS: "-s -w -X main.appVersion=${{ needs.stable-release.outputs.tag }} -X main.appCommit=${{ github.sha }}"
+          LDFLAGS: "-s -w -X main.appVersion=${{ needs.stable-publish.outputs.tag }} -X main.appCommit=${{ github.sha }}"
         run: wails3 package
         working-directory: wails-ui/workset
       - name: Signing status
@@ -736,7 +781,7 @@ jobs:
       - name: Build update ZIP and metadata
         shell: bash
         env:
-          TAG: ${{ needs.stable-release.outputs.tag }}
+          TAG: ${{ needs.stable-publish.outputs.tag }}
           SIGNING_ENABLED: ${{ steps.signing.outputs.enabled }}
         run: |
           set -euo pipefail
@@ -757,7 +802,7 @@ jobs:
       - name: Build DMG
         shell: bash
         env:
-          TAG: ${{ needs.stable-release.outputs.tag }}
+          TAG: ${{ needs.stable-publish.outputs.tag }}
         run: |
           set -euo pipefail
           app="wails-ui/workset/bin/workset.app"
@@ -777,7 +822,7 @@ jobs:
         if: steps.signing.outputs.enabled == 'true'
         shell: bash
         env:
-          TAG: ${{ needs.stable-release.outputs.tag }}
+          TAG: ${{ needs.stable-publish.outputs.tag }}
         run: |
           set -euo pipefail
           dmg="wails-ui/workset/bin/workset-${TAG}-macos.dmg"
@@ -796,7 +841,7 @@ jobs:
           MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
           MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
           KEY_PATH: ${{ runner.temp }}/notary_api_key.p8
-          TAG: ${{ needs.stable-release.outputs.tag }}
+          TAG: ${{ needs.stable-publish.outputs.tag }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -825,13 +870,13 @@ jobs:
       - name: Upload release assets
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
         with:
-          tag_name: ${{ needs.stable-release.outputs.tag }}
+          tag_name: ${{ needs.stable-publish.outputs.tag }}
           prerelease: false
           files: |
-            wails-ui/workset/bin/workset-${{ needs.stable-release.outputs.tag }}-macos.dmg
-            wails-ui/workset/bin/workset-${{ needs.stable-release.outputs.tag }}-macos-update.zip
-            wails-ui/workset/bin/workset-${{ needs.stable-release.outputs.tag }}-macos-update.zip.sha256
-            wails-ui/workset/bin/workset-${{ needs.stable-release.outputs.tag }}-macos-update.zip.teamid
+            wails-ui/workset/bin/workset-${{ needs.stable-publish.outputs.tag }}-macos.dmg
+            wails-ui/workset/bin/workset-${{ needs.stable-publish.outputs.tag }}-macos-update.zip
+            wails-ui/workset/bin/workset-${{ needs.stable-publish.outputs.tag }}-macos-update.zip.sha256
+            wails-ui/workset/bin/workset-${{ needs.stable-publish.outputs.tag }}-macos-update.zip.teamid
       - name: Trigger docs publish workflow
         shell: bash
         env:
@@ -848,8 +893,8 @@ jobs:
             -d "$payload"
 
   wails-windows-stable:
-    needs: stable-release
-    if: ${{ needs.stable-release.outputs.tag != '' }}
+    needs: stable-publish
+    if: ${{ needs.stable-publish.outputs.tag != '' }}
     runs-on: windows-latest
     continue-on-error: true
     steps:
@@ -867,13 +912,13 @@ jobs:
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha.70
       - name: Build Wails app
         env:
-          LDFLAGS: "-s -w -X main.appVersion=${{ needs.stable-release.outputs.tag }} -X main.appCommit=${{ github.sha }}"
+          LDFLAGS: "-s -w -X main.appVersion=${{ needs.stable-publish.outputs.tag }} -X main.appCommit=${{ github.sha }}"
         run: wails3 package
         working-directory: wails-ui/workset
       - name: Rename artifacts
         shell: pwsh
         run: |
-          $tag = "${{ needs.stable-release.outputs.tag }}"
+          $tag = "${{ needs.stable-publish.outputs.tag }}"
           $os = "windows"
           $dir = "wails-ui/workset/bin"
           if (-not (Test-Path $dir)) {
@@ -895,6 +940,6 @@ jobs:
       - name: Upload release assets
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
         with:
-          tag_name: ${{ needs.stable-release.outputs.tag }}
+          tag_name: ${{ needs.stable-publish.outputs.tag }}
           prerelease: false
           files: wails-ui/workset/bin/*

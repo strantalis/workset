@@ -3,11 +3,12 @@ PYTHON ?= python3
 VENV ?= .venv
 PORT ?= 8000
 GOLANGCI_LINT_CACHE ?= /tmp/golangci-lint-cache
+COG ?= cog
 
 UV := $(shell command -v uv 2>/dev/null)
 BASE_SHA ?= $(shell git merge-base HEAD origin/main 2>/dev/null)
 
-.PHONY: help docs-venv docs-serve docs-build test lint lint-fmt fmt ui-lint ui-fmt ui-test guardrails deprecations check
+.PHONY: help docs-venv docs-serve docs-build test lint lint-fmt fmt ui-lint ui-fmt ui-test guardrails deprecations check release-stable
 
 help:
 	@printf "%s\n" "Targets:" \
@@ -23,7 +24,8 @@ help:
 		"  ui-test     Run frontend tests" \
 		"  guardrails  Run LOC guardrails (ratcheted against origin/main when available)" \
 		"  deprecations Validate deprecation register deadlines and metadata" \
-		"  check       fmt + test + lint + guardrails"
+		"  check       fmt + test + lint + guardrails" \
+		"  release-stable Prepare a signed stable bump+tag locally on a release branch"
 
 docs-venv:
 	@if [ -z "$(UV)" ]; then \
@@ -73,3 +75,53 @@ deprecations:
 	go run ./scripts/deprecations --config docs-internal/architecture/deprecation-register.yaml
 
 check: fmt test lint guardrails deprecations
+
+release-stable:
+	@set -euo pipefail; \
+		branch="$$(git rev-parse --abbrev-ref HEAD)"; \
+		if [ "$$branch" = "main" ]; then \
+			echo "release-stable must run from a release branch, not main."; \
+			echo "Create a branch from main, run 'make release-stable', push the branch without tags, merge the PR, then push the tag."; \
+			exit 1; \
+		fi; \
+		if ! command -v "$(COG)" >/dev/null 2>&1; then \
+			echo "cog is not installed. Install Cocogitto and rerun 'make release-stable'."; \
+			exit 1; \
+		fi; \
+		if ! git diff --quiet || ! git diff --cached --quiet; then \
+			echo "Working tree must be clean before preparing a stable release."; \
+			exit 1; \
+		fi; \
+		signing_key="$$(git config --get user.signingkey || true)"; \
+		if [ -z "$$signing_key" ]; then \
+			echo "git user.signingkey is not configured."; \
+			exit 1; \
+		fi; \
+		echo "Running repo checks before creating the release commit and tag..."; \
+		$(MAKE) check; \
+		echo "Creating signed release commit and signed annotated tag on branch '$$branch'..."; \
+		GIT_CONFIG_COUNT=2 \
+		GIT_CONFIG_KEY_0=commit.gpgsign \
+		GIT_CONFIG_VALUE_0=true \
+		GIT_CONFIG_KEY_1=tag.gpgsign \
+		GIT_CONFIG_VALUE_1=true \
+		"$(COG)" bump --auto --annotated; \
+		tag="$$(git describe --tags --abbrev=0)"; \
+		if ! git cat-file -p HEAD | grep -q '^gpgsig '; then \
+			echo "Release commit is missing an embedded git signature."; \
+			exit 1; \
+		fi; \
+		if [ "$$(git cat-file -t "$$tag")" != "tag" ]; then \
+			echo "Release tag '$$tag' is not an annotated tag."; \
+			exit 1; \
+		fi; \
+		if ! git cat-file -p "$$tag" | grep -Eq 'BEGIN SSH SIGNATURE|BEGIN PGP SIGNATURE'; then \
+			echo "Release tag '$$tag' is missing an embedded signature."; \
+			exit 1; \
+		fi; \
+		echo ""; \
+		echo "Prepared $$tag on branch '$$branch'."; \
+		echo "Next steps:"; \
+		echo "  1. git push origin HEAD"; \
+		echo "  2. Open and merge the release PR into main (do not push tags yet)."; \
+		echo "  3. After the release commit is on main, run: git push origin $$tag"
