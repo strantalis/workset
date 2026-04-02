@@ -94,14 +94,17 @@ release-stable:
 		fi; \
 		echo "Running repo checks before creating the release commit and tag..."; \
 		$(MAKE) check; \
-		echo "Creating signed release commit and signed annotated tag on branch '$$branch'..."; \
+		echo "Creating signed release commit on branch '$$branch'..."; \
 		GIT_CONFIG_COUNT=2 \
 		GIT_CONFIG_KEY_0=commit.gpgsign \
 		GIT_CONFIG_VALUE_0=true \
 		GIT_CONFIG_KEY_1=tag.gpgsign \
 		GIT_CONFIG_VALUE_1=true \
-		"$(COG)" bump --auto --annotated; \
+		"$(COG)" bump --auto; \
 		tag="$$(git describe --tags --abbrev=0)"; \
+		echo "Rewriting $$tag as a signed annotated tag..."; \
+		git tag -d "$$tag" >/dev/null; \
+		git tag -s "$$tag" -m "$$tag"; \
 		if ! git cat-file -p HEAD | grep -q '^gpgsig '; then \
 			echo "Release commit is missing an embedded git signature."; \
 			exit 1; \
