@@ -542,12 +542,12 @@ jobs:
           cat <<'EOF'
           Stable releases are prepared locally now.
 
-          Run from a release branch:
+          Run locally:
             make release-stable
 
           Then:
-            1. Push the branch without tags and merge the PR into main.
-            2. After the release commit is on main, push the signed tag.
+            1. Push the signed release commit to main.
+            2. Push the signed stable tag.
             3. This workflow will publish artifacts automatically from the pushed stable tag.
           EOF
 

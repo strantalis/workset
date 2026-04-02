@@ -79,11 +79,6 @@ check: fmt test lint guardrails deprecations
 release-stable:
 	@set -euo pipefail; \
 		branch="$$(git rev-parse --abbrev-ref HEAD)"; \
-		if [ "$$branch" = "main" ]; then \
-			echo "release-stable must run from a release branch, not main."; \
-			echo "Create a branch from main, run 'make release-stable', push the branch without tags, merge the PR, then push the tag."; \
-			exit 1; \
-		fi; \
 		if ! command -v "$(COG)" >/dev/null 2>&1; then \
 			echo "cog is not installed. Install Cocogitto and rerun 'make release-stable'."; \
 			exit 1; \
@@ -122,6 +117,5 @@ release-stable:
 		echo ""; \
 		echo "Prepared $$tag on branch '$$branch'."; \
 		echo "Next steps:"; \
-		echo "  1. git push origin HEAD"; \
-		echo "  2. Open and merge the release PR into main (do not push tags yet)."; \
-		echo "  3. After the release commit is on main, run: git push origin $$tag"
+		echo "  1. git push origin HEAD:main"; \
+		echo "  2. git push origin $$tag"
