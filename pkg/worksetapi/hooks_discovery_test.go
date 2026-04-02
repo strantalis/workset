@@ -200,8 +200,8 @@ func TestPreviewRepoHooksAliasURLWithoutGitHubAuthReturnsSoftMiss(t *testing.T) 
 	if result.Payload.Exists {
 		t.Fatalf("expected missing hooks file when auth is unavailable")
 	}
-	if result.Payload.PreviewUnavailableReason != repoHooksPreviewUnavailableReasonAuthRequired {
-		t.Fatalf("expected auth-required preview reason, got %q", result.Payload.PreviewUnavailableReason)
+	if result.Payload.PreviewUnavailableReason != "" {
+		t.Fatalf("expected no preview-unavailable reason, got %q", result.Payload.PreviewUnavailableReason)
 	}
 	if result.Payload.Owner != "acme" || result.Payload.Repo != "widgets" {
 		t.Fatalf("unexpected remote metadata: %+v", result.Payload)
