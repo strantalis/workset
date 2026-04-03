@@ -126,18 +126,28 @@ export type Workspace = Thread;
 
 export type TerminalSplitDirection = 'horizontal' | 'vertical';
 
-export type TerminalLayoutPane = {
+export type TerminalLayoutLeaf = {
+	kind: 'pane';
 	id: string;
 	terminalId: string;
 	snapshot?: TerminalSnapshotLike;
 };
 
+export type TerminalLayoutSplit = {
+	kind: 'split';
+	id: string;
+	direction: TerminalSplitDirection;
+	ratio: number;
+	first: TerminalLayoutNode;
+	second: TerminalLayoutNode;
+};
+
+export type TerminalLayoutNode = TerminalLayoutLeaf | TerminalLayoutSplit;
+
 export type TerminalLayoutTab = {
 	id: string;
 	title: string;
-	panes: TerminalLayoutPane[];
-	splitDirection?: TerminalSplitDirection;
-	splitRatio?: number;
+	root: TerminalLayoutNode;
 	focusedPaneId?: string;
 };
 

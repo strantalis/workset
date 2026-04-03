@@ -144,12 +144,11 @@ export const buildFreshLayout = (
 			{
 				id: tabId,
 				title: generateTerminalName(workspaceName, 0),
-				panes: [
-					{
-						id: paneId,
-						terminalId,
-					},
-				],
+				root: {
+					kind: 'pane',
+					id: paneId,
+					terminalId,
+				},
 				focusedPaneId: paneId,
 			},
 		],

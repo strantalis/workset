@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { Terminal, X } from '@lucide/svelte';
+	import { PanelTopClose, Terminal, X } from '@lucide/svelte';
 	import { onDestroy, untrack } from 'svelte';
 	import ResizablePanel from './ui/ResizablePanel.svelte';
+	import { tooltip } from '../actions/tooltip';
 	import TerminalPane from './TerminalPane.svelte';
 	import {
 		createWorkspaceTerminal,
@@ -27,18 +28,24 @@
 	import {
 		LAYOUT_VERSION,
 		activeTab,
-		buildPane,
+		buildLeaf,
 		buildTab,
-		collapseTabToPane,
+		canSplit,
+		closePane as closePaneInTree,
 		collectLayoutTerminalIdsFromUnknown,
+		collectLeaves,
 		collectTabTerminalIds,
+		countLeaves,
 		ensureActiveTab,
+		findAdjacentPane,
 		findTab,
 		moveTab,
 		normalizeLayout,
+		splitPane,
+		updateNodeRatio,
 		updateTab,
-		withSplit,
 		type TerminalLayout,
+		type TerminalLayoutNode,
 		type TerminalSplitDirection,
 		type TerminalTab,
 	} from '../terminal/terminalLayoutModel';
@@ -74,23 +81,29 @@
 	const workspaceTabs = $derived(activeLayout?.tabs ?? []);
 	const activeWorkspaceTabId = $derived(activeLayout?.activeTabId ?? '');
 	const currentWorkspaceTab = $derived(activeLayout ? activeTab(activeLayout) : null);
-	const currentWorkspacePaneCount = $derived(currentWorkspaceTab?.panes.length ?? 0);
-	const currentPrimaryPane = $derived(currentWorkspaceTab?.panes[0] ?? null);
-	const currentSecondaryPane = $derived(
-		currentWorkspacePaneCount === 2 ? (currentWorkspaceTab?.panes[1] ?? null) : null,
-	);
-	const currentPrimaryPaneId = $derived(currentPrimaryPane?.id ?? '');
-	const currentPrimaryTerminalId = $derived(currentPrimaryPane?.terminalId ?? '');
-	const currentPrimarySnapshot = $derived(currentPrimaryPane?.snapshot ?? null);
-	const currentSecondaryPaneId = $derived(currentSecondaryPane?.id ?? '');
-	const currentSecondaryTerminalId = $derived(currentSecondaryPane?.terminalId ?? '');
-	const currentSecondarySnapshot = $derived(currentSecondaryPane?.snapshot ?? null);
+	const currentRoot = $derived(currentWorkspaceTab?.root ?? null);
+	const currentLeafCount = $derived(currentRoot ? countLeaves(currentRoot) : 0);
 	const currentFocusedPaneId = $derived(currentWorkspaceTab?.focusedPaneId ?? '');
-	const currentSplitDirection = $derived(currentWorkspaceTab?.splitDirection ?? 'vertical');
-	const currentSplitRatio = $derived(currentWorkspaceTab?.splitRatio ?? 0.5);
-	const currentPanelDirection = $derived(
-		currentSplitDirection === 'horizontal' ? 'vertical' : 'horizontal',
+	const currentCanSplit = $derived(
+		currentRoot && currentFocusedPaneId ? canSplit(currentRoot, currentFocusedPaneId) : false,
 	);
+
+	const withCapturedNodeSnapshots = (
+		wsId: string,
+		node: TerminalLayoutNode,
+	): TerminalLayoutNode => {
+		if (node.kind === 'pane') {
+			return {
+				...node,
+				snapshot: captureTerminalSnapshot(wsId, node.terminalId) ?? node.snapshot,
+			};
+		}
+		return {
+			...node,
+			first: withCapturedNodeSnapshots(wsId, node.first),
+			second: withCapturedNodeSnapshots(wsId, node.second),
+		};
+	};
 
 	const withCapturedSnapshots = (
 		targetWorkspaceId: string,
@@ -101,10 +114,7 @@
 			...targetLayout,
 			tabs: targetLayout.tabs.map((tab) => ({
 				...tab,
-				panes: tab.panes.map((pane) => ({
-					...pane,
-					snapshot: captureTerminalSnapshot(targetWorkspaceId, pane.terminalId) ?? pane.snapshot,
-				})),
+				root: withCapturedNodeSnapshots(targetWorkspaceId, tab.root),
 			})),
 		};
 	};
@@ -223,20 +233,12 @@
 		}));
 	};
 
-	const resolveOtherPaneId = (tab: TerminalTab, currentPaneId: string): string | null =>
-		tab.panes.find((pane) => pane.id !== currentPaneId)?.id ?? null;
-
 	const maybeFocusAdjacentPane = (
 		tab: TerminalTab | null,
 		direction: 'up' | 'down' | 'left' | 'right',
 	): void => {
-		if (!tab || tab.panes.length !== 2 || !tab.focusedPaneId) return;
-		const splitDirection = tab.splitDirection ?? 'vertical';
-		const matchesDirection =
-			(splitDirection === 'vertical' && (direction === 'left' || direction === 'right')) ||
-			(splitDirection === 'horizontal' && (direction === 'up' || direction === 'down'));
-		if (!matchesDirection) return;
-		const nextPaneId = resolveOtherPaneId(tab, tab.focusedPaneId);
+		if (!tab || !tab.focusedPaneId) return;
+		const nextPaneId = findAdjacentPane(tab.root, tab.focusedPaneId, direction);
 		if (nextPaneId) {
 			setFocusedPane(nextPaneId);
 		}
@@ -327,46 +329,51 @@
 
 	const handleClosePane = async (paneId: string): Promise<void> => {
 		if (!currentWorkspaceTab) return;
-		const closingPane = currentWorkspaceTab.panes.find((pane) => pane.id === paneId);
-		if (!closingPane) return;
+		const leaves = collectLeaves(currentWorkspaceTab.root);
+		const closingLeaf = leaves.find((leaf) => leaf.id === paneId);
+		if (!closingLeaf) return;
 
-		await closeTerminal(workspaceId, closingPane.terminalId);
+		await closeTerminal(workspaceId, closingLeaf.terminalId);
 
-		if (currentWorkspaceTab.panes.length === 1) {
+		// If only one pane, close the whole tab
+		if (leaves.length === 1) {
 			await handleCloseWorkspaceTab(currentWorkspaceTab.id);
 			return;
 		}
 
 		updateCurrentTab((tab) => {
-			const nextFocus = resolveOtherPaneId(tab, paneId);
-			return collapseTabToPane(tab, nextFocus ?? tab.panes[0].id);
+			const newRoot = closePaneInTree(tab.root, paneId);
+			if (!newRoot) return tab;
+			const remaining = collectLeaves(newRoot);
+			return {
+				...tab,
+				root: newRoot,
+				focusedPaneId: remaining[0]?.id ?? tab.focusedPaneId,
+			};
 		});
 	};
 
 	const handleSplitDirection = async (direction: TerminalSplitDirection): Promise<void> => {
-		if (!currentWorkspaceTab) return;
-		if (currentWorkspaceTab.panes.length >= 2) {
-			updateCurrentTab((tab) => ({
-				...tab,
-				splitDirection: direction,
-			}));
-			return;
-		}
+		if (!currentWorkspaceTab || !currentFocusedPaneId) return;
+		if (!canSplit(currentWorkspaceTab.root, currentFocusedPaneId)) return;
 		try {
 			const created = await createWorkspaceTerminal(workspaceId);
-			const newPane = buildPane(created.terminalId);
-			updateCurrentTab((tab) => withSplit(tab, newPane, direction));
+			const newLeaf = buildLeaf(created.terminalId);
+			updateCurrentTab((tab) => {
+				const newRoot = splitPane(tab.root, tab.focusedPaneId ?? '', newLeaf, direction);
+				if (!newRoot) return tab;
+				return { ...tab, root: newRoot, focusedPaneId: newLeaf.id };
+			});
 		} catch (error) {
 			initError = String(error);
 		}
 	};
 
-	const handleSplitRatioChange = (ratio: number): void => {
-		if (!currentWorkspaceTab || currentWorkspaceTab.panes.length < 2) return;
-		const splitRatio = Math.max(MIN_RATIO, Math.min(MAX_RATIO, ratio));
+	const handleNodeRatioChange = (nodeId: string, ratio: number): void => {
+		if (!currentWorkspaceTab) return;
 		updateCurrentTab((tab) => ({
 			...tab,
-			splitRatio,
+			root: updateNodeRatio(tab.root, nodeId, ratio),
 		}));
 	};
 
@@ -595,7 +602,14 @@
 		{:else}
 			<div class="workspace-shell">
 				<div class="workspace-tabs" role="tablist" aria-label="Terminal tabs">
-					<div class="workspace-tabs-scroll">
+					<div
+						class="workspace-tabs-scroll"
+						onwheel={(e) => {
+							if (e.deltaY === 0) return;
+							e.preventDefault();
+							e.currentTarget.scrollLeft += e.deltaY;
+						}}
+					>
 						{#each workspaceTabs as tab, index (tab.id)}
 							<div
 								class="workspace-tab"
@@ -632,19 +646,26 @@
 								</button>
 							</div>
 						{/each}
+						<button
+							type="button"
+							class="workspace-tab-add"
+							aria-label="New terminal tab"
+							use:tooltip={'New tab (⌘T)'}
+							onclick={() => void handleAddWorkspaceTab()}
+						>
+							+
+						</button>
 					</div>
 					{#if currentWorkspaceTab}
 						<div class="workspace-tab-actions">
 							<button
 								type="button"
 								class="ws-icon-action-btn"
-								class:active={currentWorkspacePaneCount === 2 &&
-									currentSplitDirection === 'vertical'}
-								data-hover-label={currentWorkspacePaneCount === 2
-									? 'Switch to vertical split'
-									: 'Split vertical (⌘\\)'}
+								class:disabled={!currentCanSplit}
+								use:tooltip={'Split vertical (⌘\\)'}
 								aria-label="Split vertical"
-								onclick={() => void handleSplitDirection('vertical')}
+								aria-disabled={!currentCanSplit}
+								onclick={() => currentCanSplit && void handleSplitDirection('vertical')}
 							>
 								<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
 									<rect
@@ -662,13 +683,11 @@
 							<button
 								type="button"
 								class="ws-icon-action-btn"
-								class:active={currentWorkspacePaneCount === 2 &&
-									currentSplitDirection === 'horizontal'}
-								data-hover-label={currentWorkspacePaneCount === 2
-									? 'Switch to horizontal split'
-									: 'Split horizontal (⌘⇧\\)'}
+								class:disabled={!currentCanSplit}
+								use:tooltip={'Split horizontal (⌘⇧\\)'}
 								aria-label="Split horizontal"
-								onclick={() => void handleSplitDirection('horizontal')}
+								aria-disabled={!currentCanSplit}
+								onclick={() => currentCanSplit && void handleSplitDirection('horizontal')}
 							>
 								<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
 									<rect
@@ -683,110 +702,65 @@
 									<path d="M1 7h12" stroke="currentColor" stroke-width="1.2" />
 								</svg>
 							</button>
-							{#if currentWorkspacePaneCount === 2 && currentFocusedPaneId}
+							{#if currentLeafCount > 1 && currentFocusedPaneId}
 								<button
 									type="button"
 									class="ws-icon-action-btn"
-									data-hover-label="Close split"
-									aria-label="Close split"
+									use:tooltip={'Close pane'}
+									aria-label="Close pane"
 									onclick={() => void handleClosePane(currentFocusedPaneId)}
 								>
-									<X size={14} />
+									<PanelTopClose size={14} />
 								</button>
 							{/if}
 						</div>
 					{/if}
-					<button
-						type="button"
-						class="workspace-tab-add"
-						aria-label="New terminal tab"
-						data-hover-label="New tab (⌘T)"
-						onclick={() => void handleAddWorkspaceTab()}
-					>
-						+
-					</button>
 				</div>
-				<div class="workspace-layout">
-					{#if currentWorkspacePaneCount === 1 && currentPrimaryPaneId && currentPrimaryTerminalId}
-						<div class="workspace-pane">
-							<div
-								class="workspace-pane-surface"
-								class:focused={currentFocusedPaneId === currentPrimaryPaneId}
-								role="button"
-								tabindex="0"
-								onclick={() => setFocusedPane(currentPrimaryPaneId)}
-								onkeydown={(event) => {
-									if (event.key !== 'Enter' && event.key !== ' ') return;
-									event.preventDefault();
-									setFocusedPane(currentPrimaryPaneId);
-								}}
-							>
-								<TerminalPane
-									{workspaceId}
-									{workspaceName}
-									terminalId={currentPrimaryTerminalId}
-									initialSnapshot={currentPrimarySnapshot}
-									active={currentFocusedPaneId === currentPrimaryPaneId && active}
-									compact={true}
-									onTerminalClosed={() => void handleClosePane(currentPrimaryPaneId)}
-								/>
-							</div>
+				{#snippet renderNode(node: TerminalLayoutNode | null)}
+					{#if !node}
+						<!-- null guard during reactive transitions -->
+					{:else if node.kind === 'pane'}
+						<div
+							class="workspace-pane-surface"
+							class:focused={currentFocusedPaneId === node.id}
+							role="button"
+							tabindex="0"
+							onclick={() => setFocusedPane(node.id)}
+							onkeydown={(event) => {
+								if (event.key !== 'Enter' && event.key !== ' ') return;
+								event.preventDefault();
+								setFocusedPane(node.id);
+							}}
+						>
+							<TerminalPane
+								{workspaceId}
+								{workspaceName}
+								terminalId={node.terminalId}
+								initialSnapshot={node.snapshot}
+								active={currentFocusedPaneId === node.id && active}
+								compact={true}
+								onTerminalClosed={() => void handleClosePane(node.id)}
+							/>
 						</div>
-					{:else if currentWorkspacePaneCount === 2 && currentPrimaryPaneId && currentPrimaryTerminalId && currentSecondaryPaneId && currentSecondaryTerminalId}
+					{:else}
 						<ResizablePanel
-							direction={currentPanelDirection}
-							ratio={currentSplitRatio}
+							direction={node.direction === 'horizontal' ? 'vertical' : 'horizontal'}
+							ratio={node.ratio}
 							minRatio={MIN_RATIO}
 							maxRatio={MAX_RATIO}
-							onRatioChange={handleSplitRatioChange}
+							onRatioChange={(r) => handleNodeRatioChange(node.id, r)}
 						>
-							<div
-								class="workspace-pane-surface"
-								class:focused={currentFocusedPaneId === currentPrimaryPaneId}
-								role="button"
-								tabindex="0"
-								onclick={() => setFocusedPane(currentPrimaryPaneId)}
-								onkeydown={(event) => {
-									if (event.key !== 'Enter' && event.key !== ' ') return;
-									event.preventDefault();
-									setFocusedPane(currentPrimaryPaneId);
-								}}
-							>
-								<TerminalPane
-									{workspaceId}
-									{workspaceName}
-									terminalId={currentPrimaryTerminalId}
-									initialSnapshot={currentPrimarySnapshot}
-									active={currentFocusedPaneId === currentPrimaryPaneId && active}
-									compact={true}
-									onTerminalClosed={() => void handleClosePane(currentPrimaryPaneId)}
-								/>
-							</div>
+							{@render renderNode(node.first)}
 							{#snippet second()}
-								<div
-									class="workspace-pane-surface"
-									class:focused={currentFocusedPaneId === currentSecondaryPaneId}
-									role="button"
-									tabindex="0"
-									onclick={() => setFocusedPane(currentSecondaryPaneId)}
-									onkeydown={(event) => {
-										if (event.key !== 'Enter' && event.key !== ' ') return;
-										event.preventDefault();
-										setFocusedPane(currentSecondaryPaneId);
-									}}
-								>
-									<TerminalPane
-										{workspaceId}
-										{workspaceName}
-										terminalId={currentSecondaryTerminalId}
-										initialSnapshot={currentSecondarySnapshot}
-										active={currentFocusedPaneId === currentSecondaryPaneId && active}
-										compact={true}
-										onTerminalClosed={() => void handleClosePane(currentSecondaryPaneId)}
-									/>
-								</div>
+								{@render renderNode(node.second)}
 							{/snippet}
 						</ResizablePanel>
+					{/if}
+				{/snippet}
+
+				<div class="workspace-layout">
+					{#if currentRoot}
+						{@render renderNode(currentRoot)}
 					{/if}
 				</div>
 			</div>
@@ -833,8 +807,9 @@
 		display: flex;
 		align-items: center;
 		gap: 2px;
-		flex: 1;
+		flex: 1 1 0;
 		min-width: 0;
+		width: 0;
 		overflow-x: auto;
 		scrollbar-width: none;
 	}
@@ -847,7 +822,7 @@
 		display: flex;
 		align-items: center;
 		gap: 5px;
-		min-width: 0;
+		flex-shrink: 0;
 		max-width: 280px;
 		padding: 6px 12px;
 		background: transparent;
@@ -973,25 +948,30 @@
 		display: flex;
 	}
 
-	.workspace-pane {
-		flex: 1;
-		min-width: 0;
-		min-height: 0;
-		display: flex;
-	}
-
 	.workspace-pane-surface {
 		flex: 1;
 		min-width: 0;
 		min-height: 0;
 		display: flex;
+		flex-direction: column;
 		outline: none;
-		box-shadow: inset 0 0 0 1px transparent;
-		transition: box-shadow var(--transition-fast);
+		position: relative;
 	}
 
-	.workspace-pane-surface.focused {
-		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+	.workspace-pane-surface::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 2px;
+		background: transparent;
+		transition: background var(--transition-fast);
+		z-index: 1;
+	}
+
+	.workspace-pane-surface.focused::before {
+		background: var(--accent);
 	}
 
 	.workspace-pane-surface :global(.terminal) {
@@ -999,9 +979,10 @@
 		min-height: 0;
 	}
 
-	.ws-icon-action-btn.active {
-		background: color-mix(in srgb, var(--accent) 12%, transparent);
-		color: var(--accent);
+	.ws-icon-action-btn.disabled {
+		opacity: 0.3;
+		cursor: default;
+		pointer-events: none;
 	}
 
 	.terminal-loading {

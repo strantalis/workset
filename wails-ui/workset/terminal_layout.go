@@ -10,21 +10,24 @@ import (
 	"time"
 )
 
-const terminalLayoutStoreVersion = 3
+const terminalLayoutStoreVersion = 4
 
-type TerminalLayoutPane struct {
-	ID         string          `json:"id"`
-	TerminalID string          `json:"terminalId"`
-	Snapshot   json.RawMessage `json:"snapshot,omitempty"`
+type TerminalLayoutNode struct {
+	Kind       string               `json:"kind"`
+	ID         string               `json:"id"`
+	TerminalID string               `json:"terminalId,omitempty"`
+	Snapshot   json.RawMessage      `json:"snapshot,omitempty"`
+	Direction  string               `json:"direction,omitempty"`
+	Ratio      float64              `json:"ratio,omitempty"`
+	First      *TerminalLayoutNode  `json:"first,omitempty"`
+	Second     *TerminalLayoutNode  `json:"second,omitempty"`
 }
 
 type TerminalLayoutTab struct {
-	ID             string               `json:"id"`
-	Title          string               `json:"title"`
-	Panes          []TerminalLayoutPane `json:"panes"`
-	SplitDirection string               `json:"splitDirection,omitempty"`
-	SplitRatio     float64              `json:"splitRatio,omitempty"`
-	FocusedPaneID  string               `json:"focusedPaneId,omitempty"`
+	ID            string             `json:"id"`
+	Title         string             `json:"title"`
+	Root          TerminalLayoutNode `json:"root"`
+	FocusedPaneID string             `json:"focusedPaneId,omitempty"`
 }
 
 type TerminalLayout struct {

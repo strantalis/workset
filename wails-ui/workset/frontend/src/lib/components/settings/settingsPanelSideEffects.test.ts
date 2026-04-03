@@ -44,13 +44,17 @@ describe('settingsPanelSideEffects', () => {
 			() => idSequence.shift() ?? 'fallback-id',
 		);
 
-		expect(layout.version).toBe(3);
+		expect(layout.version).toBe(4);
 		expect(layout.activeTabId).toBe('tab-abc');
 		expect(layout.tabs).toEqual([
 			{
 				id: 'tab-abc',
 				title: 'Workspace-0',
-				panes: [{ id: 'pane-def', terminalId: 'terminal-new' }],
+				root: {
+					kind: 'pane',
+					id: 'pane-def',
+					terminalId: 'terminal-new',
+				},
 				focusedPaneId: 'pane-def',
 			},
 		]);
@@ -99,12 +103,16 @@ describe('settingsPanelSideEffects', () => {
 		expect(stopWorkspaceTerminal).toHaveBeenCalledWith('ws-1', 'term-a');
 		expect(stopWorkspaceTerminal).toHaveBeenCalledWith('ws-1', 'term-b');
 		expect(persistWorkspaceTerminalLayout).toHaveBeenCalledWith('ws-1', {
-			version: 3,
+			version: 4,
 			tabs: [
 				{
 					id: 'tab-new',
 					title: 'Workspace One-0',
-					panes: [{ id: 'pane-new', terminalId: 'term-new' }],
+					root: {
+						kind: 'pane',
+						id: 'pane-new',
+						terminalId: 'term-new',
+					},
 					focusedPaneId: 'pane-new',
 				},
 			],

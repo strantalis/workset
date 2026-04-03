@@ -68,6 +68,7 @@ vi.mock('./TerminalPane.svelte', async () => {
 
 import TerminalWorkspace from './TerminalWorkspace.svelte';
 
+// V3 format — normalizeLayout will migrate to v4 tree on load
 const buildTerminalLayout = (terminalId: string, title = 'Workspace-0') => ({
 	version: 3,
 	tabs: [
@@ -379,14 +380,14 @@ describe('TerminalWorkspace', () => {
 			expect(terminalLayoutApiMocks.persistWorkspaceTerminalLayout).toHaveBeenCalledWith(
 				'ws-1',
 				expect.objectContaining({
+					version: 4,
 					tabs: [
 						expect.objectContaining({
-							panes: [
-								expect.objectContaining({
-									terminalId: 'term-1',
-									snapshot: freshSnapshot,
-								}),
-							],
+							root: expect.objectContaining({
+								kind: 'pane',
+								terminalId: 'term-1',
+								snapshot: freshSnapshot,
+							}),
 						}),
 					],
 				}),
@@ -432,8 +433,8 @@ describe('TerminalWorkspace', () => {
 
 		await screen.findByRole('tab', { name: /workspace-0/i });
 
-		const closeSplit = await screen.findByRole('button', { name: /close split/i });
-		await fireEvent.click(closeSplit);
+		const closePane = await screen.findByRole('button', { name: /close pane/i });
+		await fireEvent.click(closePane);
 
 		await waitFor(() => {
 			expect(terminalServiceMocks.closeTerminal).toHaveBeenCalledWith('ws-1', 'term-1');
@@ -444,7 +445,7 @@ describe('TerminalWorkspace', () => {
 		expect(screen.getByTestId('mock-terminal-pane')).toHaveTextContent('term-2');
 	});
 
-	it('only creates one additional terminal and flips split direction after a tab is already split', async () => {
+	it('creates a new terminal when splitting and the split is stored as a tree', async () => {
 		vi.useFakeTimers();
 		terminalLayoutApiMocks.fetchWorkspaceTerminalLayout.mockResolvedValue({
 			workspaceId: 'ws-1',
@@ -472,20 +473,16 @@ describe('TerminalWorkspace', () => {
 		await screen.findByRole('tab', { name: /workspace-0/i });
 
 		await fireEvent.click(screen.getByRole('button', { name: /split vertical/i }));
-		await fireEvent.click(screen.getByRole('button', { name: /split horizontal/i }));
 		await vi.runAllTimersAsync();
 
 		expect(terminalLayoutApiMocks.createWorkspaceTerminal).toHaveBeenCalledTimes(1);
 		const lastPersistCall = terminalLayoutApiMocks.persistWorkspaceTerminalLayout.mock.calls.at(-1);
 		expect(lastPersistCall?.[0]).toBe('ws-1');
-		expect(lastPersistCall?.[1]).toMatchObject({
-			version: 3,
-			tabs: [
-				{
-					panes: [{ terminalId: 'term-1' }, { terminalId: 'term-2' }],
-					splitDirection: 'horizontal',
-				},
-			],
-		});
+		const persisted = lastPersistCall?.[1];
+		expect(persisted.version).toBe(4);
+		expect(persisted.tabs[0].root.kind).toBe('split');
+		expect(persisted.tabs[0].root.direction).toBe('vertical');
+		expect(persisted.tabs[0].root.first.terminalId).toBe('term-1');
+		expect(persisted.tabs[0].root.second.terminalId).toBe('term-2');
 	});
 });

@@ -57,6 +57,7 @@ export type ExplorerWorksetSummary = {
 	shortcutNumber?: number;
 	activeThreads: number;
 	openPrs: number;
+	mergedPrs: number;
 	dirtyRepos: number;
 	linesAdded: number;
 	linesRemoved: number;
@@ -214,6 +215,7 @@ export const mapWorkspacesToExplorerWorksets = (
 			lastActiveTs: number;
 			pinned: boolean;
 			openPrs: number;
+			mergedPrs: number;
 			dirtyRepos: number;
 			linesAdded: number;
 			linesRemoved: number;
@@ -230,6 +232,7 @@ export const mapWorkspacesToExplorerWorksets = (
 			lastActiveTs: 0,
 			pinned: false,
 			openPrs: 0,
+			mergedPrs: 0,
 			dirtyRepos: 0,
 			linesAdded: 0,
 			linesRemoved: 0,
@@ -246,6 +249,7 @@ export const mapWorkspacesToExplorerWorksets = (
 			target.health.add(healthState);
 		}
 		target.openPrs += summary.openPrs;
+		target.mergedPrs += summary.mergedPrs;
 		target.dirtyRepos += summary.dirtyRepos;
 		target.linesAdded += summary.linesAdded;
 		target.linesRemoved += summary.linesRemoved;
@@ -274,6 +278,7 @@ export const mapWorkspacesToExplorerWorksets = (
 					(thread) => thread.status === 'active' || thread.status === 'in-review',
 				).length,
 				openPrs: value.openPrs,
+				mergedPrs: value.mergedPrs,
 				dirtyRepos: value.dirtyRepos,
 				linesAdded: value.linesAdded,
 				linesRemoved: value.linesRemoved,

@@ -204,12 +204,17 @@ describe('workspace + terminal API compatibility exports', () => {
 			normalScreen: ['hello'],
 		};
 		const layout: TerminalLayout = {
-			version: 3,
+			version: 4,
 			tabs: [
 				{
 					id: 'tab-1',
 					title: 'Terminal',
-					panes: [{ id: 'pane-1', terminalId: 'term-1', snapshot }],
+					root: {
+						kind: 'pane',
+						id: 'pane-1',
+						terminalId: 'term-1',
+						snapshot,
+					},
 					focusedPaneId: 'pane-1',
 				},
 			],
