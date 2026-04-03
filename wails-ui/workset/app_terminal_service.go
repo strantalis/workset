@@ -21,10 +21,10 @@ func (a *App) getTerminalServiceClientInternal() (*terminalservice.Client, error
 	if a.terminalServiceStart != nil {
 		waitCh, leader := a.terminalServiceStart.begin()
 		if !leader {
-			logTerminalServicef("client_wait_for_start")
+			debugTerminalServicef("client_wait_for_start")
 			<-waitCh
 		} else {
-			logTerminalServicef("client_start_begin")
+			debugTerminalServicef("client_start_begin")
 			defer a.terminalServiceStart.end()
 		}
 	}
@@ -38,10 +38,10 @@ func (a *App) getTerminalServiceClientInternal() (*terminalservice.Client, error
 		cancel()
 		if err == nil {
 			a.setCachedTerminalServiceInfo(info)
-			logTerminalServicef("client_ready")
+			debugTerminalServicef("client_ready")
 			return client, nil
 		}
-		logTerminalServicef("client_validation_failed err=%v", err)
+		debugTerminalServicef("client_validation_failed err=%v", err)
 		a.stopEmbeddedTerminalService()
 	}
 
@@ -51,7 +51,7 @@ func (a *App) getTerminalServiceClientInternal() (*terminalservice.Client, error
 		return nil, err
 	}
 	if err := a.ensureEmbeddedTerminalServiceStarted(baseCtx, opts); err != nil {
-		logTerminalServicef("embedded_start_failed err=%v", err)
+		warnTerminalServicef("embedded_start_failed err=%v", err)
 		return nil, err
 	}
 
@@ -61,7 +61,7 @@ func (a *App) getTerminalServiceClientInternal() (*terminalservice.Client, error
 	if client == nil {
 		return nil, errors.New("embedded terminal service unavailable")
 	}
-	logTerminalServicef("client_ready_after_start")
+	debugTerminalServicef("client_ready_after_start")
 	return client, nil
 }
 
@@ -86,7 +86,7 @@ func (a *App) validateTerminalServiceClient(
 
 	currentExecutable, currentHash, err := currentTerminalServiceBinary()
 	if err != nil {
-		logTerminalServicef("current_binary_probe_failed err=%v", err)
+		warnTerminalServicef("current_binary_probe_failed err=%v", err)
 		return info, nil
 	}
 	if terminalServiceMatchesCurrentBinary(info, currentExecutable, currentHash) {
@@ -148,7 +148,7 @@ func (a *App) requestTerminalServiceShutdown(client *terminalservice.Client, rea
 	err := client.ShutdownWithReason(shutdownCtx, "workset", reason)
 	cancel()
 	if err != nil {
-		logTerminalServicef("shutdown_request_failed err=%v", err)
+		warnTerminalServicef("shutdown_request_failed err=%v", err)
 		return
 	}
 
@@ -162,7 +162,7 @@ func (a *App) requestTerminalServiceShutdown(client *terminalservice.Client, rea
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	logTerminalServicef("shutdown_wait_timeout reason=%q", reason)
+	warnTerminalServicef("shutdown_wait_timeout reason=%q", reason)
 }
 
 func (a *App) terminalServiceOptions() (terminalservice.Options, error) {
@@ -182,7 +182,7 @@ func (a *App) terminalServiceOptions() (terminalservice.Options, error) {
 		if timeout := strings.TrimSpace(cfg.Defaults.TerminalIdleTimeout); timeout != "" {
 			parsed, parseErr := time.ParseDuration(timeout)
 			if parseErr != nil {
-				logTerminalServicef("idle_timeout_parse_failed value=%q err=%v", timeout, parseErr)
+				warnTerminalServicef("idle_timeout_parse_failed value=%q err=%v", timeout, parseErr)
 			} else {
 				opts.IdleTimeout = parsed
 				opts.IdleTimeoutSet = true
@@ -214,7 +214,7 @@ func (a *App) ensureEmbeddedTerminalServiceStarted(ctx context.Context, opts ter
 		go func() {
 			defer close(done)
 			if err := server.Listen(serverCtx); err != nil {
-				logTerminalServicef("embedded_listen_failed socket=%s err=%v", opts.SocketPath, err)
+				warnTerminalServicef("embedded_listen_failed socket=%s err=%v", opts.SocketPath, err)
 			}
 		}()
 	}
@@ -268,7 +268,7 @@ func (a *App) stopEmbeddedTerminalService() {
 		select {
 		case <-done:
 		case <-time.After(5 * time.Second):
-			logTerminalServicef("embedded_stop_timeout")
+			warnTerminalServicef("embedded_stop_timeout")
 		}
 	}
 }
@@ -365,11 +365,6 @@ func (s *terminalServiceStartState) wait() {
 	if ch != nil {
 		<-ch
 	}
-}
-
-func logTerminalServicef(format string, args ...any) {
-	message := fmt.Sprintf(format, args...)
-	fmt.Printf("[terminal-service] %s %s\n", time.Now().Format(time.RFC3339Nano), message)
 }
 
 type TerminalServiceStatus struct {

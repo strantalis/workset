@@ -68,7 +68,7 @@ func (s *Session) subscribe(streamID string, startOffset int64) *subscriber {
 	s.streams[streamID] = sub
 	state := streamStateFromMaps(s.subscribers, s.streams)
 	s.subscribersMu.Unlock()
-	logServerf("ws_subscribe session=%s stream=%s start_offset=%d subscribers=%d streams=%q", s.id, streamID, startOffset, state.Count, state.StreamIDs)
+	debugServerf("ws_subscribe session=%s stream=%s start_offset=%d subscribers=%d streams=%q", s.id, streamID, startOffset, state.Count, state.StreamIDs)
 	return sub
 }
 
@@ -91,7 +91,7 @@ func (s *Session) unsubscribeWithReason(sub *subscriber, reason string) {
 	if !ok {
 		return
 	}
-	logServerf(
+	debugServerf(
 		"ws_unsubscribe session=%s stream=%s reason=%s offset=%d subscribers=%d streams=%q",
 		s.id,
 		sub.streamID,
@@ -112,9 +112,9 @@ func (s *Session) closeSubscribers() {
 	s.subscribers = make(map[*subscriber]struct{})
 	s.streams = make(map[string]*subscriber)
 	s.subscribersMu.Unlock()
-	logServerf("ws_close_subscribers session=%s count=%d", s.id, len(subs))
+	debugServerf("ws_close_subscribers session=%s count=%d", s.id, len(subs))
 	for _, sub := range subs {
-		logServerf("ws_unsubscribe session=%s stream=%s reason=session_close offset=%d subscribers=0 streams=[]", s.id, sub.streamID, sub.getOffset())
+		debugServerf("ws_unsubscribe session=%s stream=%s reason=session_close offset=%d subscribers=0 streams=[]", s.id, sub.streamID, sub.getOffset())
 		sub.close()
 	}
 }

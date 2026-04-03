@@ -82,3 +82,23 @@ func logTerminalDebug(payload TerminalDebugPayload) {
 		details,
 	)
 }
+
+func debugTerminalServicef(format string, args ...any) {
+	if !terminalDebugConfig() {
+		return
+	}
+	message := strings.ReplaceAll(fmt.Sprintf(format, args...), "\n", "\\n")
+	terminalDebugMu.Lock()
+	defer terminalDebugMu.Unlock()
+	_, _ = fmt.Fprintf(
+		terminalDebugLog,
+		"%s event=terminal_service details=%s\n",
+		time.Now().Format(time.RFC3339Nano),
+		message,
+	)
+}
+
+func warnTerminalServicef(format string, args ...any) {
+	message := fmt.Sprintf(format, args...)
+	_, _ = fmt.Fprintf(os.Stderr, "[terminal-service] %s %s\n", time.Now().Format(time.RFC3339Nano), message)
+}

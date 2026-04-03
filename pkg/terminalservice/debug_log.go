@@ -58,6 +58,10 @@ func debugLogf(format string, args ...any) {
 	)
 }
 
+func debugServerf(format string, args ...any) {
+	debugLogf("server "+format, args...)
+}
+
 func envTruthy(value string) bool {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "1", "true", "yes", "on":

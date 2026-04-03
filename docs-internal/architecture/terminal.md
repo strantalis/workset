@@ -97,5 +97,7 @@ Workset preserves existing terminal hints such as `TERM`, `COLORTERM`, `TERM_PRO
 - `defaults.terminal_debug_overlay` controls the frontend terminal debug strip.
 - `defaults.agent` controls the default coding agent for terminal launchers and PR generation.
 - `WORKSET_TERMINAL_SERVICE_SOCKET` overrides the Unix socket path. Wails dev builds may use a dev socket to avoid contention with production.
+- `WORKSET_TERMINAL_DEBUG_LOG=1` enables opt-in terminal lifecycle debug logging to `~/.workset/terminal_debug.log` (or `WORKSET_TERMINAL_DEBUG_LOG_PATH`).
 
 Protocol logs are written to `~/.workset/terminal_logs/unified_terminal-service.log` when enabled.
+Terminal service stdout/stderr is reserved for warnings and failures; attach/resize/subscriber chatter is kept in the opt-in debug log.

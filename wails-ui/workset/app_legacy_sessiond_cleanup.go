@@ -23,7 +23,7 @@ func ensureLegacySessiondRetired() {
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 	if err := retireLegacySessiondSocket(ctx); err != nil {
-		logTerminalServicef("legacy_sessiond_cleanup_failed err=%v", err)
+		warnTerminalServicef("legacy_sessiond_cleanup_failed err=%v", err)
 	}
 }
 
@@ -71,12 +71,12 @@ func retireLegacySessiondSocketPath(ctx context.Context, socketPath string) erro
 		if removeErr := removeLegacySessiondSocket(socketPath); removeErr != nil {
 			return removeErr
 		}
-		logTerminalServicef("legacy_sessiond_socket_removed path=%s", socketPath)
+		debugTerminalServicef("legacy_sessiond_socket_removed path=%s", socketPath)
 		return nil
 	}
 
 	if len(list.Sessions) > 0 {
-		logTerminalServicef("legacy_sessiond_active path=%s sessions=%d", socketPath, len(list.Sessions))
+		debugTerminalServicef("legacy_sessiond_active path=%s sessions=%d", socketPath, len(list.Sessions))
 		return nil
 	}
 
@@ -98,20 +98,20 @@ func retireLegacySessiondSocketPath(ctx context.Context, socketPath string) erro
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		if _, err := os.Stat(socketPath); errors.Is(err, os.ErrNotExist) {
-			logTerminalServicef("legacy_sessiond_retired path=%s", socketPath)
+			debugTerminalServicef("legacy_sessiond_retired path=%s", socketPath)
 			return nil
 		}
 		if err := legacySessiondControl(ctx, socketPath, "list", struct{}{}, nil); err != nil {
 			if removeErr := removeLegacySessiondSocket(socketPath); removeErr != nil {
 				return removeErr
 			}
-			logTerminalServicef("legacy_sessiond_retired path=%s", socketPath)
+			debugTerminalServicef("legacy_sessiond_retired path=%s", socketPath)
 			return nil
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	logTerminalServicef("legacy_sessiond_shutdown_timeout path=%s", socketPath)
+	warnTerminalServicef("legacy_sessiond_shutdown_timeout path=%s", socketPath)
 	return nil
 }
 

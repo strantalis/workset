@@ -118,7 +118,7 @@ func (s *Server) handleWebsocketAttach(w http.ResponseWriter, r *http.Request) {
 	sub := session.subscribe(streamID, snapshot.replayNext)
 	session.outputMu.Unlock()
 	state := session.getStreamState()
-	logServerf(
+	debugServerf(
 		"ws_attach_open session=%s stream=%s remote=%s subscribers=%d streams=%q replay_next=%d replay_bytes=%d replay_truncated=%t replay_skipped=%t",
 		req.SessionID,
 		streamID,
@@ -154,7 +154,7 @@ func (s *Server) handleWebsocketAttach(w http.ResponseWriter, r *http.Request) {
 		reason, code, text := getClose()
 		session.unsubscribeWithReason(sub, reason)
 		state := session.getStreamState()
-		logServerf(
+		debugServerf(
 			"ws_attach_close session=%s stream=%s reason=%s code=%d text=%q subscribers=%d streams=%q sub_offset=%d",
 			req.SessionID,
 			streamID,
@@ -314,14 +314,14 @@ func (s *Server) handleWebsocketControlRequest(
 	case "resize":
 		err := session.resize(req.Cols, req.Rows)
 		if err == nil {
-			logServerf("ws_control session=%s type=resize cols=%d rows=%d", session.id, req.Cols, req.Rows)
+			debugServerf("ws_control session=%s type=resize cols=%d rows=%d", session.id, req.Cols, req.Rows)
 		}
 		return nil, err
 	case "stop":
 		if err := session.stop(); err != nil {
 			return nil, err
 		}
-		logServerf("ws_control session=%s type=stop", session.id)
+		debugServerf("ws_control session=%s type=stop", session.id)
 		s.remove(session.id)
 		return nil, nil
 	case "ping":

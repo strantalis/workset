@@ -113,7 +113,7 @@ func (s *Server) Listen(ctx context.Context) error {
 	if err := os.Remove(s.opts.SocketPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		logServerf("socket_remove_error path=%s err=%v", s.opts.SocketPath, err)
 	}
-	logServerf("listen_start socket=%s", s.opts.SocketPath)
+	debugServerf("listen_start socket=%s", s.opts.SocketPath)
 	ln, err := net.Listen("unix", s.opts.SocketPath)
 	if err != nil && shouldRetryListen(err) {
 		logServerf("listen_retry socket=%s err=%v", s.opts.SocketPath, err)
@@ -127,7 +127,7 @@ func (s *Server) Listen(ctx context.Context) error {
 		logServerf("listen_failed socket=%s err=%v", s.opts.SocketPath, err)
 		return err
 	}
-	logServerf("listen_ready socket=%s", s.opts.SocketPath)
+	debugServerf("listen_ready socket=%s", s.opts.SocketPath)
 	defer func() {
 		_ = ln.Close()
 		_ = os.Remove(s.opts.SocketPath)
@@ -143,7 +143,7 @@ func (s *Server) Listen(ctx context.Context) error {
 		conn, err := ln.Accept()
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) || errors.Is(err, os.ErrClosed) {
-				logServerf("listen_closed socket=%s", s.opts.SocketPath)
+				debugServerf("listen_closed socket=%s", s.opts.SocketPath)
 				return nil
 			}
 			continue
@@ -282,7 +282,7 @@ func (s *Server) handleControl(ctx context.Context, conn net.Conn, line []byte) 
 			sessions = append(sessions, session.info())
 		}
 		if elapsed := time.Since(start); elapsed > 250*time.Millisecond {
-			logServerf("list_slow count=%d duration=%s", len(sessions), elapsed)
+			debugServerf("list_slow count=%d duration=%s", len(sessions), elapsed)
 		}
 		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true, Result: ListResponse{Sessions: sessions}})
 	case "info":
@@ -321,9 +321,9 @@ func (s *Server) handleControl(ctx context.Context, conn net.Conn, line []byte) 
 		if exe == "" {
 			exe = "unknown"
 		}
-		logServerf("shutdown_requested source=%q reason=%q pid=%d exe=%q", source, reason, params.PID, exe)
+		debugServerf("shutdown_requested source=%q reason=%q pid=%d exe=%q", source, reason, params.PID, exe)
 		_ = json.NewEncoder(conn).Encode(ControlResponse{OK: true})
-		logServerf("shutdown_ack")
+		debugServerf("shutdown_ack")
 		go func() {
 			if s.shutdown != nil {
 				s.shutdown()
@@ -438,7 +438,7 @@ func (s *Server) closeAll() {
 	s.sessions = make(map[string]*Session)
 	s.mu.Unlock()
 	if len(sessions) > 0 {
-		logServerf("close_all count=%d", len(sessions))
+		debugServerf("close_all count=%d", len(sessions))
 	}
 	for _, session := range sessions {
 		session.closeWithReason("shutdown")

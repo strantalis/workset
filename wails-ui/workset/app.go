@@ -64,7 +64,7 @@ func (a *App) setRuntime(app *application.App) {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	logTerminalServicef("app_startup build_marker=restart-logging-v2")
+	debugTerminalServicef("app_startup build_marker=restart-logging-v2")
 	ensureDevConfig()
 	_, _ = worksetapi.EnsureLoginEnv(ctx)
 	ensureDevTerminalServiceSocket()
