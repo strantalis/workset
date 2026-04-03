@@ -57,9 +57,14 @@ type TerminalCoordinatorDependencies = {
 	getCurrentCursorBlink: () => boolean;
 	setCurrentCursorBlink: (value: boolean) => void;
 	onSessionReady?: (id: string, descriptor: TerminalSessionStartResult) => Promise<void> | void;
+	startupTimeoutMs?: number;
 };
 
+const DEFAULT_STARTUP_TIMEOUT_MS = 10_000;
+
 export const createTerminalSessionCoordinator = (deps: TerminalCoordinatorDependencies) => {
+	const startupTimeoutMs = deps.startupTimeoutMs ?? DEFAULT_STARTUP_TIMEOUT_MS;
+
 	const summarizeStartResult = (
 		descriptor: TerminalSessionStartResult,
 	): Record<string, unknown> => ({
@@ -95,6 +100,24 @@ export const createTerminalSessionCoordinator = (deps: TerminalCoordinatorDepend
 		} catch {
 			deps.lifecycle.setTerminalServiceStatus(false);
 		}
+	};
+
+	const withStartupTimeout = async <T>(promise: Promise<T>): Promise<T> => {
+		return await new Promise<T>((resolve, reject) => {
+			const timeout = window.setTimeout(() => {
+				reject(new Error('Terminal startup timed out.'));
+			}, startupTimeoutMs);
+			promise.then(
+				(value) => {
+					window.clearTimeout(timeout);
+					resolve(value);
+				},
+				(error: unknown) => {
+					window.clearTimeout(timeout);
+					reject(error);
+				},
+			);
+		});
 	};
 
 	const beginTerminal = async (id: string, quiet = false): Promise<void> => {
@@ -134,7 +157,7 @@ export const createTerminalSessionCoordinator = (deps: TerminalCoordinatorDepend
 
 		try {
 			log(id, 'session_begin_transport_start', {});
-			const descriptor = await deps.transport.start(workspaceId, terminalId);
+			const descriptor = await withStartupTimeout(deps.transport.start(workspaceId, terminalId));
 			await deps.onSessionReady?.(id, descriptor);
 			deps.lifecycle.markStarted(id);
 			deps.lifecycle.setInput(id, true);

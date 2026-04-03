@@ -15,6 +15,7 @@ const createCoordinator = (input?: {
 	write?: () => Promise<void>;
 	pendingInput?: Map<string, string>;
 	onSessionReady?: (id: string, descriptor: TerminalSessionStartResult) => void;
+	startupTimeoutMs?: number;
 }) => {
 	const started = new Set<string>();
 	const startInFlight = new Set<string>();
@@ -68,6 +69,7 @@ const createCoordinator = (input?: {
 		getCurrentCursorBlink: () => true,
 		setCurrentCursorBlink,
 		onSessionReady: input?.onSessionReady,
+		startupTimeoutMs: input?.startupTimeoutMs,
 	});
 
 	return {
@@ -166,5 +168,25 @@ describe('terminalSessionCoordinator', () => {
 
 		expect(setCurrentTerminalFontSize).toHaveBeenCalledWith(16);
 		expect(setCurrentCursorBlink).toHaveBeenCalledWith(false);
+	});
+
+	it('fails startup when bootstrap hangs past the timeout', async () => {
+		vi.useFakeTimers();
+		const { coordinator, setStatusAndMessage, setHealth, clearStartInFlight } = createCoordinator({
+			start: () => new Promise<TerminalSessionStartResult>(() => undefined),
+			startupTimeoutMs: 25,
+		});
+
+		const startPromise = coordinator.beginTerminal('ws::term');
+		await vi.advanceTimersByTimeAsync(30);
+		await startPromise;
+
+		expect(setStatusAndMessage).toHaveBeenCalledWith(
+			'ws::term',
+			'error',
+			'Error: Terminal startup timed out.',
+		);
+		expect(setHealth).toHaveBeenCalledWith('ws::term', 'stale', 'Failed to start terminal.');
+		expect(clearStartInFlight).toHaveBeenCalledWith('ws::term');
 	});
 });
