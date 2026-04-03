@@ -190,6 +190,26 @@ func (s *Service) GetTrackedPullRequest(ctx context.Context, input PullRequestTr
 	}, nil
 }
 
+// DismissTrackedPullRequest removes the tracked PR for a repo from workspace state.
+func (s *Service) DismissTrackedPullRequest(ctx context.Context, input PullRequestTrackedInput) (PullRequestTrackedResult, error) {
+	resolution, err := s.resolveRepo(ctx, RepoSelectionInput(input))
+	if err != nil {
+		return PullRequestTrackedResult{}, err
+	}
+	state, err := s.workspaces.LoadState(ctx, resolution.WorkspaceRoot)
+	if err != nil {
+		return PullRequestTrackedResult{}, err
+	}
+	delete(state.PullRequests, resolution.Repo.Name)
+	if err := s.workspaces.SaveState(ctx, resolution.WorkspaceRoot, state); err != nil {
+		return PullRequestTrackedResult{}, err
+	}
+	return PullRequestTrackedResult{
+		Payload: PullRequestTrackedJSON{Found: false},
+		Config:  resolution.ConfigInfo,
+	}, nil
+}
+
 // ListPullRequestReviewComments returns review comments for a PR.
 func (s *Service) ListPullRequestReviewComments(ctx context.Context, input PullRequestReviewsInput) (PullRequestReviewCommentsResult, error) {
 	statusInput := PullRequestStatusInput(input)

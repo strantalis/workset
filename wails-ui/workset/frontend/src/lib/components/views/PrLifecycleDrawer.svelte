@@ -1,6 +1,7 @@
 <script lang="ts">
 	import {
 		AlertCircle,
+		Archive,
 		CheckCircle2,
 		ChevronDown,
 		Circle,
@@ -8,6 +9,7 @@
 		FileCode,
 		FileDiff,
 		GitCommit,
+		GitMerge,
 		Loader2,
 		MessageCircle,
 		Upload,
@@ -16,6 +18,7 @@
 	import DOMPurify from 'dompurify';
 	import { marked } from 'marked';
 	import {
+		dismissTrackedPullRequest,
 		fetchGitHubOperationStatus,
 		fetchPullRequestStatus,
 		fetchRepoLocalStatus,
@@ -61,6 +64,8 @@
 		onClose: () => void;
 		onStatusChanged: () => void;
 		onTrackedPrChanged: (pr: PullRequestCreated) => void;
+		onDismissTrackedPr?: () => void;
+		onArchiveThread?: () => void;
 	}
 
 	const {
@@ -76,6 +81,8 @@
 		onClose,
 		onStatusChanged,
 		onTrackedPrChanged,
+		onDismissTrackedPr,
+		onArchiveThread,
 	}: Props = $props();
 
 	let checksExpanded = $state(false);
@@ -408,6 +415,19 @@
 			createStatusRequestId += 1;
 		};
 	});
+
+	let dismissLoading = $state(false);
+
+	const handleDismiss = async (): Promise<void> => {
+		dismissLoading = true;
+		try {
+			await dismissTrackedPullRequest(workspaceId, repoId);
+			onDismissTrackedPr?.();
+			onClose();
+		} finally {
+			dismissLoading = false;
+		}
+	};
 </script>
 
 <SlideDrawer {open} title="Pull Request" {onClose}>
@@ -585,6 +605,32 @@
 					{/if}
 				</div>
 			{/if}
+
+			{#if isMerged}
+				<div class="pld-merged-actions">
+					<div class="pld-merged-banner">
+						<GitMerge size={14} />
+						<span>This pull request has been merged.</span>
+					</div>
+					<div class="pld-merged-buttons">
+						<Button
+							variant="ghost"
+							size="sm"
+							disabled={dismissLoading}
+							onclick={() => void handleDismiss()}
+						>
+							<XCircle size={12} />
+							Dismiss
+						</Button>
+						{#if onArchiveThread}
+							<Button variant="ghost" size="sm" onclick={() => onArchiveThread?.()}>
+								<Archive size={12} />
+								Archive Thread
+							</Button>
+						{/if}
+					</div>
+				</div>
+			{/if}
 		</div>
 	{:else}
 		<div class="pld-create">
@@ -615,7 +661,7 @@
 				<span class="pld-label">Title</span>
 				<input
 					type="text"
-					class="pld-input"
+					class="ws-field-input"
 					class:pld-shimmer={suggestionLoading && !prTitle}
 					value={prTitle}
 					disabled={createInProgress}
@@ -630,7 +676,7 @@
 			<label class="pld-field">
 				<span class="pld-label">Description</span>
 				<textarea
-					class="pld-textarea"
+					class="ws-field-textarea"
 					class:pld-shimmer={suggestionLoading && !prBody}
 					rows={5}
 					value={prBody}
@@ -937,31 +983,6 @@
 		font-size: var(--text-2xs);
 		color: var(--muted);
 	}
-	.pld-input,
-	.pld-textarea {
-		width: 100%;
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		background: color-mix(in srgb, var(--panel-strong) 70%, transparent);
-		color: var(--text);
-		font-family: inherit;
-		font-size: var(--text-xs);
-		padding: 8px 10px;
-	}
-	.pld-textarea {
-		resize: vertical;
-		min-height: 96px;
-	}
-	.pld-input:disabled,
-	.pld-textarea:disabled {
-		opacity: 0.75;
-		cursor: not-allowed;
-	}
-	.pld-input:focus,
-	.pld-textarea:focus {
-		outline: 1px solid color-mix(in srgb, var(--accent) 60%, var(--border));
-		outline-offset: 0;
-	}
 	.pld-shimmer {
 		background: linear-gradient(
 				110deg,
@@ -985,6 +1006,30 @@
 	}
 	.spin {
 		animation: pld-spin 0.85s linear infinite;
+	}
+
+	.pld-merged-actions {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.pld-merged-banner {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 10px 12px;
+		border-radius: 6px;
+		background: color-mix(in srgb, var(--purple) 10%, transparent);
+		border: 1px solid color-mix(in srgb, var(--purple) 25%, transparent);
+		color: var(--purple);
+		font-size: 12px;
+		font-weight: 500;
+	}
+
+	.pld-merged-buttons {
+		display: flex;
+		gap: 8px;
 	}
 
 	@keyframes pld-shimmer {

@@ -21,6 +21,7 @@ export {
 
 export {
 	createPullRequest,
+	dismissTrackedPullRequest,
 	fetchCheckAnnotations,
 	fetchPullRequestReviews,
 	fetchPullRequestStatus,

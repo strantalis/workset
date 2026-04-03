@@ -9,6 +9,7 @@ import type {
 } from '../../types';
 import {
 	CreatePullRequest,
+	DismissTrackedPullRequest,
 	GeneratePullRequestText,
 	GetCheckAnnotations,
 	GetPullRequestReviews,
@@ -130,6 +131,16 @@ export async function fetchPullRequestReviews(
 	})) as unknown as PullRequestReviewsResponse;
 
 	return mapPullRequestReviewComments(result.comments ?? []);
+}
+
+export async function dismissTrackedPullRequest(
+	workspaceId: string,
+	repoId: string,
+): Promise<void> {
+	await DismissTrackedPullRequest({
+		workspaceId,
+		repoId,
+	});
 }
 
 export async function generatePullRequestText(

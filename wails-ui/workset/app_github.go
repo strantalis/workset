@@ -182,6 +182,19 @@ func (a *App) GetTrackedPullRequest(input PullRequestTrackedRequest) (worksetapi
 	return result.Payload, nil
 }
 
+func (a *App) DismissTrackedPullRequest(input PullRequestTrackedRequest) error {
+	ctx, svc := a.serviceContext()
+	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
+	if err != nil {
+		return err
+	}
+	_, err = svc.DismissTrackedPullRequest(ctx, worksetapi.PullRequestTrackedInput{
+		Workspace: worksetapi.WorkspaceSelector{Value: input.WorkspaceID},
+		Repo:      repoName,
+	})
+	return err
+}
+
 func (a *App) GetPullRequestReviews(input PullRequestReviewsRequest) (PullRequestReviewCommentsPayload, error) {
 	ctx, svc := a.serviceContext()
 	repoName, err := resolveRepoAlias(input.WorkspaceID, input.RepoID)
