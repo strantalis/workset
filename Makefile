@@ -7,13 +7,15 @@ GOLANGCI_LINT_CACHE ?= /tmp/golangci-lint-cache
 UV := $(shell command -v uv 2>/dev/null)
 BASE_SHA ?= $(shell git merge-base HEAD origin/main 2>/dev/null)
 
-.PHONY: help docs-venv docs-serve docs-build test lint lint-fmt fmt ui-lint ui-fmt ui-test guardrails deprecations check release-stable
+.PHONY: help docs-install docs-dev docs-serve docs-build docs-changelog test lint lint-fmt fmt ui-lint ui-fmt ui-test guardrails deprecations check release-stable
 
 help:
 	@printf "%s\n" "Targets:" \
-		"  docs-venv   Create/refresh docs venv and install requirements" \
-		"  docs-serve  Run MkDocs dev server (override with PORT=8001)" \
-		"  docs-build  Build MkDocs site" \
+		"  docs-install  Install docs-site npm dependencies" \
+		"  docs-dev      Run docs dev server (override with PORT=4321)" \
+		"  docs-serve    Alias for docs-dev" \
+		"  docs-build    Build docs-site for production" \
+		"  docs-changelog  Generate changelog from GitHub releases" \
 		"  test        Run Go and frontend tests" \
 		"  lint        Run golangci-lint and frontend ESLint" \
 		"  lint-fmt    Format Go files with golangci-lint fmt (gofumpt)" \
@@ -26,19 +28,19 @@ help:
 		"  check       fmt + test + lint + guardrails" \
 		"  release-stable Create a signed stable release commit and tag from staged changes (TAG=vX.Y.Z)"
 
-docs-venv:
-	@if [ -z "$(UV)" ]; then \
-		echo "uv not found. Install uv and re-run 'make docs-venv'."; \
-		exit 1; \
-	fi
-	uv venv $(VENV)
-	uv pip install -r requirements.txt
+docs-install:
+	cd docs-site && npm install
 
-docs-serve: docs-venv
-	$(VENV)/bin/mkdocs serve --dev-addr 127.0.0.1:$(PORT) --livereload --watch docs --watch mkdocs.yml
+docs-changelog:
+	cd docs-site && node scripts/gen-changelog.mjs
 
-docs-build: docs-venv
-	$(VENV)/bin/mkdocs build
+docs-dev: docs-install
+	cd docs-site && npx astro dev --port $(or ${PORT},4321)
+
+docs-serve: docs-dev
+
+docs-build: docs-install docs-changelog
+	cd docs-site && npx astro build
 
 test: ui-test
 	go test ./...
@@ -71,7 +73,7 @@ guardrails:
 	fi
 
 deprecations:
-	go run ./scripts/deprecations --config docs-internal/architecture/deprecation-register.yaml
+	go run ./scripts/deprecations --config docs-dev/architecture/deprecation-register.yaml
 
 check: fmt test lint guardrails deprecations
 

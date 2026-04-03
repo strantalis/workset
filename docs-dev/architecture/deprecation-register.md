@@ -14,7 +14,7 @@ The active register is currently clear. The entries below are kept only as compl
 - `introduced`: date the compatibility path was introduced (`YYYY-MM-DD`).
 - `remove_by`: date this must be removed or explicitly extended (`YYYY-MM-DD`).
 - `owner`: responsible team or owner handle.
-- `tracking_issue`: issue/doc path for cleanup work.
+- `tracking_issue`: issue or doc path for cleanup work.
 - `status`: `active` or `completed`.
 - `evidence`: files proving where the compatibility behavior exists.
 

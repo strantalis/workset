@@ -19,7 +19,7 @@ func TestValidateRegisterValid(t *testing.T) {
 				Introduced:    "2026-03-01",
 				RemoveBy:      "2026-08-01",
 				Owner:         "workset-core",
-				TrackingIssue: "docs/architecture/workset-hierarchy-migration-tracker.md",
+				TrackingIssue: "docs-dev/architecture/workset-hierarchy.md",
 				Status:        statusActive,
 				Evidence:      []string{"internal/config/global.go"},
 			},
@@ -47,7 +47,7 @@ func TestValidateRegisterOverdue(t *testing.T) {
 				Introduced:    "2026-03-01",
 				RemoveBy:      "2026-03-01",
 				Owner:         "workset-core",
-				TrackingIssue: "docs/architecture/workset-hierarchy-migration-tracker.md",
+				TrackingIssue: "docs-dev/architecture/workset-hierarchy.md",
 				Status:        statusActive,
 				Evidence:      []string{"internal/config/global.go"},
 			},
@@ -76,7 +76,7 @@ items:
     introduced: 2026-03-01
     remove_by: 2026-08-01
     owner: workset-core
-    tracking_issue: docs/architecture/workset-hierarchy-migration-tracker.md
+    tracking_issue: docs-dev/architecture/workset-hierarchy.md
     status: unknown
     evidence: [internal/config/types.go]
 `

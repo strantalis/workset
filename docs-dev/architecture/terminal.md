@@ -81,7 +81,7 @@ Workset currently runs shells with the inherited host environment plus Workset c
 - `WORKSET_ROOT`
 - `SHELL`
 
-Workset preserves existing terminal hints such as `TERM`, `COLORTERM`, `TERM_PROGRAM`, and `KITTY_*` when the host provides them. If `TERM` is missing, the terminal service now defaults it to `xterm-256color` before launching the shell so prompt/tooling startup can rely on a valid terminal type.
+Workset preserves existing terminal hints such as `TERM`, `COLORTERM`, `TERM_PROGRAM`, and `KITTY_*` when the host provides them. If `TERM` is missing, the terminal service defaults it to `xterm-256color` before launching the shell so prompt and tooling startup can rely on a valid terminal type.
 
 ## Persistence and replay
 
@@ -100,4 +100,4 @@ Workset preserves existing terminal hints such as `TERM`, `COLORTERM`, `TERM_PRO
 - `WORKSET_TERMINAL_DEBUG_LOG=1` enables opt-in terminal lifecycle debug logging to `~/.workset/terminal_debug.log` (or `WORKSET_TERMINAL_DEBUG_LOG_PATH`).
 
 Protocol logs are written to `~/.workset/terminal_logs/unified_terminal-service.log` when enabled.
-Terminal service stdout/stderr is reserved for warnings and failures; attach/resize/subscriber chatter is kept in the opt-in debug log.
+Terminal service stdout and stderr are reserved for warnings and failures; attach, resize, and subscriber chatter is kept in the opt-in debug log.
