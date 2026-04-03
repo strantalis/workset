@@ -159,6 +159,7 @@
 						type="button"
 						class="urv-tree-action urv-action-pr"
 						aria-label="View Pull Request"
+						title="View Pull Request"
 						use:tooltip={'View Pull Request'}
 						onclick={onOpenSelectedPr}
 					>
@@ -169,6 +170,7 @@
 						type="button"
 						class="urv-tree-action"
 						aria-label="Create Pull Request"
+						title="Create Pull Request"
 						use:tooltip={'Create Pull Request'}
 						onclick={onCreatePr}
 					>
@@ -178,6 +180,7 @@
 						type="button"
 						class="urv-tree-action"
 						aria-label="Local Merge"
+						title="Local Merge"
 						use:tooltip={'Local Merge'}
 						onclick={onLocalMerge}
 					>
@@ -189,18 +192,27 @@
 				type="button"
 				class="urv-tree-action"
 				aria-label="Refresh file tree"
+				title="Refresh file tree"
 				use:tooltip={'Refresh file tree'}
 				onclick={onRefresh}
 			>
 				<RotateCcw size={14} />
 			</button>
-			<button type="button" class="urv-tree-action" aria-label="New file" use:tooltip={'New file'} onclick={onNewFile}>
+			<button
+				type="button"
+				class="urv-tree-action"
+				aria-label="New file"
+				title="New file"
+				use:tooltip={'New file'}
+				onclick={onNewFile}
+			>
 				<FilePlus size={14} />
 			</button>
 			<button
 				type="button"
 				class="urv-tree-action"
 				aria-label="Hide file tree"
+				title="Hide file tree"
 				use:tooltip={'Hide file tree'}
 				onclick={onHideTree}
 			>
