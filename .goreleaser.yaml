@@ -69,11 +69,11 @@ npms:
     description: "Go CLI for multi-repo workspaces with linked worktrees"
     homepage: "https://workset.dev"
     license: MIT
-    repository: "https://github.com/strantalis/workset"
+    repository: "git+https://github.com/strantalis/workset.git"
     bugs: "https://github.com/strantalis/workset/issues"
     access: public
     format: tar.gz
-    disable: "{{ or .IsSnapshot .Prerelease }}"
+    disable: "{{ or .IsSnapshot .Prerelease (ne .Env.ENABLE_NPM_PUBLISH \"true\") }}"
 
 notarize:
   macos:
