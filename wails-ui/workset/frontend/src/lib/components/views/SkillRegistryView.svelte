@@ -449,6 +449,7 @@ Add task-specific guidance here.
 				<label class="search-input">
 					<Search size={16} />
 					<input
+						class="ws-field-input ws-field-input--ghost"
 						type="text"
 						bind:this={searchInputEl}
 						value={surfaceTab === 'installed' ? searchQuery : marketplaceSearchQuery}
@@ -512,6 +513,7 @@ Add task-specific guidance here.
 						<div class="input-group">
 							<label for="create-skill-dir">Directory name</label>
 							<input
+								class="ws-field-input"
 								id="create-skill-dir"
 								type="text"
 								bind:value={newDirName}
@@ -553,6 +555,7 @@ Add task-specific guidance here.
 							<label for="create-skill-content">SKILL.md content</label>
 							<div class="textarea-wrap">
 								<textarea
+									class="ws-field-textarea ws-field-input--ghost ws-field-input--mono"
 									id="create-skill-content"
 									bind:value={newContent}
 									rows="16"

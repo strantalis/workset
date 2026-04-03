@@ -152,7 +152,7 @@
 			<label class="thread-name-field">
 				<span class="thread-name-label">{nameLabel}</span>
 				<input
-					class="thread-name-input"
+					class="ws-field-input"
 					value={workspaceName}
 					oninput={(event) => onWorkspaceNameInput((event.currentTarget as HTMLInputElement).value)}
 					placeholder={namePlaceholder}
@@ -221,7 +221,7 @@
 			<label class="create-field">
 				<span class="create-field-label">{nameLabel}</span>
 				<input
-					class="create-field-input"
+					class="ws-field-input"
 					value={workspaceName}
 					oninput={(event) => onWorkspaceNameInput((event.currentTarget as HTMLInputElement).value)}
 					placeholder={namePlaceholder}
@@ -241,7 +241,7 @@
 						<span class="create-field-hint-inline">optional</span>
 					</span>
 					<textarea
-						class="create-field-input create-description"
+						class="ws-field-textarea create-description"
 						value={description}
 						oninput={(event) =>
 							onDescriptionInput((event.currentTarget as HTMLTextAreaElement).value)}
@@ -256,6 +256,7 @@
 					<div class="repo-input-shell">
 						<span class="repo-input-icon"><Search size={14} /></span>
 						<input
+							class="ws-field-input"
 							value={displayedSourceInput}
 							oninput={(event) =>
 								handleSourceInput((event.currentTarget as HTMLInputElement).value)}
@@ -434,26 +435,6 @@
 		color: var(--muted);
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
-	}
-
-	.thread-name-input {
-		width: 100%;
-		height: 34px;
-		box-sizing: border-box;
-		background: rgba(255, 255, 255, 0.02);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		padding: 8px 10px;
-		font-size: var(--text-sm);
-		color: var(--text);
-		font-family: inherit;
-	}
-
-	.thread-name-input:focus {
-		outline: none;
-		border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
-		box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 26%, transparent);
-		background: rgba(255, 255, 255, 0.04);
 	}
 
 	.thread-hooks-section {
@@ -653,26 +634,6 @@
 		color: var(--subtle);
 	}
 
-	.create-field-input {
-		width: 100%;
-		height: 34px;
-		box-sizing: border-box;
-		background: rgba(255, 255, 255, 0.02);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		padding: 8px 10px;
-		font-size: var(--text-sm);
-		color: var(--text);
-		font-family: inherit;
-	}
-
-	.create-field-input:focus {
-		outline: none;
-		border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
-		box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 26%, transparent);
-		background: rgba(255, 255, 255, 0.04);
-	}
-
 	.create-description {
 		height: auto;
 		resize: vertical;
@@ -714,22 +675,7 @@
 	}
 
 	.repo-input-shell input {
-		width: 100%;
-		height: var(--repo-control-height);
-		box-sizing: border-box;
-		background: rgba(255, 255, 255, 0.02);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		padding: 8px 10px 8px 30px;
-		font-size: var(--text-sm);
-		color: var(--text);
-	}
-
-	.repo-input-shell input:focus {
-		outline: none;
-		border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
-		box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 26%, transparent);
-		background: rgba(255, 255, 255, 0.04);
+		padding-left: 30px;
 	}
 
 	.create-add-btn {

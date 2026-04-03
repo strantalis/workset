@@ -283,6 +283,7 @@
 						<label for="reg-name">Name</label>
 						<input
 							id="reg-name"
+							class="ws-field-input ws-field-input--strong-bg ws-field-input--mono"
 							type="text"
 							bind:value={formName}
 							placeholder="my-repo"
@@ -302,6 +303,7 @@
 							<div class="source-input-wrap">
 								<input
 									id="reg-source"
+									class="ws-field-input ws-field-input--strong-bg ws-field-input--mono"
 									type="text"
 									bind:value={formSource}
 									placeholder="Search GitHub repos or paste URL/path"
@@ -397,6 +399,7 @@
 								<label for="reg-remote">Remote (optional)</label>
 								<input
 									id="reg-remote"
+									class="ws-field-input ws-field-input--strong-bg ws-field-input--mono"
 									type="text"
 									bind:value={formRemote}
 									placeholder="origin"
@@ -409,6 +412,7 @@
 								<label for="reg-branch">Default branch</label>
 								<input
 									id="reg-branch"
+									class="ws-field-input ws-field-input--strong-bg ws-field-input--mono"
 									type="text"
 									bind:value={formBranch}
 									placeholder="main"
@@ -459,6 +463,7 @@
 			<div class="search-bar">
 				<span class="search-icon"><Search size={14} /></span>
 				<input
+					class="ws-field-input ws-field-input--ghost"
 					type="text"
 					placeholder="Filter by name..."
 					aria-label="Filter repositories by name"
@@ -591,28 +596,6 @@
 	.form-field label {
 		font-size: var(--text-sm);
 		color: var(--muted);
-	}
-
-	.form-field input {
-		background: var(--panel-strong);
-		border: 1px solid var(--border);
-		color: var(--text);
-		border-radius: var(--radius-md);
-		padding: 10px 12px;
-		font-size: var(--text-mono-base);
-		font-family: var(--font-mono);
-		transition: border-color var(--transition-fast);
-	}
-
-	.form-field input:focus {
-		outline: none;
-		border-color: var(--accent);
-	}
-
-	.form-field input:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-		background: var(--panel-soft);
 	}
 
 	.field-hint {
@@ -845,15 +828,6 @@
 
 	.search-bar input {
 		flex: 1;
-		background: transparent;
-		border: none;
-		color: var(--text);
-		font-size: var(--text-base);
-		outline: none;
-	}
-
-	.search-bar input::placeholder {
-		color: var(--subtle);
 	}
 
 	.repo-list {

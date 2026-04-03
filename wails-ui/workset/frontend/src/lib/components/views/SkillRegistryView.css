@@ -188,22 +188,7 @@
 }
 
 .search-input input {
-	width: 100%;
-	background: var(--panel-strong);
-	border: 1px solid var(--border);
-	padding: 8px 12px 8px 36px;
-	color: var(--text);
-	font-size: var(--text-base);
-	transition: border-color var(--transition-fast);
-}
-
-.search-input input::placeholder {
-	color: color-mix(in srgb, var(--muted) 50%, transparent);
-}
-
-.search-input input:focus {
-	outline: none;
-	border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+	padding-left: 36px;
 }
 
 .scope-select {
@@ -821,47 +806,11 @@
 	margin: 0;
 }
 
-.input-group input {
-	width: 100%;
-	background: var(--panel);
-	border: 1px solid var(--border);
-	border-radius: 8px;
-	padding: 9px 12px;
-	color: var(--text);
-	font-size: var(--text-base);
-	transition: border-color var(--transition-fast);
-}
-
-.input-group input::placeholder {
-	color: color-mix(in srgb, var(--muted) 30%, transparent);
-}
-
-.input-group input:focus {
-	outline: none;
-	border-color: var(--accent);
-}
-
 .textarea-wrap {
 	background: var(--panel);
 	border: 1px solid var(--border);
-	border-radius: 8px;
+	border-radius: var(--radius-md);
 	padding: 4px;
-}
-
-.textarea-wrap textarea {
-	width: 100%;
-	background: transparent;
-	border: none;
-	color: var(--text);
-	font-family: var(--font-mono);
-	font-size: var(--text-mono-base);
-	line-height: 1.5;
-	padding: 8px;
-	resize: none;
-}
-
-.textarea-wrap textarea:focus {
-	outline: none;
 }
 
 .create-actions {

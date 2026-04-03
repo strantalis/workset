@@ -76,6 +76,7 @@
 	import { renderMarkdownDocument, type DocumentRenderResult } from '../../documentRender';
 	import { calculateMermaidOverlayFit } from '../repo-files/mermaidOverlay';
 	import ResizablePanel from '../ui/ResizablePanel.svelte';
+	import { tooltip } from '../../actions/tooltip';
 	import CodeEditor from '../editor/CodeEditor.svelte';
 	import CodeDiffView from '../editor/CodeDiffView.svelte';
 	import LocalMergeDrawer from './LocalMergeDrawer.svelte';
@@ -1608,7 +1609,7 @@
 						class="ws-panel-edge-tab ws-panel-edge-tab--left ws-panel-edge-tab--absolute"
 						style="left: 0"
 						aria-label="Show file tree"
-						title="Show file tree"
+						use:tooltip={'Show file tree'}
 						onclick={() => (showFileTree = true)}
 					>
 					</button>
@@ -1671,7 +1672,7 @@
 									class="urv-toggle-btn"
 									class:active={previewMode}
 									aria-label={previewMode ? 'Back to diff' : 'Preview rendered'}
-									title={previewMode ? 'Back to diff' : 'Preview rendered markdown'}
+									use:tooltip={previewMode ? 'Back to diff' : 'Preview rendered markdown'}
 									onclick={() => {
 										previewMode = !previewMode;
 									}}
@@ -1683,7 +1684,8 @@
 								<button
 									type="button"
 									class="urv-save-btn"
-									title="Save changes (⌘S)"
+									aria-label="Save changes"
+									use:tooltip={'Save changes (⌘S)'}
 									disabled={saving}
 									onclick={() => void saveFile()}
 								>
@@ -1696,7 +1698,7 @@
 									class="urv-toggle-btn"
 									class:active={blameMode}
 									aria-label={blameMode ? 'Hide blame' : 'Show blame'}
-									title={blameMode ? 'Hide blame' : 'Show blame'}
+									use:tooltip={blameMode ? 'Hide blame' : 'Show blame'}
 									onclick={() => (blameMode = !blameMode)}
 								>
 									<GitBranch size={13} />
@@ -1707,7 +1709,7 @@
 								class="urv-toggle-btn"
 								class:active={editMode}
 								aria-label={editMode ? 'Back to view' : 'Edit file'}
-								title={editMode ? 'Back to view' : 'Edit file'}
+								use:tooltip={editMode ? 'Back to view' : 'Edit file'}
 								onclick={() => {
 									editMode = !editMode;
 									editedContent = null;
@@ -1913,6 +1915,9 @@
 		onStatusChanged={() => {}}
 		onTrackedPrChanged={(created) => {
 			applyTrackedPullRequest(workspace.id, selectedRepo.id, created);
+		}}
+		onDismissTrackedPr={() => {
+			applyTrackedPullRequest(workspace.id, selectedRepo.id, null);
 		}}
 	/>
 {/if}

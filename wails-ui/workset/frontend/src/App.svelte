@@ -77,6 +77,7 @@
 		UPDATE_PREFERENCES_CHANGED_EVENT,
 		type UpdatePreferencesChangedDetail,
 	} from './lib/updatePreferences';
+	import { createSidebarResizeController } from './lib/components/repo-diff/sidebarResizeController';
 
 	type RepoDiffLocalStatusEvent = {
 		workspaceId: string;
@@ -97,6 +98,10 @@
 	};
 
 	const EXPLORER_OPEN_STORAGE_KEY = 'workset:app:explorerOpen';
+	const EXPLORER_WIDTH_STORAGE_KEY = 'workset:app:explorerWidth';
+	const EXPLORER_MIN_WIDTH = 200;
+	const EXPLORER_MAX_WIDTH = 400;
+	const EXPLORER_DEFAULT_WIDTH = 260;
 	const AUTO_GITHUB_AUTH_CHECK = false;
 	const TERMINAL_ACTIVITY_TTL_MS = 20_000;
 
@@ -148,6 +153,8 @@
 	let shortcutsOpen = $state(false);
 	let authModalDismissed = $state(false);
 	let explorerOpen = $state(readExplorerOpenPreference());
+	let explorerWidth = $state(EXPLORER_DEFAULT_WIDTH);
+	let explorerResizing = $state(false);
 	let popoutSelectionApplied = $state(false);
 	let workbenchSurface = $state<'terminal' | 'pull-requests'>('terminal');
 	let warmWorksetIds = $state<string[]>([]);
@@ -474,6 +481,22 @@
 		terminalActivityUnsubscribe: (() => void) | null = null;
 	let updatePreferencesListener: ((event: Event) => void) | null = null;
 
+	const explorerResizeController = createSidebarResizeController({
+		document,
+		window,
+		storage: typeof localStorage !== 'undefined' ? localStorage : null,
+		storageKey: EXPLORER_WIDTH_STORAGE_KEY,
+		minWidth: EXPLORER_MIN_WIDTH,
+		getSidebarWidth: () => explorerWidth,
+		setSidebarWidth: (value: number) => {
+			explorerWidth = Math.min(EXPLORER_MAX_WIDTH, Math.max(EXPLORER_MIN_WIDTH, value));
+		},
+		setIsResizing: (value: boolean) => {
+			explorerResizing = value;
+		},
+	});
+	explorerResizeController.loadPersistedWidth();
+
 	onMount(() => {
 		void loadWorkspaces(true);
 		void popoutManager.loadState();
@@ -553,6 +576,7 @@
 	});
 
 	onDestroy(() => {
+		explorerResizeController.destroy();
 		repoStatusWatchers.stopAll();
 		repoSummaryUnsubscribe?.();
 		repoSummaryUnsubscribe = null;
@@ -657,7 +681,12 @@
 
 		<div class="shell-content">
 			{#if showExplorer && explorerOpen}
-				<aside class="explorer-shell" in:fly={{ x: -10, duration: 120 }}>
+				<aside
+					class="explorer-shell"
+					class:resizing={explorerResizing}
+					style="width:{explorerWidth}px;min-width:{EXPLORER_MIN_WIDTH}px;max-width:{EXPLORER_MAX_WIDTH}px;"
+					in:fly={{ x: -10, duration: 120 }}
+				>
 					<ExplorerPanel
 						activeWorkspaceId={visibleActiveWorkspaceId}
 						groupedWorksets={explorerWorksets}
@@ -680,6 +709,11 @@
 						onOpenSettings={() => setView(currentView === 'settings' ? 'workspaces' : 'settings')}
 						onCollapse={() => (explorerOpen = false)}
 					/>
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div
+						class="explorer-resize-handle"
+						onmousedown={(e) => explorerResizeController.startResize(e)}
+					></div>
 				</aside>
 			{/if}
 			{#if showExplorer && !explorerOpen}

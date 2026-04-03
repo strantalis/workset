@@ -196,7 +196,7 @@
 					<label class="label" for="modal-cli-path">GitHub CLI path</label>
 					<input
 						id="modal-cli-path"
-						class="pat-input"
+						class="ws-field-input"
 						type="text"
 						bind:value={cliPath}
 						placeholder="/Users/you/.nix-profile/bin/gh"
@@ -224,7 +224,7 @@
 			<label class="label" for="pat-token">Personal access token</label>
 			<input
 				id="pat-token"
-				class="pat-input"
+				class="ws-field-input"
 				type="password"
 				bind:value={patToken}
 				placeholder="ghp_••••••••••••••••"
@@ -305,16 +305,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 10px;
-	}
-
-	.pat-input {
-		width: 100%;
-		padding: 10px 12px;
-		border-radius: 10px;
-		border: 1px solid var(--border);
-		background: rgba(10, 10, 10, 0.6);
-		color: var(--text);
-		font-size: var(--text-base);
 	}
 
 	.instructions {

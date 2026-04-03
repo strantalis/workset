@@ -6,6 +6,7 @@
 		ChevronRight,
 		Command,
 		GitBranch,
+		GitMerge,
 		GitPullRequest,
 		Pin,
 	} from '@lucide/svelte';
@@ -69,14 +70,14 @@
 		<div class="crumb">
 			<span class="workset-name">{worksetLabel}</span>
 			{#if workset.pinned}
-				<Pin size={10} class="pin" />
+				<Pin size={12} class="pin" />
 			{/if}
 			{#if showShortcut && shortcutNumber}
-				<kbd class="shortcut ui-kbd"><Command size={8} />{shortcutNumber}</kbd>
+				<kbd class="shortcut ui-kbd"><Command size={10} />{shortcutNumber}</kbd>
 			{/if}
 		</div>
 
-		<ChevronRight size={11} class="crumb-chevron" />
+		<ChevronRight size={13} class="crumb-chevron" />
 
 		<div class="crumb thread-crumb">
 			<span class="status-dot status-{threadStatus}"></span>
@@ -86,7 +87,7 @@
 
 		<div class="divider"></div>
 		<div class="branch ws-inline">
-			<span class="branch-icon"><GitBranch size={12} /></span>
+			<span class="branch-icon"><GitBranch size={14} /></span>
 			{workset.branch}
 		</div>
 		<div class="divider"></div>
@@ -104,10 +105,13 @@
 		{/if}
 		<div class="stats ws-inline">
 			{#if workset.dirtyCount > 0}
-				<span class="warning ws-inline"><AlertCircle size={10} /> {workset.dirtyCount} dirty</span>
+				<span class="warning ws-inline"><AlertCircle size={12} /> {workset.dirtyCount} dirty</span>
 			{/if}
 			{#if workset.openPrs > 0}
-				<span class="pr ws-inline"><GitPullRequest size={10} /> {workset.openPrs} PRs</span>
+				<span class="pr ws-inline"><GitPullRequest size={12} /> {workset.openPrs} PRs</span>
+			{/if}
+			{#if workset.mergedPrs > 0}
+				<span class="merged ws-inline"><GitMerge size={12} /> {workset.mergedPrs} merged</span>
 			{/if}
 		</div>
 	{:else}
@@ -125,10 +129,10 @@
 			onclick={() => onTogglePopout?.()}
 		>
 			{#if workspacePoppedOut}
-				<ArrowLeft size={14} />
+				<ArrowLeft size={16} />
 				<span>Return</span>
 			{:else}
-				<ArrowUpRight size={14} />
+				<ArrowUpRight size={16} />
 				<span>Popout</span>
 			{/if}
 		</button>
@@ -136,7 +140,7 @@
 
 	{#if showPaletteHint}
 		<button type="button" class="palette-hint" onclick={() => onOpenPalette?.()}>
-			<kbd class="shortcut ui-kbd"><Command size={9} />K</kbd>
+			<kbd class="shortcut ui-kbd"><Command size={11} />K</kbd>
 			<span>to switch</span>
 		</button>
 	{/if}
@@ -144,7 +148,7 @@
 
 <style>
 	.context-bar {
-		height: 34px;
+		height: 38px;
 		display: flex;
 		align-items: center;
 		gap: 8px;
@@ -224,8 +228,8 @@
 	}
 
 	.status-dot {
-		width: 6px;
-		height: 6px;
+		width: 7px;
+		height: 7px;
 		border-radius: 999px;
 		flex-shrink: 0;
 	}
@@ -290,12 +294,17 @@
 	}
 
 	.warning,
-	.pr {
+	.pr,
+	.merged {
 		gap: 4px;
 	}
 
 	.pr {
 		color: #8b8aed;
+	}
+
+	.merged {
+		color: var(--purple);
 	}
 
 	.palette-hint,

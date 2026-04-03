@@ -23,7 +23,7 @@
 	--diffs-dark-deletion-color: var(--status-error);
 	--diffs-dark-modified-color: var(--accent);
 	--diffs-font-family: var(--font-mono);
-	--diffs-font-size: 12px;
+	--diffs-font-size: 13px;
 	--diffs-header-font-family: var(--font-body);
 	--diffs-gap-block: 8px;
 	--diffs-gap-inline: 10px;

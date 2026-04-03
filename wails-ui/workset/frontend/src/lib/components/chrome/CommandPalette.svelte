@@ -189,6 +189,7 @@
 			<div class="search-row">
 				<span class="search-icon"><Search size={16} /></span>
 				<input
+					class="ws-field-input ws-field-input--ghost"
 					bind:this={inputRef}
 					type="text"
 					placeholder="Switch workset, navigate, search repos..."
@@ -336,14 +337,7 @@
 
 	.search-row input {
 		flex: 1;
-		background: transparent;
-		border: none;
-		color: var(--text);
 		font-size: var(--text-md);
-	}
-
-	.search-row input:focus {
-		outline: none;
 	}
 
 	.section-header {

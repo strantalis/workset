@@ -571,6 +571,7 @@
 					<Search size={14} />
 				{/if}
 				<input
+					class="ws-field-input ws-field-input--ghost"
 					type="text"
 					bind:value={searchQuery}
 					placeholder="Search skills.sh..."
@@ -817,6 +818,7 @@
 									<label class="install-config-field">
 										<span>Directory name</span>
 										<input
+											class="ws-field-input"
 											type="text"
 											bind:value={installDirName}
 											autocapitalize="off"

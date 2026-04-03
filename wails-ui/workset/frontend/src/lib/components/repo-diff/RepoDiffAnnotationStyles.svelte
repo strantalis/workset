@@ -228,30 +228,6 @@
 		gap: 10px;
 	}
 
-	:global(.diff-inline-textarea) {
-		width: 100%;
-		padding: 10px 12px;
-		border: 1px solid var(--border);
-		border-radius: 8px;
-		background: var(--panel);
-		color: var(--text);
-		font-family: inherit;
-		font-size: var(--text-base);
-		line-height: 1.5;
-		resize: vertical;
-		min-height: 80px;
-	}
-
-	:global(.diff-inline-textarea:focus) {
-		outline: none;
-		border-color: var(--accent);
-	}
-
-	:global(.diff-inline-textarea:disabled) {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
-
 	:global(.diff-inline-form-actions) {
 		display: flex;
 		justify-content: flex-end;

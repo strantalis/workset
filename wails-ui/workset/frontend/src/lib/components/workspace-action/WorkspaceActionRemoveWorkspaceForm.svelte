@@ -52,7 +52,7 @@
 				<label class="remove-confirm-field">
 					<span class="remove-confirm-label">Type DELETE to confirm</span>
 					<input
-						class="remove-confirm-input"
+						class="ws-field-input ws-field-input--mono ws-field-input--danger"
 						value={removeConfirmText}
 						oninput={(event) => onConfirmTextInput((event.currentTarget as HTMLInputElement).value)}
 						placeholder="DELETE"
@@ -165,26 +165,6 @@
 		color: var(--muted);
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
-	}
-
-	.remove-confirm-input {
-		width: 100%;
-		height: 32px;
-		box-sizing: border-box;
-		background: rgba(255, 255, 255, 0.02);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		padding: 6px 10px;
-		font-size: var(--text-sm);
-		font-family: var(--font-mono);
-		color: var(--text);
-		letter-spacing: 0.1em;
-	}
-
-	.remove-confirm-input:focus {
-		outline: none;
-		border-color: color-mix(in srgb, var(--danger) 48%, var(--border));
-		box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger) 20%, transparent);
 	}
 
 	.remove-panel-footer {

@@ -73,7 +73,7 @@ export const createReviewAnnotationActionsController = (
 		const formEl = options.document.createElement('div');
 		formEl.className = 'diff-annotation-inline-form';
 		formEl.innerHTML = `
-      <textarea class="diff-inline-textarea" placeholder="Write your reply..." rows="3"></textarea>
+      <textarea class="ws-field-textarea" placeholder="Write your reply..." rows="3"></textarea>
       <div class="diff-inline-form-actions">
         <button class="btn-ghost" data-action="cancel-reply" type="button">Cancel</button>
         <button class="btn-primary" data-action="submit-reply" data-comment-id="${commentId}" type="button">Reply</button>
@@ -96,7 +96,7 @@ export const createReviewAnnotationActionsController = (
 		formEl.className = 'diff-annotation-inline-form';
 		formEl.dataset.editingId = String(comment.id);
 		formEl.innerHTML = `
-      <textarea class="diff-inline-textarea" rows="3">${escapeHtml(comment.body)}</textarea>
+      <textarea class="ws-field-textarea" rows="3">${escapeHtml(comment.body)}</textarea>
       <div class="diff-inline-form-actions">
         <button class="btn-ghost" data-action="cancel-edit" type="button">Cancel</button>
         <button class="btn-primary" data-action="submit-edit" data-comment-id="${comment.id}" type="button">Save</button>

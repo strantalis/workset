@@ -49,7 +49,8 @@
 		{
 			id: 'terminalProtocolLog',
 			label: 'Protocol logging',
-			description: 'Logs OSC/CSI/DSR traffic to ~/.workset/terminal_logs. Applies next launch.',
+			description:
+				'Logs raw OSC/CSI/DSR traffic to ~/.workset/terminal_logs. This is separate from opt-in terminal lifecycle debug logging. Applies next launch.',
 			type: 'select',
 			options: [
 				{ label: 'Off', value: 'off' },
@@ -101,7 +102,7 @@
 						/>
 					{:else}
 						<input
-							class="ws-field-input"
+							class="ws-field-input ws-field-input--strong-bg"
 							id={field.id}
 							type={field.type ?? 'text'}
 							placeholder={field.placeholder ?? ''}
@@ -163,8 +164,6 @@
 
 	.compact-field input {
 		width: 100px;
-		background: var(--panel-strong);
-		padding: 8px 12px;
 	}
 
 	@media (max-width: 600px) {

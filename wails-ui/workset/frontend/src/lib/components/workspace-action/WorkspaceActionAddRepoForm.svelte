@@ -139,7 +139,7 @@
 						handleAddSource();
 					}}
 					placeholder="Search catalog, GitHub, or paste URL"
-					class="mono"
+					class="ws-field-input"
 					autocapitalize="off"
 					autocorrect="off"
 					spellcheck="false"
@@ -330,22 +330,7 @@
 	}
 
 	.repo-input-shell input {
-		width: 100%;
-		height: var(--repo-control-height);
-		box-sizing: border-box;
-		background: rgba(255, 255, 255, 0.02);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		padding: 8px 10px 8px 30px;
-		font-size: var(--text-sm);
-		color: var(--text);
-	}
-
-	.repo-input-shell input:focus {
-		outline: none;
-		border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
-		box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 26%, transparent);
-		background: rgba(255, 255, 255, 0.04);
+		padding-left: 30px;
 	}
 
 	.repo-browse-icon-btn {

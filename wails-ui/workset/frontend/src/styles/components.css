@@ -27,15 +27,22 @@
 
 	.ws-field-input,
 	.ws-field-textarea {
+		width: 100%;
 		background: var(--panel-soft);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-md);
 		color: var(--text);
-		padding: 8px 10px;
-		font-size: var(--text-md);
+		padding: var(--space-2) var(--space-3);
+		font-family: inherit;
+		font-size: var(--text-sm);
 		transition:
 			border-color var(--transition-fast),
 			box-shadow var(--transition-fast);
+	}
+
+	.ws-field-textarea {
+		min-height: 96px;
+		resize: vertical;
 	}
 
 	.ws-field-input:focus-visible,
@@ -43,6 +50,50 @@
 		outline: none;
 		border-color: var(--accent);
 		box-shadow: 0 0 0 2px var(--accent-soft);
+	}
+
+	.ws-field-input:disabled,
+	.ws-field-textarea:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	/* Strong background — for inputs inside panel-soft containers */
+	.ws-field-input--strong-bg {
+		background: var(--panel-strong);
+	}
+
+	/* Monospace — CLI paths, repo URLs, confirmation fields */
+	.ws-field-input--mono {
+		font-family: var(--font-mono);
+		letter-spacing: 0.02em;
+	}
+
+	/* Danger focus ring — destructive confirmation inputs */
+	.ws-field-input--danger {
+		letter-spacing: 0.1em;
+	}
+
+	.ws-field-input--danger:focus-visible {
+		border-color: color-mix(in srgb, var(--danger) 48%, var(--border));
+		box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 20%, transparent);
+	}
+
+	/* Compact — smaller inline inputs */
+	.ws-field-input--compact {
+		padding: var(--space-1) var(--space-2);
+		font-size: var(--text-xs);
+	}
+
+	/* Ghost — borderless inputs inside composite search shells */
+	.ws-field-input--ghost {
+		background: transparent;
+		border: none;
+		box-shadow: none;
+	}
+
+	.ws-field-input--ghost:focus-visible {
+		box-shadow: none;
 	}
 
 	.ws-inline {
@@ -179,7 +230,7 @@
 	}
 
 	/* Tooltip — appears below by default */
-	.ws-icon-action-btn::after {
+	.ws-icon-action-btn[data-hover-label]::after {
 		content: attr(data-hover-label);
 		position: absolute;
 		top: calc(100% + 10px);
@@ -203,7 +254,7 @@
 		z-index: 20;
 	}
 
-	.ws-icon-action-btn::before {
+	.ws-icon-action-btn[data-hover-label]::before {
 		content: '';
 		position: absolute;
 		left: 50%;
@@ -225,33 +276,33 @@
 		z-index: 19;
 	}
 
-	.ws-icon-action-btn:hover::after,
-	.ws-icon-action-btn:hover::before,
-	.ws-icon-action-btn:focus-visible::after,
-	.ws-icon-action-btn:focus-visible::before {
+	.ws-icon-action-btn[data-hover-label]:hover::after,
+	.ws-icon-action-btn[data-hover-label]:hover::before,
+	.ws-icon-action-btn[data-hover-label]:focus-visible::after,
+	.ws-icon-action-btn[data-hover-label]:focus-visible::before {
 		opacity: 1;
 		visibility: visible;
 		transform: translateX(-50%) translateY(0);
 	}
 
 	/* Tooltip above variant */
-	.ws-icon-action-btn.tooltip-up::after {
+	.ws-icon-action-btn.tooltip-up[data-hover-label]::after {
 		top: auto;
 		bottom: calc(100% + 10px);
 		transform: translateX(-50%) translateY(2px);
 	}
 
-	.ws-icon-action-btn.tooltip-up::before {
+	.ws-icon-action-btn.tooltip-up[data-hover-label]::before {
 		top: auto;
 		bottom: calc(100% + 6px);
 		transform: translateX(-50%) translateY(2px);
 		rotate: 225deg;
 	}
 
-	.ws-icon-action-btn.tooltip-up:hover::after,
-	.ws-icon-action-btn.tooltip-up:hover::before,
-	.ws-icon-action-btn.tooltip-up:focus-visible::after,
-	.ws-icon-action-btn.tooltip-up:focus-visible::before {
+	.ws-icon-action-btn.tooltip-up[data-hover-label]:hover::after,
+	.ws-icon-action-btn.tooltip-up[data-hover-label]:hover::before,
+	.ws-icon-action-btn.tooltip-up[data-hover-label]:focus-visible::after,
+	.ws-icon-action-btn.tooltip-up[data-hover-label]:focus-visible::before {
 		transform: translateX(-50%) translateY(0);
 	}
 
@@ -488,55 +539,6 @@
 		font-family: var(--font-mono);
 	}
 
-	.ui-field-label {
-		display: block;
-		margin-bottom: var(--space-2);
-		font-size: var(--text-sm);
-		font-weight: 600;
-		color: var(--muted);
-	}
-
-	.ui-input,
-	.ui-select,
-	.ui-textarea {
-		width: 100%;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		background: var(--panel-soft);
-		color: var(--text);
-		font: inherit;
-		transition:
-			border-color var(--transition-fast),
-			box-shadow var(--transition-fast),
-			background var(--transition-fast);
-	}
-
-	.ui-input,
-	.ui-select {
-		height: 36px;
-		padding: 0 var(--space-3);
-	}
-
-	.ui-textarea {
-		min-height: 96px;
-		padding: var(--space-2) var(--space-3);
-		resize: vertical;
-	}
-
-	.ui-input:focus-visible,
-	.ui-select:focus-visible,
-	.ui-textarea:focus-visible {
-		outline: none;
-		border-color: var(--accent);
-		box-shadow: 0 0 0 2px var(--accent-soft);
-	}
-
-	.ui-help-text {
-		margin-top: var(--space-2);
-		font-size: var(--text-xs);
-		color: var(--subtle);
-	}
-
 	.ui-status-badge {
 		display: inline-flex;
 		align-items: center;
@@ -579,5 +581,44 @@
 		height: 8px;
 		border-radius: 999px;
 		background: currentColor;
+	}
+}
+
+/* ── Body-appended tooltip (use:tooltip action) ──────── */
+.ws-tooltip {
+	position: fixed;
+	z-index: 99999;
+	background: var(--hover-bg-solid);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+	color: var(--text);
+	font-size: var(--text-xs);
+	line-height: 1;
+	padding: 5px 7px;
+	white-space: nowrap;
+	pointer-events: none;
+	animation: ws-tooltip-in var(--transition-fast) both;
+}
+
+.ws-tooltip-arrow {
+	position: absolute;
+	top: -4px;
+	width: 7px;
+	height: 7px;
+	margin-left: -3.5px;
+	background: var(--hover-bg-solid);
+	border-left: 1px solid var(--border);
+	border-top: 1px solid var(--border);
+	rotate: 45deg;
+}
+
+@keyframes ws-tooltip-in {
+	from {
+		opacity: 0;
+		transform: translateY(-2px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
 	}
 }

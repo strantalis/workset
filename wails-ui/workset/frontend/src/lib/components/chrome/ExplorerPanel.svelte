@@ -7,6 +7,7 @@
 		Clock3,
 		FolderTree,
 		FolderGit2,
+		GitMerge,
 		GitPullRequest,
 		MessageSquare,
 		PanelLeftClose,
@@ -290,7 +291,7 @@
 				aria-label="Create workset"
 				onclick={onCreateWorkspace}
 			>
-				<Plus size={13} />
+				<Plus size={15} />
 			</button>
 			<button
 				type="button"
@@ -299,7 +300,7 @@
 				aria-label="Collapse explorer"
 				onclick={onCollapse}
 			>
-				<PanelLeftClose size={13} />
+				<PanelLeftClose size={15} />
 			</button>
 		</div>
 	</div>
@@ -318,7 +319,7 @@
 					switcherOpen = !switcherOpen;
 				}}
 			>
-				<span class="switcher-icon"><Box size={11} /></span>
+				<span class="switcher-icon"><Box size={13} /></span>
 				<span class="switcher-label">{selectedWorkset.label}</span>
 				<div class="switcher-health">
 					{#each selectedWorkset.health.slice(0, 4) as status, index (`selected-${index}`)}
@@ -326,7 +327,7 @@
 					{/each}
 				</div>
 				{#if worksetSwitcherEnabled}
-					<ChevronDown size={11} class={`switcher-chevron${switcherOpen ? ' open' : ''}`} />
+					<ChevronDown size={13} class={`switcher-chevron${switcherOpen ? ' open' : ''}`} />
 				{/if}
 			</button>
 
@@ -345,11 +346,11 @@
 					onkeydown={handleSwitcherKeydown}
 				>
 					<div class="switcher-search-row">
-						<Search size={11} class="switcher-search-icon" />
+						<Search size={13} class="switcher-search-icon" />
 						<input
 							bind:this={switcherSearchInputEl}
 							bind:value={switcherQuery}
-							class="switcher-search-input"
+							class="ws-field-input ws-field-input--compact"
 							type="text"
 							placeholder="Search worksets..."
 							aria-label="Search worksets"
@@ -367,7 +368,7 @@
 						{:else}
 							{#if switcherPinnedWorksets.length > 0}
 								<div class="switcher-section-label">
-									<Pin size={8} />
+									<Pin size={10} />
 									<span>Pinned</span>
 								</div>
 								{#each switcherPinnedWorksets as workset, index (workset.id)}
@@ -380,7 +381,7 @@
 										data-switcher-index={index}
 									>
 										<span class="switcher-item-icon">
-											<Box size={9} />
+											<Box size={13} />
 										</span>
 										<span class="switcher-item-main">
 											<span class="switcher-item-label">
@@ -392,19 +393,25 @@
 											<span class="switcher-item-meta">
 												{#if workset.activeThreads > 0}
 													<span class="switcher-meta-chip">
-														<MessageSquare size={8} />
+														<MessageSquare size={10} />
 														{workset.activeThreads}
 													</span>
 												{/if}
 												{#if workset.openPrs > 0}
 													<span class="switcher-meta-chip switcher-meta-pr">
-														<GitPullRequest size={8} />
+														<GitPullRequest size={10} />
 														{workset.openPrs}
+													</span>
+												{/if}
+												{#if workset.mergedPrs > 0}
+													<span class="switcher-meta-chip switcher-meta-merged">
+														<GitMerge size={10} />
+														{workset.mergedPrs}
 													</span>
 												{/if}
 												{#if workset.dirtyRepos > 0}
 													<span class="switcher-meta-chip switcher-meta-dirty">
-														<FolderGit2 size={8} />
+														<FolderGit2 size={10} />
 														{workset.dirtyRepos}
 													</span>
 												{/if}
@@ -423,7 +430,7 @@
 												{/each}
 											</span>
 											{#if clampedFocusIndex === index}
-												<Check size={10} class="switcher-item-check" />
+												<Check size={12} class="switcher-item-check" />
 											{/if}
 										</span>
 									</button>
@@ -435,7 +442,7 @@
 									<div class="switcher-section-divider"></div>
 								{/if}
 								<div class="switcher-section-label">
-									<Clock3 size={8} />
+									<Clock3 size={10} />
 									<span>Recent</span>
 								</div>
 								{#each switcherRecentWorksets as workset, recentIndex (workset.id)}
@@ -450,7 +457,7 @@
 										data-switcher-index={switcherPinnedWorksets.length + recentIndex}
 									>
 										<span class="switcher-item-icon">
-											<Box size={9} />
+											<Box size={13} />
 										</span>
 										<span class="switcher-item-main">
 											<span class="switcher-item-label">
@@ -462,19 +469,25 @@
 											<span class="switcher-item-meta">
 												{#if workset.activeThreads > 0}
 													<span class="switcher-meta-chip">
-														<MessageSquare size={8} />
+														<MessageSquare size={10} />
 														{workset.activeThreads}
 													</span>
 												{/if}
 												{#if workset.openPrs > 0}
 													<span class="switcher-meta-chip switcher-meta-pr">
-														<GitPullRequest size={8} />
+														<GitPullRequest size={10} />
 														{workset.openPrs}
+													</span>
+												{/if}
+												{#if workset.mergedPrs > 0}
+													<span class="switcher-meta-chip switcher-meta-merged">
+														<GitMerge size={10} />
+														{workset.mergedPrs}
 													</span>
 												{/if}
 												{#if workset.dirtyRepos > 0}
 													<span class="switcher-meta-chip switcher-meta-dirty">
-														<FolderGit2 size={8} />
+														<FolderGit2 size={10} />
 														{workset.dirtyRepos}
 													</span>
 												{/if}
@@ -493,7 +506,7 @@
 												{/each}
 											</span>
 											{#if clampedFocusIndex === switcherPinnedWorksets.length + recentIndex}
-												<Check size={10} class="switcher-item-check" />
+												<Check size={12} class="switcher-item-check" />
 											{/if}
 										</span>
 									</button>
@@ -515,7 +528,7 @@
 	<div class="panel-body">
 		{#if selectedWorkset}
 			<div class="section-heading">
-				<MessageSquare size={9} />
+				<MessageSquare size={11} />
 				<span>Threads</span>
 				<span class="count">{selectedWorkset.threads.length}</span>
 			</div>
@@ -548,9 +561,14 @@
 							{#if thread.openPrs > 0}
 								<span class="thread-pr-indicator">PR</span>
 							{/if}
+							{#if thread.mergedPrs > 0}
+								<span class="thread-merged-indicator">
+									<GitMerge size={10} />
+								</span>
+							{/if}
 							{#if thread.reviewCommentsCount > 0}
 								<span class="thread-feedback-indicator">
-									<MessageSquare size={8} />
+									<MessageSquare size={10} />
 									{thread.reviewCommentsCount}
 								</span>
 							{/if}
@@ -572,7 +590,7 @@
 										onRemoveThread(thread.id);
 									}}
 								>
-									<Trash2 size={10} />
+									<Trash2 size={12} />
 								</button>
 							</div>
 						{/if}
@@ -585,7 +603,7 @@
 					title={`Create thread in ${selectedWorkset.label}`}
 					aria-label={`Create thread in ${selectedWorkset.label}`}
 				>
-					<Plus size={10} />
+					<Plus size={12} />
 					<span>New Thread</span>
 				</button>
 			</div>
@@ -597,11 +615,11 @@
 					onclick={() => (reposOpen = !reposOpen)}
 				>
 					{#if reposOpen}
-						<ChevronDown size={9} />
+						<ChevronDown size={11} />
 					{:else}
-						<ChevronRight size={9} />
+						<ChevronRight size={11} />
 					{/if}
-					<FolderGit2 size={9} />
+					<FolderGit2 size={11} />
 					<span>Repos</span>
 					<span class="count">{selectedWorkset.repos.length}</span>
 				</button>
@@ -613,7 +631,7 @@
 						aria-label={`Add repo to ${selectedWorkset.label}`}
 						onclick={() => onAddRepo(selectedWorkset.id)}
 					>
-						<Plus size={10} />
+						<Plus size={12} />
 						<span>Add Repo</span>
 					</button>
 				{/if}
@@ -622,30 +640,12 @@
 				<div class="repo-list">
 					{#each selectedWorkset.repos as repo (`${selectedWorkset.id}-${repo}`)}
 						<div class="repo-item" title={repo}>
-							<FolderGit2 size={10} />
+							<FolderGit2 size={12} />
 							<span>{repo}</span>
 						</div>
 					{/each}
 				</div>
 			{/if}
-
-			<div class="summary-card">
-				<div class="summary-row">
-					<span>Open PRs</span>
-					<strong>{selectedWorkset.openPrs}</strong>
-				</div>
-				<div class="summary-row">
-					<span>Dirty repos</span>
-					<strong>{selectedWorkset.dirtyRepos}</strong>
-				</div>
-				<div class="summary-row">
-					<span>Line diff</span>
-					<strong>
-						<span class="plus">+{selectedWorkset.linesAdded}</span>
-						<span class="minus">-{selectedWorkset.linesRemoved}</span>
-					</strong>
-				</div>
-			</div>
 		{/if}
 	</div>
 
@@ -661,7 +661,7 @@
 					aria-label="Toggle code pane"
 					onclick={onOpenFiles}
 				>
-					<FolderTree size={13} />
+					<FolderTree size={15} />
 				</button>
 				<button
 					type="button"
@@ -671,7 +671,7 @@
 					aria-label="Toggle skills view"
 					onclick={onOpenSkills}
 				>
-					<Sparkles size={13} />
+					<Sparkles size={15} />
 				</button>
 			</div>
 			<div class="footer-utils">
@@ -683,7 +683,7 @@
 					aria-label="Open settings"
 					onclick={onOpenSettings}
 				>
-					<Settings size={13} />
+					<Settings size={15} />
 				</button>
 				<div class="footer-kbd">
 					<kbd class="ui-kbd">⌘B</kbd>

@@ -236,6 +236,7 @@
 							<label class="input-label" for="settings-cli-path">GitHub CLI path</label>
 							<input
 								id="settings-cli-path"
+								class="ws-field-input ws-field-input--strong-bg ws-field-input--mono"
 								type="text"
 								bind:value={cliPath}
 								placeholder="/Users/you/.nix-profile/bin/gh"
@@ -265,6 +266,7 @@
 					<label class="input-label" for="settings-pat-token">Personal access token</label>
 					<input
 						id="settings-pat-token"
+						class="ws-field-input ws-field-input--strong-bg ws-field-input--mono"
 						type="password"
 						bind:value={patToken}
 						placeholder="ghp_••••••••••••••••"
@@ -455,25 +457,6 @@
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
 		margin-bottom: 6px;
-	}
-
-	input[type='text'],
-	input[type='password'] {
-		width: 100%;
-		padding: 10px 12px;
-		border-radius: 10px;
-		border: 1px solid var(--border);
-		background: var(--panel-strong);
-		color: var(--text);
-		font-size: var(--text-mono-base);
-		font-family: var(--font-mono);
-		transition: border-color var(--transition-fast);
-	}
-
-	input[type='text']:focus,
-	input[type='password']:focus {
-		outline: none;
-		border-color: var(--accent);
 	}
 
 	.input-group {

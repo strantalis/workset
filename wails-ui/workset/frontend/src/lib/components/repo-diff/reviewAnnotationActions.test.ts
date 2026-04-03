@@ -132,7 +132,7 @@ describe('reviewAnnotationActions', () => {
 		const threadEl = setup.render();
 
 		(threadEl.querySelector('[data-action="reply"]') as HTMLElement).click();
-		const textarea = threadEl.querySelector('.diff-inline-textarea') as HTMLTextAreaElement;
+		const textarea = threadEl.querySelector('.ws-field-textarea') as HTMLTextAreaElement;
 		textarea.value = '  Looks good to me  ';
 
 		(threadEl.querySelector('[data-action="submit-reply"]') as HTMLElement).click();
@@ -156,7 +156,7 @@ describe('reviewAnnotationActions', () => {
 		const threadEl = setup.render();
 
 		(threadEl.querySelector('[data-action="edit"]') as HTMLElement).click();
-		const textarea = threadEl.querySelector('.diff-inline-textarea') as HTMLTextAreaElement;
+		const textarea = threadEl.querySelector('.ws-field-textarea') as HTMLTextAreaElement;
 		textarea.value = '  Updated copy  ';
 
 		(threadEl.querySelector('[data-action="submit-edit"]') as HTMLElement).click();

@@ -83,7 +83,7 @@
 				<div class="field" class:changed={isChanged(field.id)}>
 					<label for={field.id}>{field.label}</label>
 					<input
-						class="ws-field-input"
+						class="ws-field-input ws-field-input--strong-bg"
 						id={field.id}
 						type="text"
 						placeholder={field.placeholder ?? ''}
@@ -117,7 +117,7 @@
 						/>
 					{:else}
 						<input
-							class="ws-field-input"
+							class="ws-field-input ws-field-input--strong-bg"
 							id={field.id}
 							type="text"
 							placeholder={field.placeholder ?? 'e.g. gpt-4-0125-preview'}
@@ -171,11 +171,6 @@
 		color: var(--muted);
 		display: block;
 		margin-bottom: 4px;
-	}
-
-	.ws-field-input {
-		background: var(--panel-strong);
-		padding: 10px 12px;
 	}
 
 	@media (max-width: 600px) {

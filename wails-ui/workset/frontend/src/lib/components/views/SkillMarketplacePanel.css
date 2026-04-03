@@ -62,19 +62,7 @@
 }
 
 .marketplace-search input {
-	width: 100%;
-	border: 1px solid var(--border);
-	border-radius: 8px;
-	background: var(--panel-strong);
-	padding: 7px 10px 7px 32px;
-	color: var(--text);
-	font-size: var(--text-sm);
-	transition: border-color var(--transition-fast);
-}
-
-.marketplace-search input:focus {
-	outline: none;
-	border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+	padding-left: 32px;
 }
 
 /* Provenance info tooltip */
@@ -757,12 +745,6 @@
 .install-config-field input {
 	flex: 1;
 	min-width: 0;
-	border: 1px solid var(--border);
-	border-radius: 8px;
-	background: var(--panel);
-	padding: 7px 10px;
-	color: var(--text);
-	font-size: var(--text-sm);
 }
 
 .install-config-label {

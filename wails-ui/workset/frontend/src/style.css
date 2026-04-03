@@ -85,25 +85,25 @@
 	--hover-danger-border: color-mix(in srgb, var(--danger) 32%, transparent);
 
 	/* Typography scale */
-	--text-xs: 12px;
-	--text-sm: 13px;
-	--text-base: 14px;
-	--text-md: 15px;
-	--text-lg: 17px;
-	--text-xl: 19px;
-	--text-2xl: 21px;
-	--text-3xl: 26px;
+	--text-xs: 13px;
+	--text-sm: 14px;
+	--text-base: 15px;
+	--text-md: 16px;
+	--text-lg: 18px;
+	--text-xl: 20px;
+	--text-2xl: 22px;
+	--text-3xl: 28px;
 
 	/* Compact typography scale (design-spec) */
-	--text-2xs: 10px;
-	--text-xxs: 11px;
+	--text-2xs: 11px;
+	--text-xxs: 12px;
 
 	/* Monospace typography scale */
-	--text-mono-2xs: 10px;
-	--text-mono-xs: 12px;
-	--text-mono-sm: 13px;
-	--text-mono-base: 14px;
-	--text-mono-md: 15px;
+	--text-mono-2xs: 11px;
+	--text-mono-xs: 13px;
+	--text-mono-sm: 14px;
+	--text-mono-base: 15px;
+	--text-mono-md: 16px;
 
 	/* Spacing tokens */
 	--space-1: 4px;
@@ -162,7 +162,7 @@ body {
 }
 
 body {
-	font-size: 14px;
+	font-size: 15px;
 	font-family: var(--font-body);
 }
 

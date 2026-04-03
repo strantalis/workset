@@ -187,7 +187,7 @@
 				<div class="field" class:changed={isChanged(field.id)}>
 					<label for={field.id}>{field.label}</label>
 					<input
-						class="field-input"
+						class="ws-field-input ws-field-input--strong-bg"
 						id={field.id}
 						type="text"
 						placeholder={field.placeholder ?? ''}
@@ -208,7 +208,7 @@
 			<div class="cli-input-row">
 				<input
 					id="agent-cli-path"
-					class="field-input cli-input"
+					class="ws-field-input ws-field-input--strong-bg cli-input"
 					type="text"
 					bind:value={cliPath}
 					placeholder="/Users/you/.local/bin/agent"
@@ -363,25 +363,6 @@
 		color: var(--muted);
 		display: block;
 		margin-bottom: 4px;
-	}
-
-	.field-input {
-		width: 100%;
-		background: var(--panel-strong);
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		padding: 8px 10px;
-		color: inherit;
-		font-size: var(--text-base);
-		transition:
-			border-color var(--transition-fast),
-			box-shadow var(--transition-fast);
-	}
-
-	.field-input:focus {
-		outline: none;
-		border-color: var(--accent);
-		box-shadow: 0 0 0 1px var(--accent);
 	}
 
 	/* Agent CLI */

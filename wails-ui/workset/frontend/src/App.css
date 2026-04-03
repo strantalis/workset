@@ -49,14 +49,32 @@
 }
 
 .explorer-shell {
-	width: 240px;
-	min-width: 240px;
 	height: 100%;
 	border-right: 1px solid var(--border);
 	background: var(--panel);
 	box-shadow: inset -1px 0 0 color-mix(in srgb, var(--border) 38%, transparent);
 	position: relative;
 	z-index: 2;
+	flex-shrink: 0;
+}
+
+.explorer-shell.resizing {
+	user-select: none;
+}
+
+.explorer-resize-handle {
+	position: absolute;
+	top: 0;
+	right: -3px;
+	width: 6px;
+	height: 100%;
+	cursor: col-resize;
+	z-index: 3;
+}
+
+.explorer-resize-handle:hover,
+.explorer-shell.resizing .explorer-resize-handle {
+	background: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .view-shell {
@@ -185,11 +203,6 @@
 }
 
 @media (max-width: 860px) {
-	.explorer-shell {
-		width: 240px;
-		min-width: 240px;
-	}
-
 	.shell-banner-region {
 		padding-inline: 12px;
 	}

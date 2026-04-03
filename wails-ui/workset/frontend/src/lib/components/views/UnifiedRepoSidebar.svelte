@@ -18,6 +18,7 @@
 	import type { RepoDiffFileSummary } from '../../types';
 	import type { RepoTreeNode } from '../repo-files/tree';
 	import { getRepoFileIcon } from '../repo-files/fileIcons';
+	import { tooltip } from '../../actions/tooltip';
 	type InlineCreateTreeNode = {
 		kind: 'inline-create';
 		key: 'inline-create';
@@ -148,7 +149,7 @@
 <aside class="urv-sidebar">
 	<div class="urv-tree-header">
 		<div class="urv-tree-title">
-			<FolderTree size={12} />
+			<FolderTree size={14} />
 			<span>Files</span>
 		</div>
 		<div class="urv-tree-actions">
@@ -157,39 +158,60 @@
 					<button
 						type="button"
 						class="urv-tree-action urv-action-pr"
-						title="View Pull Request"
+						aria-label="View Pull Request"
+						use:tooltip={'View Pull Request'}
 						onclick={onOpenSelectedPr}
 					>
-						<GitPullRequest size={11} />
+						<GitPullRequest size={13} />
 					</button>
 				{:else}
 					<button
 						type="button"
 						class="urv-tree-action"
-						title="Create Pull Request"
+						aria-label="Create Pull Request"
+						use:tooltip={'Create Pull Request'}
 						onclick={onCreatePr}
 					>
-						<GitPullRequest size={11} />
+						<GitPullRequest size={13} />
 					</button>
-					<button type="button" class="urv-tree-action" title="Local Merge" onclick={onLocalMerge}>
-						<GitMerge size={11} />
+					<button
+						type="button"
+						class="urv-tree-action"
+						aria-label="Local Merge"
+						use:tooltip={'Local Merge'}
+						onclick={onLocalMerge}
+					>
+						<GitMerge size={13} />
 					</button>
 				{/if}
 			{/if}
-			<button type="button" class="urv-tree-action" title="Refresh file tree" onclick={onRefresh}>
-				<RotateCcw size={12} />
+			<button
+				type="button"
+				class="urv-tree-action"
+				aria-label="Refresh file tree"
+				use:tooltip={'Refresh file tree'}
+				onclick={onRefresh}
+			>
+				<RotateCcw size={14} />
 			</button>
-			<button type="button" class="urv-tree-action" title="New file" onclick={onNewFile}>
-				<FilePlus size={12} />
+			<button type="button" class="urv-tree-action" aria-label="New file" use:tooltip={'New file'} onclick={onNewFile}>
+				<FilePlus size={14} />
 			</button>
-			<button type="button" class="urv-tree-action" title="Hide file tree" onclick={onHideTree}>
-				<PanelLeftClose size={12} />
+			<button
+				type="button"
+				class="urv-tree-action"
+				aria-label="Hide file tree"
+				use:tooltip={'Hide file tree'}
+				onclick={onHideTree}
+			>
+				<PanelLeftClose size={14} />
 			</button>
 		</div>
 	</div>
 	<div class="urv-tree-search">
-		<Search size={11} />
+		<Search size={13} />
 		<input
+			class="ws-field-input ws-field-input--ghost"
 			type="text"
 			placeholder="Filter files..."
 			value={searchQuery}
@@ -215,14 +237,14 @@
 					onclick={() => onToggleNode(node)}
 				>
 					{#if expandedNodes.has(node.key)}
-						<ChevronDown size={11} />
+						<ChevronDown size={13} />
 					{:else}
-						<ChevronRight size={11} />
+						<ChevronRight size={13} />
 					{/if}
 					{#if isRepoRoot}
-						<GitBranch size={12} />
+						<GitBranch size={14} />
 					{:else}
-						<FolderTree size={12} />
+						<FolderTree size={14} />
 					{/if}
 					<span class="urv-tree-label">{node.label}</span>
 					{#if !isRepoRoot && rootMeta?.gitDetected}
@@ -240,7 +262,7 @@
 							}}
 							onkeydown={() => {}}
 						>
-							<GitPullRequest size={10} />
+							<GitPullRequest size={12} />
 						</span>
 					{:else if prState === 'draft'}
 						<span
@@ -254,7 +276,21 @@
 							}}
 							onkeydown={() => {}}
 						>
-							<GitPullRequest size={10} />
+							<GitPullRequest size={12} />
+						</span>
+					{:else if prState === 'merged'}
+						<span
+							class="urv-pr-indicator urv-pr-merged"
+							role="button"
+							tabindex="-1"
+							title="View Merged PR"
+							onclick={(event) => {
+								event.stopPropagation();
+								onOpenTrackedPr(node.repoId);
+							}}
+							onkeydown={() => {}}
+						>
+							<GitMerge size={12} />
 						</span>
 					{/if}
 					{#if stats && stats.count > 0}
@@ -268,7 +304,7 @@
 				</button>
 				{#if expandedNodes.has(node.key) && rootState?.status === 'loading'}
 					<div class="urv-tree-state" style="--depth:1;">
-						<span class="spin"><LoaderCircle size={14} /></span>
+						<span class="spin"><LoaderCircle size={16} /></span>
 						<span>Loading...</span>
 					</div>
 				{:else if expandedNodes.has(node.key) && rootState?.status === 'error'}
@@ -296,9 +332,9 @@
 					onclick={() => onToggleNode(node)}
 				>
 					{#if expandedNodes.has(node.key)}
-						<ChevronDown size={11} />
+						<ChevronDown size={13} />
 					{:else}
-						<ChevronRight size={11} />
+						<ChevronRight size={13} />
 					{/if}
 					<span class="urv-tree-label">{node.label}</span>
 					{#if commentCount > 0}
@@ -306,7 +342,7 @@
 							class="urv-tree-comment-badge"
 							title={`${commentCount} unresolved review thread${commentCount === 1 ? '' : 's'}`}
 						>
-							<MessageCircle size={10} />
+							<MessageCircle size={12} />
 							<span>{commentCount}</span>
 						</span>
 					{/if}
@@ -341,7 +377,7 @@
 						onclick={() => onSelectFile(node.repoId, node.path)}
 					>
 						<span class="urv-file-icon" data-icon={getRepoFileIcon(node.path)}>
-							<Icon icon={getRepoFileIcon(node.path)} width="13" />
+							<Icon icon={getRepoFileIcon(node.path)} width="14" />
 						</span>
 						<span class="urv-tree-file-name">{node.label}</span>
 						{#if diffInfo}
@@ -356,7 +392,7 @@
 								class="urv-tree-comment-badge urv-tree-file-comments"
 								title={`${commentCount} unresolved review thread${commentCount === 1 ? '' : 's'}`}
 							>
-								<MessageCircle size={10} />
+								<MessageCircle size={12} />
 								<span>{commentCount}</span>
 							</span>
 						{/if}
@@ -400,19 +436,19 @@
 								onDeleteFile(node.repoId, node.path);
 							}}
 						>
-							<Trash2 size={10} />
+							<Trash2 size={12} />
 						</button>
 					{/if}
 				</div>
 			{:else}
 				<div class="urv-tree-inline" style={`--depth:${node.depth};`}>
 					<span class="urv-file-icon" data-icon={getRepoFileIcon('new-file.ts')}>
-						<Icon icon={getRepoFileIcon('new-file.ts')} width="12" />
+						<Icon icon={getRepoFileIcon('new-file.ts')} width="13" />
 					</span>
 					<input
 						bind:this={inlineCreateInput}
 						type="text"
-						class="urv-tree-inline-input"
+						class="ws-field-input ws-field-input--compact ws-field-input--mono"
 						placeholder="new-file.ts"
 						value={inlineCreateDraft}
 						disabled={inlineCreatePending}

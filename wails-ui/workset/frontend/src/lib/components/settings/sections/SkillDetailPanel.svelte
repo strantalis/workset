@@ -96,7 +96,7 @@
 			<label class="ws-field">
 				<span>Directory name</span>
 				<input
-					class="ws-field-input"
+					class="ws-field-input ws-field-input--strong-bg"
 					type="text"
 					value={formDirName}
 					oninput={(event) => onFormDirNameChange((event.currentTarget as HTMLInputElement).value)}
@@ -126,7 +126,7 @@
 						onFormContentChange((event.currentTarget as HTMLTextAreaElement).value)}
 					rows="10"
 					spellcheck="false"
-					class="content-editor"
+					class="ws-field-textarea ws-field-input--strong-bg ws-field-input--mono"
 				></textarea>
 			</label>
 		</div>
@@ -207,7 +207,7 @@
 						onFormContentChange((event.currentTarget as HTMLTextAreaElement).value)}
 					rows="12"
 					spellcheck="false"
-					class="content-editor"
+					class="ws-field-textarea ws-field-input--strong-bg ws-field-input--mono"
 				></textarea>
 			</label>
 			<div class="actions">
@@ -304,33 +304,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-3);
-	}
-
-	.ws-field-input {
-		background: var(--panel-strong);
-		padding: 10px var(--space-3);
-		font-family: inherit;
-	}
-
-	.content-editor {
-		background: var(--panel-strong);
-		border: 1px solid var(--border);
-		color: var(--text);
-		border-radius: var(--radius-md);
-		padding: 10px var(--space-3);
-		font-size: var(--text-mono-base);
-		font-family: var(--font-mono);
-		resize: vertical;
-		min-height: 120px;
-		transition:
-			border-color var(--transition-fast),
-			box-shadow var(--transition-fast);
-	}
-
-	.content-editor:focus {
-		outline: none;
-		border-color: var(--accent);
-		box-shadow: 0 0 0 2px var(--accent-soft);
 	}
 
 	.content-preview {
