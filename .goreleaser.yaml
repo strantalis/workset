@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema-pro.json
 version: 2
 
 env:
@@ -73,7 +74,7 @@ npms:
     bugs: "https://github.com/strantalis/workset/issues"
     access: public
     format: tar.gz
-    disable: "{{ or .IsSnapshot .Prerelease (ne .Env.ENABLE_NPM_PUBLISH \"true\") }}"
+    disable: "{{ or .IsSnapshot .Prerelease }}"
 
 notarize:
   macos:
@@ -90,3 +91,18 @@ notarize:
 
 changelog:
   sort: asc
+  ai:
+    use: openai
+    model: gpt-5.4-mini
+    prompt: |
+      Rewrite these release notes for Workset.
+
+      Goals:
+      - Start with a short "Highlights" section.
+      - Focus on user-visible improvements first.
+      - Merge repetitive dependency/update noise into one short bullet.
+      - Keep it concise and technical.
+      - No emojis.
+
+      Source release notes:
+      {{ .ReleaseNotes }}
