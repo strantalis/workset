@@ -1,0 +1,70 @@
+---
+title: Desktop App
+description: Native Wails app with terminals, thread management, and GitHub workflows.
+---
+
+Workset includes a native desktop app built with Wails (Go backend + Svelte frontend). It shares the same config, thread state, and service layer as the CLI.
+
+## Install
+
+Download the latest macOS build from [GitHub Releases](https://github.com/strantalis/workset/releases).
+
+:::tip
+The CLI is a separate binary. Install it via Homebrew (`brew install workset`) or `go install`.
+:::
+
+## Thread Management
+
+The explorer sidebar lets you create, rename, archive, and delete threads. Add and remove repos, inspect status, and browse local changes.
+
+![Explorer with threads, repos, and embedded terminal](/screenshots/explorer-sidebar.png)
+
+## Integrated Terminals
+
+Embedded terminals per thread with full PTY support. Features include:
+
+- Clickable links
+- Clipboard support
+- Proper emoji rendering
+- Per-thread terminal sessions
+
+![Multi-pane terminals with Codex and Claude agents](/screenshots/terminal-panes.png)
+
+## GitHub Workflows
+
+Authenticate via GitHub CLI or personal access token. From the app you can:
+
+- Create PRs
+- View PR status
+- Read review comments
+- Generate PR descriptions with AI
+
+![PR creation with AI-generated title and description](/screenshots/pr-creation-filled.png)
+
+## In-App Updates (macOS)
+
+The desktop app supports a custom updater flow from **Settings → About**:
+
+1. Choose an update channel (`stable` or `alpha`)
+2. Click **Check for Updates**
+3. If a newer version exists, click **Update and Restart**
+
+Update manifests are fetched from `WORKSET_UPDATES_BASE_URL` when set, otherwise from `https://strantalis.github.io/workset/updates`. The updater requires both SHA256 match and matching macOS signing Team ID from the manifest.
+
+## Terminal Settings
+
+| Setting | Description |
+|---|---|
+| `defaults.terminal_idle_timeout` | Idle shutdown for GUI terminals (e.g., `30m`, `0` to disable) |
+| `defaults.terminal_protocol_log` | Enable terminal service protocol logging |
+| `defaults.terminal_debug_overlay` | Show the terminal debug overlay |
+| `defaults.terminal_font_size` | Terminal text size (8–28, default 13) |
+| `defaults.terminal_cursor_blink` | Whether the terminal cursor blinks |
+| `defaults.agent` | Default coding agent (`codex` or `claude`) |
+| `defaults.agent_model` | Model override for PR/commit text generation |
+
+See [Config Reference](/reference/config) for the full field reference.
+
+## GitHub Authentication
+
+See the [GitHub Integration](/guides/github-integration) guide for setup instructions covering both desktop app and CLI.

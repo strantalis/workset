@@ -1,0 +1,68 @@
+---
+title: Download
+description: Get the Workset desktop app or CLI.
+---
+
+import DownloadHero from '../../../components/DownloadHero.svelte';
+
+<DownloadHero client:load />
+
+## macOS App
+
+Download the `.dmg` from [GitHub Releases](https://github.com/strantalis/workset/releases/latest).
+
+The app supports in-app updates from **Settings > About** — after the initial install, you won't need to re-download.
+
+## Windows
+
+:::caution
+Windows support is best-effort. Things may not work as expected.
+:::
+
+Download the `.exe` from [GitHub Releases](https://github.com/strantalis/workset/releases/latest).
+
+## CLI
+
+The CLI shares the same config and thread state as the desktop app. Use both interchangeably.
+
+### macOS (Homebrew)
+
+```bash
+brew tap strantalis/homebrew-tap
+brew install workset
+```
+
+Upgrade:
+
+```bash
+brew update
+brew upgrade --cask workset
+```
+
+### npm
+
+```bash
+npm install -g @strantalis/workset@latest
+```
+
+### Go
+
+```bash
+go install github.com/strantalis/workset/cmd/workset@latest
+```
+
+:::tip
+If you use `go install`, ensure `$(go env GOPATH)/bin` is on your PATH.
+:::
+
+## Verify CLI Installation
+
+```bash
+workset --version
+```
+
+You should see version information printed. If not, check that your PATH includes the install location.
+
+## Next Steps
+
+Follow the [Quickstart](/getting-started/quickstart) to create your first thread.

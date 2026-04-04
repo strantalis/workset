@@ -1,0 +1,73 @@
+---
+title: Multi-Repo Workflows
+description: Patterns for coordinating changes across multiple repositories in a single thread.
+---
+
+When a feature spans multiple services or packages, you need a way to keep related branches in sync. Workset threads solve this by treating a set of repos as a single unit of work.
+
+## The Problem
+
+Without Workset, multi-repo work looks like this:
+
+1. Create `feature-auth` branch in `api` repo
+2. Create `feature-auth` branch in `frontend` repo
+3. Create `feature-auth` branch in `platform` repo
+4. Remember which branch goes with which repo
+5. Hope you don't accidentally push to `main`
+
+With Workset, all three repos live under one thread directory, each as a linked worktree. One command shows you the status of all of them.
+
+## Basic Pattern
+
+```bash
+# Create a thread for the feature
+workset new feature-auth
+
+# Add all relevant repos
+workset repo add git@github.com:org/api.git -t feature-auth
+workset repo add git@github.com:org/frontend.git -t feature-auth
+workset repo add git@github.com:org/platform.git -t feature-auth
+
+# Check status across all repos
+workset status -t feature-auth
+```
+
+## Working in the Thread
+
+Each repo in the thread is a linked worktree. You can:
+
+- `cd` into any repo and work normally
+- Branches are isolated — `main` in your main clone is untouched
+- `git push`, `git pull`, and all normal operations work as expected
+
+## Checking Status
+
+```bash
+workset status -t feature-auth
+```
+
+This shows the current branch, status, and any local changes across all repos in the thread.
+
+## Removing a Repo
+
+```bash
+workset repo rm api -t feature-auth
+```
+
+This removes the worktree for that repo from the thread. The main clone is unaffected.
+
+## Cleaning Up
+
+When the feature is merged:
+
+```bash
+workset rm -t feature-auth --delete
+```
+
+This removes the thread directory and all worktrees. Safety checks prevent deletion of unmerged branches.
+
+## Tips
+
+- Set `defaults.thread` to skip `-t` on every command.
+- Use [worksets](/guides/worksets) if you frequently work with the same group of repos.
+- The [Desktop App](/guides/desktop-app) provides a GUI for managing threads.

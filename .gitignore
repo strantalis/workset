@@ -16,6 +16,7 @@ coverage/
 *.prof
 .env
 .DS_Store
+/*.png
 .idea/
 .vscode/
 .venv/
@@ -32,3 +33,7 @@ wails-ui/workset/frontend/.playwright/
 wails-ui/workset/frontend/.playwright-arm64/
 .playwright-mcp/
 site/
+docs-site/node_modules/
+docs-site/.astro/
+docs-site/dist/
+scripts/gen_update_manifests.py

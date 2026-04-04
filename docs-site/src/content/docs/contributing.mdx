@@ -1,0 +1,94 @@
+---
+title: Contributing
+description: How to contribute to Workset.
+---
+
+## Getting Started
+
+1. Fork the repository
+2. Clone your fork
+3. Create a feature branch
+4. Make your changes
+5. Run checks
+6. Open a pull request
+
+## Development Setup
+
+### Prerequisites
+
+- Go 1.23+
+- Node.js 20+ (for frontend)
+- `uv` (for docs)
+
+### Backend
+
+```bash
+go mod download
+make test
+make lint
+```
+
+### Frontend
+
+The desktop app frontend lives in `wails-ui/workset/frontend`:
+
+```bash
+cd wails-ui/workset/frontend
+npm install
+npm run dev
+```
+
+### Docs
+
+```bash
+make docs-serve
+```
+
+## Commit Messages
+
+Follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+feat(threads): add snapshot API
+chore(ci): update release pipeline
+fix(terminal): handle PTY cleanup on exit
+```
+
+## Pull Requests
+
+Include:
+- Summary of changes
+- Rationale
+- Tests run
+- Docs updates (when behavior changes)
+- Screenshots or clips for UI changes
+
+## Testing
+
+```bash
+make test
+```
+
+This runs Go unit tests, integration tests, and frontend tests.
+
+## Code Style
+
+- Go: format with `gofumpt` via `make lint-fmt`
+- Keep packages lower-case, exported identifiers `PascalCase`
+- Public surface in `pkg/`, internal-only logic in `internal/`
+
+## Directory Structure
+
+| Directory | Purpose |
+|---|---|
+| `cmd/` | CLI entrypoints |
+| `internal/` | Private packages (ops, workspace, hooks, session) |
+| `pkg/worksetapi/` | Public API surface and service layer |
+| `wails-ui/workset/` | Desktop app (Wails + Svelte) |
+| `docs-site/` | Documentation site (Astro + Starlight) |
+
+## Reporting Issues
+
+- Use [GitHub Issues](https://github.com/strantalis/workset/issues)
+- Include reproduction steps, expected behavior, and actual behavior
+- For bugs, include `workset version` output

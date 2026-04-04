@@ -1,0 +1,83 @@
+---
+title: Hooks
+description: Automate repo setup with hooks that run when worktrees are created.
+---
+
+Hooks let you automate tasks when Workset creates a new worktree. Common use cases include installing dependencies, running code generation, or setting up local configuration.
+
+## Defining Hooks
+
+Create a `.workset/hooks.yaml` file in any repo:
+
+```yaml
+hooks:
+  - id: bootstrap
+    on: [worktree.created]
+    run: ["npm", "ci"]
+    cwd: "{repo.path}"
+    on_error: fail
+```
+
+## Events
+
+- `worktree.created` — Fires when a new worktree is created for the repo
+
+## Configuration
+
+| Field | Description |
+|---|---|
+| `id` | Unique identifier for the hook |
+| `on` | List of events that trigger the hook |
+| `run` | Command and arguments to execute |
+| `cwd` | Working directory (supports `{repo.path}` template) |
+| `on_error` | Error handling: `fail` or `warn` |
+
+## Running Hooks
+
+Hooks run automatically when the triggering event occurs. You can also run them manually:
+
+```bash
+workset hooks run -t <thread> <repo> --event worktree.created
+```
+
+## Trust Settings
+
+By default, Workset prompts before running hooks from repos you haven't explicitly trusted. Add repos to the trusted list in your global config:
+
+```yaml
+hooks:
+  repo_hooks:
+    trusted_repos: [platform, api]
+```
+
+Or disable hooks entirely:
+
+```yaml
+hooks:
+  enabled: false
+```
+
+## Error Handling
+
+The `on_error` field controls what happens when a hook fails:
+
+- `fail` — Stop execution and report the error (default)
+- `warn` — Log the warning and continue
+
+You can set a default at the global level:
+
+```yaml
+hooks:
+  on_error: fail
+```
+
+## Template Variables
+
+Hook configuration supports template variables:
+
+- `{repo.path}` — Absolute path to the repo worktree
+
+## Next Steps
+
+- [Config Reference](/reference/config) for all hook configuration options
+- [Multi-Repo Workflows](/guides/multi-repo-workflows) for working across repos

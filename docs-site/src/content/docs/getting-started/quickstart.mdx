@@ -1,0 +1,68 @@
+---
+title: Quickstart
+description: Create your first Workset thread in 5 minutes.
+---
+
+This guide walks you through creating a thread, adding a repo, and verifying everything works. Use the desktop app or the CLI — both do the same thing.
+
+## Create a Thread
+
+**Desktop App:** Click **New Thread** in the sidebar, enter a name, and press create.
+
+![New thread dialog with name input and hooks](/screenshots/new-thread.png)
+
+**CLI:**
+
+```bash
+workset new demo
+```
+
+A thread is an isolated workspace for a focused unit of work.
+
+## Add a Repo
+
+**Desktop App:** Click **Add Repo** in the thread view, paste or search for a repo URL.
+
+![Add repo dialog with catalog search and URL input](/screenshots/add-repo.png)
+
+**CLI:**
+
+```bash
+workset repo add https://github.com/your/org-repo.git -t demo
+```
+
+SSH works too: `workset repo add git@github.com:your/org-repo.git -t demo`
+
+Workset clones the repo into a linked worktree under the thread directory. Your main clone stays clean.
+
+## Check Status
+
+**Desktop App:** The explorer shows your threads, repos, and their current state.
+
+![Explorer showing threads, repos, and terminal](/screenshots/explorer-sidebar.png)
+
+**CLI:**
+
+```bash
+workset status -t demo
+```
+
+## Set a Default Thread (Optional)
+
+```bash
+workset config set defaults.thread demo
+```
+
+Once set, you can omit `-t demo` for most CLI commands. The desktop app remembers your last active thread automatically.
+
+## What Just Happened
+
+- A thread directory was created with `workset.yaml` and `.workset/` state.
+- The repo was cloned as a linked worktree — no duplicate `.git` data on disk.
+- The thread captures intent: "these repos move together for this branch of work."
+
+## Next Steps
+
+- Read about [Concepts](/reference/concepts) to understand worksets, threads, and registered repos.
+- Review [Config](/reference/config) to customize defaults.
+- Explore the [Desktop App](/guides/desktop-app) guide for the full app experience.

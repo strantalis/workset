@@ -1,0 +1,87 @@
+---
+title: Troubleshooting
+description: Common issues and their fixes.
+---
+
+## `gh` Not Found
+
+**Problem:** Workset can't find the GitHub CLI.
+
+**Fix:** Set the path explicitly in `~/.workset/config.yaml`:
+
+```yaml
+github:
+  cli_path: /Users/you/.nix-profile/bin/gh
+```
+
+## Thread Not Found
+
+**Problem:** `workset status -t <name>` returns an error.
+
+**Fix:**
+- Check the thread name with `workset ls`
+- If using a path, ensure it's absolute or relative to your current directory
+- If `defaults.thread` is set, it may be pointing to a stale location
+
+## Worktree Creation Fails
+
+**Problem:** `workset repo add` fails with a Git error.
+
+**Fix:**
+- Ensure the repo URL is accessible (check SSH keys or credentials)
+- For local paths, verify the path exists and is a valid Git repo
+- If the branch already exists as a worktree elsewhere, Git will refuse to create a duplicate
+
+## Unmerged Branch Prevents Deletion
+
+**Problem:** `workset rm --delete` refuses to remove a thread.
+
+**Fix:**
+- Workset treats branches as merged when the base branch contains the same file contents (covers squash merges)
+- If the branch truly hasn't been merged, merge or rebase it first
+- You can manually remove the thread directory if you're certain it's safe
+
+## Desktop App Won't Connect to GitHub
+
+**Problem:** The desktop app shows auth errors.
+
+**Fix:**
+- Run `gh auth login` in your terminal
+- In the app, go to **Settings → GitHub** and verify your connection
+- If using PAT mode, ensure the token has `repo` scope
+
+## Terminal Won't Start
+
+**Problem:** Embedded terminal in the desktop app fails to launch.
+
+**Fix:**
+- Check `defaults.terminal_idle_timeout` — a very short timeout may be killing sessions
+- Restart the app to reset the terminal service
+- Check `defaults.terminal_debug_overlay` for diagnostic info
+
+## Config Recovery
+
+**Problem:** Your config seems out of sync with actual threads.
+
+**Fix:**
+
+```bash
+workset config recover
+```
+
+This scans `<workset_root>/worksets` and rebuilds registrations. Use `--dry-run` first to preview changes.
+
+## Shell Completion Not Working
+
+**Problem:** Tab completion doesn't suggest thread or repo names.
+
+**Fix:**
+- Ensure you've sourced the completion script in your shell config
+- Run `workset completion <shell>` and verify the output looks correct
+- Restart your terminal after sourcing
+
+## Still Stuck?
+
+- Check the [CLI Reference](/reference/cli) for command syntax
+- Review [Config Reference](/reference/config) for all options
+- [Open an issue](https://github.com/strantalis/workset/issues) on GitHub

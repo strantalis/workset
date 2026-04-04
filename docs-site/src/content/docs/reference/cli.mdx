@@ -1,0 +1,148 @@
+---
+title: CLI Reference
+description: Complete Workset CLI command reference.
+---
+
+Complete reference for the Workset CLI.
+
+## Command Syntax
+
+```
+workset <command> [flags]
+```
+
+Commands that operate on a thread require `-t <thread>` unless `defaults.thread` is set. Most flags should appear before positional args.
+
+## Commands
+
+### `workset new`
+
+Create a new thread.
+
+```
+workset new <name> [--path <path>] [--workset <name>] [--repo <alias|url|path> ...]
+```
+
+### `workset ls`
+
+List registered threads.
+
+### `workset status`
+
+Show thread status.
+
+```
+workset status -t <thread>
+```
+
+### `workset rm`
+
+Remove a thread.
+
+```
+workset rm -t <name|path> [--delete]
+```
+
+:::warning
+Use `--delete` to also remove files from disk. Safety checks prevent deletion of unmerged branches.
+:::
+
+### `workset repo registry`
+
+Manage registered repos (global repo catalog).
+
+```
+workset repo registry ls
+workset repo registry add <name> <url|path>
+workset repo registry set <name> <url|path>
+workset repo registry rm <name>
+```
+
+### `workset repo`
+
+Manage repos within a thread.
+
+```
+workset repo add -t <thread> <source> [--name] [--repo-dir]
+workset repo ls -t <thread>
+workset repo rm -t <thread> <name> [--delete-worktrees] [--delete-local]
+```
+
+### `workset config`
+
+Manage global configuration.
+
+```
+workset config show
+workset config set <key> <value>
+workset config recover [--workset-root <path>] [--rebuild-repos] [--dry-run]
+```
+
+### `workset hooks run`
+
+Run repo hooks for an event.
+
+```
+workset hooks run -t <thread> <repo> [--event <event>] [--reason <reason>] [--trust]
+```
+
+### `workset version`
+
+Print version information.
+
+```
+workset version
+workset --version
+```
+
+### `workset completion`
+
+Generate shell completion scripts.
+
+```
+workset completion <bash|zsh|fish|powershell>
+```
+
+## Output Modes
+
+```bash
+workset new --json
+workset new demo --plain
+workset repo ls -t demo --json
+workset status -t demo --json
+```
+
+## GitHub Auth
+
+Workset uses your **GitHub CLI** session by default:
+
+```bash
+gh auth login
+```
+
+For PAT mode, set `WORKSET_GITHUB_PAT` in your environment or configure in the desktop app. See [GitHub Integration](/guides/github-integration) for details.
+
+## Safety Checks
+
+`workset rm --delete` and `workset repo rm --delete-*` run safety checks before removing files. Branches are treated as merged when the base branch already contains the same file contents (covers squash merges).
+
+## Shell Completion
+
+```bash
+# bash
+workset completion bash > ~/.workset-completion.bash
+source ~/.workset-completion.bash
+
+# zsh
+workset completion zsh > ~/.workset-completion.zsh
+source ~/.workset-completion.zsh
+
+# fish
+workset completion fish > ~/.config/fish/completions/workset.fish
+
+# powershell
+workset completion powershell > workset.ps1
+. ./workset.ps1
+```
+
+Completion includes hints for thread names, registered repo names, and repo names within a thread.

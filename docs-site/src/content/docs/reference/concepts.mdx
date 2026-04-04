@@ -1,0 +1,62 @@
+---
+title: Concepts
+description: "Core Workset concepts: worksets, threads, repo sources, and linked worktrees."
+---
+
+## Workset
+
+A workset is a named collection of repos that belong together — for example, a platform service, its API, and its frontend. You define the workset once, and then create threads from it whenever you start new work.
+
+```
+workset = { repos: [platform, api, frontend] }
+  └── thread: auth-spike     (worktrees for all 3 repos)
+  └── thread: billing-fix    (worktrees for all 3 repos)
+```
+
+By default, threads live under:
+
+```
+<workset_root>/worksets/<workset>/<thread>
+```
+
+### Creating a Workset
+
+Register your repos, then create a thread from the workset:
+
+```bash
+workset repo registry add platform git@github.com:org/platform.git
+workset repo registry add api git@github.com:org/api.git
+workset new auth-spike --workset platform-core --repo platform --repo api
+```
+
+Every future thread from `platform-core` starts with the same repos.
+
+## Thread
+
+A thread is one unit of work — a feature, a bug fix, a spike — across the repos in your workset. Each thread gets its own linked worktrees so your work stays isolated.
+
+```
+<thread>/
+  workset.yaml
+  .workset/
+  <repo>/
+```
+
+## Repo Sources
+
+- **Local paths** stay put and are referenced by absolute path.
+- **URL repos** are cloned into `~/.workset/repos` (configurable) and marked as `managed: true`.
+
+## Worktrees
+
+Worktrees live under `<thread>/<repo>` by default, keeping your main clones clean and stable.
+
+:::tip
+This makes branch work fast and isolated without duplicating repositories.
+:::
+
+## Registered Repos
+
+Registered repos define the remote name and default branch for a repo. If an entry omits them, Workset falls back to `defaults.remote` and `defaults.base_branch`.
+
+Manage them with `workset repo registry ...` in the CLI or from the Repo Catalog in the desktop app.

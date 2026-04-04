@@ -1,0 +1,82 @@
+---
+title: Worksets
+description: Define reusable repo bundles and spin up new threads with one command.
+---
+
+A **workset** is a named bundle of repos. Instead of adding repos to each new thread manually, you define the bundle once and reuse it.
+
+## When to Use Worksets
+
+- You work on the same group of repos repeatedly
+- You want consistent repo sets across multiple threads
+- You're managing a platform or product with well-defined service boundaries
+
+## Register Repos First
+
+Before creating a workset, register the repos you want to include:
+
+```bash
+workset repo registry add platform git@github.com:org/platform.git
+workset repo registry add api git@github.com:org/api.git
+workset repo registry add frontend git@github.com:org/frontend.git
+```
+
+Registered repos store the remote URL and default branch globally.
+
+## Create a Workset-Backed Thread
+
+```bash
+workset new auth-spike --workset platform-core --repo platform --repo api
+```
+
+This creates a thread under `<workset_root>/worksets/platform-core/auth-spike` with the `platform` and `api` repos.
+
+## Reuse the Same Bundle
+
+To create another thread with the same repos:
+
+```bash
+workset new auth-fix --workset platform-core --repo platform --repo api
+```
+
+Both threads share the same workset definition but have isolated worktrees and branches.
+
+## Workset Config
+
+Worksets are stored in your global config (`~/.workset/config.yaml`):
+
+```yaml
+worksets:
+  platform-core:
+    repos: [platform, api]
+    threads:
+      auth-spike:
+        path: ~/.workset/worksets/platform-core/auth-spike
+        workset: platform-core
+      auth-fix:
+        path: ~/.workset/worksets/platform-core/auth-fix
+        workset: platform-core
+```
+
+## Listing Worksets
+
+```bash
+workset config show
+```
+
+This displays the full config including all worksets and their threads.
+
+## Repo Overrides
+
+When creating a thread from a workset, you can override the repo selection:
+
+```bash
+workset new hotfix --workset platform-core --repo platform
+```
+
+This creates a thread with only the `platform` repo, even though the workset includes both.
+
+## Next Steps
+
+- [Multi-Repo Workflows](/guides/multi-repo-workflows) for working across repos in a thread
+- [Config Reference](/reference/config) for all workset configuration options

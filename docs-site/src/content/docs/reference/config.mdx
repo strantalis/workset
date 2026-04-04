@@ -1,0 +1,166 @@
+---
+title: Config Reference
+description: Global and thread configuration reference.
+---
+
+## Global Config (`~/.workset/config.yaml`)
+
+Global config stores defaults, registered repos, and the workset registry.
+
+### Top-Level Keys
+
+| Key | Description |
+|---|---|
+| `defaults` | Global defaults for commands and thread/workset behavior |
+| `github` | GitHub auth defaults and overrides |
+| `hooks` | Hook execution defaults and repo trust list |
+| `repos` | Registered repos for URL or local path sources |
+| `worksets` | Registry of named worksets |
+
+### `defaults`
+
+| Field | Description |
+|---|---|
+| `remote` | Default remote name for repos |
+| `base_branch` | Default branch for new worktrees |
+| `thread` | Default thread name or absolute path |
+| `workset_root` | Base directory for generated paths. Default: `~/.workset` |
+| `repo_store_root` | Where URL-based repos are cloned |
+| `agent` | Default agent for PR text generation (`codex`, `claude`) |
+| `agent_model` | Optional model override for PR/commit text generation |
+| `terminal_idle_timeout` | Idle timeout for desktop terminals (e.g., `30m`, `0` to disable) |
+| `terminal_protocol_log` | Enable terminal service protocol logging (`on`/`off`) |
+| `terminal_debug_overlay` | Show the terminal debug overlay (`on`/`off`) |
+| `terminal_font_size` | Terminal text size in pixels (8–28, default 13) |
+| `terminal_cursor_blink` | Whether the terminal cursor blinks (`on`/`off`) |
+
+### `hooks`
+
+| Field | Description |
+|---|---|
+| `enabled` | Enable hook execution (default `true`) |
+| `on_error` | Default hook error handling (`fail` or `warn`) |
+| `repo_hooks.trusted_repos` | Repo names whose hooks can run without prompting |
+
+### `agent`
+
+| Field | Description |
+|---|---|
+| `cli_path` | Optional override for the agent CLI binary path (e.g., `/usr/local/bin/codex`) |
+
+### `github`
+
+| Field | Description |
+|---|---|
+| `cli_path` | Optional override for the `gh` CLI path |
+
+### `repos` Entries
+
+| Field | Description |
+|---|---|
+| `url` | Git URL to clone |
+| `path` | Local repo path (saved as absolute) |
+| `remote` | Remote name (defaults to `defaults.remote`) |
+| `default_branch` | Default branch for this repo |
+
+### `worksets` Entries
+
+| Field | Description |
+|---|---|
+| `repos` | Registered repo names associated with the workset |
+| `threads` | Map of thread names to thread refs |
+
+## Example (Global)
+
+```yaml
+defaults:
+  remote: origin
+  base_branch: main
+  thread: core
+  workset_root: ~/.workset
+  repo_store_root: ~/.workset/repos
+  agent: codex
+  # agent_model: gpt-5.1-codex-mini
+  terminal_idle_timeout: "0"
+  terminal_protocol_log: off
+  terminal_debug_overlay: off
+  terminal_font_size: "13"
+  terminal_cursor_blink: on
+
+agent:
+  # cli_path: /usr/local/bin/codex
+
+hooks:
+  enabled: true
+  on_error: fail
+  repo_hooks:
+    trusted_repos: [platform]
+
+repos:
+  platform:
+    url: git@github.com:org/platform.git
+    remote: origin
+    default_branch: main
+
+  local-repo:
+    path: /Users/sean/src/local-repo
+    remote: origin
+    default_branch: main
+
+worksets:
+  core:
+    repos: [platform]
+    threads:
+      feature-policy-eval:
+        path: ~/.workset/worksets/core/feature-policy-eval
+        workset: core
+```
+
+## Thread Config (`<thread>/workset.yaml`)
+
+Thread config is the source of truth for a thread.
+
+### Fields
+
+| Field | Description |
+|---|---|
+| `name` | Thread display name |
+| `repos` | List of repo entries in the thread |
+
+### `repos` Entries
+
+| Field | Description |
+|---|---|
+| `name` | Repo alias name |
+| `repo_dir` | Directory name under the thread |
+| `local_path` | Path to the repo's main working copy |
+| `managed` | `true` if Workset owns the clone |
+
+:::note
+`remote` and `default_branch` are derived from the registered repo or defaults — not stored in thread config.
+:::
+
+## Example (Thread)
+
+```yaml
+name: feature-policy-eval
+
+repos:
+  - name: platform
+    repo_dir: platform
+    local_path: /Users/sean/src/platform
+    managed: false
+```
+
+## Repo Hooks (`.workset/hooks.yaml`)
+
+Each repo worktree can define hooks:
+
+```yaml
+hooks:
+  - id: bootstrap
+    on: [worktree.created]
+    run: ["npm", "ci"]
+    cwd: "{repo.path}"
+    on_error: fail
+```

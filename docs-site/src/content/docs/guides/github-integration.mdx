@@ -1,0 +1,87 @@
+---
+title: GitHub Integration
+description: Authenticate with GitHub, create PRs, and manage workflows from Workset.
+---
+
+Workset integrates with GitHub for pull request creation, status checks, and review comments — both from the CLI and the desktop app.
+
+## Authentication
+
+### GitHub CLI (Recommended)
+
+Workset uses your GitHub CLI session by default:
+
+```bash
+gh auth login
+```
+
+This works for both the CLI and the desktop app. No additional configuration needed.
+
+### Personal Access Token
+
+If you prefer a personal access token:
+
+**Desktop App:** Go to **Settings → GitHub**, switch to PAT mode, and save a token with `repo` access. Workset stores it in your OS keychain.
+
+**CLI:** Set `WORKSET_GITHUB_PAT` in your environment:
+
+```bash
+WORKSET_GITHUB_PAT=ghp_... workset <command>
+```
+
+### Custom `gh` Path
+
+If `gh` is not on your PATH (e.g., Nix), set the override in `~/.workset/config.yaml`:
+
+```yaml
+github:
+  cli_path: /Users/you/.nix-profile/bin/gh
+```
+
+## Creating Pull Requests
+
+From the desktop app, you can create PRs directly from the GitHub workflows panel. The app handles:
+
+- Branch selection
+- Base branch targeting
+- PR title and description
+- Reviewer assignment
+
+![PR creation panel with branch selection and AI-generated description](/screenshots/pr-creation-filled.png)
+
+## AI-Generated PR Descriptions
+
+Workset can generate PR descriptions using AI agents. Configure the default agent in your config:
+
+```yaml
+defaults:
+  agent: codex
+```
+
+Supported agents:
+- `codex` — OpenAI Codex
+- `claude` — Anthropic Claude
+
+You can also override the model:
+
+```yaml
+defaults:
+  agent: codex
+  agent_model: gpt-5.1-codex-mini
+```
+
+## Viewing PR Status
+
+The desktop app shows:
+- PR creation status
+- CI check results
+- Review comments
+- Merge status
+
+![PR status showing CI checks, merge state, and push options](/screenshots/pr-status.png)
+
+## Troubleshooting
+
+- **`gh` not found:** Set `github.cli_path` in your config.
+- **Auth errors:** Run `gh auth status` to verify your session.
+- **PAT issues:** Ensure the token has `repo` scope.
