@@ -302,8 +302,8 @@ h1, h2, h3, h4, h5, h6 {
 @media (max-width: 768px) {
   .home-hero {
     grid-template-columns: 1fr;
-    gap: 2rem;
-    padding: 2rem 0;
+    gap: 1rem;
+    padding: 1.5rem 0 0;
   }
 
   .home-hero__content {
@@ -314,7 +314,19 @@ h1, h2, h3, h4, h5, h6 {
     justify-content: center;
   }
 
+  .home-diagram {
+    padding: 1.5rem 0 0;
+  }
+
+  .home-features {
+    padding: 1.5rem 0;
+  }
+
   .home-features__grid {
     grid-template-columns: 1fr;
+  }
+
+  .home-quickstart {
+    padding: 1.5rem 0;
   }
 }

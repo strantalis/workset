@@ -38,8 +38,10 @@
 	const parseTheme = (theme: unknown): Theme =>
 		theme === 'auto' || theme === 'dark' || theme === 'light' ? theme : 'auto';
 
-	const loadTheme = (): Theme =>
-		parseTheme(typeof localStorage !== 'undefined' && localStorage.getItem(storageKey));
+	const loadTheme = (): Theme => {
+		const stored = typeof localStorage !== 'undefined' && localStorage.getItem(storageKey);
+		return stored ? parseTheme(stored) : 'dark';
+	};
 
 	function storeTheme(theme: Theme): void {
 		if (typeof localStorage !== 'undefined') {
@@ -105,4 +107,9 @@
 	:root[data-theme='dark'] .icon-moon { display: block; }
 	:root[data-theme='light'] .icon-sun { display: block; }
 	:root[data-theme='light'] .icon-moon { display: none; }
+
+	starlight-theme-select {
+		display: flex;
+		align-items: center;
+	}
 </style>
