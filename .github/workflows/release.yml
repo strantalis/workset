@@ -177,6 +177,7 @@ jobs:
           args: release --snapshot --clean
         env:
           GORELEASER_KEY: ${{ secrets.GORELEASER_PRO }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       - uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v3
         with:
           subject-checksums: dist/checksums.txt
@@ -597,6 +598,7 @@ jobs:
           args: release --clean
         env:
           GORELEASER_KEY: ${{ secrets.GORELEASER_PRO }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       - uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v3
         with:
           subject-checksums: dist/checksums.txt

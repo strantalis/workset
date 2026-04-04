@@ -192,6 +192,9 @@ func TestPreviewRepoHooksAliasURLWithoutGitHubAuthReturnsSoftMiss(t *testing.T) 
 		URL: "https://github.com/acme/widgets.git",
 	}
 	env.saveConfig(cfg)
+	env.svc.github = &readHelpersGitHubProvider{
+		clientErr: AuthRequiredError{Message: "GitHub authentication required"},
+	}
 
 	result, err := env.svc.PreviewRepoHooks(ctx, RepoHooksPreviewInput{Source: "widgets"})
 	if err != nil {
@@ -200,8 +203,8 @@ func TestPreviewRepoHooksAliasURLWithoutGitHubAuthReturnsSoftMiss(t *testing.T) 
 	if result.Payload.Exists {
 		t.Fatalf("expected missing hooks file when auth is unavailable")
 	}
-	if result.Payload.PreviewUnavailableReason != "" {
-		t.Fatalf("expected no preview-unavailable reason, got %q", result.Payload.PreviewUnavailableReason)
+	if result.Payload.PreviewUnavailableReason != repoHooksPreviewUnavailableReasonAuthRequired {
+		t.Fatalf("expected auth-required preview reason, got %q", result.Payload.PreviewUnavailableReason)
 	}
 	if result.Payload.Owner != "acme" || result.Payload.Repo != "widgets" {
 		t.Fatalf("unexpected remote metadata: %+v", result.Payload)
