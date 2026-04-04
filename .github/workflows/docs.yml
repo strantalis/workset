@@ -4,6 +4,11 @@ on:
   release:
     types:
       - published
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs-site/**'
   workflow_dispatch:
 
 permissions:
@@ -18,23 +23,30 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs-site
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v5
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          python-version: "3.x"
+          node-version: 22
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
       - name: Install dependencies
-        run: pip install -r requirements.txt
-      - name: Build docs
+        run: npm ci
+      - name: Generate changelog
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: mkdocs build --clean
+        run: node scripts/gen-changelog.mjs
+      - name: Build docs
+        run: npm run build
       - name: Upload artifact
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v3
         with:
-          path: site
+          path: docs-site/dist
 
   deploy:
     needs: build
