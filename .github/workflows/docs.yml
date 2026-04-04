@@ -41,6 +41,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/gen-changelog.mjs
+      - name: Generate update manifests
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/gen-update-manifests.mjs
       - name: Build docs
         run: npm run build
       - name: Upload artifact
