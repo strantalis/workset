@@ -27,6 +27,7 @@ const createCoordinator = (input?: {
 	const clearStartInFlight = vi.fn((id: string) => startInFlight.delete(id));
 	const pendingInput = input?.pendingInput ?? new Map<string, string>();
 	const logDebug = vi.fn();
+	const setLifecycleLogPreference = vi.fn();
 	const setCurrentTerminalFontSize = vi.fn();
 	const setCurrentCursorBlink = vi.fn();
 	const transport = {
@@ -60,6 +61,8 @@ const createCoordinator = (input?: {
 		logDebug,
 		resetSessionState: vi.fn(),
 		writeStartFailureMessage: vi.fn(),
+		getLifecycleLogPreference: () => '',
+		setLifecycleLogPreference,
 		getDebugOverlayPreference: () => '',
 		setDebugOverlayPreference: vi.fn(),
 		clearLocalDebugPreference: vi.fn(),
@@ -83,6 +86,7 @@ const createCoordinator = (input?: {
 		clearStartupTimeout,
 		clearStartInFlight,
 		logDebug,
+		setLifecycleLogPreference,
 		setCurrentTerminalFontSize,
 		setCurrentCursorBlink,
 	};
@@ -154,10 +158,16 @@ describe('terminalSessionCoordinator', () => {
 	});
 
 	it('loads terminal appearance defaults from settings', async () => {
-		const { coordinator, transport, setCurrentTerminalFontSize, setCurrentCursorBlink } =
-			createCoordinator();
+		const {
+			coordinator,
+			transport,
+			setLifecycleLogPreference,
+			setCurrentTerminalFontSize,
+			setCurrentCursorBlink,
+		} = createCoordinator();
 		transport.fetchSettings.mockResolvedValue({
 			defaults: {
+				terminalDebugLog: 'on',
 				terminalDebugOverlay: 'off',
 				terminalFontSize: '16',
 				terminalCursorBlink: 'off',
@@ -166,6 +176,7 @@ describe('terminalSessionCoordinator', () => {
 
 		await coordinator.loadTerminalDefaults();
 
+		expect(setLifecycleLogPreference).toHaveBeenCalledWith('on');
 		expect(setCurrentTerminalFontSize).toHaveBeenCalledWith(16);
 		expect(setCurrentCursorBlink).toHaveBeenCalledWith(false);
 	});

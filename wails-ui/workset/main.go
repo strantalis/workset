@@ -37,7 +37,7 @@ func main() {
 	})
 	appService.setRuntime(app)
 
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
+	mainWindow := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:             mainWindowName,
 		Title:            "workset",
 		Width:            defaultWindowWidth,
@@ -50,6 +50,8 @@ func main() {
 			Backdrop:                application.MacBackdropNormal,
 		},
 	})
+	attachLifecycleDebugLogging(app, mainWindow)
+	preventMainWindowHideOnFocusLost(mainWindow)
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)

@@ -29,6 +29,9 @@ func TestGetConfig(t *testing.T) {
 	if cfg.Defaults.TerminalIdleTimeout == "" {
 		t.Fatalf("unexpected terminal idle timeout default: %q", cfg.Defaults.TerminalIdleTimeout)
 	}
+	if cfg.Defaults.TerminalDebugLog == "" {
+		t.Fatalf("unexpected terminal debug log default: %q", cfg.Defaults.TerminalDebugLog)
+	}
 	if cfg.Defaults.TerminalProtocolLog == "" {
 		t.Fatalf("unexpected terminal protocol log default: %q", cfg.Defaults.TerminalProtocolLog)
 	}
@@ -87,6 +90,10 @@ func TestSetDefaultErrors(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected invalid terminal cursor blink error")
 	}
+	_, _, err = env.svc.SetDefault(context.Background(), "defaults.terminal_debug_log", "maybe")
+	if err == nil {
+		t.Fatalf("expected invalid terminal debug log error")
+	}
 
 	_, _, err = env.svc.SetDefault(context.Background(), "defaults.unknown", "value")
 	if err == nil {
@@ -104,6 +111,7 @@ func TestSetDefaultVariousKeys(t *testing.T) {
 		"defaults.agent":                  "codex",
 		"defaults.agent_model":            "gpt-4o-mini",
 		"defaults.terminal_idle_timeout":  "0",
+		"defaults.terminal_debug_log":     "on",
 		"defaults.terminal_protocol_log":  "on",
 		"defaults.terminal_debug_overlay": "off",
 		"defaults.terminal_font_size":     "16",
@@ -129,6 +137,9 @@ func TestSetDefaultVariousKeys(t *testing.T) {
 	}
 	if cfg.Defaults.TerminalIdleTimeout != "0" {
 		t.Fatalf("terminal idle timeout default not set")
+	}
+	if cfg.Defaults.TerminalDebugLog != "on" {
+		t.Fatalf("terminal debug log default not set")
 	}
 	if cfg.Defaults.TerminalProtocolLog != "on" {
 		t.Fatalf("terminal protocol log default not set")

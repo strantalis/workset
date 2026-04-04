@@ -62,8 +62,10 @@ const terminalHandles = new Map<string, TerminalHandle>();
 const terminalWriteQueues = new Map<string, TerminalWriteQueueState>();
 const terminalContextRegistry = createTerminalContextRegistry();
 const terminalStores = new TerminalStateStore<TerminalViewState>();
+const lastLoggedViewState = new Map<string, string>();
 const DISPOSE_TTL_MS = 10 * 60 * 1000;
 let globalsInitialized = false;
+let browserLifecycleDebugInstalled = false;
 const terminalServiceState = createTerminalServiceState();
 const { pendingInput } = terminalServiceState;
 const lastInboundSeq = new Map<string, { seq: number; bytes: number; at: number }>();
@@ -83,7 +85,42 @@ const buildState = (id: string): TerminalViewState => {
 
 const ensureStore = (id: string): Writable<TerminalViewState> =>
 	terminalStores.ensure(id, buildState);
-const emitState = (id: string): void => terminalStores.emit(id, buildState);
+
+const logViewStateTransition = (id: string, state: TerminalViewState, reason = 'emit'): void => {
+	const signature = JSON.stringify({
+		status: state.status,
+		message: state.message,
+		health: state.health,
+		healthMessage: state.healthMessage,
+		terminalServiceAvailable: state.terminalServiceAvailable,
+		terminalServiceChecked: state.terminalServiceChecked,
+		hasHandle: terminalHandles.has(id),
+		hasStarted: lifecycle.hasStarted(id),
+		hasInput: lifecycle.hasInput(id),
+	});
+	if (lastLoggedViewState.get(id) === signature) {
+		return;
+	}
+	lastLoggedViewState.set(id, signature);
+	runtime.logDebug(id, 'frontend_state_transition', {
+		reason,
+		status: state.status,
+		message: state.message,
+		health: state.health,
+		healthMessage: state.healthMessage,
+		terminalServiceAvailable: state.terminalServiceAvailable,
+		terminalServiceChecked: state.terminalServiceChecked,
+		hasHandle: terminalHandles.has(id),
+		hasStarted: lifecycle.hasStarted(id),
+		hasInput: lifecycle.hasInput(id),
+	});
+};
+
+const emitState = (id: string): void => {
+	const state = buildState(id);
+	terminalStores.emit(id, () => state);
+	logViewStateTransition(id, state);
+};
 const emitAllStates = (): void => terminalStores.emitAll(buildState);
 
 const terminalDebugState = createTerminalDebugState({
@@ -447,6 +484,7 @@ const resetSessionState = (id: string): void => {
 	clearTerminalWriteQueue(id);
 	lastInboundSeq.delete(id);
 	lastStreamOffset.delete(id);
+	lastLoggedViewState.delete(id);
 	baseTerminalResourceLifecycle.resetSessionState(id);
 	const buffered = terminalServiceState.consumeBufferedOutput(id);
 	if (buffered.length === 0) return;
@@ -515,6 +553,7 @@ const terminalResourceLifecycle = {
 		terminalSocketStream.disconnect(id);
 		clearTerminalWriteQueue(id);
 		lastStreamOffset.delete(id);
+		lastLoggedViewState.delete(id);
 		baseTerminalResourceLifecycle.resetSessionState(id);
 	},
 	disposeTerminalResources: (id: string): void => {
@@ -523,6 +562,7 @@ const terminalResourceLifecycle = {
 		terminalSocketStream.disconnect(id);
 		clearTerminalWriteQueue(id);
 		lastStreamOffset.delete(id);
+		lastLoggedViewState.delete(id);
 		baseTerminalResourceLifecycle.disposeTerminalResources(id);
 	},
 };
@@ -564,6 +604,8 @@ const terminalSessionCoordinator = createTerminalSessionCoordinator({
 	logDebug: runtime.logDebug,
 	resetSessionState,
 	writeStartFailureMessage: () => undefined,
+	getLifecycleLogPreference: () => terminalDebugState.getLifecycleLogPreference(),
+	setLifecycleLogPreference: (value) => terminalDebugState.setLifecycleLogPreference(value),
 	getDebugOverlayPreference: () => terminalDebugState.getDebugOverlayPreference(),
 	setDebugOverlayPreference: (value) => terminalDebugState.setDebugOverlayPreference(value),
 	clearLocalDebugPreference: clearLocalTerminalDebugPreference,
@@ -600,7 +642,59 @@ const terminalStreamOrchestrator = createTerminalStreamOrchestrator({
 	trace: (id, event, details) => runtime.logDebug(id, event, details),
 });
 
-const ensureGlobals = (): void =>
+const logBrowserLifecycle = (event: string): void => {
+	if (typeof document === 'undefined') return;
+	terminalAttachState.forEachAttached((id) => {
+		runtime.logDebug(id, 'frontend_window_lifecycle', {
+			event,
+			visibilityState: document.visibilityState,
+			hidden: document.hidden,
+			hasFocus: document.hasFocus(),
+		});
+	});
+};
+
+const resyncAttachedStates = (reason: string): void => {
+	if (typeof document === 'undefined') return;
+	terminalAttachState.forEachAttached((id) => {
+		runtime.logDebug(id, 'frontend_window_state_resync', {
+			reason,
+			visibilityState: document.visibilityState,
+			hidden: document.hidden,
+			hasFocus: document.hasFocus(),
+		});
+		emitState(id);
+	});
+};
+
+const installBrowserLifecycleDebug = (): void => {
+	if (
+		browserLifecycleDebugInstalled ||
+		typeof window === 'undefined' ||
+		typeof document === 'undefined'
+	) {
+		return;
+	}
+	browserLifecycleDebugInstalled = true;
+	window.addEventListener('focus', () => {
+		logBrowserLifecycle('window.focus');
+		resyncAttachedStates('window.focus');
+	});
+	window.addEventListener('blur', () => logBrowserLifecycle('window.blur'));
+	window.addEventListener('pageshow', () => {
+		logBrowserLifecycle('window.pageshow');
+		resyncAttachedStates('window.pageshow');
+	});
+	window.addEventListener('pagehide', () => logBrowserLifecycle('window.pagehide'));
+	document.addEventListener('visibilitychange', () => {
+		logBrowserLifecycle('document.visibilitychange');
+		if (document.visibilityState === 'visible') {
+			resyncAttachedStates('document.visibilitychange.visible');
+		}
+	});
+};
+
+const ensureGlobals = (): void => {
 	ensureTerminalGlobals({
 		isInitialized: () => globalsInitialized,
 		markInitialized: () => {
@@ -612,6 +706,8 @@ const ensureGlobals = (): void =>
 		forEachAttached: (callback) => terminalAttachState.forEachAttached(callback),
 		ensureSessionActive: async (id) => ensureSessionActive(id),
 	});
+	installBrowserLifecycleDebug();
+};
 
 const terminalServiceExports = createTerminalServiceExports<TerminalViewState>({
 	loadTerminalDefaults,

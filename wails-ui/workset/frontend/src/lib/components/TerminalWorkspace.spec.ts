@@ -40,24 +40,19 @@ const terminalServiceMocks = vi.hoisted(() => ({
 	resetFontSize: vi.fn(),
 }));
 
-vi.mock('../api/terminal-layout', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../api/terminal-layout')>();
+vi.mock('../api/terminal-layout', () => {
 	return {
-		...actual,
+		logTerminalDebug: vi.fn().mockResolvedValue(undefined),
 		...terminalLayoutApiMocks,
 	};
 });
-vi.mock('../api/settings', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../api/settings')>();
+vi.mock('../api/settings', () => {
 	return {
-		...actual,
 		...settingsApiMocks,
 	};
 });
-vi.mock('../terminal/terminalService', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../terminal/terminalService')>();
+vi.mock('../terminal/terminalService', () => {
 	return {
-		...actual,
 		...terminalServiceMocks,
 	};
 });
@@ -133,7 +128,7 @@ describe('TerminalWorkspace', () => {
 		expect(terminalLayoutApiMocks.fetchTerminalBootstrap).not.toHaveBeenCalled();
 	});
 
-	it('stays stable when init clears layout during a reset reload', async () => {
+	it('keeps the existing layout visible during a reset reload', async () => {
 		const initialLayout = buildTerminalLayout('term-1');
 
 		const reloadedLayout = {
@@ -182,7 +177,8 @@ describe('TerminalWorkspace', () => {
 			}),
 		);
 
-		expect(await screen.findByText('Starting thread terminals…')).toBeInTheDocument();
+		expect(screen.queryByText('Starting thread terminals…')).not.toBeInTheDocument();
+		expect(screen.getByRole('tab', { name: /workspace-0/i })).toBeInTheDocument();
 
 		reloadDeferred.resolve({
 			workspaceId: 'ws-1',
@@ -195,7 +191,7 @@ describe('TerminalWorkspace', () => {
 		});
 	});
 
-	it('stays stable when a split tab is cleared during reset reload', async () => {
+	it('keeps split panes visible during a reset reload', async () => {
 		const initialLayout = {
 			version: 3,
 			tabs: [
@@ -251,7 +247,8 @@ describe('TerminalWorkspace', () => {
 			}),
 		);
 
-		expect(await screen.findByText('Starting thread terminals…')).toBeInTheDocument();
+		expect(screen.queryByText('Starting thread terminals…')).not.toBeInTheDocument();
+		expect(screen.getAllByTestId('mock-terminal-pane')).toHaveLength(2);
 
 		reloadDeferred.resolve({
 			workspaceId: 'ws-1',
@@ -262,6 +259,31 @@ describe('TerminalWorkspace', () => {
 		await waitFor(() => {
 			expect(screen.getAllByTestId('mock-terminal-pane')).toHaveLength(2);
 		});
+	});
+
+	it('does not reinitialize the same workspace after the initial layout load settles', async () => {
+		terminalLayoutApiMocks.fetchWorkspaceTerminalLayout.mockResolvedValue({
+			workspaceId: 'ws-1',
+			workspacePath: '/tmp/ws-1',
+			layout: buildTerminalLayout('term-1'),
+		});
+		settingsApiMocks.fetchSettings.mockResolvedValue({});
+		settingsApiMocks.fetchTerminalServiceStatus.mockResolvedValue({ available: true });
+
+		render(TerminalWorkspace, {
+			props: {
+				workspaceId: 'ws-1',
+				workspaceName: 'Workspace',
+				active: true,
+			},
+		});
+
+		await screen.findByRole('tab', { name: /workspace-0/i });
+
+		await waitFor(() => {
+			expect(terminalLayoutApiMocks.fetchWorkspaceTerminalLayout).toHaveBeenCalledTimes(1);
+		});
+		expect(screen.queryByText('Starting thread terminals…')).not.toBeInTheDocument();
 	});
 
 	it('does not bootstrap stale terminal ids after switching workspaces', async () => {
@@ -393,6 +415,71 @@ describe('TerminalWorkspace', () => {
 				}),
 			);
 		});
+	});
+
+	it('captures the outgoing tab snapshot before switching tabs', async () => {
+		const capturedSnapshot = {
+			version: 1,
+			nextOffset: 44,
+			cols: 80,
+			rows: 24,
+			activeBuffer: 'alternate' as const,
+			normalViewportY: 0,
+			cursor: { x: 4, y: 8, visible: true },
+			modes: { dec: [1049], ansi: [] },
+			normalTail: ['prompt'],
+			alternateScreen: ['full-screen'],
+		};
+
+		terminalLayoutApiMocks.fetchWorkspaceTerminalLayout.mockResolvedValue({
+			workspaceId: 'ws-1',
+			workspacePath: '/tmp/ws-1',
+			layout: {
+				version: 3,
+				tabs: [
+					{
+						id: 'tab-1',
+						title: 'Workspace-0',
+						panes: [{ id: 'pane-1', terminalId: 'term-1' }],
+						focusedPaneId: 'pane-1',
+					},
+					{
+						id: 'tab-2',
+						title: 'Workspace-1',
+						panes: [{ id: 'pane-2', terminalId: 'term-2' }],
+						focusedPaneId: 'pane-2',
+					},
+				],
+				activeTabId: 'tab-1',
+			},
+		});
+		terminalServiceMocks.captureTerminalSnapshot.mockReturnValue(capturedSnapshot);
+		settingsApiMocks.fetchSettings.mockResolvedValue({});
+		settingsApiMocks.fetchTerminalServiceStatus.mockResolvedValue({ available: true });
+
+		render(TerminalWorkspace, {
+			props: {
+				workspaceId: 'ws-1',
+				workspaceName: 'Workspace',
+				active: true,
+			},
+		});
+
+		const initialPane = await screen.findByTestId('mock-terminal-pane');
+		expect(initialPane).toHaveTextContent('term-1');
+		expect(initialPane).toHaveAttribute('data-has-snapshot', 'false');
+
+		await fireEvent.click(screen.getByRole('tab', { name: /workspace-1/i }));
+		await waitFor(() => {
+			expect(screen.getByTestId('mock-terminal-pane')).toHaveTextContent('term-2');
+		});
+		expect(screen.getByTestId('mock-terminal-pane')).toHaveAttribute('data-has-snapshot', 'false');
+
+		await fireEvent.click(screen.getByRole('tab', { name: /workspace-0/i }));
+		await waitFor(() => {
+			expect(screen.getByTestId('mock-terminal-pane')).toHaveTextContent('term-1');
+		});
+		expect(screen.getByTestId('mock-terminal-pane')).toHaveAttribute('data-has-snapshot', 'true');
 	});
 
 	it('collapses a split when the focused pane is closed', async () => {

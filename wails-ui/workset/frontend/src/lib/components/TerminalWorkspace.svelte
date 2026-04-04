@@ -7,6 +7,7 @@
 	import {
 		createWorkspaceTerminal,
 		fetchWorkspaceTerminalLayout,
+		logTerminalDebug,
 		persistWorkspaceTerminalLayout,
 		stopWorkspaceTerminal,
 	} from '../api/terminal-layout';
@@ -25,6 +26,7 @@
 		resolveTerminalKeybindings,
 		type ResolvedTerminalKeybindings,
 	} from '../terminal/terminalKeybindings';
+	import './TerminalWorkspace.css';
 	import {
 		LAYOUT_VERSION,
 		activeTab,
@@ -70,13 +72,13 @@
 	let layout = $state<TerminalLayout | null>(null);
 	let layoutWorkspaceId = $state('');
 	let initError = $state('');
-	let loading = $state(false);
 	let saveTimer: number | null = null;
 	let pendingLayout: TerminalLayout | null = null;
 	let pendingWorkspaceId = '';
 	let resolvedKeybindings: ResolvedTerminalKeybindings = resolveTerminalKeybindings();
 	let tabDragState = $state<TabDragState>(null);
 	let topBarDropIndex = $state<number | null>(null);
+	let initializedWorkspaceId = '';
 	const activeLayout = $derived(layoutWorkspaceId === workspaceId ? layout : null);
 	const workspaceTabs = $derived(activeLayout?.tabs ?? []);
 	const activeWorkspaceTabId = $derived(activeLayout?.activeTabId ?? '');
@@ -118,6 +120,14 @@
 			})),
 		};
 	};
+
+	const withCapturedTabSnapshots = (
+		targetWorkspaceId: string,
+		targetTab: TerminalTab,
+	): TerminalTab => ({
+		...targetTab,
+		root: withCapturedNodeSnapshots(targetWorkspaceId, targetTab.root),
+	});
 
 	const persistLayoutWithSnapshotsNow = async (
 		targetWorkspaceId: string,
@@ -246,43 +256,73 @@
 
 	let initToken = 0;
 
+	const logWorkspaceDebug = (event: string, details: Record<string, unknown>): void => {
+		if (!workspaceId) return;
+		void logTerminalDebug(workspaceId, '__workspace__', event, JSON.stringify(details));
+	};
+
 	const initWorkspace = async (): Promise<void> => {
 		if (!workspaceId) return;
 		const token = (initToken += 1);
 		const targetWorkspaceId = workspaceId;
 		const targetWorkspaceName = workspaceName;
-		loading = true;
 		initError = '';
-		layout = null;
-		layoutWorkspaceId = '';
+		logWorkspaceDebug('workspace_init_start', {
+			token,
+			workspaceId: targetWorkspaceId,
+			hasExistingLayout: layoutWorkspaceId === targetWorkspaceId && Boolean(layout),
+		});
 		try {
 			const payload = await fetchWorkspaceTerminalLayout(targetWorkspaceId);
 			if (token !== initToken || workspaceId !== targetWorkspaceId) return;
 			const normalized = normalizeLayout(payload?.layout);
 			if (normalized) {
+				logWorkspaceDebug('workspace_init_layout_loaded', {
+					token,
+					workspaceId: targetWorkspaceId,
+					tabCount: normalized.tabs.length,
+				});
 				setLayout(normalized, targetWorkspaceId);
 				return;
 			}
 			if (payload?.layout) {
+				logWorkspaceDebug('workspace_init_invalid_layout', {
+					token,
+					workspaceId: targetWorkspaceId,
+				});
 				await stopLayoutSessions(targetWorkspaceId, payload.layout);
 				if (token !== initToken || workspaceId !== targetWorkspaceId) return;
 			}
 			const freshLayout = await createAndPersistFreshLayout(targetWorkspaceId, targetWorkspaceName);
 			if (token !== initToken || workspaceId !== targetWorkspaceId) return;
+			logWorkspaceDebug('workspace_init_fresh_layout', {
+				token,
+				workspaceId: targetWorkspaceId,
+				tabCount: freshLayout.tabs.length,
+			});
 			setLayout(freshLayout, targetWorkspaceId);
 		} catch (error) {
 			if (token !== initToken || workspaceId !== targetWorkspaceId) return;
 			initError = String(error);
-		} finally {
-			if (token === initToken && workspaceId === targetWorkspaceId) {
-				loading = false;
-			}
+			logWorkspaceDebug('workspace_init_error', {
+				token,
+				workspaceId: targetWorkspaceId,
+				message: initError,
+			});
 		}
 	};
 
 	const handleSelectWorkspaceTab = (tabId: string): void => {
 		if (!layout || layout.activeTabId === tabId) return;
-		updateLayout({ ...layout, activeTabId: tabId });
+		const currentLayout = layout;
+		const nextTabs = currentLayout.tabs.map((tab) =>
+			tab.id === currentLayout.activeTabId ? withCapturedTabSnapshots(workspaceId, tab) : tab,
+		);
+		updateLayout({
+			...currentLayout,
+			tabs: nextTabs,
+			activeTabId: tabId,
+		});
 	};
 
 	const handleAddWorkspaceTab = async (): Promise<void> => {
@@ -506,15 +546,23 @@
 
 	$effect(() => {
 		const targetWorkspaceId = workspaceId.trim();
+		if (targetWorkspaceId === initializedWorkspaceId) {
+			return;
+		}
+		const previousWorkspaceId = initializedWorkspaceId;
+		initializedWorkspaceId = targetWorkspaceId;
 		untrack(() => {
+			logWorkspaceDebug('workspace_effect_reset', {
+				workspaceId: targetWorkspaceId,
+				previousWorkspaceId,
+				hadLayout: Boolean(layout),
+			});
 			resetWorkspaceState();
 			initToken += 1;
 		});
 		if (!targetWorkspaceId) {
-			loading = false;
 			return;
 		}
-		loading = true;
 		void initWorkspace();
 	});
 
@@ -542,6 +590,9 @@
 		const handler = (event: Event): void => {
 			const detail = (event as CustomEvent<{ workspaceId?: string }>).detail;
 			if (!detail?.workspaceId || detail.workspaceId !== workspaceId) return;
+			logWorkspaceDebug('workspace_layout_reset_event', {
+				workspaceId,
+			});
 			void initWorkspace();
 		};
 		window.addEventListener('workset:terminal-layout-reset', handler);
@@ -594,7 +645,7 @@
 					Restart
 				</button>
 			</div>
-		{:else if loading || !activeLayout}
+		{:else if !activeLayout}
 			<div class="terminal-loading">
 				<div class="loading-spinner"></div>
 				<span>Starting thread terminals…</span>
@@ -767,285 +818,3 @@
 		{/if}
 	</div>
 </section>
-
-<style>
-	.terminal-workspace {
-		display: flex;
-		flex-direction: column;
-		gap: 0;
-		height: 100%;
-		position: relative;
-	}
-
-	.workspace-container {
-		flex: 1;
-		min-height: 0;
-		display: flex;
-		border: none;
-		border-radius: 0;
-		background: var(--panel);
-		overflow: hidden;
-	}
-
-	.workspace-shell {
-		display: flex;
-		flex: 1;
-		min-height: 0;
-		flex-direction: column;
-	}
-
-	.workspace-tabs {
-		display: flex;
-		align-items: center;
-		gap: 0;
-		padding: 0 4px;
-		border-bottom: 1px solid var(--border);
-		background: var(--panel-strong);
-	}
-
-	.workspace-tabs-scroll {
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		flex: 1 1 0;
-		min-width: 0;
-		width: 0;
-		overflow-x: auto;
-		scrollbar-width: none;
-	}
-
-	.workspace-tabs-scroll::-webkit-scrollbar {
-		display: none;
-	}
-
-	.workspace-tab {
-		display: flex;
-		align-items: center;
-		gap: 5px;
-		flex-shrink: 0;
-		max-width: 280px;
-		padding: 6px 12px;
-		background: transparent;
-		color: var(--muted);
-		cursor: grab;
-		border: none;
-		border-radius: 0;
-		box-shadow: none;
-		transition:
-			color var(--transition-fast),
-			background var(--transition-fast),
-			box-shadow var(--transition-fast);
-		position: relative;
-	}
-
-	.workspace-tab:hover {
-		color: var(--text);
-		background: var(--hover-bg);
-	}
-
-	.workspace-tab:active {
-		cursor: grabbing;
-	}
-
-	.workspace-tab.active {
-		color: var(--text);
-		background: var(--panel);
-		box-shadow: inset 0 2px 0 var(--accent);
-	}
-
-	.workspace-tab.dragging {
-		opacity: 0.4;
-	}
-
-	.workspace-tab.drop-target {
-		box-shadow:
-			inset 2px 0 0 var(--accent),
-			inset 0 2px 0 color-mix(in srgb, var(--accent) 35%, transparent);
-	}
-
-	.workspace-tab-title {
-		flex: 1;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-size: var(--text-sm);
-	}
-
-	.workspace-tab-prompt {
-		display: inline-flex;
-		align-items: center;
-		color: var(--accent);
-		font-weight: 500;
-		flex-shrink: 0;
-	}
-
-	.workspace-tab-close,
-	.workspace-tab-add {
-		border: none;
-		background: none;
-		color: inherit;
-		cursor: pointer;
-	}
-
-	.workspace-tab-close {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 18px;
-		height: 18px;
-		margin-left: 6px;
-		border-radius: 3px;
-		font-size: 14px;
-		line-height: 1;
-		opacity: 0;
-		transition:
-			opacity var(--transition-fast),
-			background var(--transition-fast),
-			color var(--transition-fast);
-	}
-
-	.workspace-tab:hover .workspace-tab-close,
-	.workspace-tab.active .workspace-tab-close {
-		opacity: 0.7;
-	}
-
-	.workspace-tab-close:hover {
-		opacity: 1;
-		background: color-mix(in srgb, var(--warning) 20%, transparent);
-		color: var(--warning);
-	}
-
-	.workspace-tab-add {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 24px;
-		height: 24px;
-		margin-left: 4px;
-		border-radius: 4px;
-		font-size: 16px;
-		color: var(--muted);
-		flex-shrink: 0;
-	}
-
-	.workspace-tab-actions {
-		display: inline-flex;
-		align-items: center;
-		gap: 2px;
-		margin-left: 6px;
-		flex-shrink: 0;
-	}
-
-	.workspace-tab-add:hover {
-		color: var(--text);
-		background: var(--hover-bg);
-	}
-
-	.workspace-layout {
-		flex: 1;
-		min-height: 0;
-		display: flex;
-	}
-
-	.workspace-pane-surface {
-		flex: 1;
-		min-width: 0;
-		min-height: 0;
-		display: flex;
-		flex-direction: column;
-		outline: none;
-		position: relative;
-	}
-
-	.workspace-pane-surface::before {
-		content: '';
-		position: absolute;
-		top: 0;
-		left: 0;
-		right: 0;
-		height: 2px;
-		background: transparent;
-		transition: background var(--transition-fast);
-		z-index: 1;
-	}
-
-	.workspace-pane-surface.focused::before {
-		background: var(--accent);
-	}
-
-	.workspace-pane-surface :global(.terminal) {
-		flex: 1;
-		min-height: 0;
-	}
-
-	.ws-icon-action-btn.disabled {
-		opacity: 0.3;
-		cursor: default;
-		pointer-events: none;
-	}
-
-	.terminal-loading {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 12px;
-		padding: 16px;
-		color: var(--muted);
-		font-size: var(--text-sm);
-	}
-
-	@keyframes spin {
-		to {
-			transform: rotate(360deg);
-		}
-	}
-
-	.loading-spinner {
-		width: 20px;
-		height: 20px;
-		border: 2px solid var(--border);
-		border-top-color: var(--accent);
-		border-radius: 50%;
-		animation: spin 0.8s linear infinite;
-	}
-
-	.terminal-error {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 8px;
-		padding: 24px;
-		color: var(--text);
-		font-size: var(--text-sm);
-		text-align: center;
-	}
-
-	.error-icon {
-		color: var(--danger);
-		margin-bottom: 4px;
-	}
-
-	.error-title {
-		font-weight: 600;
-	}
-
-	.error-detail {
-		max-width: 420px;
-		color: var(--muted);
-	}
-
-	.retry-action {
-		margin-top: 8px;
-		border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-		background: color-mix(in srgb, var(--accent) 16%, transparent);
-		color: var(--text);
-		border-radius: 8px;
-		padding: 8px 12px;
-		cursor: pointer;
-	}
-</style>

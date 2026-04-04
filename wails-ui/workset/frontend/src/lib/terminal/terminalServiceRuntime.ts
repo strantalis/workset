@@ -16,6 +16,7 @@ type RuntimeDeps<THandle> = {
 	terminalDebugState: {
 		syncDebugEnabled: () => void;
 		isDebugEnabled: () => boolean;
+		isLifecycleLoggingEnabled: () => boolean;
 	};
 	emitState: (id: string) => void;
 	getWorkspaceId: (id: string) => string;
@@ -63,7 +64,7 @@ export const createTerminalServiceRuntime = <THandle>(deps: RuntimeDeps<THandle>
 
 	const logDebug = (id: string, event: string, details: Record<string, unknown>): void => {
 		deps.terminalDebugState.syncDebugEnabled();
-		const debugEnabled = deps.terminalDebugState.isDebugEnabled();
+		const debugEnabled = deps.terminalDebugState.isLifecycleLoggingEnabled();
 		const alwaysLogForInteractiveDev = import.meta.env.DEV && import.meta.env.MODE !== 'test';
 		if (!debugEnabled && !alwaysLogForInteractiveDev) return;
 		const workspaceId = deps.getWorkspaceId(id) || '__missing_workspace__';

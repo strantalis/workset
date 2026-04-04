@@ -277,6 +277,7 @@
 		const workspace = visibleWorkspaces.find((entry) => entry.id === workspaceId);
 		if (!workspace) return;
 		if (workspace?.placeholder) return;
+		if ($activeWorkspaceId === workspaceId) return;
 		if (fixedWorkspaceId && !visibleWorkspaces.some((workspace) => workspace.id === workspaceId)) {
 			return;
 		}
@@ -297,6 +298,7 @@
 	const handleSelectWorkspaceFromPalette = (workspaceId: string): void => {
 		const workspace = threadVisibleWorkspaces.find((entry) => entry.id === workspaceId);
 		if (!workspace) return;
+		if ($activeWorkspaceId === workspaceId) return;
 		if (fixedWorkspaceId && !visibleWorkspaces.some((workspace) => workspace.id === workspaceId)) {
 			return;
 		}

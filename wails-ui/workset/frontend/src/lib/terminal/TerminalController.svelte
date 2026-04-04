@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
+	import { logTerminalDebug } from '../api/terminal-layout';
 	import type { TerminalSnapshotLike } from './terminalEmulatorContracts';
 	import {
 		detachTerminal,
@@ -40,6 +41,7 @@
 	let unsubscribe: (() => void) | null = null;
 	let currentWorkspaceId = '';
 	let currentTerminalId = '';
+	let lastLoggedStateSignature = '';
 	let lastSyncSnapshot: {
 		workspaceId: string;
 		terminalId: string;
@@ -81,12 +83,45 @@
 		return 'controller.effect_repeat';
 	};
 
+	const logControllerEvent = (event: string, details: Record<string, unknown>): void => {
+		if (!workspaceId || !terminalId) return;
+		void logTerminalDebug(workspaceId, terminalId, event, JSON.stringify(details));
+	};
+
+	const logControllerState = (state: TerminalViewState): void => {
+		const signature = JSON.stringify({
+			status: state.status,
+			message: state.message,
+			health: state.health,
+			healthMessage: state.healthMessage,
+			active,
+			hasContainer: Boolean(terminalContainer),
+		});
+		if (signature === lastLoggedStateSignature) {
+			return;
+		}
+		lastLoggedStateSignature = signature;
+		logControllerEvent('frontend_controller_state', {
+			status: state.status,
+			message: state.message,
+			health: state.health,
+			healthMessage: state.healthMessage,
+			active,
+			hasContainer: Boolean(terminalContainer),
+		});
+	};
+
 	const bindStore = (workspace: string, terminal: string): void => {
 		unsubscribe?.();
 		unsubscribe = null;
 		if (!workspace || !terminal) return;
+		logControllerEvent('frontend_controller_bind', {
+			workspaceId: workspace,
+			terminalId: terminal,
+		});
 		const store = getTerminalStore(workspace, terminal);
 		unsubscribe = store.subscribe((state) => {
+			logControllerState(state);
 			onStateChange?.(state);
 		});
 	};
@@ -116,6 +151,12 @@
 			active,
 		};
 		const source = deriveSyncSource(snapshot);
+		logControllerEvent('frontend_controller_sync', {
+			source,
+			active,
+			hasContainer: Boolean(terminalContainer),
+			hasInitialSnapshot: Boolean(initialSnapshot),
+		});
 		syncTerminal({
 			workspaceId,
 			terminalId,
@@ -128,8 +169,14 @@
 	});
 
 	onDestroy(() => {
+		logControllerEvent('frontend_controller_destroy', {
+			workspaceId,
+			terminalId,
+		});
 		if (terminalId && workspaceId) {
-			detachTerminal(workspaceId, terminalId);
+			// Destroyed controllers must release container ownership immediately so the
+			// replacement controller can attach without displacing stale state.
+			detachTerminal(workspaceId, terminalId, { force: true });
 		}
 		unsubscribe?.();
 	});

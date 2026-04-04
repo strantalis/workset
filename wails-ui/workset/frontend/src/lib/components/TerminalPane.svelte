@@ -185,17 +185,6 @@
 </script>
 
 <section class="terminal" class:compact>
-	<TerminalController
-		bind:this={controller}
-		{workspaceId}
-		{workspaceName}
-		{terminalId}
-		{initialSnapshot}
-		{active}
-		{terminalContainer}
-		onStateChange={handleStateChange}
-	/>
-
 	{#if !compact}
 		<header class="terminal-header">
 			<div class="title-group">
@@ -313,6 +302,18 @@
 			onmouseleave={handleSurfaceMouseLeave}
 		>
 			<div class="terminal-mount" bind:this={terminalContainer}></div>
+			{#key `${workspaceId}:${terminalId}`}
+				<TerminalController
+					bind:this={controller}
+					{workspaceId}
+					{workspaceName}
+					{terminalId}
+					{initialSnapshot}
+					{active}
+					{terminalContainer}
+					onStateChange={handleStateChange}
+				/>
+			{/key}
 			<div class="scroll-hover-zone">
 				{#if hoveringBottomRight && notAtBottom}
 					<button

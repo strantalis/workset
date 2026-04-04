@@ -394,6 +394,7 @@ func defaultConfigMap(defaults GlobalConfig) map[string]any {
 		"defaults.agent":                  defaults.Defaults.Agent,
 		"defaults.agent_model":            defaults.Defaults.AgentModel,
 		"defaults.terminal_idle_timeout":  defaults.Defaults.TerminalIdleTimeout,
+		"defaults.terminal_debug_log":     defaults.Defaults.TerminalDebugLog,
 		"defaults.terminal_protocol_log":  defaults.Defaults.TerminalProtocolLog,
 		"defaults.terminal_debug_overlay": defaults.Defaults.TerminalDebugOverlay,
 		"defaults.terminal_font_size":     defaults.Defaults.TerminalFontSize,
@@ -445,6 +446,9 @@ func finalizeGlobal(cfg *GlobalConfig, defaults GlobalConfig) {
 	}
 	if cfg.Defaults.TerminalIdleTimeout == "" {
 		cfg.Defaults.TerminalIdleTimeout = defaults.Defaults.TerminalIdleTimeout
+	}
+	if cfg.Defaults.TerminalDebugLog == "" {
+		cfg.Defaults.TerminalDebugLog = defaults.Defaults.TerminalDebugLog
 	}
 	if cfg.Defaults.TerminalProtocolLog == "" {
 		cfg.Defaults.TerminalProtocolLog = defaults.Defaults.TerminalProtocolLog

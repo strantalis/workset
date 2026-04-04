@@ -7,6 +7,7 @@ import {
 
 type TerminalSettingsPayload = {
 	defaults?: {
+		terminalDebugLog?: string;
 		terminalDebugOverlay?: string;
 		terminalFontSize?: string;
 		terminalCursorBlink?: string;
@@ -48,6 +49,8 @@ type TerminalCoordinatorDependencies = {
 	logDebug: (id: string, event: string, details: Record<string, unknown>) => void;
 	resetSessionState: (id: string) => void;
 	writeStartFailureMessage: (id: string, message: string) => void;
+	getLifecycleLogPreference: () => 'on' | 'off' | '';
+	setLifecycleLogPreference: (value: 'on' | 'off' | '') => void;
 	getDebugOverlayPreference: () => 'on' | 'off' | '';
 	setDebugOverlayPreference: (value: 'on' | 'off' | '') => void;
 	clearLocalDebugPreference: () => void;
@@ -218,10 +221,16 @@ export const createTerminalSessionCoordinator = (deps: TerminalCoordinatorDepend
 
 	const loadTerminalDefaults = async (): Promise<void> => {
 		let nextDebugPreference = deps.getDebugOverlayPreference();
+		let nextLifecycleLogPreference = deps.getLifecycleLogPreference();
 		let nextFontSize = deps.getCurrentTerminalFontSize();
 		let nextCursorBlink = deps.getCurrentCursorBlink();
 		try {
 			const settings = await deps.transport.fetchSettings();
+			const rawLifecycleLogPreference = settings?.defaults?.terminalDebugLog ?? '';
+			const normalizedLifecycleLogPreference = normalizeOnOff(rawLifecycleLogPreference);
+			if (normalizedLifecycleLogPreference) {
+				nextLifecycleLogPreference = normalizedLifecycleLogPreference;
+			}
 			const rawPreference = settings?.defaults?.terminalDebugOverlay ?? '';
 			const normalizedPreference = normalizeOnOff(rawPreference);
 			if (normalizedPreference) {
@@ -238,6 +247,7 @@ export const createTerminalSessionCoordinator = (deps: TerminalCoordinatorDepend
 		} catch {
 			// Keep existing preference on load failure.
 		}
+		deps.setLifecycleLogPreference(nextLifecycleLogPreference);
 		deps.setDebugOverlayPreference(nextDebugPreference);
 		deps.setCurrentTerminalFontSize(nextFontSize);
 		deps.setCurrentCursorBlink(nextCursorBlink);

@@ -47,6 +47,7 @@ describe('SettingsPanel About Section', () => {
 		agent: 'default',
 		agentModel: '',
 		terminalIdleTimeout: '0',
+		terminalDebugLog: 'off',
 		terminalProtocolLog: 'off',
 		terminalDebugOverlay: 'off',
 		terminalFontSize: '13',

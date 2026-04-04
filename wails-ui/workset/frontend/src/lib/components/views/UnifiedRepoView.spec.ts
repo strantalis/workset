@@ -47,6 +47,10 @@ const pullRequestMocks = vi.hoisted(() => ({
 	fetchCheckAnnotations: vi.fn(),
 }));
 
+const terminalLayoutMocks = vi.hoisted(() => ({
+	logTerminalDebug: vi.fn().mockResolvedValue(undefined),
+}));
+
 const repoDiffEventBus = vi.hoisted(() => {
 	const listeners = new Map<string, Set<(payload: unknown) => void>>();
 	return {
@@ -74,6 +78,7 @@ const repoDiffEventBus = vi.hoisted(() => {
 vi.mock('../../api/repo-files', () => repoFilesMocks);
 vi.mock('../../api/repo-diff', () => repoDiffMocks);
 vi.mock('../../api/github/pull-request', () => pullRequestMocks);
+vi.mock('../../api/terminal-layout', () => terminalLayoutMocks);
 vi.mock('../../repoDiffService', () => ({
 	subscribeRepoDiffEvent: repoDiffEventBus.subscribe,
 }));
@@ -860,6 +865,9 @@ describe('UnifiedRepoView lazy directory tree', () => {
 		);
 		expect(unifiedRepoViewSource).toContain('if (requestKey === fileLoadRequestKey) return;');
 		expect(unifiedRepoViewSource).toContain('fileRefreshVersion += 1;');
-		expect(unifiedRepoViewSource).toContain('if (editMode && editedContent !== null) return;');
+		expect(unifiedRepoViewSource).toContain(
+			'const blockedByEdit = editMode && editedContent !== null;',
+		);
+		expect(unifiedRepoViewSource).toContain('if (blockedByEdit) return;');
 	});
 });

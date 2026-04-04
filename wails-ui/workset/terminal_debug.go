@@ -24,6 +24,28 @@ func terminalDebugLogPath() (string, error) {
 	return filepath.Join(dir, "terminal_debug.log"), nil
 }
 
+func ensureConfiguredTerminalDebugLogging(a *App) {
+	if strings.TrimSpace(os.Getenv("WORKSET_TERMINAL_DEBUG_LOG")) == "" {
+		ctx, svc := a.serviceContext()
+		cfg, _, err := svc.GetConfig(ctx)
+		if err == nil && envTruthy(cfg.Defaults.TerminalDebugLog) {
+			_ = os.Setenv("WORKSET_TERMINAL_DEBUG_LOG", "1")
+		}
+	}
+
+	if !envTruthy(os.Getenv("WORKSET_TERMINAL_DEBUG_LOG")) {
+		return
+	}
+	if strings.TrimSpace(os.Getenv("WORKSET_TERMINAL_DEBUG_LOG_PATH")) != "" {
+		return
+	}
+	logPath, err := terminalDebugLogPath()
+	if err != nil {
+		return
+	}
+	_ = os.Setenv("WORKSET_TERMINAL_DEBUG_LOG_PATH", logPath)
+}
+
 func envTruthy(value string) bool {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "1", "true", "yes", "on":

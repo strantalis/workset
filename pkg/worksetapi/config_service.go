@@ -51,10 +51,24 @@ func setGlobalDefault(cfg *config.GlobalConfig, key, value string) error {
 		cfg.Defaults.AgentModel = value
 	case "defaults.terminal_idle_timeout":
 		cfg.Defaults.TerminalIdleTimeout = value
+	case "defaults.terminal_debug_log":
+		normalized, err := normalizeOnOff(value, key)
+		if err != nil {
+			return err
+		}
+		cfg.Defaults.TerminalDebugLog = normalized
 	case "defaults.terminal_protocol_log":
-		cfg.Defaults.TerminalProtocolLog = value
+		normalized, err := normalizeOnOff(value, key)
+		if err != nil {
+			return err
+		}
+		cfg.Defaults.TerminalProtocolLog = normalized
 	case "defaults.terminal_debug_overlay":
-		cfg.Defaults.TerminalDebugOverlay = value
+		normalized, err := normalizeOnOff(value, key)
+		if err != nil {
+			return err
+		}
+		cfg.Defaults.TerminalDebugOverlay = normalized
 	case "defaults.terminal_font_size":
 		normalized, err := normalizeTerminalFontSize(value)
 		if err != nil {

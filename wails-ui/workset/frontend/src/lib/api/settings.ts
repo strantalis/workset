@@ -1,4 +1,5 @@
 import type { AgentCLIStatus, EnvSnapshotResult, RegisteredRepo, SettingsSnapshot } from '../types';
+import { setTerminalDebugLogPreference } from './terminal-layout';
 import {
 	CheckAgentStatus,
 	GetSettings,
@@ -83,9 +84,18 @@ export async function unregisterRepo(name: string): Promise<void> {
 }
 
 export async function fetchSettings(): Promise<SettingsSnapshot> {
-	return (await GetSettings()) as unknown as SettingsSnapshot;
+	const settings = (await GetSettings()) as unknown as SettingsSnapshot;
+	setTerminalDebugLogPreference(
+		settings?.defaults?.terminalDebugLog === 'on' || settings?.defaults?.terminalDebugLog === 'off'
+			? settings.defaults.terminalDebugLog
+			: '',
+	);
+	return settings;
 }
 
 export async function setDefaultSetting(key: string, value: string): Promise<void> {
 	await SetDefaultSetting(key, value);
+	if (key === 'defaults.terminal_debug_log') {
+		setTerminalDebugLogPreference(value === 'on' || value === 'off' ? value : '');
+	}
 }

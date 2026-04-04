@@ -347,26 +347,64 @@ func (a *App) WriteWorkspaceRepoFile(input RepoFileWriteRequest) (RepoFileWriteR
 
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	repoID := strings.TrimSpace(input.RepoID)
+	path := strings.TrimSpace(input.Path)
 	if workspaceID == "" || repoID == "" {
 		return RepoFileWriteResponse{}, errors.New("workspace and repo are required")
 	}
 	if len(input.Content) > maxRepoFileWriteBytes {
 		return RepoFileWriteResponse{}, fmt.Errorf("content too large (%d bytes, limit %d)", len(input.Content), maxRepoFileWriteBytes)
 	}
+	debugTerminalServicef(
+		"repo_file_write_start workspace=%s repo=%s path=%q size=%d",
+		workspaceID,
+		repoID,
+		path,
+		len(input.Content),
+	)
 
 	root, err := a.resolveWorkspaceContentRoot(ctx, workspaceID, repoID)
 	if err != nil {
+		debugTerminalServicef(
+			"repo_file_write_root_error workspace=%s repo=%s path=%q err=%v",
+			workspaceID,
+			repoID,
+			path,
+			err,
+		)
 		return RepoFileWriteResponse{}, err
 	}
 
 	resolvedPath, _, err := resolveRepoFilePath(root.path, input.Path)
 	if err != nil {
+		debugTerminalServicef(
+			"repo_file_write_path_error workspace=%s repo=%s path=%q err=%v",
+			workspaceID,
+			repoID,
+			path,
+			err,
+		)
 		return RepoFileWriteResponse{}, err
 	}
 
 	if err := os.WriteFile(resolvedPath, []byte(input.Content), 0644); err != nil {
+		debugTerminalServicef(
+			"repo_file_write_error workspace=%s repo=%s path=%q resolved=%q err=%v",
+			workspaceID,
+			repoID,
+			path,
+			resolvedPath,
+			err,
+		)
 		return RepoFileWriteResponse{}, fmt.Errorf("write file: %w", err)
 	}
+	debugTerminalServicef(
+		"repo_file_write_success workspace=%s repo=%s path=%q resolved=%q size=%d",
+		workspaceID,
+		repoID,
+		path,
+		resolvedPath,
+		len(input.Content),
+	)
 
 	return RepoFileWriteResponse{Written: true}, nil
 }

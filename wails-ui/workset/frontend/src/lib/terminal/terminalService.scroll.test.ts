@@ -243,6 +243,82 @@ describe('terminalService resize flow', () => {
 		expect(terminal.scrollToBottom).not.toHaveBeenCalled();
 	});
 
+	it('logs state transitions and browser lifecycle when terminal lifecycle logging is enabled', async () => {
+		apiMock.fetchSettings.mockResolvedValue({ defaults: { terminalDebugLog: 'on' } });
+		const service = await loadService();
+		await service.refreshTerminalDefaults();
+		const container = document.createElement('div') as HTMLDivElement;
+
+		service.syncTerminal({
+			workspaceId: 'ws',
+			terminalId: 'term',
+			container,
+			active: true,
+		});
+
+		await vi.waitFor(() => {
+			expect(createdTerminals).toHaveLength(1);
+			expect(createdSockets).toHaveLength(1);
+		});
+
+		const socket = createdSockets[0];
+		socket.open();
+		socket.emitText({ type: 'ready' });
+
+		await vi.waitFor(() => {
+			expect(apiMock.logTerminalDebug).toHaveBeenCalledWith(
+				'ws',
+				'term',
+				'frontend_state_transition',
+				expect.stringContaining('"status":"starting"'),
+			);
+		});
+
+		await vi.waitFor(() => {
+			expect(apiMock.logTerminalDebug).toHaveBeenCalledWith(
+				'ws',
+				'term',
+				'frontend_state_transition',
+				expect.stringContaining('"status":"ready"'),
+			);
+		});
+
+		window.dispatchEvent(new Event('blur'));
+
+		await vi.waitFor(() => {
+			expect(apiMock.logTerminalDebug).toHaveBeenCalledWith(
+				'ws',
+				'term',
+				'frontend_window_lifecycle',
+				expect.stringContaining('"event":"window.blur"'),
+			);
+		});
+
+		Object.defineProperty(document, 'visibilityState', {
+			value: 'visible',
+			configurable: true,
+		});
+		Object.defineProperty(document, 'hidden', {
+			value: false,
+			configurable: true,
+		});
+		window.dispatchEvent(new Event('focus'));
+
+		await vi.waitFor(() => {
+			expect(apiMock.logTerminalDebug).toHaveBeenCalledWith(
+				'ws',
+				'term',
+				'frontend_window_state_resync',
+				expect.stringContaining('"reason":"window.focus"'),
+			);
+		});
+
+		expect(get(service.getTerminalStore('ws', 'term'))).toMatchObject({
+			status: 'ready',
+			health: 'ok',
+		});
+	});
+
 	it('forwards wheel input after attaching terminal host in another document', async () => {
 		const service = await loadService();
 		const container = document.createElement('div') as HTMLDivElement;

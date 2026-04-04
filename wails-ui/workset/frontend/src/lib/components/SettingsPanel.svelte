@@ -48,6 +48,7 @@
 		{ id: 'agent', key: 'defaults.agent' },
 		{ id: 'agentModel', key: 'defaults.agent_model' },
 		{ id: 'terminalIdleTimeout', key: 'defaults.terminal_idle_timeout' },
+		{ id: 'terminalDebugLog', key: 'defaults.terminal_debug_log' },
 		{ id: 'terminalProtocolLog', key: 'defaults.terminal_protocol_log' },
 		{ id: 'terminalDebugOverlay', key: 'defaults.terminal_debug_overlay' },
 		{ id: 'terminalFontSize', key: 'defaults.terminal_font_size' },
@@ -96,6 +97,7 @@
 		defaults: ['thread', 'remote', 'baseBranch', 'agent', 'agentModel'],
 		session: [
 			'terminalIdleTimeout',
+			'terminalDebugLog',
 			'terminalProtocolLog',
 			'terminalDebugOverlay',
 			'terminalFontSize',
@@ -143,7 +145,10 @@
 				field.id === 'terminalCursorBlink',
 		);
 		const hasTerminalServiceConfigChanges = updates.some(
-			(field) => field.id === 'terminalProtocolLog' || field.id === 'terminalIdleTimeout',
+			(field) =>
+				field.id === 'terminalProtocolLog' ||
+				field.id === 'terminalDebugLog' ||
+				field.id === 'terminalIdleTimeout',
 		);
 		const statusMessage =
 			updates.length === 1 ? 'Saved 1 change.' : `Saved ${updates.length} changes.`;

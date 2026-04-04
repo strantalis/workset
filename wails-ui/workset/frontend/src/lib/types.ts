@@ -277,6 +277,7 @@ export type SettingsDefaults = {
 	agent: string;
 	agentModel: string;
 	terminalIdleTimeout: string;
+	terminalDebugLog: string;
 	terminalProtocolLog: string;
 	terminalDebugOverlay: string;
 	terminalFontSize: string;

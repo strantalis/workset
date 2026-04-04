@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"sync"
 
 	"github.com/strantalis/workset/pkg/terminalservice"
@@ -64,15 +65,16 @@ func (a *App) setRuntime(app *application.App) {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	debugTerminalServicef("app_startup build_marker=restart-logging-v2")
 	ensureDevConfig()
 	_, _ = worksetapi.EnsureLoginEnv(ctx)
+	ensureConfiguredTerminalDebugLogging(a)
+	debugTerminalServicef("app_startup build_marker=restart-logging-v3 pid=%d", os.Getpid())
 	ensureDevTerminalServiceSocket()
-	ensureLegacySessiondRetired()
 	ensureTerminalServiceStarted(a)
 }
 
 func (a *App) shutdown(_ context.Context) {
+	debugTerminalServicef("app_shutdown begin pid=%d", os.Getpid())
 	if a.repoDiffWatchers != nil {
 		a.repoDiffWatchers.shutdown()
 	}
@@ -98,6 +100,7 @@ func (a *App) shutdown(_ context.Context) {
 	a.terminals = map[string]*terminalSession{}
 	a.terminalMu.Unlock()
 	a.stopEmbeddedTerminalService()
+	debugTerminalServicef("app_shutdown done pid=%d", os.Getpid())
 }
 
 func (a *App) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {

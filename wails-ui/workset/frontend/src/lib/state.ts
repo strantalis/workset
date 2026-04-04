@@ -355,6 +355,9 @@ export function selectWorkspace(workspaceId: string): void {
 	if (!target || target.placeholder === true) {
 		return;
 	}
+	if (get(activeWorkspaceId) === workspaceId) {
+		return;
+	}
 	activeWorkspaceId.set(workspaceId);
 	activeRepoId.set(null);
 	// Update last used timestamp in background

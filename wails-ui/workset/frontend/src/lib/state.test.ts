@@ -1,12 +1,25 @@
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { get } from 'svelte/store';
 import type { Workspace } from './types';
+const updateWorkspaceLastUsedMock = vi.hoisted(() => vi.fn(async () => '2024-01-03T00:00:00Z'));
+
+vi.mock('./api/workspaces', () => ({
+	fetchWorkspaces: vi.fn(async () => []),
+	pinWorkspace: vi.fn(async () => undefined),
+	setWorkspaceColor: vi.fn(async () => undefined),
+	setWorkspaceExpanded: vi.fn(async () => undefined),
+	reorderWorkspaces: vi.fn(async () => undefined),
+	updateWorkspaceLastUsed: updateWorkspaceLastUsedMock,
+}));
+
 import {
+	activeWorkspaceId,
 	applyWorkspaceLastUsed,
 	applyRepoDiffSummary,
 	applyRepoLocalStatus,
 	applyTrackedPullRequest,
 	applyTrackedPullRequestReviewComments,
+	selectWorkspace,
 	workspaces,
 } from './state';
 
@@ -76,6 +89,8 @@ const baseWorkspaces: Workspace[] = [
 const cloneWorkspaces = (): Workspace[] => JSON.parse(JSON.stringify(baseWorkspaces));
 
 beforeEach(() => {
+	updateWorkspaceLastUsedMock.mockClear();
+	activeWorkspaceId.set(null);
 	workspaces.set(cloneWorkspaces());
 });
 
@@ -236,5 +251,14 @@ describe('state repo diff updates', () => {
 		expect(next[0].lastUsed).toBe('2024-01-03T00:00:00Z');
 		expect(next[1]).toBe(untouchedWorkspace);
 		expect(next[0].repos[0]).toBe(untouchedRepo);
+	});
+
+	it('treats reselecting the active workspace as a no-op', () => {
+		activeWorkspaceId.set('ws-1');
+
+		selectWorkspace('ws-1');
+
+		expect(get(activeWorkspaceId)).toBe('ws-1');
+		expect(updateWorkspaceLastUsedMock).not.toHaveBeenCalled();
 	});
 });

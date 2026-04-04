@@ -47,6 +47,17 @@
 			],
 		},
 		{
+			id: 'terminalDebugLog',
+			label: 'Lifecycle debug log',
+			description:
+				'Writes terminal lifecycle debug events to terminal_debug.log in the active Workset app data directory. Applies next launch.',
+			type: 'select',
+			options: [
+				{ label: 'Off', value: 'off' },
+				{ label: 'On', value: 'on' },
+			],
+		},
+		{
 			id: 'terminalProtocolLog',
 			label: 'Protocol logging',
 			description:

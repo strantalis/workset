@@ -15,6 +15,7 @@ const buildDefaults = (): SettingsDefaults => ({
 	agent: 'default',
 	agentModel: '',
 	terminalIdleTimeout: '0',
+	terminalDebugLog: 'off',
 	terminalProtocolLog: 'off',
 	terminalDebugOverlay: 'off',
 	terminalFontSize: '13',
@@ -32,6 +33,7 @@ describe('SessionDefaults', () => {
 			},
 		});
 
+		expect(getByText('Lifecycle debug log')).toBeInTheDocument();
 		expect(getByText('Protocol logging')).toBeInTheDocument();
 		expect(getByText('Debug overlay')).toBeInTheDocument();
 		expect(getByText('Idle timeout')).toBeInTheDocument();

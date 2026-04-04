@@ -9,12 +9,9 @@
 		FileCode,
 		FolderTree,
 		GitBranch,
-		Minus,
-		Plus,
 		Rows2,
 		BookOpen,
 		Save,
-		X,
 	} from '@lucide/svelte';
 	import type {
 		PullRequestSummary,
@@ -62,7 +59,6 @@
 	import { buildSummaryLocalCacheKey, repoDiffCache } from '../../cache/repoDiffCache';
 	import { subscribeRepoDiffEvent } from '../../repoDiffService';
 	import { EVENT_REPO_DIFF_LOCAL_SUMMARY, EVENT_REPO_DIFF_SUMMARY } from '../../events';
-	import { applyTrackedPullRequest, refreshWorkspacesStatus } from '../../state';
 	import {
 		buildExpandedRepoTreeKeysForQuery,
 		buildRepoTree,
@@ -79,8 +75,8 @@
 	import { tooltip } from '../../actions/tooltip';
 	import CodeEditor from '../editor/CodeEditor.svelte';
 	import CodeDiffView from '../editor/CodeDiffView.svelte';
-	import LocalMergeDrawer from './LocalMergeDrawer.svelte';
-	import PrLifecycleDrawer from './PrLifecycleDrawer.svelte';
+	import UnifiedRepoMermaidOverlay from './UnifiedRepoMermaidOverlay.svelte';
+	import UnifiedRepoLifecycleDrawers from './UnifiedRepoLifecycleDrawers.svelte';
 	import UnifiedRepoSidebar from './UnifiedRepoSidebar.svelte';
 	import {
 		buildDirNodeKey,
@@ -106,6 +102,14 @@
 		handleEditorSaveKeydown,
 		ignoreError,
 		isRepoFileChanged,
+		logRepoDiffSummarySelected,
+		logRepoFileLoadRequest,
+		logRepoFileRefreshRequested,
+		logRepoFileRefreshStarted,
+		logRepoFileSaveFailed,
+		logRepoFileSaveStarted,
+		logRepoFileSaveSucceeded,
+		logRepoFileSelected,
 		maybeLoadBranchDataForRepo,
 	} from './unifiedRepoView.helpers';
 	import { useNotifications } from '../../contexts/notifications';
@@ -288,22 +292,37 @@
 	const handleEditorReady = (view: EditorView): void => void ((editorView = view), (editorViewPath = selectedFilePath), (editorViewVersion += 1));
 	const handleContentChange = (content: string): void => void (editedContent = content);
 	const saveFile = async (): Promise<void> => {
-		if (!editMode || saving || editedContent === null) return;
-		if (!wsId || !selectedRepoId || !selectedFilePath) return;
+		if (
+			!editMode ||
+			saving ||
+			editedContent === null ||
+			!wsId ||
+			!selectedRepoId ||
+			!selectedFilePath
+		)
+			return;
 		saving = true;
+		logRepoFileSaveStarted(
+			{ workspaceId: wsId, repoId: selectedRepoId, path: selectedFilePath },
+			editedContent.length,
+		);
 		try {
 			const savedContent = editedContent;
 			await writeWorkspaceRepoFile(wsId, selectedRepoId, selectedFilePath, editedContent);
-			if (fileContent) {
-				fileContent = { ...fileContent, content: editedContent };
-			}
+			if (fileContent) fileContent = { ...fileContent, content: editedContent };
 			editedContent = null;
-			if (editorView) {
-				editorView.dispatch({ effects: setCleanDoc.of(savedContent) });
-			}
+			if (editorView) editorView.dispatch({ effects: setCleanDoc.of(savedContent) });
+			logRepoFileSaveSucceeded(
+				{ workspaceId: wsId, repoId: selectedRepoId, path: selectedFilePath },
+				savedContent.length,
+			);
 			notifications.info('File saved');
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : 'Unknown error';
+			logRepoFileSaveFailed(
+				{ workspaceId: wsId, repoId: selectedRepoId, path: selectedFilePath },
+				msg,
+			);
 			notifications.error(`Save failed: ${msg}`);
 		} finally {
 			saving = false;
@@ -1032,8 +1051,19 @@
 		const repoId = selectedRepoId;
 		const path = selectedFilePath;
 		if (!currentWsId || !repoId || !path) return;
-		if (editMode && editedContent !== null) return;
+		const blockedByEdit = editMode && editedContent !== null;
+		logRepoFileRefreshRequested(
+			{ workspaceId: currentWsId, repoId, path },
+			{
+				blockedByEdit,
+				editMode,
+				hasEditedContent: editedContent !== null,
+				refreshVersion: fileRefreshVersion,
+			},
+		);
+		if (blockedByEdit) return;
 		fileRefreshVersion += 1;
+		logRepoFileRefreshStarted({ workspaceId: currentWsId, repoId, path }, fileRefreshVersion);
 	};
 	const refreshExplorerTree = (): void => {
 		const currentWsId = wsId;
@@ -1122,6 +1152,16 @@
 	};
 	const selectTreeFile = (path: string, repoId: string): void => {
 		const sameFile = selectedRepoId === repoId && selectedFilePath === path;
+		logRepoFileSelected(
+			{ workspaceId: wsId, repoId, path },
+			{
+				sameFile,
+				previousRepoId: selectedRepoId,
+				previousPath: selectedFilePath,
+				editMode,
+				previewMode,
+			},
+		);
 		if (!sameFile) {
 			editorView = null;
 			editorViewPath = null;
@@ -1374,6 +1414,10 @@
 		].join('\u0000');
 		if (requestKey === fileLoadRequestKey) return;
 		fileLoadRequestKey = requestKey;
+		logRepoFileLoadRequest(
+			{ workspaceId: currentWsId, repoId, path },
+			{ mode, refreshVersion, hasDiffFile: Boolean(diffFile), diffSignature },
+		);
 		if (mode === 'edit' || mode === 'preview') {
 			void loadFileContent(currentWsId, repoId, path);
 			if (diffFile) {
@@ -1494,6 +1538,15 @@
 			invalidateRepoFileContent(currentWsId, payload.repoId);
 			invalidateRepoDirCache(currentWsId, payload.repoId);
 			if (payload.repoId === selectedRepoId && selectedFilePath) {
+				logRepoDiffSummarySelected(
+					{
+						workspaceId: currentWsId,
+						repoId: payload.repoId,
+						path: selectedFilePath,
+					},
+					'repo_diff_local_summary_selected',
+					payload.summary.files.length,
+				);
 				refreshCurrentFile();
 			}
 		});
@@ -1511,6 +1564,15 @@
 			if (payload.workspaceId !== currentWsId) return;
 			branchDiffMap = new Map(branchDiffMap).set(payload.repoId, payload.summary);
 			if (payload.repoId === selectedRepoId && selectedRepoPr && selectedFilePath) {
+				logRepoDiffSummarySelected(
+					{
+						workspaceId: currentWsId,
+						repoId: payload.repoId,
+						path: selectedFilePath,
+					},
+					'repo_diff_branch_summary_selected',
+					payload.summary.files.length,
+				);
 				refreshCurrentFile();
 			}
 		});
@@ -1810,114 +1872,38 @@
 	{/if}
 </div>
 
-{#if mermaidOverlayOpen}
-	<div
-		class="mm-overlay"
-		role="button"
-		tabindex="0"
-		aria-label="Close diagram"
-		onclick={closeMermaid}
-		onkeydown={(e) => {
-			if (e.key === 'Escape') closeMermaid();
-		}}
-	>
-		<div
-			class="mm-panel"
-			role="dialog"
-			aria-modal="true"
-			tabindex="-1"
-			onclick={(e) => e.stopPropagation()}
-			onkeydown={(e) => e.stopPropagation()}
-		>
-			<div class="mm-toolbar">
-				<div class="mm-zoom-actions">
-					<button
-						type="button"
-						class="mm-btn"
-						aria-label="Zoom out"
-						onclick={() => adjustMermaidZoom(-0.1)}><Minus size={15} /></button
-					>
-					<button type="button" class="mm-btn-text" onclick={resetMermaidZoom}
-						>{Math.round(mermaidZoom * 100)}%</button
-					>
-					<button
-						type="button"
-						class="mm-btn"
-						aria-label="Zoom in"
-						onclick={() => adjustMermaidZoom(0.1)}><Plus size={15} /></button
-					>
-				</div>
-				<button type="button" class="mm-btn" aria-label="Close" onclick={closeMermaid}
-					><X size={15} /></button
-				>
-			</div>
-			<div class="mm-canvas">
-				<div
-					bind:this={mermaidCanvasEl}
-					class="mm-surface"
-					class:dragging={mermaidDragging}
-					role="presentation"
-					onpointerdown={handleMermaidPointerDown}
-					onpointermove={handleMermaidPointerMove}
-					onpointerup={handleMermaidPointerUp}
-					onpointercancel={handleMermaidPointerUp}
-				>
-					<div
-						bind:this={mermaidStageEl}
-						class="mm-stage"
-						style={`--mm-scale:${mermaidFitScale * mermaidZoom}; --mm-x:${mermaidOffsetX}px; --mm-y:${mermaidOffsetY}px; --mm-w:${mermaidIntrinsicW}px; --mm-h:${mermaidIntrinsicH}px;`}
-					>
-						<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-						{@html mermaidOverlayMarkup}
-					</div>
-				</div>
-			</div>
-		</div>
-	</div>
-{/if}
+<UnifiedRepoMermaidOverlay
+	open={mermaidOverlayOpen}
+	markup={mermaidOverlayMarkup}
+	zoom={mermaidZoom}
+	fitScale={mermaidFitScale}
+	offsetX={mermaidOffsetX}
+	offsetY={mermaidOffsetY}
+	intrinsicW={mermaidIntrinsicW}
+	intrinsicH={mermaidIntrinsicH}
+	dragging={mermaidDragging}
+	setCanvasEl={(node) => {
+		mermaidCanvasEl = node;
+	}}
+	setStageEl={(node) => {
+		mermaidStageEl = node;
+	}}
+	onClose={closeMermaid}
+	onAdjustZoom={adjustMermaidZoom}
+	onResetZoom={resetMermaidZoom}
+	onPointerDown={handleMermaidPointerDown}
+	onPointerMove={handleMermaidPointerMove}
+	onPointerUp={handleMermaidPointerUp}
+/>
 
 {#if workspace && selectedRepo}
-	<LocalMergeDrawer
-		open={drawerMode === 'local-merge'}
-		workspaceId={workspace.id}
-		repoId={selectedRepo.id}
-		repoName={selectedRepo.name}
-		branch={selectedRepo.currentBranch || 'main'}
-		baseBranch={selectedRepo.defaultBranch || 'main'}
-		onClose={closeDrawer}
-		onMerged={() => {
-			void refreshWorkspacesStatus(true);
-		}}
-	/>
 	{@const prDiffSummary = branchDiffMap.get(selectedRepo.id)}
-	{@const repoCommentCounts = prFileCommentCounts}
-	<PrLifecycleDrawer
-		open={drawerMode === 'pr'}
-		workspaceId={workspace.id}
-		repoId={selectedRepo.id}
-		repoName={selectedRepo.name}
-		branch={selectedRepo.currentBranch || 'main'}
-		baseBranch={selectedRepo.defaultBranch || 'main'}
-		trackedPr={selectedRepo.trackedPullRequest ?? null}
-		diffStats={prDiffSummary
-			? {
-					filesChanged: prDiffSummary.files.length,
-					additions: prDiffSummary.totalAdded,
-					deletions: prDiffSummary.totalRemoved,
-				}
-			: null}
-		unresolvedThreads={(() => {
-			let total = 0;
-			for (const count of repoCommentCounts.values()) total += count;
-			return total;
-		})()}
-		onClose={closeDrawer}
-		onStatusChanged={() => {}}
-		onTrackedPrChanged={(created) => {
-			applyTrackedPullRequest(workspace.id, selectedRepo.id, created);
-		}}
-		onDismissTrackedPr={() => {
-			applyTrackedPullRequest(workspace.id, selectedRepo.id, null);
-		}}
+	<UnifiedRepoLifecycleDrawers
+		{workspace}
+		{selectedRepo}
+		{drawerMode}
+		{prDiffSummary}
+		{prFileCommentCounts}
+		{closeDrawer}
 	/>
 {/if}

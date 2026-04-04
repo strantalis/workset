@@ -17,6 +17,7 @@ func DefaultConfig() GlobalConfig {
 			Agent:                "codex",
 			AgentModel:           "",
 			TerminalIdleTimeout:  "0",
+			TerminalDebugLog:     "off",
 			TerminalProtocolLog:  "off",
 			TerminalDebugOverlay: "off",
 			TerminalFontSize:     "13",
