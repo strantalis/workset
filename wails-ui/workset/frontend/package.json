@@ -65,7 +65,7 @@
 		"@codemirror/merge": "^6.12.1",
 		"@codemirror/search": "^6.6.0",
 		"@codemirror/state": "^6.6.0",
-		"@codemirror/view": "^6.40.0",
+		"@codemirror/view": "^6.41.0",
 		"@iconify-json/file-icons": "^1.2.2",
 		"@iconify/svelte": "^5.2.1",
 		"@lucide/svelte": "^0.575.0",
