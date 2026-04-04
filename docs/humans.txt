@@ -1,8 +1,0 @@
-/* TEAM */
-Name: Sean Strantalis
-Site: https://workset.dev
-Location: United States
-
-/* SITE */
-Built with: MkDocs + Material
-Source: https://github.com/strantalis/workset

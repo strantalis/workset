@@ -1,0 +1,38 @@
+# Workset
+
+> Workset is a Go CLI and desktop app for managing multi-repo threads with linked Git worktrees.
+
+Start with the overview and Getting Started, then use the Guides and Reference sections for detailed documentation.
+
+## Start here
+
+- [Home](https://workset.dev/)
+- [Getting Started](https://workset.dev/getting-started/)
+- [Installation](https://workset.dev/getting-started/installation/)
+- [Quickstart](https://workset.dev/getting-started/quickstart/)
+
+## Guides
+
+- [Multi-Repo Workflows](https://workset.dev/guides/multi-repo-workflows/)
+- [Worksets](https://workset.dev/guides/worksets/)
+- [GitHub Integration](https://workset.dev/guides/github-integration/)
+- [AI Agents](https://workset.dev/guides/ai-agents/)
+- [Hooks](https://workset.dev/guides/hooks/)
+- [Desktop App](https://workset.dev/guides/desktop-app/)
+
+## Reference
+
+- [CLI Reference](https://workset.dev/reference/cli/)
+- [Config Reference](https://workset.dev/reference/config/)
+- [Concepts](https://workset.dev/reference/concepts/)
+- [Environment Variables](https://workset.dev/reference/env-vars/)
+
+## Other
+
+- [Troubleshooting](https://workset.dev/troubleshooting/)
+- [Contributing](https://workset.dev/contributing/)
+- [Changelog](https://workset.dev/changelog/)
+
+## Source
+
+- [GitHub repository](https://github.com/strantalis/workset): source code and issues

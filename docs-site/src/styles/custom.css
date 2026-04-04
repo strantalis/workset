@@ -1,0 +1,320 @@
+:root {
+  --sl-font: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --sl-color-text-accent: #2d8cff;
+  --sl-color-text-invert: #ffffff;
+  --sl-color-bg: #0c1019;
+  --sl-color-bg-nav: #0c1019;
+  --sl-color-bg-sidebar: #0c1019;
+}
+
+:root[data-theme='light'] {
+  --sl-color-text-accent: #1a6fdb;
+  --sl-color-text-invert: #ffffff;
+  --sl-color-bg: #f5f7fa;
+  --sl-color-bg-nav: #edf0f5;
+  --sl-color-bg-sidebar: #edf0f5;
+}
+
+:root[data-theme='light'] .home-feature-card {
+  border-color: #d0d7de;
+  background: #e8ecf2;
+}
+
+body {
+  font-family: var(--sl-font);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* ── Homepage ─────────────────────────────────────────────── */
+
+.main-frame:has(.home-hero) {
+  padding-top: 0 !important;
+}
+
+.content-panel:has(.home-hero) {
+  padding-top: 0 !important;
+}
+
+
+.home-hero {
+  display: grid;
+  grid-template-columns: 2fr 3fr;
+  gap: 3rem;
+  align-items: center;
+  padding: 4rem 0;
+}
+
+.home-hero__content h1 {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  font-weight: 700;
+  line-height: 1.1;
+  margin-bottom: 1rem;
+}
+
+.home-hero__subtitle {
+  font-size: 1.15rem;
+  color: var(--sl-color-text-secondary);
+  margin-bottom: 2rem;
+  line-height: 1.6;
+}
+
+.home-hero__actions {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.home-hero__visual {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.home-hero__screenshot {
+  width: 100%;
+  border-radius: 8px;
+  border: 2px solid var(--sl-color-hairline);
+}
+
+.starlight-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.starlight-btn--primary {
+  background: var(--sl-color-text-accent);
+  color: var(--sl-color-text-invert);
+}
+
+.starlight-btn--primary:hover {
+  background: var(--sl-color-text-accent);
+  opacity: 0.9;
+}
+
+.starlight-btn:not(.starlight-btn--primary) {
+  background: transparent;
+  border-color: var(--sl-color-hairline);
+  color: var(--sl-color-text);
+}
+
+.starlight-btn:not(.starlight-btn--primary):hover {
+  border-color: var(--sl-color-text-accent);
+  color: var(--sl-color-text-accent);
+}
+
+/* ── App Frame ────────────────────────────────────────────── */
+
+.app-frame {
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+  background: #1e1e1e;
+  max-width: 900px;
+  width: 100%;
+}
+
+.app-frame__titlebar {
+  height: 38px;
+  background: linear-gradient(180deg, #3a3a3a, #2d2d2d);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 8px;
+}
+
+.app-frame__titlebar span {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.app-frame__titlebar span:nth-child(1) { background: #ff5f57; }
+.app-frame__titlebar span:nth-child(2) { background: #febc2e; }
+.app-frame__titlebar span:nth-child(3) { background: #28c840; }
+
+.app-frame__content img {
+  display: block;
+  width: 100%;
+}
+
+/* ── Diagram ─────────────────────────────────────────────── */
+
+.home-diagram {
+  padding: 4rem 0 0;
+  text-align: center;
+}
+
+.home-diagram h2 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin-bottom: 2rem;
+}
+
+.home-diagram img {
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* ── Features Grid ────────────────────────────────────────── */
+
+.home-features {
+  padding: 4rem 0;
+}
+
+.home-features h2 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.home-features__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: 1fr;
+  gap: 1.5rem;
+}
+
+.home-feature-card {
+  padding: 1.5rem;
+  border-radius: 12px;
+  border: 1px solid var(--sl-color-hairline);
+  background: var(--sl-color-bg-inline-code);
+  transition: border-color 0.2s ease, transform 0.2s ease;
+  margin-top: 0 !important;
+}
+
+.home-feature-card:hover {
+  border-color: var(--sl-color-text-accent);
+  transform: translateY(-2px);
+}
+
+.home-feature-card h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: var(--sl-color-text-accent);
+}
+
+.home-feature-card p {
+  font-size: 0.9rem;
+  color: var(--sl-color-text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* ── Quickstart ───────────────────────────────────────────── */
+
+.home-quickstart {
+  padding: 4rem 0;
+  text-align: center;
+}
+
+.home-quickstart h2 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin-bottom: 1.5rem;
+}
+
+.home-quickstart__code {
+  max-width: 600px;
+  margin: 0 auto 2rem;
+  text-align: left;
+}
+
+.home-quickstart__code pre {
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+  background: var(--sl-color-bg-code);
+  border-left: 3px solid var(--sl-color-text-accent);
+  overflow-x: auto;
+}
+
+.home-quickstart__code code {
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+
+.home-quickstart__actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ── Download Hero ────────────────────────────────────────── */
+
+#download-hero {
+  padding: 2rem 0 1rem;
+  text-align: center;
+}
+
+#download-os {
+  font-size: 0.9rem;
+  color: var(--sl-color-text-secondary);
+  margin-bottom: 1rem;
+}
+
+#download-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+#download-alt {
+  font-size: 0.85rem;
+  color: var(--sl-color-text-secondary);
+}
+
+#download-alt a {
+  color: var(--sl-color-text-accent);
+}
+
+/* ── Screenshots ─────────────────────────────────────────── */
+
+.sl-markdown-content img[src*="screenshots"] {
+  border-radius: 10px;
+  border: 1px solid var(--sl-color-hairline);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+  margin: 1.5rem 0;
+}
+
+:root[data-theme='light'] .sl-markdown-content img[src*="screenshots"] {
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+/* ── Responsive ───────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .home-hero {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+    padding: 2rem 0;
+  }
+
+  .home-hero__content {
+    text-align: center;
+  }
+
+  .home-hero__actions {
+    justify-content: center;
+  }
+
+  .home-features__grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 400" fill="none">
+  <style>
+    :root { --bg: #0c1019; --panel: #151f2e; --border: #2d4460; --text: #f2f6fb; --muted: #8a9bb0; --accent: #2d8cff; --green: #86c442; --orange: #f28c28; }
+    @media (prefers-color-scheme: light) {
+      :root { --bg: #f5f7fa; --panel: #ffffff; --border: #d0d7de; --text: #1a1a2e; --muted: #57606a; --accent: #1a6fdb; --green: #1a7f37; --orange: #bc4c00; }
+    }
+    text { font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+    .label { font-size: 13px; fill: var(--muted); }
+    .title { font-size: 15px; font-weight: 600; fill: var(--text); }
+    .accent { font-size: 15px; font-weight: 600; fill: var(--accent); }
+    .mono { font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace; font-size: 12px; fill: var(--muted); }
+    .mono-accent { font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace; font-size: 12px; fill: var(--accent); }
+    .panel { fill: var(--panel); stroke: var(--border); stroke-width: 1.5; rx: 10; }
+    .panel-inner { fill: var(--bg); stroke: var(--border); stroke-width: 1; rx: 8; }
+    .dot { r: 4; }
+    .connector { stroke: var(--border); stroke-width: 1.5; stroke-dasharray: 4 3; }
+  </style>
+
+  <!-- Workset container -->
+  <rect class="panel" x="20" y="20" width="680" height="360" />
+  <text class="accent" x="40" y="52">Workset: platform-core</text>
+
+  <!-- Repos row -->
+  <text class="label" x="40" y="82">repos</text>
+  <rect class="panel-inner" x="100" y="66" width="100" height="28" />
+  <text class="mono" x="122" y="84">platform</text>
+  <rect class="panel-inner" x="212" y="66" width="68" height="28" />
+  <text class="mono" x="226" y="84">api</text>
+  <rect class="panel-inner" x="292" y="66" width="94" height="28" />
+  <text class="mono" x="310" y="84">frontend</text>
+
+  <!-- Thread 1 -->
+  <rect class="panel-inner" x="40" y="116" width="640" height="110" />
+  <circle class="dot" cx="60" cy="142" fill="var(--green)" />
+  <text class="title" x="74" y="147">thread: auth-spike</text>
+
+  <!-- Worktrees in thread 1 -->
+  <rect class="panel-inner" x="70" y="162" width="180" height="48" />
+  <text class="mono-accent" x="86" y="182">platform/</text>
+  <text class="mono" x="86" y="200">linked worktree</text>
+
+  <rect class="panel-inner" x="268" y="162" width="180" height="48" />
+  <text class="mono-accent" x="284" y="182">api/</text>
+  <text class="mono" x="284" y="200">linked worktree</text>
+
+  <rect class="panel-inner" x="466" y="162" width="180" height="48" />
+  <text class="mono-accent" x="482" y="182">frontend/</text>
+  <text class="mono" x="482" y="200">linked worktree</text>
+
+  <!-- Thread 2 -->
+  <rect class="panel-inner" x="40" y="246" width="640" height="110" />
+  <circle class="dot" cx="60" cy="272" fill="var(--orange)" />
+  <text class="title" x="74" y="277">thread: billing-fix</text>
+
+  <!-- Worktrees in thread 2 -->
+  <rect class="panel-inner" x="70" y="292" width="180" height="48" />
+  <text class="mono-accent" x="86" y="312">platform/</text>
+  <text class="mono" x="86" y="330">linked worktree</text>
+
+  <rect class="panel-inner" x="268" y="292" width="180" height="48" />
+  <text class="mono-accent" x="284" y="312">api/</text>
+  <text class="mono" x="284" y="330">linked worktree</text>
+
+  <rect class="panel-inner" x="466" y="292" width="180" height="48" />
+  <text class="mono-accent" x="482" y="312">frontend/</text>
+  <text class="mono" x="482" y="330">linked worktree</text>
+</svg>
