@@ -22,7 +22,50 @@ template: splash
 
 <div class="home-diagram">
   <h2>How It Works</h2>
-  <img src="/diagrams/workset-model.svg" alt="Workset model: a workset groups repos, threads create linked worktrees across them" />
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 400" fill="none" role="img" aria-label="Workset model: a workset groups repos, threads create linked worktrees across them">
+    <style>{`
+      .ws-label { font-family: 'DM Sans', system-ui, sans-serif; font-size: 13px; fill: var(--sl-color-gray-3); }
+      .ws-title { font-family: 'DM Sans', system-ui, sans-serif; font-size: 15px; font-weight: 600; fill: var(--sl-color-white); }
+      .ws-accent { font-family: 'DM Sans', system-ui, sans-serif; font-size: 15px; font-weight: 600; fill: var(--sl-color-text-accent); }
+      .ws-mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; fill: var(--sl-color-gray-3); }
+      .ws-mono-accent { font-family: 'JetBrains Mono', monospace; font-size: 12px; fill: var(--sl-color-text-accent); }
+      .ws-panel { fill: var(--sl-color-gray-6); stroke: var(--sl-color-gray-5); stroke-width: 1.5; rx: 10; }
+      .ws-panel-inner { fill: var(--sl-color-bg); stroke: var(--sl-color-gray-5); stroke-width: 1; rx: 8; }
+    `}</style>
+    <rect class="ws-panel" x="20" y="20" width="680" height="360" />
+    <text class="ws-accent" x="40" y="52">Workset: platform-core</text>
+    <text class="ws-label" x="40" y="82">repos</text>
+    <rect class="ws-panel-inner" x="100" y="66" width="100" height="28" />
+    <text class="ws-mono" x="122" y="84">platform</text>
+    <rect class="ws-panel-inner" x="212" y="66" width="68" height="28" />
+    <text class="ws-mono" x="226" y="84">api</text>
+    <rect class="ws-panel-inner" x="292" y="66" width="94" height="28" />
+    <text class="ws-mono" x="310" y="84">frontend</text>
+    <rect class="ws-panel-inner" x="40" y="116" width="640" height="110" />
+    <circle cx="60" cy="142" r="4" fill="#86c442" />
+    <text class="ws-title" x="74" y="147">thread: auth-spike</text>
+    <rect class="ws-panel-inner" x="70" y="162" width="180" height="48" />
+    <text class="ws-mono-accent" x="86" y="182">platform/</text>
+    <text class="ws-mono" x="86" y="200">linked worktree</text>
+    <rect class="ws-panel-inner" x="268" y="162" width="180" height="48" />
+    <text class="ws-mono-accent" x="284" y="182">api/</text>
+    <text class="ws-mono" x="284" y="200">linked worktree</text>
+    <rect class="ws-panel-inner" x="466" y="162" width="180" height="48" />
+    <text class="ws-mono-accent" x="482" y="182">frontend/</text>
+    <text class="ws-mono" x="482" y="200">linked worktree</text>
+    <rect class="ws-panel-inner" x="40" y="246" width="640" height="110" />
+    <circle cx="60" cy="272" r="4" fill="#f28c28" />
+    <text class="ws-title" x="74" y="277">thread: billing-fix</text>
+    <rect class="ws-panel-inner" x="70" y="292" width="180" height="48" />
+    <text class="ws-mono-accent" x="86" y="312">platform/</text>
+    <text class="ws-mono" x="86" y="330">linked worktree</text>
+    <rect class="ws-panel-inner" x="268" y="292" width="180" height="48" />
+    <text class="ws-mono-accent" x="284" y="312">api/</text>
+    <text class="ws-mono" x="284" y="330">linked worktree</text>
+    <rect class="ws-panel-inner" x="466" y="292" width="180" height="48" />
+    <text class="ws-mono-accent" x="482" y="312">frontend/</text>
+    <text class="ws-mono" x="482" y="330">linked worktree</text>
+  </svg>
 </div>
 
 <div class="home-features">
