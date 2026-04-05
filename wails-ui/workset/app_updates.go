@@ -186,11 +186,7 @@ func (a *App) resolveUpdateChannel(raw string) (UpdateChannel, error) {
 }
 
 func (a *App) loadUpdatePreferencesLocked() (UpdatePreferences, error) {
-	defaults := UpdatePreferences{
-		Channel:          string(UpdateChannelStable),
-		AutoCheck:        true,
-		DismissedVersion: "",
-	}
+	defaults := a.defaultUpdatePreferences()
 	path, err := a.updatePreferencesPath()
 	if err != nil {
 		return defaults, err
@@ -210,7 +206,13 @@ func (a *App) loadUpdatePreferencesLocked() (UpdatePreferences, error) {
 
 	prefs := file.Preferences
 	if normalizeUpdateChannel(prefs.Channel) == "" {
-		prefs.Channel = string(UpdateChannelStable)
+		prefs.Channel = defaults.Channel
+	}
+	if shouldMigrateUpdatePreferencesToCurrentTrack(prefs, defaults) {
+		prefs.Channel = defaults.Channel
+		if err := a.persistUpdatePreferencesLocked(prefs); err != nil {
+			return prefs, err
+		}
 	}
 	return prefs, nil
 }
@@ -312,4 +314,28 @@ func normalizeUpdateChannel(raw string) UpdateChannel {
 	default:
 		return ""
 	}
+}
+
+func (a *App) defaultUpdatePreferences() UpdatePreferences {
+	channel := updateChannelForVersion(a.GetAppVersion().Version)
+	if channel == "" {
+		channel = UpdateChannelStable
+	}
+	return UpdatePreferences{
+		Channel:          string(channel),
+		AutoCheck:        true,
+		DismissedVersion: "",
+	}
+}
+
+func shouldMigrateUpdatePreferencesToCurrentTrack(
+	prefs UpdatePreferences,
+	defaults UpdatePreferences,
+) bool {
+	currentTrack := normalizeUpdateChannel(defaults.Channel)
+	savedTrack := normalizeUpdateChannel(prefs.Channel)
+	if currentTrack == "" || savedTrack == "" || currentTrack == savedTrack {
+		return false
+	}
+	return currentTrack == UpdateChannelAlpha && savedTrack == UpdateChannelStable
 }

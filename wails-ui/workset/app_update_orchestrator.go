@@ -123,6 +123,10 @@ func (o updateOrchestrator) CheckForUpdates(input UpdateCheckRequest) (UpdateChe
 		status = "update_available"
 		message = fmt.Sprintf("Update available: %s", latestVersion)
 		release = &manifest.Latest
+	} else if shouldOfferTrackSwitch(currentVersion, channel, latestVersion) {
+		status = "update_available"
+		message = fmt.Sprintf("Switch to %s track: %s", channel, latestVersion)
+		release = &manifest.Latest
 	}
 
 	result := UpdateCheckResult{
@@ -136,6 +140,17 @@ func (o updateOrchestrator) CheckForUpdates(input UpdateCheckRequest) (UpdateChe
 	o.persistPhase(updateStatePhaseIdle, string(channel), currentVersion, latestVersion, message)
 
 	return result, nil
+}
+
+func shouldOfferTrackSwitch(currentVersion string, selectedChannel UpdateChannel, latestVersion string) bool {
+	if selectedChannel == "" || currentVersion == "" || latestVersion == "" {
+		return false
+	}
+	currentChannel := updateChannelForVersion(currentVersion)
+	if currentChannel == "" || currentChannel == selectedChannel {
+		return false
+	}
+	return normalizeVersion(currentVersion) != normalizeVersion(latestVersion)
 }
 
 func (o updateOrchestrator) StartUpdate(input UpdateStartRequest) (UpdateStartResult, error) {

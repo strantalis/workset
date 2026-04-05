@@ -104,6 +104,60 @@ func TestGetUpdatePreferencesBackfillsDismissedVersionForOlderFiles(t *testing.T
 	}
 }
 
+func TestGetUpdatePreferencesDefaultsToCurrentVersionTrack(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	originalVersion := appVersion
+	t.Cleanup(func() {
+		appVersion = originalVersion
+	})
+	appVersion = "v0.4.0-alpha.2"
+
+	a := &App{}
+	prefs, err := a.GetUpdatePreferences()
+	if err != nil {
+		t.Fatalf("GetUpdatePreferences returned error: %v", err)
+	}
+	if prefs.Channel != string(UpdateChannelAlpha) {
+		t.Fatalf("expected alpha channel default for prerelease build, got %q", prefs.Channel)
+	}
+	if !prefs.AutoCheck {
+		t.Fatalf("expected auto-check to default on")
+	}
+}
+
+func TestGetUpdatePreferencesMigratesStaleStablePreferenceForPrereleaseBuild(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	originalVersion := appVersion
+	t.Cleanup(func() {
+		appVersion = originalVersion
+	})
+	appVersion = "v0.4.0-alpha.2"
+
+	a := &App{}
+	appDir, err := worksetAppDir()
+	if err != nil {
+		t.Fatalf("worksetAppDir returned error: %v", err)
+	}
+	if err := os.MkdirAll(appDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	legacyJSON := `{"version":1,"preferences":{"channel":"stable","autoCheck":true,"dismissedVersion":"v0.4.0-alpha.2"}}`
+	if err := os.WriteFile(filepath.Join(appDir, "ui_update_preferences.json"), []byte(legacyJSON), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	prefs, err := a.GetUpdatePreferences()
+	if err != nil {
+		t.Fatalf("GetUpdatePreferences returned error: %v", err)
+	}
+	if prefs.Channel != string(UpdateChannelAlpha) {
+		t.Fatalf("expected migrated alpha channel, got %q", prefs.Channel)
+	}
+	if prefs.DismissedVersion != "v0.4.0-alpha.2" {
+		t.Fatalf("expected dismissed version to be preserved, got %q", prefs.DismissedVersion)
+	}
+}
+
 func TestUpdateOrchestratorCheckForUpdatesStateTransitions(t *testing.T) {
 	now := time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC)
 	var states []UpdateState
@@ -148,6 +202,53 @@ func TestUpdateOrchestratorCheckForUpdatesStateTransitions(t *testing.T) {
 	}
 	if states[len(states)-1].LatestVersion != "v1.1.0" {
 		t.Fatalf("expected latest version in final state, got %q", states[len(states)-1].LatestVersion)
+	}
+}
+
+func TestUpdateOrchestratorCheckForUpdatesOffersTrackSwitch(t *testing.T) {
+	now := time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC)
+	var states []UpdateState
+
+	orch := updateOrchestrator{
+		resolveChannel: func(_ string) (UpdateChannel, error) {
+			return UpdateChannelStable, nil
+		},
+		currentVersion: func() string {
+			return "v0.4.0-alpha.2"
+		},
+		fetchManifest: func(UpdateChannel) (UpdateManifest, error) {
+			return UpdateManifest{
+				Latest: UpdateRelease{
+					Version: "v0.3.1",
+				},
+			}, nil
+		},
+		persistState: func(state UpdateState) error {
+			states = append(states, state)
+			return nil
+		},
+		nowUTC:          func() time.Time { return now },
+		compareVersions: compareVersions,
+	}
+
+	result, err := orch.CheckForUpdates(UpdateCheckRequest{})
+	if err != nil {
+		t.Fatalf("CheckForUpdates returned error: %v", err)
+	}
+	if result.Status != "update_available" {
+		t.Fatalf("expected update_available for track switch, got %q", result.Status)
+	}
+	if result.Message != "Switch to stable track: v0.3.1" {
+		t.Fatalf("unexpected message %q", result.Message)
+	}
+	if result.Release == nil || result.Release.Version != "v0.3.1" {
+		t.Fatalf("expected release payload for track switch, got %#v", result.Release)
+	}
+
+	phases := collectUpdatePhases(states)
+	wantPhases := []string{updateStatePhaseChecking, updateStatePhaseIdle}
+	if !reflect.DeepEqual(phases, wantPhases) {
+		t.Fatalf("unexpected phases: got %v want %v", phases, wantPhases)
 	}
 }
 

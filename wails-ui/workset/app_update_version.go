@@ -29,6 +29,17 @@ func normalizeVersion(raw string) string {
 	return v
 }
 
+func updateChannelForVersion(raw string) UpdateChannel {
+	parsed, err := parseVersion(normalizeVersion(raw))
+	if err != nil {
+		return ""
+	}
+	if parsed.hasPrelabel {
+		return UpdateChannelAlpha
+	}
+	return UpdateChannelStable
+}
+
 func compareVersions(left, right string) (int, error) {
 	lv, err := parseVersion(left)
 	if err != nil {

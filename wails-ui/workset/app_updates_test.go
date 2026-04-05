@@ -62,6 +62,30 @@ func TestNormalizeUpdateChannel(t *testing.T) {
 	}
 }
 
+func TestUpdateChannelForVersion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		version string
+		want    UpdateChannel
+	}{
+		{name: "stable release", version: "v1.2.3", want: UpdateChannelStable},
+		{name: "alpha prerelease", version: "v1.2.3-alpha.2", want: UpdateChannelAlpha},
+		{name: "dev build", version: "dev", want: ""},
+		{name: "invalid", version: "wat", want: ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := updateChannelForVersion(tc.version); got != tc.want {
+				t.Fatalf("updateChannelForVersion(%q) = %q, want %q", tc.version, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSafeExtractTarget(t *testing.T) {
 	t.Parallel()
 
