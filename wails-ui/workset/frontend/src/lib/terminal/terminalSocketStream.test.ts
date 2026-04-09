@@ -105,6 +105,7 @@ describe('terminalSocketStream', () => {
 			sessionId: 'ws::term',
 			streamId: expect.any(String),
 			token: 'token',
+			startOffset: 0,
 		});
 		expect(onChunk).not.toHaveBeenCalled();
 		await connectPromise;

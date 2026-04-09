@@ -122,11 +122,28 @@ func resolveShellCommand() (string, []string) {
 	if shell == "" {
 		shell = "/bin/sh"
 	}
-	// App startup already hydrates PATH/locale/agent state from a login-shell
-	// snapshot. For PTY sessions, launch the user's shell plainly so the
-	// terminal matches native terminal semantics instead of re-running login
-	// shell initialization on every tab.
+	// On macOS, launch via /usr/bin/login to match native terminal behavior
+	// (Ghostty, Terminal.app, iTerm2). The login utility prints the
+	// "Last login" banner and starts the shell as a login shell.
+	//   -f: skip authentication (already logged in)
+	//   -p: preserve the environment
+	//   -l: launch as login shell
+	if runtime.GOOS == "darwin" {
+		username := currentUsername()
+		if username != "" {
+			return "/usr/bin/login", []string{"-fpl", username, shell}
+		}
+	}
+	// Fallback: launch as login shell via argv[0] convention.
 	return shell, nil
+}
+
+func currentUsername() string {
+	current, err := user.Current()
+	if err != nil {
+		return ""
+	}
+	return current.Username
 }
 
 func lookupUserShell() string {

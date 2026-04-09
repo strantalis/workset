@@ -1,6 +1,7 @@
 package terminalservice
 
 import (
+	"os/user"
 	"reflect"
 	"runtime"
 	"strings"
@@ -81,14 +82,34 @@ func TestResolveShellCommandUsesPlainShellStartup(t *testing.T) {
 		t.Skip("unix shell startup semantics do not apply on windows")
 	}
 
+	username := ""
+	if u, err := user.Current(); err == nil {
+		username = u.Username
+	}
+
 	tests := []struct {
 		name      string
 		shell     string
 		wantShell string
+		wantArgs  []string
 	}{
-		{name: "zsh", shell: "/bin/zsh", wantShell: "/bin/zsh"},
-		{name: "bash", shell: "/bin/bash", wantShell: "/bin/bash"},
-		{name: "fish", shell: "/opt/homebrew/bin/fish", wantShell: "/opt/homebrew/bin/fish"},
+		{name: "zsh", shell: "/bin/zsh", wantShell: "/usr/bin/login", wantArgs: []string{"-fpl", username, "/bin/zsh"}},
+		{name: "bash", shell: "/bin/bash", wantShell: "/usr/bin/login", wantArgs: []string{"-fpl", username, "/bin/bash"}},
+		{name: "fish", shell: "/opt/homebrew/bin/fish", wantShell: "/usr/bin/login", wantArgs: []string{"-fpl", username, "/opt/homebrew/bin/fish"}},
+	}
+
+	if runtime.GOOS != "darwin" {
+		// Non-macOS falls back to plain shell launch.
+		tests = []struct {
+			name      string
+			shell     string
+			wantShell string
+			wantArgs  []string
+		}{
+			{name: "zsh", shell: "/bin/zsh", wantShell: "/bin/zsh", wantArgs: nil},
+			{name: "bash", shell: "/bin/bash", wantShell: "/bin/bash", wantArgs: nil},
+			{name: "fish", shell: "/opt/homebrew/bin/fish", wantShell: "/opt/homebrew/bin/fish", wantArgs: nil},
+		}
 	}
 
 	for _, tt := range tests {
@@ -98,8 +119,8 @@ func TestResolveShellCommandUsesPlainShellStartup(t *testing.T) {
 			if gotShell != tt.wantShell {
 				t.Fatalf("resolveShellCommand shell = %q, want %q", gotShell, tt.wantShell)
 			}
-			if !reflect.DeepEqual(gotArgs, []string(nil)) {
-				t.Fatalf("resolveShellCommand args = %v, want nil", gotArgs)
+			if !reflect.DeepEqual(gotArgs, tt.wantArgs) {
+				t.Fatalf("resolveShellCommand args = %v, want %v", gotArgs, tt.wantArgs)
 			}
 		})
 	}

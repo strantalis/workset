@@ -8,12 +8,12 @@ type attachSnapshot struct {
 	replaySkipped   bool
 }
 
-func (s *Session) snapshotAttachLocked() attachSnapshot {
+func (s *Session) snapshotAttachLocked(clientOffset int64) attachSnapshot {
 	snapshot := attachSnapshot{}
 
 	if s.buffer != nil {
 		oldest, current := s.buffer.SnapshotOffsets()
-		replaySince := int64(0)
+		replaySince := clientOffset
 		prefix := s.modeReplayPrefixLocked()
 		if s.modeState.altScreen {
 			snapshot.replaySkipped = true

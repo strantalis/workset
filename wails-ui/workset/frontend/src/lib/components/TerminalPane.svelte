@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { createTerminalPerformanceSampler } from '../terminal/terminalPerformance';
 	import type { TerminalSnapshotLike } from '../terminal/terminalEmulatorContracts';
+	import { fade } from 'svelte/transition';
 	import TerminalController from '../terminal/TerminalController.svelte';
 
 	interface Props {
@@ -133,7 +134,37 @@
 		controller?.focus?.();
 	});
 
-	const activeStatus = $derived(controllerState.status);
+	let debouncedStarting = $state(false);
+	let startingTimer: ReturnType<typeof setTimeout> | null = null;
+	const STARTING_DEBOUNCE_MS = 300;
+
+	$effect(() => {
+		const status = controllerState.status;
+		if (status === 'starting') {
+			if (!startingTimer) {
+				startingTimer = setTimeout(() => {
+					debouncedStarting = true;
+					startingTimer = null;
+				}, STARTING_DEBOUNCE_MS);
+			}
+		} else {
+			if (startingTimer) {
+				clearTimeout(startingTimer);
+				startingTimer = null;
+			}
+			debouncedStarting = false;
+		}
+		return () => {
+			if (startingTimer) {
+				clearTimeout(startingTimer);
+				startingTimer = null;
+			}
+		};
+	});
+
+	const activeStatus = $derived(
+		controllerState.status === 'starting' && !debouncedStarting ? '' : controllerState.status,
+	);
 	const activeMessage = $derived(controllerState.message);
 	const activeHealth = $derived(controllerState.health);
 	const activeHealthMessage = $derived(controllerState.healthMessage);
@@ -240,6 +271,7 @@
 				class:is-idle={activeStatus === 'idle'}
 				class:is-closed={activeStatus === 'closed'}
 				class:is-starting={activeStatus === 'starting'}
+				out:fade={{ duration: 150 }}
 			>
 				{#if activeStatus === 'starting'}
 					<div class="status-content">

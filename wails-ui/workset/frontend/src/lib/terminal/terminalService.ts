@@ -71,6 +71,9 @@ const { pendingInput } = terminalServiceState;
 const lastInboundSeq = new Map<string, { seq: number; bytes: number; at: number }>();
 const lastStreamOffset = new Map<string, number>();
 const consumedStartupSnapshots = new Set<string>();
+const terminalWriteTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+const terminalWriteGeneration = new Map<string, number>();
+const WRITE_INFLIGHT_TIMEOUT_MS = 5_000;
 
 const buildTerminalKey = terminalContextRegistry.buildTerminalKey;
 
@@ -329,6 +332,12 @@ const scheduleTerminalWriteQueue = (id: string): void => {
 };
 
 const clearTerminalWriteQueue = (id: string): void => {
+	const timeout = terminalWriteTimeouts.get(id);
+	if (timeout != null) {
+		clearTimeout(timeout);
+		terminalWriteTimeouts.delete(id);
+	}
+	terminalWriteGeneration.delete(id);
 	terminalWriteQueues.delete(id);
 };
 
@@ -355,6 +364,36 @@ const pumpTerminalWriteQueue = (id: string): void => {
 
 	state.inFlight = true;
 	terminalWriteQueues.set(id, state);
+
+	const writeGen = (terminalWriteGeneration.get(id) ?? 0) + 1;
+	terminalWriteGeneration.set(id, writeGen);
+
+	const existingTimeout = terminalWriteTimeouts.get(id);
+	if (existingTimeout != null) {
+		clearTimeout(existingTimeout);
+	}
+	const safetyTimeout = setTimeout(() => {
+		terminalWriteTimeouts.delete(id);
+		if (terminalWriteGeneration.get(id) !== writeGen) return;
+		const current = terminalWriteQueues.get(id);
+		if (!current || !current.inFlight) return;
+		runtime.logDebug(id, 'frontend_write_queue_timeout', {
+			queueDepth: current.queue.length,
+			batchSize: batch.length,
+			bytes: mergedBytes,
+			timeoutMs: WRITE_INFLIGHT_TIMEOUT_MS,
+		});
+		current.inFlight = false;
+		current.queue.splice(0, batch.length);
+		if (current.queue.length === 0) {
+			terminalWriteQueues.delete(id);
+		} else {
+			terminalWriteQueues.set(id, current);
+			scheduleTerminalWriteQueue(id);
+		}
+	}, WRITE_INFLIGHT_TIMEOUT_MS);
+	terminalWriteTimeouts.set(id, safetyTimeout);
+
 	runtime.logDebug(id, 'frontend_output_chunk_batch', {
 		firstSeq: first.seq,
 		lastSeq: last.seq,
@@ -367,6 +406,12 @@ const pumpTerminalWriteQueue = (id: string): void => {
 		stats.bytesIn += mergedBytes;
 	});
 	handle.terminal.write(mergedChunk, () => {
+		const timeout = terminalWriteTimeouts.get(id);
+		if (timeout != null) {
+			clearTimeout(timeout);
+			terminalWriteTimeouts.delete(id);
+		}
+		if (terminalWriteGeneration.get(id) !== writeGen) return;
 		runtime.updateStatsLastOutput(id);
 		const current = terminalWriteQueues.get(id);
 		if (!current) return;
@@ -481,7 +526,11 @@ const writeTerminalChunkDirect = (
 };
 
 const resetSessionState = (id: string): void => {
+	terminalSnapshotManager.clear(id);
+	consumedStartupSnapshots.delete(id);
+	terminalSocketStream.disconnect(id);
 	clearTerminalWriteQueue(id);
+	baseTerminalResourceLifecycle.resetTerminalInstance(id);
 	lastInboundSeq.delete(id);
 	lastStreamOffset.delete(id);
 	lastLoggedViewState.delete(id);
@@ -552,6 +601,7 @@ const terminalResourceLifecycle = {
 		consumedStartupSnapshots.delete(id);
 		terminalSocketStream.disconnect(id);
 		clearTerminalWriteQueue(id);
+		baseTerminalResourceLifecycle.resetTerminalInstance(id);
 		lastStreamOffset.delete(id);
 		lastLoggedViewState.delete(id);
 		baseTerminalResourceLifecycle.resetSessionState(id);
@@ -616,7 +666,8 @@ const terminalSessionCoordinator = createTerminalSessionCoordinator({
 	setCurrentCursorBlink: (value) => terminalFontSizeController.setCursorBlink(value),
 	onSessionReady: async (id, descriptor) => {
 		try {
-			await terminalSocketStream.connect(id, descriptor);
+			const offset = lastStreamOffset.get(id) ?? 0;
+			await terminalSocketStream.connect(id, { ...descriptor, startOffset: offset });
 		} catch (error) {
 			runtime.logDebug(id, 'frontend_socket_connect_failed', {
 				error: String(error),

@@ -114,12 +114,12 @@ func (s *Server) handleWebsocketAttach(w http.ResponseWriter, r *http.Request) {
 	}
 
 	session.outputMu.Lock()
-	snapshot := session.snapshotAttachLocked()
+	snapshot := session.snapshotAttachLocked(req.StartOffset)
 	sub := session.subscribe(streamID, snapshot.replayNext)
 	session.outputMu.Unlock()
 	state := session.getStreamState()
 	debugServerf(
-		"ws_attach_open session=%s stream=%s remote=%s subscribers=%d streams=%q replay_next=%d replay_bytes=%d replay_truncated=%t replay_skipped=%t",
+		"ws_attach_open session=%s stream=%s remote=%s subscribers=%d streams=%q replay_next=%d replay_bytes=%d replay_truncated=%t replay_skipped=%t client_offset=%d",
 		req.SessionID,
 		streamID,
 		r.RemoteAddr,
@@ -129,6 +129,7 @@ func (s *Server) handleWebsocketAttach(w http.ResponseWriter, r *http.Request) {
 		len(snapshot.replay),
 		snapshot.replayTruncated,
 		snapshot.replaySkipped,
+		req.StartOffset,
 	)
 
 	closeReason := "handler_exit"

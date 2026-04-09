@@ -2,6 +2,7 @@ type TerminalSocketDescriptor = {
 	sessionId: string;
 	socketUrl?: string;
 	socketToken?: string;
+	startOffset?: number;
 };
 
 type TerminalSocketControlMessage = {
@@ -53,6 +54,7 @@ type ActiveSocket = {
 };
 
 const SOCKET_HEADER_BYTES = 8;
+const SOCKET_CONNECT_TIMEOUT_MS = 10_000;
 
 const resolveSocketURL = (descriptor: TerminalSocketDescriptor): string => {
 	const value = descriptor.socketUrl?.trim() ?? '';
@@ -219,9 +221,27 @@ export const createTerminalSocketStream = (deps: TerminalSocketDependencies) => 
 		await new Promise<void>((resolve, reject) => {
 			let settled = false;
 
+			const connectTimeout = setTimeout(() => {
+				if (settled) return;
+				settled = true;
+				deps.logDebug?.(id, 'socket_connect_timeout', {
+					socketURL,
+					sessionID,
+					streamID,
+					timeoutMs: SOCKET_CONNECT_TIMEOUT_MS,
+				});
+				const current = activeSockets.get(id);
+				if (current?.connectKey === connectKey) {
+					current.intentional = true;
+					current.socket.close(1000, 'connect timeout');
+				}
+				reject(new Error('Terminal socket connect timed out.'));
+			}, SOCKET_CONNECT_TIMEOUT_MS);
+
 			const fail = (error: string): void => {
 				if (!settled) {
 					settled = true;
+					clearTimeout(connectTimeout);
 					reject(new Error(error));
 					return;
 				}
@@ -278,6 +298,7 @@ export const createTerminalSocketStream = (deps: TerminalSocketDependencies) => 
 						sessionId: sessionID,
 						streamId: streamID,
 						token: socketToken,
+						startOffset: descriptor.startOffset ?? 0,
 					}),
 				);
 			});
@@ -307,6 +328,7 @@ export const createTerminalSocketStream = (deps: TerminalSocketDependencies) => 
 						deps.onReady?.(id);
 						if (!settled) {
 							settled = true;
+							clearTimeout(connectTimeout);
 							resolve();
 						}
 						return;
@@ -368,6 +390,7 @@ export const createTerminalSocketStream = (deps: TerminalSocketDependencies) => 
 				}
 				if (!settled) {
 					settled = true;
+					clearTimeout(connectTimeout);
 					reject(new Error(event.reason || `terminal socket closed (${event.code})`));
 					return;
 				}

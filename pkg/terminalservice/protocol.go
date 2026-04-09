@@ -78,6 +78,7 @@ type AttachRequest struct {
 	SessionID       string `json:"sessionId"`
 	StreamID        string `json:"streamId,omitempty"`
 	Token           string `json:"token,omitempty"`
+	StartOffset     int64  `json:"startOffset,omitempty"`
 }
 
 type WebsocketControlRequest struct {

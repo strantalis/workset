@@ -363,7 +363,7 @@ func (s *Server) handleAttach(conn net.Conn, line []byte) {
 		streamID = newStreamID()
 	}
 	session.outputMu.Lock()
-	snapshot := session.snapshotAttachLocked()
+	snapshot := session.snapshotAttachLocked(req.StartOffset)
 	sub := session.subscribe(streamID, snapshot.replayNext)
 	session.outputMu.Unlock()
 	defer session.unsubscribe(sub)
