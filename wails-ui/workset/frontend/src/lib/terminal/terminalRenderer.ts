@@ -43,6 +43,23 @@ export const createTerminalInstance = async (input: {
 			cursor: themeCursor,
 			selectionBackground: themeSelectionBackground,
 			selectionForeground: themeSelectionForeground,
+			// ANSI 16-color palette (indices 0-15)
+			black: '#1c2b3a',
+			red: '#ef4444',
+			green: '#86c442',
+			yellow: '#f59e0b',
+			blue: '#2d8cff',
+			magenta: '#8b8aed',
+			cyan: '#56b6c2',
+			white: '#a3b5c9',
+			brightBlack: '#3a4f63',
+			brightRed: '#f87171',
+			brightGreen: '#a3d977',
+			brightYellow: '#fbbf24',
+			brightBlue: '#60a5fa',
+			brightMagenta: '#a78bfa',
+			brightCyan: '#67d4e0',
+			brightWhite: '#f2f6fb',
 		} as ITheme,
 	};
 
