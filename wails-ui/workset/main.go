@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"log"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -44,6 +45,20 @@ func main() {
 		Height:           defaultWindowHeight,
 		URL:              "/",
 		BackgroundColour: application.NewRGB(8, 16, 24),
+		KeyBindings: map[string]func(window application.Window){
+			"CmdOrCtrl+C": func(window application.Window) {
+				logTerminalDebug(TerminalDebugPayload{
+					WorkspaceID: "__app__",
+					TerminalID:  "__window__",
+					Event:       "native_copy_keybinding",
+					Details:     `{"accelerator":"CmdOrCtrl+C"}`,
+				})
+				window.EmitEvent("workset:native-copy-command", map[string]any{
+					"accelerator": "CmdOrCtrl+C",
+					"emittedAt":   time.Now().Format(time.RFC3339Nano),
+				})
+			},
+		},
 		Mac: application.MacWindow{
 			TitleBar:                application.MacTitleBarHidden,
 			InvisibleTitleBarHeight: 34,

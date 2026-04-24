@@ -44,6 +44,10 @@ vi.mock('@wailsio/runtime', () => ({
 	Browser: {
 		OpenURL: vi.fn(async () => undefined),
 	},
+	Clipboard: {
+		SetText: vi.fn(async () => undefined),
+		Text: vi.fn(async () => ''),
+	},
 	Events: {
 		On: vi.fn(() => () => undefined),
 		Off: vi.fn(),

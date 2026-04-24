@@ -1,4 +1,5 @@
 import { type TerminalAttachOpenHandle } from './terminalEmulatorContracts';
+import { installTerminalClipboardBridge } from './terminalClipboardBridge';
 
 export type { TerminalAttachOpenHandle } from './terminalEmulatorContracts';
 
@@ -55,6 +56,9 @@ export const createTerminalAttachOpenLifecycle = <THandle extends TerminalAttach
 			if (needsOpen) {
 				handle.container.replaceChildren();
 				handle.terminal.open(handle.container);
+				installTerminalClipboardBridge(handle.terminal, {
+					logDebug: (event, details) => deps.traceAttach?.(id, event, details),
+				});
 				handle.opened = true;
 				// Disable the canvas-rendered scrollbar for a cleaner look.
 				const renderer = (handle.terminal as { renderer?: { renderScrollbarEnabled?: boolean } })

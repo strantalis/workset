@@ -55,6 +55,7 @@ export type TerminalViewportLike = {
 			viewportY: number;
 		};
 	};
+	clearSelection?: () => void;
 	scrollToBottom: () => void;
 	focus: () => void;
 };

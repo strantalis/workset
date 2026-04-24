@@ -61,8 +61,13 @@ export const createTerminalViewportResizeController = <T extends TerminalViewpor
 		const handle = options.getHandle(id);
 		if (!handle) return;
 		if (!hasRenderableViewport(handle)) return;
-		handle.fitAddon.fit();
-		options.resizeOverlay(handle);
+		try {
+			handle.terminal.clearSelection?.();
+			handle.fitAddon.fit();
+			options.resizeOverlay(handle);
+		} catch {
+			return;
+		}
 		if (!resizeSession) return;
 		options.resizeToFit(id, handle);
 	};

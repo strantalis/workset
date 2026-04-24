@@ -16,6 +16,7 @@ const createHandle = (input: {
 	};
 	const terminal: TerminalViewportResizeHandle['terminal'] = {
 		buffer,
+		clearSelection: vi.fn(),
 		scrollToBottom: vi.fn(() => {
 			buffer.active.viewportY = buffer.active.baseY;
 		}),
@@ -85,9 +86,32 @@ describe('terminalViewportResizeController', () => {
 
 		controller.fitTerminal(id, true);
 
+		expect(handle.terminal.clearSelection).toHaveBeenCalledTimes(1);
 		expect(handle.fitAddon.fit).toHaveBeenCalledTimes(1);
 		expect(resizeOverlay).toHaveBeenCalledWith(handle);
 		expect(resizeToFit).toHaveBeenCalledWith(id, handle);
+	});
+
+	it('skips resize side effects when the terminal cannot clear stale selection', () => {
+		const id = 'ws::term';
+		const handle = createHandle({ baseY: 10, viewportY: 10 });
+		handle.terminal.clearSelection = vi.fn(() => {
+			throw new Error('selection state unavailable');
+		});
+		const resizeToFit = vi.fn();
+		const resizeOverlay = vi.fn();
+		const controller = createTerminalViewportResizeController({
+			getHandle: (key) => (key === id ? handle : undefined),
+			hasStarted: () => true,
+			resizeToFit,
+			resizeOverlay,
+		});
+
+		controller.fitTerminal(id, true);
+
+		expect(handle.fitAddon.fit).not.toHaveBeenCalled();
+		expect(resizeOverlay).not.toHaveBeenCalled();
+		expect(resizeToFit).not.toHaveBeenCalled();
 	});
 
 	it('skips fit when terminal host is disconnected or zero-sized', () => {
