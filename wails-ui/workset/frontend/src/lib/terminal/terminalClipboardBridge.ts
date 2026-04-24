@@ -373,21 +373,19 @@ const installSelectionDebugBridge = (terminal: TerminalWithClipboardBridge): voi
 		return;
 	}
 	terminal.onSelectionChange(() => {
-		let length = 0;
-		let hasSelection = false;
+		let selectionDetails: { hasSelection: boolean; length: number };
 		try {
-			hasSelection = terminal.hasSelection?.() ?? false;
-			length = terminal.getSelection?.().length ?? 0;
+			selectionDetails = {
+				hasSelection: terminal.hasSelection?.() ?? false,
+				length: terminal.getSelection?.().length ?? 0,
+			};
 		} catch (error) {
 			logClipboardDebug(terminal, 'selection_change_read_failed', {
 				error: error instanceof Error ? error.message : String(error),
 			});
 			return;
 		}
-		logClipboardDebug(terminal, 'selection_change', {
-			hasSelection,
-			length,
-		});
+		logClipboardDebug(terminal, 'selection_change', selectionDetails);
 	});
 };
 
