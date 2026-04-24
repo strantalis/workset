@@ -1,0 +1,49 @@
+.layout-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.layout-pane.focused {
+  outline: 1px solid var(--accent-soft);
+  outline-offset: -1px;
+}
+
+.layout-split {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.layout-split__divider {
+  flex-shrink: 0;
+  background: var(--border);
+  position: relative;
+  z-index: 1;
+}
+
+.layout-split__divider--row {
+  width: 5px;
+  cursor: col-resize;
+}
+
+.layout-split__divider--col {
+  height: 5px;
+  cursor: row-resize;
+}
+
+.layout-split__divider:hover {
+  background: var(--accent-soft);
+}
+
+.layout-split__drag-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+}

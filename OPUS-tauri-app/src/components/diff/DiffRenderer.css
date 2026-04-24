@@ -1,0 +1,71 @@
+.diff-renderer {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.diff-renderer--binary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-family: var(--font-body);
+}
+
+.diff-renderer__truncated {
+  padding: 8px 12px;
+  background: rgba(251, 191, 36, 0.1);
+  border-bottom: 1px solid var(--border);
+  color: var(--warning);
+  font-family: var(--font-body);
+  font-size: 12px;
+}
+
+.diff-renderer__content {
+  margin: 0;
+  padding: 0;
+}
+
+.diff-line {
+  display: flex;
+  padding: 0 12px;
+  min-height: 20px;
+}
+
+.diff-line--added {
+  background: rgba(52, 211, 153, 0.08);
+}
+
+.diff-line--removed {
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.diff-line--hunk {
+  background: rgba(129, 140, 248, 0.06);
+  color: var(--accent);
+}
+
+.diff-line--meta {
+  color: var(--muted);
+}
+
+.diff-line__number {
+  width: 48px;
+  text-align: right;
+  padding-right: 12px;
+  color: var(--muted);
+  opacity: 0.5;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.diff-line__text {
+  flex: 1;
+  white-space: pre-wrap;
+  word-break: break-all;
+  min-width: 0;
+}

@@ -1,0 +1,43 @@
+.modal-card--narrow {
+  max-width: 360px;
+}
+
+.create-tab-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.create-tab-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  text-align: left;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.create-tab-option:hover {
+  background: var(--bg);
+  border-color: var(--accent);
+}
+
+.create-tab-option__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.create-tab-option__title {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.create-tab-option__desc {
+  font-size: 11px;
+  color: var(--muted);
+}
