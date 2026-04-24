@@ -266,6 +266,24 @@ func hookExecutionsForEvent(report hooks.RunReport, repoName string, event hooks
 	return results
 }
 
+func (s *Service) emitWorktreeCloneProgress(workspace, repo, phase, reason string, err error) {
+	if s == nil || s.hookEvents == nil {
+		return
+	}
+	progress := HookProgress{
+		Phase:     phase,
+		Event:     "worktree.created",
+		Repo:      repo,
+		Workspace: workspace,
+		Reason:    reason,
+	}
+	if err != nil {
+		progress.Status = HookRunStatusFailed
+		progress.Error = err.Error()
+	}
+	s.hookEvents.OnHookProgress(progress)
+}
+
 type hookObserverAdapter struct {
 	observer HookProgressObserver
 }

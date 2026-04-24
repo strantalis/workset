@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import { ArrowRight, Check, Loader2, Search } from '@lucide/svelte';
+	import { ArrowRight, Check, Loader2, Search, X } from '@lucide/svelte';
 	import type { RepoHooksPreviewUnavailableReason } from '../../api/workspaces';
-	import type { Alias } from '../../types';
+	import type { Alias, HookExecution } from '../../types';
 	import type { GitHubRepoSearchItem } from '../../types';
 	import type { WorkspaceActionDirectRepo } from '../../services/workspaceActionContextService';
+	import type { RepoCreationStatus } from '../../services/workspaceActionHooks';
 	import { createRepoSearch } from '../../composables/createRepoSearch.svelte';
 	import { deriveRepoName } from '../../names';
 
@@ -28,6 +29,9 @@
 		threadHookRows?: ThreadHookPreviewRow[];
 		threadHooksLoading?: boolean;
 		threadHooksError?: string | null;
+		creating?: boolean;
+		repoProgress?: Record<string, RepoCreationStatus>;
+		hookRuns?: HookExecution[];
 		filteredAliases: Alias[];
 		selectedAliases: Set<string>;
 		getAliasSource: (alias: Alias) => string;
@@ -56,6 +60,9 @@
 		threadHookRows = [],
 		threadHooksLoading = false,
 		threadHooksError = null,
+		creating = false,
+		repoProgress = {},
+		hookRuns = [],
 		filteredAliases,
 		selectedAliases,
 		getAliasSource,
@@ -144,6 +151,46 @@
 		}
 		return 'No hooks';
 	};
+
+	type HookChipState = 'queued' | 'running' | 'ok' | 'failed' | 'skipped';
+
+	const hookRunMap = $derived.by(() => {
+		const map = new Map<string, HookExecution>();
+		for (const run of hookRuns) {
+			if (!run.repo || !run.id) continue;
+			map.set(`${run.repo}:${run.id}`, run);
+		}
+		return map;
+	});
+
+	const showLiveProgress = $derived(
+		isThreadMode && (creating || Object.keys(repoProgress).length > 0),
+	);
+
+	const getRepoStatus = (repoName: string): RepoCreationStatus | null => {
+		const entry = repoProgress[repoName];
+		return entry ?? null;
+	};
+
+	const getHookChipState = (repoName: string, hookId: string): HookChipState => {
+		const run = hookRunMap.get(`${repoName}:${hookId}`);
+		if (!run) return 'queued';
+		const status = run.status;
+		if (status === 'ok') return 'ok';
+		if (status === 'failed') return 'failed';
+		if (status === 'running') return 'running';
+		if (status === 'skipped') return 'skipped';
+		return 'queued';
+	};
+
+	const getRepoHooklessLabel = (status: RepoCreationStatus | null): string => {
+		if (status === 'preparing') return 'Queued…';
+		if (status === 'cloning') return 'Cloning…';
+		if (status === 'running-hooks') return 'Finishing…';
+		if (status === 'done') return 'Ready';
+		if (status === 'failed') return 'Failed';
+		return '';
+	};
 </script>
 
 {#if isThreadMode}
@@ -178,14 +225,69 @@
 							</div>
 						{:else}
 							{#each threadHookRows as row (`${row.repoName}`)}
-								<div class="thread-hooks-row">
-									<div class="thread-hooks-repo">{row.repoName}</div>
+								{@const repoStatus = getRepoStatus(row.repoName)}
+								<div
+									class="thread-hooks-row"
+									class:live={showLiveProgress && repoStatus !== null}
+									class:status-preparing={repoStatus === 'preparing'}
+									class:status-cloning={repoStatus === 'cloning'}
+									class:status-running={repoStatus === 'running-hooks'}
+									class:status-done={repoStatus === 'done'}
+									class:status-failed={repoStatus === 'failed'}
+								>
+									<div class="thread-hooks-repo-cell">
+										{#if showLiveProgress && repoStatus}
+											<span
+												class="thread-hooks-status-dot"
+												class:preparing={repoStatus === 'preparing'}
+												class:cloning={repoStatus === 'cloning'}
+												class:running={repoStatus === 'running-hooks'}
+												class:done={repoStatus === 'done'}
+												class:failed={repoStatus === 'failed'}
+												aria-hidden="true"
+											>
+												{#if repoStatus === 'preparing' || repoStatus === 'cloning' || repoStatus === 'running-hooks'}
+													<Loader2 size={11} />
+												{:else if repoStatus === 'done'}
+													<Check size={11} />
+												{:else if repoStatus === 'failed'}
+													<X size={11} />
+												{/if}
+											</span>
+										{/if}
+										<span class="thread-hooks-repo">{row.repoName}</span>
+									</div>
 									{#if !row.hasSource || row.hooks.length === 0}
-										<div class="thread-hooks-empty">{getThreadHookEmptyMessage(row)}</div>
+										<div class="thread-hooks-empty">
+											{#if showLiveProgress && repoStatus}
+												{getRepoHooklessLabel(repoStatus)}
+											{:else}
+												{getThreadHookEmptyMessage(row)}
+											{/if}
+										</div>
 									{:else}
 										<div class="thread-hooks-chip-row">
 											{#each row.hooks as hook (`${row.repoName}-${hook}`)}
-												<span class="thread-hooks-chip">{hook}</span>
+												{@const chipState = showLiveProgress
+													? getHookChipState(row.repoName, hook)
+													: 'queued'}
+												<span
+													class="thread-hooks-chip"
+													class:live={showLiveProgress}
+													class:chip-running={chipState === 'running'}
+													class:chip-ok={chipState === 'ok'}
+													class:chip-failed={chipState === 'failed'}
+													class:chip-skipped={chipState === 'skipped'}
+												>
+													{#if chipState === 'running'}
+														<span class="chip-dot chip-dot-running" aria-hidden="true"></span>
+													{:else if chipState === 'ok'}
+														<Check size={10} />
+													{:else if chipState === 'failed'}
+														<X size={10} />
+													{/if}
+													{hook}
+												</span>
 											{/each}
 										</div>
 									{/if}
@@ -505,18 +607,75 @@
 		gap: 8px;
 		padding: 8px 10px;
 		border-radius: 6px;
-		transition: background var(--transition-fast);
+		transition:
+			background var(--transition-fast),
+			border-color 180ms ease;
+		border: 1px solid transparent;
 	}
 
 	.thread-hooks-row:hover {
 		background: var(--hover-bg);
 	}
 
+	.thread-hooks-row.live.status-cloning,
+	.thread-hooks-row.live.status-running {
+		background: color-mix(in srgb, var(--accent) 6%, transparent);
+		border-color: color-mix(in srgb, var(--accent) 24%, transparent);
+	}
+
+	.thread-hooks-row.live.status-done {
+		background: color-mix(in srgb, var(--success, #4ade80) 5%, transparent);
+		border-color: color-mix(in srgb, var(--success, #4ade80) 22%, transparent);
+	}
+
+	.thread-hooks-row.live.status-failed {
+		background: color-mix(in srgb, var(--danger, #ef4444) 7%, transparent);
+		border-color: color-mix(in srgb, var(--danger, #ef4444) 28%, transparent);
+	}
+
+	.thread-hooks-repo-cell {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		flex-shrink: 0;
+	}
+
+	.thread-hooks-status-dot {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 14px;
+		height: 14px;
+		color: var(--muted);
+		transition:
+			color 180ms ease,
+			transform 180ms ease;
+	}
+
+	.thread-hooks-status-dot.preparing,
+	.thread-hooks-status-dot.cloning,
+	.thread-hooks-status-dot.running {
+		color: var(--accent);
+	}
+
+	.thread-hooks-status-dot.preparing :global(svg),
+	.thread-hooks-status-dot.cloning :global(svg),
+	.thread-hooks-status-dot.running :global(svg) {
+		animation: spin 900ms linear infinite;
+	}
+
+	.thread-hooks-status-dot.done {
+		color: var(--success, #4ade80);
+	}
+
+	.thread-hooks-status-dot.failed {
+		color: var(--danger, #ef4444);
+	}
+
 	.thread-hooks-repo {
 		font-size: var(--text-sm);
 		font-weight: 600;
 		color: var(--text);
-		flex-shrink: 0;
 	}
 
 	.thread-hooks-chip-row {
@@ -528,6 +687,7 @@
 	.thread-hooks-chip {
 		display: inline-flex;
 		align-items: center;
+		gap: 4px;
 		padding: 1px 7px;
 		border-radius: 4px;
 		background: color-mix(in srgb, var(--panel-strong) 80%, transparent);
@@ -535,11 +695,76 @@
 		font-size: 11px;
 		color: var(--muted);
 		font-family: var(--font-mono);
+		transition:
+			background 180ms ease,
+			border-color 180ms ease,
+			color 180ms ease;
+	}
+
+	.thread-hooks-chip.live.chip-running {
+		background: color-mix(in srgb, var(--accent) 18%, transparent);
+		border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+		color: var(--accent);
+	}
+
+	.thread-hooks-chip.live.chip-ok {
+		background: color-mix(in srgb, var(--success, #4ade80) 16%, transparent);
+		border-color: color-mix(in srgb, var(--success, #4ade80) 42%, transparent);
+		color: var(--success, #4ade80);
+	}
+
+	.thread-hooks-chip.live.chip-failed {
+		background: color-mix(in srgb, var(--danger, #ef4444) 18%, transparent);
+		border-color: color-mix(in srgb, var(--danger, #ef4444) 48%, transparent);
+		color: var(--danger, #ef4444);
+	}
+
+	.thread-hooks-chip.live.chip-skipped {
+		opacity: 0.55;
+	}
+
+	.chip-dot {
+		display: inline-block;
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: currentColor;
+	}
+
+	.chip-dot-running {
+		animation: thread-chip-pulse 0.85s ease-in-out infinite;
 	}
 
 	.thread-hooks-empty {
 		font-size: var(--text-xs);
 		color: var(--subtle);
+		transition: color 180ms ease;
+	}
+
+	.thread-hooks-row.live.status-preparing .thread-hooks-empty,
+	.thread-hooks-row.live.status-cloning .thread-hooks-empty,
+	.thread-hooks-row.live.status-running .thread-hooks-empty {
+		color: var(--accent);
+	}
+
+	.thread-hooks-row.live.status-done .thread-hooks-empty {
+		color: var(--success, #4ade80);
+	}
+
+	.thread-hooks-row.live.status-failed .thread-hooks-empty {
+		color: var(--danger, #ef4444);
+	}
+
+	@keyframes thread-chip-pulse {
+		0%,
+		100% {
+			transform: scale(1);
+			opacity: 1;
+		}
+		50% {
+			transform: scale(1.4);
+			opacity: 0.55;
+		}
 	}
 
 	.thread-hooks-error {

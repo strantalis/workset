@@ -125,6 +125,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 	pendingHooks := []HookPending{}
 	hookRuns := []HookExecutionJSON{}
 	for _, plan := range repoPlans {
+		s.emitWorktreeCloneProgress(name, plan.Name, "clone-started", "thread.create", nil)
 		_, resolvedRemote, repoWarnings, err := ops.AddRepo(ctx, ops.AddRepoInput{
 			WorkspaceRoot: ws.Root,
 			Name:          plan.Name,
@@ -137,8 +138,10 @@ func (s *Service) CreateWorkspace(ctx context.Context, input WorkspaceCreateInpu
 			Git:           s.git,
 		})
 		if err != nil {
+			s.emitWorktreeCloneProgress(name, plan.Name, "clone-finished", "thread.create", err)
 			return WorkspaceCreateResult{}, err
 		}
+		s.emitWorktreeCloneProgress(name, plan.Name, "clone-finished", "thread.create", nil)
 		if len(repoWarnings) > 0 {
 			warnings = append(warnings, repoWarnings...)
 		}

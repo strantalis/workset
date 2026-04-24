@@ -11,6 +11,12 @@ func TestHookOperation(t *testing.T) {
 	if got := hookOperation("workspace.create"); got != "workspace.create" {
 		t.Fatalf("unexpected operation: %s", got)
 	}
+	if got := hookOperation("thread.create"); got != "workspace.create" {
+		t.Fatalf("unexpected operation for thread.create: %s", got)
+	}
+	if got := hookOperation("thread.create.retry"); got != "workspace.create" {
+		t.Fatalf("unexpected operation for thread.create.retry: %s", got)
+	}
 	if got := hookOperation("repo.add.extra"); got != "repo.add" {
 		t.Fatalf("unexpected operation: %s", got)
 	}

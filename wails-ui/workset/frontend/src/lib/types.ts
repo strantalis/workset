@@ -251,7 +251,7 @@ export type HookProgressEvent = {
 	repo: string;
 	event: string;
 	hookId: string;
-	phase: 'started' | 'finished';
+	phase: 'started' | 'finished' | 'clone-started' | 'clone-finished';
 	status?: string;
 	logPath?: string;
 	error?: string;

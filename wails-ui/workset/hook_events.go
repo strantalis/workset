@@ -49,7 +49,8 @@ func (o appHookObserver) OnHookProgress(progress worksetapi.HookProgress) {
 func hookOperation(reason string) string {
 	reason = strings.TrimSpace(reason)
 	switch {
-	case strings.HasPrefix(reason, "workspace.create"):
+	case strings.HasPrefix(reason, "workspace.create"),
+		strings.HasPrefix(reason, "thread.create"):
 		return "workspace.create"
 	case strings.HasPrefix(reason, "repo.add"):
 		return "repo.add"

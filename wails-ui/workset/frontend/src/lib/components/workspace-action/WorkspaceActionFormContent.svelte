@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { RepoHooksPreviewUnavailableReason } from '../../api/workspaces';
-	import type { Alias, Repo } from '../../types';
+	import type { Alias, HookExecution, Repo } from '../../types';
 	import type {
 		ExistingRepoContext,
 		WorkspaceActionAddRepoSelectedItem,
 	} from '../../services/workspaceActionContextService';
+	import type { RepoCreationStatus } from '../../services/workspaceActionHooks';
 	import Button from '../ui/Button.svelte';
 	import WorkspaceActionAddRepoForm from './WorkspaceActionAddRepoForm.svelte';
 	import WorkspaceActionCreateForm from './WorkspaceActionCreateForm.svelte';
@@ -62,6 +63,9 @@
 		createThreadHookRows?: ThreadHookPreviewRow[];
 		createThreadHooksLoading?: boolean;
 		createThreadHooksError?: string | null;
+		createCreating?: boolean;
+		createRepoProgress?: Record<string, RepoCreationStatus>;
+		createHookRuns?: HookExecution[];
 		onCreateWorkspaceNameInput: (value: string) => void;
 		onCreateDescriptionInput?: (value: string) => void;
 		onCreateSearchQueryInput: (value: string) => void;
@@ -132,6 +136,9 @@
 		createThreadHookRows = [],
 		createThreadHooksLoading = false,
 		createThreadHooksError = null,
+		createCreating = false,
+		createRepoProgress = {},
+		createHookRuns = [],
 		onCreateWorkspaceNameInput,
 		onCreateDescriptionInput,
 		onCreateSearchQueryInput,
@@ -191,6 +198,9 @@
 		threadHookRows={createThreadHookRows}
 		threadHooksLoading={createThreadHooksLoading}
 		threadHooksError={createThreadHooksError}
+		creating={createCreating}
+		repoProgress={createRepoProgress}
+		hookRuns={createHookRuns}
 		{filteredAliases}
 		{selectedAliases}
 		{getAliasSource}

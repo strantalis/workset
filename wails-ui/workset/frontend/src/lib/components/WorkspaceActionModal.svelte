@@ -20,10 +20,14 @@
 	import { deriveRepoName, isRepoSource } from '../names';
 	import {
 		applyHookProgress,
+		applyRepoProgressFromHookEvent,
 		appendHookRuns,
 		beginHookTracking,
 		clearHookTracking,
+		finalizeRepoProgress,
+		initRepoProgress,
 		shouldTrackHookEvent,
+		type RepoCreationStatus,
 		type WorkspaceActionPendingHook,
 	} from '../services/workspaceActionHooks';
 	import { formatWorkspaceActionError } from '../services/workspaceActionErrors';
@@ -105,6 +109,7 @@
 	let warnings: string[] = $state([]);
 	let pendingHooks: WorkspaceActionPendingHook[] = $state([]);
 	let hookRuns: HookExecution[] = $state([]);
+	let repoProgress: Record<string, RepoCreationStatus> = $state({});
 	let activeHookOperation: string | null = $state(null);
 	let activeHookWorkspace: string | null = $state(null);
 	let hookWorkspaceId: string | null = $state(null);
@@ -407,7 +412,7 @@
 	const modalSize = $derived(deriveWorkspaceActionModalSize(mode, phase));
 	const inlineThreadHookResults = $derived(mode === 'create-thread' && phase === 'form');
 
-	const queueModalAutoClose = (delayMs = 1500): void => {
+	const queueModalAutoClose = (delayMs = 1800): void => {
 		if (autoCloseTimer) return;
 		autoCloseTimer = setTimeout(() => {
 			autoCloseTimer = null;
@@ -459,6 +464,7 @@
 
 	const loadContext = async (): Promise<void> => {
 		({ phase, hookResultContext } = resetWorkspaceActionFlow());
+		repoProgress = {};
 		const context = await loadWorkspaceActionModalContext(
 			{
 				mode,
@@ -573,6 +579,7 @@
 		pendingHooks = [];
 		hookRuns = [];
 		hookWorkspaceId = null;
+		repoProgress = initRepoProgress(Array.from(plan.aliasesToCreate));
 		({ activeHookOperation, activeHookWorkspace, hookRuns, pendingHooks } = beginHookTracking(
 			'workspace.create',
 			finalName,
@@ -590,6 +597,7 @@
 			hookRuns = appendHookRuns(hookRuns, result.hookRuns);
 			pendingHooks = result.pendingHooks.map((pending) => ({ ...pending }));
 			hookWorkspaceId = result.workspaceName;
+			repoProgress = finalizeRepoProgress(repoProgress, hookRuns);
 			if (!plan.isThreadMode && description.trim()) {
 				await setWorkspaceDescription(result.workspaceName, description.trim());
 			}
@@ -621,6 +629,7 @@
 				err,
 				mode === 'create-thread' ? 'Failed to create thread.' : 'Failed to create workset.',
 			);
+			repoProgress = finalizeRepoProgress(repoProgress, hookRuns, { error: err });
 		} finally {
 			loading = false;
 			({ activeHookOperation, activeHookWorkspace } = clearHookTracking());
@@ -937,6 +946,7 @@
 				return;
 			}
 			hookRuns = applyHookProgress(hookRuns, payload);
+			repoProgress = applyRepoProgressFromHookEvent(repoProgress, payload);
 		});
 		await loadContext();
 	});
@@ -1012,6 +1022,9 @@
 			createThreadHookRows={threadHookRows}
 			createThreadHooksLoading={threadHooksLoading}
 			createThreadHooksError={threadHooksError}
+			createCreating={loading && mode === 'create-thread'}
+			createRepoProgress={repoProgress}
+			createHookRuns={hookRuns}
 			onCreateWorkspaceNameInput={(value) => (customizeName = value)}
 			onCreateDescriptionInput={(value) => (description = value)}
 			onCreateSearchQueryInput={(value) => (searchQuery = value)}
@@ -1045,12 +1058,12 @@
 			onRemoveRepoSubmit={handleRemoveRepo}
 		/>
 
-		{#if inlineThreadHookResults && (hookRuns.length > 0 || pendingHooks.length > 0)}
+		{#if inlineThreadHookResults && pendingHooks.length > 0}
 			<WorkspaceActionStatusAlerts
 				{error}
 				{success}
 				{warnings}
-				{hookRuns}
+				hookRuns={[]}
 				{pendingHooks}
 				showMessages={false}
 				showHooks={true}

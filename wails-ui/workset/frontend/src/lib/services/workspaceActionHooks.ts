@@ -123,10 +123,93 @@ export const shouldTrackHookEvent = (
 	return true;
 };
 
+export type RepoCreationStatus = 'preparing' | 'cloning' | 'running-hooks' | 'done' | 'failed';
+
+export const initRepoProgress = (repos: string[]): Record<string, RepoCreationStatus> => {
+	const progress: Record<string, RepoCreationStatus> = {};
+	for (const repo of repos) {
+		const trimmed = repo.trim();
+		if (trimmed.length === 0) continue;
+		progress[trimmed] = 'preparing';
+	}
+	return progress;
+};
+
+const PHASE_RANK: Record<RepoCreationStatus, number> = {
+	preparing: 0,
+	cloning: 1,
+	'running-hooks': 2,
+	done: 3,
+	failed: 3,
+};
+
+export const applyRepoProgressFromHookEvent = (
+	progress: Record<string, RepoCreationStatus>,
+	payload: HookProgressEvent,
+): Record<string, RepoCreationStatus> => {
+	const repo = payload.repo?.trim();
+	if (!repo) return progress;
+	const current = progress[repo];
+	if (current === undefined || current === 'done' || current === 'failed') {
+		return progress;
+	}
+	const next = nextRepoProgressForPhase(payload);
+	if (next === null) return progress;
+	if (next === current) return progress;
+	if (next !== 'failed' && PHASE_RANK[next] <= PHASE_RANK[current]) return progress;
+	return { ...progress, [repo]: next };
+};
+
+const nextRepoProgressForPhase = (payload: HookProgressEvent): RepoCreationStatus | null => {
+	if (payload.phase === 'clone-started') return 'cloning';
+	if (payload.phase === 'clone-finished') {
+		if (payload.status === 'failed' || (payload.error && payload.error.length > 0)) {
+			return 'failed';
+		}
+		return 'running-hooks';
+	}
+	if (payload.phase === 'started') return 'running-hooks';
+	return null;
+};
+
+export const finalizeRepoProgress = (
+	progress: Record<string, RepoCreationStatus>,
+	hookRuns: HookExecution[],
+	opts: { error?: unknown } = {},
+): Record<string, RepoCreationStatus> => {
+	const failedRepos = new Set<string>();
+	for (const run of hookRuns) {
+		if (run.status === 'failed') {
+			const repo = run.repo?.trim();
+			if (repo) failedRepos.add(repo);
+		}
+	}
+	const next: Record<string, RepoCreationStatus> = {};
+	const hasError = opts.error !== undefined && opts.error !== null;
+	for (const [repo, status] of Object.entries(progress)) {
+		if (failedRepos.has(repo)) {
+			next[repo] = 'failed';
+			continue;
+		}
+		if (hasError && status !== 'done') {
+			next[repo] = 'failed';
+			continue;
+		}
+		if (status === 'preparing' || status === 'running-hooks') {
+			next[repo] = 'done';
+			continue;
+		}
+		next[repo] = status;
+	}
+	return next;
+};
+
 export const applyHookProgress = (
 	currentHookRuns: HookExecution[],
 	payload: HookProgressEvent,
 ): HookExecution[] => {
+	if (payload.phase !== 'started' && payload.phase !== 'finished') return currentHookRuns;
+	if (!payload.hookId) return currentHookRuns;
 	const existingIdx = currentHookRuns.findIndex(
 		(entry) =>
 			entry.repo === payload.repo && entry.event === payload.event && entry.id === payload.hookId,
