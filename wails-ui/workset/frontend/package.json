@@ -68,7 +68,7 @@
 		"@codemirror/view": "^6.41.1",
 		"@iconify-json/file-icons": "^1.2.2",
 		"@iconify/svelte": "^5.2.1",
-		"@lucide/svelte": "^0.575.0",
+		"@lucide/svelte": "^1.11.0",
 		"@pierre/diffs": "^1.1.16",
 		"@strantalis/workset-ghostty-web": "^0.3.1-workset.17",
 		"@wailsio/runtime": "^3.0.0-alpha.79",
