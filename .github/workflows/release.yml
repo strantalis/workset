@@ -144,7 +144,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Create alpha GitHub release
-        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v2
         with:
           tag_name: ${{ needs.prepare-alpha.outputs.alpha_version }}
           name: ${{ needs.prepare-alpha.outputs.alpha_version }}
@@ -165,7 +165,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up Go
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version-file: go.mod
       - name: Install Syft
@@ -182,7 +182,7 @@ jobs:
         with:
           subject-checksums: dist/checksums.txt
       - name: Upload CLI artifacts to alpha release
-        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v2
         with:
           tag_name: ${{ needs.prepare-alpha.outputs.alpha_version }}
           prerelease: true
@@ -193,7 +193,7 @@ jobs:
             dist/checksums.txt
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload artifacts
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
         with:
           name: workset-alpha-${{ github.sha }}
           path: dist/*
@@ -206,11 +206,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
       - name: Set up Go
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version-file: wails-ui/workset/go.mod
       - name: Set up Node
-        uses: actions/setup-node@d02c89dce7e1ba9ef629ce0680989b3a1cc72edb # v6.2.0
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.2.0
         with:
           node-version: "24"
       - name: Install create-dmg
@@ -424,7 +424,7 @@ jobs:
           fi
           xcrun stapler staple "$dmg"
       - name: Upload release assets
-        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v2
         with:
           tag_name: ${{ needs.prepare-alpha.outputs.alpha_version }}
           prerelease: true
@@ -457,11 +457,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
       - name: Set up Go
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version-file: wails-ui/workset/go.mod
       - name: Set up Node
-        uses: actions/setup-node@d02c89dce7e1ba9ef629ce0680989b3a1cc72edb # v6.2.0
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.2.0
         with:
           node-version: "24"
       - name: Install Wails3 CLI
@@ -494,7 +494,7 @@ jobs:
             Move-Item -Path $_.FullName -Destination (Join-Path $dir $newName)
           }
       - name: Upload release assets
-        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v2
         with:
           tag_name: ${{ needs.prepare-alpha.outputs.alpha_version }}
           prerelease: true
@@ -510,11 +510,11 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up Go
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version-file: go.mod
       - name: Set up Node
-        uses: actions/setup-node@d02c89dce7e1ba9ef629ce0680989b3a1cc72edb # v6.2.0
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.2.0
         with:
           node-version: "24"
       - name: Stable release preflight
@@ -585,11 +585,11 @@ jobs:
 
           echo "value=${tag}" >> "$GITHUB_OUTPUT"
       - name: Set up Go
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version-file: go.mod
       - name: Set up Node
-        uses: actions/setup-node@d02c89dce7e1ba9ef629ce0680989b3a1cc72edb # v6.2.0
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.2.0
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
@@ -635,11 +635,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
       - name: Set up Go
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version-file: wails-ui/workset/go.mod
       - name: Set up Node
-        uses: actions/setup-node@d02c89dce7e1ba9ef629ce0680989b3a1cc72edb # v6.2.0
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.2.0
         with:
           node-version: "24"
       - name: Install create-dmg
@@ -853,7 +853,7 @@ jobs:
           fi
           xcrun stapler staple "$dmg"
       - name: Upload release assets
-        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v2
         with:
           tag_name: ${{ needs.stable-publish.outputs.tag }}
           prerelease: false
@@ -886,11 +886,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
       - name: Set up Go
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version-file: wails-ui/workset/go.mod
       - name: Set up Node
-        uses: actions/setup-node@d02c89dce7e1ba9ef629ce0680989b3a1cc72edb # v6.2.0
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.2.0
         with:
           node-version: "24"
       - name: Install Wails3 CLI
@@ -923,7 +923,7 @@ jobs:
             Move-Item -Path $_.FullName -Destination (Join-Path $dir $newName)
           }
       - name: Upload release assets
-        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v2
         with:
           tag_name: ${{ needs.stable-publish.outputs.tag }}
           prerelease: false

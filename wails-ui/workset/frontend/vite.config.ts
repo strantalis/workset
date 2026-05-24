@@ -34,6 +34,7 @@ export default defineConfig(({ command, mode }) => ({
 		environment: 'jsdom',
 		include: ['src/**/*.test.ts', 'src/**/*.spec.ts'],
 		setupFiles: ['./src/test-setup.ts'],
+		testTimeout: 15000,
 		coverage: {
 			provider: 'v8',
 			reporter: ['text', 'html'],

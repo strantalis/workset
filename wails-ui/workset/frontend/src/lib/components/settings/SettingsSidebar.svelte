@@ -1,5 +1,13 @@
 <script lang="ts">
-	import { Settings2, Terminal, Wrench, Github, Database, Info, ArrowLeft } from '@lucide/svelte';
+	import {
+		Settings2,
+		Terminal,
+		Wrench,
+		GitBranch,
+		Database,
+		Info,
+		ArrowLeft,
+	} from '@lucide/svelte';
 
 	interface Props {
 		activeSection: string;
@@ -39,7 +47,7 @@
 		},
 		{
 			title: 'INTEGRATIONS',
-			items: [{ id: 'github', label: 'GitHub', icon: Github }],
+			items: [{ id: 'github', label: 'GitHub', icon: GitBranch }],
 		},
 		{
 			title: 'LIBRARY',
