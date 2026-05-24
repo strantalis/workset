@@ -554,12 +554,36 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
         with:
           fetch-depth: 0
-      - name: Resolve stable tag
+      - name: Validate stable tag
         id: tag
         shell: bash
         run: |
           set -euo pipefail
-          echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+          tag="${GITHUB_REF_NAME}"
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Stable releases require an exact vX.Y.Z tag. Got: $tag"
+            exit 1
+          fi
+
+          if [ "$(git cat-file -t "$tag")" != "tag" ]; then
+            echo "Stable release tag '$tag' must be an annotated tag."
+            exit 1
+          fi
+
+          if ! git cat-file -p "$tag" | grep -Eq 'BEGIN SSH SIGNATURE|BEGIN PGP SIGNATURE'; then
+            echo "Stable release tag '$tag' must have an embedded SSH or PGP signature."
+            exit 1
+          fi
+
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          target_commit="$(git rev-list -n 1 "$tag")"
+          if ! git merge-base --is-ancestor "$target_commit" origin/main; then
+            echo "Stable release tag '$tag' must point to a commit reachable from origin/main."
+            exit 1
+          fi
+
+          echo "value=${tag}" >> "$GITHUB_OUTPUT"
       - name: Set up Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
