@@ -1,0 +1,41 @@
+.icon-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: var(--space-3);
+  gap: var(--space-1);
+}
+
+.icon-rail__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  transition: all var(--transition-fast);
+  position: relative;
+}
+
+.icon-rail__btn:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.icon-rail__btn.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.icon-rail__btn.active::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 16px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+}

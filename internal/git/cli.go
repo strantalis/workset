@@ -43,7 +43,7 @@ func (c CLIClient) run(ctx context.Context, repoPath string, args ...string) (gi
 	}
 	cmdArgs = append(cmdArgs, args...)
 	cmd := exec.CommandContext(ctx, c.gitPath, cmdArgs...)
-	cmd.Env = os.Environ()
+	cmd.Env = withGitCommandEnv(os.Environ())
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -73,6 +73,27 @@ func (c CLIClient) run(ctx context.Context, repoPath string, args ...string) (gi
 		}
 	}
 	return result, err
+}
+
+func withGitCommandEnv(base []string) []string {
+	env := make([]string, 0, len(base)+1)
+	hasPrompt := false
+
+	for _, item := range base {
+		switch {
+		case strings.HasPrefix(item, "GIT_TERMINAL_PROMPT="):
+			env = append(env, "GIT_TERMINAL_PROMPT=0")
+			hasPrompt = true
+		default:
+			env = append(env, item)
+		}
+	}
+
+	if !hasPrompt {
+		env = append(env, "GIT_TERMINAL_PROMPT=0")
+	}
+
+	return env
 }
 
 func (c CLIClient) Clone(ctx context.Context, url, path, remoteName string) error {

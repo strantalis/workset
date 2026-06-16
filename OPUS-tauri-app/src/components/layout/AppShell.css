@@ -1,0 +1,50 @@
+.app-shell {
+  display: grid;
+  grid-template-columns: var(--rail-width) var(--sidebar-width) 1fr var(--right-panel-width);
+  grid-template-rows: var(--chrome-height) 1fr;
+  height: 100%;
+  overflow: hidden;
+}
+
+.app-shell--no-right {
+  grid-template-columns: var(--rail-width) var(--sidebar-width) 1fr;
+}
+
+.app-shell__chrome {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  z-index: 10;
+}
+
+.app-shell__rail {
+  grid-column: 1;
+  grid-row: 2;
+  background: var(--panel-soft);
+  border-right: 1px solid var(--border);
+}
+
+.app-shell__sidebar {
+  grid-column: 2;
+  grid-row: 2;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.app-shell__main {
+  grid-column: 3;
+  grid-row: 2;
+  display: flex;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.app-shell__right-panel {
+  grid-column: 4;
+  grid-row: 2;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+}
