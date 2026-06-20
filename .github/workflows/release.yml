@@ -144,7 +144,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Create alpha GitHub release
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v2
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v2
         with:
           tag_name: ${{ needs.prepare-alpha.outputs.alpha_version }}
           name: ${{ needs.prepare-alpha.outputs.alpha_version }}
@@ -182,7 +182,7 @@ jobs:
         with:
           subject-checksums: dist/checksums.txt
       - name: Upload CLI artifacts to alpha release
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v2
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v2
         with:
           tag_name: ${{ needs.prepare-alpha.outputs.alpha_version }}
           prerelease: true
@@ -424,7 +424,7 @@ jobs:
           fi
           xcrun stapler staple "$dmg"
       - name: Upload release assets
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v2
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v2
         with:
           tag_name: ${{ needs.prepare-alpha.outputs.alpha_version }}
           prerelease: true
@@ -494,7 +494,7 @@ jobs:
             Move-Item -Path $_.FullName -Destination (Join-Path $dir $newName)
           }
       - name: Upload release assets
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v2
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v2
         with:
           tag_name: ${{ needs.prepare-alpha.outputs.alpha_version }}
           prerelease: true
@@ -853,7 +853,7 @@ jobs:
           fi
           xcrun stapler staple "$dmg"
       - name: Upload release assets
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v2
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v2
         with:
           tag_name: ${{ needs.stable-publish.outputs.tag }}
           prerelease: false
@@ -923,7 +923,7 @@ jobs:
             Move-Item -Path $_.FullName -Destination (Join-Path $dir $newName)
           }
       - name: Upload release assets
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v2
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v2
         with:
           tag_name: ${{ needs.stable-publish.outputs.tag }}
           prerelease: false
